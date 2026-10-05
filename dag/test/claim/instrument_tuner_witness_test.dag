@@ -109,7 +109,7 @@ fn witness_the_client_apply_hides_non_matching_readings() -> Bool {
     && string_contains(s: instrument_tuner_client_js_source(), pattern: ".hidden")
 }
 
-test fn instrument_tuner_keystone_holds() -> Bool {
+test fn instrument_tuner_keystone_holds() -> Bool  {
   witness_the_client_program_persists_the_camera()
     && witness_the_client_program_steps_one_detent_with_sound()
     && witness_the_client_program_integrates_wheel_travel()

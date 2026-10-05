@@ -103,7 +103,7 @@ fn lbp_subject() -> LegacyBindingObservationSubject {
   }
 }
 
-test fn persist_refuses_a_capture_that_never_minted() -> Bool {
+test fn persist_refuses_a_capture_that_never_minted() -> Bool  {
   match git_sha1_object_id(hex: lbp_commit_a()) {
     Absent => false
     Present { value: a } => match git_sha1_object_id(hex: lbp_commit_b()) {
@@ -211,11 +211,11 @@ fn lbp_minted_capture_persisted() -> Bool {
   }
 }
 
-test fn persist_binds_only_to_the_capture_base_commit() -> Bool {
+test fn persist_binds_only_to_the_capture_base_commit() -> Bool  {
   lbp_minted_capture_persisted()
 }
 
-test fn live_outstanding_is_the_enrollment_fold_with_unpinned_production_pin() -> Bool {
+test fn live_outstanding_is_the_enrollment_fold_with_unpinned_production_pin() -> Bool  {
   match current_pre_cut_base_pin() {
     PreCutBasePinned { base: _ } => false
     PreCutBaseUnpinned =>

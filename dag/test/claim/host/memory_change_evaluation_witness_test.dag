@@ -134,7 +134,7 @@ fn memory_test_candidate(build: BuildResolution) -> BuildCandidate {
   }
 }
 
-test fn w_witnessed_mixture_has_located_firmware_counterexample() -> Bool {
+test fn w_witnessed_mixture_has_located_firmware_counterexample() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -143,7 +143,7 @@ test fn w_witnessed_mixture_has_located_firmware_counterexample() -> Bool {
   }
 }
 
-test fn w_uniform_ads_clears_only_the_observed_mixing_check() -> Bool {
+test fn w_uniform_ads_clears_only_the_observed_mixing_check() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -157,7 +157,7 @@ test fn w_uniform_ads_clears_only_the_observed_mixing_check() -> Bool {
   }
 }
 
-test fn w_missing_candidate_package_is_unresolved() -> Bool {
+test fn w_missing_candidate_package_is_unresolved() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -173,7 +173,7 @@ test fn w_missing_candidate_package_is_unresolved() -> Bool {
   }
 }
 
-test fn w_display_label_does_not_change_rejection() -> Bool {
+test fn w_display_label_does_not_change_rejection() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -186,7 +186,7 @@ test fn w_display_label_does_not_change_rejection() -> Bool {
   }
 }
 
-test fn w_changed_firmware_rechecks_applicability() -> Bool {
+test fn w_changed_firmware_rechecks_applicability() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -200,7 +200,7 @@ test fn w_changed_firmware_rechecks_applicability() -> Bool {
   }
 }
 
-test fn w_socket_boundary_is_not_a_global_part_blocklist() -> Bool {
+test fn w_socket_boundary_is_not_a_global_part_blocklist() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -212,7 +212,7 @@ test fn w_socket_boundary_is_not_a_global_part_blocklist() -> Bool {
   }
 }
 
-test fn w_intermediate_initialization_blocks_homogeneous_final_plan() -> Bool {
+test fn w_intermediate_initialization_blocks_homogeneous_final_plan() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -233,7 +233,7 @@ test fn w_intermediate_initialization_blocks_homogeneous_final_plan() -> Bool {
   }
 }
 
-test fn w_empty_coverage_cannot_admit_production() -> Bool {
+test fn w_empty_coverage_cannot_admit_production() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -244,7 +244,7 @@ test fn w_empty_coverage_cannot_admit_production() -> Bool {
   }
 }
 
-test fn w_production_fulfillment_refuses_witnessed_configuration() -> Bool {
+test fn w_production_fulfillment_refuses_witnessed_configuration() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -268,7 +268,7 @@ fn memory_test_broken_collector(fixture_roles: List<MtCollinsChannelPopulationRo
     process_exit: if failed { exit_failure(reason: "controlled collector failure") } else { ExitSuccess }, payload: c.payload, capture_digest: c.capture_digest, previous_capture_digest: c.previous_capture_digest }
 }
 
-test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
+test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -281,7 +281,7 @@ test fn w_incomplete_and_failed_collectors_cannot_construct_findings() -> Bool {
   }
 }
 
-test fn w_failed_collector_cannot_establish_class_qualification() -> Bool {
+test fn w_failed_collector_cannot_establish_class_qualification() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -299,7 +299,7 @@ test fn w_failed_collector_cannot_establish_class_qualification() -> Bool {
   }
 }
 
-test fn w_procurement_alternatives_name_the_delivery_condition() -> Bool {
+test fn w_procurement_alternatives_name_the_delivery_condition() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -321,7 +321,7 @@ test fn w_procurement_alternatives_name_the_delivery_condition() -> Bool {
   }
 }
 
-test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool {
+test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -338,7 +338,7 @@ test fn w_unknown_register_vendor_does_not_prevent_package_comparison() -> Bool 
   }
 }
 
-test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
+test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -363,7 +363,7 @@ test fn w_identical_hashes_are_suspicion_not_self_observation_proof() -> Bool {
   }
 }
 
-test fn w_qualification_purchase_is_bound_and_not_production_ranked() -> Bool {
+test fn w_qualification_purchase_is_bound_and_not_production_ranked() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -386,7 +386,7 @@ test fn w_qualification_purchase_is_bound_and_not_production_ranked() -> Bool {
   }
 }
 
-test fn w_unmodelled_required_obligation_is_executed_as_unresolved() -> Bool {
+test fn w_unmodelled_required_obligation_is_executed_as_unresolved() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -398,7 +398,7 @@ test fn w_unmodelled_required_obligation_is_executed_as_unresolved() -> Bool {
 }
 
 
-test fn w_incomplete_inventory_cannot_bind_a_firmware_finding() -> Bool {
+test fn w_incomplete_inventory_cannot_bind_a_firmware_finding() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -444,7 +444,7 @@ fn memory_test_market(recipe: NodeRecipe) -> List<SupplyRow> {
   })
 }
 
-test fn w_production_fulfillment_conflict_is_decisive_with_other_obligations_satisfied() -> Bool {
+test fn w_production_fulfillment_conflict_is_decisive_with_other_obligations_satisfied() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -476,7 +476,7 @@ test fn w_production_fulfillment_conflict_is_decisive_with_other_obligations_sat
 }
 
 
-test fn w_included_qualification_population_is_not_production_ranked() -> Bool {
+test fn w_included_qualification_population_is_not_production_ranked() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -495,7 +495,7 @@ test fn w_included_qualification_population_is_not_production_ranked() -> Bool {
   }
 }
 
-test fn w_workflow_without_independent_readback_requirement_is_withheld() -> Bool {
+test fn w_workflow_without_independent_readback_requirement_is_withheld() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -512,7 +512,7 @@ test fn w_workflow_without_independent_readback_requirement_is_withheld() -> Boo
 }
 
 
-test fn w_supply_platform_must_match_the_assessed_board() -> Bool {
+test fn w_supply_platform_must_match_the_assessed_board() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -533,7 +533,7 @@ test fn w_supply_platform_must_match_the_assessed_board() -> Bool {
 // Review 64358's exact unresolved-sample scenario. A market's Established
 // field cannot override the mandatory production obligation; an explicitly
 // bounded experiment remains purchasable but visible as a selection gap.
-test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() -> Bool {
+test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -580,7 +580,7 @@ test fn w_sample_required_screen_cannot_be_overridden_by_market_compatibility() 
   }
 }
 
-test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
+test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -599,7 +599,7 @@ test fn w_missing_printed_part_binding_refuses_inventory_evidence() -> Bool {
 
 // Collector health alone cannot authenticate positive qualification standings:
 // the payload must also cover the configuration the receipt claims to qualify.
-test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool {
+test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -621,7 +621,7 @@ test fn w_partial_inventory_cannot_establish_positive_qualification() -> Bool {
 
 // Each case runs the real fulfillment fold. The build-level qualification
 // cause occurs exactly once per affected axis, regardless of line outcomes.
-test fn w_qualification_gap_survives_unread_and_missing_supply_once() -> Bool {
+test fn w_qualification_gap_survives_unread_and_missing_supply_once() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -648,7 +648,7 @@ test fn w_qualification_gap_survives_unread_and_missing_supply_once() -> Bool {
   }
 }
 
-test fn w_intermediate_initialization_explanation_locates_conflict() -> Bool {
+test fn w_intermediate_initialization_explanation_locates_conflict() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -668,7 +668,7 @@ test fn w_intermediate_initialization_explanation_locates_conflict() -> Bool {
 
 // The returned frontier is bound to a live retirement subject, not to the
 // appearance of a future consumer. Both states use the shared dissolution fold.
-test fn w_power_frontier_retirement_is_bound_to_existing_carrier() -> Bool {
+test fn w_power_frontier_retirement_is_bound_to_existing_carrier() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -687,7 +687,7 @@ test fn w_power_frontier_retirement_is_bound_to_existing_carrier() -> Bool {
 
 // The generic collector accepts an explicitly bound alternative format. The
 // Mt. Collins recognizer still refuses it as evidence of that particular boot.
-test fn w_collector_format_belongs_to_observing_producer() -> Bool {
+test fn w_collector_format_belongs_to_observing_producer() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles: fixture_roles } => {
@@ -719,7 +719,7 @@ test fn w_collector_format_belongs_to_observing_producer() -> Bool {
 
 // These malformed pair controls execute the same authority join and placement
 // consumer as production. Neither refusal may become a partial green roster.
-test fn w_population_role_refusals_remain_unresolved_in_placement() -> Bool {
+test fn w_population_role_refusals_remain_unresolved_in_placement() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -743,7 +743,7 @@ test fn w_population_role_refusals_remain_unresolved_in_placement() -> Bool {
 
 // A synthetic role contrary to today's roster tests the projection; it is not
 // a new claim about the physical board or its documentation.
-test fn w_position_projection_uses_role_identity_not_connector_parity() -> Bool {
+test fn w_position_projection_uses_role_identity_not_connector_parity() -> Bool  {
   let role = MtCollinsChannelPopulationRole { processor_socket: 0, memory_controller: 0,
     connector_used_at_one_dpc: 2, additional_connector_at_two_dpc: 1 }
   let primary = mtcollins_memory_position(role: role, additional: false)
@@ -773,11 +773,11 @@ fn memory_test_coverage_admits(required: List<MemoryOperatingObligation>, evalua
   }
 }
 
-test fn w_coverage_identity_bijection_admits_control() -> Bool {
+test fn w_coverage_identity_bijection_admits_control() -> Bool  {
   memory_test_coverage_admits(required: memory_operating_obligations, evaluated: memory_operating_obligations)
 }
 
-test fn w_coverage_duplicate_requirement_and_unrelated_result_refuse() -> Bool {
+test fn w_coverage_duplicate_requirement_and_unrelated_result_refuse() -> Bool  {
   let required = concat(memory_operating_obligations, [MemoryPackageMixture])
   let evaluated = concat(memory_operating_obligations, [AdditionalMemoryRequirement {
     authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_duplicate_requirement_and_unrelated_result_refuse"),
@@ -785,13 +785,13 @@ test fn w_coverage_duplicate_requirement_and_unrelated_result_refuse() -> Bool {
   !memory_test_coverage_admits(required: required, evaluated: evaluated)
 }
 
-test fn w_coverage_same_count_missing_identity_refuses() -> Bool {
+test fn w_coverage_same_count_missing_identity_refuses() -> Bool  {
   let duplicate = map(memory_operating_obligations, obligation => if obligation == MemoryBoot { MemoryTraining } else { obligation })
   !memory_test_coverage_admits(required: memory_operating_obligations, evaluated: duplicate)
     && !memory_test_coverage_admits(required: duplicate, evaluated: memory_operating_obligations)
 }
 
-test fn w_coverage_extra_result_identity_refuses() -> Bool {
+test fn w_coverage_extra_result_identity_refuses() -> Bool  {
   !memory_test_coverage_admits(required: memory_operating_obligations,
     evaluated: concat(memory_operating_obligations, [AdditionalMemoryRequirement {
       authority: decl_ref(module_path: "test.claim.memory_change_evaluation_witness", decl_name: "w_coverage_extra_result_identity_refuses"),

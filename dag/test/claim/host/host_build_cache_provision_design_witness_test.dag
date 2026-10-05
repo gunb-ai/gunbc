@@ -2,11 +2,11 @@ module test.claim.host_build_cache_provision_design
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn design_witness_read_back_fails_closed_in_shell() -> Bool {
+test fn design_witness_read_back_fails_closed_in_shell() -> Bool  {
   build_cache_provision_read_back_fails_closed()
 }
 
-test fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
+test fn design_witness_unknown_catalog_refuses_at_gate() -> Bool  {
   match provision_build_cache_catalog_gate_verdict(
     catalog_id: provision_build_cache_unknown_catalog_fixture,
   ) {
@@ -15,7 +15,7 @@ test fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
   }
 }
 
-test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
+test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool  {
   match provision_build_cache_catalog_gate_verdict(catalog_id: gha_actions_cache_id) {
     ProvisionBuildCacheCatalogRefused { reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
@@ -23,7 +23,7 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
   }
 }
 
-test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
+test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool  {
   match provision_build_cache_verdict(
     catalog_id: gha_actions_cache_id,
     observed: DaemonStatsOk {
@@ -45,29 +45,29 @@ test fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
   }
 }
 
-test fn design_witness_sccache_catalog_passes_gate() -> Bool {
+test fn design_witness_sccache_catalog_passes_gate() -> Bool  {
   match provision_build_cache_catalog_gate_verdict(catalog_id: sccache_local_id) {
     ProvisionBuildCacheCatalogRealizable => true
     ProvisionBuildCacheCatalogRefused { reason: _ } => false
   }
 }
 
-test fn design_witness_routes_through_host_effect_apply() -> Bool {
+test fn design_witness_routes_through_host_effect_apply() -> Bool  {
   provision_build_cache_routes_through_host_effect_apply()
 }
 
-test fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
+test fn design_witness_default_effect_pins_sccache_catalog() -> Bool  {
   match provision_build_cache_default_effect(host: "srv1") {
     EnsureBuildCacheInstance { desired: instance } => instance.implementation == sccache_local_id
     _ => false
   }
 }
 
-test fn design_witness_absent_daemon_fail_closed() -> Bool {
+test fn design_witness_absent_daemon_fail_closed() -> Bool  {
   daemon_absent_refuses_fail_closed()
 }
 
-test fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
+test fn design_witness_authority_gate_accepts_absent_refusal() -> Bool  {
   build_cache_provision_gate_accepts(
     catalog_id: sccache_local_id,
     verdict: provision_build_cache_verdict(
@@ -78,11 +78,11 @@ test fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
   )
 }
 
-test fn design_witness_cited_fatal_error_fragment() -> Bool {
+test fn design_witness_cited_fatal_error_fragment() -> Bool  {
   misconfigured_matches_cited_fragment()
 }
 
-test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
+test fn design_witness_converged_not_refused_on_ok_stats() -> Bool  {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
@@ -95,11 +95,11 @@ test fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   }
 }
 
-test fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool {
+test fn design_witness_stats_ok_lazy_spawned_refuses() -> Bool  {
   stats_ok_lazy_spawned_refuses()
 }
 
-test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
+test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool  {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: DaemonStatsOk {
@@ -116,11 +116,11 @@ test fn design_witness_stats_ok_active_slot_runner_owned_refuses() -> Bool {
   }
 }
 
-test fn design_witness_stats_ok_placement_unknown_refuses() -> Bool {
+test fn design_witness_stats_ok_placement_unknown_refuses() -> Bool  {
   stats_ok_placement_unknown_refuses()
 }
 
-test fn design_witness_stats_ok_unit_owned_converges() -> Bool {
+test fn design_witness_stats_ok_unit_owned_converges() -> Bool  {
   stats_ok_unit_owned_converges()
 }
 
@@ -137,7 +137,7 @@ fn witness_widen_sketch_fabricates_converged_on_lazy_spawned() -> Bool {
   }
 }
 
-test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool {
+test fn witness_red_control_widen_on_lazy_spawned_rejected_by_gate() -> Bool  {
   witness_widen_sketch_fabricates_converged_on_lazy_spawned()
     && !build_cache_provision_gate_accepts(
       catalog_id: sccache_local_id,
@@ -179,7 +179,7 @@ fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
   }
 }
 
-test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
+test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool  {
   witness_widen_sketch_fabricates_converged_on_absent()
     && !build_cache_provision_gate_accepts(
       catalog_id: sccache_local_id,
@@ -195,7 +195,7 @@ fn path_shadow_observation_fixture() -> BuildCacheDaemonObservation {
   DaemonPathShadowed { resolved: "/usr/bin/sccache", expected: "/usr/local/bin/sccache" }
 }
 
-test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
+test fn design_witness_path_shadow_refuses_fail_closed() -> Bool  {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
@@ -209,7 +209,7 @@ test fn design_witness_path_shadow_refuses_fail_closed() -> Bool {
   }
 }
 
-test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool {
+test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bool  {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
     observed: path_shadow_observation_fixture(),
@@ -234,7 +234,7 @@ test fn design_witness_red_control_widen_on_path_shadow_rejected_by_gate() -> Bo
     )
 }
 
-test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool {
+test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool  {
   !string_contains(
     s: build_cache_observe_stats_body(),
     pattern: "path_authority=SHADOWED",
@@ -251,7 +251,7 @@ test fn design_witness_path_authority_observation_not_emitted_as_shell() -> Bool
   )
 }
 
-test fn design_witness_install_is_cited_not_package_manager() -> Bool {
+test fn design_witness_install_is_cited_not_package_manager() -> Bool  {
   build_cache_install_is_cited_not_package_manager()
 }
 
@@ -273,7 +273,7 @@ fn unsupervised_observation_fixture() -> BuildCacheDaemonObservation {
   DaemonUnsupervised { unit: "sccache.service", unit_state: "inactive (dead)" }
 }
 
-test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
+test fn design_witness_unsupervised_refuses_fail_closed() -> Bool  {
   match provision_build_cache_verdict(
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
@@ -287,7 +287,7 @@ test fn design_witness_unsupervised_refuses_fail_closed() -> Bool {
   }
 }
 
-test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool {
+test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> Bool  {
   match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
     observed: unsupervised_observation_fixture(),
@@ -312,7 +312,7 @@ test fn design_witness_red_control_widen_on_unsupervised_rejected_by_gate() -> B
     )
 }
 
-test fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
+test fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool  {
   !string_contains(
     s: build_cache_observe_stats_body(),
     pattern: "is-active",
@@ -322,20 +322,20 @@ test fn design_witness_supervision_observation_not_emitted_as_shell() -> Bool {
   )
 }
 
-test fn design_witness_classifier_covers_every_cited_fragment() -> Bool {
+test fn design_witness_classifier_covers_every_cited_fragment() -> Bool  {
   build_cache_classifier_covers_every_cited_fragment()
 }
 
-test fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool {
+test fn design_witness_classifier_is_a_fold_not_an_unrolled_chain() -> Bool  {
   !string_contains(s: build_cache_classify_failure_body(), pattern: "elif")
     && string_contains(s: build_cache_classify_failure_body(), pattern: "for frag in ")
 }
 
-test fn design_witness_fragment_words_are_shell_safe() -> Bool {
+test fn design_witness_fragment_words_are_shell_safe() -> Bool  {
   build_cache_fragment_words_are_shell_safe()
 }
 
-test fn design_witness_release_arch_token_is_fail_closed() -> Bool {
+test fn design_witness_release_arch_token_is_fail_closed() -> Bool  {
   match sccache_release_arch_token(arch: Aarch64) {
     Present { value: token } => token as String == "aarch64"
     Absent => false
@@ -351,7 +351,7 @@ test fn design_witness_release_arch_token_is_fail_closed() -> Bool {
   }
 }
 
-test fn design_witness_release_digest_is_fail_closed() -> Bool {
+test fn design_witness_release_digest_is_fail_closed() -> Bool  {
   match sccache_release_digest(rel: sccache_release_0_15_0, arch: Aarch64) {
     Present { value: d } => d == sccache_release_0_15_0.digest_aarch64
     Absent => false
@@ -364,7 +364,7 @@ test fn design_witness_release_digest_is_fail_closed() -> Bool {
   }
 }
 
-test fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
+test fn design_witness_arch_unknown_host_refuses_realization() -> Bool  {
   match realize_provision_build_cache(
     effect_intent: provision_build_cache_arch_unknown_intent_fixture(),
   ) {
@@ -375,7 +375,7 @@ test fn design_witness_arch_unknown_host_refuses_realization() -> Bool {
   }
 }
 
-test fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool {
+test fn design_witness_known_arch_host_does_not_refuse_for_arch() -> Bool  {
   match provision_build_cache_host_arch(
     effect_intent: provision_build_cache_witness_intent(),
   ) {

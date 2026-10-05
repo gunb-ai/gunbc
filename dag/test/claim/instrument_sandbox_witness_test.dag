@@ -245,7 +245,7 @@ fn witness_red_the_outcome_detent_still_reads_the_line() -> Bool {
   }
 }
 
-test fn instrument_sandbox_keystone_holds() -> Bool {
+test fn instrument_sandbox_keystone_holds() -> Bool  {
   witness_the_served_role_is_the_derived_one()
     && witness_emission_is_present_exactly_when_the_admission_grants_it()
     && witness_red_a_refused_audition_paints_nothing()

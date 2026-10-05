@@ -99,11 +99,11 @@ data sibling_effect_order_record_green_source: String = "module probe_sibling_ef
 
 data sibling_effect_order_class: String = "SiblingOperandEffectOrderUndetermined"
 
-test fn two_effect_reaching_arguments_refuse() -> Bool {
+test fn two_effect_reaching_arguments_refuse() -> Bool  {
   blocking_class_count_for(source: sibling_effect_order_argument_red_source, wanted_class: sibling_effect_order_class) == 1
 }
 
-test fn the_let_rewritten_arguments_are_accepted() -> Bool {
+test fn the_let_rewritten_arguments_are_accepted() -> Bool  {
   blocking_class_count_for(source: sibling_effect_order_argument_green_source, wanted_class: sibling_effect_order_class) == 0
     && total_blocking_count_for(source: sibling_effect_order_argument_red_source) - total_blocking_count_for(source: sibling_effect_order_argument_green_source) == 1
 }
@@ -112,16 +112,16 @@ test fn the_let_rewritten_arguments_are_accepted() -> Bool {
 // argument red with one operand made pure, and what it establishes is that the predicate counts
 // MORE THAN ONE rather than AT LEAST ONE. Its total is held against the argument red's total
 // instead, which must exceed it by exactly the one diagnostic the red earns.
-test fn one_effect_reaching_argument_is_accepted() -> Bool {
+test fn one_effect_reaching_argument_is_accepted() -> Bool  {
   blocking_class_count_for(source: sibling_effect_order_single_effect_source, wanted_class: sibling_effect_order_class) == 0
     && total_blocking_count_for(source: sibling_effect_order_argument_red_source) - total_blocking_count_for(source: sibling_effect_order_single_effect_source) == 1
 }
 
-test fn two_effect_reaching_record_fields_refuse() -> Bool {
+test fn two_effect_reaching_record_fields_refuse() -> Bool  {
   blocking_class_count_for(source: sibling_effect_order_record_red_source, wanted_class: sibling_effect_order_class) == 1
 }
 
-test fn the_let_rewritten_record_fields_are_accepted() -> Bool {
+test fn the_let_rewritten_record_fields_are_accepted() -> Bool  {
   blocking_class_count_for(source: sibling_effect_order_record_green_source, wanted_class: sibling_effect_order_class) == 0
     && total_blocking_count_for(source: sibling_effect_order_record_red_source) - total_blocking_count_for(source: sibling_effect_order_record_green_source) == 1
 }

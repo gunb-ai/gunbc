@@ -38,27 +38,27 @@ fn resolves_clean(source: String) -> Bool {
     && total_blocking_count_for(source: source) == 0
 }
 
-test fn nullary_parameter_callable_resolves() -> Bool {
+test fn nullary_parameter_callable_resolves() -> Bool  {
   resolves_clean(source: nullary_parameter_source)
 }
 
-test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool {
+test fn nullary_callable_argument_binds_to_a_nullary_formal() -> Bool  {
   resolves_clean(source: nullary_argument_source)
 }
 
-test fn nullary_alias_typed_parameter_resolves() -> Bool {
+test fn nullary_alias_typed_parameter_resolves() -> Bool  {
   resolves_clean(source: nullary_alias_parameter_source)
 }
 
-test fn nullary_global_still_resolves() -> Bool {
+test fn nullary_global_still_resolves() -> Bool  {
   total_blocking_count_for(source: nullary_global_source) == 0
 }
 
-test fn unary_local_still_resolves() -> Bool {
+test fn unary_local_still_resolves() -> Bool  {
   resolves_clean(source: unary_parameter_source)
 }
 
-test fn nullary_local_refuses_a_surplus_argument() -> Bool {
+test fn nullary_local_refuses_a_surplus_argument() -> Bool  {
   any_class_count_for(source: nullary_parameter_surplus_source, wanted_class: "CallPositionalSurplus") > 0
     && blocking_subject_count_for(source: nullary_parameter_surplus_source, wanted_class: "InternalError", wanted_subject: "function:pick") == 0
 }

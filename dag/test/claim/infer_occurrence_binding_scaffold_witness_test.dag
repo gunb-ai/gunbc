@@ -9,7 +9,7 @@ import gunbc.infer_occurrence_binding_scaffold {
 }
 import std.dissolution { dissolution_description }
 
-test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool {
+test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool  {
   match infer_occurrence_binding_v1_adapter_scaffold {
     Scaffold {
       dissolves_to: SingleAuthority,
@@ -23,7 +23,7 @@ test fn infer_occurrence_binding_v1_adapter_scaffold_is_seed_retained() -> Bool 
   }
 }
 
-test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool {
+test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and_lane() -> Bool  {
   string_contains(
     s: dissolution_description(condition: infer_occurrence_binding_v1_adapter_dissolve_trigger),
     pattern: "occurrence_binding_from_candidates",
@@ -34,7 +34,7 @@ test fn infer_occurrence_binding_v1_adapter_dissolve_trigger_names_authority_and
     )
 }
 
-test fn infer_occurrence_binding_v1_adapter_receipt_plan_anchor_is_checkable() -> Bool {
+test fn infer_occurrence_binding_v1_adapter_receipt_plan_anchor_is_checkable() -> Bool  {
   string_contains(
     s: infer_occurrence_binding_v1_adapter_receipt_plan_anchor,
     pattern: "namespace-binding-kernel",

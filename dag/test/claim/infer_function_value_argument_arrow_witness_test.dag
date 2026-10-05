@@ -86,110 +86,110 @@ fn refuses_as_type_mismatch(source: String) -> Bool {
   any_class_count_for(source: source, wanted_class: "TypeMismatch") > 0
 }
 
-test fn mismatched_parameter_refuses() -> Bool {
+test fn mismatched_parameter_refuses() -> Bool  {
   refuses_as_type_mismatch(source: mismatched_parameter_source)
 }
 
-test fn mismatched_arity_refuses() -> Bool {
+test fn mismatched_arity_refuses() -> Bool  {
   refuses_as_type_mismatch(source: mismatched_arity_source)
 }
 
-test fn mismatched_return_refuses() -> Bool {
+test fn mismatched_return_refuses() -> Bool  {
   refuses_as_type_mismatch(source: mismatched_return_source)
 }
 
-test fn mismatched_let_refuses() -> Bool {
+test fn mismatched_let_refuses() -> Bool  {
   refuses_as_type_mismatch(source: mismatched_let_source)
 }
 
-test fn nullary_mismatch_direct_refuses() -> Bool {
+test fn nullary_mismatch_direct_refuses() -> Bool  {
   refuses_as_type_mismatch(source: nullary_mismatch_direct_source)
 }
 
-test fn nullary_mismatch_let_refuses() -> Bool {
+test fn nullary_mismatch_let_refuses() -> Bool  {
   refuses_as_type_mismatch(source: nullary_mismatch_let_source)
 }
 
-test fn polymorphic_repeated_variable_mismatch_refuses() -> Bool {
+test fn polymorphic_repeated_variable_mismatch_refuses() -> Bool  {
   refuses_as_type_mismatch(source: polymorphic_repeated_variable_mismatch_source)
 }
 
-test fn polymorphic_return_variable_mismatch_refuses() -> Bool {
+test fn polymorphic_return_variable_mismatch_refuses() -> Bool  {
   refuses_as_type_mismatch(source: polymorphic_return_variable_mismatch_source)
 }
 
-test fn non_function_value_at_function_formal_refuses() -> Bool {
+test fn non_function_value_at_function_formal_refuses() -> Bool  {
   refuses_as_type_mismatch(source: non_function_value_at_function_formal_source)
 }
 
-test fn function_value_at_kernel_formal_refuses() -> Bool {
+test fn function_value_at_kernel_formal_refuses() -> Bool  {
   refuses_as_type_mismatch(source: function_value_at_kernel_formal_source)
 }
 
-test fn deep_nested_ground_mismatch_refuses() -> Bool {
+test fn deep_nested_ground_mismatch_refuses() -> Bool  {
   refuses_as_type_mismatch(source: deep_nested_ground_mismatch_source)
 }
 
-test fn matching_accepted() -> Bool {
+test fn matching_accepted() -> Bool  {
   total_blocking_count_for(source: matching_source) == 0
 }
 
-test fn nullary_matching_accepted() -> Bool {
+test fn nullary_matching_accepted() -> Bool  {
   total_blocking_count_for(source: nullary_matching_source) == 0
 }
 
-test fn polymorphic_identity_accepted() -> Bool {
+test fn polymorphic_identity_accepted() -> Bool  {
   total_blocking_count_for(source: polymorphic_identity_source) == 0
 }
 
-test fn polymorphic_two_variables_accepted() -> Bool {
+test fn polymorphic_two_variables_accepted() -> Bool  {
   total_blocking_count_for(source: polymorphic_two_variables_source) == 0
 }
 
-test fn lambda_accepted() -> Bool {
+test fn lambda_accepted() -> Bool  {
   total_blocking_count_for(source: lambda_source) == 0
 }
 
-test fn deep_nested_matching_accepted() -> Bool {
+test fn deep_nested_matching_accepted() -> Bool  {
   total_blocking_count_for(source: deep_nested_matching_source) == 0
 }
 
-test fn local_lambda_at_kernel_formal_refuses() -> Bool {
+test fn local_lambda_at_kernel_formal_refuses() -> Bool  {
   refuses_as_type_mismatch(source: local_lambda_at_kernel_formal_source)
 }
 
-test fn local_lambda_return_mismatch_refuses() -> Bool {
+test fn local_lambda_return_mismatch_refuses() -> Bool  {
   refuses_as_type_mismatch(source: local_lambda_return_mismatch_source)
 }
 
-test fn map_named_function_wrong_elements_refuses() -> Bool {
+test fn map_named_function_wrong_elements_refuses() -> Bool  {
   refuses_as_type_mismatch(source: map_named_function_wrong_elements_source)
 }
 
-test fn local_lambda_matching_accepted() -> Bool {
+test fn local_lambda_matching_accepted() -> Bool  {
   total_blocking_count_for(source: local_lambda_matching_source) == 0
 }
 
-test fn local_lambda_called_accepted() -> Bool {
+test fn local_lambda_called_accepted() -> Bool  {
   total_blocking_count_for(source: local_lambda_called_source) == 0
 }
 
-test fn map_named_function_elements_accepted() -> Bool {
+test fn map_named_function_elements_accepted() -> Bool  {
   total_blocking_count_for(source: map_named_function_elements_source) == 0
 }
 
-test fn map_local_lambda_elements_accepted() -> Bool {
+test fn map_local_lambda_elements_accepted() -> Bool  {
   total_blocking_count_for(source: map_local_lambda_elements_source) == 0
 }
 
-test fn generic_formal_non_function_refuses() -> Bool {
+test fn generic_formal_non_function_refuses() -> Bool  {
   refuses_as_type_mismatch(source: generic_formal_non_function_source)
 }
 
-test fn qualified_matching_accepted() -> Bool {
+test fn qualified_matching_accepted() -> Bool  {
   total_blocking_count_for(source: qualified_matching_source) == 0
 }
 
-test fn qualified_mismatched_parameter_refuses() -> Bool {
+test fn qualified_mismatched_parameter_refuses() -> Bool  {
   refuses_as_type_mismatch(source: qualified_mismatched_parameter_source)
 }

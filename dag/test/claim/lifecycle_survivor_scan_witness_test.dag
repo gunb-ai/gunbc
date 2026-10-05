@@ -21,24 +21,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Planted RED: the exact shape the migration removed must still be SELECTED.
-test fn planted_raw_survivor_is_selected() -> Bool {
+test fn planted_raw_survivor_is_selected() -> Bool  {
   fact_is_raw_lifecycle_survivor(f: planted_raw_survivor)
 }
 
 // NonEmptyStr is not a hole: a refined string is still raw prose at this grain.
-test fn planted_nonempty_str_survivor_is_selected() -> Bool {
+test fn planted_nonempty_str_survivor_is_selected() -> Bool  {
   fact_is_raw_lifecycle_survivor(f: planted_nonempty_str_survivor)
 }
 
 // The migrated form must NOT be selected, or the gate would red on the migration it exists
 // to confirm.
-test fn planted_migrated_control_is_not_selected() -> Bool {
+test fn planted_migrated_control_is_not_selected() -> Bool  {
   !fact_is_raw_lifecycle_survivor(f: planted_migrated_control)
 }
 
 // Discriminating: a predicate rejecting every String declaration would satisfy the control
 // above and still be wrong. This one is rejected on the NAME axis while the two survivors
 // above are accepted on it, so both axes are shown to carry.
-test fn planted_ordinary_string_note_is_not_selected() -> Bool {
+test fn planted_ordinary_string_note_is_not_selected() -> Bool  {
   !fact_is_raw_lifecycle_survivor(f: planted_ordinary_string_note)
 }

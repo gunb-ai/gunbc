@@ -37,25 +37,25 @@ data edge_cfg: String = "menuentry \"x\" \{\n  linux /v  --- a --- b\n\tlinux\t/
 
 data sed_edge: String = "menuentry \"x\" \{\n  linux /v  --- a autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 --- b\n\tlinux\t/v autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n  linuxefi /v ---\n  initrd /i ---\nlinux ---\nlinux  autoinstall \"ds=nocloud;s=/cdrom/gunbc-census/\" console=ttyAMA0,115200 ---\n\}\n"
 
-test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_pinned_cmdline() -> Bool {
+test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_pinned_cmdline() -> Bool  {
   install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
 }
 
-test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_current_cmdline() -> Bool {
+test fn the_fold_equals_gnu_sed_on_the_stock_grub_cfg_with_the_current_cmdline() -> Bool  {
   install_media_remaster_grub_cfg_with_cmdline(grub_cfg: stock_grub_cfg, cmdline: mtcollins1_census_grub_cmdline) == sed_current
 }
 
-test fn the_fold_equals_gnu_sed_on_the_designed_edge_lines() -> Bool {
+test fn the_fold_equals_gnu_sed_on_the_designed_edge_lines() -> Bool  {
   install_media_remaster_grub_cfg_with_cmdline(grub_cfg: edge_cfg, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_edge
 }
 
 // IDEMPOTENT, as the grep probe made it: a file already carrying the cmdline is returned unchanged.
-test fn a_file_already_carrying_the_cmdline_is_unchanged() -> Bool {
+test fn a_file_already_carrying_the_cmdline_is_unchanged() -> Bool  {
   install_media_remaster_grub_cfg_with_cmdline(grub_cfg: sed_pinned, cmdline: mtcollins1_census_pinned_grub_cmdline) == sed_pinned
 }
 
 // DISCRIMINATING: the oracle outputs differ from the input and from each other, so equality above is
 // not satisfiable by an identity fold.
-test fn the_oracle_outputs_are_distinct() -> Bool {
+test fn the_oracle_outputs_are_distinct() -> Bool  {
   sed_pinned != sed_current && sed_pinned != stock_grub_cfg && sed_edge != edge_cfg
 }

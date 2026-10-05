@@ -77,17 +77,17 @@ fn is_unordered(a: BinaryInterchangeEncoding, b: BinaryInterchangeEncoding) -> B
 
 // ---- the denotation and the Rust binding, production route ----
 
-test fn w_production_denotation_rows_are_all_kernel_names() -> Bool {
+test fn w_production_denotation_rows_are_all_kernel_names() -> Bool  {
   kernel_type_denotation_rows_admitted(rows: kernel_type_denotation_rows)
 }
 
-test fn w_rust_f64_holds_against_what_float_denotes() -> Bool {
+test fn w_rust_f64_holds_against_what_float_denotes() -> Bool  {
   rust_float_binding_verdict(b: rust_f64_binding, denotations: kernel_type_denotation_rows) == RustFloatBindingHolds
 }
 
 // ---- REDs at the denotation interface ----
 
-test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
+test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool  {
   let planted = [kernel_type_denotation_row(kernel_name: "Float", meaning: BinaryInterchangeFormatMeaning { format: binary32 })]
   match rust_float_binding_verdict(b: rust_f64_binding, denotations: planted) {
     RustFloatBindingDisagrees { kernel_name: k, target_name: t } => k.name == "Float" && t == "f64"
@@ -95,14 +95,14 @@ test fn w_planted_float_denotes_binary32_refuses_f64() -> Bool {
   }
 }
 
-test fn w_non_kernel_name_key_is_refused() -> Bool {
+test fn w_non_kernel_name_key_is_refused() -> Bool  {
   match kernel_type_denotation_row(kernel_name: "Real", meaning: BinaryInterchangeFormatMeaning { format: binary64 }) {
     KernelTypeDenotationRefused { refusal: NotAKernelTypeName { name: n } } => n == "Real"
     _ => false
   }
 }
 
-test fn w_kernel_type_name_admits_only_rostered_names() -> Bool {
+test fn w_kernel_type_name_admits_only_rostered_names() -> Bool  {
   let float_admitted = match kernel_type_name(name: "Float") {
     KernelTypeNameAdmitted { kernel_name: k } => k.name == "Float"
     NotAKernelTypeName { name: _ } => false
@@ -114,19 +114,19 @@ test fn w_kernel_type_name_admits_only_rostered_names() -> Bool {
   float_admitted && binary64_refused
 }
 
-test fn w_table_with_a_non_kernel_key_is_not_admitted() -> Bool {
+test fn w_table_with_a_non_kernel_key_is_not_admitted() -> Bool  {
   let planted = [kernel_type_denotation_row(kernel_name: "Float64", meaning: BinaryInterchangeFormatMeaning { format: binary64 })]
   kernel_type_denotation_rows_admitted(rows: planted) == false
 }
 
-test fn w_undenoted_kernel_name_refuses_the_binding() -> Bool {
+test fn w_undenoted_kernel_name_refuses_the_binding() -> Bool  {
   match rust_float_binding_verdict(b: rust_f64_binding, denotations: []) {
     RustFloatBindingUndenoted { kernel_name: k } => k.name == "Float"
     _ => false
   }
 }
 
-test fn w_binding_to_an_absent_primitive_refuses() -> Bool {
+test fn w_binding_to_an_absent_primitive_refuses() -> Bool  {
   let planted = RustFloatBinding {
     kernel_name: kernel_type_name(name: "Float"), target_name: "f80", authority: rust_f64_binding.authority,
     radix: 2, mantissa_digits: 53, max_exp: 1024, min_exp: -1021
@@ -139,32 +139,32 @@ test fn w_binding_to_an_absent_primitive_refuses() -> Bool {
 
 // ---- binary64 encoding admission (§3.4 widths) ----
 
-test fn w_encoding_with_ten_bit_exponent_field_refuses() -> Bool {
+test fn w_encoding_with_ten_bit_exponent_field_refuses() -> Bool  {
   match binary_interchange_encoding(format: binary64, s: false, e: bits(b: false, n: 10), t: bits(b: false, n: 52)) {
     EncodingRefused { refusal: BiasedExponentFieldWidth { expected_w: w, observed: o } } => w == 11 && o == 10
     _ => false
   }
 }
 
-test fn w_encoding_with_short_trailing_significand_refuses() -> Bool {
+test fn w_encoding_with_short_trailing_significand_refuses() -> Bool  {
   match binary_interchange_encoding(format: binary64, s: false, e: bits(b: false, n: 11), t: bits(b: false, n: 23)) {
     EncodingRefused { refusal: TrailingSignificandFieldWidth { expected_t: t, observed: o } } => t == 52 && o == 23
     _ => false
   }
 }
 
-test fn w_every_named_value_is_admitted() -> Bool {
+test fn w_every_named_value_is_admitted() -> Bool  {
   admitted(a: binary_interchange_encoding(format: binary64, s: false, e: bits(b: true, n: 11), t: concat([true], bits(b: false, n: 51))))
     && admitted(a: binary_interchange_encoding(format: binary64, s: false, e: concat(bits(b: true, n: 10), [false]), t: bits(b: true, n: 52)))
 }
 
 // ---- §5.7.2 class ----
 
-test fn w_class_separates_quiet_and_signaling_nan() -> Bool {
+test fn w_class_separates_quiet_and_signaling_nan() -> Bool  {
   class(x: quiet_nan()) == QuietNaN && class(x: signaling_nan()) == SignalingNaN
 }
 
-test fn w_class_names_subnormal_zero_normal_infinity() -> Bool {
+test fn w_class_names_subnormal_zero_normal_infinity() -> Bool  {
   class(x: smallest_subnormal()) == PositiveSubnormal
     && class(x: minus_zero()) == NegativeZero
     && class(x: one()) == PositiveNormal
@@ -173,31 +173,31 @@ test fn w_class_names_subnormal_zero_normal_infinity() -> Bool {
 
 // ---- §5.11 comparison: NaN is unordered, never ordered ----
 
-test fn w_nan_is_unordered_against_every_operand() -> Bool {
+test fn w_nan_is_unordered_against_every_operand() -> Bool  {
   is_unordered(a: quiet_nan(), b: one())
     && is_unordered(a: one(), b: signaling_nan())
     && is_unordered(a: quiet_nan(), b: quiet_nan())
     && is_unordered(a: plus_infinity(), b: quiet_nan())
 }
 
-test fn w_finite_order_follows_value() -> Bool {
+test fn w_finite_order_follows_value() -> Bool  {
   is_ordered_as(a: one(), b: two(), expected: Less)
     && is_ordered_as(a: two(), b: one(), expected: Greater)
     && is_ordered_as(a: minus_one(), b: one(), expected: Less)
     && is_ordered_as(a: minus_one(), b: minus_zero(), expected: Less)
 }
 
-test fn w_signed_zeros_compare_equal() -> Bool {
+test fn w_signed_zeros_compare_equal() -> Bool  {
   is_ordered_as(a: plus_zero(), b: minus_zero(), expected: Equal)
 }
 
-test fn w_infinities_bound_every_finite_value() -> Bool {
+test fn w_infinities_bound_every_finite_value() -> Bool  {
   is_ordered_as(a: max_finite(), b: plus_infinity(), expected: Less)
     && is_ordered_as(a: minus_infinity(), b: minus_one(), expected: Less)
     && is_ordered_as(a: smallest_subnormal(), b: plus_zero(), expected: Greater)
 }
 
-test fn w_binding_keyed_on_a_non_kernel_name_refuses() -> Bool {
+test fn w_binding_keyed_on_a_non_kernel_name_refuses() -> Bool  {
   let planted = RustFloatBinding {
     kernel_name: kernel_type_name(name: "Float64"), target_name: "f64", authority: rust_f64_binding.authority,
     radix: 2, mantissa_digits: 53, max_exp: 1024, min_exp: -1021

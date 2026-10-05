@@ -17,6 +17,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Memory envelope prediction: tools.interpreter_dispatch_bijection_real_roster_transport
 // interpreter_dispatch_bijection_real_roster_memory_envelope_note.
 
-test fn interpreter_dispatch_bijection_real_roster_red_holds() -> Bool {
+test fn interpreter_dispatch_bijection_real_roster_red_holds() -> Bool  {
   run_interpreter_dispatch_bijection_real_roster_red()
 }

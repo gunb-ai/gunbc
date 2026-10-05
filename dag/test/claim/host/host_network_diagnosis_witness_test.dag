@@ -164,7 +164,7 @@ fn witness_network_axis_cell_refuses_and_counts() -> Bool {
     )
 }
 
-test fn host_network_diagnosis_witnesses() -> Bool {
+test fn host_network_diagnosis_witnesses() -> Bool  {
   witness_srv4_diagnoses_physical_not_config()
     && witness_red_control_generator_state_inference_rejected()
     && witness_installer_disable_is_normal_and_freezes_not_voids()

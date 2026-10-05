@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // toolchain must not soften it: under that state the gate fails every time, so it is not a partial
 // success.
 
-test fn witness_component_in_another_toolchain_does_not_satisfy() -> Bool {
+test fn witness_component_in_another_toolchain_does_not_satisfy() -> Bool  {
   let resolved_missing = toolchain_completeness_verdict(
     reqs: floor_gate_component_requirements,
     resolved: Present { value: srv2_ghrunner_toolchain_before_fix },
@@ -28,7 +28,7 @@ test fn witness_component_in_another_toolchain_does_not_satisfy() -> Bool {
 // and the same toolchain, with rustfmt added, converges. Without this the module would satisfy
 // every other conjunct while being a verdict that never says yes.
 
-test fn witness_after_fix_converges() -> Bool {
+test fn witness_after_fix_converges() -> Bool  {
   observation_verdict_eq(
     a: toolchain_completeness_verdict(
       reqs: floor_gate_component_requirements,
@@ -69,7 +69,7 @@ fn toolchain_unobserved_hosts() -> List<HostIdentity> {
   )
 }
 
-test fn witness_unobserved_hosts_are_unknown_not_converged() -> Bool {
+test fn witness_unobserved_hosts_are_unknown_not_converged() -> Bool  {
   observation_verdict_eq(
     a: host_toolchain_completeness_verdict(host: operator_host_srv1),
     b: std.upsert_decision.UnknownRefused,
@@ -82,7 +82,7 @@ test fn witness_unobserved_hosts_are_unknown_not_converged() -> Bool {
 // remedy is a search. The missing set is computed against the requirement rows, so it carries the
 // DeclarationRef of the gate that required it rather than a bare label.
 
-test fn witness_missing_set_names_the_requiring_gate() -> Bool {
+test fn witness_missing_set_names_the_requiring_gate() -> Bool  {
   let missing = resolved_toolchain_missing(
     t: srv2_ghrunner_toolchain_before_fix,
     reqs: floor_gate_component_requirements,
@@ -102,7 +102,7 @@ test fn witness_missing_set_names_the_requiring_gate() -> Bool {
 
 data witness_red_control_note: String = "The discriminating RED control: a probe that installs the missing component before reporting. It is the shape an ensure lane reaches for by reflex — the check and the repair in one step — and it is exactly what the operator's hand-install did, which is why automating it as a PROBE would be wrong even though performing it as an ACT was right. The authority refuses on the classification, so a self-repairing probe can never certify completeness, and its Converged is not reachable. Asserted in both directions: the inert probe on the same inputs does yield Converged, so this is not a fold that refuses everything."
 
-test fn witness_red_control_self_repairing_probe_cannot_certify() -> Bool {
+test fn witness_red_control_self_repairing_probe_cannot_certify() -> Bool  {
   let repairing = toolchain_completeness_observed_verdict(
     probe: rustup_component_add_on_miss_probe_sketch,
     reqs: floor_gate_component_requirements,
@@ -118,7 +118,7 @@ test fn witness_red_control_self_repairing_probe_cannot_certify() -> Bool {
 }
 
 // The component vocabulary is cited to rustup and projects to the names rustup itself accepts, so a requirement row cannot drift from the string an ensure would pass to `rustup component add`.
-test fn witness_component_names_match_rustup() -> Bool {
+test fn witness_component_names_match_rustup() -> Bool  {
   (rustup_component_name(c: Rustfmt) as String) == "rustfmt"
     && (rustup_component_name(c: Clippy) as String) == "clippy"
     && !rustup_component_eq(a: Rustfmt, b: Clippy)
@@ -136,7 +136,7 @@ test fn witness_component_names_match_rustup() -> Bool {
 // toolchain is complete, so a complete toolchain can never by itself produce a green combined
 // verdict.
 
-test fn witness_completeness_does_not_imply_the_gate_finds_it() -> Bool {
+test fn witness_completeness_does_not_imply_the_gate_finds_it() -> Bool  {
   let completeness = host_toolchain_completeness_verdict(host: operator_host_srv2)
   let combined = host_gate_finds_component_verdict(host: operator_host_srv2)
   let unreachable_but_complete = gate_finds_component_verdict(

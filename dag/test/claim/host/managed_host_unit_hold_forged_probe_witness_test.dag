@@ -44,14 +44,14 @@ data harness_control_source: String = "module probe_managed_host_unit_hold_harne
 // THE CONTROL IS CLASS-SCOPED: a clean source reaching the same module through its real admission
 // yields NO row of either class the reds count, so a red below is the probe's own forgery or outside
 // call, joined by class and subject, and not background the harness emits for any importer.
-test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool {
+test fn the_harness_runs_and_a_clean_source_emits_neither_wall_class() -> Bool  {
   let c = compile_dag_diagnostic_census(harness_control_source)
   blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
     && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
 }
 
 // AN ADMITTED SUBJECT, AN ADMITTED MAINTENANCE HOLD AND A PROOF CANNOT BE AUTHORED OUTSIDE THEIR MINTS.
-test fn each_forged_unit_hold_carrier_is_refused_at_its_literal() -> Bool {
+test fn each_forged_unit_hold_carrier_is_refused_at_its_literal() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedUnitHoldSubject") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "AdmittedMaintenanceHold") >= 1
@@ -60,7 +60,7 @@ test fn each_forged_unit_hold_carrier_is_refused_at_its_literal() -> Bool {
 }
 
 // THE ACQUIRE AND EACH HOLD-OWNING ENTRY REFUSE A CALLER OUTSIDE THEIR ADMITTED ROOTS.
-test fn the_acquire_and_each_hold_owning_entry_refuse_an_outside_caller() -> Bool {
+test fn the_acquire_and_each_hold_owning_entry_refuse_an_outside_caller() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "unit_hold_acquire") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "boot_run_acquire_unit_hold") >= 1
@@ -74,7 +74,7 @@ test fn the_acquire_and_each_hold_owning_entry_refuse_an_outside_caller() -> Boo
 // and the two functions that do take an executor, admit only their one in-module caller. The probe
 // calls the take and the release with hold A and an executor B from outside, and calls the
 // executor-taking release functions directly; each is refused at admission, by callee name.
-test fn a_hold_cannot_be_operated_with_another_subjects_executor() -> Bool {
+test fn a_hold_cannot_be_operated_with_another_subjects_executor() -> Bool  {
   let c = probe()
   blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "maintenance_hold_take_admitted") >= 1
     && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "maintenance_hold_release_admitted") >= 1

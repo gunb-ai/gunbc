@@ -62,46 +62,46 @@ fn missing_field_count(source: String) -> Int {
   class_count(source: source, wanted: "MissingField")
 }
 
-test fn w_arm_literal_own_field_observes_zero_field_not_found() -> Bool {
+test fn w_arm_literal_own_field_observes_zero_field_not_found() -> Bool  {
   field_not_found_count(source: arm_own_field_source) == 0
 }
 
-test fn w_arm_literal_sibling_field_reports_one_field_not_found() -> Bool {
+test fn w_arm_literal_sibling_field_reports_one_field_not_found() -> Bool  {
   field_not_found_count(source: arm_sibling_field_source) == 1
 }
 
-test fn w_arm_literal_undeclared_field_reports_one_field_not_found() -> Bool {
+test fn w_arm_literal_undeclared_field_reports_one_field_not_found() -> Bool  {
   field_not_found_count(source: arm_undeclared_field_source) == 1
 }
 
-test fn w_arm_literal_unrelated_coproduct_field_reports_one_field_not_found() -> Bool {
+test fn w_arm_literal_unrelated_coproduct_field_reports_one_field_not_found() -> Bool  {
   field_not_found_count(source: arm_unrelated_coproduct_field_source) == 1
 }
 
-test fn w_struct_literal_undeclared_field_reports_one_field_not_found() -> Bool {
+test fn w_struct_literal_undeclared_field_reports_one_field_not_found() -> Bool  {
   field_not_found_count(source: struct_undeclared_field_source) == 1
 }
 
-test fn w_struct_literal_own_field_observes_zero_field_not_found() -> Bool {
+test fn w_struct_literal_own_field_observes_zero_field_not_found() -> Bool  {
   field_not_found_count(source: struct_own_field_source) == 0
 }
 
-test fn w_arm_literal_omitting_required_field_reports_one_missing_field() -> Bool {
+test fn w_arm_literal_omitting_required_field_reports_one_missing_field() -> Bool  {
   missing_field_count(source: arm_missing_field_source) == 1
 }
 
-test fn w_arm_literal_omitting_required_field_observes_zero_field_not_found() -> Bool {
+test fn w_arm_literal_omitting_required_field_observes_zero_field_not_found() -> Bool  {
   field_not_found_count(source: arm_missing_field_source) == 0
 }
 
-test fn w_arm_literal_all_fields_observes_zero_of_both() -> Bool {
+test fn w_arm_literal_all_fields_observes_zero_of_both() -> Bool  {
   field_not_found_count(source: arm_all_fields_source) == 0 && missing_field_count(source: arm_all_fields_source) == 0
 }
 
-test fn w_nullary_arm_tag_reference_observes_zero_field_not_found() -> Bool {
+test fn w_nullary_arm_tag_reference_observes_zero_field_not_found() -> Bool  {
   field_not_found_count(source: nullary_arm_bare_source) == 0
 }
 
-test fn w_nullary_arm_given_a_field_reports_one_field_not_found() -> Bool {
+test fn w_nullary_arm_given_a_field_reports_one_field_not_found() -> Bool  {
   field_not_found_count(source: nullary_arm_with_field_source) == 1
 }

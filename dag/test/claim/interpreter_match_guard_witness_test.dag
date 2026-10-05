@@ -28,18 +28,18 @@ fn size(s: Shape) -> Int {
   }
 }
 
-test fn a_false_guard_falls_through_to_the_next_arm() -> Bool {
+test fn a_false_guard_falls_through_to_the_next_arm() -> Bool  {
   pick(n: 3) == 2
 }
 
-test fn a_true_guard_admits_its_arm() -> Bool {
+test fn a_true_guard_admits_its_arm() -> Bool  {
   pick(n: 30) == 1
 }
 
-test fn a_false_guard_over_a_variant_binding_falls_through() -> Bool {
+test fn a_false_guard_over_a_variant_binding_falls_through() -> Bool  {
   size(s: Bar { len: 2 }) == 1
 }
 
-test fn a_true_guard_over_a_variant_binding_admits() -> Bool {
+test fn a_true_guard_over_a_variant_binding_admits() -> Bool  {
   size(s: Bar { len: 9 }) == 2
 }

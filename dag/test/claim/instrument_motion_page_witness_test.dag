@@ -61,7 +61,7 @@ fn motion_asset_body() -> String {
   ).body
 }
 
-test fn witness_motion_page_renders_through_its_route() -> Bool {
+test fn witness_motion_page_renders_through_its_route() -> Bool  {
   let r = roadmap_serve_invoke(
     handler: InstrumentMotionPageHandler,
     params: [],
@@ -97,7 +97,7 @@ fn page_ships_full_wire(t: SyntheticTapStrength) -> Bool {
   }
 }
 
-test fn witness_page_ships_both_decided_sequences() -> Bool {
+test fn witness_page_ships_both_decided_sequences() -> Bool  {
   let html = motion_page_body()
   string_contains(s: html, pattern: motion_frame_data_attr)
     && string_contains(s: html, pattern: motion_reduced_frame_data_attr)
@@ -108,7 +108,7 @@ test fn witness_page_ships_both_decided_sequences() -> Bool {
     && page_ships_full_wire(t: SyntheticTapFirm)
 }
 
-test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
+test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool  {
   match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
     BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fulls } =>
@@ -123,7 +123,7 @@ test fn witness_reduced_is_a_decided_answer_not_an_opt_out() -> Bool {
   }
 }
 
-test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool {
+test fn witness_shipped_sequence_respects_the_modelled_bound() -> Bool  {
   match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
     BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fs } =>
@@ -136,7 +136,7 @@ data shipped_sequence_control_note: String = "THE ROUTE-LEVEL CONTROL ON THE ACT
 
 Seven conjuncts, one per property the review named: the sequence is ADMITTED rather than truncated; it starts at rest; its first movement is downward; it occupies positions that are neither rest nor an extreme; it appears on both sides of rest; its reach falls between the first third and the last; it contains exactly one settled frame; and it ends at zero on its own, which the client no longer manufactures."
 
-test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
+test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool  {
   match sequence_for(t: SyntheticTapKnock, m: MotionFull) {
     BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fs } => {
@@ -162,7 +162,7 @@ fn frames_first_movement_is_downward(fs: List<BobFrame>) -> Bool {
   fold(fs, init: 0, f: (acc, x) => if acc == 0 { x.displacement_px } else { acc }) < 0
 }
 
-test fn witness_asset_route_serves_the_modeled_client() -> Bool {
+test fn witness_asset_route_serves_the_modeled_client() -> Bool  {
   let js = motion_asset_body()
   js == instrument_motion_client_js_source()
     && string_contains(s: js, pattern: "addEventListener('devicemotion'")
@@ -177,7 +177,7 @@ data axes_are_read_in_the_shipped_client_note: String = "THE READING PREDICATE, 
 
 Pinning the emitted disjunction rather than the constructor is the point: the fix is a change to what the browser executes, so a control that only exercised the AST helper would go green on a client that still shipped the single-axis test. The last two conjuncts hold the vocabulary apart, because 'readings' and 'values' are exactly the two words the collapse merged."
 
-test fn witness_the_shipped_probes_count_any_axis_as_a_value() -> Bool {
+test fn witness_the_shipped_probes_count_any_axis_as_a_value() -> Bool  {
   let js = motion_asset_body()
   string_contains(s: js, pattern: "a.x !== null || a.y !== null || a.z !== null")
     && string_contains(s: js, pattern: "s.x !== null || s.y !== null || s.z !== null")
@@ -191,7 +191,7 @@ test fn witness_the_shipped_probes_count_any_axis_as_a_value() -> Bool {
 // rather than trusting the diff: the client contains no translateY built from a literal zero, and
 // the sequence it replays ends at zero because the model proved it does.
 
-test fn witness_client_computes_no_physics_and_manufactures_no_ending() -> Bool {
+test fn witness_client_computes_no_physics_and_manufactures_no_ending() -> Bool  {
   let js = motion_asset_body()
   !string_contains(s: js, pattern: "Math.")
     && !string_contains(s: js, pattern: "exp(")
@@ -200,7 +200,7 @@ test fn witness_client_computes_no_physics_and_manufactures_no_ending() -> Bool 
     && !string_contains(s: js, pattern: "'translateY(' + 0 + 'px)'")
 }
 
-test fn witness_receipt_starts_unanswered() -> Bool {
+test fn witness_receipt_starts_unanswered() -> Bool  {
   let html = motion_page_body()
   string_contains(s: html, pattern: "not yet run")
     && !string_contains(s: html, pattern: "sensor present")
@@ -218,7 +218,7 @@ test fn witness_receipt_starts_unanswered() -> Bool {
 // The controls are the two exact corrupted spellings: either one reappearing reds this, which the
 // rename that caused it would not have.
 
-test fn witness_note_class_wire_matches_stylesheet_selector() -> Bool {
+test fn witness_note_class_wire_matches_stylesheet_selector() -> Bool  {
   let css = instrument_css()
   let html = motion_page_body()
   instrument_note_class == "instrument-note"

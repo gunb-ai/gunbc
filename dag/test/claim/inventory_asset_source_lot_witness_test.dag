@@ -144,18 +144,18 @@ fn resolves_to_lot(ledgers: List<AdmittedInventoryLedger>, lot: InventoryLotIden
 
 // ROW 1 -- the load-bearing one. Two units installed, only the requested asset named. Its provenance
 // is unambiguous and must resolve; the anonymous sibling is evidence about a different subject.
-test fn w_a_named_asset_resolves_even_when_its_sibling_is_anonymous() -> Bool {
+test fn w_a_named_asset_resolves_even_when_its_sibling_is_anonymous() -> Bool  {
   resolves_to_lot(ledgers: admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 2, assets: [requested()])]), lot: lot_a())
 }
 
 // ROW 2 -- the same question with the population fully individuated. Pairing it with row 1 is what
 // proves the two properties were not fused.
-test fn w_a_named_asset_resolves_when_the_population_is_fully_individuated() -> Bool {
+test fn w_a_named_asset_resolves_when_the_population_is_fully_individuated() -> Bool  {
   resolves_to_lot(ledgers: admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 2, assets: [requested(), other()])]), lot: lot_a())
 }
 
 // ROW 3 -- the same asset named twice in one event list is malformed evidence, not one sighting.
-test fn w_an_asset_named_twice_in_one_event_refuses_as_duplicate() -> Bool {
+test fn w_an_asset_named_twice_in_one_event_refuses_as_duplicate() -> Bool  {
   match asset_source_lot_standing(
     ledgers: admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 2, assets: [requested(), requested()])]),
     asset: requested()
@@ -169,7 +169,7 @@ test fn w_an_asset_named_twice_in_one_event_refuses_as_duplicate() -> Bool {
 
 // ROW 4 -- two lots claim the asset. Conflict outranks duplicate because naming both lots is the
 // more actionable statement; reporting only "seen twice" would discard what a reader needs.
-test fn w_an_asset_claimed_by_two_lots_refuses_naming_both() -> Bool {
+test fn w_an_asset_claimed_by_two_lots_refuses_naming_both() -> Bool  {
   match asset_source_lot_standing(
     ledgers: concat(
       admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 1, assets: [requested()])]),
@@ -195,7 +195,7 @@ test fn w_an_asset_claimed_by_two_lots_refuses_naming_both() -> Bool {
 // other row here expects Resolved, Duplicate or Conflict, none of which an empty population can
 // satisfy, so the helper stays safe for them and unusable here. The admission is therefore matched
 // directly, and its refusal arm is an explicit false.
-test fn w_an_unnamed_asset_is_unobserved_not_resolved() -> Bool {
+test fn w_an_unnamed_asset_is_unobserved_not_resolved() -> Bool  {
   match admit_inventory_ledger(
     lot: lot_of(id: lot_a(), label: "lot-a" as NonEmptyStr),
     events: concat(prologue(id: lot_a()), [install(lot: lot_a(), quantity: 2, assets: [other()])])
@@ -214,13 +214,13 @@ test fn w_an_unnamed_asset_is_unobserved_not_resolved() -> Bool {
 // ROW 6 -- the day-one positive control: one event per spool, quantity 1, singleton asset list. At
 // this shape exact attribution and full individuation coincide, which is precisely why the rows
 // above exist rather than this one standing alone.
-test fn w_the_day_one_singleton_event_resolves() -> Bool {
+test fn w_the_day_one_singleton_event_resolves() -> Bool  {
   resolves_to_lot(ledgers: admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 1, assets: [requested()])]), lot: lot_a())
 }
 
 // The empty ledger observes nothing. Without it every arm above could be satisfied by a function
 // that answered Unobserved only because it never iterated.
-test fn w_an_empty_ledger_observes_nothing() -> Bool {
+test fn w_an_empty_ledger_observes_nothing() -> Bool  {
   match asset_source_lot_standing(ledgers: [], asset: requested()) {
     AssetSourceLotUnobserved { asset: a } => a as String == "spool-a"
     AssetSourceLotResolved { asset: _, lot: _, event_ordinal: _ } => false
@@ -233,7 +233,7 @@ test fn w_an_empty_ledger_observes_nothing() -> Bool {
 // exactly what the first cut of this file asserted provenance over. fold_inventory_ledger refuses it
 // as EventBeforeAcquisition, so no AdmittedInventoryLedger can be minted from it and no provenance
 // can be read out of it. This goes red the moment anyone reintroduces a raw-event path.
-test fn w_an_unacquired_installation_is_never_admitted() -> Bool {
+test fn w_an_unacquired_installation_is_never_admitted() -> Bool  {
   match admit_inventory_ledger(
     lot: lot_of(id: lot_a(), label: "lot-a" as NonEmptyStr),
     events: [install(lot: lot_a(), quantity: 2, assets: [requested()])]
@@ -246,7 +246,7 @@ test fn w_an_unacquired_installation_is_never_admitted() -> Bool {
 
 // And the positive control for the admission itself: the same install WITH its prologue is admitted.
 // Without this, the refusal above would be satisfied by an admit function that refuses everything.
-test fn w_the_same_installation_with_its_prologue_is_admitted() -> Bool {
+test fn w_the_same_installation_with_its_prologue_is_admitted() -> Bool  {
   match admit_inventory_ledger(
     lot: lot_of(id: lot_a(), label: "lot-a" as NonEmptyStr),
     events: concat(prologue(id: lot_a()), [install(lot: lot_a(), quantity: 2, assets: [requested()])])
@@ -262,7 +262,7 @@ test fn w_the_same_installation_with_its_prologue_is_admitted() -> Bool {
 // unbound pairing the seal exists to close, one level in. Asserting a field that only travels on the
 // whole record (quantity_acquired, which is what supplied the stock the fold spent) is what
 // discriminates the two shapes; comparing identities alone would pass under either.
-test fn w_the_admitted_ledger_retains_the_lot_value_it_settled_against() -> Bool {
+test fn w_the_admitted_ledger_retains_the_lot_value_it_settled_against() -> Bool  {
   match admit_inventory_ledger(
     lot: lot_of(id: lot_a(), label: "lot-a" as NonEmptyStr),
     events: concat(prologue(id: lot_a()), [install(lot: lot_a(), quantity: 1, assets: [requested()])])
@@ -279,22 +279,22 @@ test fn w_the_admitted_ledger_retains_the_lot_value_it_settled_against() -> Bool
 // can reach. Each is a shape a raw-event provenance reader would have resolved happily, and each
 // names its cause rather than merely asserting "not admitted": a refusal for the wrong reason is a
 // different defect wearing the same green, so the label is the discriminator.
-test fn w_a_zero_quantity_installation_is_never_admitted() -> Bool {
+test fn w_a_zero_quantity_installation_is_never_admitted() -> Bool  {
   refuses_with(tail: [install(lot: lot_a(), quantity: 0, assets: [requested()])], label: "zero_quantity_event")
 }
 
-test fn w_an_installation_exceeding_the_qualified_stock_is_never_admitted() -> Bool {
+test fn w_an_installation_exceeding_the_qualified_stock_is_never_admitted() -> Bool  {
   refuses_with(tail: [install(lot: lot_a(), quantity: 11, assets: [requested()])], label: "insufficient_stock")
 }
 
-test fn w_more_named_assets_than_units_is_never_admitted() -> Bool {
+test fn w_more_named_assets_than_units_is_never_admitted() -> Bool  {
   refuses_with(tail: [install(lot: lot_a(), quantity: 1, assets: [requested(), other()])], label: "more_assets_than_units")
 }
 
 // The event names a lot the admission is not judging. The fold refuses rather than folding a
 // stranger's event into this lot's balance -- which a scanner keyed only on the asset would miss
 // entirely, because the asset name matches on both.
-test fn w_an_event_naming_a_foreign_lot_is_never_admitted() -> Bool {
+test fn w_an_event_naming_a_foreign_lot_is_never_admitted() -> Bool  {
   refuses_with(tail: [install(lot: lot_b(), quantity: 1, assets: [requested()])], label: "event_lot_mismatch")
 }
 
@@ -303,7 +303,7 @@ test fn w_an_event_naming_a_foreign_lot_is_never_admitted() -> Bool {
 // first refusal and returned what it had -- would resolve spool-a's lot from a ledger the authority
 // rejected as a whole. Both halves are asserted: no admitted ledger, AND no provenance downstream
 // of it. Admission is a judgment on the WHOLE event list, not on its longest valid prefix.
-test fn w_a_later_refusal_withdraws_the_earlier_installations_provenance() -> Bool {
+test fn w_a_later_refusal_withdraws_the_earlier_installations_provenance() -> Bool  {
   let tail = [
     install(lot: lot_a(), quantity: 1, assets: [requested()]),
     install(lot: lot_a(), quantity: 0, assets: [other()]),
@@ -326,7 +326,7 @@ test fn w_a_later_refusal_withdraws_the_earlier_installations_provenance() -> Bo
 // event at all. It was survivable only because the Resolved arm implies a single hit -- a property
 // of today's callers rather than of the value. Asserting the CROSS-LEDGER number is what makes the
 // two shapes distinguishable; asserting the resolved lot alone would pass under either.
-test fn w_the_event_ordinal_counts_across_ledgers_not_within_one() -> Bool {
+test fn w_the_event_ordinal_counts_across_ledgers_not_within_one() -> Bool  {
   let first = admitted(id: lot_a(), label: "lot-a" as NonEmptyStr, tail: [install(lot: lot_a(), quantity: 1, assets: [other()])])
   let second = admitted(id: lot_b(), label: "lot-b" as NonEmptyStr, tail: [install(lot: lot_b(), quantity: 1, assets: [requested()])])
   match asset_source_lot_standing(ledgers: concat(first, second), asset: requested()) {

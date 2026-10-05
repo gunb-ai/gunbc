@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // stronger statement and the one the migration is for. A newly authored
 // `data x_dissolve_on: String = "..."` anywhere under either root reds this; proven by
 // planting exactly that declaration in an isolated worktree and observing FAIL.
-test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
+test fn no_raw_lifecycle_string_survivors_remain() -> Bool  {
   no_raw_lifecycle_string_survivors()
 }
 
@@ -37,18 +37,18 @@ test fn no_raw_lifecycle_string_survivors_remain() -> Bool {
 // meaningful beside these four. Each rules out a distinct route to a false zero: an empty
 // walk, a walk seeing no bare strings, a type projection returning empty names, and a walk
 // that skips the test subtree where a survivor could hide.
-test fn scan_denominator_is_a_real_corpus() -> Bool {
+test fn scan_denominator_is_a_real_corpus() -> Bool  {
   scan_reads_a_real_corpus()
 }
 
-test fn scan_denominator_contains_bare_string_declarations() -> Bool {
+test fn scan_denominator_contains_bare_string_declarations() -> Bool  {
   scan_sees_bare_string_declarations()
 }
 
-test fn scan_reads_a_declared_type_for_every_declaration() -> Bool {
+test fn scan_reads_a_declared_type_for_every_declaration() -> Bool  {
   scan_projects_every_declared_type()
 }
 
-test fn scan_denominator_includes_test_modules() -> Bool {
+test fn scan_denominator_includes_test_modules() -> Bool  {
   scan_reaches_test_modules()
 }

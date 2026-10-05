@@ -138,7 +138,7 @@ fn fixture_admissible_for(expected_hex: String, observed_hex: String) -> Bool {
 
 // POSITIVE CONTROL. Observed bytes reconcile with the pin, so the retrieval is admissible evidence.
 // Without this the mismatch witness below would pass on a module that admits nothing at all.
-test fn w_verified_representation_is_admissible() -> Bool {
+test fn w_verified_representation_is_admissible() -> Bool  {
   fixture_admissible_for(
     expected_hex: fixture_expected_hex,
     observed_hex: fixture_expected_hex,
@@ -149,7 +149,7 @@ test fn w_verified_representation_is_admissible() -> Bool {
 // mismatch must produce a typed insufficiency, never a weaker link: admitting it would be the
 // absorbing fallback of DESIGN section 5, and the exact mechanism by which unverified material
 // acquires the standing of verified material.
-test fn w_mismatched_digest_is_not_admissible() -> Bool {
+test fn w_mismatched_digest_is_not_admissible() -> Bool  {
   !fixture_admissible_for(
     expected_hex: fixture_expected_hex,
     observed_hex: fixture_other_hex,
@@ -164,7 +164,7 @@ test fn w_mismatched_digest_is_not_admissible() -> Bool {
 // see the difference this witness exists to protect: EvidenceInsufficient is inadmissible too, so a
 // wrong join that invented a receipt and routed the refusal through information_evidence_insufficient
 // would have stayed green. Refusing the Inferred arm outright is what makes fabrication go red.
-test fn w_unreachable_retrieval_is_not_admissible() -> Bool {
+test fn w_unreachable_retrieval_is_not_admissible() -> Bool  {
   match fixture_digest(hex: fixture_expected_hex) {
     Absent => false
     Present { value: expected } =>
@@ -196,7 +196,7 @@ test fn w_unreachable_retrieval_is_not_admissible() -> Bool {
 // A LEAD'S ONLY EXIT IS NAVIGATION. This asserts what the type system already enforces -- there is no
 // lead-to-evidence function to call -- so it is a reachability statement about the surface, not the
 // wall itself. The wall is that nothing in gunbc.information_query maps a SearchLead to evidence.
-test fn w_search_lead_only_becomes_a_retrieval_request() -> Bool {
+test fn w_search_lead_only_becomes_a_retrieval_request() -> Bool  {
   let lead = SearchLead {
     provider: "witness-provider" as NonEmptyStr,
     observed_at: 1788825000000,

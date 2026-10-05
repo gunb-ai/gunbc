@@ -223,7 +223,7 @@ fn lbp_projected_insertion(id: Int, caused_by: Int) -> DeclaredProjectionInserti
 // THE ADMITTED SHAPE, AND THE ORDINALS ALL SHIFT ON PURPOSE. If any part of the emitter compared a
 // base ordinal against a projected one rather than reading the decision, this arm would refuse --
 // which is the whole reason the correspondence is emitted rather than computed.
-test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool {
+test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20, 30],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 30, projected: 31)],
@@ -248,7 +248,7 @@ test fn a_total_set_of_carry_decisions_emits_one_entry_per_occurrence() -> Bool 
 // THE EMITTED REFS CARRY THEIR OWN SUBJECT'S ADDRESS, which is what makes the relation indexable
 // across two allocator domains at all. Without it the delta's scope law has nothing to check and
 // the accidental equality of two independently-allocated ordinals reads as a correspondence.
-test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
+test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
@@ -279,7 +279,7 @@ test fn each_emitted_entry_addresses_its_own_side_of_the_projection() -> Bool {
 
 // LAW 1 -- DENOMINATOR: every expected base occurrence has a decision. Population: the base
 // observation's expected occurrences. One mutation from the admitted shape: drop 30's decision.
-test fn an_occurrence_with_no_carry_decision_refuses() -> Bool {
+test fn an_occurrence_with_no_carry_decision_refuses() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20, 30],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21)],
@@ -305,7 +305,7 @@ test fn an_occurrence_with_no_carry_decision_refuses() -> Bool {
 // mutation: 20 decided twice. This refuses HERE rather than reaching the delta as a repeated
 // source, because the two refusals mean different things -- the delta's says the provenance is not
 // total, this one says the emitter contradicted itself about one occurrence.
-test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool {
+test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 20, projected: 22)],
@@ -330,7 +330,7 @@ test fn an_occurrence_decided_twice_refuses_as_a_fork() -> Bool {
 // LAW 3 -- MEMBERSHIP, THE OTHER DIRECTION: a decision about an occurrence outside the base
 // denominator. One mutation: a decision for 99, which the base never expected. Note the fixture
 // keeps 10 and 20 decided, so the missing law is satisfied and only this one separates it.
-test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
+test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 21), lbp_carry(base: 99, projected: 91)],
@@ -369,7 +369,7 @@ test fn a_decision_about_a_non_base_occurrence_refuses() -> Bool {
 // of evidence when a class climbs: the production machinery that refused the whole population is
 // gone, the discriminating RED that proved the refusal executed stays enrolled. Deleting it because
 // the capability arrived would have recreated specification-without-execution one rung up.
-test fn a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_and_authored_span() -> Bool {
+test fn a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_and_authored_span() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
@@ -400,7 +400,7 @@ test fn a_created_node_that_never_stated_its_cause_refuses_carrying_its_scope_an
 // ProvenanceSourceMissing, which is true but is a statement about the provenance rather than about
 // the projection. This arm requires the emitter to say the projection dropped the reference, which
 // is the fact it actually holds.
-test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> Bool {
+test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20],
     decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
@@ -426,7 +426,7 @@ test fn a_dropped_occurrence_refuses_at_the_emitter_rather_than_downstream() -> 
 // DIFFERENT REFUSALS over the same occurrence. Without both arms, one symbol would answer for "the
 // projection dropped this" and "the emitter said nothing about this", which have different owners
 // and different repairs.
-test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> Bool {
+test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> Bool  {
   let declared = match lbp_emit(
     expected_base: [10, 20],
     decisions: [lbp_carry(base: 10, projected: 11), DroppedByProjection { base: OccurrenceId { value: 20 } }],
@@ -475,7 +475,7 @@ test fn a_declared_drop_and_an_undeclared_omission_are_different_refusals() -> B
 // in the projected scope, cause in the base scope. If the cause carried the projected scope the
 // delta's own scope law would refuse every insertion this module emits, so checking only that a row
 // appeared would be a green that says nothing.
-test fn a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_subjects() -> Bool {
+test fn a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_subjects() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
@@ -510,7 +510,7 @@ test fn a_created_node_with_a_cause_emits_an_insertion_addressed_across_both_sub
 // missing cause on a node that never needed one -- the not-applicable-versus-malformed conflation,
 // with the repairs pointing in opposite directions. This one CAN be located, because a minted node
 // has an id, which is exactly why the two arms carry different payloads.
-test fn a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_input() -> Bool {
+test fn a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_input() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
@@ -537,7 +537,7 @@ test fn a_carried_forward_node_declared_as_an_insertion_refuses_as_malformed_inp
 // also catch it, and that is precisely the argument for catching it here: the delta can say only
 // that two rows claim one target, while this module knows which two claims it produced and from
 // what. Leaving it downstream hands a consumer a defect the producer already had in hand.
-test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool {
+test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 11)],
@@ -565,7 +565,7 @@ test fn two_carry_decisions_claiming_one_target_refuse_at_the_producer() -> Bool
 // invisible to any law whose denominator is only the carry decisions. The denominator here is the
 // EMITTED ROWS, carried and inserted alike, which is why this arm and the one above are separate
 // fixtures rather than one.
-test fn an_insertion_claiming_a_carried_target_refuses() -> Bool {
+test fn an_insertion_claiming_a_carried_target_refuses() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],
@@ -594,7 +594,7 @@ test fn an_insertion_claiming_a_carried_target_refuses() -> Bool {
 // is what makes the assertion legible: a payload counting claims reports 3, a payload counting
 // offenders reports 1, and no arithmetic accident relates them. One occurrence was claimed too
 // often; that is one defect, not three.
-test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
+test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool  {
   match lbp_emit(
     expected_base: [10, 20, 30],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 20, projected: 11), lbp_carry(base: 30, projected: 11)],
@@ -626,7 +626,7 @@ test fn three_claims_on_one_target_report_one_offending_occurrence() -> Bool {
 // by the fork law -- but that law's denominator is the base's EXPECTED occurrences, so it is blind to
 // an id the base never expected. A foreign id decided three times therefore reaches this arm and
 // nothing upstream deduplicates it.
-test fn three_decisions_about_one_non_base_occurrence_report_one_offender() -> Bool {
+test fn three_decisions_about_one_non_base_occurrence_report_one_offender() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11), lbp_carry(base: 99, projected: 91), lbp_carry(base: 99, projected: 92), lbp_carry(base: 99, projected: 93)],
@@ -651,7 +651,7 @@ test fn three_decisions_about_one_non_base_occurrence_report_one_offender() -> B
 // AND THE MALFORMED-CANDIDATE CASE: one carried-forward node declared as an insertion three times is
 // one offending occurrence, not three. The caller made three bad declarations about ONE node, and
 // the repair is the same repair once.
-test fn one_node_declared_an_insertion_three_times_reports_one_offender() -> Bool {
+test fn one_node_declared_an_insertion_three_times_reports_one_offender() -> Bool  {
   match lbp_emit(
     expected_base: [10],
     decisions: [lbp_carry(base: 10, projected: 11)],

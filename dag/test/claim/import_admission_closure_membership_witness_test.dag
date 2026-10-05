@@ -19,18 +19,18 @@ fn import_admission_blocking_row_count(source: String) -> Int {
   }
 }
 
-test fn listed_name_resolves() -> Bool {
+test fn listed_name_resolves() -> Bool  {
   import_admission_blocking_row_count(source: import_admission_listed_source) == 0
 }
 
-test fn selective_unlisted_name_still_resolves_today() -> Bool {
+test fn selective_unlisted_name_still_resolves_today() -> Bool  {
   import_admission_blocking_row_count(source: import_admission_selective_unlisted_source) == 0
 }
 
-test fn pool_coincidence_name_still_resolves_today() -> Bool {
+test fn pool_coincidence_name_still_resolves_today() -> Bool  {
   import_admission_blocking_row_count(source: import_admission_pool_coincidence_source) == 0
 }
 
-test fn name_absent_from_the_closure_refuses() -> Bool {
+test fn name_absent_from_the_closure_refuses() -> Bool  {
   import_admission_blocking_row_count(source: import_admission_absent_from_closure_source) > 0
 }

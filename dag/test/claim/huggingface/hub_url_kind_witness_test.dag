@@ -17,7 +17,7 @@ data model_repo: HubRepoId = HubRepoId { kind: HubModelRepo, path: same_path }
 data dataset_repo: HubRepoId = HubRepoId { kind: HubDatasetRepo, path: same_path }
 data space_repo: HubRepoId = HubRepoId { kind: HubSpaceRepo, path: same_path }
 
-test fn same_path_different_kind_web_and_blob_and_tree_urls_diverge() -> Bool {
+test fn same_path_different_kind_web_and_blob_and_tree_urls_diverge() -> Bool  {
   let model_page = uri_wire(uri: hub_repo_https_uri(repo: model_repo)) as String
   let dataset_page = uri_wire(uri: hub_repo_https_uri(repo: dataset_repo)) as String
   let space_page = uri_wire(uri: hub_repo_https_uri(repo: space_repo)) as String

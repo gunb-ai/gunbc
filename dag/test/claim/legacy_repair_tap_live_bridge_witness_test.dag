@@ -55,7 +55,7 @@ fn xl1_fixture_root_tap() -> Xl1PrimaryRootTap {
   )
 }
 
-test fn a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings() -> Bool {
+test fn a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings() -> Bool  {
   match xl1_fixture_root_tap() {
     Xl1PrimaryRootRefused { cause: _ } => false
     Xl1PrimaryRootObserved {
@@ -70,14 +70,14 @@ test fn a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings(
   }
 }
 
-test fn the_live_census_over_the_measured_fixture_root_counts_its_rows() -> Bool {
+test fn the_live_census_over_the_measured_fixture_root_counts_its_rows() -> Bool  {
   match xl1_live_repair_tap_census_of(tap: xl1_fixture_root_tap()) {
     Xl1LiveRepairTapUnavailable { cause: _ } => false
     Xl1LiveRepairTapRows { count: n } => n > 0
   }
 }
 
-test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
+test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool  {
   match emit_rust_reference_derived_rows_bridge([], whole_corpus_compile_repository as String, whole_corpus_compile_demand_projection_path()) {
     Xl1PrimaryRootRefused { cause: c } => string_contains(s: c, pattern: "empty")
     Xl1PrimaryRootObserved {
@@ -89,7 +89,7 @@ test fn empty_source_roots_refuse_the_xl1_primary_root_tap() -> Bool {
   }
 }
 
-test fn empty_source_roots_do_not_tally_as_zero_rows() -> Bool {
+test fn empty_source_roots_do_not_tally_as_zero_rows() -> Bool  {
   match xl1_live_repair_tap_census([]) {
     Xl1LiveRepairTapUnavailable { cause: c } => string_contains(s: c, pattern: "empty")
     Xl1LiveRepairTapRows { count: _ } => false
@@ -108,7 +108,7 @@ fn lrt_live_subject() -> LegacyBindingObservationSubject {
   }
 }
 
-test fn empty_source_roots_refuse_named_base_persist_through_the_tap() -> Bool {
+test fn empty_source_roots_refuse_named_base_persist_through_the_tap() -> Bool  {
   match git_sha1_object_id(hex: "1007efb256a20749f77c3b1295eed144fddeb9fd") {
     Absent => false
     Present { value: a } => match git_sha1_object_id(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {

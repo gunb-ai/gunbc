@@ -4,6 +4,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn lever_a_local_receipts_hold() -> Bool {
+test fn lever_a_local_receipts_hold() -> Bool  {
   tools.dag_compile_clean_scope.lever_a_local_receipts_hold()
 }

@@ -239,7 +239,7 @@ fn witness_the_transient_vocabulary_is_local_and_decaying() -> Bool {
     && glitch_settle(g: ImpulseLong).duration_ms > glitch_settle(g: ImpulseBrief).duration_ms
 }
 
-test fn instrument_physical_keystone_holds() -> Bool {
+test fn instrument_physical_keystone_holds() -> Bool  {
   witness_no_instrument_channel_may_carry_a_domain_fact()
     && witness_every_channel_off_position_is_total()
     && witness_composed_displacement_stays_under_the_register_attraction_travel()

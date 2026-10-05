@@ -44,7 +44,7 @@ fn import_shadow_positive_fixture_source() -> String {
 
 // THE DISCRIMINATING RED. `trim` is imported by name and then defined locally, so the import is
 // discarded. This must refuse at resolution, before any execution reaches the depth wall.
-test fn import_shadowed_by_local_definition_must_refuse() -> Bool {
+test fn import_shadowed_by_local_definition_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     import_shadow_negative_fixture_source(),
     "src/ish_probe.rs",
@@ -62,7 +62,7 @@ fn import_shadow_type_fixture_source() -> String {
 // use while the import line says otherwise. Measured 2026-09-29 on a supplied two-module fixture
 // (quiet-hawk-702): the compiler refuses, located at the import, and names the local definition as
 // the binding. This row keeps that refusal enrolled on the required floor.
-test fn import_shadowed_by_local_type_definition_must_refuse() -> Bool {
+test fn import_shadowed_by_local_type_definition_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     import_shadow_type_fixture_source(),
     "src/ish_typeprobe.rs",
@@ -77,7 +77,7 @@ fn import_shadow_type_control_fixture_source() -> String {
 
 // The type row's positive control: the same fixture with the local type renamed away from the
 // import compiles, so the row above refuses for the collision and not for a harness accident.
-test fn import_of_a_type_with_no_local_collision_compiles() -> Bool {
+test fn import_of_a_type_with_no_local_collision_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     import_shadow_type_control_fixture_source(),
     "src/ish_typecontrol.rs",
@@ -110,7 +110,7 @@ fn import_shadow_variant_fixture_source() -> String {
 // exporting module's own declaration of the imported name, so a variant-vs-value collision can be
 // refused while variant-vs-type stays admitted. resolve_import already holds the target module
 // node, so the fact is reachable; deciding it is a separate change with its own evidence.
-test fn local_variant_sharing_an_imported_type_name_still_compiles() -> Bool {
+test fn local_variant_sharing_an_imported_type_name_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     import_shadow_variant_fixture_source(),
     "src/ish_variant.rs",
@@ -121,7 +121,7 @@ test fn local_variant_sharing_an_imported_type_name_still_compiles() -> Bool {
 
 // THE POSITIVE CONTROL. The same import with a distinct local name must still compile, or the red
 // above is satisfied by a compiler that refuses everything and measures nothing.
-test fn imported_name_with_distinct_local_name_still_compiles() -> Bool {
+test fn imported_name_with_distinct_local_name_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     import_shadow_positive_fixture_source(),
     "src/ish_control.rs",

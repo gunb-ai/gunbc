@@ -87,7 +87,7 @@ fn lrt_subject() -> LegacyBindingObservationSubject {
   }
 }
 
-test fn roster_from_bridge_rows_is_the_same_row_tautology() -> Bool {
+test fn roster_from_bridge_rows_is_the_same_row_tautology() -> Bool  {
   match admit_bridge_rows(rows: lrt_rows()) {
     BridgeRowsRefused { malformed: _ } => false
     BridgeRowsAdmitted { roster: roster, rows: rows } =>
@@ -97,7 +97,7 @@ test fn roster_from_bridge_rows_is_the_same_row_tautology() -> Bool {
   }
 }
 
-test fn persist_capture_from_bridge_rows_admits_a_complete_same_row_observation() -> Bool {
+test fn persist_capture_from_bridge_rows_admits_a_complete_same_row_observation() -> Bool  {
   match git_sha1_object_id(hex: lrt_commit()) {
     Absent => false
     Present { value: a } => match git_sha1_object_id(hex: lrt_tree()) {
@@ -161,7 +161,7 @@ test fn persist_capture_from_bridge_rows_admits_a_complete_same_row_observation(
 // empty spelling must REFUSE the whole admission, located by index, not vanish from the roster
 // and the observation. A well-formed sibling in the same batch does not rescue it - the
 // admission is all-or-nothing, because the roster digest attests the whole census.
-test fn empty_name_row_refuses_the_admission_located_by_index() -> Bool {
+test fn empty_name_row_refuses_the_admission_located_by_index() -> Bool  {
   let rows = [
     ReferenceDerivedCandidateRow {
       module_name: "std.logic",
@@ -181,7 +181,7 @@ test fn empty_name_row_refuses_the_admission_located_by_index() -> Bool {
   }
 }
 
-test fn never_emitted_is_declared_modules_absent_from_the_emitter_walk() -> Bool {
+test fn never_emitted_is_declared_modules_absent_from_the_emitter_walk() -> Bool  {
   let emitted = repair_emitted_module_names(rows: lrt_rows())
   let never = never_emitted_declared_modules(
     declared_modules: ["std.logic", "std.not.emitted"],

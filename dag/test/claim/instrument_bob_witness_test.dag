@@ -337,7 +337,7 @@ fn witness_reduced_motion_yields_one_still_frame() -> Bool {
 
 data keystone_conjunction_note: String = "EVERY CLAIM IN THIS FILE IS JOINED INTO ONE EXPRESSION, and the reason is a defect that shipped. The frame-sequence controls used to sit in a statement of their own above the returned conjunction — a discarded expression the evaluator computed and threw away — so five claims about the shipped sequence had no bearing on whether the keystone was green. That is how a bob that could not settle reported a passing keystone. There is exactly one returned expression here now."
 
-test fn instrument_bob_keystone_holds() -> Bool {
+test fn instrument_bob_keystone_holds() -> Bool  {
   match a_knock_sequence() {
     BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fs } =>

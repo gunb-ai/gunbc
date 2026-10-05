@@ -42,7 +42,7 @@ import test.claim.information_query_witness {
 // this file as a bin_wet row was the obvious move and is refused deliberately -- that lane has run
 // nothing since 2026-08-15 (excl_bin_wet_reason), so it would convert a partly-covered witness into
 // an uncovered one that the roster reports as covered.
-test fn w_retrieval_arm_agrees_with_the_transport() -> Bool {
+test fn w_retrieval_arm_agrees_with_the_transport() -> Bool  {
   match fixture_digest(hex: fixture_expected_hex) {
     Absent => false
     Present { value: expected } => {
