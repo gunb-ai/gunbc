@@ -1,4 +1,4 @@
-module v2.test.parse.parse_binding_fidelity
+module test.claim.parse_test_parse_binding_fidelity
 
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }

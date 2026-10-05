@@ -76,7 +76,7 @@ import v2.std.diagnostic {
   Rejected,
   outcome_with_diagnostics
 }
-import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, fold_family_realization }
+import v2.compiler.fold_lowering { FoldRealization, FoldRealizesDeclaration, FoldRealizesRosterOperation, collection_roster_primitive_call_row_optional, fold_family_realization }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_dotted_string,
@@ -2137,7 +2137,10 @@ fn resolve_atom_not_string_literal(ctx: ResolveContext, n: Node, identity: Symbo
   }
 }
 
-// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then unbound.
+// A NAME NO FRAME AND NO ROOT BINDING ANSWERS: the symbol index, then the kernel types, then a primitive-call
+// row of the one collection roster (v2.compiler.fold_lowering collection_roster_rows: concat), then unbound.
+// The roster is asked LAST, so any declaration that claims the name -- a local, an import, an indexed
+// declaration -- takes precedence and the row never shadows the corpus.
 fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending: Diagnostics) -> Outcome<Node> {
   match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
     SymbolIndexAtomHit { path: path } =>
@@ -2156,7 +2159,11 @@ fn resolve_atom_unscoped(ctx: ResolveContext, n: Node, identity: Symbol, pending
     SymbolIndexAtomUnbound =>
       match resolve_kernel_type_atom_optional(n: n, identity: identity) {
         Present { value: kernel } => Accepted { value: kernel, diagnostics: pending }
-        Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+        Absent =>
+          match collection_roster_primitive_call_row_optional(head: identity) {
+            Present { value: r } => resolve_atom_bound(ctx: ctx, n: n, path: declaration_ref_path(r: r.row), pending: pending)
+            Absent => resolve_atom_unbound(ctx: ctx, n: n, identity: identity, pending: pending)
+          }
       }
   }
 }

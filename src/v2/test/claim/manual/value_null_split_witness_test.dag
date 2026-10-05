@@ -13,6 +13,7 @@ import v2.std.witness { Holds, Violates }
 import v2.test.generated.cross_representation_equality {
   witness_cross_representation_equality_covers_optional_null
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

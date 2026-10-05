@@ -18,7 +18,6 @@ import gunbc.machine_intake_mtcollins1_boot_run {
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MediaAttachNotAttempted, HandoffMediaNotReached, EndMediaNotTaken, BootParam5Read, SmproNotTaken, SmproProbed, SmproReading, PoweredOffAfterCensusEnd, OverrideNotHandedOff, OverrideConsumedByCensusBoot, OverrideNoLongerPendingAfterAttempt,
 }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_run {
   SolAcquirePlan, SolAcquireRefuse, SolAcquireBindHeldCollector, SolAcquireReleaseThenStart,
   SolAcquireStart, sol_acquire_plan,
@@ -52,7 +51,7 @@ import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_np
 import gunbc.machine_intake_mtcollins1_boot_admission { mtcollins1_boot_host_must_be_srv1, mtcollins1_boot_refuses_off_srv1 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_diagnostics_allowance }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake_mtcollins1_boot_phase_timing { mtcollins1_boot_phase_timing_not_taken }
+import gunbc.managed_host_boot_phase_timing { boot_phase_timing_not_taken }
 import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import gunbc.machine_intake_ampere_smpro_observation { SmproSiteAdmitted, SmproSiteRefused, smpro_pass_observation_fixture }
@@ -66,9 +65,19 @@ import std.temporal_effect {
   held_lease_observed_verdict,
 }
 import std.upsert_decision { Converged, Absent, Drifted, Inaccessible }
-import gunbc.machine_intake_mtcollins1_boot_authorization {
-  MtCollins1BootSubject, MtCollins1BootMedium,
-  mtcollins1_boot_subject, mtcollins1_boot_subject_for, MtCollins1CensusMedium, MtCollins1StockInstallerMedium, mtcollins1_boot_medium_label,
+import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, stock_installer_boot_medium }
+import extdeps.bmc.ipmi_boot_selection { IpmiBootCdrom, aarch64_uefi_once_boot_selection }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row, with
+// the medium the claim needs; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor). Absent fails the claim that asked for it.
+fn admitted_witness_subject(medium: BootMedium) -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -203,15 +212,15 @@ fn pending_because(v: MtCollins1BootTerminalVerdict, fragment: String) -> Bool {
 //     5270388845) -- the one-ARGV a_only fixture beside it is the positive control;
 // (3) an unterminated final fragment is not evidence -- "workload-write-rc=1" without its newline
 //     is Pending, with it Refused;
-// (4) a same-name / different-digest subject-medium disagreement renders the digests, never
-//     "names X but the medium row names X". The image name derives from the digest, so that
-//     subject cannot come from the constructor: it is a forged or stale signed subject, built
-//     field-for-field in the fold.
+// (4) the same-name / different-digest subject-medium disagreement this claim used to render is no
+//     longer a state: the subject carries the medium it was admitted with and the verdict reads
+//     that one value (gunbc.managed_host_boot AdmittedBootSubject), and a subject cannot be authored
+//     field-for-field (test.claim.managed_host_forged_probe_witness).
 // Review 69667: in a CLOSED envelope a section that opened and never printed its EXIT line is
 // "unterminated", not "absent", and a section whose printed output already refused is not
 // reported a second time -- closed_unterminated_workload yields exactly the write refusal plus the
 // unterminated edac-after, never a third cause about the workload.
-fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium: MtCollins1BootMedium, clean: String, boot23_open: String) -> Bool {
+fn review_5269655400_walls(census_subject: AdmittedBootSubject, clean: String, boot23_open: String) -> Bool {
   let begin_a = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 begin 2026-09-21T14:47:00Z=====\n"
   let begin_b = "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=bbbbbbbb-0000-4000-8000-000000000002 begin 2026-09-21T14:52:00Z=====\n"
   let refusing_nproc = "----SECTION nproc----\n----ARGV nproc: nproc\n79\n----EXIT nproc: 0\n"
@@ -228,32 +237,16 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
     "----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-write-rc=1\n",
     "----SECTION edac-after----\n----ARGV edac-after: (counters)\n/sys/devices/system/edac/mc/mc0/ce_count == 0\n",
     "=====GUNBC-HOST-CAPTURE mtcollins1 boot-id=aaaaaaaa-0000-4000-8000-000000000001 end 2026-09-21T14:55:00Z=====\n")
-  let same_name_other_digest = MtCollins1BootSubject {
-    machine: census_subject.machine,
-    bmc_host: census_subject.bmc_host,
-    image_name: census_subject.image_name,
-    image_sha256: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210" as NonEmptyStr,
-    export_host: census_subject.export_host,
-    export_dir: census_subject.export_dir,
-    selection: census_subject.selection,
-    execution_revision: census_subject.execution_revision,
-  }
-  (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject, medium: census_medium) {
+  (match mtcollins1_boot_terminal_verdict(capture: restarted, subject: census_subject) {
     TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => string_contains(s: mtcollins1_boot_terminal_cause_text(cause: c), pattern: "second begin marker"))
     _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject, medium: census_medium), texts: ["nproc observed 79, qualification expects 80", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject, medium: census_medium))
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject, medium: census_medium), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
-    && (match mtcollins1_boot_terminal_verdict(capture: clean, subject: same_name_other_digest, medium: census_medium) {
-      TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => {
-        let t = mtcollins1_boot_terminal_cause_text(cause: c)
-        string_contains(s: t, pattern: "both name") && string_contains(s: t, pattern: "fedcba98") && string_contains(s: t, pattern: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
-      })
-      _ => false })
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: concat(begin_a, refusing_nproc), subject: census_subject), texts: ["nproc observed 79, qualification expects 80", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: no_argv, subject: census_subject))
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: exit_before_argv, subject: census_subject))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: two_argv, subject: census_subject), texts: ["section nproc carries two ARGV boundaries; which output the exit belongs to is not a fact", unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "workload"), unobserved(name: "edac-after")])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: unterminated, subject: census_subject))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: closed_unterminated_workload, subject: census_subject), texts: ["workload write rc=1", "closed envelope's edac-after section never printed its EXIT line"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: terminated, subject: census_subject), texts: ["workload write rc=1", unobserved(name: "nproc"), unobserved(name: "numa"), unobserved(name: "boot-media"), unobserved(name: "edac-before"), unobserved(name: "edac-after")])
 }
 
 // Every closed fixture ends its END marker with a newline, as the program does: an END marker whose
@@ -263,9 +256,9 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
 // printing a failed write. The verdict is REFUSED with both causes; the old Bool read it as "not
 // yet" until timeout.
 test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
-  let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let census_subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: census_subject } => {
   let clean = concat(
     "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n",
     concat(
@@ -417,25 +410,28 @@ test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
       ),
     ),
   )
-  let accepted = match mtcollins1_boot_terminal_verdict(capture: clean, subject: census_subject, medium: census_medium) {
+  let accepted = match mtcollins1_boot_terminal_verdict(capture: clean, subject: census_subject) {
     TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 80
     _ => false
   }
   accepted
-    && refused_with_prefix(v: mtcollins1_boot_terminal_verdict(capture: clean, subject: subject, medium: census_medium), prefix: "signed subject names")
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: stock_medium, subject: census_subject, medium: census_medium), texts: ["boot-media does not name the census volume GUNBC_MTC1_CENSUS_2404_3"])
-    && refused_with_prefix(v: mtcollins1_boot_terminal_verdict(capture: clean, subject: subject, medium: MtCollins1StockInstallerMedium), prefix: "signed subject names")
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: argv_echo_only, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: "BootControlIssued cdrom", subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ghes_ce, subject: census_subject, medium: census_medium), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ue, subject: census_subject, medium: census_medium), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: nproc_elsewhere, subject: census_subject, medium: census_medium), texts: ["nproc exited 1"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject, medium: census_medium), texts: ["workload digest not stable across passes"])
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject, medium: census_medium))
-    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject, medium: census_medium))
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject, medium: census_medium), texts: ["workload write rc=1", unobserved(name: "numa"), unobserved(name: "edac-after")])
-    && review_5269655400_walls(census_subject: census_subject, census_medium: census_medium, clean: clean, boot23_open: boot23_open)
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: stock_medium, subject: census_subject), texts: ["boot-media does not name the census volume GUNBC_MTC1_CENSUS_2404_3"])
+    && (match admitted_witness_subject(medium: stock_installer_boot_medium) {
+      Present { value: stock_subject } => refused_with_prefix(v: mtcollins1_boot_terminal_verdict(capture: clean, subject: stock_subject), prefix: "the admitted medium ubuntu-24.04.3-live-server-arm64.iso prints no terminal")
+      Absent => false })
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: argv_echo_only, subject: census_subject), texts: ["workload digest not stable across passes"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: "BootControlIssued cdrom", subject: census_subject))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ghes_ce, subject: census_subject), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: ue, subject: census_subject), texts: ["edac-before: mc0 ce_count/ue_count not both 0"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: nproc_elsewhere, subject: census_subject), texts: ["nproc exited 1"])
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: digest_mismatch, subject: census_subject), texts: ["workload digest not stable across passes"])
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_only, subject: census_subject))
+    && is_pending(v: mtcollins1_boot_terminal_verdict(capture: begin_with_spurious_end, subject: census_subject))
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: boot23_open, subject: census_subject), texts: ["workload write rc=1", unobserved(name: "numa"), unobserved(name: "edac-after")])
+    && review_5269655400_walls(census_subject: census_subject, clean: clean, boot23_open: boot23_open)
     && string_contains(s: mtcollins1_boot_terminal_refusal_text(causes: [HardwareThreadCountMismatch { expected: hardware_thread_count(count: 160), observed: "80" }, WorkloadWriteFailed { rc: "1" }]), pattern: "nproc observed 80, qualification expects 160; workload write rc=1")
+  }
+  }
 }
 
 // THE ONE-SOCKET MILESTONE, DISCRIMINATED (gunbc.machine_intake_mtcollins1_boot_milestone): the
@@ -474,8 +470,9 @@ fn milestone_capture_with_workload(nproc: String, numa: String, workload: String
 // refuses, and a capacity that is absent or not an integer is its own typed reading, never room. An OPEN envelope whose
 // workload has printed its refusal refuses at once rather than waiting out the deadline.
 test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight() -> Bool {
-  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
   let numa = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 15968 MB\n----EXIT numa: 0\n"
   let fits = "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
   let refused = "workload-bytes=4294967296\nworkload-shm-avail-bytes=1073741824\nworkload-mem-available-bytes=15032385536\nworkload-preflight=refused\n----EXIT workload: 1\n"
@@ -489,27 +486,30 @@ test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight
   )
   byte_size_count(b: host_capture_workload_total_bytes(workload: mtcollins1_boot_topology_expectation.workload)) == 4294967296
     && byte_size_count(b: host_capture_workload_total_bytes(workload: mtcollins1_dual_socket_workload)) == 68719476736
-    && (match mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: fits), subject: subject, medium: census_medium) {
+    && (match mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: fits), subject: subject) {
       TerminalAccepted { run: _, threads: _ } => true
       _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: refused), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: refused), subject: subject),
       texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free 1073741824, MemAvailable 15032385536"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: dual), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: dual), subject: subject),
       texts: ["workload footprint 68719476736 bytes, profile declares 4294967296"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: lying_guard), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: lying_guard), subject: subject),
       texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free 1073741824, MemAvailable 15032385536"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: garbled), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: garbled), subject: subject),
       texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free unparsed '8G', MemAvailable unreported"])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: silent), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: silent), subject: subject),
       texts: ["workload footprint unreported bytes, profile declares 4294967296"])
-    && (match mtcollins1_boot_terminal_verdict(capture: open_refused, subject: subject, medium: census_medium) {
+    && (match mtcollins1_boot_terminal_verdict(capture: open_refused, subject: subject) {
       TerminalRefused { causes: cs } => any(cs, c => starts_with(s: mtcollins1_boot_terminal_cause_text(cause: c), prefix: "workload preflight refused"))
       _ => false })
+  }
+  }
 }
 
 test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool {
-  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
   let socket0_whole = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 127968 MB\n----EXIT numa: 0\n"
   let socket0_short = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78\nnode 0 size: 127968 MB\n----EXIT numa: 0\n"
   let split_across = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39\nnode 0 size: 127968 MB\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119\nnode 1 size: 127968 MB\n----EXIT numa: 0\n"
@@ -519,19 +519,21 @@ test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool {
   hardware_thread_count_value(t: mtcollins1_nproc) == 160
     && hardware_thread_count_value(t: mtcollins1_one_socket_milestone.threads) == 80
     && mtcollins1_one_socket_milestone.socket == 0
-    && (match mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket0_whole), subject: subject, medium: census_medium) {
+    && (match mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket0_whole), subject: subject) {
       TerminalAccepted { run: _, threads: t } => hardware_thread_count_value(t: t) == 80
       _ => false })
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "79", numa: socket0_short), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "79", numa: socket0_short), subject: subject),
       texts: ["nproc observed 79, qualification expects 80", concat("numa placement node 0=79, milestone expects 80", milestone)])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: split_across), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: split_across), subject: subject),
       texts: [concat("numa placement node 0=40, node 1=40, milestone expects 80", milestone)])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket1_only), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: socket1_only), subject: subject),
       texts: [concat("numa placement node 1=80, milestone expects 80", milestone)])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "160", numa: both_whole), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "160", numa: both_whole), subject: subject),
       texts: ["nproc observed 160, qualification expects 80", concat("numa placement node 0=80, node 1=80, milestone expects 80", milestone)])
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: "----SECTION numa----\n----ARGV numa: numactl -H\n0\n----EXIT numa: 0\n"), subject: subject, medium: census_medium),
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture(nproc: "80", numa: "----SECTION numa----\n----ARGV numa: numactl -H\n0\n----EXIT numa: 0\n"), subject: subject),
       texts: ["numa section carries no node cpus line; socket placement is not read"])
+  }
+  }
 }
 
 // THE UNIT HOLD STORE IS ON THE RUNNER HOST, so a boot anywhere else would take a hold the operator
@@ -592,20 +594,20 @@ test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_e
 // never print the census terminal, and the run says so from the row rather than after a hardware
 // run (review 69352); the census medium passes the gate and names the label the verdict binds to.
 test fn the_stock_installer_medium_refuses_the_census_boot_at_the_gate() -> Bool {
-  match mtcollins1_boot_medium_refusal(medium: MtCollins1StockInstallerMedium) {
-    Present { value: why } => string_contains(s: why, pattern: "controller untouched") && string_contains(s: why, pattern: "no census program")
+  match mtcollins1_boot_medium_refusal(medium: stock_installer_boot_medium) {
+    Present { value: why } => string_contains(s: why, pattern: "controller untouched") && string_contains(s: why, pattern: "prints no terminal")
     Absent => false
   }
 }
 
 test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -> Bool {
-  let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
+  let medium = mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)
   match mtcollins1_boot_medium_refusal(medium: medium) {
     Present { value: _ } => false
     Absent =>
-      match mtcollins1_boot_medium_label(medium: medium) {
-        Absent => false
-        Present { value: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
+      match medium.terminal {
+        BootMediumNoTerminal { reason: _ } => false
+        BootMediumVolumeLabel { label: label } => (label as String) == "GUNBC_MTC1_CENSUS_2404_3"
       }
   }
 }
@@ -641,9 +643,11 @@ test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bo
     && (match mtcollins1_boot_pre_os_verdict(capture: ddr) {
       TerminalRefused { causes: cs } => count(cs) == 1 && all(cs, c => mtcollins1_boot_terminal_cause_text(cause: c) == "firmware refused before any kernel: ERROR:   DDR initialization failure. STOP! [socket 1] [memory controller 4]")
       _ => false })
-    && (match mtcollins1_boot_terminal_verdict(capture: grub_failed, subject: mtcollins1_boot_subject_for(medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr), medium: MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }) {
+    && (match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+      Absent => false
+      Present { value: grub_subject } => match mtcollins1_boot_terminal_verdict(capture: grub_failed, subject: grub_subject) {
       TerminalRefused { causes: cs } => count(cs) == 1
-      _ => false })
+      _ => false } })
 }
 
 // EVERY ACQUISITION THAT GOES ON TO READ THE CAPTURE BINDS IT TO THIS ATTEMPT FIRST. This is the
@@ -753,21 +757,21 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // carries both passes and decides consumption from the two boot parameter 5 reads.
 test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
-  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
+  let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
   let ended = mtcollins1_boot_run_record(
     media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-    stage: ActuationCensusEnded { selection: mtcollins1_cdrom_selection, smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
+    stage: ActuationCensusEnded { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: smpro_probed_empty() },
     before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-    timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+    timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
   )
   (match never.override { OverrideNotHandedOff { reason: _ } => true _ => false })
     && (match never.smpro_power_on { SmproNotTaken { reason: _ } => true _ => false })
     && (match ended.override { OverrideConsumedByCensusBoot => true _ => false })
     && (match mtcollins1_boot_run_record(
       media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" },
-      stage: ActuationPoweredOn { selection: mtcollins1_cdrom_selection, smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
+      stage: ActuationPoweredOn { selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), smpro_power_on: smpro_probed_empty(), smpro_census: SmproNotTaken { reason: "x" } },
       before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd,
-      timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
+      timing: boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"),
     ).override { OverrideNoLongerPendingAfterAttempt => true _ => false })
     && (match ended.smpro_census { SmproProbed { observation: _ } => true _ => false })
 }
@@ -791,22 +795,25 @@ fn refused_naming(v: MtCollins1BootTerminalVerdict, prefix: String) -> Bool {
   }
 }
 
-fn open_verdict(subject: MtCollins1BootSubject, medium: MtCollins1BootMedium, lines: String) -> MtCollins1BootTerminalVerdict {
-  mtcollins1_boot_terminal_verdict(capture: workload_open_capture(lines: lines), subject: subject, medium: medium)
+fn open_verdict(subject: AdmittedBootSubject, lines: String) -> MtCollins1BootTerminalVerdict {
+  mtcollins1_boot_terminal_verdict(capture: workload_open_capture(lines: lines), subject: subject)
 }
 
 test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool {
-  let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
-  let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
+  match admitted_witness_subject(medium: mtcollins1_census_boot_medium(output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr)) {
+  Absent => false
+  Present { value: subject } => {
   let numa = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 15968 MB\n----EXIT numa: 0\n"
   let closed_no_caps = "workload-bytes=4294967296\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n"
-  is_pending(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=4294967296\n"))
-    && is_pending(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\n"))
-    && refused_naming(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=1073741824\n"), prefix: "workload preflight refused")
-    && refused_naming(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-preflight=refused\n"), prefix: "workload preflight refused")
-    && refused_naming(v: open_verdict(subject: subject, medium: census_medium, lines: "workload-bytes=68719476736\n"), prefix: "workload footprint 68719476736 bytes")
-    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: closed_no_caps), subject: subject, medium: census_medium),
+  is_pending(v: open_verdict(subject: subject, lines: "workload-bytes=4294967296\n"))
+    && is_pending(v: open_verdict(subject: subject, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\n"))
+    && refused_naming(v: open_verdict(subject: subject, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=1073741824\n"), prefix: "workload preflight refused")
+    && refused_naming(v: open_verdict(subject: subject, lines: "workload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-preflight=refused\n"), prefix: "workload preflight refused")
+    && refused_naming(v: open_verdict(subject: subject, lines: "workload-bytes=68719476736\n"), prefix: "workload footprint 68719476736 bytes")
+    && refused_with(v: mtcollins1_boot_terminal_verdict(capture: milestone_capture_with_workload(nproc: "80", numa: numa, workload: closed_no_caps), subject: subject),
       texts: ["workload preflight refused: declared 4294967296 bytes, /dev/shm free unreported, MemAvailable unreported"])
+  }
+  }
 }
 
 // THE LAUNCH CARRIES THE HOLD'S OWN LINE SPELLINGS AND KEEPS THE CLIENT'S WORDS OUT OF THE CAPTURE,

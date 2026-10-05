@@ -3,10 +3,12 @@ module std.checkpointed_workspace
 import std.types { String, NonEmptyStr, Int, Bool, List }
 import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
-import std.measure { ByteSize, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
 import std.durable_compare_and_set { CasGeneration }
 import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
+import std.content_hash { sha256_hex_digest }
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.fabric_storage {
   FabricObject, FabricObjectRef,
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
@@ -43,12 +45,15 @@ import std.fabric_storage {
 //
 // CONSUMERS, A DECLARED FRONTIER (DESIGN 3c). Executed today only by test.claim.std_checkpointed_workspace
 // over supplied values. The real-path consumers are, by name:
-//   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate), which commits and
-//     restores through std.fabric_storage heads on R2. TRIGGER: gunbc.fabric_storage_r2_head
-//     (gunbc#13088) on main AND a durable workspace bucket placement with minted credentials (the
-//     operator escalation of 2026-10-03). It owes the pairing claim the witness rule demands: one
-//     claim that runs a real head advance and restore, so the supplied-value witnesses stop being the
-//     only execution of this module;
+//   * the demo stage-1 restore entry (create, edit, barrier, destroy, recreate):
+//     gunbc.fabric.workspace_checkpoint_instrument workspace_checkpoint_restore_wet, which commits
+//     through workspace_advance_plan, workspace_commit_classify and workspace_state_after_commit and
+//     restores through workspace_head_entry_decode, workspace_stored_entry_of and
+//     workspace_restore_point over the R2 head's closure. It is the pairing claim the witness rule
+//     demands, and it REFUSES before any advance until the R2 head's CAS ground is cited
+//     (gunbc.fabric_storage_r2_head r2_head_cas_admission) and the workspace credentials are pinned
+//     (gunbc.cloudflare.r2_origin fabric_workspace_standing); until both hold the supplied-value
+//     witnesses remain the only execution of the commit and restore arms;
 //   * the control-plane reconciler that publishes WorkspaceFence entries (docs/plans/
 //     workspace-control-plane.md, gunbc#13084). TRIGGER: the same head realization on main.
 
@@ -105,11 +110,213 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
     WorkspaceRevision { writer: w, parent: p, entries: es } => FabricObject {
       links: workspace_parent_links(parent: p),
       body: join(["workspace.revision;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";",
-                  fold(es, init: "", f: (acc, e) => join([acc, workspace_entry_line(entry: e)], ""))], "") as NonEmptyStr,
+                  join(map(es, e => workspace_entry_line(entry: e)), "")], "") as NonEmptyStr,
     }
     WorkspaceFence { writer: w, parent: p } => FabricObject {
       links: workspace_parent_links(parent: p),
       body: join(["workspace.fence;W", to_string(length(w.workspace as String)), ":", w.workspace as String, ";epoch=", to_string(w.epoch), ";"], "") as NonEmptyStr,
+    }
+  }
+}
+
+// THE INVERSE OF workspace_head_entry_object, FOR A READ. It decodes a stored object's body back into
+// the entry it claims to be; workspace_stored_entry_of then re-encodes that entry and compares, so a
+// decode that misreads is refused there rather than trusted here. Every malformed body is absent.
+// The parent is the object's single link, or none; more than one link is not an entry this module
+// wrote.
+// THE DECODE IS ONE SEQUENTIAL FOLD OVER THE BODY'S CODE POINTS. The body is unfolded once
+// (std.coercion unicode_scalar_unfold) and folded by a state machine: each code point is read exactly
+// once, in order, and nothing is indexed or re-sliced from the start of the body, so the decode is
+// linear in the body on any text and in either realization (a fold visits each member once). A
+// field's code points are prepended as they arrive and reversed once when the field closes, so no
+// accumulator is copied; entries are prepended and reversed once at the end (DESIGN 6, bare minimum
+// cost). Length prefixes count CODE POINTS, matching length() in workspace_head_entry_object, and
+// every number (a length, the epoch, a size) is read by parse_int over its own collected digits.
+// The cost control re-runs by name: gunbc.instruments.workspace_entry_decode_scaling decode_scaling.
+type WorkspaceBodyKind = WorkspaceBodyRevision | WorkspaceBodyFence
+
+type WorkspaceBodyPhase
+  = BodyKindLiteral { rest: List<Int> }
+  | BodyWorkspaceTag
+  | BodyWorkspaceLength
+  | BodyWorkspaceText { remaining: Int }
+  | BodyEpochLiteral { rest: List<Int> }
+  | BodyEpochDigits
+  | BodyEntryStart
+  | BodyPathLength
+  | BodyPathText { remaining: Int }
+  | BodyPathSpace
+  | BodyChunkHex
+  | BodyEntrySize
+  | BodyComplete
+  | BodyMalformed
+
+type WorkspaceBodyScan {
+  kind: WorkspaceBodyKind
+  phase: WorkspaceBodyPhase
+  field: List<Int>
+  workspace: String
+  epoch: Int
+  path: String
+  chunk: FabricBlobAddress?
+  entries: List<WorkspaceEntry>
+}
+
+fn workspace_body_kind_literal(kind: WorkspaceBodyKind) -> String {
+  match kind {
+    WorkspaceBodyRevision => "workspace.revision;"
+    WorkspaceBodyFence => "workspace.fence;"
+  }
+}
+
+// The field's code points, which arrived prepended, as text.
+fn workspace_body_field_text(field: List<Int>) -> String {
+  unicode_scalar_fold(xs: reverse(field))
+}
+
+fn workspace_body_malformed(scan: WorkspaceBodyScan) -> WorkspaceBodyScan {
+  WorkspaceBodyScan { kind: scan.kind, phase: BodyMalformed, field: [], workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+}
+
+fn workspace_body_to(scan: WorkspaceBodyScan, phase: WorkspaceBodyPhase, field: List<Int>) -> WorkspaceBodyScan {
+  WorkspaceBodyScan { kind: scan.kind, phase: phase, field: field, workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+}
+
+// One literal code point consumed; the phase after the literal is `then`.
+fn workspace_body_literal_step(scan: WorkspaceBodyScan, rest: List<Int>, c: Int, more: fn(List<Int>) -> WorkspaceBodyPhase, then: WorkspaceBodyPhase) -> WorkspaceBodyScan {
+  match rest {
+    Empty => workspace_body_malformed(scan: scan)
+    Cons { head: want, tail: tail } =>
+      if want != c {
+        workspace_body_malformed(scan: scan)
+      } else {
+        match tail {
+          Empty => workspace_body_to(scan: scan, phase: then, field: [])
+          Cons { head: _, tail: _ } => workspace_body_to(scan: scan, phase: more(tail), field: [])
+        }
+      }
+  }
+}
+
+// A length prefix's digits up to ':', then a text field of exactly that many code points.
+fn workspace_body_length_closed(scan: WorkspaceBodyScan, text: fn(Int) -> WorkspaceBodyPhase) -> WorkspaceBodyScan {
+  match parse_int(s: workspace_body_field_text(field: scan.field)) {
+    Absent => workspace_body_malformed(scan: scan)
+    Present { value: n } => if n < 1 { workspace_body_malformed(scan: scan) } else { workspace_body_to(scan: scan, phase: text(n), field: []) }
+  }
+}
+
+fn workspace_body_step(scan: WorkspaceBodyScan, c: Int) -> WorkspaceBodyScan {
+  match scan.phase {
+    BodyMalformed => scan
+    BodyComplete => workspace_body_malformed(scan: scan)
+    BodyKindLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyKindLiteral { rest: r }, then: BodyWorkspaceTag)
+    BodyWorkspaceTag => if c == code_point(c: "W") { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyWorkspaceLength =>
+      if c == code_point(c: ":") { workspace_body_length_closed(scan: scan, text: n => BodyWorkspaceText { remaining: n }) } else { workspace_body_to(scan: scan, phase: BodyWorkspaceLength, field: Cons { head: c, tail: scan.field }) }
+    BodyWorkspaceText { remaining: r } => {
+      let field = Cons { head: c, tail: scan.field }
+      if r > 1 {
+        workspace_body_to(scan: scan, phase: BodyWorkspaceText { remaining: r - 1 }, field: field)
+      } else {
+        WorkspaceBodyScan { kind: scan.kind, phase: BodyEpochLiteral { rest: unicode_scalar_unfold(s: ";epoch=") }, field: [], workspace: workspace_body_field_text(field: field), epoch: scan.epoch, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+      }
+    }
+    BodyEpochLiteral { rest: rest } => workspace_body_literal_step(scan: scan, rest: rest, c: c, more: r => BodyEpochLiteral { rest: r }, then: BodyEpochDigits)
+    BodyEpochDigits =>
+      if c != code_point(c: ";") {
+        workspace_body_to(scan: scan, phase: BodyEpochDigits, field: Cons { head: c, tail: scan.field })
+      } else {
+        match parse_int(s: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: e } =>
+            WorkspaceBodyScan { kind: scan.kind, phase: match scan.kind { WorkspaceBodyRevision => BodyEntryStart  WorkspaceBodyFence => BodyComplete }, field: [], workspace: scan.workspace, epoch: e, path: scan.path, chunk: scan.chunk, entries: scan.entries }
+        }
+      }
+    BodyEntryStart => if c == code_point(c: "F") { workspace_body_to(scan: scan, phase: BodyPathLength, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyPathLength =>
+      if c == code_point(c: ":") { workspace_body_length_closed(scan: scan, text: n => BodyPathText { remaining: n }) } else { workspace_body_to(scan: scan, phase: BodyPathLength, field: Cons { head: c, tail: scan.field }) }
+    BodyPathText { remaining: r } => {
+      let field = Cons { head: c, tail: scan.field }
+      if r > 1 {
+        workspace_body_to(scan: scan, phase: BodyPathText { remaining: r - 1 }, field: field)
+      } else {
+        WorkspaceBodyScan { kind: scan.kind, phase: BodyPathSpace, field: [], workspace: scan.workspace, epoch: scan.epoch, path: workspace_body_field_text(field: field), chunk: scan.chunk, entries: scan.entries }
+      }
+    }
+    BodyPathSpace => if c == code_point(c: " ") { workspace_body_to(scan: scan, phase: BodyChunkHex, field: []) } else { workspace_body_malformed(scan: scan) }
+    BodyChunkHex =>
+      if c != code_point(c: " ") {
+        workspace_body_to(scan: scan, phase: BodyChunkHex, field: Cons { head: c, tail: scan.field })
+      } else {
+        match sha256_hex_digest(hex: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: d } => WorkspaceBodyScan { kind: scan.kind, phase: BodyEntrySize, field: [], workspace: scan.workspace, epoch: scan.epoch, path: scan.path, chunk: Present { value: FabricBlobAddress { key: d } }, entries: scan.entries }
+        }
+      }
+    BodyEntrySize =>
+      if c != code_point(c: ";") {
+        workspace_body_to(scan: scan, phase: BodyEntrySize, field: Cons { head: c, tail: scan.field })
+      } else {
+        match parse_int(s: workspace_body_field_text(field: scan.field)) {
+          Absent => workspace_body_malformed(scan: scan)
+          Present { value: n } =>
+            match scan.chunk {
+              Absent => workspace_body_malformed(scan: scan)
+              Present { value: chunk } =>
+                if n < 0 || scan.path == "" {
+                  workspace_body_malformed(scan: scan)
+                } else {
+                  WorkspaceBodyScan { kind: scan.kind, phase: BodyEntryStart, field: [], workspace: scan.workspace, epoch: scan.epoch, path: "", chunk: none, entries: Cons { head: WorkspaceEntry { path: scan.path as NonEmptyStr, chunk: chunk, size: byte_size(count: n) }, tail: scan.entries } }
+                }
+            }
+        }
+      }
+  }
+}
+
+// The fold for one kind, accepted only at a phase where the body may end: after the last entry of a
+// revision, after the epoch of a fence.
+fn workspace_body_scan(cps: List<Int>, kind: WorkspaceBodyKind) -> WorkspaceBodyScan? {
+  let start = WorkspaceBodyScan { kind: kind, phase: BodyKindLiteral { rest: unicode_scalar_unfold(s: workspace_body_kind_literal(kind: kind)) }, field: [], workspace: "", epoch: 0, path: "", chunk: none, entries: [] }
+  let done = fold(cps, init: start, f: (scan, c) => workspace_body_step(scan: scan, c: c))
+  match done.phase {
+    BodyEntryStart => match kind { WorkspaceBodyRevision => Present { value: done }  WorkspaceBodyFence => none }
+    BodyComplete => match kind { WorkspaceBodyFence => Present { value: done }  WorkspaceBodyRevision => none }
+    BodyKindLiteral { rest: _ } => none
+    BodyWorkspaceTag => none
+    BodyWorkspaceLength => none
+    BodyWorkspaceText { remaining: _ } => none
+    BodyEpochLiteral { rest: _ } => none
+    BodyEpochDigits => none
+    BodyPathLength => none
+    BodyPathText { remaining: _ } => none
+    BodyPathSpace => none
+    BodyChunkHex => none
+    BodyEntrySize => none
+    BodyMalformed => none
+  }
+}
+
+fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
+  let parent = match object.links {
+    Empty => Present { value: none }
+    Cons { head: p, tail: Empty } => Present { value: Present { value: p } }
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => none
+  }
+  match parent {
+    Absent => none
+    Present { value: link } => {
+      let cps = unicode_scalar_unfold(s: object.body as String)
+      match workspace_body_scan(cps: cps, kind: WorkspaceBodyRevision) {
+        Present { value: r } =>
+          if r.workspace == "" { none } else { Present { value: WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: r.workspace as NonEmptyStr, epoch: r.epoch }, parent: link, entries: reverse(r.entries) } } }
+        Absent =>
+          match workspace_body_scan(cps: cps, kind: WorkspaceBodyFence) {
+            Absent => none
+            Present { value: f } => if f.workspace == "" { none } else { Present { value: WorkspaceFence { writer: WorkspaceWriterEpoch { workspace: f.workspace as NonEmptyStr, epoch: f.epoch }, parent: link } } }
+          }
+      }
     }
   }
 }

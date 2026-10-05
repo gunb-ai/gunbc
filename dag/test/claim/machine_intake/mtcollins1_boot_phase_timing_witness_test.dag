@@ -11,14 +11,14 @@ import extdeps.linux.proc_uptime { ProcUptimeRead, UptimeObserved, UptimeRefused
 import gunbc.machine_intake_oob_boot_handoff { PoweredOn, PowerCycled }
 import gunbc.machine_intake_ampere_smpro_observation { SmproProbeRaw, smpro_probe_outcome }
 import extdeps.ampere.smpro_register { smpro_bootstage_reg }
-import gunbc.machine_intake_mtcollins1_boot_phase_timing {
-  MtCollins1BootPhaseTiming, MtCollins1BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
-  PhaseVerified, PhaseRefused, MtCollins1PhaseStep, PhaseStepRan, PhaseStepSkipped, MtCollins1BootRoute,
+import gunbc.managed_host_boot_phase_timing {
+  BootPhaseTiming, BootPhaseSpan, PhaseRan, PhaseNotRan, BootStartCold, BootStartWarm,
+  PhaseVerified, PhaseRefused, BootPhaseStep, PhaseStepRan, PhaseStepSkipped, BootRoute,
   PhaseHandoff,
-  mtcollins1_boot_phase_spans, mtcollins1_boot_route_sol_refused, mtcollins1_boot_phase_timing_of,
-  mtcollins1_boot_phase_duration, PhaseElapsed, PhaseClockUnread, PhaseClockSteppedBack,
-  mtcollins1_smpro_pass_result,
-  mtcollins1_boot_start_of, mtcollins1_boot_phase_timing_text, mtcollins1_boot_phase_timing_not_taken,
+  boot_phase_spans, boot_route_sol_refused, boot_phase_timing_of,
+  boot_phase_duration, PhaseElapsed, PhaseClockUnread, PhaseClockSteppedBack,
+  boot_smpro_pass_result,
+  boot_start_of, boot_phase_timing_text, boot_phase_timing_not_taken,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -27,28 +27,28 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // route's steps are constructed here (#12423 comment 5858637192; side-chat review 5332054527: the
 // completed, attach-refused, handoff-refused, terminal-refused and SOL-refused routes, each asserting
 // adjacency AND total coverage). The production caller is mtcollins1_boot_actuate, which builds the
-// same MtCollins1BootRoute in the branches that perform each phase; the real clock route is
+// same BootRoute in the branches that perform each phase; the real clock route is
 // the_real_uptime_clock_reads_and_does_not_go_back below.
 fn at(ms: Nat) -> ProcUptimeRead {
   UptimeObserved { uptime: millisecond(count: ms) }
 }
 
-fn ran(end: Nat) -> MtCollins1PhaseStep {
+fn ran(end: Nat) -> BootPhaseStep {
   PhaseStepRan { result: PhaseVerified, end: at(ms: end) }
 }
 
-fn refused(end: Nat, cause: String) -> MtCollins1PhaseStep {
+fn refused(end: Nat, cause: String) -> BootPhaseStep {
   PhaseStepRan { result: PhaseRefused { cause: cause }, end: at(ms: end) }
 }
 
-fn skipped(reason: NonEmptyStr) -> MtCollins1PhaseStep {
+fn skipped(reason: NonEmptyStr) -> BootPhaseStep {
   PhaseStepSkipped { reason: reason }
 }
 
 data hold_ms: Nat = 1000
 
-fn completed() -> MtCollins1BootRoute {
-  MtCollins1BootRoute {
+fn completed() -> BootRoute {
+  BootRoute {
     sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000), handoff: ran(end: 21000),
     smpro_power_on: ran(end: 23000), terminal_watch: ran(end: 500000), param5_after: ran(end: 501000),
     power_after: ran(end: 506000), sol_release: ran(end: 507000),
@@ -57,8 +57,8 @@ fn completed() -> MtCollins1BootRoute {
 
 // ON A REFUSED ROUTE THE SKIPPED PHASES TAKE NO READING, so the next ran phase's reading follows the
 // last one taken: the fixture's times are what the actuation would read, not a completed route's.
-fn attach_refused() -> MtCollins1BootRoute {
-  MtCollins1BootRoute {
+fn attach_refused() -> BootRoute {
+  BootRoute {
     sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: refused(end: 9000, cause: "fixture: virtual media readback did not match"),
     handoff: skipped(reason: "the media attach did not verify"),
     smpro_power_on: skipped(reason: "power on was never verified"), terminal_watch: skipped(reason: "power on was never verified"),
@@ -66,8 +66,8 @@ fn attach_refused() -> MtCollins1BootRoute {
   }
 }
 
-fn handoff_refused() -> MtCollins1BootRoute {
-  MtCollins1BootRoute {
+fn handoff_refused() -> BootRoute {
+  BootRoute {
     sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000),
     handoff: refused(end: 70000, cause: "fixture: chassis power did not transition"),
     smpro_power_on: skipped(reason: "power on was never verified"), terminal_watch: skipped(reason: "power on was never verified"),
@@ -75,33 +75,33 @@ fn handoff_refused() -> MtCollins1BootRoute {
   }
 }
 
-fn terminal_refused() -> MtCollins1BootRoute {
-  MtCollins1BootRoute {
+fn terminal_refused() -> BootRoute {
+  BootRoute {
     sol_acquire: ran(end: 3400), param5_before: ran(end: 4000), media_attach: ran(end: 9000), handoff: ran(end: 21000),
     smpro_power_on: ran(end: 23000), terminal_watch: refused(end: 503000, cause: "fixture: deadline reached without a host-capture terminal"),
     param5_after: ran(end: 504000), power_after: ran(end: 534000), sol_release: ran(end: 535000),
   }
 }
 
-fn sol_refused() -> MtCollins1BootRoute {
-  mtcollins1_boot_route_sol_refused(refused_at: at(ms: 3500), cause: "fixture: activate refused")
+fn sol_refused() -> BootRoute {
+  boot_route_sol_refused(refused_at: at(ms: 3500), cause: "fixture: activate refused")
 }
 
-fn text_of(route: MtCollins1BootRoute) -> String {
-  mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_of(hold: at(ms: hold_ms), start: BootStartCold, route: route))
+fn text_of(route: BootRoute) -> String {
+  boot_phase_timing_text(t: boot_phase_timing_of(hold: at(ms: hold_ms), start: BootStartCold, route: route))
 }
 
 // ADJACENCY: every ran span begins exactly where the previous ran span ended (the first at the hold),
 // measured with the instrument's own duration rather than by comparing counts by hand.
 fn gap_is_zero(a: ProcUptimeRead, b: ProcUptimeRead) -> Bool {
-  match mtcollins1_boot_phase_duration(from: a, to: b) {
+  match boot_phase_duration(from: a, to: b) {
     PhaseElapsed { elapsed: e } => millisecond_count(m: e) == 0
     PhaseClockUnread { detail: _ } => false
     PhaseClockSteppedBack { begin: _, end: _ } => false
   }
 }
 
-fn ran_bounds(spans: List<MtCollins1BootPhaseSpan>) -> List<List<ProcUptimeRead>> {
+fn ran_bounds(spans: List<BootPhaseSpan>) -> List<List<ProcUptimeRead>> {
   flat_map(spans, s => match s {
     PhaseRan { phase: _, result: _, begin: b, end: e } => [[b, e]]
     PhaseNotRan { phase: _, reason: _ } => []
@@ -125,10 +125,10 @@ fn adjacent_from(prev: ProcUptimeRead, bounds: List<List<ProcUptimeRead>>) -> Bo
 
 // COVERAGE: the ran spans' durations sum to the whole interval from the hold to the last ran phase's
 // end, so no time is outside a phase and none is counted twice.
-fn span_elapsed(s: MtCollins1BootPhaseSpan) -> List<Millisecond> {
+fn span_elapsed(s: BootPhaseSpan) -> List<Millisecond> {
   match s {
     PhaseRan { phase: _, result: _, begin: b, end: e } =>
-      match mtcollins1_boot_phase_duration(from: b, to: e) {
+      match boot_phase_duration(from: b, to: e) {
         PhaseElapsed { elapsed: x } => [x]
         PhaseClockUnread { detail: _ } => []
         PhaseClockSteppedBack { begin: _, end: _ } => []
@@ -148,13 +148,13 @@ fn last_end(prev: ProcUptimeRead, bounds: List<List<ProcUptimeRead>>) -> ProcUpt
   }
 }
 
-fn covers(route: MtCollins1BootRoute) -> Bool {
+fn covers(route: BootRoute) -> Bool {
   let hold = at(ms: hold_ms)
-  let spans = mtcollins1_boot_phase_spans(hold: hold, route: route)
+  let spans = boot_phase_spans(hold: hold, route: route)
   let total = time_measure_list_total(times: flat_map(spans, s => span_elapsed(s: s)))
   let bounds = ran_bounds(spans: spans)
   adjacent_from(prev: hold, bounds: bounds)
-    && (match mtcollins1_boot_phase_duration(from: hold, to: last_end(prev: hold, bounds: bounds)) {
+    && (match boot_phase_duration(from: hold, to: last_end(prev: hold, bounds: bounds)) {
       PhaseElapsed { elapsed: whole } => millisecond_count(m: whole) == millisecond_count(m: total)
       PhaseClockUnread { detail: _ } => false
       PhaseClockSteppedBack { begin: _, end: _ } => false
@@ -213,7 +213,7 @@ test fn a_refused_sol_acquire_holds_nothing_after_it() -> Bool {
 }
 
 test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
+  let t = boot_phase_timing_text(t: BootPhaseTiming {
     hold_acquired: at(ms: 5000),
     start: BootStartCold,
     spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(ms: 5000), end: at(ms: 4000) }],
@@ -222,7 +222,7 @@ test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> B
 }
 
 test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
+  let t = boot_phase_timing_text(t: BootPhaseTiming {
     hold_acquired: at(ms: 5000),
     start: BootStartCold,
     spans: [PhaseRan { phase: PhaseHandoff, result: PhaseVerified, begin: at(ms: 5000), end: UptimeRefused { detail: "fixture: /proc/uptime read failed" } }],
@@ -231,12 +231,12 @@ test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
 }
 
 test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool {
-  (match mtcollins1_boot_start_of(transition: PoweredOn) { BootStartCold => true  _ => false })
-    && (match mtcollins1_boot_start_of(transition: PowerCycled) { BootStartWarm => true  _ => false })
+  (match boot_start_of(transition: PoweredOn) { BootStartCold => true  _ => false })
+    && (match boot_start_of(transition: PowerCycled) { BootStartWarm => true  _ => false })
 }
 
 test fn an_attempt_that_never_held_says_so() -> Bool {
-  let t = mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_not_taken(reason: "the unit hold was refused"))
+  let t = boot_phase_timing_text(t: boot_phase_timing_not_taken(reason: "the unit hold was refused"))
   contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
 }
 
@@ -300,11 +300,11 @@ test fn an_smpro_pass_is_verified_only_when_a_register_answered() -> Bool {
   let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
   let timeout = smpro_probe_outcome(raw: smpro_raw(socket: 1, exit_code: 124, stdout: "", stderr: ""))
   let word = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 0, stdout: "09 02", stderr: ""))
-  let all_refused = mtcollins1_smpro_pass_result(outcomes: [nak, timeout])
+  let all_refused = boot_smpro_pass_result(outcomes: [nak, timeout])
   (match all_refused {
     PhaseRefused { cause: c } => contains(c, "no SMpro register returned a word (2 reads")
     PhaseVerified => false
   })
-    && (match mtcollins1_smpro_pass_result(outcomes: [nak, word, timeout]) { PhaseVerified => true  PhaseRefused { cause: _ } => false })
-    && (match mtcollins1_smpro_pass_result(outcomes: []) { PhaseRefused { cause: c } => contains(c, "(0 reads")  PhaseVerified => false })
+    && (match boot_smpro_pass_result(outcomes: [nak, word, timeout]) { PhaseVerified => true  PhaseRefused { cause: _ } => false })
+    && (match boot_smpro_pass_result(outcomes: []) { PhaseRefused { cause: c } => contains(c, "(0 reads")  PhaseVerified => false })
 }
