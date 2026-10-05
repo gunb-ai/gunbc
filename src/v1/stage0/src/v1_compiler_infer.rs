@@ -5806,6 +5806,7 @@ pub enum InhabitanceRefusalReason {
     RefusedDistinctProductConstructor,
     RefusedDistinctAppliedTypeArgument,
     RefusedOptionalAtRequired,
+    RefusedProductAtScalar,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -6159,13 +6160,13 @@ pub fn declared_type_inhabitance(
     reason: InhabitanceRefusalReason::RefusedCollectionAtEstablishedIdentity,
 })
                                             } else {
-                                                if record_at_scalar_needs_identity(
+                                                if product_at_scalar_declared_type(
                                                     declared.clone(),
                                                     produced.clone(),
                                                     scope.clone(),
                                                 ) {
-                                                    Rc::new(InhabitanceVerdict::InhabitanceUndecidable {
-    reason: InhabitanceUndecidableReason::UndecidableProducedIdentityErased,
+                                                    Rc::new(InhabitanceVerdict::InhabitanceRefused {
+    reason: InhabitanceRefusalReason::RefusedProductAtScalar,
 })
                                                 } else {
                                                     if coproduct_at_record_declared_type(
@@ -6433,16 +6434,42 @@ pub fn collection_versus_established_identity(
     }
 }
 
-pub fn record_at_scalar_needs_identity(
+pub fn product_at_scalar_declared_type(
     declared: Rc<Node>,
     produced: Rc<Node>,
     scope: Rc<InferScope>,
 ) -> bool {
-    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
-        expected_type_head_exposure(declared.clone(), scope.clone()),
-    ) && crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
+    (crate::v1_compiler_type_head_exposure::type_head_exposure_is_product(
         expected_type_head_exposure(produced.clone(), scope.clone()),
-    ))
+    ) && declared_head_is_kernel_scalar_through_refinement(declared.clone(), scope.clone()))
+}
+
+pub fn declared_head_is_kernel_scalar_through_refinement(
+    declared: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    if crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+        expected_type_head_exposure(declared.clone(), scope.clone()),
+    ) {
+        true
+    } else {
+        {
+            let resolved = match crate::v1_compiler_infer_env::lookup_type_for(
+                scope.type_env.clone(),
+                declared.clone(),
+            ) {
+                Some(r) => r,
+                std::option::Option::None => declared.clone(),
+            };
+            (is_where_refinement_type(resolved.clone())
+                && crate::v1_compiler_type_head_exposure::type_head_exposure_is_kernel_scalar(
+                    expected_type_head_exposure(
+                        peel_where_refinement_base(resolved.clone(), scope.type_env.clone()),
+                        scope.clone(),
+                    ),
+                ))
+        }
+    }
 }
 
 pub fn coproduct_at_record_declared_type(
@@ -32224,6 +32251,8 @@ pub struct RefusedDistinctProductConstructor;
 pub struct RefusedDistinctAppliedTypeArgument;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefusedOptionalAtRequired;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RefusedProductAtScalar;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RefinementWidensToDeclaredBase;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

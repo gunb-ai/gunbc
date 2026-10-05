@@ -4043,6 +4043,7 @@ type InhabitanceRefusalReason
   | RefusedDistinctProductConstructor
   | RefusedDistinctAppliedTypeArgument
   | RefusedOptionalAtRequired
+  | RefusedProductAtScalar
 
 
 type InhabitanceVerdict
@@ -4331,8 +4332,8 @@ fn declared_type_inhabitance(obligation: DeclaredTypeObligation, scope: InferSco
     Inhabits
   } else if collection_versus_established_identity(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedCollectionAtEstablishedIdentity }
-  } else if record_at_scalar_needs_identity(declared: declared, produced: produced, scope: scope) {
-    InhabitanceUndecidable { reason: UndecidableProducedIdentityErased }
+  } else if product_at_scalar_declared_type(declared: declared, produced: produced, scope: scope) {
+    InhabitanceRefused { reason: RefusedProductAtScalar }
   } else if coproduct_at_record_declared_type(declared: declared, produced: produced, scope: scope) {
     InhabitanceRefused { reason: RefusedKernelAtStructured }
   } else {
@@ -4545,9 +4546,37 @@ fn collection_versus_established_identity(declared: Node, produced: Node, scope:
   }
 }
 
-fn record_at_scalar_needs_identity(declared: Node, produced: Node, scope: InferScope) -> Bool {
-  type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope))
-    && type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
+// A PRODUCT NEVER INHABITS A KERNEL SCALAR, NOR A WHERE-REFINEMENT OF ONE
+// (gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted). Both heads are read
+// from expected_type_head_exposure, which is keyed on DECLARATION IDENTITY (declaring file plus
+// name, via the resolved declaration node) and never on a bare spelling, so the std.types FilePath
+// (a String refinement) / v2.extdeps.file_system FilePath (a record) homonym pair that made
+// gunbc#9706 decline this judgment is judged by declaration: each side's head is the exposure of
+// the declaration it resolved to. Before this, the arm answered UndecidableProducedIdentityErased
+// (an advisory) at a plain kernel formal, and at a refined formal such as std.types EpochMs it did
+// not fire at all, because a where-refinement exposes OpaqueTypeHead and the pair fell through to
+// Inhabits. The refined declared type is therefore judged through its base carrier: the modeled
+// where_refinement_chain names it, and an UNREFINED product cannot reach the base by any link.
+// A produced value that is itself a refinement exposes OpaqueTypeHead and is not judged here --
+// refinement_inhabitance and the produced-side peel own that pair.
+fn product_at_scalar_declared_type(declared: Node, produced: Node, scope: InferScope) -> Bool {
+  type_head_exposure_is_product(exposure: expected_type_head_exposure(formal: produced, scope: scope))
+    && declared_head_is_kernel_scalar_through_refinement(declared: declared, scope: scope)
+}
+
+fn declared_head_is_kernel_scalar_through_refinement(declared: Node, scope: InferScope) -> Bool {
+  if type_head_exposure_is_kernel_scalar(exposure: expected_type_head_exposure(formal: declared, scope: scope)) {
+    true
+  } else {
+    let resolved = match lookup_type_for(env: scope.type_env, node: declared) {
+      Present { value: r } => r
+      Absent => declared
+    }
+    is_where_refinement_type(ty: resolved)
+      && type_head_exposure_is_kernel_scalar(
+        exposure: expected_type_head_exposure(
+          formal: peel_where_refinement_base(ty: resolved, type_env: scope.type_env), scope: scope))
+  }
 }
 
 // Product-vs-coproduct is settled from exact type-head census identities. A second bare-name
