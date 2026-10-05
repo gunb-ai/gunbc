@@ -9876,7 +9876,14 @@ pub fn run_required_floor(
     // stale. Construction, not validation (DESIGN.md §5): all three rosters
     // are cross-referenced from their own source authorities on every required-floor run, so the
     // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    //
+    // STALE ROWS REFUSE FIRST, on this live route. A freeze row whose entry left the offline path
+    // policy, whose file is gone, or whose file no longer declares the frozen test is stale debt
+    // (`collect_stale_frozen_path_deferrals`). That refusal previously ran only on the deleted
+    // discovery-corpus path, so no required run executed it while the intersection scan below
+    // skipped such rows. It runs here so the scan never sees one.
     {
+        super::refuse_stale_frozen_path_deferrals(&super::collect_stale_frozen_path_deferrals())?;
         let freeze_content = std::fs::read_to_string(
             workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
         )
