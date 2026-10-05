@@ -20,7 +20,7 @@ import gunbc.spark.serving_arm {
   serving_topology_wire, serving_topology_rank_count, serving_topology_of_rank_count, serving_checkpoint_wire,
 }
 import gunbc.spark.serving_performance_subject {
-  AxisLaunchProfile,
+  AxisLaunchProfile, AxisDeploymentEnv,
   AxisIndexerKvDtype, AxisSchedulerAdmission, AxisWeightQuantization,
   ServingPerformanceSubject, serving_performance_subject, serving_subject_standing, standing_subject,
   ServingPerformanceSubjectStanding, SubjectEstablished, SubjectPartial,
@@ -353,7 +353,7 @@ test fn w_two_identical_subjects_are_a_repeat_and_not_a_cut() -> Bool {
 // than being maintained. Until then the roster is asserted non-degenerate so the fold cannot quietly
 // become an empty list that reads every pair of subjects as the same subject.
 test fn w_the_axis_roster_is_not_degenerate() -> Bool {
-  length(serving_subject_axes) == 16
+  length(serving_subject_axes) == 17
 }
 
 // ── THE TWO BOUND FLEET ROWS RESOLVE AS THEIR MODULES CLAIM ────────────────────────────────────
@@ -591,6 +591,12 @@ test fn w_a_different_indexer_kv_dtype_is_a_different_subject() -> Bool {
 // differ on the launch-profile axis.
 test fn w_a_different_launch_profile_is_a_different_subject() -> Bool {
   moving_one_axis_prevents_transfer(a: AxisLaunchProfile)
+}
+
+// THE DEPLOYMENT ENV IS PART OF THE IDENTITY (side-chat ruling on #13319, finding 3): two launches
+// differing only in an env assignment -- the NVFP4 autotune skip-ops -- differ on this axis.
+test fn w_a_different_deployment_env_is_a_different_subject() -> Bool {
+  moving_one_axis_prevents_transfer(a: AxisDeploymentEnv)
 }
 
 test fn w_a_different_scheduler_admission_is_a_different_subject() -> Bool {
