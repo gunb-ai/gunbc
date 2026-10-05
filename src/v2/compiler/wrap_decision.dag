@@ -17,7 +17,7 @@ import std.algebra { Empty }
 import v2.std.collection {
   Symbol
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

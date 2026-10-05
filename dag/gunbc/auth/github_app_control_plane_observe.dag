@@ -30,7 +30,7 @@ import gunbc.auth.github_apps {
   InstallationReadbackNotAttempted, InstallationReadbackFailed,
 }
 import gunbc.github_effect_perform { app_jwt_for, AppJwtSigned, AppJwtUnsigned }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THE PRODUCER OF gunbc.auth.github_apps GitHubAppControlPlaneState, for a process that HOLDS the
 // App's key. Custody, registration and installation grant are read with ONE JWT signed in-process

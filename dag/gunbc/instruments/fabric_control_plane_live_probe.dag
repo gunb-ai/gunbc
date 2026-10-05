@@ -129,7 +129,7 @@ import gunbc.fabric_witness_run {
   required_witnesses_build_work, verify_git_commit_tree,
 }
 import extdeps.git.object_store { git_sha1_object_id }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.ownership { Owned, Ensured }
 import tools.fabric_ci_evidence {
   FabricCiEvidenceDecode, FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable,

@@ -31,7 +31,7 @@ import gunbc.diff_baseline {
 import std.types { String, NonEmptyStr, GitRef, FilePath, Map }
 import std.logic { Bool }
 import v2.std.collection { empty_map, map_insert, map_lookup }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.workflow.floor_naming_hygiene { floor_discovery_scan_test_decl_names }
 import extdeps.git
 import extdeps.git.inspect

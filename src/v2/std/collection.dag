@@ -14,7 +14,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.node { Symbol }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

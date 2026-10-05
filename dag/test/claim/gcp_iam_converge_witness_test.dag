@@ -4,7 +4,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, List, NonEmptyStr, String, Timestamp }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import std.content_hash { Sha256Digest }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.cloud.gcp.iam { GcpPolicy, GcpBinding, GcpIamBindingCell }
 import gunbc.auth.approval_decision_store { request_revision_of }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified, heal_publisher_dedicated_federation, impersonation_cell }

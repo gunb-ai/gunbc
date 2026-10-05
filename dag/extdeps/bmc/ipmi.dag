@@ -3,7 +3,7 @@ module extdeps.bmc.ipmi
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, Int, NonEmptyStr, Unit }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.algebra { filter }
 import std.resources { Network }

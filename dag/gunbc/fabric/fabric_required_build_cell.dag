@@ -27,7 +27,7 @@ import gunbc.fabric_cell_converge {
   FabricCellMember, FabricCellRootAddress, FabricCellAttemptRootAddress, FabricCellResourceBoundaryAddress,
   fabric_cell_id_for_slot, fabric_cell_member_key, fabric_cell_member_ownership, fabric_cell_resource_address_equal,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.posix.identity { PosixOwnerSpec }
 
 // Mode is intentionally a separate coordinate from owner/group. FCI-1 has a production owner/group

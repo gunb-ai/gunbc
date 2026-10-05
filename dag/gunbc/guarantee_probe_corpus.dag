@@ -25,7 +25,7 @@ import gunbc.guarantee_measurement {
   join_receipt_to_path, ReceiptJoined, ReceiptPathUnknown, ReceiptPathDuplicate,
   MeasurementAnchor,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.diagnostic { Diagnostics, None, Some, NonEmptyDiagnostics }
 import v2.std.algebra { fold_list }
 import v2.std.node { Symbol, Node, content_hash }

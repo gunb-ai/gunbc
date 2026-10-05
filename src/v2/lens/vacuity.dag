@@ -28,7 +28,7 @@ import std.algebra { list_append }
 import v2.std.collection { list_at_optional }
 import v2.std.compilers.sugar { sugar_sequence_pair_optional }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.optional { Absent, optional_absent, optional_present, Present }
+import std.optional { Absent, optional_absent, optional_present, Present }
 import v2.std.exact_structural_equality_zip_fold_predicate {
   exact_structural_equality_zip_fold
 }

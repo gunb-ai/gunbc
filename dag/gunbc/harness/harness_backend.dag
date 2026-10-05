@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.checked_arithmetic { CheckedNatReady, CheckedNatOverflow, checked_int_magnitude }
 import std.algebra { trim }
 import v2.std.algebra { filter }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.demand { ObservationReceiptRef }
 import std.measure { Second, second, second_count }
 import gunbc.serving.engine_progress { EngineProgressSample }

@@ -16,7 +16,7 @@ import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.diagnostic { Accepted, NodeLocus, Rejected, diagnostics_fatal_reason }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent }
+import std.optional { Absent, Optional, Present, optional_absent }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

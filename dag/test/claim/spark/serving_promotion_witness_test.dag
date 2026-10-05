@@ -4,7 +4,7 @@ import std.types { Bool, List, String, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count, byte_size, allocator_block_count, second }
 import std.content_hash { ContentHash, content_hash_of_value }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { length }
 import extdeps.nvidia.nccl { NcclTransportIbVerbs }
 import extdeps.vllm.engine_args { KvFp8, SpeculativeDecodingOff, IndexerKvDtypeOmitted, vllm_scheduler_admission_omitted }

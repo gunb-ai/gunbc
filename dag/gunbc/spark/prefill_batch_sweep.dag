@@ -2,7 +2,7 @@ module gunbc.spark.prefill_batch_sweep
 
 import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat, nat_min, nat_ceil_div }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { TokenCount, token_count, token_count_value }
 import extdeps.vllm.batch_defaults { UpstreamBatchDefaultResolution, spark_gb10_batch_default_resolution }
 import extdeps.vllm.engine_args { VllmKvCacheDtypeRequest, VllmSpeculativePolicy, SpeculativeDecodingOff }

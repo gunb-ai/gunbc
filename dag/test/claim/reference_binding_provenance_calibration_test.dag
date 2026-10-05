@@ -52,7 +52,7 @@ import gunbc.tools.reference_binding_provenance_calibration {
   resolution_for_arm,
   observation_for,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.reference_binding_observation {
   RepeatedMentionDependencyObservation,
   SameFileNeighbourProductionRefused,

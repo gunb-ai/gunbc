@@ -37,7 +37,7 @@ import v2.std.collection {
 import v2.std.qualified_name {
   qualified_name_snoc,
   qualified_name_to_dotted_string, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

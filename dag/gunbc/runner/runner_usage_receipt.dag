@@ -1,7 +1,7 @@
 module gunbc.runner.runner_usage_receipt
 
 import std.types { Bool, NonEmptyStr, String, List }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.algebra { FieldOfFractions }
 import std.measure {

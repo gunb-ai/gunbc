@@ -68,7 +68,7 @@ import v2.compiler.native_test_vocabulary {
   NativeTestStageEval,
   NativeTestFileRefusal
 }
-import v2.std.optional { Absent, Optional, Present, optional_present, optional_absent }
+import std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }

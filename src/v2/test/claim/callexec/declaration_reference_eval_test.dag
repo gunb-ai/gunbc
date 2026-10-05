@@ -42,7 +42,7 @@ import v2.std.node {
   fold_node
 }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import std.types { List }
 import v2.std.collection { list_at_optional }
 import v2.std.integer { Int, integer_signed_i32_le_bytes_to_int }

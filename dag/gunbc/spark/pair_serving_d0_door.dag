@@ -9,7 +9,7 @@ import std.types { String, Bool, Int, NonEmptyStr, List, Timestamp, EpochSecs, G
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.measure { Second, second, second_count, Minute, minute }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.scoped_authorization { AuthorizationRequest, ScopedAuthorization }
 import gunbc.auth.approval_gate {

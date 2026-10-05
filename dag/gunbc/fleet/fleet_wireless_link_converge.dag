@@ -2,7 +2,7 @@ module gunbc.fleet_wireless_link_converge
 
 import std.types { String, Bool, NonEmptyStr, Secret }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {

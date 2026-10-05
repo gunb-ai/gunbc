@@ -39,7 +39,7 @@ import v2.std.diagnostic {
 import v2.compiler.normalize { normalize }
 import v2.std.language_model { LanguageModel }
 import v2.std.node { Atom, Authored, StructuralLabel, Node, Positional, Symbol, TypeNode, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
 import v2.std.text { String }
 import v2.std.integer { Int, integer_int_to_decimal_string }

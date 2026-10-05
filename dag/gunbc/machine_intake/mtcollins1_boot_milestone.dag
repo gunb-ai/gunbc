@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { HardwareThreadCount, gibibyte, hardware_thread_count, hardware_thread_count_value }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_nproc }
 import gunbc.machine_intake_host_capture_envelope { HostCaptureStage, HostCaptureWorkloadShape, host_capture_census_stages }
 

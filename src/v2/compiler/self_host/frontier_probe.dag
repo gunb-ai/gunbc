@@ -107,7 +107,7 @@ import v2.std.diagnostic {
   invariant_port_locus
 }
 import v2.std.qualified_name { QualifiedName }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 
 data frontier_probe_closure_duplicate_ref_reason: Symbol = ^frontier_probe_closure_duplicate_ref

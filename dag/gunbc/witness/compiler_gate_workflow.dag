@@ -70,7 +70,7 @@ module gunbc.compiler_gate_workflow
 
 import std.measure { Minute, minute, minute_count }
 import std.types { Bool, Int, List, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { list_map, filter, length }
 import std.algebra { list_append }
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv }

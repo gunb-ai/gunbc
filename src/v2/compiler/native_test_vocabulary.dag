@@ -16,7 +16,7 @@ import v2.std.lens_verdict { lens_verdict_diagnostics_located_chain_text }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 import v2.std.integer { Int }
 import v2.std.source_position { SourceByteColumn }
 import v2.std.collection { List }

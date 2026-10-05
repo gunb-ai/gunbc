@@ -2,7 +2,7 @@ module product.capacity.event_json
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonKeyValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,

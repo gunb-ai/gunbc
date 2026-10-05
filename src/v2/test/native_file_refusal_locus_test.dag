@@ -11,7 +11,7 @@ import v2.std.diagnostic {
 import std.algebra { Cons, Empty }
 import v2.std.integer { Int }
 import v2.std.provenance { span_index_empty }
-import v2.std.optional { optional_absent }
+import std.optional { optional_absent }
 import v2.std.node { Symbol }
 
 fn at_text(file: Symbol, start: Int) -> Diagnostic {

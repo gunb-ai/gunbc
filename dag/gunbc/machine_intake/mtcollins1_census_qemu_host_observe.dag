@@ -3,7 +3,7 @@ module gunbc.machine_intake_mtcollins1_census_qemu_host_observe
 import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
 import extdeps.tools.mkdir { mkdir_parents_command }

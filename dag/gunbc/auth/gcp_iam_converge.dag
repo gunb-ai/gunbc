@@ -6,7 +6,7 @@ import std.content_hash { Sha256Digest, sha256_hex_digest, as_content_hash_crypt
 import std.bytes { bytes_octets, utf8_encode_bytes }
 import std.effect_grant { Write, NamespacePosition, ServiceOpTree }
 import std.scoped_authorization { AttemptIdentity, AuthorizationScope, AuthorizedAction, AuthorizationRequest }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, wif_pool_resource }
 import extdeps.cloud.gcp.iam {

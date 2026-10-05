@@ -6,7 +6,7 @@ import extdeps.posix.test_utility { test_exists_command }
 import std.measure { ByteSize, byte_size }
 import std.algebra { Cons, Empty, list_append, trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.orchestration { EnvBinding, EnvSet }
 import extdeps.exec.command { ArgvCommand, env_prefixed_command_in, env_cleared_command_in }
 import extdeps.filesystem.filesystem_io { Filesystem }

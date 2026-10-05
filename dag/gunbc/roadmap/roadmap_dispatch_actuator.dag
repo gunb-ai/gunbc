@@ -2,7 +2,7 @@ module gunbc.roadmap_dispatch_actuator
 
 import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.content_hash { content_hash_atom }
 import std.upsert_decision {
   ObservationVerdict,

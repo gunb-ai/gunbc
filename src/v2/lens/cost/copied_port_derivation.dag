@@ -10,7 +10,7 @@ import v2.lens.cost {
   UnknownCost,
   symbolic_cost_of_node
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

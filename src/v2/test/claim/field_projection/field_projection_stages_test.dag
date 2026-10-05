@@ -42,7 +42,7 @@ import v2.std.integer { Int, integer_int_to_signed_i32_le_bytes, integer_signed_
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.witness { Holds, Violates }
 import v2.std.node { NodeFold, fold_node }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 
 // WHERE A FIELD PROJECTION STOPS TODAY, measured stage by stage rather than asserted. The normalized
 // shape exists and is documented as a declared frontier: v2.std.node_query field_projection_node

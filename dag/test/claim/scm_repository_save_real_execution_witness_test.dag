@@ -1,7 +1,7 @@
 module test.claim.scm_repository_save_real_execution_witness
 
 import std.types { Bool, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.json.emit { serialize_json }

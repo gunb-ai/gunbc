@@ -18,7 +18,7 @@ import v2.std.node {
   EdgeLabel,
   StructuralLabel,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_from_node,

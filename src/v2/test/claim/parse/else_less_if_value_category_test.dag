@@ -12,7 +12,7 @@ import v2.extdeps.languages.dag { dag_lex, parse_production_emitted_identity_opt
 import v2.std.diagnostic { Accepted, DeclarationLocus, InvariantPortLocus, Locus, NodeLocus, Rejected, SourcePortLocus, Textual, diagnostics_fatal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

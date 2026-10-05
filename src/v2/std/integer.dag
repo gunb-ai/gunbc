@@ -8,7 +8,7 @@ import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length
 import v2.std.collection {
   list_at_optional
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

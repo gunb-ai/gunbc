@@ -6,7 +6,7 @@ import v2.workflow.wet_evidence {
   WetEvidenceBinding, CoResidentPreparedSubject,
 }
 
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
   HermeticRouteGapWetEvidence, HermeticRouteGapWetUnavailable, HermeticRouteGapWetAdmitted,

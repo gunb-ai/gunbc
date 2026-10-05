@@ -25,7 +25,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.integer { Int }
 import v2.std.node { Authored, Edge, Node, Positional, StructuralLabel, Symbol, is_empty_conj_root, symbol_lexeme }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import std.algebra { list_snoc_item }
 import std.types { List }

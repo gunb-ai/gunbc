@@ -3,7 +3,7 @@ module gunbc.instrument_dispatch_workflow
 import std.types { Bool, Int, List, String }
 import std.algebra { list_append }
 import v2.std.algebra { list_map, filter, length }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.std.node { Node }
 import extdeps.bazel.label { Label, render_label }

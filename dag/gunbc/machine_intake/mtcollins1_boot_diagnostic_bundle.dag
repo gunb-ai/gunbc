@@ -11,7 +11,7 @@ import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootPhaseTiming, mtcollins1_boot_phase_timing_not_taken, mtcollins1_boot_phase_timing_text }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, chassis_observation, chassis_observation_text }

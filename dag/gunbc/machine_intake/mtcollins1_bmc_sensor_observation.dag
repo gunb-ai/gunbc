@@ -3,7 +3,7 @@ module gunbc.machine_intake_mtcollins1_bmc_sensor_observation
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly, SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrLineUnstructured, SdrTypeLine }
 
 // WHAT mtcollins1's BMC SENSOR TABLE SAYS ABOUT EACH SOCKET, from one `sdr elist` read

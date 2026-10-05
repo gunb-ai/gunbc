@@ -3,7 +3,7 @@ module gunbc.spark.native_serving_apply
 import std.types { String, Bool, List, NonEmptyStr, Secret, FilePath, Port }
 import std.algebra { trim }
 import v2.std.algebra { zip_map, list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import product.host_identity { HostIdentity }
 import extdeps.filesystem.filesystem_io { Filesystem }

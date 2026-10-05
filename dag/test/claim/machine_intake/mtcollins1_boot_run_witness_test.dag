@@ -9,7 +9,7 @@ import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_stale_power_off
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { byte_size_count, second_count, minute_count, hardware_thread_count, hardware_thread_count_value, millisecond, second }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.machine_intake_oob_boot_handoff { oob_power_readback_allowance }
 import gunbc.machine_intake_mtcollins1_boot_run {
   ActuationNotPoweredOn, ActuationPoweredOn, ActuationCensusEnded, mtcollins1_boot_run_record,
