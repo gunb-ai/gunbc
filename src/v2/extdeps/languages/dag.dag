@@ -653,11 +653,12 @@ fn dag_string_hole_start_pattern() -> LexPattern {
   }
 }
 
+// The opener is the brace alone; the start character after it is a positive lookahead, spelled as
+// the double negative predicate (`&e` = `!!e`, Ford 2004), because it is the hole expression's first
+// token and the opener does not consume it.
 fn dag_string_hole_opener_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 123 },
-    // Positive lookahead, spelled as the double negative predicate (`&e` = `!!e`, Ford 2004): the
-    // start character is the hole expression's first token, so the opener does not consume it.
     right: NotFollowedByPattern { element: NotFollowedByPattern { element: dag_string_hole_start_pattern() } }
   }
 }
@@ -678,6 +679,18 @@ fn dag_string_body_element_pattern() -> LexPattern {
         left: CharPattern { char: 10 },
         right: CharClassPattern { class: StringTextChar }
       }
+    }
+  }
+}
+
+// A plain literal: quote, body elements (none of which is a hole opener), quote.
+fn dag_string_literal_lex_rule() -> LexRule {
+  TokenRule {
+    token_class: ^dag_token_string_literal,
+    pattern: DelimitedPattern {
+      open: CharPattern { char: 34 },
+      body: RepeatPattern { element: dag_string_body_element_pattern() },
+      close: CharPattern { char: 34 }
     }
   }
 }
