@@ -209,14 +209,15 @@ fn systemd_run_transient_wait_read(
 }
 
 // Token comparison over words: exact and order-sensitive, and REFUSING any word that carries the
+// Token comparison over words: exact and order-sensitive, and REFUSING any word that carries the
 // token separator -- the comparison is injective only while no word contains it, and a word that
-// does must refuse rather than compare (the split-words control pins that).
+// does must refuse rather than compare (the split-words control pins that). Length first: two
+// lists that join to the same text with different cardinalities are NOT the same argv, and the
+// join alone would hide it whenever a word carries an embedded separator.
 fn argv_exact_token_equal(left: List<String>, right: List<String>) -> Bool {
   if any(left, w => string_contains(s: w, pattern: "\n")) || any(right, w => string_contains(s: w, pattern: "\n")) {
     false
   } else {
-    // Length first: two lists that join to the same text with different cardinalities are NOT the
-    // same argv, and the join alone would hide it whenever a word carries an embedded separator.
     (length(xs: left) == length(xs: right)) && (join(left, separator: "\n") == join(right, separator: "\n"))
   }
 }
