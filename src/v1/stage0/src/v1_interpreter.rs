@@ -2381,6 +2381,7 @@ impl CrossClaimSiteSet {
 /// under it.
 pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow_mut().clear());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
@@ -2999,6 +3000,8 @@ fn store_cross_claim_pure_memo(
         // The portable form has done its two jobs by here — it proved total portability and it
         // measured the entry — and nothing downstream needs it again.
         let served = value_from_portable_ctx(ctx, &portable);
+        // Its content hash, once, for every fresh context that will key a call on it.
+        carry_cross_claim_served_hash(ctx, &served);
         // The served value's root is registered under its digest, so a later call that passes
         // this value as an argument is verified without walking it; and each composite argument
         // of THIS entry carries its digest for the same comparison from the other side.
@@ -4248,6 +4251,88 @@ mod cross_claim_memo_tests {
             "a different argument is not served another call's value"
         );
         super::clear_cross_claim_pure_memos();
+    }
+
+    // A FRESH CONTEXT KEYS A SERVED VALUE WITHOUT RE-HASHING IT. Producer A's value (a list of
+    // lists) is published; a fresh context then keys a call on the served value AND on one list
+    // INSIDE it (the `prepared_exprs` shape: a field of a served grammar). Neither walk lands in
+    // the fresh context's own memo, because both hashes are read from the run-scoped served memo,
+    // and each key equals the one a cold walk computes with that memo emptied. The control is an
+    // EQUAL value that is not the served instance: it is walked in the context (its memo grows)
+    // and keys the same, so the carried hash changes cost only, never the key.
+    #[test]
+    fn a_fresh_context_keys_a_served_value_and_its_parts_without_rehashing() {
+        use super::{
+            cross_claim_served_hash_count, eval_recompute_key,
+            install_cross_claim_pure_share_roster, list_value, store_cross_claim_pure_memo,
+            try_cross_claim_pure_memo, CrossClaimStoreOutcome, CROSS_CLAIM_SERVED_HASH_MEMO,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, consumer) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone()]);
+        let built = || {
+            list_value(vec![
+                list_value(vec![Value::Int(1), Value::Int(2)]),
+                list_value(vec![Value::Int(3), Value::Int(4)]),
+            ])
+        };
+        let publisher = fresh_ctx();
+        assert_eq!(
+            store_cross_claim_pure_memo(&publisher, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        assert_eq!(
+            cross_claim_served_hash_count(),
+            3,
+            "the root and both inner lists"
+        );
+        let claim = fresh_ctx();
+        let served = try_cross_claim_pure_memo(&claim, &a, "tm_a", &[]).expect("A is served");
+        let Value::List(items) = &served else {
+            panic!("A serves a list")
+        };
+        let part = items[1].clone();
+        let key_of = |ctx: &InterpContext, v: &Value| {
+            eval_recompute_key(ctx, &consumer, &[(Some("x".to_string()), v.clone())])
+                .expect("a list of ints is keyable")
+        };
+        let warm_whole = key_of(&claim, &served);
+        let warm_part = key_of(&claim, &part);
+        assert_eq!(
+            claim.eval_recompute_hash_memo.borrow().len(),
+            0,
+            "a served value and its parts are keyed from the carried hashes, with no walk"
+        );
+        let carried = CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| std::mem::take(&mut *m.borrow_mut()));
+        let cold = fresh_ctx();
+        assert!(
+            key_of(&cold, &served) == warm_whole,
+            "the carried hash is the walked hash"
+        );
+        assert!(
+            key_of(&cold, &part) == warm_part,
+            "and so is an inner part's"
+        );
+        CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| *m.borrow_mut() = carried);
+        let other = fresh_ctx();
+        assert!(key_of(&other, &built()) == warm_whole);
+        assert!(
+            other.eval_recompute_hash_memo.borrow().len() > 0,
+            "an equal value that is not the served instance is walked in its own context"
+        );
+        super::clear_cross_claim_pure_memos();
+        assert_eq!(cross_claim_served_hash_count(), 0, "cleared with the tier");
     }
 
     // A DIGEST IS NOT AN IDENTITY. `portable_value_digest` is a 64-bit FNV hash, so two distinct
@@ -11316,6 +11401,60 @@ enum EvalRecomputeStep {
     Bail,
 }
 
+thread_local! {
+    /// THE CONTENT HASHES OF EVERY VALUE THE CROSS-CLAIM TIER SERVES, computed once, at
+    /// publication, over the served instance and each composite inside it. A served value is
+    /// handed to every claim by `Rc` clone, but each claim runs in a FRESH `InterpContext`, whose
+    /// own memo is empty, so the first call in each claim that took a served value (or any part of
+    /// it, such as a prepared grammar's `prepared_exprs`) as an argument re-hashed the whole thing
+    /// natively: a per-claim cost proportional to the served value's size, outside the step budget.
+    /// The hash is a fact about the instance, not the context: it reads only content and
+    /// process-canonical symbol spellings. So it is computed once and carried with the tier.
+    ///
+    /// THE JOIN IS INSTANCE IDENTITY, NEVER A DIGEST. An entry is consulted by `Rc` pointer and
+    /// used only while its allocation is alive, and the tier retains every served value for its
+    /// lifetime, so the pointer cannot be reused while the entry stands: the hash read is exactly
+    /// the one a fresh walk of that instance would compute. Serving a memoized call still verifies
+    /// its arguments, so this memo decides only the cost of a key, never what a key admits.
+    /// Cleared with the tier (`clear_cross_claim_pure_memos`).
+    static CROSS_CLAIM_SERVED_HASH_MEMO: RefCell<EvalRecomputeHashMemo> =
+        RefCell::new(EvalRecomputeHashMemo::default());
+}
+
+/// A composite's memoized content hash: the context's own memo first, then the hashes carried
+/// for tier-served instances. Both are joined by the live allocation the pointer names. While the
+/// served memo is itself being filled (`memo` IS that memo, mutably borrowed), the second read is
+/// skipped.
+fn eval_recompute_memo_get(memo: &EvalRecomputeHashMemo, ptr: usize) -> Option<u64> {
+    if let Some((w, h)) = memo.get(&ptr) {
+        if w.alive() {
+            return Some(*h);
+        }
+    }
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|served| {
+        let served = served.try_borrow().ok()?;
+        match served.get(&ptr) {
+            Some((w, h)) if w.alive() => Some(*h),
+            _ => None,
+        }
+    })
+}
+
+/// Hash a value the tier is about to serve, once, into the served-instance memo. A value carrying
+/// a closure has no content hash and is simply not carried; every later key derivation then
+/// refuses it exactly as before.
+fn carry_cross_claim_served_hash(ctx: &InterpContext, served: &Value) {
+    let interner = ctx.symbols.borrow();
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|memo| {
+        let _ = eval_recompute_value_hash(&mut memo.borrow_mut(), &interner, served);
+    });
+}
+
+/// Composite hashes carried for tier-served instances (the served-instance memo's population).
+pub fn cross_claim_served_hash_count() -> usize {
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow().len())
+}
+
 fn eval_recompute_value_hash(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -11346,8 +11485,8 @@ fn eval_recompute_value_hash(
                 Value::Closure { .. } => EvalRecomputeStep::Bail,
                 Value::Set(s) => {
                     let ptr = Rc::as_ptr(s) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut h: u64 = 0xA5A5_00A0;
                             for item in s.iter() {
@@ -11360,8 +11499,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::List(xs) => {
                     let ptr = Rc::as_ptr(xs) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::List { rc: xs.clone() },
@@ -11375,10 +11514,10 @@ fn eval_recompute_value_hash(
                 Value::Record { type_name, fields } => {
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(0xA5A5_0070, type_sym_hash),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -11408,13 +11547,13 @@ fn eval_recompute_value_hash(
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
                     let variant_sym_hash = eval_recompute_str_hash(interner.resolve(*variant_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
                                 eval_recompute_mix(0xA5A5_0080, type_sym_hash),
                                 variant_sym_hash,
                             ),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -11438,8 +11577,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::Map(m) => {
                     let ptr = Rc::as_ptr(m) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut key_hashes = Vec::with_capacity(m.len());
                             let mut values = Vec::with_capacity(m.len());
@@ -11523,9 +11662,8 @@ fn eval_recompute_extend_push_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
@@ -11567,9 +11705,8 @@ fn eval_recompute_extend_insert_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let key_h = eval_recompute_canon_key_hash(key);
