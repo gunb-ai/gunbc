@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import std.types { Int, NonEmptyStr, Secret }
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

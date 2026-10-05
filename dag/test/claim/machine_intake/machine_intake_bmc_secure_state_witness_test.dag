@@ -39,7 +39,8 @@ import gunbc.machine_intake_subject {
   UnitKey,
   qualification_subject_of,
 }
-import gunbc.machine_intake_phase { DevelopmentAndTest, intake_qualification_policy }
+import gunbc.deployment_risk { ProdRisk, TestRisk }
+import gunbc.machine_intake_phase { machine_qualification_policy }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import std.scoped_authorization { AttemptIdentity }
 import extdeps.crypto.mac { MacKeyId }
@@ -85,6 +86,7 @@ import gunbc.machine_intake_bmc_secure {
   AccountStateForOtherManagedReference,
   AccountReadingPrecedesReadFloor,
   AccountStateConjunctionRefused,
+  PublishedCredentialRetainedNotAdmittedByProdRiskPolicy,
   ChannelAccessWrite,
   PublishedFactoryCredentialRestore,
   BmcAccountPlanOutcome,
@@ -248,7 +250,7 @@ fn goal_break_glass_ref() -> ManagedCredentialReference {
 }
 
 fn goal_v1() -> BmcSecureGoal {
-  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), published_break_glass: goal_break_glass_ref(), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), published_break_glass: goal_break_glass_ref(), policy: machine_qualification_policy(admits: TestRisk) }
 }
 
 // ── the observer clock of these claims ──────────────────────────────────────────────────────────
@@ -725,7 +727,7 @@ test fn the_post_read_is_independent_of_the_reading_that_diverged() -> Bool {
 test fn the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading() -> Bool {
   let reading = read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
   let foreign = read(w: world_factory_open(), subject: other_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, closed: true, at: t_read)
-  let stale_goal = BmcSecureGoal { managed: managed_ref(version: "2", epoch: 2), published_break_glass: goal_break_glass_ref(), policy: intake_qualification_policy(environment: DevelopmentAndTest) }
+  let stale_goal = BmcSecureGoal { managed: managed_ref(version: "2", epoch: 2), published_break_glass: goal_break_glass_ref(), policy: machine_qualification_policy(admits: TestRisk) }
   plan_label(o: plan_with(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: break_glass_generation(), planned_at: t_plan)) == "generation-another-account"
     && plan_label(o: plan_with(reading: read(w: world_factory_open(), subject: lab_subject(), managed: managed_ref(version: "2", epoch: 2), managed_password: managed_password_v1, closed: true, at: t_read), goal: stale_goal, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), planned_at: t_plan)) == "generation-not-advanced"
     && plan_label(o: plan_default(reading: foreign)) == "unobserved"
@@ -816,6 +818,48 @@ test fn a_retained_credential_must_be_the_goal_bound_generation() -> Bool {
   assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: goal_break_glass_ref().secret } })) == "satisfied/noop"
     && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: SecretRef { project: "gunbai-secrets", secret: "bmc-lab-o1b-other", version: "4", hash_state: HashPending } } })) == "retention-not-goal-bound/refuse"
     && assessment_on(reading: secured_read(census_value: closed, account: PublishedAccountRetainedByPolicy { retention: PublishedFactoryCredential })) == "needs:factory-credential-restore/refuse"
+}
+
+// The same retention decision on the goal path, one control per arm. The goal binds a break-glass
+// generation, so the goal-bound retained account satisfies a TestRisk-admitting goal (above) and the
+// SAME reading refuses a ProdRisk-admitting goal by the policy cause, not by the generation; a retired
+// published account satisfies the ProdRisk-admitting goal.
+fn goal_admitting_prod_risk() -> BmcSecureGoal {
+  BmcSecureGoal { managed: managed_ref(version: "1", epoch: 1), published_break_glass: goal_break_glass_ref(), policy: machine_qualification_policy(admits: ProdRisk) }
+}
+
+fn prod_risk_goal_refuses_retention(reading: BmcAccountStateObservation) -> Bool {
+  match inspect_bmc_secure_state(subject: lab_subject(), goal: goal_admitting_prod_risk(), reading: reading) {
+    BmcSecureStateUnobserved { cause: _ } => false
+    BmcSecureStateInspected { observed: _, assessment: a, decision: d } =>
+      match a {
+        GoalAssessmentRefused { cause: c } =>
+          match c {
+            AccountStateConjunctionRefused { cause: inner } => inner == PublishedCredentialRetainedNotAdmittedByProdRiskPolicy && decision_label(d: d) == "refuse"
+            _ => false
+          }
+        _ => false
+      }
+  }
+}
+
+fn prod_risk_goal_is_satisfied(reading: BmcAccountStateObservation) -> Bool {
+  match inspect_bmc_secure_state(subject: lab_subject(), goal: goal_admitting_prod_risk(), reading: reading) {
+    BmcSecureStateUnobserved { cause: _ } => false
+    BmcSecureStateInspected { observed: _, assessment: a, decision: d } =>
+      match a {
+        GoalSatisfied { evidence: _ } => decision_label(d: d) == "noop"
+        _ => false
+      }
+  }
+}
+
+test fn a_goal_bound_retention_refuses_a_prod_risk_admitting_goal_and_a_closed_account_satisfies_it() -> Bool {
+  let closed = census_with(serial_privilege_open: false, unaddressed_lan_open: false)
+  let retained = PublishedAccountRetainedByPolicy { retention: BreakGlassAccount { secret: goal_break_glass_ref().secret } }
+  assessment_on(reading: secured_read(census_value: closed, account: retained)) == "satisfied/noop"
+    && prod_risk_goal_refuses_retention(reading: secured_read(census_value: closed, account: retained))
+    && prod_risk_goal_is_satisfied(reading: secured_read(census_value: closed, account: PublishedAccountRetired))
 }
 
 // ── the published replacement is observed, not only planned (side-chat review of 86b27f3) ─────────

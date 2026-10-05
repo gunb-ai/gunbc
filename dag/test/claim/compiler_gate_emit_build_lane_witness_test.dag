@@ -32,6 +32,8 @@ import gunbc.emitted_subject_build_gate {
 }
 import extdeps.exec.command { shell_command_render }
 import v2.std.algebra { length, filter }
+import extdeps.filesystem.filesystem_io
+import gunbc.instrument_targets { self_host_entry, v2_native_cli_entry }
 
 // WHAT THIS FILE DISCRIMINATES. Three facts, and each has a red that is authorable HERE rather
 // than only by a future edit to the workflow: the aggregate-enrollment predicate refuses a lane
@@ -128,13 +130,13 @@ test fn the_emit_build_lane_is_a_job_and_is_rostered() -> Bool {
     )
 }
 
-// AND IT DOES NOT BLOCK YET. The E0573 standing is retired, but a blocking lane may not run hosted
-// (operator ruling 2026-09-28) and the fleet claim awaits operator sign-off, so the row stays
-// announced. Reads the LIVE roster and aggregate, so a flip that forgets the fleet move is seen here
-// as well as by compiler_gate_merge_path_runs_on_the_fleet.
-test fn the_emit_build_lane_is_announced_and_not_read_by_the_gate() -> Bool {
-  (any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id) == false)
-    && (any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id) == false)
+// AND IT BLOCKS. The E0573 standing is retired and the operator signed off the fleet claim on
+// 2026-10-02, so the row is LaneBlocks. Reads the LIVE roster and aggregate, so a revert of the
+// row, or a flip that forgets the fleet move (refused by compiler_gate_merge_path_runs_on_the_fleet),
+// is seen here.
+test fn the_emit_build_lane_blocks_and_is_read_by_the_gate() -> Bool {
+  any(compiler_gate_blocking_job_ids(), id => id == compiler_gate_emit_build_job_id)
+    && any(compiler_gate_aggregate_job().needs, n => n == compiler_gate_emit_build_job_id)
 }
 
 // THE ESTABLISHED LANES STILL BLOCK, NAMED RATHER THAN COUNTED. Without this, the claim above would
@@ -144,10 +146,10 @@ test fn the_emit_build_lane_is_announced_and_not_read_by_the_gate() -> Bool {
 // have let a swapped lane through. The generated-artifact lane joined the set by the 2026-09-27
 // ruling that moved it beside the floor; the hosted compiler and clippy lanes left it by the
 // 2026-09-28 ruling that put the merge path on the fleet (the seed build is the fleet prelude's, and
-// the lint is a step on `generated`).
+// the lint is a step on `generated`); emit-build joined it on the 2026-10-02 sign-off.
 test fn the_established_lanes_still_block() -> Bool {
   let blocking = compiler_gate_blocking_job_ids()
-  let established = [compiler_gate_floor_job_id, compiler_gate_generated_job_id]
+  let established = [compiler_gate_emit_build_job_id, compiler_gate_floor_job_id, compiler_gate_generated_job_id]
   all(established, id => any(blocking, b => b == id))
     && all(blocking, b => any(established, id => id == b))
     && all(blocking, id => any(compiler_gate_aggregate_job().needs, n => n == id))
@@ -185,15 +187,15 @@ test fn each_subject_is_invoked_through_gunbc_test() -> Bool {
   )
 }
 
-// ONE STEP PER SUBJECT ON TOP OF THE SHARED PRELUDE, and the prelude is the compiler lane's five
-// steps. A lane that grew a subject without growing a step would run one compilation and report on
+// ONE STEP PER SUBJECT ON TOP OF THE SHARED PRELUDE, and the prelude is the fleet prelude's six
+// steps (checkout, home isolation, toolchain, pin, build, isolated-homes guard). A lane that grew a subject without growing a step would run one compilation and report on
 // two.
-// FIVE PRELUDE STEPS, ONE PER SUBJECT, AND ONE STANDING-NOTICE STEP AT THE END. The `+ 1` was
+// SIX PRELUDE STEPS, ONE PER SUBJECT, AND ONE STANDING-NOTICE STEP AT THE END. The `+ 1` was
 // added by the change that introduced the notice, and this claim FAILED until it was -- which is
 // the count doing its job rather than a number kept in step by hand.
 test fn the_lane_binds_one_step_per_subject_above_the_prelude() -> Bool {
   length(xs: compiler_gate_emit_build_bound_steps())
-    == 5 + length(xs: emitted_subject_build_rows()) + 1
+    == 6 + length(xs: emitted_subject_build_rows()) + 1
 }
 
 // THE CARGO CONSUMER HAS A PROVIDER ORDERED BEFORE IT. This is the same closure check every other
@@ -267,16 +269,16 @@ test fn w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause() -> 
     && string_contains(s: blocking_script, pattern: "[ \"$PROBE_LANE\" != success ]")
 }
 
-// AND THE ANNOUNCED LANES REACH NEITHER SURFACE. Without this the two claims above would be
-// satisfied by a gate that also read a lane it must not yet block on -- whose variable would
-// render EMPTY, compare unequal to `success`, and refuse every run. Both announced lanes are named:
-// emit-build, and since 2026-09-28 the unit-test lane.
-test fn w_RED_the_live_announced_lanes_reach_neither_surface() -> Bool {
+// AND THE DELETED UNIT-TEST LANE REACHES NEITHER SURFACE. Without this the gate could read a lane
+// that no longer runs -- whose variable would render EMPTY, compare unequal to `success`, and refuse
+// every run. emit-build left this claim on the 2026-10-02 sign-off: it now BLOCKS, and
+// the_emit_build_lane_blocks_and_is_read_by_the_gate asserts the opposite of what this claim
+// asserted about it. No live lane is announced today, so the announced-lane mechanism itself is held by
+// the supplied-row claim w_RED_an_announced_lane_binds_no_variable_and_is_read_by_no_clause.
+test fn w_RED_the_deleted_unit_test_lane_reaches_neither_surface() -> Bool {
   let script = join(compiler_gate_aggregate_script_lines(), "\n")
   let env = compiler_gate_aggregate_step_env()
-  (any(env, e => e.key == "EMIT_BUILD") == false)
-    && (string_contains(s: script, pattern: "EMIT_BUILD") == false)
-    && (any(env, e => e.key == "RUST_UNIT_TESTS") == false)
+  (any(env, e => e.key == "RUST_UNIT_TESTS") == false)
     && (string_contains(s: script, pattern: "RUST_UNIT_TESTS") == false)
 }
 
@@ -331,16 +333,17 @@ test fn the_fork_predicate_has_one_authority_across_both_transports() -> Bool {
 // green on main c39426540c, run 36580079634), so the red arm is
 // reachable only over a SUPPLIED standing. These claims render it through this probe, so the
 // discriminator, the no-owner rule and the retirement condition stay exercised while no red is
-// declared; the live claim below asserts the green, non-blocking notice.
+// declared; the live claim below asserts the green, blocking notice.
 fn advisory_red_probe_notice() -> String {
   join(emit_build_standing_notice_for(standing: EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
   }, lane_blocks: false), "\n")
 }
 
-test fn the_live_notice_is_green_and_not_blocking() -> Bool {
+test fn the_live_notice_is_green_and_blocking() -> Bool {
   let text = join(compiler_gate_emit_build_notice_lines(), "\n")
-  string_contains(s: text, pattern: "does NOT block your merge")
+  string_contains(s: text, pattern: "BLOCKS your merge")
+    && (string_contains(s: text, pattern: "does NOT block") == false)
     && string_contains(s: text, pattern: "REAL FINDING")
     && (string_contains(s: text, pattern: "E0573") == false)
     && (string_contains(s: text, pattern: "CONTRADICTION") == false)
@@ -417,7 +420,7 @@ test fn the_live_notice_prints_its_retirement_capability() -> Bool {
 // WHETHER THE LANE BLOCKS IS READ FROM THE LANE ROW, NOT WRITTEN INTO THE NOTICE. Rendered with the
 // status supplied both ways: a blocking lane never prints the non-blocking reassurance, and a
 // blocking lane with a still-Red standing prints the contradiction rather than "nothing for you to
-// fix". The live half: today's row is `LaneAnnouncedNotBlocking`, so the live notice says so.
+// fix". The live half: today's row is `LaneBlocks`, so the live notice says so.
 test fn w_RED_a_blocking_lane_never_prints_the_non_blocking_reassurance() -> Bool {
   let probe = EmitBuildExpectedRed {
     known_signature: EmittedBuildSignature { error_code: "E9999", symbol: "Probe", emitted_path: "src/probe.rs" }
@@ -463,4 +466,22 @@ test fn the_notice_is_the_last_step_in_the_lane() -> Bool {
     init: "",
     f: (acc, b) => b.step_name
   ) == "Why this lane is red, and what would be a real finding"
+}
+
+// THE SEED'S TWO LANE ENTRIES AGREE WITH THE INSTRUMENT ROWS. The emit-build lane's census subject is
+// read from gunbc.instrument_targets, while the producer that actually emits is the seed's native
+// lane runner, whose entries are Rust constants that cannot read a .dag row yet. This joins them, so
+// moving either entry on one side alone reds here rather than leaving the census reporting a closure
+// the lane no longer compiles. Each constant is matched as its whole declaration line, so the join
+// pins the NAME to the VALUE, not two substrings that could come from different lines.
+data native_lane_runner_source_path: String = "src/v1/stage0/src/cli_run/native_lane_runner.rs"
+
+fn rust_str_const_line(name: String, value: String) -> String {
+  join(["const ", name, ": &str = \"", value, "\";"], "")
+}
+
+test fn the_seed_lane_entries_are_the_instrument_rows() -> Bool {
+  let runner = Filesystem.Read(path: native_lane_runner_source_path, expect: ExpectSuccess).content
+  string_contains(s: runner, pattern: rust_str_const_line(name: "NATIVE_COMPILE_ENTRY", value: self_host_entry()))
+    && string_contains(s: runner, pattern: rust_str_const_line(name: "V2_NATIVE_CLI_ENTRY", value: v2_native_cli_entry()))
 }

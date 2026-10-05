@@ -2,7 +2,7 @@ module extdeps.github.actions_artifacts
 
 import extdeps.github.github { default_api_base, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome }
+
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.credentials { EnvVar }
@@ -83,7 +83,6 @@ service github.Artifacts {
     }
     output {
       result: ActionsArtifactList
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -110,7 +109,6 @@ service github.Artifacts {
     }
     output {
       archive: Bytes
-      outcome: RestOutcome
     }
     readonly
     transport rest {

@@ -1,0 +1,207 @@
+module extdeps.vllm.weight_offload
+
+import std.types { String, NonEmptyStr, Bool, List }
+import v2.std.optional { Present, Absent }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.vllm.runtime_defaults { defaults_source_revision, Vllm8d09804 }
+
+// The revision is read from its one minting row rather than re-spelled here (extdeps.vllm.environment
+// does the same).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: join(["github.com/vllm-project/vllm/blob/", defaults_source_revision(r: Vllm8d09804).full_revision as String, "/vllm/model_executor/offloader"], "")
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.vllm.weight_offload",
+      decl_name: "VllmWeightOffloadSplitLaw",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// ── HOW THE ENGINE SPLITS A CHECKPOINT BETWEEN DEVICE AND HOST MEMORY ───────────────────────────
+//
+// vLLM's weight offloaders (vllm.config.offload OffloadConfig, chosen by
+// vllm.model_executor.offloader.base create_offloader) move whole named PARAMETERS. They never move
+// part of a tensor. The wrap is in vllm.model_executor.models.utils make_layers, so only the
+// decoder-layer stack is eligible, and the unit of a split is one parameter of one layer. On a
+// FusedMoE model all routed experts of a layer are one tensor per projection, so a layer's whole
+// expert store moves or stays together.
+//
+// A CONFIGURED BACKEND IS NOT A REALIZATION. What the device actually holds depends on facts the
+// configuration does not fix, so the law is minted only from a reading of them:
+//
+// - UVA (UVAOffloader). It hands kernels a device view of pinned host memory ONLY when
+//   uva_offloading = is_uva_available() and not VLLM_WEIGHT_OFFLOADING_DISABLE_UVA.
+//   Otherwise it falls back to plain CPU parameters. Each offloaded module's forward then moves its
+//   whole state_dict to the device with .to(device) and runs functional_call, so one module's
+//   offloaded parameters are device-resident while it runs.
+// - The zero-copy view also survives loading only if the FP8 MoE backend leaves the weights in
+//   place. convert_to_fp8_moe_kernel_format allocates NEW tensors for the relayout arms, and
+//   replace_parameter re-registers them on the device, which undoes the offload with no warning.
+// - Prefetch (PrefetchOffloader) keeps the host copy and, in post_init, a StaticBufferPool with
+//   slot_capacity = prefetch_step. So the device holds prefetch_step copies of each distinct
+//   offloaded parameter. It re-reads CPU storage after loading (sync_cpu_storage), so a relayout
+//   backend does not undo it. OffloadConfig.validate_offload_config refuses an enabled prefetch with
+//   offload_prefetch_step below one.
+
+// THE FP8 MoE BACKENDS AT THE PINNED REVISION (vllm.model_executor.layers.fused_moe.oracle.fp8
+// Fp8MoeBackend), each with what convert_to_fp8_moe_kernel_format does to its weights. A backend
+// added upstream has no row here, so it cannot be read as preserving.
+type VllmFp8MoeBackend
+  = Fp8MoeTriton
+  | Fp8MoeBatchedTriton
+  | Fp8MoeVllmCutlass
+  | Fp8MoeBatchedVllmCutlass
+  | Fp8MoeHpc
+  | Fp8MoeEmulation
+  | Fp8MoeTritonMxfp8
+  | Fp8MoeDeepGemm
+  | Fp8MoeBatchedDeepGemm
+  | Fp8MoeFlashInferCutlass
+  | Fp8MoeFlashInferTrtllm
+  | Fp8MoeMarlin
+  | Fp8MoeAiter
+  | Fp8MoeAiterMxfp8
+  | Fp8MoeHumming
+  | Fp8MoeXpu
+  | Fp8MoeCpu
+
+// True for the arms that allocate new weight tensors after loading:
+// - prepare_fp8_moe_layer_for_deepgemm
+// - prepare_fp8_moe_layer_for_fi
+// - the marlin preparers
+// - rocm_aiter_ops shuffles
+// - convert_to_humming_moe_kernel_format
+// - prepare_fp8_moe_layer_for_xpu / _for_cpu
+// False for the arms the converter returns unchanged (TRITON, BATCHED_TRITON, VLLM_CUTLASS,
+// BATCHED_VLLM_CUTLASS, HPC, EMULATION, TRITON_MXFP8).
+fn vllm_fp8_moe_backend_relays_out_weights(b: VllmFp8MoeBackend) -> Bool {
+  match b {
+    Fp8MoeTriton => false
+    Fp8MoeBatchedTriton => false
+    Fp8MoeVllmCutlass => false
+    Fp8MoeBatchedVllmCutlass => false
+    Fp8MoeHpc => false
+    Fp8MoeEmulation => false
+    Fp8MoeTritonMxfp8 => false
+    Fp8MoeDeepGemm => true
+    Fp8MoeBatchedDeepGemm => true
+    Fp8MoeFlashInferCutlass => true
+    Fp8MoeFlashInferTrtllm => true
+    Fp8MoeMarlin => true
+    Fp8MoeAiter => true
+    Fp8MoeAiterMxfp8 => true
+    Fp8MoeHumming => true
+    Fp8MoeXpu => true
+    Fp8MoeCpu => true
+  }
+}
+
+// THE PREFETCH STEP IS POSITIVE BY CONSTRUCTION: the only constructor is the refusing mint below.
+type VllmPrefetchStep sole_constructor {
+  count: Nat
+}
+
+type VllmPrefetchStepMint
+  = VllmPrefetchStepAdmitted { step: VllmPrefetchStep }
+  | VllmPrefetchStepRefused { cause: NonEmptyStr }
+
+fn vllm_prefetch_step(count: Nat) -> VllmPrefetchStepMint {
+  if count == 0 {
+    VllmPrefetchStepRefused { cause: "offload_prefetch_step must be at least one when prefetch offloading is enabled (vllm.config.offload OffloadConfig.validate_offload_config refuses it)" as NonEmptyStr }
+  } else {
+    VllmPrefetchStepAdmitted { step: VllmPrefetchStep { count: count } }
+  }
+}
+
+// WHAT A UVA LAUNCH MUST READ. An unread fact is Absent, never a default. The readings come from the
+// host and the engine's own log; this row only names them.
+type VllmUvaOffloadReading {
+  uva_available: Bool?
+  disable_uva_env_set: Bool?
+  realized_moe_backend: VllmFp8MoeBackend?
+}
+
+type VllmWeightOffloadBackend
+  = VllmUvaOffload { reading: VllmUvaOffloadReading }
+  | VllmPrefetchOffload { step: VllmPrefetchStep }
+
+// THE REALIZATION THE READING ESTABLISHES, and the device copies each keeps per distinct offloaded
+// parameter. The functional_call fallback's copy is transient: one module's parameters are moved in
+// while it runs, then released to the caching allocator. The device still has to hold that layer's
+// bytes, which is the cost.
+type VllmWeightOffloadRealization
+  = UvaZeroCopyView
+  | UvaFunctionalCallFallback
+  | PrefetchStaticBuffers { step: VllmPrefetchStep }
+
+type VllmWeightOffloadSplitLaw sole_constructor {
+  realization: VllmWeightOffloadRealization
+  device_copies_per_offloaded_parameter: Nat
+}
+
+// THREE STANDINGS:
+// - Established carries a law only a reading can mint.
+// - Unestablished names each fact still unread.
+// - Refused is a reading under which no split exists: a relayout backend re-materialises every
+//   offloaded store on the device.
+type VllmWeightOffloadSplitStanding
+  = WeightOffloadSplitEstablished { law: VllmWeightOffloadSplitLaw }
+  | WeightOffloadSplitUnestablished { obligations: List<NonEmptyStr> }
+  | WeightOffloadSplitRefused { cause: NonEmptyStr }
+
+fn unread_obligation(present: Bool, what: String) -> List<NonEmptyStr> {
+  if present { [] as List<NonEmptyStr> } else { [join(["unread: ", what], "") as NonEmptyStr] }
+}
+
+fn vllm_uva_split_standing(r: VllmUvaOffloadReading) -> VllmWeightOffloadSplitStanding {
+  let available_read = match r.uva_available { Present { value: _ } => true Absent => false }
+  let disable_read = match r.disable_uva_env_set { Present { value: _ } => true Absent => false }
+  let backend_read = match r.realized_moe_backend { Present { value: _ } => true Absent => false }
+  let obligations = concat(
+    unread_obligation(present: available_read, what: "is_uva_available() on the serving host (pinned memory available)"),
+    concat(
+      unread_obligation(present: disable_read, what: "whether VLLM_WEIGHT_OFFLOADING_DISABLE_UVA is set in the engine environment"),
+      unread_obligation(present: backend_read, what: "the FP8 MoE backend the engine selected (its logged Fp8MoeBackend)")))
+  if count(obligations) > 0 {
+    WeightOffloadSplitUnestablished { obligations: obligations }
+  } else {
+    let zero_copy = (match r.uva_available { Present { value: v } => v Absent => false })
+      && !(match r.disable_uva_env_set { Present { value: v } => v Absent => true })
+    let relays_out = match r.realized_moe_backend { Present { value: b } => vllm_fp8_moe_backend_relays_out_weights(b: b) Absent => true }
+    if relays_out {
+      WeightOffloadSplitRefused { cause: "the engine selected an FP8 MoE backend whose load-time conversion allocates new weight tensors on the device (convert_to_fp8_moe_kernel_format), so every offloaded expert store is re-materialised there and no device/host split exists" as NonEmptyStr }
+    } else if zero_copy {
+      WeightOffloadSplitEstablished { law: VllmWeightOffloadSplitLaw { realization: UvaZeroCopyView, device_copies_per_offloaded_parameter: 0 } }
+    } else {
+      WeightOffloadSplitEstablished { law: VllmWeightOffloadSplitLaw { realization: UvaFunctionalCallFallback, device_copies_per_offloaded_parameter: 1 } }
+    }
+  }
+}
+
+fn vllm_weight_offload_split_standing(backend: VllmWeightOffloadBackend) -> VllmWeightOffloadSplitStanding {
+  match backend {
+    VllmUvaOffload { reading: r } => vllm_uva_split_standing(r: r)
+    VllmPrefetchOffload { step: s } =>
+      WeightOffloadSplitEstablished { law: VllmWeightOffloadSplitLaw { realization: PrefetchStaticBuffers { step: s }, device_copies_per_offloaded_parameter: s.count } }
+  }
+}
+
+fn vllm_weight_offload_realization_wire(r: VllmWeightOffloadRealization) -> NonEmptyStr {
+  match r {
+    UvaZeroCopyView => "uva-zero-copy" as NonEmptyStr
+    UvaFunctionalCallFallback => "uva-functional-call-fallback" as NonEmptyStr
+    PrefetchStaticBuffers { step: _ } => "prefetch" as NonEmptyStr
+  }
+}

@@ -1,13 +1,16 @@
 module test.claim.runner_qualification_dispatch_witness
 
-import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
+import std.types { Bool, Bytes, CommitSha, Int, List, NonEmptyStr, String }
+import std.bytes { utf8_encode_bytes }
 import std.algebra { Cons, Empty }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.placement_supply { HostIdentity }
 import extdeps.transports.rest {
-  RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeUnreached, RestExchangeUndecodable,
-  RestOutcome, RestOk, RestTransportRefused, RestStatusRefused, RestBodyUndecodable, RestMutationExchange, classify_rest_outcome,
+  RestResult, RestAnswered, RestRefused, RestRefusal, RestTransportRefused, RestStatusRefused, RestBodyUndecodable,
+  RestExchangeStatusRefused, RestExchangeUnreached, RestExchangeUndecodable,
 }
+import extdeps.github.workflows { WorkflowDispatchReceipt }
+import extdeps.github.git_database { GitRefWire, GitRefObjectWire }
 import extdeps.github.actions { Workflow, Job, WorkflowDispatch, RunsOnExpression, SelfHosted, RunnerSpec, Step, RunStep, UsesStep }
 import extdeps.github.effect { DispatchWorkflow, GitHubOrganizationRef }
 import extdeps.github.workflow_runs {
@@ -92,7 +95,7 @@ fn group_with_id(id: Int, workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
   observe_runner_group_restriction(
     name: "runner-qualification",
     selected_workflow: workflow,
-    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+    listed: runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire {
       total_count: 1,
       runner_groups: [OrgRunnerGroupWire {
         id: id,
@@ -103,7 +106,7 @@ fn group_with_id(id: Int, workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
         selected_workflows: [workflow as String],
         workflow_restrictions_read_only: false,
       }],
-    }),
+    } }),
   )
 }
 
@@ -171,7 +174,7 @@ test fn the_real_mint_admits_the_attempt_through_the_sealed_subject() -> Bool {
           QualificationBranchNameRefused { attempt: _, cause: _ } => false
           QualificationBranchNamed { name: nm } =>
             match qualification_ref_pin_of(
-              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              name: nm, revision: revision, readback: RestAnswered { answer: GitRefWire { ref: "refs/heads/qualification/q-1", object: GitRefObjectWire { type: "commit", sha: revision as String } } },
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
@@ -258,7 +261,7 @@ test fn the_production_mint_over_todays_fleet_converge_workflow_refuses_at_the_a
           QualificationBranchNameRefused { attempt: _, cause: _ } => false
           QualificationBranchNamed { name: nm } =>
             match qualification_ref_pin_of(
-              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              name: nm, revision: revision, readback: RestAnswered { answer: GitRefWire { ref: "refs/heads/qualification/q-1", object: GitRefObjectWire { type: "commit", sha: revision as String } } },
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
@@ -399,7 +402,7 @@ test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
           QualificationBranchNameRefused { attempt: _, cause: _ } => false
           QualificationBranchNamed { name: nm } =>
             match qualification_ref_pin_of(
-              name: nm, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String,
+              name: nm, revision: revision, readback: RestAnswered { answer: GitRefWire { ref: "refs/heads/qualification/q-1", object: GitRefObjectWire { type: "commit", sha: revision as String } } },
               group: group_restricted_to(workflow: qualification_selected_workflow(branch: pin_branch)),
             ) {
               QualificationRefPinRefused { attempt: _, refusal: _ } => false
@@ -441,8 +444,14 @@ test fn a_delivery_from_another_dispatch_on_the_same_slot_refuses() -> Bool {
 
 // ── THE DISPATCH STANDING AND THE INTERLOCK ─────────────────────────────────────────────────────
 
-fn mutation_standing(rest: RestOutcome) -> QualificationDispatchStanding {
-  qualification_dispatch_standing(performance: classify_rest_outcome(standing: RestMutationExchange { rest: rest }))
+fn mutation_standing(refusal: RestRefusal) -> QualificationDispatchStanding {
+  qualification_dispatch_standing(dispatch: RestRefused { refusal: refusal })
+}
+
+data dispatch_receipt: WorkflowDispatchReceipt = WorkflowDispatchReceipt {
+  workflow_run_id: 77,
+  run_url: "https://api.github.com/repos/gunb-ai/gunbc/actions/runs/77" as NonEmptyStr,
+  html_url: "https://github.com/gunb-ai/gunbc/actions/runs/77" as NonEmptyStr,
 }
 
 fn ambiguous(s: QualificationDispatchStanding) -> Bool {
@@ -453,11 +462,11 @@ fn ambiguous(s: QualificationDispatchStanding) -> Bool {
 // undecodable 200 are commit-ambiguous; only a succeeded exchange dispatches. The interlock: a hold
 // covers the slot's own host and no other.
 test fn the_dispatch_has_three_standings_and_an_interlock() -> Bool {
-  (match mutation_standing(rest: RestStatusRefused { status: 422, body: "Unexpected inputs provided" }) { DispatchStandingRefused { status: st, body: _ } => st == 422 _ => false })
-    && ambiguous(s: mutation_standing(rest: RestTransportRefused { cause: "fixture: connection reset after send" }))
-    && ambiguous(s: mutation_standing(rest: RestStatusRefused { status: 503, body: "fixture" }))
-    && ambiguous(s: mutation_standing(rest: RestBodyUndecodable { status: 200, cause: "fixture: truncated body" }))
-    && (match mutation_standing(rest: RestOk) { DispatchStandingSucceeded => true _ => false })
+  (match mutation_standing(refusal: RestStatusRefused { status: 422, body: "Unexpected inputs provided" }) { DispatchStandingRefused { status: st, body: _ } => st == 422 _ => false })
+    && ambiguous(s: mutation_standing(refusal: RestTransportRefused { cause: "fixture: connection reset after send" }))
+    && ambiguous(s: mutation_standing(refusal: RestStatusRefused { status: 503, body: "fixture" }))
+    && ambiguous(s: mutation_standing(refusal: RestBodyUndecodable { status: 200, cause: "fixture: truncated body" }))
+    && (match qualification_dispatch_standing(dispatch: RestAnswered { answer: dispatch_receipt }) { DispatchStandingSucceeded { receipt: r } => r.workflow_run_id == 77 _ => false })
     && hold_covers_slot_host(held: "mtcollins1" as HostIdentity, slot_host: "mtcollins1" as HostIdentity)
     && !hold_covers_slot_host(held: "srv1" as HostIdentity, slot_host: "mtcollins1" as HostIdentity)
 }
@@ -528,7 +537,7 @@ fn jobs(js: List<WorkflowJobRun>) -> WorkflowJobRunList {
 }
 
 fn decide_run(r: WorkflowRun, js: WorkflowJobRunList) -> QualificationRunVerdict {
-  decide_qualification_run(subject: expect, run_id: 77, run_performance: RestExchangeSucceeded, run: r, jobs_performance: RestExchangeSucceeded, jobs: js)
+  decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: r }, jobs_read: RestAnswered { answer: js })
 }
 
 fn decide_jobs(js: WorkflowJobRunList) -> QualificationRunVerdict {
@@ -615,12 +624,12 @@ test fn an_unfinished_unpinned_or_unreadable_run_refuses() -> Bool {
       RunVerdictRefused { refusal: RunJobsTruncated { returned: rt, total: t } } => rt == 1 && t == 2
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_performance: RestExchangeUnreached { cause: "fixture" }, run: dispatched_run(attempt_n: 1), jobs_performance: RestExchangeSucceeded, jobs: floor) {
-      RunVerdictRefused { refusal: RunReadUnreadable { performance: _ } } => true
+    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestRefused { refusal: RestTransportRefused { cause: "fixture" } }, jobs_read: RestAnswered { answer: floor }) {
+      RunVerdictRefused { refusal: RunReadUnreadable { refusal: _ } } => true
       _ => false
     })
-    && (match decide_qualification_run(subject: expect, run_id: 77, run_performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1), jobs_performance: RestExchangeStatusRefused { status: 404, body: "fixture" }, jobs: floor) {
-      RunVerdictRefused { refusal: RunJobsUnreadable { performance: _ } } => true
+    && (match decide_qualification_run(subject: expect, run_id: 77, run_read: RestAnswered { answer: dispatched_run(attempt_n: 1) }, jobs_read: RestRefused { refusal: RestStatusRefused { status: 404, body: "fixture" } }) {
+      RunVerdictRefused { refusal: RunJobsUnreadable { refusal: _ } } => true
       _ => false
     })
 }
@@ -690,8 +699,8 @@ test fn a_log_of_another_job_is_not_the_floor_jobs_log() -> Bool {
     DesignatedJobLogRefused { refusal: JobLogOfAnotherJob { designated_job_id: 502, read_job_id: 501 } } => true
     _ => false
   })
-    && (match designated_job_log(designated_job_id: 502, log: AttemptJobLogUnreadable { job_id: 502, performance: RestExchangeStatusRefused { status: 410, body: "Gone" } }) {
-      DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: 502, performance: _ } } => true
+    && (match designated_job_log(designated_job_id: 502, log: AttemptJobLogUnreadable { job_id: 502, refusal: RestExchangeStatusRefused { status: 410, body: "Gone" } }) {
+      DesignatedJobLogRefused { refusal: JobLogUnreadable { job_id: 502, refusal: _ } } => true
       _ => false
     })
     && (match designated_job_log(designated_job_id: 502, log: AttemptJobLogRead { job_id: 502, log: "" }) {
@@ -797,6 +806,23 @@ test fn the_decoder_reads_a_recorded_required_floor_log() -> Bool {
   }
 }
 
+// SUPPLIED RestResult VALUES FOR THE CLAIM-COST DECISIONS, built once so the claims below stay readable.
+fn answered_listing(l: ActionsArtifactList) -> RestResult<ActionsArtifactList> {
+  RestAnswered { answer: l }
+}
+
+fn answered_run(r: WorkflowRun) -> RestResult<WorkflowRun> {
+  RestAnswered { answer: r }
+}
+
+data unreached_run: RestResult<WorkflowRun> = RestRefused { refusal: RestTransportRefused { cause: "unreached" } }
+
+fn archive_refused(r: RestRefusal) -> RestResult<Bytes> {
+  RestRefused { refusal: r }
+}
+
+data archive_arrived: RestResult<Bytes> = RestAnswered { answer: utf8_encode_bytes(s: "PK") }
+
 // ── THE CLAIM-COST READ'S REFUSALS ─────────────────────────────────────────────────────────────
 //
 // Every way the artifact read can end today is a typed arm, and none of them is a reading: the
@@ -809,30 +835,30 @@ fn artifact(name: String, expired: Bool) -> ActionsArtifact {
 
 test fn every_claim_cost_read_ends_in_a_typed_refusal() -> Bool {
   let present = ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: false)] }
-  let gone = RestExchangeStatusRefused { status: 410, body: "Gone" }
-  let undecodable = RestExchangeUndecodable { status: 200, cause: "stream did not contain valid UTF-8" }
-  (match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-ci-measurement-receipt", expired: false)] }) {
+  let gone = archive_refused(r: RestStatusRefused { status: 410, body: "Gone" })
+  let undecodable = archive_refused(r: RestBodyUndecodable { status: 200, cause: "stream did not contain valid UTF-8" })
+  (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-ci-measurement-receipt", expired: false)] })) {
     Present { value: ClaimCostArtifactAbsent { names_seen: ns } } => count(ns) == 1
     _ => false
   })
-    && (match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: true)] }) {
+    && (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 1, artifacts: [artifact(name: "required-floor-claim-cost", expired: true)] })) {
       Present { value: ClaimCostArtifactExpired { artifact_id: 9001 } } => true
       _ => false
     })
-    && (match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: ActionsArtifactList { total_count: 3, artifacts: [] }) {
+    && (match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 3, artifacts: [] })) {
       Present { value: ClaimCostArtifactListTruncated { returned: 0, total: 3 } } => true
       _ => false
     })
-    && (match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: present) { Absent => true _ => false })
-    && (match conclude_claim_cost_download(artifact_id: 9001, performance: undecodable) {
-      ClaimCostArchiveUnreadable { artifact_id: 9001, performance: _ } => true
+    && (match conclude_claim_cost_listing(listed: answered_listing(l: present)) { Absent => true _ => false })
+    && (match conclude_claim_cost_download(artifact_id: 9001, archive: undecodable) {
+      ClaimCostArchiveUnreadable { artifact_id: 9001, refusal: _ } => true
       _ => false
     })
-    && (match conclude_claim_cost_download(artifact_id: 9001, performance: gone) {
+    && (match conclude_claim_cost_download(artifact_id: 9001, archive: gone) {
       ClaimCostArtifactExpired { artifact_id: 9001 } => true
       _ => false
     })
-    && (match conclude_claim_cost_download(artifact_id: 9001, performance: RestExchangeSucceeded) {
+    && (match conclude_claim_cost_download(artifact_id: 9001, archive: archive_arrived) {
       ClaimCostArchiveNotInflatable { artifact_id: 9001 } => true
       _ => false
     })
@@ -844,7 +870,7 @@ fn claim_cost_artifact_with(id: Int) -> ActionsArtifact {
 }
 
 test fn two_same_name_claim_cost_artifacts_refuse_as_ambiguous() -> Bool {
-  match conclude_claim_cost_listing(performance: RestExchangeSucceeded, listed: ActionsArtifactList { total_count: 2, artifacts: [claim_cost_artifact_with(id: 1), claim_cost_artifact_with(id: 2)] }) {
+  match conclude_claim_cost_listing(listed: answered_listing(l: ActionsArtifactList { total_count: 2, artifacts: [claim_cost_artifact_with(id: 1), claim_cost_artifact_with(id: 2)] })) {
     Present { value: ClaimCostArtifactAmbiguous { artifact_ids: ids } } => count(ids) == 2
     _ => false
   }
@@ -854,13 +880,13 @@ test fn two_same_name_claim_cost_artifacts_refuse_as_ambiguous() -> Bool {
 // listing may hold attempt 2's artifact, so no claim-cost read proceeds for attempt 1; at attempt 1 it
 // proceeds; an unreadable re-read refuses rather than assuming attempt 1.
 test fn a_rerun_seen_after_the_listing_refuses_the_claim_cost_read() -> Bool {
-  (match conclude_claim_cost_attempt(performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 2)) {
+  (match conclude_claim_cost_attempt(run: answered_run(r: dispatched_run(attempt_n: 2))) {
     Present { value: ClaimCostRunAdvancedPastAttempt { observed_attempt: 2 } } => true
     _ => false
   })
-    && (match conclude_claim_cost_attempt(performance: RestExchangeSucceeded, run: dispatched_run(attempt_n: 1)) { Absent => true _ => false })
-    && (match conclude_claim_cost_attempt(performance: RestExchangeUnreached { cause: "unreached" }, run: dispatched_run(attempt_n: 1)) {
-      Present { value: ClaimCostRunUnreadable { performance: _ } } => true
+    && (match conclude_claim_cost_attempt(run: answered_run(r: dispatched_run(attempt_n: 1))) { Absent => true _ => false })
+    && (match conclude_claim_cost_attempt(run: unreached_run) {
+      Present { value: ClaimCostRunUnreadable { refusal: _ } } => true
       _ => false
     })
 }

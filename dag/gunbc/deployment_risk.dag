@@ -25,8 +25,8 @@ import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_bot_declared }
 //
 // Machine qualification is a different subject. It shares DeploymentRiskClass only as what a
 // machine ADMITS (MachineQualificationPolicy { admits }); a machine is never itself ProdRisk and
-// never confers the prod role. That replacement of gunbc.machine_intake_phase
-// MachineOperatingEnvironment lands in its own one-motion migration on top of this module.
+// never confers the prod role. The policy's home is gunbc.machine_intake_phase, which consumes
+// this class and coins no machine-level environment vocabulary of its own.
 
 // ── The subject ─────────────────────────────────────────────────────────────────────────────────
 // THE STABLE IDENTITY OF ONE Deployment -- the convergence subject whose desired state, mutable
