@@ -644,7 +644,10 @@ fn decision_closure(assessment: DecisionAssessment) -> DecisionClosure {
                       }
                   }
                 }
-                _ => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationRepeatedExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationMissingExpected { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationForeignObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
+                ObservationRepeatedObserved { keys: _ } => DecisionClosureRefused { cause: CausalCouplingIncomplete { detail: coup } }
               }
             }
           }

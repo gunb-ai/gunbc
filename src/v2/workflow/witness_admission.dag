@@ -201,7 +201,15 @@ fn witness_consumer_cadence_for_row(
       } else {
         NoConsumer
       }
-    _ => explicit
+    DiscoverySelection => explicit
+    FalsifierSelfHostWet => explicit
+    FalsifierRehomedBinWet => explicit
+    FalsifierSubstrateLongLane => explicit
+    BinWitnessWet => explicit
+    LocalRepoWetLane => explicit
+    QuarantineProbeExpectRed => explicit
+    OfflineLocalRecipe => explicit
+    FixtureExplicitRoster => explicit
   }
 }
 
@@ -283,12 +291,27 @@ fn witness_execution_standing_for_row(
           excluded_from_discovery: excluded_from_discovery
         )
       }
-    _ =>
-      if witness_cadence_has_scheduled_route(cadence: explicit) {
-        WitnessHasExecutingConsumer { cadence: explicit }
-      } else {
-        DeclaredCadenceUnrealized { cadence: explicit, entry: entry, function: function }
-      }
+    DiscoverySelection => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    FalsifierSelfHostWet => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    FalsifierRehomedBinWet => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    FalsifierSubstrateLongLane => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    BinWitnessWet => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    LocalRepoWetLane => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    QuarantineProbeExpectRed => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    OfflineLocalRecipe => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+    FixtureExplicitRoster => witness_execution_standing_for_row_declared(explicit: explicit, entry: entry, function: function)
+  }
+}
+
+fn witness_execution_standing_for_row_declared(
+  explicit: WitnessConsumerCadence,
+  entry: String,
+  function: String
+) -> WitnessExecutionStanding {
+  if witness_cadence_has_scheduled_route(cadence: explicit) {
+    WitnessHasExecutingConsumer { cadence: explicit }
+  } else {
+    DeclaredCadenceUnrealized { cadence: explicit, entry: entry, function: function }
   }
 }
 

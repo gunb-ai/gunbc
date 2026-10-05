@@ -524,7 +524,10 @@ fn cache_layer_beats_recompute_path(
         b: probe,
       ) {
         Dominates => false
-        _ => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Dominated => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Equivalent => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        Incomparable => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
+        DominanceUndecided => cache_layer_cost_justified(id: id, catalog: catalog, recompute: recompute)
       }
   }
 }

@@ -233,7 +233,7 @@ fn classify_desired_wif_pool(
   )
   match matched {
     Present { value: c } => c
-    _ =>
+    Absent =>
       if census_coverage_has_unread(rows: census.wif_pools) {
         inaccessible_desired_subject()
       } else {
@@ -283,7 +283,7 @@ fn classify_desired_wif_provider(
   )
   match matched {
     Present { value: c } => c
-    _ =>
+    Absent =>
       if census_coverage_has_unread(rows: census.wif_providers)
         || census_github_actions_provider_is_unread(census: census) {
         inaccessible_desired_subject()
@@ -314,7 +314,7 @@ fn classify_desired_binding(
   )
   match matched {
     Present { value: c } => c
-    _ =>
+    Absent =>
       if census_coverage_has_unread(rows: census.principal_set_bindings) {
         inaccessible_desired_subject()
       } else {
@@ -326,7 +326,7 @@ fn classify_desired_binding(
 fn observed_member_eq(b: ObservedPrincipalSetBinding, member: String) -> Bool {
   match b.member {
     Present { value: m } => m == member
-    _ => false
+    Absent => false
   }
 }
 

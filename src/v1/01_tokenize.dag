@@ -93,13 +93,29 @@ fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
   Token { text: text, span: span, shape: shape }
 }
 
-fn source_char(source: SourceRef, pos: Int) -> String {
-  char_text(c: source_code_point(source: source, pos: pos))
-}
-
-fn source_code_point(source: SourceRef, pos: Int) -> Int {
+// A source position past either end has no code point, so the accessor answers `Int?` exactly as
+// `xs[i]` is typed (v1.compiler.infer_access check_index_access_node) and realized (the Rust
+// list_index is `.get(i).cloned()`). Each consumer says what an absent code point means where it
+// reads one; there is no fabricated sentinel and no unwrap.
+fn source_code_point(source: SourceRef, pos: Int) -> Int? {
   let _ = record_source_chars_index_lookup()
   source.source_chars[pos]
+}
+
+// Whether the code point read is `want`. An absent code point is no character, so it is not `want`:
+// that is the predicate's own answer, not a default standing in for one.
+fn code_point_is(cp: Int?, want: Int) -> Bool {
+  match cp {
+    Present { value: c } => c == want
+    Absent => false
+  }
+}
+
+fn code_point_satisfies(cp: Int?, pred: fn(Int) -> Bool) -> Bool {
+  match cp {
+    Present { value: c } => pred(c)
+    Absent => false
+  }
 }
 
 fn source_len(source: SourceRef) -> Int {
@@ -111,25 +127,27 @@ fn source_substring(source: SourceRef, start: Int, end: Int) -> String {
 }
 
 fn source_scan_while(source: SourceRef, start: Int, pred: fn(Int) -> Bool) -> Int {
-  if start >= source_len(source: source) { source_len(source: source) }
-  else if pred(source.source_chars[start]) {
-    source_scan_while(source: source, start: start + 1, pred: pred)
-  } else { start }
+  match source.source_chars[start] {
+    Present { value: ch } =>
+      if pred(ch) { source_scan_while(source: source, start: start + 1, pred: pred) } else { start }
+    Absent => source_len(source: source)
+  }
 }
 
 fn source_skip_ws(source: SourceRef, start: Int) -> Int {
-  if start >= source_len(source: source) { start }
-  else {
-    let ch = source.source_chars[start]
-    if ch == 32 || ch == 9 { source_skip_ws(source: source, start: start + 1) }
-    else { start }
+  match source.source_chars[start] {
+    Present { value: ch } =>
+      if ch == 32 || ch == 9 { source_skip_ws(source: source, start: start + 1) } else { start }
+    Absent => start
   }
 }
 
 fn source_scan_to_eol(source: SourceRef, start: Int) -> Int {
-  if start >= source_len(source: source) { source_len(source: source) }
-  else if source.source_chars[start] == 10 { start }
-  else { source_scan_to_eol(source: source, start: start + 1) }
+  match source.source_chars[start] {
+    Present { value: ch } =>
+      if ch == 10 { start } else { source_scan_to_eol(source: source, start: start + 1) }
+    Absent => source_len(source: source)
+  }
 }
 
 fn tokenize_artifact(source: String, file: String, env: ParseEnvironment) -> V1LexArtifact {
@@ -157,7 +175,7 @@ The backward walk stops at the previous line feed, so it costs one line, not one
 fn source_line_start(source: SourceRef, pos: Int) -> Int {
   if pos <= 0 {
     0
-  } else if source_code_point(source: source, pos: pos - 1) == 10 {
+  } else if code_point_is(cp: source_code_point(source: source, pos: pos - 1), want: 10) {
     pos
   } else {
     source_line_start(source: source, pos: pos - 1)
@@ -197,7 +215,7 @@ fn tokenize_line_first_content_pos(source: SourceRef, pos: Int, end: Int) -> Int
     end
   } else {
     let ch = source_code_point(source: source, pos: pos)
-    if ch == 32 || ch == 9 {
+    if code_point_is(cp: ch, want: 32) || code_point_is(cp: ch, want: 9) {
       tokenize_line_first_content_pos(source: source, pos: pos + 1, end: end)
     } else {
       pos
@@ -214,8 +232,8 @@ fn preceded_by_annotation_line(source: SourceRef, pos: Int) -> Bool {
     let prev_end = line_start - 1
     let content = tokenize_line_first_content_pos(source: source, pos: prev_start, end: prev_end)
     content + 1 < prev_end
-      && source_code_point(source: source, pos: content) == 47
-      && source_code_point(source: source, pos: content + 1) == 47
+      && code_point_is(cp: source_code_point(source: source, pos: content), want: 47)
+      && code_point_is(cp: source_code_point(source: source, pos: content + 1), want: 47)
   }
 }
 
@@ -226,9 +244,7 @@ fn line_prefix_is_indent_only(source: SourceRef, pos: Int) -> Bool {
   )
 }
 
-fn scan_next_token(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanStep {
-  let ch = source_code_point(source: source, pos: pos.pos)
-
+fn scan_next_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) -> ScanStep {
   if ch == 10 {
     return ScannedToken { result: ScanResult {
       pos: pos.pos + 1,
@@ -237,10 +253,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> Sca
     } }
   }
 
-  let next_ch_for_comment = if pos.pos + 1 < source_len(source: source) {
-    source_code_point(source: source, pos: pos.pos + 1)
-  } else { 0 }
-  if ch == 47 && next_ch_for_comment == 47 {
+  if ch == 47 && code_point_is(cp: source_code_point(source: source, pos: pos.pos + 1), want: 47) {
     let eol = source_scan_to_eol(source: source, start: pos.pos)
     return ScannedAnnotation {
       pos: eol,
@@ -275,14 +288,15 @@ fn scan_next_token(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> Sca
 
 fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int, env: ParseEnvironment) -> TokenizerState {
   let s = skip_spaces(source: source, pos: pos)
-  if s.pos >= source_len(source: source) {
-    return TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
-  }
-  match scan_next_token(source: source, pos: s, env: env) {
-    ScannedAnnotation { pos: next_pos, capture: capture, interp_depth: depth } =>
-      tokenize_loop(source: source, tokens: tokens, annotations: list_push(annotations, capture), pos: TokPos { pos: next_pos, interp_depth: depth }, fuel: fuel - 1, env: env)
-    ScannedToken { result: result } =>
-      tokenize_loop(source: source, tokens: list_push(tokens, result.token), annotations: annotations, pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1, env: env)
+  match source_code_point(source: source, pos: s.pos) {
+    Absent => TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
+    Present { value: ch } =>
+      match scan_next_token(source: source, pos: s, ch: ch, env: env) {
+        ScannedAnnotation { pos: next_pos, capture: capture, interp_depth: depth } =>
+          tokenize_loop(source: source, tokens: tokens, annotations: list_push(annotations, capture), pos: TokPos { pos: next_pos, interp_depth: depth }, fuel: fuel - 1, env: env)
+        ScannedToken { result: result } =>
+          tokenize_loop(source: source, tokens: list_push(tokens, result.token), annotations: annotations, pos: TokPos { pos: result.pos, interp_depth: result.interp_depth }, fuel: fuel - 1, env: env)
+      }
   }
 }
 
@@ -291,22 +305,20 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) ->
   if is_digit(ch: ch) { return scan_number(source: source, pos: pos) }
   if is_ident_start(ch: ch) { return scan_ident(source: source, pos: pos, env: env) }
 
-  let next_ch = if pos.pos + 1 < source_len(source: source) {
-    source_code_point(source: source, pos: pos.pos + 1)
-  } else { 0 }
+  let next_ch = source_code_point(source: source, pos: pos.pos + 1)
 
-  if ch == 61 && next_ch == 62 { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
-  if ch == 45 && next_ch == 62 { return emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
-  if ch == 61 && next_ch == 61 { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
-  if ch == 33 && next_ch == 61 { return emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
-  if ch == 60 && next_ch == 61 { return emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
-  if ch == 62 && next_ch == 61 { return emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
-  if ch == 38 && next_ch == 38 { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 124 { return emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
-  if ch == 124 && next_ch == 62 { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
+  if ch == 61 && code_point_is(cp: next_ch, want: 62) { return emit(pos: pos, shape: ShFatArrow, text: "=>", len: 2, file: source.file) }
+  if ch == 45 && code_point_is(cp: next_ch, want: 62) { return emit(pos: pos, shape: ShArrow, text: "->", len: 2, file: source.file) }
+  if ch == 61 && code_point_is(cp: next_ch, want: 61) { return emit(pos: pos, shape: ShEqEq, text: "==", len: 2, file: source.file) }
+  if ch == 33 && code_point_is(cp: next_ch, want: 61) { return emit(pos: pos, shape: ShNe, text: "!=", len: 2, file: source.file) }
+  if ch == 60 && code_point_is(cp: next_ch, want: 61) { return emit(pos: pos, shape: ShLe, text: "<=", len: 2, file: source.file) }
+  if ch == 62 && code_point_is(cp: next_ch, want: 61) { return emit(pos: pos, shape: ShGe, text: ">=", len: 2, file: source.file) }
+  if ch == 38 && code_point_is(cp: next_ch, want: 38) { return emit(pos: pos, shape: ShAnd, text: "&&", len: 2, file: source.file) }
+  if ch == 124 && code_point_is(cp: next_ch, want: 124) { return emit(pos: pos, shape: ShOr, text: "||", len: 2, file: source.file) }
+  if ch == 124 && code_point_is(cp: next_ch, want: 62) { return emit(pos: pos, shape: ShPipeArrow, text: "|>", len: 2, file: source.file) }
   if ch == 124 { return emit(pos: pos, shape: ShPipe, text: "|", len: 1, file: source.file) }
-  if ch == 63 && next_ch == 63 { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
-  if ch == 46 && next_ch == 46 { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
+  if ch == 63 && code_point_is(cp: next_ch, want: 63) { return emit(pos: pos, shape: ShNullCoalesce, text: "??", len: 2, file: source.file) }
+  if ch == 46 && code_point_is(cp: next_ch, want: 46) { return emit(pos: pos, shape: ShDotDot, text: "..", len: 2, file: source.file) }
 
   if ch == 61 { return emit(pos: pos, shape: ShEq, text: "=", len: 1, file: source.file) }
   if ch == 60 { return emit(pos: pos, shape: ShLt, text: "<", len: 1, file: source.file) }
@@ -334,7 +346,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int, env: ParseEnvironment) ->
     }
   }
 
-  let ch_text = source_char(source: source, pos: pos.pos)
+  let ch_text = char_text(c: ch)
   match lookup(single_punct, key: ch_text) {
     Present { value: sh } => emit(pos: pos, shape: sh, text: ch_text, len: 1, file: source.file)
     Absent => emit(pos: pos, shape: ShUnknown, text: ch_text, len: 1, file: source.file)
@@ -362,7 +374,7 @@ fn scan_ident(source: SourceRef, pos: TokPos, env: ParseEnvironment) -> ScanResu
 
 fn scan_number(source: SourceRef, pos: TokPos) -> ScanResult {
   let int_end = source_scan_while(source: source, start: pos.pos, pred: is_digit)
-  if int_end + 1 < source_len(source: source) && source_code_point(source: source, pos: int_end) == 46 && is_digit(ch: source_code_point(source: source, pos: int_end + 1)) {
+  if code_point_is(cp: source_code_point(source: source, pos: int_end), want: 46) && code_point_satisfies(cp: source_code_point(source: source, pos: int_end + 1), pred: is_digit) {
     let frac_end = source_scan_while(source: source, start: int_end + 1, pred: is_digit)
     let text = source_substring(source: source, start: pos.pos, end: frac_end)
     let token = make_token(text: text, span: make_file_span(file: source.file, start: pos.pos, end: frac_end), shape: ShLitFloat)
@@ -487,45 +499,41 @@ fn scan_str_cont(source: SourceRef, pos: TokPos, span_start: Int) -> ScanResult 
 }
 
 fn scan_string_body(source: SourceRef, pos: Int, acc: List<Int>) -> StringScanResult {
-  if pos >= source_len(source: source) {
-    UnterminatedString { content: acc, end_pos: pos }
-  } else {
-    let ch = source.source_chars[pos]
-    if ch == 34 {
-      ClosedString { content: acc, end_pos: pos }
-    } else if ch == 92 {
-      if pos + 1 < source_len(source: source) {
-        let escaped = source.source_chars[pos + 1]
-        if escaped == 117 && pos + 2 < source_len(source: source) && source.source_chars[pos + 2] == 123 {
-          scan_string_body(
-            source: source,
-            pos: pos + 3,
-            acc: list_push(list_push(list_push(acc, 92), 117), 123)
-          )
+  match source.source_chars[pos] {
+    Absent => UnterminatedString { content: acc, end_pos: pos }
+    Present { value: ch } =>
+      if ch == 34 {
+        ClosedString { content: acc, end_pos: pos }
+      } else if ch == 92 {
+        match source.source_chars[pos + 1] {
+          Present { value: escaped } =>
+            if escaped == 117 && code_point_is(cp: source.source_chars[pos + 2], want: 123) {
+              scan_string_body(
+                source: source,
+                pos: pos + 3,
+                acc: list_push(list_push(list_push(acc, 92), 117), 123)
+              )
+            } else {
+              scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, 92), escaped))
+            }
+          Absent => UnterminatedString { content: list_push(acc, 92), end_pos: pos + 1 }
+        }
+      } else if ch == 123 {
+        if should_start_interpolation(source: source, pos: pos) {
+          InterpolationStart { content: acc, end_pos: pos }
         } else {
-          scan_string_body(source: source, pos: pos + 2, acc: list_push(list_push(acc, 92), escaped))
+          scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, 123))
         }
       } else {
-        UnterminatedString { content: list_push(acc, 92), end_pos: pos + 1 }
+        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
       }
-    } else if ch == 123 {
-      if should_start_interpolation(source: source, pos: pos) {
-        InterpolationStart { content: acc, end_pos: pos }
-      } else {
-        scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, 123))
-      }
-    } else {
-      scan_string_body(source: source, pos: pos + 1, acc: list_push(acc, ch))
-    }
   }
 }
 
 fn should_start_interpolation(source: SourceRef, pos: Int) -> Bool {
-  if pos + 1 >= source_len(source: source) {
-    false
-  } else {
-    let next = source_code_point(source: source, pos: pos + 1)
-    is_ident_start(ch: next) || next == 40 || next == 33 || next == 45
+  match source_code_point(source: source, pos: pos + 1) {
+    Present { value: next } => is_ident_start(ch: next) || next == 40 || next == 33 || next == 45
+    Absent => false
   }
 }
 
@@ -533,28 +541,8 @@ fn process_escapes(chars: List<Int>) -> EscapeProcessResult {
   process_escapes_loop(source: chars, pos: 0, acc: [])
 }
 
-// Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a
-// list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but
-// the Rust realization of an index is a bare element that panics out of range. The two disagree, so
-// wherever the emitter acts on the declared type it emits a coercion the realization cannot
-// satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64`
-// (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen
-// to line up. The one index-as-argument site used to call the BUILTIN `from_code_point`, which
-// admitted the Optional index silently; that builtin is deleted (std.unicode.scalar), and source_char
-// now crosses through source_code_point like every other site. This accessor is the same shape as `source_code_point` and
-// `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary.
-// It works because return position is not checked against the body (recorded on the finalization
-// carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together
-// with those two when the index model and its realization are reconciled — either the index
-// realizes as an Option or it types as the element — at which point return-position typechecking
-// would red all three at once.
-
-fn code_point_at(chars: List<Int>, pos: Int) -> Int {
-  chars[pos]
-}
-
 // The escape table below is written in code points because the whole tokenizer is: scan_token
-// compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal
+// compares `ch == 61 && code_point_is(cp: next_ch, want: 62)` for `=>`, source_scan_to_eol compares `== 10`. The decimal
 // literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116
 // `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL,
 // 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings
@@ -620,81 +608,80 @@ fn unicode_escape_at(
   digit_count: Int,
   value: Int
 ) -> UnicodeEscape? {
-  if pos >= count(source) {
-    none
-  } else {
-    let ch = code_point_at(chars: source, pos: pos)
-    if ch == 125 {
-      if digit_count > 0 && unicode_scalar(code_point: value) {
-        Present { value: UnicodeEscape { code_point: value, next_pos: pos + 1 } }
-      } else {
+  match source[pos] {
+    Absent => none
+    Present { value: ch } =>
+      if ch == 125 {
+        if digit_count > 0 && unicode_scalar(code_point: value) {
+          Present { value: UnicodeEscape { code_point: value, next_pos: pos + 1 } }
+        } else {
+          none
+        }
+      } else if digit_count >= 6 {
         none
+      } else {
+        match hex_digit_value(cp: ch) {
+          Present { value: digit } => unicode_escape_at(
+            source: source,
+            pos: pos + 1,
+            digit_count: digit_count + 1,
+            value: value * 16 + digit
+          )
+          Absent => none
+        }
       }
-    } else if digit_count >= 6 {
-      none
-    } else {
-      match hex_digit_value(cp: ch) {
-        Present { value: digit } => unicode_escape_at(
-          source: source,
-          pos: pos + 1,
-          digit_count: digit_count + 1,
-          value: value * 16 + digit
-        )
-        Absent => none
-      }
-    }
   }
 }
 
 fn process_escapes_loop(source: List<Int>, pos: Int, acc: List<Int>) -> EscapeProcessResult {
-  if pos >= count(source) {
-    EscapesProcessed { text: chars_to_string(chars: acc, start: 0, end: count(acc)) }
-  } else {
-    let ch = code_point_at(chars: source, pos: pos)
-    if ch == 92 {
-      if pos + 1 >= count(source) {
-        EscapeProcessingRefused {}
+  match source[pos] {
+    Absent => EscapesProcessed { text: chars_to_string(chars: acc, start: 0, end: count(acc)) }
+    Present { value: ch } =>
+      if ch != 92 {
+        process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
       } else {
-        let next = code_point_at(chars: source, pos: pos + 1)
-        if next == 120 && pos + 3 < count(source) {
-          let hi = code_point_at(chars: source, pos: pos + 2)
-          let lo = code_point_at(chars: source, pos: pos + 3)
-          match hex_escape_char(hi: hi, lo: lo) {
-            Present { value: decoded } =>
-              process_escapes_loop(source: source, pos: pos + 4, acc: list_push(acc, decoded))
-            Absent => EscapeProcessingRefused {}
-          }
-        } else if next == 117 && pos + 2 < count(source) && code_point_at(chars: source, pos: pos + 2) == 123 {
-          match unicode_escape_at(source: source, pos: pos + 3, digit_count: 0, value: 0) {
-            Present { value: decoded } => process_escapes_loop(
-              source: source,
-              pos: decoded.next_pos,
-              acc: list_push(acc, decoded.code_point)
-            )
-            Absent => EscapeProcessingRefused {}
-          }
-        } else {
-          let decoded = if next == 34 { Present { value: 34 } }
-            else if next == 48 { Present { value: 0 } }
-            else if next == 92 { Present { value: 92 } }
-            else if next == 110 { Present { value: 10 } }
-            else if next == 114 { Present { value: 13 } }
-            else if next == 116 { Present { value: 9 } }
-            else if next == 123 { Present { value: 123 } }
-            else if next == 125 { Present { value: 125 } }
-            else { none }
-          match decoded {
-            Present { value: code_point } => process_escapes_loop(
-              source: source,
-              pos: pos + 2,
-              acc: list_push(acc, code_point)
-            )
-            Absent => EscapeProcessingRefused {}
-          }
+        match source[pos + 1] {
+          Absent => EscapeProcessingRefused {}
+          Present { value: next } =>
+            match escape_decoding(source: source, pos: pos, next: next) {
+              Present { value: decoded } => process_escapes_loop(source: source, pos: decoded.next_pos, acc: list_push(acc, decoded.code_point))
+              Absent => EscapeProcessingRefused {}
+            }
         }
       }
-    } else {
-      process_escapes_loop(source: source, pos: pos + 1, acc: list_push(acc, ch))
+  }
+}
+
+// What the escape starting at the backslash `pos` decodes to and where scanning resumes; absent
+// when the escape is malformed or truncated. Not recursive, so the loop above stays one
+// self-recursive function and its tail call lowers to a loop.
+fn escape_decoding(source: List<Int>, pos: Int, next: Int) -> UnicodeEscape? {
+  if next == 120 {
+    match source[pos + 2] {
+      Present { value: hi } => match source[pos + 3] {
+        Present { value: lo } => match hex_escape_char(hi: hi, lo: lo) {
+          Present { value: decoded } => Present { value: UnicodeEscape { code_point: decoded, next_pos: pos + 4 } }
+          Absent => none
+        }
+        Absent => none
+      }
+      Absent => none
+    }
+  } else if next == 117 && code_point_is(cp: source[pos + 2], want: 123) {
+    unicode_escape_at(source: source, pos: pos + 3, digit_count: 0, value: 0)
+  } else {
+    let simple = if next == 34 { Present { value: 34 } }
+      else if next == 48 { Present { value: 0 } }
+      else if next == 92 { Present { value: 92 } }
+      else if next == 110 { Present { value: 10 } }
+      else if next == 114 { Present { value: 13 } }
+      else if next == 116 { Present { value: 9 } }
+      else if next == 123 { Present { value: 123 } }
+      else if next == 125 { Present { value: 125 } }
+      else { none }
+    match simple {
+      Present { value: code_point } => Present { value: UnicodeEscape { code_point: code_point, next_pos: pos + 2 } }
+      Absent => none
     }
   }
 }

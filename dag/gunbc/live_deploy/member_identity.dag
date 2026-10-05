@@ -536,7 +536,11 @@ type EffectDerivation
 fn release_member_changed(d: MemberDecision) -> Bool {
   match decision_member(d: d) {
     DirectoryRoot { path: _ } => false
-    _ => decision_changes(d: d)
+    TreePublication => decision_changes(d: d)
+    Executable => decision_changes(d: d)
+    UnitFile => decision_changes(d: d)
+    UnitManager => decision_changes(d: d)
+    ServiceProcess => decision_changes(d: d)
   }
 }
 

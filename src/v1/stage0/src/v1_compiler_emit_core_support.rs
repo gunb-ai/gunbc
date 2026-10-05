@@ -3,6 +3,7 @@
 
 pub use crate::gunbc_rust_emitted_edge::module_to_filename;
 pub use crate::gunbc_rust_emitted_edge::EmittedEdge;
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
@@ -289,7 +290,7 @@ pub fn to_snake(name: String) -> String {
                             v1_rt::concat("_".to_string(), to_lower_char(ch.clone()))
                         }
                     } else {
-                        v1_rt::from_code_point(ch.clone())
+                        crate::std_unicode_scalar::char_text(ch.clone())
                     }
                 });
             }
@@ -326,10 +327,10 @@ pub fn to_lower_char(ch: i64) -> String {
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
             {
                 let lower_cp = v1_rt::int_add(cp.clone(), 32);
-                v1_rt::from_code_point(lower_cp.clone())
+                crate::std_unicode_scalar::char_text(lower_cp.clone())
             }
         } else {
-            v1_rt::from_code_point(ch.clone())
+            crate::std_unicode_scalar::char_text(ch.clone())
         }
     }
 }
@@ -340,10 +341,10 @@ pub fn to_upper_char(ch: i64) -> String {
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
             {
                 let upper_cp = v1_rt::int_sub(cp.clone(), 32);
-                v1_rt::from_code_point(upper_cp.clone())
+                crate::std_unicode_scalar::char_text(upper_cp.clone())
             }
         } else {
-            v1_rt::from_code_point(ch.clone())
+            crate::std_unicode_scalar::char_text(ch.clone())
         }
     }
 }
@@ -390,7 +391,7 @@ pub fn capitalize_first(s: String) -> String {
                     __result.push(if (pair.0.clone() == 0) {
                         to_upper_char(pair.1.clone())
                     } else {
-                        v1_rt::from_code_point(pair.1.clone())
+                        crate::std_unicode_scalar::char_text(pair.1.clone())
                     });
                 }
                 __result

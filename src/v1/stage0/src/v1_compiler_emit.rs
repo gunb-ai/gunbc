@@ -35,6 +35,7 @@ use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::is_container_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_unicode_scalar::char_text;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -396,7 +397,10 @@ pub fn emit_simple_expr(
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -4907,9 +4911,9 @@ pub fn emit_suffix_escape_ident(
 
 pub fn hex_digit_char(d: i64) -> String {
     if (d.clone() < 10) {
-        v1_rt::from_code_point(v1_rt::int_add(48, d.clone()))
+        crate::std_unicode_scalar::char_text(v1_rt::int_add(48, d.clone()))
     } else {
-        v1_rt::from_code_point(v1_rt::int_add(55, d.clone()))
+        crate::std_unicode_scalar::char_text(v1_rt::int_add(55, d.clone()))
     }
 }
 
@@ -5243,7 +5247,7 @@ pub fn child_from_key(
         .clone()
         {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5361,7 +5365,7 @@ pub fn file_transport_declared_verb(
     match crate::v1_std_core::transport_verb(t.clone(), source_indices.clone()) {
         Some(v) => match (*v.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5457,7 +5461,7 @@ pub fn file_transport_path_is_renderable(
     match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
         Some(p) => match (*p.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6142,7 +6146,7 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                 {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()
