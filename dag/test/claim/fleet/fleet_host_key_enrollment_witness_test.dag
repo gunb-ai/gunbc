@@ -21,7 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Acceptance item 4: an empty registry answers none for every host (nothing enrolled
 // means no expectation — the probe stays on the Unenrolled arm, never a fabricated
 // Mismatch), and a known_hosts line renders exactly "endpoint keytype key".
-test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -> Bool {
+test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -> Bool  {
   match enrolled_fingerprint_for(host: "srv5") {
     Present { value: _ } => length(fleet_host_key_enrollments) > 0
     Absent => length(fleet_host_key_enrollments) == 0
@@ -40,7 +40,7 @@ test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -
 // with it, a host-key verification failure classifies Mismatch carrying that exact
 // expected fingerprint; without it, the same wire stays Unenrolled — the enrollment is
 // what moves a host between the two remedies.
-test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() -> Bool {
+test fn witness_enrolled_expectation_moves_wire_from_unenrolled_to_mismatch() -> Bool  {
   match classify_reach_probe_wire_with_expectation(
     success: false,
     stdout: "",

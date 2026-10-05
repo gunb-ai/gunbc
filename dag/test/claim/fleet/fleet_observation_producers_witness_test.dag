@@ -85,7 +85,7 @@ fn shell_transport_unobserved_hosts() -> List<HostIdentity> {
   })
 }
 
-test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool {
+test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool  {
   shell_transport_unobserved_hosts()
     == filter(fleet_subsumption_hosts, h => h != operator_host_srv3)
     && fleet_subsumption_hosts.length() > 0
@@ -96,7 +96,7 @@ test fn producer_unobserved_all_enrolled_hosts_not_stale_reach_refused() -> Bool
     }
 }
 
-test fn srv3_shell_transport_observed_srv4_stays_unobserved_discriminates_grade() -> Bool {
+test fn srv3_shell_transport_observed_srv4_stays_unobserved_discriminates_grade() -> Bool  {
   match fleet_shell_transport_observation(host: operator_host_srv3) {
     ShellTransportSucceeded { observed_on: o, principal: p, detail: d } =>
       (o as String) == "2026-08-07"
@@ -119,7 +119,7 @@ test fn srv3_shell_transport_observed_srv4_stays_unobserved_discriminates_grade(
     )
 }
 
-test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bool {
+test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bool  {
   match session_residency_shell_gated_census(host: operator_host_srv3) {
     SessionsUnobserved { reason: _ } => true
     SessionsOperatorDeclaredAbsent { reason: _ } => false
@@ -128,7 +128,7 @@ test fn session_producer_returns_unobserved_not_operator_declared_absent() -> Bo
   }
 }
 
-test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
+test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool  {
   disk_unobserved_hosts() == fleet_subsumption_hosts
     && swap_unobserved_hosts() == fleet_subsumption_hosts
     && match host_disk_observation(host: operator_host_srv3) {
@@ -139,7 +139,7 @@ test fn disk_producer_unobserved_while_swap_backing_unknown_refused() -> Bool {
     && host_swap_backing_host_verdict(host: operator_host_srv3) == UnknownRefused
 }
 
-test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
+test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool  {
   endpoint_unavailable_hosts() == fleet_subsumption_hosts
     && match build_cache_ci_endpoint_observation(host: operator_host_srv3) {
       EndpointObservationUnavailable { instance: _, reason: _ } => true
@@ -151,7 +151,7 @@ test fn build_cache_ci_endpoint_unavailable_not_absent() -> Bool {
     }
 }
 
-test fn shell_transport_observation_not_authoritative_reach_refused() -> Bool {
+test fn shell_transport_observation_not_authoritative_reach_refused() -> Bool  {
   match fleet_shell_transport_observation(host: operator_host_srv1) {
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } => false
     ShellTransportReachRefused { observed_on: _, principal: _, detail: _, gap: _ } => false

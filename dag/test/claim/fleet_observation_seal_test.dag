@@ -58,7 +58,7 @@ fn census_ran(source: String) -> Bool {
 
 data forged_commit_proof_source: String = "module probe_fleet_obs_forged_commit\nimport gunbc.fleet_observation_capture_chunk { LocalCommitStanding, LocallyCommitted, DurableCommitProof }\nimport std.content_hash { ContentHash, content_hash_of_value }\nfn forged() -> LocalCommitStanding {\n  LocallyCommitted { proof: DurableCommitProof { committed_content: content_hash_of_value(value: \"nothing-was-ever-stored\") } }\n}\n"
 
-test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool {
+test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool  {
   seal_violations(source: forged_commit_proof_source, subject: "DurableCommitProof") == 1
 }
 
@@ -66,7 +66,7 @@ test fn a_forged_durable_commit_proof_is_refused_at_compile() -> Bool {
 
 data forged_continuity_reach_source: String = "module probe_fleet_obs_forged_reach\nimport gunbc.fleet_observation_capture_chunk { StreamContinuity, ContinuityEstablished, ContinuityReach, SourceStreamId, stream_position }\nimport std.measure { byte_size }\nfn forged() -> StreamContinuity {\n  ContinuityEstablished { reach: ContinuityReach { verified_through: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 999999)) } }\n}\n"
 
-test fn a_forged_continuity_reach_is_refused_at_compile() -> Bool {
+test fn a_forged_continuity_reach_is_refused_at_compile() -> Bool  {
   seal_violations(source: forged_continuity_reach_source, subject: "ContinuityReach") == 1
 }
 
@@ -74,7 +74,7 @@ test fn a_forged_continuity_reach_is_refused_at_compile() -> Bool {
 
 data forged_committed_chunk_source: String = "module probe_fleet_obs_forged_chunk\nimport gunbc.fleet_observation_capture_chunk { CommittedChunk, CaptureChunk }\nfn forged(c: CaptureChunk) -> CommittedChunk {\n  CommittedChunk { chunk: c, committed_content: c.payload_digest }\n}\n"
 
-test fn a_forged_committed_chunk_is_refused_at_compile() -> Bool {
+test fn a_forged_committed_chunk_is_refused_at_compile() -> Bool  {
   seal_violations(source: forged_committed_chunk_source, subject: "CommittedChunk") == 1
 }
 
@@ -85,7 +85,7 @@ test fn a_forged_committed_chunk_is_refused_at_compile() -> Bool {
 // refusal rather than as a review comment.
 data forged_silence_source: String = "module probe_fleet_obs_forged_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange, SourceStreamId, stream_position }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, SourceProducedNoBytesInRange, SilenceProof }\nimport std.measure { byte_size }\nfn forged() -> SourceByteFact {\n  SourceProducedNoBytesInRange { proof: SilenceProof { range: SourceStreamRange { first: stream_position(stream: SourceStreamId { enrolled_machine: \"m\", source_identity: \"s\" }, since_stream_origin: byte_size(count: 0)), length: byte_size(count: 100) } } }\n}\n"
 
-test fn a_forged_silence_proof_is_refused_at_compile() -> Bool {
+test fn a_forged_silence_proof_is_refused_at_compile() -> Bool  {
   seal_violations(source: forged_silence_source, subject: "SilenceProof") == 1
 }
 
@@ -97,13 +97,13 @@ test fn a_forged_silence_proof_is_refused_at_compile() -> Bool {
 // route, and must draw ZERO violations on the same key.
 data sanctioned_commit_source: String = "module probe_fleet_obs_sanctioned_commit\nimport gunbc.fleet_observation_capture_chunk { LocalCommitStanding, local_commit_from_cas }\nimport std.durable_compare_and_set { CasOutcome }\nimport std.types { NonEmptyStr }\nfn sanctioned(o: CasOutcome<NonEmptyStr>) -> LocalCommitStanding {\n  local_commit_from_cas(outcome: o)\n}\n"
 
-test fn the_sanctioned_commit_route_draws_no_violation() -> Bool {
+test fn the_sanctioned_commit_route_draws_no_violation() -> Bool  {
   seal_violations(source: sanctioned_commit_source, subject: "DurableCommitProof") == 0
 }
 
 data sanctioned_chunk_source: String = "module probe_fleet_obs_sanctioned_chunk\nimport gunbc.fleet_observation_capture_chunk { CommittedChunk, CaptureChunk, LocalCommitStanding, committed_chunk }\nfn sanctioned(c: CaptureChunk, s: LocalCommitStanding) -> CommittedChunk? {\n  committed_chunk(chunk: c, standing: s)\n}\n"
 
-test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool {
+test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool  {
   seal_violations(source: sanctioned_chunk_source, subject: "CommittedChunk") == 0
 }
 
@@ -116,20 +116,20 @@ test fn the_sanctioned_chunk_route_draws_no_violation() -> Bool {
 // the fixture is stale", which is the distinction this file's own header claims to keep.
 data sanctioned_reach_source: String = "module probe_fleet_obs_sanctioned_reach\nimport gunbc.fleet_observation_capture_chunk { ContinuityDerivation, CommittedChunk, SourceStreamId, StreamPosition, continuity_from_committed_chunks }\nimport std.types { List }\nfn sanctioned(cs: List<CommittedChunk>, subj: SourceStreamId, from: StreamPosition) -> ContinuityDerivation {\n  continuity_from_committed_chunks(committed: cs, subject: subj, from: from)\n}\n"
 
-test fn the_sanctioned_continuity_route_draws_no_violation() -> Bool {
+test fn the_sanctioned_continuity_route_draws_no_violation() -> Bool  {
   seal_violations(source: sanctioned_reach_source, subject: "ContinuityReach") == 0
 }
 
 data sanctioned_silence_source: String = "module probe_fleet_obs_sanctioned_silence\nimport gunbc.fleet_observation_capture_chunk { SourceStreamRange }\nimport gunbc.fleet_observation_observation_envelope { SourceByteFact, ObservationEnvelope, source_byte_fact }\nfn sanctioned(e: ObservationEnvelope, r: SourceStreamRange) -> SourceByteFact {\n  source_byte_fact(envelope: e, requested: r)\n}\n"
 
-test fn the_sanctioned_silence_route_draws_no_violation() -> Bool {
+test fn the_sanctioned_silence_route_draws_no_violation() -> Bool  {
   seal_violations(source: sanctioned_silence_source, subject: "SilenceProof") == 0
 }
 
 // BOTH ARMS MUST ACTUALLY HAVE COMPILED. blocking_subject_count_for returns -1 on a census that did
 // not run, never 0, so a probe that
 // never ran would otherwise be indistinguishable from one that ran and found nothing.
-test fn every_probe_in_this_file_actually_compiled() -> Bool {
+test fn every_probe_in_this_file_actually_compiled() -> Bool  {
   census_ran(source: forged_commit_proof_source)
   && census_ran(source: forged_continuity_reach_source)
   && census_ran(source: forged_committed_chunk_source)

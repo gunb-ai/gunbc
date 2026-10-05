@@ -40,7 +40,7 @@ fn first_containment_is_chassis(c: PhysicalContainment) -> Bool {
   }
 }
 
-test fn w_every_srv_component_purchase_is_an_obligation() -> Bool {
+test fn w_every_srv_component_purchase_is_an_obligation() -> Bool  {
   every_recorded_component_lot_is_admitted(rows: srv_assembly_components)
     && every_board_component_is_from_the_four_board_lot(rows: srv_assembly_components)
     && every_cooler_component_is_from_its_lot(rows: srv_assembly_components)
@@ -73,7 +73,7 @@ fn containment_is_srv1_chassis_edge(c: PhysicalContainment) -> Bool {
 
 data srv_containments_with_srv1_chassis_mishosted: List<PhysicalContainment> = srv_assembly_containments.filter(c => !containment_is_srv1_chassis_edge(c: c)).append(ChassisContainsHost { chassis: chassis_srv1, host: operator_host_srv2 })
 
-test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
+test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool  {
   assembly_containments_join(rows: srv_assembly_components, containments: srv_assembly_containments)
     && !assembly_containments_join(
       rows: srv_assembly_components,
@@ -82,12 +82,12 @@ test fn w_a_chassis_edge_to_the_wrong_host_does_not_discharge() -> Bool {
     && srv_containments_with_srv1_chassis_mishosted.length() == srv_assembly_containments.length()
 }
 
-test fn w_omitting_a_rostered_component_refuses_cover() -> Bool {
+test fn w_omitting_a_rostered_component_refuses_cover() -> Bool  {
   assembly_covers_component_roster(rows: srv_assembly_components)
     && !assembly_covers_component_roster(rows: srv_assembly_components.skip(n: 1))
 }
 
-test fn w_boards_and_processors_are_present() -> Bool {
+test fn w_boards_and_processors_are_present() -> Bool  {
   srv_assembly_components.any(row => physical_asset_identity_eq(a: row.component, b: board_srv1))
     && srv_assembly_components.any(row => physical_asset_identity_eq(a: row.component, b: processor_srv1))
     && srv_assembly_components.all(row => match row.acquisition {
@@ -107,7 +107,7 @@ test fn w_boards_and_processors_are_present() -> Bool {
 // Move ONLY the cooler's assembly host, retaining its identity, catalog and lot. The unmoved graph
 // must still join, so the refusal is attributable to the host and not to a graph broken by the
 // edit - which is the difference between this and deleting the edges wholesale.
-test fn w_cooler_host_must_match_installed_containment() -> Bool {
+test fn w_cooler_host_must_match_installed_containment() -> Bool  {
   let moved = map(srv_assembly_components, row =>
     if physical_asset_identity_eq(a: row.component, b: cooler_srv3) {
       AssembledComponent {
@@ -124,7 +124,7 @@ test fn w_cooler_host_must_match_installed_containment() -> Bool {
 
 // Keep the assembly unchanged and remove only the installed cooler edge. Under the old exemption
 // this passed vacuously, because a cooler needed no edge to discharge.
-test fn w_missing_installed_cooler_edge_refuses() -> Bool {
+test fn w_missing_installed_cooler_edge_refuses() -> Bool  {
   let missing = srv_assembly_containments.filter(c => match c {
     HostContainsComponent { host: _, component: comp } => !physical_asset_identity_eq(a: comp, b: cooler_srv3)
     ChassisContainsHost { chassis: _, host: _ } => true

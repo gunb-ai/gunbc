@@ -198,7 +198,7 @@ data sample_columns: ClaimCostColumns = ClaimCostColumns {
 // how the next reader is told the vanish was intended.
 data old_vintage_tsv: String = "# summary\texecuted=2\tcost_basis=cpu\nidentity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\tcost_line_ms\nm.hot.x\tm.hot\tpass\ttrue\t402\t400\t100"
 
-test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_next_one() -> Bool {
+test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_next_one() -> Bool  {
   match parse_claim_cost_tsv(text: old_vintage_tsv) {
          ArtifactRows { rows: _ } => false
          ArtifactRefused { cause: c } => match c {
@@ -224,7 +224,7 @@ test fn an_artifact_without_the_steps_column_refuses_rather_than_reading_the_nex
 // reading `cpu_ms` for every row would be the absorbing arm DESIGN section 5 forbids.
 //
 // IF THIS TEST GOES GREEN BY THE PARSER ACCEPTING THE OLD HEADER, THE WALL IS GONE.
-test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cost() -> Bool {
+test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cost() -> Bool  {
   let shared_header = "identity\tmodule\toutcome\tverdict_reached\twall_ms\tcpu_ms\teval_steps\tcost_line_ms"
   let shared_tsv = concat(concat("# summary\texecuted=1\n", shared_header), "\nm.hot.k\tm.hot\tbudget_interrupted\tfalse\t513\t509\t163840\t100")
   match parse_claim_cost_tsv(text: shared_tsv) {
@@ -245,7 +245,7 @@ test fn a_shared_cpu_ms_column_refuses_rather_than_being_read_as_a_completed_cos
 // AND ITS POSITIVE CONTROL, so the refusal above cannot be satisfied by a parser that rejects
 // everything: the same interrupted row under the DISJOINT header parses, and it parses as a
 // BOUND -- `observed_cpu_ms` answers Absent for it while `cpu_at_least_ms` answers 509.
-test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
+test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool  {
   let admitted = match parse_claim_cost_tsv(text: censored_tsv) {
     ArtifactRefused { cause: _ } => []
     ArtifactRows { rows: rr } => rr
@@ -264,7 +264,7 @@ test fn a_censored_row_parses_as_a_bound_and_yields_no_observed_cost() -> Bool {
 // A ROW WHOSE DECLARED KIND DOES NOT MATCH THE COLUMNS IT FILLED IS REFUSED, never repaired from
 // the other arm. Recovering a figure from the opposite column is exactly the promotion this file
 // exists to prevent, and it would be invisible because the recovered number is well-formed.
-test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row_so_the_artifact_refuses() -> Bool {
+test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row_so_the_artifact_refuses() -> Bool  {
   match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t402\t\t513\t509\t8000\t500\tcpu_deadline\t900\t100", columns: sample_columns) {
     Present { value: _ } => false
     Absent => match parse_claim_cost_line(line: "m.x\tm\tbudget_interrupted\tfalse\tright_censored\t402\t400\t\t\t\t\t\t900\t100", columns: sample_columns) {
@@ -276,7 +276,7 @@ test fn a_kind_that_disagrees_with_its_filled_columns_yields_no_row_so_the_artif
 
 // AND THE POSITIVE CONTROL FOR THAT REFUSAL, so an empty population cannot be read as "the parser
 // is broken": the same rows under a header that DOES carry the column parse normally.
-test fn the_same_shape_with_a_steps_column_parses() -> Bool {
+test fn the_same_shape_with_a_steps_column_parses() -> Bool  {
   match parse_claim_cost_tsv(text: sample_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
 }
 
@@ -284,7 +284,7 @@ test fn the_same_shape_with_a_steps_column_parses() -> Bool {
 // discriminating red for the whole change: under a positional parser this fixture returns a row
 // whose cpu and steps are swapped, and swapped values are two plausible numbers rather than an
 // error.
-test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
+test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool  {
   let reordered = "identity\tmodule\teval_steps\tverdict_reached\tcost_reading\tcpu_at_least_ms\tcensoring_cpu_limit_ms\tobserved_cpu_ms\nm.hot.x\tm.hot\t1000\ttrue\tobserved\t\t\t400"
   let rows = match parse_claim_cost_tsv(text: reordered) {
     ArtifactRefused { cause: _ } => []
@@ -303,11 +303,11 @@ test fn a_reordered_header_is_followed_rather_than_the_old_positions() -> Bool {
   }
 }
 
-test fn the_summary_and_header_lines_are_not_rows() -> Bool {
+test fn the_summary_and_header_lines_are_not_rows() -> Bool  {
   match parse_claim_cost_tsv(text: sample_tsv) { ArtifactRefused { cause: _ } => false ArtifactRows { rows: rr } => count(rr) == 2 }
 }
 
-test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool {
+test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool  {
   let rows = match parse_claim_cost_tsv(text: sample_tsv) {
     ArtifactRefused { cause: _ } => []
     ArtifactRows { rows: rr } => rr
@@ -339,7 +339,7 @@ test fn a_parsed_row_takes_cpu_from_the_cpu_column_not_the_wall_column() -> Bool
 //
 // The ASSERTION is unchanged and still earns its place -- the line parser must never fabricate.
 // Only the claim about what that `Absent` MEANS is corrected.
-test fn an_unparseable_line_yields_no_row_so_the_artifact_can_refuse_it() -> Bool {
+test fn an_unparseable_line_yields_no_row_so_the_artifact_can_refuse_it() -> Bool  {
   match parse_claim_cost_line(line: "m.broken\tm\tpass", columns: sample_columns) {
     Present { value: _ } => false
     Absent => match parse_claim_cost_line(line: "m.x\tm\tpass\ttrue\tobserved\t10\tNOT-A-NUMBER\t\t\t\t\t\t1\t100", columns: sample_columns) {
@@ -349,7 +349,7 @@ test fn an_unparseable_line_yields_no_row_so_the_artifact_can_refuse_it() -> Boo
   }
 }
 
-test fn bands_partition_the_population_and_the_cumulative_counts_agree() -> Bool {
+test fn bands_partition_the_population_and_the_cumulative_counts_agree() -> Bool  {
   let bands = cost_bands(rows: run_b.rows, edges: [0, 100, 300, 1000] |> map(e => millisecond(count: e)))
   count(bands) == 3
     && rows_in_band(rows: run_b.rows, lower_ms: millisecond(count: 0), upper_ms: millisecond(count: 100)) == 0
@@ -360,7 +360,7 @@ test fn bands_partition_the_population_and_the_cumulative_counts_agree() -> Bool
 }
 
 // A RUN REFUSES EXISTENTIALLY OVER ROWS: runA has no crossing, runB has one.
-test fn crossings_are_per_run_and_a_refusal_needs_only_one_row() -> Bool {
+test fn crossings_are_per_run_and_a_refusal_needs_only_one_row() -> Bool  {
   count(run_crossings(run: run_a, ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 0
     && count(run_crossings(run: run_b, ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 1
     && runs_refused(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: []) == 1
@@ -368,7 +368,7 @@ test fn crossings_are_per_run_and_a_refusal_needs_only_one_row() -> Bool {
 
 // THE COUNTERFACTUAL REPLAY, which is the derivation the memo's central correction rests on:
 // excluding the crossing module must take the refused-run count to zero.
-test fn excluding_the_crossing_module_replays_the_runs_clean() -> Bool {
+test fn excluding_the_crossing_module_replays_the_runs_clean() -> Bool  {
   runs_refused(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: ["m.hot"]) == 0
     && runs_refused(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: ["m.mid"]) == 1
 }
@@ -376,11 +376,11 @@ test fn excluding_the_crossing_module_replays_the_runs_clean() -> Bool {
 // AND ITS DISCRIMINATING RED: excluding an UNRELATED module must not change the verdict. Without
 // this, an exclusion that silently dropped every row would also read as "clean" and the
 // counterfactual would be vacuous.
-test fn excluding_an_unrelated_module_leaves_the_refusal_standing() -> Bool {
+test fn excluding_an_unrelated_module_leaves_the_refusal_standing() -> Bool  {
   runs_refused(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: ["m.absent"]) == 1
 }
 
-test fn the_worst_row_is_taken_over_every_run_not_the_latest() -> Bool {
+test fn the_worst_row_is_taken_over_every_run_not_the_latest() -> Bool  {
   millisecond_count(m: worst_cost_at_least_ms(w: run_worst_cpu(run: run_a, excluded_modules: []))) == 400
     && millisecond_count(m: worst_cost_at_least_ms(w: worst_over_runs(runs: both_runs, excluded_modules: []))) == 600
     && millisecond_count(m: worst_cost_at_least_ms(w: worst_over_runs(runs: both_runs, excluded_modules: ["m.hot"]))) == 300
@@ -389,7 +389,7 @@ test fn the_worst_row_is_taken_over_every_run_not_the_latest() -> Bool {
 }
 
 // THE LADDER: each step must be CUMULATIVE with the ones before it, not independent.
-test fn the_repair_ladder_accumulates_its_removals() -> Bool {
+test fn the_repair_ladder_accumulates_its_removals() -> Bool  {
   let steps = repair_ladder(runs: both_runs, ceiling_ms: millisecond(count: 500), already_excluded: [], order: ["m.hot", "m.mid"])
   match steps |> get(0) {
     Absent => false
@@ -406,7 +406,7 @@ test fn the_repair_ladder_accumulates_its_removals() -> Bool {
 
 // INFLATION IS PAIRED ON IDENTITY, and the min_base filter drops rows too small to measure.
 // m.hot.x 400->600 is 1500 permille; m.mid.y 200->300 is 1500; m.mid.z 50->100 is 2000.
-test fn inflation_is_paired_on_identity_and_carried_in_permille() -> Bool {
+test fn inflation_is_paired_on_identity_and_carried_in_permille() -> Bool  {
   let all = identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 50))
   let big = identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 100))
   count(all) == 3 && count(big) == 2
@@ -415,7 +415,7 @@ test fn inflation_is_paired_on_identity_and_carried_in_permille() -> Bool {
 }
 
 // THE PERCENTILE IS AN ORDER STATISTIC: every value it returns was observed.
-test fn the_percentile_returns_an_observed_value_and_refuses_an_empty_population() -> Bool {
+test fn the_percentile_returns_an_observed_value_and_refuses_an_empty_population() -> Bool  {
   match permille_percentile(values: [1000, 1200, 1500], percent: 50) {
     Absent => false
     Present { value: v } => v == 1200 && match permille_percentile(values: [], percent: 50) {
@@ -425,7 +425,7 @@ test fn the_percentile_returns_an_observed_value_and_refuses_an_empty_population
   }
 }
 
-test fn the_implied_budget_is_the_ceiling_deflated_by_the_measured_inflation() -> Bool {
+test fn the_implied_budget_is_the_ceiling_deflated_by_the_measured_inflation() -> Bool  {
   millisecond_count(m: implied_clean_run_budget(ceiling_ms: millisecond(count: 500), inflation_permille: 1600)) == 312
     && millisecond_count(m: implied_clean_run_budget(ceiling_ms: millisecond(count: 500), inflation_permille: 1000)) == 500
 }
@@ -435,7 +435,7 @@ test fn the_implied_budget_is_the_ceiling_deflated_by_the_measured_inflation() -
 // rows is indistinguishable from a run in which nothing crossed, so it must refuse rather than
 // contribute an empty population. These two rows keep both arms produced rather than merely
 // declared.
-test fn an_unreadable_or_empty_run_is_named_and_never_counted_as_loaded() -> Bool {
+test fn an_unreadable_or_empty_run_is_named_and_never_counted_as_loaded() -> Bool  {
   let loads = [
     RunLoaded { run: run_a },
     RunEmpty { run: "runEmpty" as NonEmptyStr, path: "/x/runEmpty/required_floor_claim_cost.tsv" },
@@ -448,7 +448,7 @@ test fn an_unreadable_or_empty_run_is_named_and_never_counted_as_loaded() -> Boo
 
 // AND ITS DISCRIMINATING RED: an all-loaded set must produce NO refusal lines, so the arm above
 // cannot be satisfied by a function that always reports something.
-test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
+test fn a_complete_sample_produces_no_refusal_lines() -> Bool  {
   count(refused_load_lines(loads: [RunLoaded { run: run_a }, RunLoaded { run: run_b }])) == 0
 }
 
@@ -457,7 +457,7 @@ test fn a_complete_sample_produces_no_refusal_lines() -> Bool {
 // diagnostic line threshold side by side, and reading the wrong one produces a plausible number
 // rather than an error. 1000 is the steps field of the fixture's first row; 400 is its cpu and 402
 // its wall.
-test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
+test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool  {
   let rows = match parse_claim_cost_tsv(text: sample_tsv) {
     ArtifactRefused { cause: _ } => []
     ArtifactRows { rows: rr } => rr
@@ -480,7 +480,7 @@ test fn a_parsed_row_takes_eval_steps_from_the_steps_column() -> Bool {
 // `m.mid.y` moves 200 -> 300ms but its steps move 4000 -> 4400, so its cost change is not
 // separable and it must be DROPPED rather than counted at 1500 permille. A pairing that admitted
 // it would report a work change as contention, which is the whole confound this exists to remove.
-test fn equal_work_pairing_admits_the_unchanged_row_and_drops_the_changed_one() -> Bool {
+test fn equal_work_pairing_admits_the_unchanged_row_and_drops_the_changed_one() -> Bool  {
   let controlled = identity_inflation_permille_at_equal_work(base: run_a, other: run_b, min_base_ms: millisecond(count: 100))
   let uncontrolled = identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 100))
   count(controlled) == 1 && count(uncontrolled) == 2
@@ -490,7 +490,7 @@ test fn equal_work_pairing_admits_the_unchanged_row_and_drops_the_changed_one() 
 // AND THE REACH IS REPORTABLE, which is the first thing a reader should doubt: a work-controlled
 // figure over one row of two is a clean instrument over half the population, and the caller must
 // be able to say so rather than quoting the percentile alone.
-test fn the_controlled_population_is_smaller_than_the_paired_one_and_countable() -> Bool {
+test fn the_controlled_population_is_smaller_than_the_paired_one_and_countable() -> Bool  {
   count(identity_inflation_permille_at_equal_work(base: run_a, other: run_b, min_base_ms: millisecond(count: 100)))
     < count(identity_inflation_permille(base: run_a, other: run_b, min_base_ms: millisecond(count: 100)))
 }
@@ -498,7 +498,7 @@ test fn the_controlled_population_is_smaller_than_the_paired_one_and_countable()
 // RECURRENCE OVER THE FIXTURE: `m.hot.x` crosses on run B alone, so it recurs ONCE and the
 // recurring-crosser population is EMPTY. That is the shape a run-level cause produces, and an
 // empty answer here is the finding rather than the absence of one.
-test fn a_single_run_crossing_recurs_once_and_no_identity_recurs() -> Bool {
+test fn a_single_run_crossing_recurs_once_and_no_identity_recurs() -> Bool  {
   let rec = crossing_recurrence(runs: both_runs, ceiling_ms: millisecond(count: 500), excluded_modules: [])
   count(rec) == 1
     && match rec |> first { Absent => false  Present { value: r } => r.identity == "m.hot.x" && r.runs_crossed == 1 }
@@ -509,7 +509,7 @@ test fn a_single_run_crossing_recurs_once_and_no_identity_recurs() -> Bool {
 // where the SAME identity crosses twice, it is counted twice and reported as recurring. Without
 // this, `recurring_crossers` returning empty would be indistinguishable from a join that never
 // matches anything.
-test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring() -> Bool {
+test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring() -> Bool  {
   let hot_a = RunCost { run: "hotA" as NonEmptyStr, rows: [row_b1] }
   let hot_b = RunCost { run: "hotB" as NonEmptyStr, rows: [row_b1] }
   let rec = crossing_recurrence(runs: [hot_a, hot_b], ceiling_ms: millisecond(count: 500), excluded_modules: [])
@@ -536,7 +536,7 @@ test fn an_identity_crossing_in_two_runs_is_counted_twice_and_reported_recurring
 // 300ms and 100ms OBSERVED plus one row censored at >=502ms; run_b is the same three-row shape with
 // every row observed (600/300/100). run_b is THE CONTROL -- it puts two rows in the top band, so
 // the zero run_c reports there is the censoring and not an empty filter.
-test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool {
+test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool  {
   censored_rows(rows: run_c.rows) == 1
     && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 500), upper_ms: millisecond(count: 1000)) == 0
     && rows_in_band(rows: run_c.rows, lower_ms: millisecond(count: 100), upper_ms: millisecond(count: 500)) == 2
@@ -554,7 +554,7 @@ test fn a_censored_row_enters_no_band_and_is_counted_as_excluded() -> Bool {
 // question -- and this pair is the executable statement of it.
 // THE THIRD ASSERTION IS NOT AN AFTERTHOUGHT: a censored row stays EXCLUDABLE BY MODULE, so the
 // counterfactual replay reaches it like any other row rather than being pinned into every result.
-test fn a_censored_row_still_counts_as_a_crossing_because_that_question_is_a_lower_bound() -> Bool {
+test fn a_censored_row_still_counts_as_a_crossing_because_that_question_is_a_lower_bound() -> Bool  {
   count(run_crossings(run: run_c, ceiling_ms: millisecond(count: 500), excluded_modules: [])) == 1
     && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: []) == 1
     && runs_refused(runs: [run_c], ceiling_ms: millisecond(count: 500), excluded_modules: ["m.hot"]) == 0
@@ -568,7 +568,7 @@ test fn a_censored_row_still_counts_as_a_crossing_because_that_question_is_a_low
 // THE CONTROL IS THE CENSOR-FREE RUN, and it must answer WorstObserved. Without it, a function
 // that returned WorstIsLowerBound unconditionally would pass the first half and have destroyed the
 // distinction rather than made it.
-test fn a_maximum_over_a_censored_population_is_typed_as_a_lower_bound() -> Bool {
+test fn a_maximum_over_a_censored_population_is_typed_as_a_lower_bound() -> Bool  {
   match run_worst_cpu(run: run_c, excluded_modules: []) {
     WorstObserved { cpu_ms: _ } => false
     WorstIsLowerBound { at_least_ms: b, censored_rows: n } =>
@@ -585,7 +585,7 @@ test fn a_maximum_over_a_censored_population_is_typed_as_a_lower_bound() -> Bool
 // row is smaller -- so a fold that took the censoring from the WINNING run would report
 // WorstObserved 600 and lose the fact that another run held a row of unknown, possibly larger,
 // cost. A maximum is exact only when every member it ranged over was.
-test fn one_censored_row_in_any_run_makes_the_fleet_wide_worst_a_bound() -> Bool {
+test fn one_censored_row_in_any_run_makes_the_fleet_wide_worst_a_bound() -> Bool  {
   match worst_over_runs(runs: [run_b, run_c], excluded_modules: []) {
     WorstObserved { cpu_ms: _ } => false
     WorstIsLowerBound { at_least_ms: b, censored_rows: n } => millisecond_count(m: b) == 600 && n == 1
@@ -609,7 +609,7 @@ test fn one_censored_row_in_any_run_makes_the_fleet_wide_worst_a_bound() -> Bool
 // with m.hot.k, and that pair must be refused and COUNTED rather than contributing a 1000-permille
 // "no inflation" observation -- which is exactly what dividing the bound by itself would produce,
 // and it is a perfectly plausible number.
-test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Bool {
+test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Bool  {
   let obs = identity_inflation(base: run_b, other: run_c, min_base_ms: millisecond(count: 50))
   count(obs.permille) == 2 && obs.paired == 2 && obs.censored_pairs == 0
     && match identity_inflation(base: run_c, other: run_c, min_base_ms: millisecond(count: 50)) {
@@ -638,7 +638,7 @@ test fn an_inflation_pair_with_a_censored_member_is_refused_and_counted() -> Boo
 // bound clears it, so it is a sound crossing and the undecidable list is EMPTY. Without that half,
 // a function answering Undecidable for every censored row would pass the first half and have
 // destroyed the admission rather than guarded it.
-test fn a_censored_row_below_the_line_is_undecidable_rather_than_assumed_to_have_crossed() -> Bool {
+test fn a_censored_row_below_the_line_is_undecidable_rather_than_assumed_to_have_crossed() -> Bool  {
   match row_crossing(row: row_c_censored, ceiling_ms: millisecond(count: 600)) {
     RowCrossed => false
     RowBelowLine => false
@@ -657,7 +657,7 @@ test fn a_censored_row_below_the_line_is_undecidable_rather_than_assumed_to_have
 // AN OBSERVED ROW IS NEVER UNDECIDABLE, on either side of the line. The third arm belongs to
 // censoring alone, so a defect that widened it to observed rows -- making the whole analysis
 // refuse -- would be caught here rather than read as caution.
-test fn an_observed_row_is_decided_in_both_directions_and_never_undecidable() -> Bool {
+test fn an_observed_row_is_decided_in_both_directions_and_never_undecidable() -> Bool  {
   match row_crossing(row: row_b1, ceiling_ms: millisecond(count: 500)) {
     RowCrossed => match row_crossing(row: row_b3, ceiling_ms: millisecond(count: 500)) {
       RowBelowLine => true
@@ -673,7 +673,7 @@ test fn an_observed_row_is_decided_in_both_directions_and_never_undecidable() ->
 // this wall judges work identity, not runner speed. The changed row is the discriminating red:
 // filtering unequal-step rows out (the distribution instrument's correct behavior) would make
 // the wall green over exactly the evidence it exists to refuse.
-test fn same_head_completed_claims_require_exact_step_equality() -> Bool {
+test fn same_head_completed_claims_require_exact_step_equality() -> Bool  {
   let equal = SameHeadAttemptPair {
     left_head: "same-head" as NonEmptyStr,
     left_attempt: "attempt-2" as NonEmptyStr,
@@ -714,7 +714,7 @@ test fn same_head_completed_claims_require_exact_step_equality() -> Bool {
 // Population equality is part of the wall. Comparing only the intersection would certify a run
 // after the differing row vanished or failed to reach verdict, the two easiest ways for an exact
 // equality check to become vacuous.
-test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_comparison() -> Bool {
+test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_comparison() -> Bool  {
   let interrupted = FloorCostRow {
     identity: "m.hot.x",
     module: "m.hot",
@@ -759,7 +759,7 @@ test fn a_missing_or_interrupted_counterpart_refuses_instead_of_shrinking_the_co
 //
 // IF THIS GOES GREEN BY THE PARSER SILENTLY DROPPING THE BAD ROW AND RETURNING THE OTHER ONE, THE
 // WALL IS GONE -- so the arm asserts the REFUSAL and names the offending line, not a count.
-test fn a_malformed_data_row_refuses_the_whole_artifact_rather_than_vanishing() -> Bool {
+test fn a_malformed_data_row_refuses_the_whole_artifact_rather_than_vanishing() -> Bool  {
   let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
   let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
   let torn = "m.torn.b\tm.torn\tpass"
@@ -776,7 +776,7 @@ test fn a_malformed_data_row_refuses_the_whole_artifact_rather_than_vanishing() 
 
 // CONTROL ONE, so the refusal above cannot come from a parser that refuses everything: the SAME
 // artifact without the torn line is ACCEPTED and yields its row.
-test fn the_same_artifact_without_the_torn_row_is_accepted() -> Bool {
+test fn the_same_artifact_without_the_torn_row_is_accepted() -> Bool  {
   let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
   let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
   match parse_claim_cost_tsv(text: concat(concat(header, "\n"), good)) {
@@ -788,7 +788,7 @@ test fn the_same_artifact_without_the_torn_row_is_accepted() -> Bool {
 // CONTROL TWO, so the refusal is not merely "any line that fails to parse": the `#` summary line
 // and a blank line are NOT declared rows, and an artifact carrying both is still accepted. Without
 // this, the fix could be satisfied by refusing every artifact the instrument has ever read.
-test fn the_summary_and_blank_lines_are_not_malformed_rows() -> Bool {
+test fn the_summary_and_blank_lines_are_not_malformed_rows() -> Bool  {
   let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_wall_ms\tobserved_cpu_ms\twall_at_least_ms\tcpu_at_least_ms\tcensoring_wall_limit_ms\tcensoring_cpu_limit_ms\tcensoring_raised_by\teval_steps\tcost_line_ms"
   let good = "m.ok.a\tm.ok\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t900\t100"
   match parse_claim_cost_tsv(text: concat(concat(concat("# summary\texecuted=1\n", concat(header, "\n")), concat(good, "\n")), "")) {
@@ -799,7 +799,7 @@ test fn the_summary_and_blank_lines_are_not_malformed_rows() -> Bool {
 
 // AN ARTIFACT WITH NO HEADER IS REFUSED AND NAMED, NOT REPORTED AS EMPTY. `RunEmpty` and
 // `RunRefused` are different facts about a run and the instrument now carries both.
-test fn an_artifact_with_no_header_is_refused_rather_than_empty() -> Bool {
+test fn an_artifact_with_no_header_is_refused_rather_than_empty() -> Bool  {
   match parse_claim_cost_tsv(text: "# summary\texecuted=0\nnothing here") {
     ArtifactRows { rows: _ } => false
     ArtifactRefused { cause: c } => match c {
@@ -816,7 +816,7 @@ test fn an_artifact_with_no_header_is_refused_rather_than_empty() -> Bool {
 // constructor would never be reached by any witness and its `missing_columns` would be a field no
 // execution ever reads. This header is NEW vintage -- it carries `cost_reading`, so it is not the
 // shared-`cpu_ms` artifact -- and simply lacks `eval_steps`.
-test fn a_new_vintage_header_missing_a_column_names_the_column_it_lacks() -> Bool {
+test fn a_new_vintage_header_missing_a_column_names_the_column_it_lacks() -> Bool  {
   let header = "identity\tmodule\toutcome\tverdict_reached\tcost_reading\tobserved_cpu_ms\tcpu_at_least_ms\tcensoring_cpu_limit_ms"
   match parse_claim_cost_tsv(text: concat(header, "\nm.x\tm\tpass\ttrue\tobserved\t400\t\t")) {
     ArtifactRows { rows: _ } => false
@@ -838,7 +838,7 @@ test fn a_new_vintage_header_missing_a_column_names_the_column_it_lacks() -> Boo
 // REFUSAL, THE PARTIAL SAMPLE IS BACK -- a ten-run measurement's name over the runs that happened
 // to load. The arm asserts the ABSENCE of every figure family, not merely the presence of the
 // refusal, because a report that refuses AND calculates is exactly the defect.
-test fn a_refused_run_beside_loaded_ones_produces_no_figures() -> Bool {
+test fn a_refused_run_beside_loaded_ones_produces_no_figures() -> Bool  {
   let lines = floor_cost_distribution_lines(
     loads: [
       RunLoaded { run: run_a },
@@ -861,7 +861,7 @@ test fn a_refused_run_beside_loaded_ones_produces_no_figures() -> Bool {
 
 // AND ITS POSITIVE CONTROL, so the emptiness above cannot come from a report that produces nothing:
 // the SAME two runs with the refused member removed DO produce figures.
-test fn the_same_runs_without_the_refused_member_do_produce_figures() -> Bool {
+test fn the_same_runs_without_the_refused_member_do_produce_figures() -> Bool  {
   let lines = floor_cost_distribution_lines(
     loads: [RunLoaded { run: run_a }, RunLoaded { run: run_b }],
     baseline: "a" as NonEmptyStr,
@@ -954,7 +954,7 @@ fn complete_env(min_ms: Millisecond) -> List<IdentityEnvelope> {
 // two-run reading would have used reports 1500 permille for `m.hot.x` where the three-run envelope
 // reports 2250, so a derivation that stopped at a pair would satisfy every other assertion here and
 // be wrong by 750 permille -- 111ms of budget against the 500ms ceiling.
-test fn an_envelope_indexes_over_every_run_and_not_over_one_pair() -> Bool {
+test fn an_envelope_indexes_over_every_run_and_not_over_one_pair() -> Bool  {
   match envelope_named(identity: "m.hot.x") {
     Absent => false
     Present { value: e } =>
@@ -967,7 +967,7 @@ test fn an_envelope_indexes_over_every_run_and_not_over_one_pair() -> Bool {
   }
 }
 
-test fn the_extremes_name_the_runs_that_achieved_them() -> Bool {
+test fn the_extremes_name_the_runs_that_achieved_them() -> Bool  {
   match envelope_named(identity: "m.hot.x") {
     Absent => false
     Present { value: e } =>
@@ -979,7 +979,7 @@ test fn the_extremes_name_the_runs_that_achieved_them() -> Bool {
 // cannot silently contribute a spread computed over a different number of runs. THE DISCRIMINATING
 // RED IS ON THE FILTER ITSELF: dropping it moves the worst observed inflation from 2250 to 5000,
 // so the assertion over the complete population is not green by construction.
-test fn a_row_absent_from_one_run_is_excluded_at_identity_grain() -> Bool {
+test fn a_row_absent_from_one_run_is_excluded_at_identity_grain() -> Bool  {
   match envelope_named(identity: "m.part.p") {
     Absent => false
     Present { value: e } =>
@@ -999,7 +999,7 @@ test fn a_row_absent_from_one_run_is_excluded_at_identity_grain() -> Bool {
 // SO THIS ARM PROVES THE VERDICT AXIS AND CANNOT REPORT ON THE COST AXIS. It was previously named
 // for censoring, which made it look like the cost-axis wall while it was exercising a different
 // input entirely; the cost-axis refusal is `a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict`.
-test fn a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact() -> Bool {
+test fn a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact() -> Bool  {
   match envelope_named(identity: "m.noverdict.c") {
     Absent => false
     Present { value: e } =>
@@ -1012,7 +1012,7 @@ test fn a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact() -> Bool 
 // At a 50ms floor the complete population is `m.hot.x`, `m.mid.y` and `m.mid.z`; at 100ms the 50ms
 // baseline of `m.mid.z` leaves. That is the row whose 2000-permille "inflation" is one whole
 // millisecond of scheduling at a baseline the artifact records in whole milliseconds.
-test fn the_whole_millisecond_floor_drops_rows_it_cannot_measure() -> Bool {
+test fn the_whole_millisecond_floor_drops_rows_it_cannot_measure() -> Bool  {
   count(complete_env(min_ms: millisecond(count: 50))) == 3
     && count(complete_env(min_ms: millisecond(count: 100))) == 2
     && count(complete_env(min_ms: millisecond(count: 100)) |> filter(c => c.identity == "m.mid.z")) == 0
@@ -1020,7 +1020,7 @@ test fn the_whole_millisecond_floor_drops_rows_it_cannot_measure() -> Bool {
 
 // `m.mid.y` evaluated 4000 steps in runs A and C and 4400 in run B, so its cpu movement mixes a
 // tree change with inflation and it leaves the controlled population. The other two did not move.
-test fn equal_evaluator_work_is_carried_per_row_rather_than_recomputed() -> Bool {
+test fn equal_evaluator_work_is_carried_per_row_rather_than_recomputed() -> Bool  {
   let controlled = work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50)))
   count(controlled) == 2
     && count(controlled |> filter(c => c.identity == "m.mid.y")) == 0
@@ -1030,7 +1030,7 @@ test fn equal_evaluator_work_is_carried_per_row_rather_than_recomputed() -> Bool
 // Over the controlled population {`m.hot.x`, `m.mid.z`} run A is the coolest for BOTH and the
 // hottest for neither. That concentration is the shape a systematically cold machine produces;
 // under per-row jitter each of three runs would be coolest for about one row.
-test fn the_extreme_census_separates_a_property_of_the_run_from_a_property_of_the_row() -> Bool {
+test fn the_extreme_census_separates_a_property_of_the_run_from_a_property_of_the_row() -> Bool  {
   let census = run_extreme_census(
     runs: env_runs,
     envelopes: work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50)))
@@ -1052,7 +1052,7 @@ test fn the_extreme_census_separates_a_property_of_the_run_from_a_property_of_th
 // 500ms over 2250 permille floors to 222ms: the largest clean-run cost that still lands under the
 // ceiling after the worst inflation this sample observed. Integer division rounds the budget DOWN,
 // which is the safe direction for a limit.
-test fn the_worst_observed_envelope_feeds_the_budget_the_ceiling_implies() -> Bool {
+test fn the_worst_observed_envelope_feeds_the_budget_the_ceiling_implies() -> Bool  {
   millisecond_count(m: implied_clean_run_budget(
     ceiling_ms: millisecond(count: 500),
     inflation_permille: worst_envelope_permille(envelopes: work_invariant_envelopes(envelopes: complete_env(min_ms: millisecond(count: 50))))
@@ -1065,7 +1065,7 @@ test fn the_worst_observed_envelope_feeds_the_budget_the_ceiling_implies() -> Bo
 // `envelope_permilles`, and its absence there is what proves the refusal reaches the caller rather
 // than being smoothed. The `min_ms` floor excludes it independently, which is the belt this arm is
 // the braces for.
-test fn a_zero_baseline_has_no_ratio_and_says_so() -> Bool {
+test fn a_zero_baseline_has_no_ratio_and_says_so() -> Bool  {
   match envelope_named(identity: "m.zero.q") {
     Absent => false
     Present { value: e } =>
@@ -1084,7 +1084,7 @@ test fn a_zero_baseline_has_no_ratio_and_says_so() -> Bool {
 // `a_row_absent_from_one_run_is_excluded_at_identity_grain`, and leaves
 // `a_row_with_no_verdict_is_excluded_though_its_clocks_are_exact` GREEN -- that row is already
 // excluded by its verdict, and its reading is exact, so it cannot report on the cost axis at all.
-test fn a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict() -> Bool {
+test fn a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict() -> Bool  {
   match envelope_named(identity: "m.bound.b") {
     Absent => false
     Present { value: e } =>
@@ -1105,7 +1105,7 @@ test fn a_bound_is_excluded_on_its_own_axis_and_not_by_its_verdict() -> Bool {
 // ITS SAFETY WAS A HAND-PICKED ROSTER, WHICH IS THE CONDITION THIS ASSERTION REPLACES.
 // `floor_cost_envelope_sampled_runs` is an append surface and nothing about appending a run to it
 // tells the appender that a refused load would be rendered past rather than refused.
-test fn a_refused_run_produces_no_envelope_figures() -> Bool {
+test fn a_refused_run_produces_no_envelope_figures() -> Bool  {
   let lines = floor_cost_envelope_lines(
     loads: [
       RunLoaded { run: run_a },
@@ -1135,7 +1135,7 @@ data reach_tsv_header: String = "identity\tmodule\toutcome\tverdict_reached\tcos
 
 // THE THREE PRODUCER SPELLINGS, VERBATIM FROM `preemption_reachability_label`, so a producer that
 // renames one reds here rather than being silently absorbed.
-test fn the_three_producer_spellings_parse_and_a_fourth_refuses() -> Bool {
+test fn the_three_producer_spellings_parse_and_a_fourth_refuses() -> Bool  {
   match parse_preemption_reachability(value: "cooperatively_pollable") {
     Absent => false
     Present { value: r } => match r {
@@ -1170,7 +1170,7 @@ data unknown_reach_tsv: String = concat(concat("# summary\texecuted=1\tcost_basi
   "\nm.hot.x\tm.hot\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t1000\t100\tprobably_fine"
 )
 
-test fn an_unrecognised_reachability_label_refuses_the_artifact() -> Bool {
+test fn an_unrecognised_reachability_label_refuses_the_artifact() -> Bool  {
   match parse_claim_cost_tsv(text: unknown_reach_tsv) {
     ArtifactRows { rows: _ } => false
     ArtifactRefused { cause: c } => match c {
@@ -1189,7 +1189,7 @@ data known_reach_tsv: String = concat(
   "\nm.hot.x\tm.hot\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t1000\t100\tcooperatively_pollable"
 )
 
-test fn the_same_artifact_with_a_known_label_parses_and_carries_the_arm() -> Bool {
+test fn the_same_artifact_with_a_known_label_parses_and_carries_the_arm() -> Bool  {
   match parse_claim_cost_tsv(text: known_reach_tsv) {
     ArtifactRefused { cause: _ } => false
     ArtifactRows { rows: rows } => match rows |> first {
@@ -1215,7 +1215,7 @@ data torn_reach_tsv: String = concat(
   "\nm.hot.x\tm.hot\tpass\ttrue\tobserved\t402\t400\t\t\t\t\t\t1000\t100"
 )
 
-test fn a_row_too_short_for_a_declared_reachability_column_refuses() -> Bool {
+test fn a_row_too_short_for_a_declared_reachability_column_refuses() -> Bool  {
   match parse_claim_cost_tsv(text: torn_reach_tsv) {
     ArtifactRows { rows: _ } => false
     ArtifactRefused { cause: c } => match c {
@@ -1230,7 +1230,7 @@ test fn a_row_too_short_for_a_declared_reachability_column_refuses() -> Bool {
 // AN ARTIFACT WITHOUT THE COLUMN IS STILL A SOUND COST ARTIFACT. This is the reason the index is
 // optional rather than required: making it required would retire every vintage the envelope
 // derivation rests on, which is a strictly larger loss than the one it would prevent.
-test fn an_artifact_without_the_reachability_column_still_parses_as_costs() -> Bool {
+test fn an_artifact_without_the_reachability_column_still_parses_as_costs() -> Bool  {
   match parse_claim_cost_tsv(text: sample_tsv) {
     ArtifactRefused { cause: _ } => false
     ArtifactRows { rows: rows } => count(rows) == 2 && match rows |> first {
@@ -1290,7 +1290,7 @@ data cross_ceiling: Millisecond = millisecond(count: 500)
 
 data cross_census: CrossingPopulationCensus = crossing_population_census(runs: [cross_run], ceiling_ms: cross_ceiling, excluded_modules: [])
 
-test fn each_reachability_arm_lands_in_its_own_population_and_none_absorbs_another() -> Bool {
+test fn each_reachability_arm_lands_in_its_own_population_and_none_absorbs_another() -> Bool  {
   cross_census.completed_crossings == 4
     && cross_census.overshoot_charge == 1
     && cross_census.missed_interrupt == 1
@@ -1301,7 +1301,7 @@ test fn each_reachability_arm_lands_in_its_own_population_and_none_absorbs_anoth
 // THE DISCRIMINATOR THE PARENT LANE ASKED FOR: absence and zero are different values. An unarmed
 // surface and an artifact without the column are BOTH non-measurements, and neither may be counted
 // as a benign overshoot. If either were absorbed, `overshoot_charge` would read 2 or 3 here.
-test fn a_non_measurement_is_never_counted_as_a_benign_overshoot() -> Bool {
+test fn a_non_measurement_is_never_counted_as_a_benign_overshoot() -> Bool  {
   cross_census.overshoot_charge == 1
     && cross_census.surface_unarmed + cross_census.reachability_unrecorded == 2
 }
@@ -1309,20 +1309,20 @@ test fn a_non_measurement_is_never_counted_as_a_benign_overshoot() -> Bool {
 // THE INTERRUPT ARM IS COUNTED BESIDE THE COMPLETED POPULATION AND NEVER INSIDE IT. A censored row
 // never reached a verdict, so it is the other terminal arm with its own remedy; admitting it here
 // would merge the two arms this split exists to separate.
-test fn a_censored_crossing_is_beside_the_completed_population_not_in_it() -> Bool {
+test fn a_censored_crossing_is_beside_the_completed_population_not_in_it() -> Bool  {
   cross_census.censored_crossings == 1
     && cross_census.undecidable_crossings == 1
     && cross_census.completed_crossings == 4
 }
 
-test fn a_row_below_the_line_enters_no_population() -> Bool {
+test fn a_row_below_the_line_enters_no_population() -> Bool  {
   count(completed_crossing_rows(runs: [cross_run], ceiling_ms: cross_ceiling, excluded_modules: []))
     == 4
 }
 
 // THE PARTITION CLOSES, AND IT IS A CHECK RATHER THAN A TAUTOLOGY BECAUSE THE DENOMINATOR IS
 // COUNTED BEFORE THE SPLIT. An arm the split dropped on the floor would red here.
-test fn the_census_partition_closes_against_an_independently_counted_population() -> Bool {
+test fn the_census_partition_closes_against_an_independently_counted_population() -> Bool  {
   crossing_census_partition_closes(census: cross_census)
 }
 
@@ -1333,7 +1333,7 @@ data cross_run_repeat: RunCost = RunCost {
   rows: [cross_overshoot, cross_below]
 }
 
-test fn a_recurring_identity_counts_twice_and_is_one_population_member() -> Bool {
+test fn a_recurring_identity_counts_twice_and_is_one_population_member() -> Bool  {
   let rows = completed_crossing_rows(runs: [cross_run, cross_run_repeat], ceiling_ms: cross_ceiling, excluded_modules: [])
   let split = split_crossing_rows(rows: rows)
   count(split.overshoot_charge) == 2
@@ -1343,7 +1343,7 @@ test fn a_recurring_identity_counts_twice_and_is_one_population_member() -> Bool
 // EXCLUDING THE MODULE REPLAYS THE SAMPLE WITH NO CROSSINGS AT ALL, which is the counterfactual the
 // `excluded_modules` parameter exists for -- and it must empty the census rather than only the
 // numerators.
-test fn excluding_the_crossing_module_empties_the_census() -> Bool {
+test fn excluding_the_crossing_module_empties_the_census() -> Bool  {
   let census = crossing_population_census(runs: [cross_run], ceiling_ms: cross_ceiling, excluded_modules: ["m.cross"])
   census.completed_crossings == 0
     && census.overshoot_charge == 0
@@ -1362,7 +1362,7 @@ test fn excluding_the_crossing_module_empties_the_census() -> Bool {
 // rendering "we could not look" as "we looked and found none", so both assertions below are about
 // that distinction rather than about the counts.
 
-test fn an_unreadable_run_is_named_beside_the_census_and_never_silently_dropped() -> Bool {
+test fn an_unreadable_run_is_named_beside_the_census_and_never_silently_dropped() -> Bool  {
   let lines = floor_cost_crossing_lines(
     loads: [
       RunLoaded { run: cross_run },
@@ -1380,7 +1380,7 @@ test fn an_unreadable_run_is_named_beside_the_census_and_never_silently_dropped(
 // THE FAIL-CLOSED ARM: a sample in which NOTHING could be read has measured nothing, and must not
 // render as a census of zero crossings. This is the discriminating red for the partial-sample
 // ruling above -- without it, "report over what loaded" would green over an empty sample.
-test fn a_sample_in_which_no_run_loaded_refuses_rather_than_reporting_zero() -> Bool {
+test fn a_sample_in_which_no_run_loaded_refuses_rather_than_reporting_zero() -> Bool  {
   let lines = floor_cost_crossing_lines(
     loads: [
       RunRefused { run: "33817080219" as NonEmptyStr, path: "p", cause: UnsupportedSharedCpuMsVintage { header_line: "identity\tcpu_ms" } },
@@ -1425,7 +1425,7 @@ data disp_run_2: RunCost = RunCost { run: "runQ" as NonEmptyStr, rows: [both_pre
 // KEYED ON IDENTITY, DISPOSITION CARRIED AS A COUNT. Keyed on disposition instead, `m.cross.both`
 // would appear in two buckets and read as two separate problems -- which is the specific misreading
 // this join was commissioned to prevent.
-test fn an_identity_that_completed_once_and_was_preempted_once_is_one_row_not_two() -> Bool {
+test fn an_identity_that_completed_once_and_was_preempted_once_is_one_row_not_two() -> Bool  {
   let split = split_disposition_identities(runs: [disp_run_1, disp_run_2])
   count(split) == 1 && match split |> first {
     Absent => false
@@ -1435,7 +1435,7 @@ test fn an_identity_that_completed_once_and_was_preempted_once_is_one_row_not_tw
 
 // THE TWO REJECTIONS, so the join is not green by having nothing to exclude: an identity seen only
 // completed and one seen only preempted are both counted at identity grain and neither is SPLIT.
-test fn an_identity_seen_on_only_one_side_is_counted_but_never_split() -> Bool {
+test fn an_identity_seen_on_only_one_side_is_counted_but_never_split() -> Bool  {
   let all = identity_dispositions(runs: [disp_run_1, disp_run_2])
   count(all) == 3
     && count(all |> filter(d => d.identity == "m.cross.below" && d.completed_runs == 2 && d.preempted_runs == 0)) == 1
@@ -1455,7 +1455,7 @@ data panicked_exact: FloorCostRow = FloorCostRow {
   reachability: Present { value: ReachabilityCooperativelyPollable }
 }
 
-test fn a_panic_with_exact_clocks_is_not_counted_as_a_deadline_preemption() -> Bool {
+test fn a_panic_with_exact_clocks_is_not_counted_as_a_deadline_preemption() -> Bool  {
   let all = identity_dispositions(runs: [RunCost { run: "runR" as NonEmptyStr, rows: [panicked_exact] }])
   count(all |> filter(d => d.identity == "m.cross.panicked" && d.completed_runs == 1 && d.preempted_runs == 0)) == 1
 }
@@ -1485,7 +1485,7 @@ data attempt_right_ref: FloorAttemptRef = FloorAttemptRef {
 // TWO ATTEMPTS OF ONE RUN MUST NOT RESOLVE TO ONE PATH, which is the addressing defect that made
 // this sample unrepresentable in `floor_cost_crossing_sampled_runs` at all: that roster holds run
 // identities, and both of these carry the same run id.
-test fn two_attempts_of_one_run_address_different_artifacts() -> Bool {
+test fn two_attempts_of_one_run_address_different_artifacts() -> Bool  {
   attempt_cost_path(root: "/r", ref: attempt_left_ref)
     != attempt_cost_path(root: "/r", ref: attempt_right_ref)
     && (attempt_label(ref: attempt_left_ref) as String) != (attempt_label(ref: attempt_right_ref) as String)
@@ -1529,7 +1529,7 @@ data pair_report: List<String> = attempt_pair_lines(
 
 // THE THREE VIOLATION ARMS ARE REPORTED APART, because their remedies differ: a step drift is the
 // finding, a preempted counterpart is the other terminal arm, and neither is a total.
-test fn a_step_drift_and_a_preempted_counterpart_are_reported_as_different_arms() -> Bool {
+test fn a_step_drift_and_a_preempted_counterpart_are_reported_as_different_arms() -> Bool  {
   count(pair_report |> filter(l => starts_with(s: l, prefix: "\tSTEPS-DIFFER m.p.drift"))) == 1
     && count(pair_report |> filter(l => starts_with(s: l, prefix: "\tUNAVAILABLE m.p.preempted"))) == 1
     && count(pair_report |> filter(l => starts_with(s: l, prefix: "\tSTEPS-DIFFER m.p.stable"))) == 0
@@ -1540,7 +1540,7 @@ test fn a_step_drift_and_a_preempted_counterpart_are_reported_as_different_arms(
 // attempts and is EXCLUDED because its step count moved; `m.p.preempted` is excluded because it
 // never completed on the left. One row survives, and its 503/349 is cpu movement with the work held
 // fixed at row grain on one commit.
-test fn the_envelope_admits_only_rows_whose_step_count_was_identical() -> Bool {
+test fn the_envelope_admits_only_rows_whose_step_count_was_identical() -> Bool  {
   count(pair_report |> filter(l => starts_with(s: l, prefix: "identities completing on BOTH attempts at or above the floor\t2"))) == 1
     && count(pair_report |> filter(l => starts_with(s: l, prefix: "of those, step-count IDENTICAL on both attempts\t1"))) == 1
     && count(pair_report |> filter(l => starts_with(s: l, prefix: "worst cpu envelope over the identical-work population\t1441 permille"))) == 1
@@ -1549,7 +1549,7 @@ test fn the_envelope_admits_only_rows_whose_step_count_was_identical() -> Bool {
 // THE MEDIAN IS CARRIED BESIDE THE MAXIMUM, ALWAYS. A max over hundreds of rows is an extreme-value
 // statistic one row can drive; a median alone cannot see the tail. Either quoted by itself misleads
 // in a different direction, so the report must contain both.
-test fn the_report_carries_a_percentile_beside_its_maximum() -> Bool {
+test fn the_report_carries_a_percentile_beside_its_maximum() -> Bool  {
   count(pair_report |> filter(l => starts_with(s: l, prefix: "worst cpu envelope"))) == 1
     && count(pair_report |> filter(l => starts_with(s: l, prefix: "p50"))) == 1
 }
@@ -1557,7 +1557,7 @@ test fn the_report_carries_a_percentile_beside_its_maximum() -> Bool {
 // THE DISCRIMINATING RED FOR THE WHOLE FAMILY: two attempts on DIFFERENT heads is not one tree, and
 // the comparison must refuse before reading a single row rather than reporting a determinism result
 // over two different programs. Same rows as the green case above -- only the declared head differs.
-test fn two_different_heads_refuse_before_any_row_is_compared() -> Bool {
+test fn two_different_heads_refuse_before_any_row_is_compared() -> Bool  {
   let lines = attempt_pair_lines(
     pair: attempt_pair_cross_tree,
     left: RunLoaded { run: pair_left_run },
@@ -1572,7 +1572,7 @@ test fn two_different_heads_refuse_before_any_row_is_compared() -> Bool {
 // HALF A PAIR IS NOT A COMPARISON. The crossing census beside this one reports over what loaded and
 // names what did not, because each run's census is complete on its own; a pair has no such partial
 // reading, so an unreadable side refuses totally and says which side failed.
-test fn an_unreadable_side_refuses_the_whole_pair_rather_than_reporting_half() -> Bool {
+test fn an_unreadable_side_refuses_the_whole_pair_rather_than_reporting_half() -> Bool  {
   let lines = attempt_pair_lines(
     pair: attempt_pair_same_head,
     left: RunLoaded { run: pair_left_run },
@@ -1587,7 +1587,7 @@ test fn an_unreadable_side_refuses_the_whole_pair_rather_than_reporting_half() -
 
 // AND THE SAME ON THE OTHER SIDE, so the refusal is not green by only ever being tested in one
 // direction -- the arm that names WHICH side failed is the whole value of the refusal.
-test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool {
+test fn an_unreadable_left_side_names_the_left_rather_than_the_right() -> Bool  {
   let lines = attempt_pair_lines(
     pair: attempt_pair_same_head,
     left: RunUnreadable { run: "33846875188/attempt-1" as NonEmptyStr, path: "q" },
@@ -1630,7 +1630,7 @@ data specimen_row_censored: FloorCostRow = FloorCostRow {
 }
 
 // THE CONTROL: an observed row carrying the pin joins and holds.
-test fn an_observed_specimen_row_joins_the_pin() -> Bool {
+test fn an_observed_specimen_row_joins_the_pin() -> Bool  {
   calibration_specimen_grounding_holds(
     g: specimen_row_grounding(rows: [specimen_row_observed], run: "runFixture" as NonEmptyStr)
   )
@@ -1638,7 +1638,7 @@ test fn an_observed_specimen_row_joins_the_pin() -> Bool {
 
 // THE RED: the SAME step figure on a censored reading refuses, and names why rather than reporting
 // a mismatch it did not measure.
-test fn a_censored_specimen_row_refuses_rather_than_matching_the_pin() -> Bool {
+test fn a_censored_specimen_row_refuses_rather_than_matching_the_pin() -> Bool  {
   match specimen_row_grounding(rows: [specimen_row_censored], run: "runFixture" as NonEmptyStr) {
     SpecimenStepsRightCensored { identity: i, lower_bound: b } =>
       i == specimen_identity_fixture && b == 55011
@@ -1662,7 +1662,7 @@ test fn a_censored_specimen_row_refuses_rather_than_matching_the_pin() -> Bool {
 // tempting to admit them -- the numbers match -- but "at least 4096" twice says nothing about
 // whether the two claims did the same work, and the cohort that consumes this would attribute the
 // whole difference between them to inflation.
-test fn two_equal_bounds_do_not_agree_on_performed_work() -> Bool {
+test fn two_equal_bounds_do_not_agree_on_performed_work() -> Bool  {
   let bound_a = CpuLowerBoundWithoutCeiling {
     cpu_lower_bound_ms: millisecond(count: 500),
     eval_steps_before_censor: eval_step_count(count: 4096)
@@ -1682,7 +1682,7 @@ test fn two_equal_bounds_do_not_agree_on_performed_work() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE ACCESSOR PAIR, so neither is a decoration: the point question is
 // answerable on exactly one arm, and the lower-bound question on all three.
-test fn the_point_question_answers_on_one_arm_and_the_bound_question_on_every_arm() -> Bool {
+test fn the_point_question_answers_on_one_arm_and_the_bound_question_on_every_arm() -> Bool  {
   let performed = ObservedCpuReading {
     cpu_ms: millisecond(count: 500),
     eval_steps: eval_step_count(count: 4096)

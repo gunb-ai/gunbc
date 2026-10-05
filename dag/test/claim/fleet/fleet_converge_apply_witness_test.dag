@@ -28,7 +28,7 @@ fn fixture_srv3_host_converge() -> HostConverge {
   }
 }
 
-test fn witness_unsound_policy_refused() -> Bool {
+test fn witness_unsound_policy_refused() -> Bool  {
   match converge_apply(
     policy: ConvergePolicyUnsound { reason: "fixture" },
     transport: LocalShell
@@ -38,7 +38,7 @@ test fn witness_unsound_policy_refused() -> Bool {
   }
 }
 
-test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
+test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool  {
   match converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: LocalShell
@@ -49,12 +49,12 @@ test fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
   }
 }
 
-test fn witness_thin_invocation_argv() -> Bool {
+test fn witness_thin_invocation_argv() -> Bool  {
   let inv = fleet_converge_thin_invocation(host: operator_host_srv3)
   inv.argv.length() == 4
 }
 
-test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
+test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool  {
   match bootstrap_fragment_script_carrier_scaffold {
     Terminal { reason: _ } => true
     Scaffold { dissolves_to: _, bind: _ } => false
@@ -65,7 +65,7 @@ test fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
     }
 }
 
-test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
+test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool  {
   !fleet_converge_apply_result_converged(r: converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: EmitArtifactThenThinRun {
@@ -88,7 +88,7 @@ fn witness_reconciliation_failure_reason(r: Reconciliation<HostEffectIntent, Hos
   }
 }
 
-test fn witness_emit_artifact_transport_dispatches_the_typed_thin_run() -> Bool {
+test fn witness_emit_artifact_transport_dispatches_the_typed_thin_run() -> Bool  {
   match fleet_compute_host_for_identity(identity: operator_host_srv3) {
     Absent => false
     Present { value: h } => {
@@ -130,7 +130,7 @@ test fn witness_emit_artifact_transport_dispatches_the_typed_thin_run() -> Bool 
 // plus the words of the ONE `gunbc converge` shape authority — not a hand-spelled flag list at the
 // bind. Spelled against the expected tokens so a reordered or dropped flag at the authority shows
 // up here as a paired disagreement rather than passing silently.
-test fn witness_thin_invocation_argv_derives_from_the_converge_shape_authority() -> Bool {
+test fn witness_thin_invocation_argv_derives_from_the_converge_shape_authority() -> Bool  {
   let expected = ["gunbc", "converge", "--host", operator_host_srv3 as String]
   fleet_converge_thin_invocation(host: operator_host_srv3).argv == expected
     && fleet_converge_thin_invocation(host: operator_host_srv3).argv

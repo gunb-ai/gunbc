@@ -29,7 +29,7 @@ fn fresh_dir() -> String {
 }
 
 // A link publishes the source's bytes under the new name, and the source stays where it was.
-test fn a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution() -> Bool {
+test fn a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution() -> Bool  {
   let d = fresh_dir()
   let source = concat(d, "/staged")
   let target = concat(d, "/published")
@@ -48,7 +48,7 @@ test fn a_link_publishes_the_source_bytes_and_keeps_the_source_by_real_execution
 }
 
 // Create-only: an existing target refuses as occupied and keeps its own bytes.
-test fn an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution() -> Bool {
+test fn an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_execution() -> Bool  {
   let d = fresh_dir()
   let source = concat(d, "/staged")
   let target = concat(d, "/published")
@@ -67,7 +67,7 @@ test fn an_existing_target_refuses_as_occupied_and_is_unchanged_by_real_executio
 }
 
 // A missing source refuses with the host's not-found kind; nothing appears at the target.
-test fn a_missing_source_refuses_as_not_found_by_real_execution() -> Bool {
+test fn a_missing_source_refuses_as_not_found_by_real_execution() -> Bool  {
   let d = fresh_dir()
   let target = concat(d, "/published")
   let refused = match link_outcome(source: concat(d, "/absent"), path: target) {
@@ -83,7 +83,7 @@ test fn a_missing_source_refuses_as_not_found_by_real_execution() -> Bool {
 }
 
 // The classifier: a cross-device refusal is its own arm, never a generic refusal and never a copy.
-test fn a_cross_device_kind_classifies_as_cross_device() -> Bool {
+test fn a_cross_device_kind_classifies_as_cross_device() -> Bool  {
   match filesystem_link_create_new(source: "/a/src", path: "/b/dst", success: false, error: "Invalid cross-device link", error_kind: "cross_device") {
     FilesystemLinkCrossDevice { source: s, path: p } => s == "/a/src" && p == "/b/dst"
     FilesystemLinked { path: _ } => false
@@ -93,7 +93,7 @@ test fn a_cross_device_kind_classifies_as_cross_device() -> Bool {
   }
 }
 
-test fn an_unknown_kind_is_unrecognized_not_folded_into_a_refusal() -> Bool {
+test fn an_unknown_kind_is_unrecognized_not_folded_into_a_refusal() -> Bool  {
   match filesystem_link_create_new(source: "/a", path: "/b", success: false, error: "?", error_kind: "teleported") {
     FilesystemLinkKindUnrecognized { path: _, observed: o, error: _ } => o == "teleported"
     FilesystemLinked { path: _ } => false
@@ -109,7 +109,7 @@ fn device_of(path: String) -> String {
   if d.success { trim(s: d.device_text) } else { "" }
 }
 
-test fn a_link_across_filesystems_refuses_as_cross_device_by_real_execution() -> Bool {
+test fn a_link_across_filesystems_refuses_as_cross_device_by_real_execution() -> Bool  {
   let disk = fresh_dir()
   let shm = shell.Mktemp.DirWithTemplate(template: "/dev/shm/gunbc_link.XXXXXX").path
   let dev_disk = device_of(path: disk)

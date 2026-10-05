@@ -113,7 +113,7 @@ fn decide_observed(
 //
 // The refusal names the accepted revision, so the receipt says which creation was declined rather
 // than merely that one was.
-test fn an_absent_ref_is_a_precondition_not_an_authorization_to_create() -> Bool {
+test fn an_absent_ref_is_a_precondition_not_an_authorization_to_create() -> Bool  {
   match fixture_rev(hex_char: "a") {
     Present { value: acc } =>
       match decide_fleet_desired_advance(
@@ -131,7 +131,7 @@ test fn an_absent_ref_is_a_precondition_not_an_authorization_to_create() -> Bool
 // FORWARD MOTION, AND THE LEASE NAMES THE EXACT PRIOR VERIFIED. A lease naming the wrong prior
 // refuses forever; a lease claiming absent-when-present CLOBBERS. Asserting only the variant
 // leaves both silent, so the prior's identity is asserted here.
-test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -> Bool {
+test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -> Bool  {
   match fixture_rev(hex_char: "b") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "c") {
@@ -160,7 +160,7 @@ test fn a_current_ancestor_admits_a_forward_advance_leasing_that_exact_prior() -
 // normal consequence of runs finishing out of order. Both are asserted to be non-refusals AND to
 // yield no lease, which is the property that would break if either were folded into the refusal
 // arm for tidiness or given an expectation it must not have.
-test fn already_converged_and_superseded_are_successes_that_write_nothing() -> Bool {
+test fn already_converged_and_superseded_are_successes_that_write_nothing() -> Bool  {
   match fixture_rev(hex_char: "d") {
     Present { value: rev } =>
       match decide_observed(current: rev, accepted: rev, relation: SameRevision) {
@@ -202,7 +202,7 @@ test fn already_converged_and_superseded_are_successes_that_write_nothing() -> B
 // observation was real, the lease would match. Only the relation refuses it, which is the whole
 // argument for the relation existing. Unverifiable is asserted beside it because unknown-as-forward
 // is the empty-observation narrow pointed at the one property the CAS cannot check.
-test fn unrelated_and_unverifiable_both_refuse_though_the_lease_would_have_matched() -> Bool {
+test fn unrelated_and_unverifiable_both_refuse_though_the_lease_would_have_matched() -> Bool  {
   match fixture_rev(hex_char: "1") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "2") {
@@ -233,7 +233,7 @@ test fn unrelated_and_unverifiable_both_refuse_though_the_lease_would_have_match
 // were compared, so a genuine DeployedIsAncestor computed for some OTHER pair would license an
 // advance here. Note the supplied relation is entirely TRUTHFUL about its own pair; what makes it
 // inadmissible is that its pair is not the one under decision.
-test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool {
+test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool  {
   match fixture_rev(hex_char: "5") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "6") {
@@ -275,7 +275,7 @@ test fn a_relation_about_another_pair_is_refused_however_true_it_is() -> Bool {
 // one both refuse, and they refuse DISTINGUISHABLY -- the property the whole seam was rebuilt to
 // hold, asserted at its last consumer rather than only at its source. Neither supplies a relation,
 // because neither has a current revision to relate to.
-test fn the_refusal_remedy_survives_to_the_final_decision() -> Bool {
+test fn the_refusal_remedy_survives_to_the_final_decision() -> Bool  {
   match fixture_rev(hex_char: "8") {
     Present { value: acc } =>
       match decide_fleet_desired_advance(
@@ -317,7 +317,7 @@ test fn the_refusal_remedy_survives_to_the_final_decision() -> Bool {
 // These two rows are asserted together deliberately. Either alone is satisfiable by a fold that
 // ignores the exit code entirely -- one by always observing, the other by always refusing -- so it
 // is the DIVERGENCE between them that carries the claim, not either verdict on its own.
-test fn exit_one_is_an_answer_and_exit_one_two_eight_is_an_absence_of_one() -> Bool {
+test fn exit_one_is_an_answer_and_exit_one_two_eight_is_an_absence_of_one() -> Bool  {
   match fixture_rev(hex_char: "1") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "2") {
@@ -356,7 +356,7 @@ test fn exit_one_is_an_answer_and_exit_one_two_eight_is_an_absence_of_one() -> B
 // One merge base decides BOTH directions -- a commit is an ancestor of another exactly when it IS
 // their merge base -- so no second probe is needed. All three exit-0 shapes are exercised: the base
 // is the current revision (forward), the accepted one (superseded), or neither (diverged).
-test fn one_merge_base_decides_both_directions() -> Bool {
+test fn one_merge_base_decides_both_directions() -> Bool  {
   match fixture_rev(hex_char: "3") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "4") {
@@ -377,7 +377,7 @@ test fn one_merge_base_decides_both_directions() -> Bool {
 // Equality short-circuits before any probe result is consulted, so a converged pair is decided
 // without trusting the transport at all. Asserted against a REFUSING exit code: if the fold read
 // the exit first, this would refuse instead of reporting convergence.
-test fn an_equal_pair_is_converged_without_consulting_the_probe() -> Bool {
+test fn an_equal_pair_is_converged_without_consulting_the_probe() -> Bool  {
   match fixture_rev(hex_char: "6") {
     Present { value: rev } =>
       match merge_base_relation(
@@ -396,7 +396,7 @@ test fn an_equal_pair_is_converged_without_consulting_the_probe() -> Bool {
 
 // A successful probe whose stdout is not an object id REFUSES rather than folding a garbage value
 // into a relation. The success exit says the command ran; it does not say the output is a commit.
-test fn a_successful_probe_with_undecodable_output_refuses() -> Bool {
+test fn a_successful_probe_with_undecodable_output_refuses() -> Bool  {
   match fixture_rev(hex_char: "7") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "8") {
@@ -420,7 +420,7 @@ test fn a_successful_probe_with_undecodable_output_refuses() -> Bool {
 // The fold feeds the decision end to end: a merge base equal to the current revision is forward
 // motion, and the advance leases exactly that prior. This is the row that proves the observer and
 // the decision agree on which endpoint is which -- swapping them would still typecheck.
-test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> Bool {
+test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> Bool  {
   match fixture_rev(hex_char: "9") {
     Present { value: cur } =>
       match fixture_rev(hex_char: "a") {
@@ -451,7 +451,7 @@ test fn the_folded_relation_drives_the_decision_and_leases_the_right_prior() -> 
 
 // An unobserved desired ref yields NO converge target — never a fabricated one, never
 // the invoking tree. Admitted yields exactly the admitted revision.
-test fn converge_target_derives_only_from_admitted_ref() -> Bool {
+test fn converge_target_derives_only_from_admitted_ref() -> Bool  {
   match converge_target_revision(observed: FleetDesiredUnobserved { cause: "ref unreadable" }) {
     Present { value: _ } => false
     _ => true
@@ -467,6 +467,6 @@ test fn converge_target_derives_only_from_admitted_ref() -> Bool {
 }
 
 // The ref name is the single authority and is a fleet-scoped ref, not a branch.
-test fn desired_ref_name_is_the_fleet_scoped_authority() -> Bool {
+test fn desired_ref_name_is_the_fleet_scoped_authority() -> Bool  {
   fleet_desired_ref_name == "refs/fleet/desired"
 }

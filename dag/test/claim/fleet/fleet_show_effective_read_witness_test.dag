@@ -6,35 +6,35 @@ fn per_slot_cap_wire() -> String {
   to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))
 }
 
-test fn witness_slice_cap_parse_empty_is_absent() -> Bool {
+test fn witness_slice_cap_parse_empty_is_absent() -> Bool  {
   match parse_systemd_memory_limit_show(raw: "") {
     MemoryLimitAbsent => true
     _ => false
   }
 }
 
-test fn witness_slice_cap_parse_infinity_is_unbounded() -> Bool {
+test fn witness_slice_cap_parse_infinity_is_unbounded() -> Bool  {
   match parse_systemd_memory_limit_show(raw: "infinity") {
     MemoryLimitUnbounded => true
     _ => false
   }
 }
 
-test fn witness_width_parse_empty_is_absent() -> Bool {
+test fn witness_width_parse_empty_is_absent() -> Bool  {
   match parse_runner_width_active_count(raw: "") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn witness_width_parse_count_is_typed() -> Bool {
+test fn witness_width_parse_count_is_typed() -> Bool  {
   match parse_runner_width_active_count(raw: "10") {
     Present { value: n } => n == 10
     Absent => false
   }
 }
 
-test fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
+test fn witness_oom_wire_parses_to_sixty_percent() -> Bool  {
   match parse_managed_oom_pressure_limit_show(raw: "2576980377") {
     Present { value: p } =>
       percent_count(p: p) == 60
@@ -50,14 +50,14 @@ test fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
   }
 }
 
-test fn witness_oom_show_value_single_authority() -> Bool {
+test fn witness_oom_show_value_single_authority() -> Bool  {
   match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
     Present { value: limit } => managed_oom_pressure_limit_show_value(p: limit) == 2576980377
     Absent => false
   }
 }
 
-test fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
+test fn witness_oom_fixture_converges_to_policy_percent() -> Bool  {
   match oom_pressure_limit_live_read_typed(row: gunbc_srv1_oom_pressure_limit_fixture_row) {
     Present { value: read } =>
       match gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit {
@@ -85,7 +85,7 @@ fn live_derived_width_or_fail(host: HostIdentity, k: fn(Int) -> Bool) -> Bool {
   }
 }
 
-test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
+test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool  {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
   live_derived_width_or_fail(host: operator_host_srv1, k: w =>
     match slice_property_memory_max_verdict(
@@ -134,7 +134,7 @@ test fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
 // so the verdict function is still exercised in both directions by this module (the superseded
 // 70 GiB row below is the drift half). What is no longer asserted is a relation between srv2's live
 // slice and a declaration that does not exist.
-test fn witness_srv2_slice_cap_has_no_declaration_to_converge_against() -> Bool {
+test fn witness_srv2_slice_cap_has_no_declaration_to_converge_against() -> Bool  {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
   let no_declared_width = match gunbc_runner_committed_width(host: operator_host_srv2) {
     RunnerWidthUnresolved { cause: _ } => true
@@ -151,7 +151,7 @@ test fn witness_srv2_slice_cap_has_no_declaration_to_converge_against() -> Bool 
     }
 }
 
-test fn witness_RED_srv2_slice_cap_would_drift_against_the_superseded_70_gib_cap() -> Bool {
+test fn witness_RED_srv2_slice_cap_would_drift_against_the_superseded_70_gib_cap() -> Bool  {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
   match slice_property_memory_max_verdict(
     read: read,
@@ -163,7 +163,7 @@ test fn witness_RED_srv2_slice_cap_would_drift_against_the_superseded_70_gib_cap
   }
 }
 
-test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
+test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool  {
   let read = runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
   let target = PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
@@ -187,7 +187,7 @@ test fn witness_srv1_01_per_slot_infinity_drifts() -> Bool {
 // post-re-carve width readback replaces the fixture row and this witness flips back to asserting
 // convergence.
 
-test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
+test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool  {
   match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {
     Present { value: read } =>
       live_derived_width_or_fail(host: operator_host_srv1, k: w =>
@@ -202,7 +202,7 @@ test fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
 // parsed and that the DESIRED side is unavailable -- and keeps the verdict function exercised by
 // supplying a desired count, so a verdict that stopped reporting drift on a real disagreement still
 // reds here.
-test fn witness_srv2_width_has_no_declared_count_to_drift_from() -> Bool {
+test fn witness_srv2_width_has_no_declared_count_to_drift_from() -> Bool  {
   match runner_width_live_read_typed(row: gunbc_srv2_runner_width_fixture_row) {
     Present { value: read } =>
       match gunbc_runner_committed_width(host: operator_host_srv2) {
@@ -217,20 +217,20 @@ test fn witness_srv2_width_has_no_declared_count_to_drift_from() -> Bool {
   }
 }
 
-test fn witness_infinity_slice_read_is_read_observed_unbounded() -> Bool {
+test fn witness_infinity_slice_read_is_read_observed_unbounded() -> Bool  {
   match show_effective_read_from_slice_cap_row(row: gunbc_srv1_runner_slice_cap_fixture_row) {
     ReadObserved { value: CapUnbounded } => true
     _ => false
   }
 }
 
-test fn witness_infinity_slice_read_cannot_converge() -> Bool {
+test fn witness_infinity_slice_read_cannot_converge() -> Bool  {
   show_effective_read_cannot_converge(
     read: show_effective_read_from_slice_cap_row(row: gunbc_srv1_runner_slice_cap_fixture_row)
   )
 }
 
-test fn witness_empty_slice_read_is_read_absent() -> Bool {
+test fn witness_empty_slice_read_is_read_absent() -> Bool  {
   match show_effective_read_from_slice_cap_row(
     row: RunnerSliceCapLiveReadRow {
       slice_unit: "system-actions-runner.slice",
@@ -243,7 +243,7 @@ test fn witness_empty_slice_read_is_read_absent() -> Bool {
   }
 }
 
-test fn witness_srv1_grounded_receipt_lists_every_fixture_runner_unit() -> Bool {
+test fn witness_srv1_grounded_receipt_lists_every_fixture_runner_unit() -> Bool  {
   match fixture_srv1_host_effective_read_grounded_receipt() {
     Present { value: r } =>
       fleet_receipt_unit_count(receipt: r.effective) == 2
@@ -254,7 +254,7 @@ test fn witness_srv1_grounded_receipt_lists_every_fixture_runner_unit() -> Bool 
   }
 }
 
-test fn witness_srv2_grounded_receipt_lists_every_fixture_runner_unit() -> Bool {
+test fn witness_srv2_grounded_receipt_lists_every_fixture_runner_unit() -> Bool  {
   match fixture_srv2_host_effective_read_grounded_receipt() {
     Present { value: r } =>
       fleet_receipt_unit_count(receipt: r.effective) == 2
@@ -265,7 +265,7 @@ test fn witness_srv2_grounded_receipt_lists_every_fixture_runner_unit() -> Bool 
   }
 }
 
-test fn witness_committed_show_reads_are_fail_closed_absent() -> Bool {
+test fn witness_committed_show_reads_are_fail_closed_absent() -> Bool  {
   match gunbc_fleet_runner_slice_cap_show_effective_read {
     ReadAbsent { reason: _ } => true
     _ => false
@@ -284,7 +284,7 @@ test fn witness_committed_show_reads_are_fail_closed_absent() -> Bool {
     }
 }
 
-test fn witness_runner_slot_enforcement_committed_is_fail_closed() -> Bool {
+test fn witness_runner_slot_enforcement_committed_is_fail_closed() -> Bool  {
   match gunbc_runner_slot_enforcement_committed(expected_cap: gunbc_ci_runner_cgroup_memory_cap) {
     RunnerSlotEnforced => false
     RunnerSlotUnenforced { reason: _ } => true
@@ -302,7 +302,7 @@ fn witness_show_property_local_read_holds() -> Bool {
   }
 }
 
-test fn witness_transport_reads_use_show_property_authority() -> Bool {
+test fn witness_transport_reads_use_show_property_authority() -> Bool  {
   systemctl_show_property_operation_argv_matches_transport(
     unit: "system-actions-runner.slice" as NonEmptyStr,
     property: MemoryMax,
@@ -315,13 +315,13 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
 // than against a golden string. RED IS AUTHORABLE: pointing the SystemctlShowLoadState arm at any
 // other systemctl operation makes the two argvs disagree and this goes false -- measured by mutation
 // 2026-08-24, Status in place of ShowLoadState, false then true on restore.
-test fn witness_transport_reads_use_show_load_state_authority() -> Bool {
+test fn witness_transport_reads_use_show_load_state_authority() -> Bool  {
   systemctl_show_load_state_operation_argv_matches_transport(
     unit: "gunbc-compile-pool.slice" as NonEmptyStr,
   )
 }
 
-test fn witness_show_property_injection_metachar_refused() -> Bool {
+test fn witness_show_property_injection_metachar_refused() -> Bool  {
   match host_operation_materialize_argv(
     operation: SystemctlShowProperty {
       unit: "foo\"; rm -rf /" as NonEmptyStr,

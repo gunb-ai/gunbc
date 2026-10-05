@@ -124,7 +124,7 @@ fn bounds_are_the_executed_pair(
 // The executed pair supports the declared minimum, and the positive arm says
 // what it actually establishes: an UPPER BOUND. 3.06.00 exists in the
 // capability catalog and was never pushed, so the true threshold may be lower.
-test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool {
+test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool  {
   bounds_are_the_executed_pair(observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence)
 }
 
@@ -135,7 +135,7 @@ test fn executed_pair_supports_the_declared_minimum_as_an_upper_bound() -> Bool 
 // refusal in the list, first-wins and max return the same version whatever
 // the order. Both lists below carry a second, LOWER refusal at 1.00.00, so a
 // first-wins fold reports 1.00.00 on the reversed ordering and fails here.
-test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
+test fn the_bounds_do_not_depend_on_authoring_order() -> Bool  {
   bounds_are_the_executed_pair(observations: forward_evidence) && bounds_are_the_executed_pair(observations: reversed_evidence)
 }
 
@@ -145,7 +145,7 @@ test fn the_bounds_do_not_depend_on_authoring_order() -> Bool {
 // is joined to the single row supplied as evidence, so the claim is that the fold
 // REPORTS that row's own gating_version -- not that it happens to match a number
 // transcribed here (review 51524).
-test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
+test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool  {
   match verdict_against_declared_minimum(
     observations: [asrock_altrad8ud_bios_310_push_accepted_at_bmc_322],
   ) {
@@ -166,7 +166,7 @@ test fn an_acceptance_only_history_reports_no_refusal_bound() -> Bool {
 // RED control. Declaring a minimum ABOVE the version that demonstrably
 // accepted the bytes is contradicted by the acceptance, not merely unsupported
 // — this is the arm that catches a minimum inflated past its evidence.
-test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
+test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool  {
   match prerequisite_evidence_verdict(
     minimum: firmware_semantic_version(major: 4, minor: 0, patch: 0),
     observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
@@ -181,7 +181,7 @@ test fn a_minimum_above_the_accepting_version_is_contradicted() -> Bool {
 // version that was REFUSED is contradicted by the refusal — this catches a
 // minimum relaxed below its evidence, which is the direction that would let an
 // unappliable push be admitted.
-test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
+test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool  {
   match prerequisite_evidence_verdict(
     minimum: firmware_semantic_version(major: 2, minor: 0, patch: 0),
     observations: asrock_altrad8ud_bios_openbmc_prerequisite_evidence,
@@ -194,7 +194,7 @@ test fn a_minimum_at_or_below_the_refusing_version_is_contradicted() -> Bool {
 
 // With no observations the verdict is ABSENT, never consistent. An unevidenced
 // minimum must not read the same as an evidenced one.
-test fn no_observations_yields_absent_not_consistent() -> Bool {
+test fn no_observations_yields_absent_not_consistent() -> Bool  {
   match verdict_against_declared_minimum(observations: []) {
     PrerequisiteEvidenceAbsent => true
     _ => false

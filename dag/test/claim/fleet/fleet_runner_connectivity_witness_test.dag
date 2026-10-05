@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // one is online and busy, and local systemd units stayed active throughout — the wedge shape PR B's
 // repair loop must not misread as detached on a roster API blip.
 
-test fn srv1_01_is_healthy_while_busy() -> Bool {
+test fn srv1_01_is_healthy_while_busy() -> Bool  {
   match runner_slot_connectivity_verdict(
     slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
   ) {
@@ -59,7 +59,7 @@ test fn srv1_01_is_healthy_while_busy() -> Bool {
   }
 }
 
-test fn active_offline_registration_is_detached_not_healthy() -> Bool {
+test fn active_offline_registration_is_detached_not_healthy() -> Bool  {
   match runner_slot_connectivity_verdict(
     slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 2 }
   ) {
@@ -68,7 +68,7 @@ test fn active_offline_registration_is_detached_not_healthy() -> Bool {
   }
 }
 
-test fn active_without_registration_is_orphaned() -> Bool {
+test fn active_without_registration_is_orphaned() -> Bool  {
   match runner_slot_connectivity_verdict(
     slot: RunnerSlotIdentity { host: operator_host_srv2, slot_index: 3 }
   ) {
@@ -87,7 +87,7 @@ test fn active_without_registration_is_orphaned() -> Bool {
 // active slot, never detached. Zero-width achieved fields must stay unobserved rather than
 // fabricated as zero registrations.
 
-test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
+test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool  {
   let roster = RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   roster_unavailable_yields_unknown_not_detached(roster: roster)
     && all(
@@ -96,7 +96,7 @@ test fn roster_unavailable_yields_unknown_on_every_active_slot() -> Bool {
     )
 }
 
-test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
+test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool  {
   let snapshot = fleet_runner_capacity_width_snapshot_from_roster(
     roster: RosterReadUnavailable { reason: "GitHub org runners API returned 503" }
   )
@@ -106,7 +106,7 @@ test fn roster_unavailable_does_not_fabricate_zero_achieved_widths() -> Bool {
   }
 }
 
-test fn incident_registered_sixteen_does_not_imply_connected_sixteen() -> Bool {
+test fn incident_registered_sixteen_does_not_imply_connected_sixteen() -> Bool  {
   let snapshot = fleet_runner_capacity_width_snapshot()
   match snapshot.achieved {
     AchievedWidthsObserved {
@@ -119,7 +119,7 @@ test fn incident_registered_sixteen_does_not_imply_connected_sixteen() -> Bool {
   }
 }
 
-test fn desired_width_stays_twenty_two_while_connected_is_one() -> Bool {
+test fn desired_width_stays_twenty_two_while_connected_is_one() -> Bool  {
   let snapshot = fleet_runner_capacity_width_snapshot()
   snapshot.desired_width == 22
     && match snapshot.achieved {
@@ -129,27 +129,27 @@ test fn desired_width_stays_twenty_two_while_connected_is_one() -> Bool {
     }
 }
 
-test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool {
+test fn materialized_and_unit_active_widths_are_twenty_not_desired() -> Bool  {
   let snapshot = fleet_runner_capacity_width_snapshot()
   snapshot.materialized_width == 20
     && snapshot.unit_active_width == 20
     && snapshot.desired_width > snapshot.materialized_width
 }
 
-test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool {
+test fn detached_count_matches_offline_registrations_on_active_slots() -> Bool  {
   let roster = incident_2026_08_06_roster_fixture()
   let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
   count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_detached(v: v)) == 15
 }
 
-test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool {
+test fn healthy_count_is_one_and_orphaned_count_is_four() -> Bool  {
   let roster = incident_2026_08_06_roster_fixture()
   let verdicts = connectivity_verdicts_for_active_incarnations(roster: roster)
   count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_healthy(v: v)) == 1
     && count_matching(verdicts: verdicts, matched: v => connectivity_verdict_is_orphaned(v: v)) == 4
 }
 
-test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
+test fn local_incarnation_observation_covers_twenty_active_units() -> Bool  {
   local_runner_slot_incarnations().length() == 20
     && all(
       local_runner_slot_incarnations(),
@@ -157,7 +157,7 @@ test fn local_incarnation_observation_covers_twenty_active_units() -> Bool {
     )
 }
 
-test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool {
+test fn fleet_runner_connectivity_RED_orphaned_slot_must_not_read_detached() -> Bool  {
   match runner_slot_connectivity_verdict(
     slot: RunnerSlotIdentity { host: operator_host_srv4, slot_index: 3 }
   ) {
@@ -215,7 +215,7 @@ fn complete_incident_roster() -> OrganizationRunnerRosterEvidence {
 // from the tree it is testing (DESIGN section 5 on oracles) and would rot the next time a
 // registration row is added. The property under test is the RELATION: a page smaller than the
 // authority's own total is partial, whatever either number happens to be.
-test fn prefix_below_authority_total_is_partial() -> Bool {
+test fn prefix_below_authority_total_is_partial() -> Bool  {
   match truncated_incident_roster() {
     RosterObservedPartial { observed_on: _, registrations: _, observed_count: seen, authority_total: total } =>
       seen < total
@@ -223,7 +223,7 @@ test fn prefix_below_authority_total_is_partial() -> Bool {
   }
 }
 
-test fn page_equal_to_authority_total_is_complete() -> Bool {
+test fn page_equal_to_authority_total_is_complete() -> Bool  {
   match complete_incident_roster() {
     RosterObserved { observed_on: _, registrations: _ } => true
     _ => false
@@ -231,7 +231,7 @@ test fn page_equal_to_authority_total_is_complete() -> Bool {
 }
 
 // THE RED. Before the repair every unseen slot rendered Orphaned here.
-test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
+test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool  {
   all(
     connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
     v => !connectivity_verdict_is_orphaned(v: v)
@@ -242,7 +242,7 @@ test fn truncated_roster_never_orphans_an_unseen_slot() -> Bool {
 // the authority itself calls complete, a slot with no registration is genuinely gone
 // and must still be Orphaned. If this arm ever goes green-by-absence the RED above
 // has stopped discriminating.
-test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
+test fn complete_roster_still_orphans_an_unseen_slot() -> Bool  {
   !all(
     connectivity_verdicts_for_active_incarnations(roster: complete_incident_roster()),
     v => !connectivity_verdict_is_orphaned(v: v)
@@ -252,7 +252,7 @@ test fn complete_roster_still_orphans_an_unseen_slot() -> Bool {
 // PER-QUESTION, NOT PER-ROSTER. A truncated read still answers exactly about every
 // slot INSIDE the prefix; refusing the whole roster would be a widen that stops
 // reconciliation on hosts the read covered perfectly well.
-test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool {
+test fn truncated_roster_still_answers_slots_inside_the_prefix() -> Bool  {
   !all(
     connectivity_verdicts_for_active_incarnations(roster: truncated_incident_roster()),
     v => connectivity_verdict_is_unknown(v: v)
@@ -285,26 +285,26 @@ fn online_srv4_01_under(labels: List<NonEmptyStr>) -> RunnerSlotConnectivityVerd
   )
 }
 
-test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> Bool {
+test fn online_registration_under_its_own_class_and_host_labels_is_healthy() -> Bool  {
   connectivity_verdict_is_healthy(
     v: online_srv4_01_under(labels: ["srv4" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "linux" as NonEmptyStr, "self-hosted" as NonEmptyStr]),
   )
 }
 
-test fn online_registration_missing_the_class_label_is_not_healthy() -> Bool {
+test fn online_registration_missing_the_class_label_is_not_healthy() -> Bool  {
   connectivity_verdict_labels_diverge(
     v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "srv4" as NonEmptyStr]),
   )
 }
 
-test fn online_registration_missing_the_host_label_is_not_healthy() -> Bool {
+test fn online_registration_missing_the_host_label_is_not_healthy() -> Bool  {
   connectivity_verdict_labels_diverge(
     v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr]),
   )
 }
 
 // WRONG HOST: an srv3-labelled runner answering to srv4-01's name must not read as srv4's.
-test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool {
+test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool  {
   connectivity_verdict_labels_diverge(
     v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "linux" as NonEmptyStr, "arm64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "srv3" as NonEmptyStr]),
   )
@@ -312,13 +312,13 @@ test fn online_registration_under_another_hosts_label_is_not_healthy() -> Bool {
 
 // GITHUB LABEL EQUIVALENCE (case-insensitive): a mixed-case spelling of srv4's own set is Healthy,
 // so a case-only difference proposes no repair; a mixed-case wrong host still diverges.
-test fn online_registration_under_a_case_variant_of_its_labels_is_healthy() -> Bool {
+test fn online_registration_under_a_case_variant_of_its_labels_is_healthy() -> Bool  {
   connectivity_verdict_is_healthy(
     v: online_srv4_01_under(labels: ["Self-Hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "GUNBC-HEAVY" as NonEmptyStr, "SRV4" as NonEmptyStr]),
   )
 }
 
-test fn online_registration_under_a_mixed_case_wrong_host_label_is_not_healthy() -> Bool {
+test fn online_registration_under_a_mixed_case_wrong_host_label_is_not_healthy() -> Bool  {
   connectivity_verdict_labels_diverge(
     v: online_srv4_01_under(labels: ["self-hosted" as NonEmptyStr, "Linux" as NonEmptyStr, "ARM64" as NonEmptyStr, "gunbc-heavy" as NonEmptyStr, "SRV3" as NonEmptyStr]),
   )

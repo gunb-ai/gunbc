@@ -44,7 +44,7 @@ fn admits(observed: FleetDesiredRevision) -> Bool {
 // Positive control: the fixture decodes. Without it a hex typo makes candidate() none, the
 // admitted-observation row below cannot be built, and its failure would look like a modeling
 // error rather than a broken literal.
-test fn the_fixture_object_id_decodes() -> Bool {
+test fn the_fixture_object_id_decodes() -> Bool  {
   match candidate() {
     Present { value: _ } => true
     none => false
@@ -54,7 +54,7 @@ test fn the_fixture_object_id_decodes() -> Bool {
 // An observed ref licenses an advance FROM the exact oid observed -- not from a remembered or
 // defaulted one. The oid identity is asserted, because an expectation naming the wrong prior is
 // a lease that refuses forever.
-test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
+test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool  {
   match candidate() {
     Present { value: oid } =>
       match fleet_desired_advance_expectation(observed: FleetDesiredAdmitted { revision: oid }) {
@@ -71,7 +71,7 @@ test fn an_observed_ref_leases_the_exact_observed_oid() -> Bool {
 
 // An absent ref is the ONLY observation that licenses creation. This is the claim that was
 // inexpressible before the split.
-test fn an_absent_ref_is_the_only_licence_to_create() -> Bool {
+test fn an_absent_ref_is_the_only_licence_to_create() -> Bool  {
   match fleet_desired_advance_expectation(observed: FleetDesiredAbsent) {
     FleetDesiredExpectationReady { expectation: e } =>
       match e {
@@ -84,14 +84,14 @@ test fn an_absent_ref_is_the_only_licence_to_create() -> Bool {
 
 // THE DISCRIMINATING HALF. A refused transport supports no claim about the remote, so it must
 // yield no expectation at all. If this ever admits, a network fault becomes a ref creation.
-test fn a_refused_transport_licenses_nothing() -> Bool {
+test fn a_refused_transport_licenses_nothing() -> Bool  {
   !admits(observed: FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" })
 }
 
 // An undecodable advertisement refuses for a stronger reason than ignorance: the ref EXISTS
 // holding something unreadable. A lease naming any expectation would either fail forever or,
 // if it matched, overwrite a state nobody understood.
-test fn an_undecodable_advertisement_licenses_nothing() -> Bool {
+test fn an_undecodable_advertisement_licenses_nothing() -> Bool  {
   !admits(observed: FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" })
 }
 
@@ -99,7 +99,7 @@ test fn an_undecodable_advertisement_licenses_nothing() -> Bool {
 // that would have gone green under the Option shape these replace: `none` and `none` are equal,
 // so a consumer could not tell a corrupt ref (repair it) from an unreachable one (retry it), and
 // would have had to rematch the observation at a second decision site.
-test fn a_refused_transport_names_the_unobserved_cause() -> Bool {
+test fn a_refused_transport_names_the_unobserved_cause() -> Bool  {
   match fleet_desired_advance_expectation(observed: FleetDesiredUnobserved { cause: "ls-remote refused: connection reset" }) {
     FleetDesiredExpectationRefused { cause: c } =>
       match c {
@@ -110,7 +110,7 @@ test fn a_refused_transport_names_the_unobserved_cause() -> Bool {
   }
 }
 
-test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> Bool {
+test fn an_undecodable_advertisement_names_the_undecodable_cause_and_keeps_the_line() -> Bool  {
   match fleet_desired_advance_expectation(observed: FleetDesiredUndecodable { advertised: "not-a-sha\trefs/fleet/desired" }) {
     FleetDesiredExpectationRefused { cause: c } =>
       match c {

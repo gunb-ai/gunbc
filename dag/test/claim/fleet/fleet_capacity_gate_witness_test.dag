@@ -45,7 +45,7 @@ fn withdraw_codex() -> List<ProviderCapacityWithdrawal> {
 // correct and it is also why this witness authors its own withdrawal: without it every assertion
 // here would be about the half of the gate that does nothing, and a wiring that silently failed to
 // filter would stay green forever.
-test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool {
+test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool  {
   let before = declared_offers()
   let after = capacity_admitted_offers_in(
     host_rows: withdraw_this_host(), provider_rows: [],
@@ -60,7 +60,7 @@ test fn withdrawing_this_host_removes_every_offer_it_had() -> Bool {
 // list, and the two have opposite remedies -- restore the host, versus install a provider. The
 // withdrawn list is what carries the distinguishing fact, so it must be NON-EMPTY exactly when the
 // offers went away because someone cut them.
-test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool {
+test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool  {
   let offers = declared_offers()
   let admitted = capacity_admitted_offers_in(
     host_rows: withdraw_this_host(), provider_rows: [],
@@ -80,7 +80,7 @@ test fn a_withdrawn_empty_inventory_is_not_an_unfilled_one() -> Bool {
 // Every declared offer lands in exactly one of the two lists. A gate that dropped an offer from
 // both -- or double-counted one -- would still look plausible on the admitted side alone, which is
 // why this asserts the sum against the denominator rather than just that something was removed.
-test fn the_gate_partitions_offers_without_losing_any() -> Bool {
+test fn the_gate_partitions_offers_without_losing_any() -> Bool  {
   let offers = declared_offers()
   let admitted = capacity_admitted_offers_in(
     host_rows: [], provider_rows: withdraw_codex(),
@@ -99,7 +99,7 @@ test fn the_gate_partitions_offers_without_losing_any() -> Bool {
 // With empty rosters the gate is exactly the identity, and nothing is withdrawn. This is the
 // no-op control: it goes red if the gate ever starts removing production capacity that no operator
 // asked to remove, which is the failure this change could plausibly introduce.
-test fn the_live_inventory_loses_nothing_to_the_gate() -> Bool {
+test fn the_live_inventory_loses_nothing_to_the_gate() -> Bool  {
   let declared = declared_provider_inventory_for_instance(instance: live_instance())
   let gated = provider_inventory_for_instance(instance: live_instance())
   let withdrawn = provider_inventory_withdrawn_for_instance(instance: live_instance())

@@ -50,7 +50,7 @@ fn entry(id: Int, message: NonEmptyStr) -> RedfishLogEntry {
 data ecc: NonEmptyStr = "OpenBMC.0.1.MemoryECCCorrectable.Critical \n 0,2,0,9"
 data fan_note: NonEmptyStr = "FAN4 critical low threshold deassert."
 
-test fn appended_entries_are_those_after_the_openings_newest_and_are_classified() -> Bool {
+test fn appended_entries_are_those_after_the_openings_newest_and_are_classified() -> Bool  {
   match event_window(opening: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note)],
                      closing: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note), entry(id: 12, message: ecc), entry(id: 13, message: fan_note)]) {
     BmcEventsObserved { history_count, appended } =>
@@ -64,7 +64,7 @@ test fn appended_entries_are_those_after_the_openings_newest_and_are_classified(
 
 // srv3's log wraps at about 1200 entries; if the opening's newest entry has rolled off by the close,
 // nothing about what was appended can be said.
-test fn a_log_that_wrapped_or_was_cleared_in_the_window_is_not_an_empty_append() -> Bool {
+test fn a_log_that_wrapped_or_was_cleared_in_the_window_is_not_an_empty_append() -> Bool  {
   let wrapped = match event_window(opening: [entry(id: 10, message: fan_note), entry(id: 11, message: fan_note)], closing: [entry(id: 12, message: fan_note)]) {
     BmcEventLogContinuityUnestablished { cause: _ } => true
     _ => false
@@ -85,7 +85,7 @@ data srv1_profile: BmcTelemetryProfile = BmcTelemetryProfile {
 
 // The surface follows the firmware the BMC reports, through the board catalog: 2.07 reads per-sensor
 // resources, 3.22 reads legacy Thermal, and a version the catalog does not know refuses.
-test fn the_surface_is_derived_from_the_reported_firmware() -> Bool {
+test fn the_surface_is_derived_from_the_reported_firmware() -> Bool  {
   let v207 = match manager_firmware(body: "{\"FirmwareVersion\":\"2.07.00\"}") {
     ObservationEstablished { observed: f } => match telemetry_surface(telemetry: srv1_profile, firmware: f) { ObservationEstablished { observed: RedfishThermalSubsystemSensorCollection } => true _ => false }
     _ => false
@@ -113,7 +113,7 @@ fn point(name: NonEmptyStr, fan: Bool, reading: Int) -> RedfishTelemetryPoint {
 }
 
 // Three samples of srv1's shape: FAN4 at zero every time, a null header, a DIMM temperature.
-test fn samples_fold_into_one_window_per_endpoint() -> Bool {
+test fn samples_fold_into_one_window_per_endpoint() -> Bool  {
   let s1 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1200), point(name: "TEMP_DIMM_C1", fan: false, reading: 99)]
   let s2 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1100), point(name: "TEMP_DIMM_C1", fan: false, reading: 98)]
   let s3 = [point(name: "FAN4", fan: true, reading: 0), point(name: "FAN1", fan: true, reading: 1300), point(name: "TEMP_DIMM_C1", fan: false, reading: 99)]
@@ -132,7 +132,7 @@ test fn samples_fold_into_one_window_per_endpoint() -> Bool {
 
 // A sensor that vanishes mid-window changes the population; that refuses rather than producing a
 // window over fewer samples than its neighbours.
-test fn a_population_change_mid_window_refuses() -> Bool {
+test fn a_population_change_mid_window_refuses() -> Bool  {
   let s1 = [point(name: "FAN1", fan: true, reading: 1200), point(name: "FAN4", fan: true, reading: 0)]
   let s2 = [point(name: "FAN1", fan: true, reading: 1200)]
   match fan_windows(host: operator_host_srv1, samples: [s1, s2]) {

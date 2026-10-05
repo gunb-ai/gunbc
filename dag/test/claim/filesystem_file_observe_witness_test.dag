@@ -14,35 +14,35 @@ import gunbc.filesystem_file_observe {
 // acquisition is exercised by the wet operation's own callers; the wet operation holds no path
 // semantics of its own to discriminate here.
 
-test fn a_two_component_absolute_path_decomposes_to_its_directory_and_entry() -> Bool {
+test fn a_two_component_absolute_path_decomposes_to_its_directory_and_entry() -> Bool  {
   match filesystem_path_decomposition(path: "/tmp/token") {
     FilesystemPathDecomposed { directory: d, name: n } => d == "/tmp" && n == "token"
     FilesystemPathUndecomposable { cause: _ } => false
   }
 }
 
-test fn a_root_level_absolute_path_decomposes_to_the_root_not_the_empty_string() -> Bool {
+test fn a_root_level_absolute_path_decomposes_to_the_root_not_the_empty_string() -> Bool  {
   match filesystem_path_decomposition(path: "/token") {
     FilesystemPathDecomposed { directory: d, name: n } => d == "/" && n == "token"
     FilesystemPathUndecomposable { cause: _ } => false
   }
 }
 
-test fn a_two_component_relative_path_decomposes_to_its_directory_and_entry() -> Bool {
+test fn a_two_component_relative_path_decomposes_to_its_directory_and_entry() -> Bool  {
   match filesystem_path_decomposition(path: "target/token") {
     FilesystemPathDecomposed { directory: d, name: n } => d == "target" && n == "token"
     FilesystemPathUndecomposable { cause: _ } => false
   }
 }
 
-test fn a_dot_prefixed_path_decomposes_to_the_dot_directory_and_entry() -> Bool {
+test fn a_dot_prefixed_path_decomposes_to_the_dot_directory_and_entry() -> Bool  {
   match filesystem_path_decomposition(path: "./token") {
     FilesystemPathDecomposed { directory: d, name: n } => d == "." && n == "token"
     FilesystemPathUndecomposable { cause: _ } => false
   }
 }
 
-test fn a_bare_entry_name_is_refused_for_having_no_directory_operand() -> Bool {
+test fn a_bare_entry_name_is_refused_for_having_no_directory_operand() -> Bool  {
   match filesystem_path_decomposition(path: "token") {
     FilesystemPathUndecomposable { cause: c } =>
       string_contains(s: c, pattern: "no directory operand to list")
@@ -50,14 +50,14 @@ test fn a_bare_entry_name_is_refused_for_having_no_directory_operand() -> Bool {
   }
 }
 
-test fn the_empty_operand_is_refused() -> Bool {
+test fn the_empty_operand_is_refused() -> Bool  {
   match filesystem_path_decomposition(path: "") {
     FilesystemPathUndecomposable { cause: c } => string_contains(s: c, pattern: "operand is empty")
     FilesystemPathDecomposed { directory: _, name: _ } => false
   }
 }
 
-test fn an_operand_ending_in_a_separator_is_refused_for_naming_a_directory() -> Bool {
+test fn an_operand_ending_in_a_separator_is_refused_for_naming_a_directory() -> Bool  {
   match filesystem_path_decomposition(path: "/") {
     FilesystemPathUndecomposable { cause: c } =>
       string_contains(s: c, pattern: "names a directory rather than an entry in one")
@@ -65,7 +65,7 @@ test fn an_operand_ending_in_a_separator_is_refused_for_naming_a_directory() -> 
   }
 }
 
-test fn a_relative_operand_ending_in_a_separator_is_refused_the_same_way() -> Bool {
+test fn a_relative_operand_ending_in_a_separator_is_refused_the_same_way() -> Bool  {
   match filesystem_path_decomposition(path: "a/") {
     FilesystemPathUndecomposable { cause: c } =>
       string_contains(s: c, pattern: "names a directory rather than an entry in one")
@@ -73,14 +73,14 @@ test fn a_relative_operand_ending_in_a_separator_is_refused_the_same_way() -> Bo
   }
 }
 
-test fn a_dot_cursor_entry_name_is_refused() -> Bool {
+test fn a_dot_cursor_entry_name_is_refused() -> Bool  {
   match filesystem_path_decomposition(path: "a/.") {
     FilesystemPathUndecomposable { cause: c } => string_contains(s: c, pattern: "'.' directory cursor")
     FilesystemPathDecomposed { directory: _, name: _ } => false
   }
 }
 
-test fn a_dot_dot_cursor_entry_name_is_refused() -> Bool {
+test fn a_dot_dot_cursor_entry_name_is_refused() -> Bool  {
   match filesystem_path_decomposition(path: "a/..") {
     FilesystemPathUndecomposable { cause: c } =>
       string_contains(s: c, pattern: "'..' directory cursor")

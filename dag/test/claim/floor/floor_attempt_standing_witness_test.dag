@@ -89,7 +89,7 @@ data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // assumed -- these two calls could not disagree. They do: superseded does not block, current
 // blocks. That is the whole ruling in one comparison, and neither `always()` nor `!cancelled()`
 // can express it, because each answers with one condition what this answers with two inputs.
-test fn w_RED_cancellation_alone_does_not_decide_the_verdict() -> Bool {
+test fn w_RED_cancellation_alone_does_not_decide_the_verdict() -> Bool  {
   let superseded = floor_rendered_verdict(
     standing: FloorHeadSuperseded { measured: "aaaaaaa", current: "bbbbbbb" },
     build: LaneCancelled,
@@ -112,7 +112,7 @@ test fn w_RED_cancellation_alone_does_not_decide_the_verdict() -> Bool {
 // replacement head coming. Skipped and abandoned are here beside cancelled because they arrive
 // by different routes and must not be allowed to diverge -- `abandoned` in particular is a
 // `needs.*.result` value a production run surfaced that no author here knew was reachable.
-test fn w_RED_a_live_head_with_no_lane_verdict_blocks_as_unestablished() -> Bool {
+test fn w_RED_a_live_head_with_no_lane_verdict_blocks_as_unestablished() -> Bool  {
   let cancelled = floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneSucceeded,
@@ -140,7 +140,7 @@ test fn w_RED_a_live_head_with_no_lane_verdict_blocks_as_unestablished() -> Bool
 // claim discriminating rather than a restatement. A failed lane is red even when the OTHER lane
 // produced no verdict at all, so failure dominates -- otherwise a run with one failure and one
 // cancellation would route a real subject defect to "rerun it".
-test fn w_RED_a_failed_lane_is_red_and_dominates_a_non_verdict_sibling() -> Bool {
+test fn w_RED_a_failed_lane_is_red_and_dominates_a_non_verdict_sibling() -> Bool  {
   let failed = floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneFailed,
@@ -161,7 +161,7 @@ test fn w_RED_a_failed_lane_is_red_and_dominates_a_non_verdict_sibling() -> Bool
 // arrives tomorrow lands in `LaneTerminalUnobservable`, carries its own text into the receipt so
 // the deficit is diagnosable, and refuses. The green control beside it is what proves the check
 // is not simply always-true.
-test fn w_RED_an_unknown_lane_result_blocks_and_keeps_its_spelling() -> Bool {
+test fn w_RED_an_unknown_lane_result_blocks_and_keeps_its_spelling() -> Bool  {
   let unknown = floor_lane_terminal_from_result(result: "a-state-nobody-here-has-heard-of")
   let verdict = floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
@@ -191,7 +191,7 @@ test fn w_RED_an_unknown_lane_result_blocks_and_keeps_its_spelling() -> Bool {
 // `NoPullRequestSubject` is in the same comparison for a different reason: a push or merge_group
 // run has no pull request to be superseded by, so its head axis is inapplicable rather than
 // unmeasured, and it must not accidentally acquire a deficit's treatment.
-test fn w_RED_an_unacquired_or_inapplicable_head_composes_as_a_current_one() -> Bool {
+test fn w_RED_an_unacquired_or_inapplicable_head_composes_as_a_current_one() -> Bool  {
   let current = floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneCancelled,
@@ -257,7 +257,7 @@ test fn w_RED_no_emitted_gate_arm_reaches_superseded() -> ProcessExit {
 // row measures that by rendering a fixture subject and finding its label sequence in the emitted
 // yaml. If either side re-spelled a label, the emitted text would stop carrying the rendered
 // prefix and this goes red.
-test fn w_RED_the_attempt_receipt_labels_are_one_authority() -> Bool {
+test fn w_RED_the_attempt_receipt_labels_are_one_authority() -> Bool  {
   let rendered = floor_attempt_subject_receipt(
     subject: FloorAttemptSubject { pull_request: "", measured_head: "", run_id: "" },
     standing: FloorHeadUnobservable {
@@ -288,7 +288,7 @@ test fn w_RED_the_attempt_receipt_labels_are_one_authority() -> Bool {
 // THE EVIDENCE CONJUNCT IS LOAD-BEARING RATHER THAN DECORATIVE. Without it this row would stay
 // green over a derivation that had stopped distinguishing lane spellings at all, which is a
 // different defect with the same rendering.
-test fn w_RED_a_cancelled_lane_establishes_neither_axis() -> Bool {
+test fn w_RED_a_cancelled_lane_establishes_neither_axis() -> Bool  {
   match floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneSucceeded,
@@ -314,7 +314,7 @@ test fn w_RED_a_cancelled_lane_establishes_neither_axis() -> Bool {
 // ANYWHERE is a decoration and should not exist; an arm whose red is authorable and merely
 // unoccupied is a guard being quiet. `MechanismEstablished` is the second, and what would occupy
 // it is the assignment-standing axis named on `floor_lane_interruption`.
-test fn w_RED_the_established_mechanism_vocabulary_still_renders() -> Bool {
+test fn w_RED_the_established_mechanism_vocabulary_still_renders() -> Bool  {
   floor_evaluation_mechanism_name(mechanism: MechanismEstablished { kind: WorkflowCancelled })
     == floor_mechanism_workflow_cancelled_name
     && floor_evaluation_mechanism_name(mechanism: MechanismEstablished { kind: RunnerLost })
@@ -337,7 +337,7 @@ test fn w_RED_the_established_mechanism_vocabulary_still_renders() -> Bool {
 // subject-not-evaluated. That is the same construction as the head axis's flip witness, applied
 // to the second acquisition: a claim that re-derives itself beats a note asking someone to
 // remember.
-test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool {
+test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool  {
   match floor_rendered_verdict(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneFailed,
@@ -356,7 +356,7 @@ test fn w_RED_a_failed_lane_carries_no_established_mechanism() -> Bool {
   }
 }
 
-test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
+test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool  {
   let env = floor_rendered_verdict_with_receipts(
     standing: FloorHeadCurrent { measured: "aaaaaaa" },
     build: LaneFailed,
@@ -422,7 +422,7 @@ test fn w_RED_an_infra_receipt_is_environment_not_subject_red() -> Bool {
 // mechanism, this row goes RED, routing whoever lands it back to `floor_lane_interruption` to
 // retire the measurement recorded there. Same construction as the head axis and the subject
 // receipt: a claim that re-derives itself rather than a note asking someone to remember.
-test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
+test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "mechanism=")
@@ -447,7 +447,7 @@ test fn w_RED_the_emitted_gate_renders_both_interruption_axes() -> Bool {
 //
 // Asserting the positive alone would stay green over a gate that branched on both, so the
 // absence of the `-n` test is what makes this discriminating rather than decorative.
-test fn w_RED_the_head_axis_branches_on_event_type_not_an_empty_subject() -> Bool {
+test fn w_RED_the_head_axis_branches_on_event_type_not_an_empty_subject() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: floor_head_standing_pull_request_event_name)

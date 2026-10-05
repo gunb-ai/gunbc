@@ -170,7 +170,7 @@ fn attempt_refuses_exactly(attempt: FloorIncrementalAttempt, conjunct_name: Stri
 }
 
 // POSITIVE CONTROL.
-test fn w_a_complete_attempt_is_equivalent_to_the_whole_head_run() -> Bool {
+test fn w_a_complete_attempt_is_equivalent_to_the_whole_head_run() -> Bool  {
   let disposition = whole_head_corpus_floor_valid(attempt: fixture_attempt())
   let established = floor_verdict_established(standing: floor_verdict_standing(disposition: disposition))
   let shaped = match disposition {
@@ -185,7 +185,7 @@ test fn w_a_complete_attempt_is_equivalent_to_the_whole_head_run() -> Bool {
 // CONJUNCT 1. A base that never established a whole-corpus pass is an unknown, and carrying from
 // an unknown is the failure this whole module exists to make unauthorable. The mutation is the
 // smallest one that can occur in production: the base ran and was red.
-test fn w_RED_a_base_receipt_that_did_not_pass_cannot_be_carried_from() -> Bool {
+test fn w_RED_a_base_receipt_that_did_not_pass_cannot_be_carried_from() -> Bool  {
   let base = FloorBaseReceipt {
     tree: "base0000",
     roster: fixture_base_roster(),
@@ -209,7 +209,7 @@ test fn w_RED_a_base_receipt_that_did_not_pass_cannot_be_carried_from() -> Bool 
 // whole run, somehow" is the state that must not stand. The second half of the test holds the
 // same chain WITH its citation and expects it to stand, so the refusal is about the missing proof
 // and not about the incremental provenance itself.
-test fn w_RED_an_incremental_base_without_a_cited_proof_is_not_a_base() -> Bool {
+test fn w_RED_an_incremental_base_without_a_cited_proof_is_not_a_base() -> Bool  {
   let ungrounded = FloorBaseReceipt {
     tree: "base0000",
     roster: fixture_base_roster(),
@@ -249,7 +249,7 @@ test fn w_RED_an_incremental_base_without_a_cited_proof_is_not_a_base() -> Bool 
 // CONJUNCT 2, AND THIS IS THE ONE THE MEDIUM ROSTER EXISTS FOR. The source-tree delta is complete
 // and correct; the toolchain was simply never looked at. Every carried row rests on an input class
 // nobody measured, and the attempt looks exactly like a clean one from the source-tree side.
-test fn w_RED_an_unobserved_input_medium_refuses_the_whole_delta() -> Bool {
+test fn w_RED_an_unobserved_input_medium_refuses_the_whole_delta() -> Bool  {
   let delta = FloorInputDelta {
     base_tree: "base0000",
     head_tree: "head0000",
@@ -279,7 +279,7 @@ test fn w_RED_an_unobserved_input_medium_refuses_the_whole_delta() -> Bool {
 // CONJUNCT 3, THE ABSORBING-FALLBACK CELL. A closure that could not compute must not answer, and
 // the arm that would have made this green in every other system -- "so run everything" -- is not
 // reachable from here at all. The disposition is a refusal that names the conjunct.
-test fn w_RED_an_unestablished_closure_refuses_rather_than_widening() -> Bool {
+test fn w_RED_an_unestablished_closure_refuses_rather_than_widening() -> Bool  {
   let closure = FloorAffectedClosure {
     changed_inputs: ["dag/fixture/alpha.dag"],
     affected_rows: ["alpha"],
@@ -306,7 +306,7 @@ test fn w_RED_an_unestablished_closure_refuses_rather_than_widening() -> Bool {
 // admissible -- it is what the closure believes, bounded by structure -- so the refusal above is
 // about the closure failing, not about it being imprecise. Without this row the previous test
 // would be consistent with a law that only admits exact closures, which is not the law.
-test fn w_a_structural_over_approximation_is_an_answer_not_a_fallback() -> Bool {
+test fn w_a_structural_over_approximation_is_an_answer_not_a_fallback() -> Bool  {
   let closure = FloorAffectedClosure {
     changed_inputs: ["dag/fixture/alpha.dag"],
     affected_rows: ["alpha"],
@@ -326,7 +326,7 @@ test fn w_a_structural_over_approximation_is_an_answer_not_a_fallback() -> Bool 
 // CONJUNCT 3, THE JOIN. The closure names a row and the run did not execute it: coverage that
 // looks like coverage. This is the cell that distinguishes "a closure exists" from "the closure's
 // answer was obeyed".
-test fn w_RED_a_closure_row_that_was_not_recomputed_is_not_covered() -> Bool {
+test fn w_RED_a_closure_row_that_was_not_recomputed_is_not_covered() -> Bool  {
   let closure = FloorAffectedClosure {
     changed_inputs: ["dag/fixture/alpha.dag"],
     affected_rows: ["alpha", "beta"],
@@ -347,7 +347,7 @@ test fn w_RED_a_closure_row_that_was_not_recomputed_is_not_covered() -> Bool {
 // CONJUNCT 4, AND THE ARM THAT MATTERS IS `RowNotExecuted` RATHER THAN `RowFailed`. A red row is
 // nobody's temptation; a row the runner never got to is, because its absence of a failure reads as
 // an absence of a problem.
-test fn w_RED_a_recomputed_row_that_never_executed_is_not_a_pass() -> Bool {
+test fn w_RED_a_recomputed_row_that_never_executed_is_not_a_pass() -> Bool  {
   let recomputed = [FloorExecutedRow {
     id: "alpha",
     input_digest: "alpha-2",
@@ -370,7 +370,7 @@ test fn w_RED_a_recomputed_row_that_never_executed_is_not_a_pass() -> Bool {
 // CONJUNCT 5, THE WHOLE POINT OF CARRYING. `beta`'s inputs moved between base and head and the
 // carry claimed them identical anyway. This is the single mutation that turns the incremental
 // verdict into a lie while leaving every other conjunct intact.
-test fn w_RED_a_carried_row_whose_inputs_moved_cannot_be_carried() -> Bool {
+test fn w_RED_a_carried_row_whose_inputs_moved_cannot_be_carried() -> Bool  {
   let head = FloorRoster {
     tree: "head0000",
     rows: [
@@ -395,7 +395,7 @@ test fn w_RED_a_carried_row_whose_inputs_moved_cannot_be_carried() -> Bool {
 
 // CONJUNCT 5, THE ORACLE. The carry asserts two identical digests that match NOTHING in either
 // roster. Self-consistent and worthless -- a measurement compared against a copy of itself.
-test fn w_RED_a_carry_that_cites_digests_no_roster_carries_is_not_evidence() -> Bool {
+test fn w_RED_a_carry_that_cites_digests_no_roster_carries_is_not_evidence() -> Bool  {
   let carried = [
     FloorCarriedRow { id: "beta", base_input_digest: "invented", head_input_digest: "invented" },
     FloorCarriedRow { id: "gamma", base_input_digest: "gamma-1", head_input_digest: "gamma-1" }
@@ -417,7 +417,7 @@ test fn w_RED_a_carry_that_cites_digests_no_roster_carries_is_not_evidence() -> 
 // CONJUNCT 6. `gamma` is in the head roster and in neither set: a witness that silently did not
 // participate. Nothing goes red, nothing is missing from any list a reader would think to check,
 // and the run reports a pass over a roster it did not cover.
-test fn w_RED_a_head_row_in_neither_set_breaks_the_partition() -> Bool {
+test fn w_RED_a_head_row_in_neither_set_breaks_the_partition() -> Bool  {
   let carried = [FloorCarriedRow { id: "beta", base_input_digest: "beta-1", head_input_digest: "beta-1" }]
   attempt_refuses_exactly(
     attempt: FloorIncrementalAttempt {
@@ -438,7 +438,7 @@ test fn w_RED_a_head_row_in_neither_set_breaks_the_partition() -> Bool {
 // alone admits this, which is why the check is an identity join. Both the partition and the digest
 // conjunct object in this fixture, and the test expects exactly that pair: the duplicated row is
 // also a carry over inputs that moved, and one named cause would under-report the stop.
-test fn w_RED_a_row_that_is_both_recomputed_and_carried_is_two_verdicts() -> Bool {
+test fn w_RED_a_row_that_is_both_recomputed_and_carried_is_two_verdicts() -> Bool  {
   let carried = [
     FloorCarriedRow { id: "alpha", base_input_digest: "alpha-1", head_input_digest: "alpha-2" },
     FloorCarriedRow { id: "beta", base_input_digest: "beta-1", head_input_digest: "beta-1" },
@@ -461,7 +461,7 @@ test fn w_RED_a_row_that_is_both_recomputed_and_carried_is_two_verdicts() -> Boo
 // CONJUNCT 7. Every row-local fact is impeccable and the corpus-wide obligation was carried rather
 // than recomputed -- which is not a thing it can be, because it has no row to be carried on. This
 // is the conjunct that survives a perfect selector.
-test fn w_RED_a_global_invariant_carried_instead_of_recomputed_refuses() -> Bool {
+test fn w_RED_a_global_invariant_carried_instead_of_recomputed_refuses() -> Bool  {
   let results = floor_global_invariants |> map(row => FloorGlobalInvariantResult {
     invariant: row.invariant,
     recomputed_at_head: row.invariant != "generated_artifact_drift",
@@ -484,7 +484,7 @@ test fn w_RED_a_global_invariant_carried_instead_of_recomputed_refuses() -> Bool
 // THE CONJUNCTION IS EXACTLY SEVEN, joined to the roster the law folds over rather than to a
 // literal. If a conjunct is added to `floor_proof_conjuncts` without a discriminating red beside
 // it, this row is the reader's cue that the evidence set is behind the law.
-test fn w_the_law_is_the_declared_conjunct_roster() -> Bool {
+test fn w_the_law_is_the_declared_conjunct_roster() -> Bool  {
   count(floor_proof_conjuncts) == 7
     && (floor_proof_conjuncts |> all(c => floor_proof_conjunct_name(conjunct: c) != ""))
 }
@@ -492,7 +492,7 @@ test fn w_the_law_is_the_declared_conjunct_roster() -> Bool {
 // THE WHOLE-CORPUS ARM DISCHARGES BY EXECUTION, and it establishes a verdict without any proof
 // obligation at all -- which is what makes today's whole-corpus required floor the configuration
 // under which this law is trivially satisfied.
-test fn w_a_whole_head_corpus_run_establishes_its_verdict_by_execution() -> Bool {
+test fn w_a_whole_head_corpus_run_establishes_its_verdict_by_execution() -> Bool  {
   let disposition = floor_whole_head_corpus_execution(roster: fixture_head_roster())
   let established = floor_verdict_established(standing: floor_verdict_standing(disposition: disposition))
   let shaped = match disposition {
@@ -530,7 +530,7 @@ fn admission_cause_key(
 // THE POSITIVE CONTROL FOR THE ADMISSION, without which every escalation row below is satisfied by
 // a function that escalates unconditionally. The evidence of the accepted attempt is complete, so
 // the change-bounded class is entered.
-test fn w_RED_complete_evidence_admits_the_change_bounded_class() -> Bool {
+test fn w_RED_complete_evidence_admits_the_change_bounded_class() -> Bool  {
   admission_cause_key(
     base_available: true,
     base: fixture_base(),
@@ -547,7 +547,7 @@ test fn w_RED_complete_evidence_admits_the_change_bounded_class() -> Bool {
 // decided from the evidence's own unavailability BEFORE any row runs, and the cause is keyed PER
 // MEDIUM so a deficit that never falls is locatable rather than pooled. The same input reaching
 // the LAW instead refuses -- that comparison is the two-phase split in one test.
-test fn w_RED_an_unobserved_medium_escalates_before_execution_and_keys_per_medium() -> Bool {
+test fn w_RED_an_unobserved_medium_escalates_before_execution_and_keys_per_medium() -> Bool  {
   let blind = FloorInputDelta {
     base_tree: "base0000",
     head_tree: "head0000",
@@ -590,7 +590,7 @@ test fn w_RED_an_unobserved_medium_escalates_before_execution_and_keys_per_mediu
 
 // A MISSING BASE AND A NON-QUALIFYING BASE ARE TWO CAUSES, because they are two repairs: a missing
 // producer against a receipt that exists and does not establish a whole-corpus pass.
-test fn w_RED_an_absent_base_and_an_unproven_base_are_separate_causes() -> Bool {
+test fn w_RED_an_absent_base_and_an_unproven_base_are_separate_causes() -> Bool  {
   let unproven = FloorBaseReceipt {
     tree: "base0000",
     roster: fixture_base_roster(),
@@ -618,7 +618,7 @@ test fn w_RED_an_absent_base_and_an_unproven_base_are_separate_causes() -> Bool 
 // The pair is the DESIGN section 5 boundary in one row: an over-approximation computed AS the
 // answer is admissible evidence and stays in the change-bounded class, while a closure that failed
 // to compute is not a wider answer but an absent one.
-test fn w_RED_an_uncomputed_closure_escalates_but_an_over_approximation_does_not() -> Bool {
+test fn w_RED_an_uncomputed_closure_escalates_but_an_over_approximation_does_not() -> Bool  {
   let unestablished = FloorAffectedClosure {
     changed_inputs: ["dag/fixture/alpha.dag"],
     affected_rows: ["alpha"],
@@ -647,7 +647,7 @@ test fn w_RED_an_uncomputed_closure_escalates_but_an_over_approximation_does_not
 
 // A DUPLICATE ROW ID MAKES CONJUNCT 6 UNSATISFIABLE, AND THE ROSTER ALREADY CARRIES THAT FACT.
 // Escalating on it before execution spends nothing; discovering it after spends a whole run.
-test fn w_RED_a_duplicate_head_row_id_escalates_before_a_run_is_spent() -> Bool {
+test fn w_RED_a_duplicate_head_row_id_escalates_before_a_run_is_spent() -> Bool  {
   let duplicated = FloorRoster {
     tree: "head0000",
     rows: [
@@ -670,7 +670,7 @@ test fn w_RED_a_duplicate_head_row_id_escalates_before_a_run_is_spent() -> Bool 
 // THE CENSUS COUNTS PER CAUSE, NOT PER RUN. This is the operator's addition and the property that
 // keeps the anemia signal alive: three escalations over two causes must read as 2 and 1, because a
 // count that pooled them would let the smaller deficit hide behind the larger one forever.
-test fn w_RED_the_escalation_census_counts_per_cause_not_per_run() -> Bool {
+test fn w_RED_the_escalation_census_counts_per_cause_not_per_run() -> Bool  {
   let escalations = [
     WholePopulationEscalation {
       head_tree: "head0001",
@@ -703,7 +703,7 @@ test fn w_RED_the_escalation_census_counts_per_cause_not_per_run() -> Bool {
 // deficient evidence -- an unobserved medium -- is a named service class before execution and a
 // REFUSAL after an attempt has claimed equivalence. If one function answered both, the refusal
 // could be satisfied by widening, which is the absorbing fallback this module exists to forbid.
-test fn w_RED_the_same_deficit_escalates_before_and_refuses_after() -> Bool {
+test fn w_RED_the_same_deficit_escalates_before_and_refuses_after() -> Bool  {
   let blind = FloorInputDelta {
     base_tree: "base0000",
     head_tree: "head0000",

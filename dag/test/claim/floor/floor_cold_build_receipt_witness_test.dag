@@ -46,7 +46,7 @@ fn gib(n: Int) -> Int {
   byte_size_count(b: gibibyte_to_byte_size(gibibyte(count: n)))
 }
 
-test fn a_cold_receipt_under_every_line_is_within_shape() -> Bool {
+test fn a_cold_receipt_under_every_line_is_within_shape() -> Bool  {
   match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 7), used: gib(n: 3))) {
     ColdBuildWithinShape => true
     _ => false
@@ -55,28 +55,28 @@ test fn a_cold_receipt_under_every_line_is_within_shape() -> Bool {
 
 // THE BOUNDARIES ARE INCLUSIVE: a wall equal to the timeout, a peak equal to the cell and a
 // workspace equal to the grant are all within shape.
-test fn readings_exactly_on_their_lines_are_within_shape() -> Bool {
+test fn readings_exactly_on_their_lines_are_within_shape() -> Bool  {
   match verdict_of(r: receipt(subject: cold_subject(), wall: 7200, peak: gib(n: 8), used: gib(n: 4))) {
     ColdBuildWithinShape => true
     _ => false
   }
 }
 
-test fn a_wall_past_the_timeout_refuses_naming_both_durations() -> Bool {
+test fn a_wall_past_the_timeout_refuses_naming_both_durations() -> Bool  {
   match verdict_of(r: receipt(subject: cold_subject(), wall: 7201, peak: gib(n: 7), used: gib(n: 3))) {
     ColdBuildWallExceedsTimeout { wall: w, timeout: t } => second_count(w) == 7201 && second_count(t) == 7200
     _ => false
   }
 }
 
-test fn a_peak_past_the_cell_refuses_naming_both_sizes() -> Bool {
+test fn a_peak_past_the_cell_refuses_naming_both_sizes() -> Bool  {
   match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 8) + 1, used: gib(n: 3))) {
     ColdBuildPeakExceedsCell { peak: p, cell: c } => byte_size_count(b: p) == gib(n: 8) + 1 && byte_size_count(b: c) == gib(n: 8)
     _ => false
   }
 }
 
-test fn a_workspace_past_the_grant_refuses_naming_both_sizes() -> Bool {
+test fn a_workspace_past_the_grant_refuses_naming_both_sizes() -> Bool  {
   match verdict_of(r: receipt(subject: cold_subject(), wall: 7199, peak: gib(n: 7), used: gib(n: 4) + 1)) {
     ColdBuildWorkspaceExceedsGrant { used: u, grant: g } => byte_size_count(b: u) == gib(n: 4) + 1 && byte_size_count(b: g) == gib(n: 4)
     _ => false
@@ -85,7 +85,7 @@ test fn a_workspace_past_the_grant_refuses_naming_both_sizes() -> Bool {
 
 // A WARM OR FOREIGN SUBJECT IS REFUSED BEFORE ANY READING IS COMPARED, so a receipt that would
 // otherwise be within shape on every line still cannot stand as the cold one.
-test fn a_warm_or_foreign_subject_is_refused_before_its_readings_are_read() -> Bool {
+test fn a_warm_or_foreign_subject_is_refused_before_its_readings_are_read() -> Bool  {
   let warm = match verdict_of(r: receipt(
     subject: ColdBuildSubject { architecture: Aarch64, cargo_home_wiped: true, sccache_reachable: true },
     wall: 10, peak: 10, used: 10,
@@ -120,7 +120,7 @@ fn names_declaration(refs: List<DeclarationRef>, module_path: String, decl_name:
 // THE PRODUCTION STANDING IS PENDING WITH THE PLAN, the plan's subject is the cold one, its warm
 // baseline is the 2026-09-19 wall receipt, and the prediction ceiling sits above that baseline and
 // under the lane timeout -- so the receipt, when taken, has a line to fall on either side of.
-test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_baseline() -> Bool {
+test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_baseline() -> Bool  {
   match gunbc_floor_cold_build_receipt_standing() {
     ColdBuildReceiptTaken { receipt: _, verdict: _ } => false
     ColdBuildReceiptPending { plan: p } =>
@@ -142,7 +142,7 @@ test fn the_production_standing_is_pending_with_a_cold_plan_against_the_warm_bas
 
 // THE PRODUCTION VERDICT READS THE PRODUCTION ROWS: a fixture receipt that fits the fleet's own
 // cell and grant is within shape, and one over the fleet's MemoryMax names that row's value.
-test fn the_production_verdict_judges_against_the_fleet_rows() -> Bool {
+test fn the_production_verdict_judges_against_the_fleet_rows() -> Bool  {
   let cell = byte_size_count(b: gunbc_runner_slot_desired().memory_max)
   let fits = match gunbc_floor_cold_build_verdict(receipt: receipt(subject: cold_subject(), wall: 3600, peak: cell, used: gib(n: 2))) {
     ColdBuildWithinShape => true

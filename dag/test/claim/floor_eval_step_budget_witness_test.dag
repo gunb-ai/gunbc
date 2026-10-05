@@ -70,7 +70,7 @@ fn tier_probe_steps() -> Int {
   150000
 }
 
-test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Bool {
+test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Bool  {
   int_gt(a: tier_probe_steps(), b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})))
     && int_gt(a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})), b: tier_probe_steps())
     && match claim_safety_outcome(
@@ -91,7 +91,7 @@ test fn a_cost_between_the_ceilings_passes_for_a_grandfathered_identity() -> Boo
 }
 
 // RED: the SAME cost, the SAME everything else, refuses on the new-witness tier.
-test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool {
+test fn a_cost_between_the_ceilings_refuses_for_a_new_identity() -> Bool  {
   match claim_safety_outcome(
     identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
@@ -126,7 +126,7 @@ fn a_real_grandfathered_identity() -> String {
   "test.claim.arity_zero_import_refusal_witness.an_arity_zero_import_member_list_refuses_at_parse"
 }
 
-test fn a_renamed_grandfathered_identity_is_classified_new() -> Bool {
+test fn a_renamed_grandfathered_identity_is_classified_new() -> Bool  {
   match claim_ceiling_tier(identity: a_real_grandfathered_identity()) {
     NewWitnessTier => false
     GrandfatheredTier =>
@@ -148,7 +148,7 @@ test fn a_renamed_grandfathered_identity_is_classified_new() -> Bool {
 // they cost 90,086 eval steps -- ABOVE the 72,300 new-witness ceiling this very file installs, and
 // these witnesses are new, so the evidence for the tier would have been refused by the tier. The
 // two assertions are independent questions and neither is weakened by asking them separately.
-test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool {
+test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool  {
   floor_grandfathered_holds(name: a_real_grandfathered_identity())
     && (floor_grandfathered_holds(name: "test.claim.this.identity.was.never.on.the.floor") == false)
 }
@@ -157,7 +157,7 @@ test fn the_roster_identity_join_is_exact_in_both_directions() -> Bool {
 // deliberately NOT the membership test -- DESIGN section 5 requires completeness at identity grain,
 // never by count. What it catches is a different failure: a roster that decoded partially, or a
 // chunk fold that lost its tail, would still answer correctly for the one identity the join probes.
-test fn the_roster_is_not_truncated() -> Bool {
+test fn the_roster_is_not_truncated() -> Bool  {
   int_gt(a: floor_grandfathered_cut_size(), b: 3000)
 }
 
@@ -169,7 +169,7 @@ fn fixture_current_roster() -> List<String> {
 // RED: a proposed roster carrying a row the current one does not have is an ADDITION and refuses.
 // This is the arm that keeps the roster a debt rather than a list: without it every expensive new
 // witness joins the old ceiling on the day it lands.
-test fn a_roster_addition_refuses() -> Bool {
+test fn a_roster_addition_refuses() -> Bool  {
   match roster_change_verdict(
     current: fixture_current_roster(),
     proposed: Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Cons { head: "m.NEW", tail: Empty {} } } } },
@@ -183,7 +183,7 @@ test fn a_roster_addition_refuses() -> Bool {
 
 // RED: a row that simply disappears, with no typed disposition naming it, refuses. Shrinking is the
 // only admitted direction, and DESIGN section 5 admits it only when every removal is typed.
-test fn a_removal_without_a_typed_disposition_refuses() -> Bool {
+test fn a_removal_without_a_typed_disposition_refuses() -> Bool  {
   match roster_change_verdict(
     current: fixture_current_roster(),
     proposed: Cons { head: "m.a", tail: Cons { head: "m.c", tail: Empty {} } },
@@ -197,7 +197,7 @@ test fn a_removal_without_a_typed_disposition_refuses() -> Bool {
 
 // CONTROL, and the direction that proves the two REDs above are not a constant refusal: the same
 // shrink WITH a typed disposition naming the row is admitted.
-test fn a_removal_with_a_typed_disposition_is_admitted() -> Bool {
+test fn a_removal_with_a_typed_disposition_is_admitted() -> Bool  {
   roster_change_admitted(
     verdict: roster_change_verdict(
       current: fixture_current_roster(),
@@ -216,7 +216,7 @@ test fn a_removal_with_a_typed_disposition_is_admitted() -> Bool {
 // A RENAME DISPOSITION NAMES THE ROW THAT LEAVES, NOT THE ONE THAT ARRIVES. Planting the rename as
 // a removal of the old identity is admitted; the new identity does NOT thereby enter the roster,
 // which the addition arm still refuses. This is the fourth RED and the rename rule in one fold.
-test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one() -> Bool {
+test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one() -> Bool  {
   roster_change_admitted(
     verdict: roster_change_verdict(
       current: fixture_current_roster(),
@@ -259,7 +259,7 @@ test fn a_rename_disposition_retires_the_old_row_and_does_not_admit_the_new_one(
 // IT ASSERTS THE OBSERVATION SURVIVED, not merely that the gate stood down. A mechanism that
 // stopped refusing AND stopped counting is the absorbing fallback DESIGN section 5 forbids, so the
 // control is "it passes AND the 4000ms is still reachable in the receipt".
-test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier() -> Bool {
+test fn a_claim_far_over_the_cpu_line_with_in_budget_steps_passes_on_either_tier() -> Bool  {
   cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {}))
     && cpu_does_not_gate(budget: claim_ceiling_eval_step_budget(tier: NewWitnessTier {}))
 }
@@ -284,7 +284,7 @@ fn cpu_does_not_gate(budget: EvalStepCount) -> Bool {
   }
 }
 
-test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool {
+test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool  {
   match claim_safety_outcome(
     identity: "test.claim.fixture.an_identity_in_no_floor_roster",
     reached_verdict: true,
@@ -307,7 +307,7 @@ test fn the_cpu_observation_is_still_carried_when_another_limit_fires() -> Bool 
 //
 // The policy inputs are milliseconds and the ceilings are eval steps; this is the executing join
 // that the conversion between them still describes the fixture it came from.
-test fn the_pinned_rate_is_the_floored_ratio_of_its_own_sample() -> Bool {
+test fn the_pinned_rate_is_the_floored_ratio_of_its_own_sample() -> Bool  {
   eval_step_rate_grounding_holds(grounding: required_floor_eval_step_rate_grounding())
 }
 
@@ -315,7 +315,7 @@ test fn the_pinned_rate_is_the_floored_ratio_of_its_own_sample() -> Bool {
 // neither is a literal and the two cannot drift apart. Asserting the PRODUCTS rather than the
 // numbers is deliberate -- a fixture carrying 361500 and 72300 would go stale the moment the rate
 // is re-pinned, and would then be asserting the old rate rather than the derivation.
-test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> Bool {
+test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> Bool  {
   (millisecond_count(m: claim_ceiling_envelope_ms(tier: GrandfatheredTier {}))
      == millisecond_count(m: required_floor_claim_work_envelope_ms()))
     && (millisecond_count(m: claim_ceiling_envelope_ms(tier: NewWitnessTier {}))
@@ -330,7 +330,7 @@ test fn both_ceilings_are_the_same_conversion_over_different_policy_inputs() -> 
 // a claim was over its limits and carries its CPU and wall observations; only `ClaimEvalStepStanding`
 // says by how much work, against what budget. A collapse of that carrier into a bare Bool leaves
 // every fixture above green.
-test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool {
+test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Bool  {
   match claim_eval_step_standing(
     observed_eval_steps: eval_step_count(
       count: int_add(
@@ -364,7 +364,7 @@ test fn the_eval_step_standing_carries_both_figures_in_its_refusing_arm() -> Boo
 // host CPU at 3,795 rows and proposed teaching authors to choose by n; that was refused as pricing a
 // per-site exception around a defect. The quadratic is filed as a realization defect against the
 // primitive instead, so this witness asserts the symbols and asserts that no such hedge crept back.
-test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
+test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool  {
   string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_insert")
     && string_contains(s: new_witness_over_budget_first_remedy(), pattern: "map_lookup")
     && (string_contains(s: new_witness_over_budget_first_remedy(), pattern: "CHECK n") == false)
@@ -405,7 +405,7 @@ test fn the_new_witness_remedy_names_the_primitive_by_symbol() -> Bool {
 // into the roster: completing a removal would have turned this witness red, so the contract had no
 // downward direction and the header's claim that the removal half executed was inflated. Both
 // halves are now asserted in the direction the contract actually runs.
-test fn every_declared_removal_names_a_cut_row_and_has_left_the_roster() -> Bool {
+test fn every_declared_removal_names_a_cut_row_and_has_left_the_roster() -> Bool  {
   removals_are_present(removals: floor_grandfathered_removals)
     && all_removals_name_cut_members(removals: floor_grandfathered_removals)
     && all_removals_have_left(removals: floor_grandfathered_removals)
@@ -447,7 +447,7 @@ fn all_removals_have_left(removals: List<GrandfatheredRemoval>) -> Bool {
 // observed -- runs in `tools.floor_cost_distribution_instrument`
 // `calibration_specimen_grounding`, because its input is an artifact written after the run and no
 // claim can read its own step count. What these two witness is the decision the instrument feeds.
-test fn the_observed_specimen_step_count_matching_the_pin_holds() -> Bool {
+test fn the_observed_specimen_step_count_matching_the_pin_holds() -> Bool  {
   specimen_steps_grounding_holds(
     grounding: specimen_steps_grounding(
       calibration: floor_eval_step_calibration,
@@ -461,7 +461,7 @@ test fn the_observed_specimen_step_count_matching_the_pin_holds() -> Bool {
 // THE RED. A specimen whose depth moved reports a different step count, and the pin must refuse
 // rather than rescale every derived ceiling in silence -- the failure the calibration module's
 // header names and the one the three-literal rate check cannot see.
-test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
+test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool  {
   !specimen_steps_grounding_holds(
     grounding: specimen_steps_grounding(
       calibration: floor_eval_step_calibration,
@@ -497,7 +497,7 @@ test fn an_observed_specimen_step_count_that_moved_refuses() -> Bool {
 // THAT REFUSAL IS ALSO THE CONTROL NOBODY HAD TO AUTHOR: the tier this lane built judged this lane's
 // own new witness, on its own work, and named the remedy. It is recorded here because a ceiling that
 // has refused its author once is better evidence than a fixture.
-test fn the_calibration_specimen_is_not_grandfathered() -> Bool {
+test fn the_calibration_specimen_is_not_grandfathered() -> Bool  {
   floor_grandfathered_holds(
     name: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
   ) == false
@@ -506,13 +506,13 @@ test fn the_calibration_specimen_is_not_grandfathered() -> Bool {
 // THE SPECIMEN ABOVE IS THE SHARPEST OF THE THREE -- it is deliberately the most expensive claim this
 // lane adds, so it is the one an accidental grandfathering would most flatter. These two are the
 // other rows the cut captured, kept as their own claims for the budget reason stated above.
-test fn the_eval_step_standing_witness_is_not_grandfathered() -> Bool {
+test fn the_eval_step_standing_witness_is_not_grandfathered() -> Bool  {
   floor_grandfathered_holds(
     name: "test.claim.floor_eval_step_budget_witness_test.the_eval_step_standing_carries_both_figures_in_its_refusing_arm",
   ) == false
 }
 
-test fn the_cpu_observation_witness_is_not_grandfathered() -> Bool {
+test fn the_cpu_observation_witness_is_not_grandfathered() -> Bool  {
   floor_grandfathered_holds(
     name: "test.claim.floor_eval_step_budget_witness_test.the_cpu_observation_is_still_carried_when_another_limit_fires",
   ) == false
@@ -521,7 +521,7 @@ test fn the_cpu_observation_witness_is_not_grandfathered() -> Bool {
 // AND THEY FACE THE NEW TIER RATHER THAN NO TIER, which is the other half: a name absent from the
 // roster must select NewWitnessTier, not fall through. Without this, striking a row would look
 // identical to deleting the tier selection.
-test fn a_struck_identity_selects_the_new_witness_tier() -> Bool {
+test fn a_struck_identity_selects_the_new_witness_tier() -> Bool  {
   match claim_ceiling_tier(
     identity: "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_performs_its_declared_work",
   ) {
@@ -547,7 +547,7 @@ fn drop_probe_steps() -> EvalStepCount {
 }
 
 // RED: an identity outside the drop, over budget, still refuses -- the drop does not widen the wall.
-test fn an_over_budget_identity_outside_the_declared_drop_still_refuses() -> Bool {
+test fn an_over_budget_identity_outside_the_declared_drop_still_refuses() -> Bool  {
   (floor_eval_step_cost_drop_holds(name: "test.claim.fixture.an_identity_in_no_floor_roster") == false)
     && match claim_safety_outcome(
       identity: "test.claim.fixture.an_identity_in_no_floor_roster",
@@ -567,7 +567,7 @@ test fn an_over_budget_identity_outside_the_declared_drop_still_refuses() -> Boo
 }
 
 // CONTROL: a member at the same cost does not block on steps, and its standing keeps both figures.
-test fn an_over_budget_member_of_the_declared_drop_is_reported_not_refused() -> Bool {
+test fn an_over_budget_member_of_the_declared_drop_is_reported_not_refused() -> Bool  {
   match claim_eval_step_standing_for_identity(
     identity: drop_member_identity(),
     observed_eval_steps: drop_probe_steps(),
@@ -597,7 +597,7 @@ test fn an_over_budget_member_of_the_declared_drop_is_reported_not_refused() -> 
 }
 
 // RED: the drop lowers ONLY the step comparison. A member that crosses the wall still blocks.
-test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
+test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool  {
   match claim_safety_outcome(
     identity: drop_member_identity(),
     reached_verdict: true,
@@ -623,7 +623,7 @@ test fn a_member_of_the_declared_drop_still_blocks_on_the_wall() -> Bool {
 // control pair already goes red if the member leaves -- and that the rows' recorded eval_steps
 // exceed the budget, which would be authored on both sides of the comparison and could never go
 // red (DESIGN section 4b, section 5). The drop's retirement clause (ii) is read out of band.
-test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool {
+test fn the_declared_drop_roster_has_no_duplicate_identity() -> Bool  {
   floor_eval_step_cost_drop_has_duplicate() == false
 }
 
@@ -633,7 +633,7 @@ fn apply_render_drop_member_identity() -> String {
   "test.claim.live_deploy.emit.apply_script_stays_within_ci_runner_grants"
 }
 
-test fn an_over_budget_apply_render_drop_member_is_reported_not_refused() -> Bool {
+test fn an_over_budget_apply_render_drop_member_is_reported_not_refused() -> Bool  {
   floor_eval_step_cost_drop_holds(name: apply_render_drop_member_identity())
     && match claim_eval_step_standing_for_identity(
       identity: apply_render_drop_member_identity(),

@@ -131,7 +131,7 @@ fn oid(hex: String) -> GitObjectId? { git_object_id_from_untagged_hex(hex: hex) 
 // POSITIVE CONTROL, load-bearing: almost every other row asserts a REFUSAL, which unconditionally
 // refusing producers would satisfy. This row fails when a wall is TOO STRICT -- the failure mode a
 // wall-shaped change actually has, and the one invisible in production.
-test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts() -> Bool {
+test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
       match observe_default_branch_revision(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
@@ -159,7 +159,7 @@ test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts(
 // Folded into one predicate, either fact could stand in for the pair and the fleet would follow a
 // revision main never had. This row is that argument executed: the SAME event, admitted by one
 // producer and refused by the other.
-test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bool {
+test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bool  {
   ci_admits(e: pull_request_run(head_sha: sha_a))
     && match observe_default_branch_revision(
       event: pull_request_run(head_sha: sha_a),
@@ -173,7 +173,7 @@ test fn a_pull_request_run_proves_required_ci_but_not_the_default_branch() -> Bo
 // A push to a topic branch is the other half of the asymmetry: the event IS a push, so the
 // event-kind arm passes and the BRANCH arm must refuse. Without this row a producer checking only
 // the originating event would pass every branch row above.
-test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
+test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool  {
   match observe_default_branch_revision(
     event: ev(
       activity: "completed",
@@ -198,7 +198,7 @@ test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
 // whenever a push lands while a run is in flight. What is false is the CONJUNCTION anyone would
 // infer from holding both; the refusal carries BOTH revisions because "which two" is the entire
 // content of the finding.
-test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both() -> Bool {
+test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
       match observe_default_branch_revision(event: trunk_push(head_sha: sha_b), evidence: github_evidence) {
@@ -229,7 +229,7 @@ test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both
 // THE REVISION IS DECODED BEFORE ANY POSITIVE CARRIER EXISTS. GitHub says head_sha is a SHA;
 // nothing on the wire establishes it. Both producers refuse an undecodable value rather than
 // building a carrier around it, so no consumer is handed a revision that is not one.
-test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
+test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: trunk_push(head_sha: "not-a-sha"),
     evidence: github_evidence,
@@ -249,7 +249,7 @@ test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
 // Each CI identity fact refuses with ITS OWN cause. Asserting only "refused" would let every arm
 // collapse into one and still pass, making refusals undebuggable since the remedies differ: wrong
 // producer, wrong repo, an untrusted fork's head, not finished.
-test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
+test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
@@ -323,7 +323,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
 // is exercised beside Failure deliberately: it produces no failure to investigate, so it is the
 // state most likely read as "nothing happened" -- and exactly the state that must not be mistaken
 // for a floor that ran.
-test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
+test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
@@ -370,7 +370,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
 // of the WRONG workflow must refuse as the wrong workflow: reporting "the floor was not green"
 // about a run that was never the floor sends a reader to investigate a failure that does not
 // exist, ending in confusion rather than a fix.
-test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool {
+test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool  {
   match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(),
     event: ev(
       activity: "completed",
@@ -393,7 +393,7 @@ test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bo
 // re-typed: if this row and the emitter disagree, the fixture lies, not the wall. It carries no
 // phase roster: the fleet asks whether the exact contract succeeded for the exact revision, and
 // adding a phase to the floor must not break fleet admission.
-test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool {
+test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool  {
   (required_ci_contract().name as String) == artifact_path(a: WitnessFloorYamlArtifact)
     && (required_ci_contract().name as String) == ".github/workflows/witnesses.yml"
     && (required_ci_contract().surface as String) == "gunb-ai/gunbc"

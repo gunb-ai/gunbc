@@ -56,14 +56,14 @@ fn blocking_total(c: CompileDiagnosticCensus) -> Int {
 // probe's refusals are its own.
 data harness_control_source: String = "module probe_file_hold_plan_harness_control\nimport std.types { String }\nimport gunbc.durable_exclusive_hold_file_store { hold_held_tag }\nfn tag() -> String { hold_held_tag }\n"
 
-test fn the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean() -> Bool {
+test fn the_harness_runs_and_a_clean_source_over_the_hold_store_is_clean() -> Bool  {
   blocking_total(c: census_of(source: harness_control_source)) == 0
 }
 
 // (a) A FORGED ACQUIRE PLAN HAS NO CONSTRUCTOR OUTSIDE THE MINT. The literal carries the
 // expectation a forged free-at-4 observation would derive; the compiler refuses the record itself,
 // so the overwrite of a real held-at-4 slot is unwritable rather than caught at the store.
-test fn a_forged_acquire_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool {
+test fn a_forged_acquire_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "FileHoldAcquirePlan",
@@ -72,7 +72,7 @@ test fn a_forged_acquire_plan_cannot_be_authored_outside_the_live_read_mint() ->
 
 // (b) A FORGED RELEASE PLAN HAS NO CONSTRUCTOR OUTSIDE THE MINT, so a plan for "held by A at 4"
 // authored beside a real "held by B at 4" cannot reach file_hold_release_commit.
-test fn a_forged_release_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool {
+test fn a_forged_release_plan_cannot_be_authored_outside_the_live_read_mint() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "SoleConstructorViolation", subject: "FileHoldReleasePlan",
@@ -86,21 +86,21 @@ test fn a_forged_release_plan_cannot_be_authored_outside_the_live_read_mint() ->
 // ConstructorCallAdmissionRefused row by the CALLEE's declaration name, so each callee is asserted
 // by name -- an identity join, not a count: three refusals from any three sites, or a duplicate at
 // one site beside a callee that silently resolved, would not satisfy these three rows.
-test fn end_cell_hold_refuses_a_caller_with_an_authored_money_outcome_from_outside() -> Bool {
+test fn end_cell_hold_refuses_a_caller_with_an_authored_money_outcome_from_outside() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "end_cell_hold",
   ) >= 1
 }
 
-test fn commit_hold_end_refuses_a_caller_with_an_authored_money_outcome_from_outside() -> Bool {
+test fn commit_hold_end_refuses_a_caller_with_an_authored_money_outcome_from_outside() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "commit_hold_end",
   ) >= 1
 }
 
-test fn free_cell_slot_refuses_a_caller_with_an_authored_account_from_outside() -> Bool {
+test fn free_cell_slot_refuses_a_caller_with_an_authored_account_from_outside() -> Bool  {
   blocking_count_for_class_and_subject(
     c: census_of(source: probe_source(name: "file_hold_plan_forged_probe")),
     wanted: "ConstructorCallAdmissionRefused", subject: "free_cell_slot",

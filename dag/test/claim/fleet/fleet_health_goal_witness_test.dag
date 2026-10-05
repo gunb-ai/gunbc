@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The goal is derived from the roster, not restated: one goal per known host, in roster order, and
 // every rostered host resolves a telemetry profile on its declared BMC. Resolving this module also
 // typechecks the read-only entry fleet_health_check beside it.
-test fn every_rostered_host_gets_a_goal_and_a_telemetry_profile() -> Bool {
+test fn every_rostered_host_gets_a_goal_and_a_telemetry_profile() -> Bool  {
   let goals = match fleet_health_goals() {
     ObservationEstablished { observed: gs } => map(gs, g => g.host) == map(fleet_intent_known_hosts, h => h.identity)
     ObservationRefused { cause: _ } => false

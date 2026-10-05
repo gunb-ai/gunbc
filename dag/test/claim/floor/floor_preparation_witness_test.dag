@@ -155,7 +155,7 @@ fn probe_for(entry: PreparedFloorEntryRequest) -> PreparedFloorEntryProbe {
   }
 }
 
-test fn exact_prepared_artifact_set_serves() -> Bool {
+test fn exact_prepared_artifact_set_serves() -> Bool  {
   let request = canonical_request()
   match prepared_floor_subject_serve(
     request: request,
@@ -169,7 +169,7 @@ test fn exact_prepared_artifact_set_serves() -> Bool {
   }
 }
 
-test fn missing_prepared_identity_refuses() -> Bool {
+test fn missing_prepared_identity_refuses() -> Bool  {
   match prepared_floor_subject_serve(
     request: canonical_request(),
     probes: [probe_for(entry: entry_a())],
@@ -181,7 +181,7 @@ test fn missing_prepared_identity_refuses() -> Bool {
   }
 }
 
-test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
+test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool  {
   match prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
     probes: [PreparedFloorEntryProbe { witness: witness_a(), probe: ProbeAbsent }],
@@ -196,7 +196,7 @@ test fn absent_artifact_is_typed_miss_without_cold_fallback() -> Bool {
   }
 }
 
-test fn wrong_artifact_key_refuses() -> Bool {
+test fn wrong_artifact_key_refuses() -> Bool  {
   let wrong = artifact_for(entry: entry_b())
   match prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
@@ -219,7 +219,7 @@ test fn wrong_artifact_key_refuses() -> Bool {
   }
 }
 
-test fn duplicate_selected_identity_refuses() -> Bool {
+test fn duplicate_selected_identity_refuses() -> Bool  {
   match prepared_floor_subject_serve(
     request: request_with(selected: [entry_a(), entry_a()]),
     probes: [probe_for(entry: entry_a())],
@@ -231,7 +231,7 @@ test fn duplicate_selected_identity_refuses() -> Bool {
   }
 }
 
-test fn duplicate_probe_identity_refuses() -> Bool {
+test fn duplicate_probe_identity_refuses() -> Bool  {
   match prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_a())],
@@ -243,7 +243,7 @@ test fn duplicate_probe_identity_refuses() -> Bool {
   }
 }
 
-test fn unexpected_probe_identity_refuses() -> Bool {
+test fn unexpected_probe_identity_refuses() -> Bool  {
   let extra = entry_request(witness: witness_extra(), closure: "closure-extra")
   match prepared_floor_subject_serve(
     request: request_with(selected: [entry_a()]),
@@ -256,7 +256,7 @@ test fn unexpected_probe_identity_refuses() -> Bool {
   }
 }
 
-test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool {
+test fn changed_closure_changes_prepared_artifact_set_identity() -> Bool  {
   let canonical = prepared_claim_subject_identity(
     request: request_with(selected: [entry_a()])
   )

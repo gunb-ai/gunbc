@@ -119,7 +119,7 @@ data t_watch_on_a_foreign_clock: DrainProgress = DrainObservedEmpty {
 //
 // THE DISCRIMINATING RED: if the fold consulted the exit code instead of the ordering, this goes
 // false while the deadline-reached conjunct below stays true.
-test fn w_clean_exit_before_deadline_is_an_interruption() -> Bool {
+test fn w_clean_exit_before_deadline_is_an_interruption() -> Bool  {
   let early = supervision_disposition(
     spawn: t_child,
     termination: ProcessExited { code: 0 },
@@ -144,7 +144,7 @@ test fn w_clean_exit_before_deadline_is_an_interruption() -> Bool {
 // than a clean exit while being the same DISPOSITION. That separation is why std.process_termination
 // is consumed rather than flattened: the deadline SIGTERM that killed `script` before it flushed was
 // a signal death, and rendering it as an ordinary nonzero exit is what hid it.
-test fn w_signal_death_keeps_its_termination_and_its_disposition() -> Bool {
+test fn w_signal_death_keeps_its_termination_and_its_disposition() -> Bool  {
   let signalled = supervision_disposition(
     spawn: t_child,
     termination: ProcessSignaled { signal: 15 },
@@ -159,7 +159,7 @@ test fn w_signal_death_keeps_its_termination_and_its_disposition() -> Bool {
 // deadline while nobody read its pipe covered nothing, because a collector that does not drain can
 // cause the silence it then reports. DrainObservedEmpty -- somebody WATCHED and saw nothing -- is a
 // real observation and does cover the window.
-test fn w_unobserved_drain_is_not_coverage() -> Bool {
+test fn w_unobserved_drain_is_not_coverage() -> Bool  {
   let unwatched = supervision_disposition(
     spawn: t_child,
     termination: ProcessExited { code: 0 },
@@ -182,7 +182,7 @@ test fn w_unobserved_drain_is_not_coverage() -> Bool {
 // TWO CLOCKS WITH NO SHARED ORIGIN CANNOT BE ORDERED, so the disposition REFUSES rather than
 // defaulting to expected. Defaulting an undecidable ordering to a closure would fabricate exactly
 // the claim this module exists to withhold.
-test fn w_incomparable_clocks_refuse_rather_than_default() -> Bool {
+test fn w_incomparable_clocks_refuse_rather_than_default() -> Bool  {
   let crossed = supervision_disposition(
     spawn: t_child,
     termination: ProcessExited { code: 0 },
@@ -196,7 +196,7 @@ test fn w_incomparable_clocks_refuse_rather_than_default() -> Bool {
 // A TRANSPORT THAT REFUSED BEFORE THE PROCESS EXISTED PRODUCED NO STATUS, and that is the absence of
 // a process rather than a failure of one -- the third of the three lost captures, whose replacement
 // "never started" and was relied on anyway.
-test fn w_never_spawned_is_not_a_process_failure() -> Bool {
+test fn w_never_spawned_is_not_a_process_failure() -> Bool  {
   let refused = supervision_disposition(
     spawn: SpawnRefused { cause: "synthetic transport refusal before the child existed" },
     termination: ProcessTerminationUnobserved,
@@ -260,7 +260,7 @@ fn not_covered(c: SupervisionCoverage) -> Bool {
 //
 // THE DISCRIMINATING RED: if the coverage fold stopped comparing watched_until against the deadline,
 // the first conjunct goes false while the watched-to-deadline control below stays true.
-test fn w_a_pipe_watched_for_three_seconds_does_not_cover_the_window() -> Bool {
+test fn w_a_pipe_watched_for_three_seconds_does_not_cover_the_window() -> Bool  {
   let abandoned = supervision_disposition(
     spawn: t_child,
     termination: ProcessExited { code: 0 },
@@ -283,7 +283,7 @@ test fn w_a_pipe_watched_for_three_seconds_does_not_cover_the_window() -> Bool {
 
 // A WATCH BOUND ON A CLOCK THAT CANNOT BE ORDERED AGAINST THE DEADLINE IS UNDECIDABLE, not covered and
 // not a collector failure. Same refusal std.measure gives for any two instants with no shared origin.
-test fn w_an_unorderable_watch_bound_is_undecidable_not_covered() -> Bool {
+test fn w_an_unorderable_watch_bound_is_undecidable_not_covered() -> Bool  {
   let crossed = supervision_disposition(
     spawn: t_child,
     termination: ProcessExited { code: 0 },

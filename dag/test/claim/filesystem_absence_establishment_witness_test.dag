@@ -98,7 +98,7 @@ fn observe(
 // A LISTING THAT FAILED ASSERTS NOTHING ABOUT WHAT IS THERE. This is the arm the whole construction
 // exists for: the directory could not be read, so the entry is neither present nor absent, and the
 // consumer is handed a state it must decide about rather than a false it can mistake for a fact.
-test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
+test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool  {
   presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json")) == "indeterminate"
     && observation_arm(o: observe(
       listing: unlistable(),
@@ -110,7 +110,7 @@ test fn a_directory_that_cannot_be_listed_establishes_no_absence() -> Bool {
 // AND THE READ CANNOT RESCUE IT EITHER WAY. A refused listing stays indeterminate even when the read
 // SUCCEEDS, because a read that worked says the file is there and says nothing about the directory
 // the consumer could not enumerate -- so the fold never lets a read decide a listing's question.
-test fn a_successful_read_does_not_repair_a_refused_listing() -> Bool {
+test fn a_successful_read_does_not_repair_a_refused_listing() -> Bool  {
   observation_arm(o: observe(
     listing: unlistable(),
     name: "marker.json",
@@ -123,7 +123,7 @@ test fn a_successful_read_does_not_repair_a_refused_listing() -> Bool {
 // get different arms. The third clause is the positive control -- the same fold, the same refused
 // read, and a listing that does not name the entry -- so the arms are decided by the LISTING and not
 // by the read's status.
-test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
+test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool  {
   observation_arm(o: observe(
     listing: listed(entries: "marker.json\nreceipts"),
     name: "marker.json",
@@ -145,7 +145,7 @@ test fn a_marker_that_is_listed_and_unreadable_is_not_absent() -> Bool {
 // hold `marker.json`, and one holding `marker.json` does not hold `marker` -- both directions, because
 // a prefix test and a suffix test fail in opposite directions and only one of them is caught by
 // checking a name that is longer than the entry.
-test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
+test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool  {
   presence_arm(p: filesystem_entry_presence(
     listing: listed(entries: "marker.json.tmp"),
     name: "marker.json",
@@ -164,7 +164,7 @@ test fn a_listing_match_is_line_exact_and_not_a_substring() -> Bool {
 
 // AN EMPTY DIRECTORY IS AN ANSWER AND AN UNLISTABLE ONE IS NOT, which is the pair a Bool collapses.
 // Both produce no entries; only the first establishes absence.
-test fn an_empty_listing_establishes_absence_and_a_refused_one_does_not() -> Bool {
+test fn an_empty_listing_establishes_absence_and_a_refused_one_does_not() -> Bool  {
   presence_arm(p: filesystem_entry_presence(listing: listed(entries: ""), name: "marker.json")) == "absent"
     && presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json")) == "indeterminate"
 }
@@ -172,7 +172,7 @@ test fn an_empty_listing_establishes_absence_and_a_refused_one_does_not() -> Boo
 // THE ESTABLISHED ABSENCE CARRIES WHAT WAS LOOKED FOR AND WHERE. A consumer must be able to say what
 // it did not find without being able to mint the finding, so the carrier holds the pair and the
 // detail is read off it rather than rebuilt by each caller.
-test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
+test fn an_established_absence_names_its_directory_and_its_entry() -> Bool  {
   match filesystem_entry_presence(listing: listed(entries: "receipts"), name: "marker.json") {
     FilesystemEntryAbsent(established) =>
       filesystem_established_absence_detail(absence: established)
@@ -194,7 +194,7 @@ test fn an_established_absence_names_its_directory_and_its_entry() -> Bool {
 // the arm is decided by the pair and not by either observation alone. The third clause is the
 // control that keeps the absent arm reachable, because an implementation that answered "disagree"
 // whenever the entry was unlisted would pass the first two.
-test fn a_successful_read_of_an_unlisted_entry_is_not_an_absence() -> Bool {
+test fn a_successful_read_of_an_unlisted_entry_is_not_an_absence() -> Bool  {
   observation_arm(o: observe(
     listing: listed(entries: "receipts\nbin"),
     name: "marker.json",
@@ -217,7 +217,7 @@ test fn a_successful_read_of_an_unlisted_entry_is_not_an_absence() -> Bool {
 // so they are different arms, and a fold that collapsed them would pass every other test in this
 // file. A refused listing stays indeterminate even when the read succeeds, because no absence was
 // ever established for the read to disagree with.
-test fn a_disagreement_is_distinct_from_an_unmakeable_observation() -> Bool {
+test fn a_disagreement_is_distinct_from_an_unmakeable_observation() -> Bool  {
   observation_arm(o: observe(
     listing: unlistable(),
     name: "marker.json",
@@ -252,7 +252,7 @@ fn observe_directory(directory: String, success: Bool) -> FilesystemListingObser
 // The empty subject is refused on BOTH transport channels, which is what fixes the ordering: if
 // `success` were consulted first, an empty directory that also failed to list would land in the
 // host-error arm and carry the empty subject onward as an ordinary listing failure.
-test fn an_empty_directory_subject_is_refused_on_either_transport_channel() -> Bool {
+test fn an_empty_directory_subject_is_refused_on_either_transport_channel() -> Bool  {
   listing_arm(o: observe_directory(directory: "", success: true)) == "subject-refused"
     && listing_arm(o: observe_directory(directory: "", success: false)) == "subject-refused"
 }
@@ -260,7 +260,7 @@ test fn an_empty_directory_subject_is_refused_on_either_transport_channel() -> B
 // THE POSITIVE CONTROLS, without which the cell above is satisfied by refusing everything. A real
 // directory still reaches both transport arms, and `/`, `..` and `.` are admitted rather than
 // refused -- containment is the caller's policy and no containment root exists at this layer.
-test fn an_admissible_directory_still_reaches_both_transport_arms() -> Bool {
+test fn an_admissible_directory_still_reaches_both_transport_arms() -> Bool  {
   listing_arm(o: observe_directory(directory: "/opt/gunbc/state", success: true)) == "listed"
     && listing_arm(o: observe_directory(directory: "/opt/gunbc/state", success: false)) == "listing-refused"
     && listing_arm(o: observe_directory(directory: "/", success: true)) == "listed"
@@ -277,7 +277,7 @@ test fn an_admissible_directory_still_reaches_both_transport_arms() -> Bool {
 // a consumer could tell "the caller named no directory" from "the host refused to list one" only by
 // parsing prose. A witness that pins that collapse as correct is not evidence -- it is the defect
 // with a green light on it.
-test fn an_inadmissible_subject_reaches_its_own_arm_rather_than_indeterminate() -> Bool {
+test fn an_inadmissible_subject_reaches_its_own_arm_rather_than_indeterminate() -> Bool  {
   presence_arm(p: filesystem_entry_presence(
     listing: observe_directory(directory: "", success: true),
     name: "repo.json",
@@ -287,7 +287,7 @@ test fn an_inadmissible_subject_reaches_its_own_arm_rather_than_indeterminate() 
 // AND THE ARM CARRIES THE TWO ARGUMENTS THAT NAME THE REMEDY. A refused subject is repaired by
 // fixing the CALLER'S ARGUMENT, so the arm has to say which argument; a cell that checked only the
 // tag would be satisfied by an arm that dropped both fields.
-test fn the_subject_refusal_names_the_directory_and_the_entry_it_was_asked_about() -> Bool {
+test fn the_subject_refusal_names_the_directory_and_the_entry_it_was_asked_about() -> Bool  {
   match filesystem_entry_presence(
     listing: observe_directory(directory: "", success: true),
     name: "repo.json",
@@ -303,7 +303,7 @@ test fn the_subject_refusal_names_the_directory_and_the_entry_it_was_asked_about
 // THE STATE SURVIVES THE SECOND FOLD, which is the half that makes it a carrier fact rather than a
 // local one. filesystem_file_observation is where consumers actually read, so a distinction that
 // died here would be invisible to every one of them.
-test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
+test fn the_subject_refusal_survives_through_the_file_observation() -> Bool  {
   observation_arm(o: filesystem_file_observation(
     listing: observe_directory(directory: "", success: true),
     name: "repo.json",
@@ -330,7 +330,7 @@ test fn the_subject_refusal_survives_through_the_file_observation() -> Bool {
 //
 // No diagnostic prose is duplicated: every comparison is against a value the fold itself produced,
 // so this cell does not go red when the wording of a cause is changed.
-test fn the_payload_survives_both_edges_unpermuted() -> Bool {
+test fn the_payload_survives_both_edges_unpermuted() -> Bool  {
   let listing = observe_directory(directory: "", success: true)
   match listing {
     FilesystemDirectorySubjectRefused { directory: ld, cause: lc } =>
@@ -364,7 +364,7 @@ test fn the_payload_survives_both_edges_unpermuted() -> Bool {
 // indeterminate, at BOTH folds. Without this cell the three above are satisfied by a fold that
 // answers "subject-refused" for every stop, which would erase the host-fault state instead of the
 // caller-argument one -- the same defect pointed the other way.
-test fn an_admitted_directory_that_fails_to_list_stays_indeterminate() -> Bool {
+test fn an_admitted_directory_that_fails_to_list_stays_indeterminate() -> Bool  {
   presence_arm(p: filesystem_entry_presence(listing: unlistable(), name: "marker.json"))
       == "indeterminate"
     && observation_arm(o: filesystem_file_observation(
@@ -393,7 +393,7 @@ fn absence_path_for(directory: String, name: String) -> String {
 // are the measured defect: the prior body always inserted `/`, so `/` rendered `//repo.json` and
 // `w/` rendered `w//repo.json`. POSIX gives a pathname beginning with exactly two slashes an
 // implementation-defined interpretation, so the first of those could denote a different file.
-test fn the_derived_path_inserts_a_separator_only_when_one_is_absent() -> Bool {
+test fn the_derived_path_inserts_a_separator_only_when_one_is_absent() -> Bool  {
   absence_path_for(directory: "/", name: "repo.json") == "/repo.json"
     && absence_path_for(directory: "w/", name: "repo.json") == "w/repo.json"
     && absence_path_for(directory: "w", name: "repo.json") == "w/repo.json"
@@ -404,7 +404,7 @@ test fn the_derived_path_inserts_a_separator_only_when_one_is_absent() -> Bool {
 // preserved: the obligation is to stop INTRODUCING a separator, not to choose a canonical spelling
 // of the subject the caller supplied. This cell goes red on a repair that collapses interior
 // slashes, which is how it separates the two.
-test fn an_authored_double_separator_is_preserved_rather_than_collapsed() -> Bool {
+test fn an_authored_double_separator_is_preserved_rather_than_collapsed() -> Bool  {
   absence_path_for(directory: "//", name: "repo.json") == "//repo.json"
     && absence_path_for(directory: "a//b", name: "repo.json") == "a//b/repo.json"
 }

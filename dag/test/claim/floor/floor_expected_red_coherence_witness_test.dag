@@ -31,7 +31,7 @@ data fixture_aggregator_qn: String = "test.fixture.floor_expected_red_coherence.
 // evaluated roster, and its short name never appears in the aggregator body. The
 // check must refuse and must name both causes -- this is the discriminating negative
 // control the required build order demands before any green path is written.
-test fn w_severed_fixture_refuses_with_named_causes() -> Bool {
+test fn w_severed_fixture_refuses_with_named_causes() -> Bool  {
   match floor_expected_red_chunk_coherence_check(
     facts: fixture_facts,
     chunks: fixture_all_chunks,
@@ -43,7 +43,7 @@ test fn w_severed_fixture_refuses_with_named_causes() -> Bool {
   }
 }
 
-test fn w_severed_fixture_names_the_orphaned_identities() -> Bool {
+test fn w_severed_fixture_names_the_orphaned_identities() -> Bool  {
   match floor_expected_red_chunk_coherence_check(
     facts: fixture_facts,
     chunks: fixture_all_chunks,
@@ -62,7 +62,7 @@ test fn w_severed_fixture_names_the_orphaned_identities() -> Bool {
   }
 }
 
-test fn w_severed_fixture_names_the_broken_link() -> Bool {
+test fn w_severed_fixture_names_the_broken_link() -> Bool  {
   match floor_expected_red_chunk_coherence_check(
     facts: fixture_facts,
     chunks: fixture_all_chunks,
@@ -81,7 +81,7 @@ test fn w_severed_fixture_names_the_broken_link() -> Bool {
   }
 }
 
-test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion() -> Bool {
+test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion() -> Bool  {
   match floor_expected_red_chunk_coherence_check(
     facts: fixture_facts,
     chunks: fixture_all_chunks,
@@ -115,7 +115,7 @@ data fixture_linked_only_chunks: List<ChunkDeclRef> = [
   ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_b", short_name: "severed_fixture_chunk_linked_b" },
 ]
 
-test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
+test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool  {
   match floor_expected_red_chunk_coherence_check(
     facts: fixture_facts,
     chunks: fixture_linked_only_chunks,

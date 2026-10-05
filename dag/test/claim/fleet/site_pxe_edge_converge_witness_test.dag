@@ -101,7 +101,7 @@ fn target_of(pin: SitePxeEdgeChainloaderPin) -> SitePxeEdgeChainloaderBuildRecei
   }
 }
 
-test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
+test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool  {
   length(site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -115,7 +115,7 @@ test fn matching_digest_with_binary_and_privilege_opens_the_gate() -> Bool {
 
 // TODAY'S STATE, on the real row: nothing is pinned, so the gate is closed on the pin even with a
 // file present and every other probe held.
-test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
+test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool  {
   let causes = site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -145,7 +145,7 @@ test fn the_landed_pin_is_unpinned_and_closes_the_gate() -> Bool {
   })
 }
 
-test fn mismatched_digest_closes_the_gate() -> Bool {
+test fn mismatched_digest_closes_the_gate() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -157,7 +157,7 @@ test fn mismatched_digest_closes_the_gate() -> Bool {
   ) == [ChainloaderDigestMismatch { observed: digest_b, pinned: digest_a }]
 }
 
-test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool {
+test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -169,7 +169,7 @@ test fn a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate() -> Bool
   ) == [ChainloaderNotTheIpxeArm64Build { pinned: "grubnetaa64.efi", expected: "snponly.efi" }]
 }
 
-test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
+test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -181,21 +181,21 @@ test fn missing_file_and_missing_dnsmasq_are_both_counted() -> Bool {
   ) == [ChainloaderUnobservable { reason: "no such file" }, DnsmasqBinaryAbsent { reason: "absent" }]
 }
 
-test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool {
+test fn sha256sum_line_parses_to_the_pinned_hash() -> Bool  {
   match site_pxe_edge_digest_observation(path: "/srv/x/snponly.efi", success: true, line: concat(hex_a, "  /srv/x/snponly.efi\n")) {
     ChainloaderDigestObserved { digest: d } => d == digest_a
     ChainloaderDigestUnobservable { reason: _ } => false
   }
 }
 
-test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool {
+test fn failed_sha256sum_is_unobservable_not_a_digest() -> Bool  {
   match site_pxe_edge_digest_observation(path: "/srv/x/snponly.efi", success: false, line: "") {
     ChainloaderDigestObserved { digest: _ } => false
     ChainloaderDigestUnobservable { reason: _ } => true
   }
 }
 
-test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool {
+test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool  {
   let t = target_of(pin: pinned(digest: digest_a))
   match site_pxe_edge_desired_files(roster: site_pxe_edge_roster(target: t, known_client_macs: known_macs(), tftp_server_address: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 196)), network: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 0)).first() {
     Absent => false
@@ -210,14 +210,14 @@ test fn desired_config_boots_only_known_arm64_from_the_edge_tftp_root() -> Bool 
   }
 }
 
-test fn unit_runs_dnsmasq_on_the_edge_config() -> Bool {
+test fn unit_runs_dnsmasq_on_the_edge_config() -> Bool  {
   let u = site_pxe_edge_unit_file()
   u.path == "/etc/systemd/system/gunbc-site-pxe-edge.service"
     && contains(u.content, "ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=/etc/gunbc-site-pxe-edge.dnsmasq.conf")
     && contains(u.content, "WantedBy=multi-user.target")
 }
 
-test fn only_srv4_is_the_edge_host() -> Bool {
+test fn only_srv4_is_the_edge_host() -> Bool  {
   (match site_pxe_edge_subject(host: "srv3" as HostIdentity) {
     SitePxeEdgeSubjectRefused { cause: _ } => true
     SitePxeEdgeSubjectAdmitted { target: _ } => false
@@ -227,7 +227,7 @@ test fn only_srv4_is_the_edge_host() -> Bool {
   })
 }
 
-test fn an_unparseable_roster_closes_the_gate() -> Bool {
+test fn an_unparseable_roster_closes_the_gate() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -241,7 +241,7 @@ test fn an_unparseable_roster_closes_the_gate() -> Bool {
 
 // THE REFUSAL'S ADVICE IS FOLLOWABLE: pin exactly the `expected` the not-the-build refusal reports and
 // that cause is gone. Paired with a_pinned_file_that_is_not_the_ipxe_arm64_build_closes_the_gate.
-test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool {
+test fn pinning_the_reported_expected_filename_clears_the_cause() -> Bool  {
   let refused = site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -309,7 +309,7 @@ fn apply_run(post: SitePxeEdgePostActivation) -> SitePxeEdgeRun {
 
 // OBSERVE REPORTS FINDINGS BUT REFUSES WHAT IT COULD NOT SEE: an unpinned chainloader is a finding
 // and observe succeeds; an undigestible chainloader or refused privilege is a failure to observe.
-test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool {
+test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool  {
   site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnpinned { obligation: "pin it" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [ChainloaderUnobservable { reason: "sha256sum exit=1" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
@@ -319,7 +319,7 @@ test fn observe_succeeds_on_findings_and_refuses_what_it_could_not_see() -> Bool
 // THE RENDERED SEGMENT IS THE FLEET MODEL'S: site_pxe_edge_segment_network parses from
 // gunbc.fleet_intent_network operator_lan_segment, and the config built from it renders that network
 // in its dhcp-range line.
-test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool {
+test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool  {
   match site_pxe_edge_segment_network {
     Ipv4ParseFailed { error: _ } => false
     Ipv4Parsed { address: network } => {
@@ -335,7 +335,7 @@ test fn the_rendered_dhcp_range_is_the_parsed_fleet_segment() -> Bool {
 }
 
 // A FAILED TFTP-SERVER PARSE SUPPLIED AT THE GATE CLOSES IT WITH EXACTLY THAT TYPED CAUSE.
-test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
+test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 3 } },
     segment: site_pxe_edge_segment_network,
@@ -348,7 +348,7 @@ test fn an_unparseable_tftp_server_address_closes_the_gate() -> Bool {
 }
 
 // A FAILED SEGMENT PARSE SUPPLIED AT THE GATE CLOSES IT WITH EXACTLY THAT TYPED CAUSE.
-test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
+test fn an_unparseable_segment_network_closes_the_gate() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: Ipv4ParseFailed { error: Ipv4WrongOctetCount { observed_count: 1 } },
@@ -362,7 +362,7 @@ test fn an_unparseable_segment_network_closes_the_gate() -> Bool {
 
 // PROVENANCE: an x86 build installed under the expected basename with a digest that agrees is still
 // refused -- the receipt's architecture is checked, not only the filename and digest.
-test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool {
+test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool  {
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,
@@ -376,7 +376,7 @@ test fn a_non_arm64_build_with_the_expected_name_and_digest_is_refused() -> Bool
 
 // PROVENANCE: a receipt naming a different iPXE build target is refused even when its installed name and
 // digest agree.
-test fn a_different_ipxe_build_target_is_refused() -> Bool {
+test fn a_different_ipxe_build_target_is_refused() -> Bool  {
   let x86_target = IpxeBuildTarget { platform: "bin-x86_64-efi", image: "snponly.efi" }
   site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
@@ -391,7 +391,7 @@ test fn a_different_ipxe_build_target_is_refused() -> Bool {
 
 // POST-ACTIVATION BYTES: the gate's digest agreed, but the file digested after restart differs, so the
 // apply is refused; the same run with the post-activation digest holding succeeds.
-test fn a_post_activation_digest_that_differs_refuses_the_apply() -> Bool {
+test fn a_post_activation_digest_that_differs_refuses_the_apply() -> Bool  {
   site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })
       == PostActivationDigestDiffers { observed: digest_b, pinned: digest_a }
     && !site_pxe_edge_run_succeeded(run: apply_run(post: site_pxe_edge_post_activation(pin: pinned(digest: digest_a), observation: ChainloaderDigestObserved { digest: digest_b })))
@@ -401,7 +401,7 @@ test fn a_post_activation_digest_that_differs_refuses_the_apply() -> Bool {
 
 // OBSERVE SEMANTICS: a probe that ran and found no (dnsmasq absent, unit inactive) is a finding and
 // observe succeeds; a probe that could not run (dnsmasq or the unit read unobservable) refuses observe.
-test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bool {
+test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bool  {
   site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryAbsent { reason: "test -x dnsmasq exit=1" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [DnsmasqBinaryUnobservable { reason: "ssh leg refused" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "ssh leg refused" }]))
@@ -411,7 +411,7 @@ test fn observe_keeps_observed_negatives_and_refuses_unobservable_probes() -> Bo
 
 // A sudo -n THAT RAN AND ANSWERED NO IS A FINDING, NOT A FAILURE TO OBSERVE: observe reports it and
 // still succeeds, while a privilege leg that never executed refuses the observe run.
-test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> Bool {
+test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> Bool  {
   site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeRefused { reason: "non-interactive sudo exit=1 sudo: a password is required" }]))
     && !site_pxe_edge_run_succeeded(run: observe_run(causes: [AdministratorPrivilegeUnobservable { reason: "remote words refused" }]))
 }
@@ -419,7 +419,7 @@ test fn an_executed_privilege_refusal_is_a_finding_observe_still_succeeds() -> B
 // GATE-OPEN IMPLIES THE CONFIG IS DERIVABLE: the desired inputs are derived once and read by the file
 // list, so an apply cannot pass a clean gate and still narrow to the unit file alone. The same four
 // facts that leave the gate empty leave the inputs Present, and a failure in any one leaves both closed.
-test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool {
+test fn an_open_gate_implies_the_desired_config_inputs_exist() -> Bool  {
   let open_causes = site_pxe_edge_gate_causes(
     tftp_server: site_pxe_edge_tftp_server_address,
     segment: site_pxe_edge_segment_network,

@@ -114,14 +114,14 @@ fn forbidden_found(spellings: List<String>) -> List<String> {
   filter(forbidden_spellings, f => any(spellings, s => s == f))
 }
 
-test fn no_mutation_is_reachable_from_the_health_entry() -> Bool {
+test fn no_mutation_is_reachable_from_the_health_entry() -> Bool  {
   count(forbidden_found(spellings: reached_spellings(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files))) == 0
 }
 
 // THE DISCRIMINATING RED, ENROLLED. The same derivation over the forbidden-program fixture must find
 // its bare-call mutations BY IDENTITY. Without it the claim above would pass for a walk that reached
 // nothing, or for a collector that stopped seeing callee atoms.
-test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool {
+test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool  {
   let found = forbidden_found(spellings: reached_spellings(entry_module: health_fixture_module, closure_modules: health_fixture_closure, pool_files: health_fixture_files))
   any(found, f => f == "CreateAccount")
     && any(found, f => f == "ssh_session_exec")
@@ -138,7 +138,7 @@ test fn the_same_derivation_finds_the_fixtures_bare_call_mutations() -> Bool {
 // reader credential is written, shred_netrc_binding is where it is removed, and ensure_access_token
 // is where the run obtains its Secret Manager token. A pool that loses one of them fails here
 // instead of silently narrowing the claim above.
-test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool {
+test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool  {
   let names = map(reached_decls(entry_module: health_entry_module, closure_modules: health_closure_modules, pool_files: health_pool_files), d => d.name)
   any(names, n => n == "observe_host_health")
     && any(names, n => n == "health_redfish_read")
@@ -165,7 +165,7 @@ test fn the_walk_reaches_the_collector_and_the_credential_modules() -> Bool {
 // WHAT BOUNDS THE RISK MEANWHILE, stated as the review property it is rather than as a wall: the
 // reached set is confined by construction to the nine health modules, and every service call in them
 // is one of the five admitted Redfish GETs plus the Secret Manager read.
-test fn a_service_call_mutation_is_invisible_to_this_instrument() -> Bool {
+test fn a_service_call_mutation_is_invisible_to_this_instrument() -> Bool  {
   count(filter(
     reached_spellings(entry_module: health_fixture_module, closure_modules: health_fixture_closure, pool_files: health_fixture_files),
     s => s == "SetAccountPassword",
