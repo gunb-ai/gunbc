@@ -5,6 +5,7 @@ import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.measure { byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count }
 import std.content_hash { Sha256Digest, sha256_hex_digest }
+import v2.std.collection { Map, empty_map, map_insert }
 import std.fabric_blob { FabricBlobAddress }
 import std.fabric_storage { FabricObject, FabricStoredObject, FabricObjectFetched, FabricObjectGetRefused, FabricObjectMissing, fabric_object_ref_of, fabric_object_ref_eq }
 import std.durable_compare_and_set { cas_generation_first }
@@ -24,8 +25,8 @@ import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_credential_exclusions, workspace_exclusions, workspace_path_exclusion, workspace_source_tally,
-  workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderSizeDiffers,
-  WorkspaceTranscriptPlaceholder, workspace_transcript_caveat,
+  workspace_pack_readback, WorkspacePackReadback, WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderSizeDiffers,
+  WorkspacePackPlaceholderNotRegular, WorkspacePackPlaceholderUnread, WorkspacePackPlaceholderDigestDiffers, WorkspaceStagedPlaceholder, workspace_transcript_caveat,
 }
 import gunbc.fabric.workspace_checkpoint_instrument {
   workspace_snapshot_capability, WorkspaceSnapshotBtrfs, WorkspaceSnapshotAbsent, WorkspaceSnapshotUnobserved,
@@ -202,64 +203,128 @@ test fn a_credential_class_member_never_gets_a_placeholder() -> Bool {
     && t.excluded_transcripts == 3
 }
 
-data readback_placeholder: WorkspaceTranscriptPlaceholder = WorkspaceTranscriptPlaceholder { member: "home/u/.claude/projects/p/s 1.jsonl", size: byte_size(count: 5000) }
+data readback_member: String = "home/u/.claude/projects/p/s 1.jsonl"
+
+data readback_placeholder: WorkspaceStagedPlaceholder = WorkspaceStagedPlaceholder { member: "home/u/.claude/projects/p/s 1.jsonl", size: byte_size(count: 5000), expected_digest: digest(c: "a") }
 
 data readback_names: String = "home/u/gunbc/README.md\nhome/u/.claude/projects/p/s 1.jsonl\n"
 
-fn readback_sizes(placeholder_bytes: String) -> String {
+fn readback_sizes(type_letter: String, placeholder_bytes: String) -> String {
   join([
     "-rw-r--r-- 1000/1000       120 2026-10-05 12:00:01 home/u/gunbc/README.md",
-    join(["-rw-r--r-- 1000/1000 ", placeholder_bytes, " 2026-10-05 12:00:02 home/u/.claude/projects/p/s 1.jsonl"], ""),
+    join([type_letter, "rw-r--r-- 1000/1000 ", placeholder_bytes, " 2026-10-05 12:00:02 home/u/.claude/projects/p/s 1.jsonl"], ""),
     "",
   ], "\n")
+}
+
+fn archived_digest(hex_char: String) -> Map<String, String> {
+  map_insert(m: empty_map(), key: readback_member, value: digest(c: hex_char).hex as String)
+}
+
+fn readback_of(placeholders: List<WorkspaceStagedPlaceholder>, names: String, sizes: String, digests: Map<String, String>) -> WorkspacePackReadback {
+  workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: placeholders, archive_listing: names, size_listing: sizes, archived_digests: digests)
 }
 
 // THE PACK READBACK'S RED: an archive that carries a credential refuses the upload, whatever list
 // built it.
 test fn an_archive_carrying_a_credential_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [], archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n", size_listing: "") {
+  match readback_of(placeholders: [], names: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n", sizes: "", digests: empty_map()) {
     WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "session-home/.claude/.credentials.json" && (x.spelling as String) == "~/.claude/.credentials.json"
     WorkspacePackClean { members: _ } => false
     WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
     WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
 }
 
-// A TRANSCRIPT NAME WITH NO PLANNED PLACEHOLDER IS REAL CONTENT AND REFUSES.
+// A TRANSCRIPT NAME WITH NO STAGED PLACEHOLDER IS REAL CONTENT AND REFUSES.
 test fn an_archived_transcript_without_a_placeholder_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "5000")) {
-    WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl" && (x.spelling as String) == "projects/**/*.jsonl"
+  match readback_of(placeholders: [], names: readback_names, sizes: readback_sizes(type_letter: "-", placeholder_bytes: "5000"), digests: archived_digest(hex_char: "a")) {
+    WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == readback_member && (x.spelling as String) == "projects/**/*.jsonl"
     WorkspacePackClean { members: _ } => false
     WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
     WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
 }
 
-// THE PLACEHOLDER'S RED: archived at any size but its planned one, the upload refuses.
-test fn a_placeholder_whose_size_differs_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "4999")) {
-    WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl" && measure_count(m: p) == 5000 && measure_count(m: a) == 4999
+// THE CONFIDENTIALITY RED: a REAL transcript of the placeholder's exact name, type and size is
+// refused, because its bytes do not hash to the staged filler's digest.
+test fn a_same_size_real_content_member_refuses_the_upload_by_digest() -> Bool {
+  match readback_of(placeholders: [readback_placeholder], names: readback_names, sizes: readback_sizes(type_letter: "-", placeholder_bytes: "5000"), digests: archived_digest(hex_char: "b")) {
+    WorkspacePackPlaceholderDigestDiffers { member: m, expected: e, archived: a } => (m as String) == readback_member && (e.hex as String) == (digest(c: "a").hex as String) && a == (digest(c: "b").hex as String)
     WorkspacePackClean { members: _ } => false
     WorkspacePackCarriesExcluded { member: _, by: _ } => false
     WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+  }
+}
+
+// THE PLACEHOLDER'S SIZE RED: archived at any size but its planned one, the upload refuses.
+test fn a_placeholder_whose_size_differs_refuses_the_upload() -> Bool {
+  match readback_of(placeholders: [readback_placeholder], names: readback_names, sizes: readback_sizes(type_letter: "-", placeholder_bytes: "4999"), digests: archived_digest(hex_char: "a")) {
+    WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a } => (m as String) == readback_member && measure_count(m: p) == 5000 && measure_count(m: a) == 4999
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
+  }
+}
+
+test fn a_placeholder_archived_as_a_non_regular_member_refuses_the_upload() -> Bool {
+  match readback_of(placeholders: [readback_placeholder], names: readback_names, sizes: readback_sizes(type_letter: "c", placeholder_bytes: "5000"), digests: archived_digest(hex_char: "a")) {
+    WorkspacePackPlaceholderNotRegular { member: m, type_letter: t } => (m as String) == readback_member && t == "c"
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
+  }
+}
+
+test fn a_placeholder_whose_archived_bytes_were_not_read_refuses_the_upload() -> Bool {
+  match readback_of(placeholders: [readback_placeholder], names: readback_names, sizes: readback_sizes(type_letter: "-", placeholder_bytes: "5000"), digests: empty_map()) {
+    WorkspacePackPlaceholderUnread { member: m } => (m as String) == readback_member
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
 }
 
 test fn a_planned_placeholder_missing_from_the_archive_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: "home/u/gunbc/README.md\n", size_listing: "-rw-r--r-- 1000/1000 120 2026-10-05 12:00:01 home/u/gunbc/README.md\n") {
-    WorkspacePackPlaceholderAbsent { member: m } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl"
+  match readback_of(placeholders: [readback_placeholder], names: "home/u/gunbc/README.md\n", sizes: "-rw-r--r-- 1000/1000 120 2026-10-05 12:00:01 home/u/gunbc/README.md\n", digests: empty_map()) {
+    WorkspacePackPlaceholderAbsent { member: m } => (m as String) == readback_member
     WorkspacePackClean { members: _ } => false
     WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
     WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
 }
 
-test fn a_clean_archive_with_its_placeholder_at_size_reads_back_its_member_count() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "5000")) {
+// THE POSITIVE CONTROL: the placeholder at its name, regular, at size, hashing to its staged digest.
+test fn a_clean_archive_with_its_placeholder_intact_reads_back_its_member_count() -> Bool {
+  match readback_of(placeholders: [readback_placeholder], names: readback_names, sizes: readback_sizes(type_letter: "-", placeholder_bytes: "5000"), digests: archived_digest(hex_char: "a")) {
     WorkspacePackClean { members: n } => n == 2
     WorkspacePackCarriesExcluded { member: _, by: _ } => false
     WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => false
     WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+    WorkspacePackPlaceholderUnread { member: _ } => false
+    WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => false
   }
 }
 

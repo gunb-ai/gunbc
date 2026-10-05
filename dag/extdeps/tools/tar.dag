@@ -91,3 +91,13 @@ fn tar_create_from_two_lists_command(archive: String, first_directory: String, f
 fn tar_list_sizes_command(archive: String) -> ArgvCommand {
   argv_command(program: tar_program(), arguments: ["--list", "--verbose", "--numeric-owner", "--full-time", "--quoting-style=literal", "-f", archive])
 }
+
+// EXTRACT EXACTLY THE LISTED MEMBERS INTO A DIRECTORY: -C first, so every member lands beneath it
+// under its archived name; -T names the members; --no-recursion and --verbatim-files-from as on
+// create. A listed name the archive does not hold makes tar exit nonzero.
+fn tar_extract_listed_command(archive: String, into_directory: String, member_list: String) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: ["-xf", archive, "-C", into_directory, "--no-recursion", "--verbatim-files-from", "-T", member_list],
+  )
+}

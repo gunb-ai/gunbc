@@ -1,0 +1,96 @@
+module test.claim.workspace_source_pack_archive_real_execution
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
+import std.measure { byte_size }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.fabric.workspace_source {
+  WorkspaceTranscriptPlaceholder, WorkspaceStagedPlaceholder, workspace_stage_placeholders, WorkspacePlaceholdersStaged, WorkspacePlaceholdersRefused,
+  workspace_pack_archive, WorkspacePackBuilt, WorkspacePackRefused,
+  WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderNotRegular,
+  WorkspacePackPlaceholderSizeDiffers, WorkspacePackPlaceholderUnread, WorkspacePackPlaceholderDigestDiffers,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PACK'S TWO-ROOT TAR COMPOSITION AND ITS ARCHIVE READBACK, BY REAL EXECUTION, inside a directory
+// the witness mints and removes. A real tree (one source file, and a real transcript the plan
+// excludes) and a staged placeholder for that transcript are packed into one tar by the production
+// gunbc.fabric.workspace_source workspace_pack_archive, which lists the archive back, extracts the
+// placeholder member and hashes it. The positive control reads back clean. The red is the
+// confidentiality boundary itself: the staged placeholder's bytes are swapped for real content of
+// the SAME size before packing -- what a real transcript standing at the placeholder's path would
+// look like -- and the archive is refused by digest. The pure readback arms are discriminated in
+// test.claim.workspace_checkpoint_instrument; this witness is their inhabitance on the real route.
+
+fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
+  let dir = shell.Mktemp.Dir()
+  let observed = scenario(dir.path as String)
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  dir.success && observed && cleaned.success
+}
+
+fn relative_to_root(path: String) -> String {
+  substring(s: path, start: 1, end: length(path))
+}
+
+data transcript_text: String = "{\"type\":\"user\",\"message\":\"a real transcript line of exactly sixty-four bytes\"}\n"
+
+// The real tree under <dir>/real and the placeholder plan for its one transcript, at the
+// transcript's own size. Returns the plan only if the tree was written.
+fn plant(dir: String) -> List<WorkspaceTranscriptPlaceholder> {
+  let real = join([dir, "/real/.claude/projects/p"], "")
+  let made = shell.Mkdir.Parents(path: real as FilePath).success
+  let readme = Filesystem.Write(path: join([dir, "/real/README.md"], ""), content: "readme\n").success
+  let transcript = Filesystem.Write(path: join([real, "/s.jsonl"], ""), content: transcript_text).success
+  if made && readme && transcript {
+    [WorkspaceTranscriptPlaceholder { member: relative_to_root(path: join([real, "/s.jsonl"], "")) as NonEmptyStr, size: byte_size(count: length(transcript_text)) }]
+  } else {
+    []
+  }
+}
+
+fn pack(dir: String, plan: List<WorkspaceTranscriptPlaceholder>, swap_in_real_content: Bool) -> String {
+  let staging = join([dir, "/staging"], "")
+  let root = join([staging, "/placeholders"], "")
+  match workspace_stage_placeholders(root: root, placeholders: plan, staged: []) {
+    WorkspacePlaceholdersRefused { why: w } => concat("staging-refused: ", w)
+    WorkspacePlaceholdersStaged { placeholders: staged } => {
+      let swapped = if swap_in_real_content {
+        Filesystem.Write(path: join([root, "/", relative_to_root(path: join([dir, "/real/.claude/projects/p/s.jsonl"], ""))], ""), content: transcript_text).success
+      } else { true }
+      if swapped == false {
+        "swap-failed"
+      } else {
+        match workspace_pack_archive(staging: staging, members: [relative_to_root(path: join([dir, "/real/README.md"], "")) as NonEmptyStr], placeholders: staged, placeholder_root: root) {
+          WorkspacePackRefused { verdict: v, why: w } => join(["pack-refused: ", v, " ", w], "")
+          WorkspacePackBuilt { archive: _, readback: r } =>
+            match r {
+              WorkspacePackClean { members: n } => concat("clean ", to_string(n))
+              WorkspacePackCarriesExcluded { member: _, by: _ } => "carries-excluded"
+              WorkspacePackPlaceholderAbsent { member: _ } => "placeholder-absent"
+              WorkspacePackPlaceholderNotRegular { member: _, type_letter: _ } => "placeholder-not-regular"
+              WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => "placeholder-size-differs"
+              WorkspacePackPlaceholderUnread { member: _ } => "placeholder-unread"
+              WorkspacePackPlaceholderDigestDiffers { member: _, expected: _, archived: _ } => "placeholder-digest-differs"
+            }
+        }
+      }
+    }
+  }
+}
+
+test fn the_two_root_archive_carries_the_placeholder_and_reads_back_clean_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let plan = plant(dir: dir)
+    length(plan) == 1 && pack(dir: dir, plan: plan, swap_in_real_content: false) == "clean 2"
+  })
+}
+
+test fn same_size_real_content_at_the_placeholder_path_is_refused_by_digest_by_real_execution() -> Bool {
+  with_temp_dir(scenario: dir => {
+    let plan = plant(dir: dir)
+    length(plan) == 1 && pack(dir: dir, plan: plan, swap_in_real_content: true) == "placeholder-digest-differs"
+  })
+}
