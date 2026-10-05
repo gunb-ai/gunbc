@@ -1507,6 +1507,10 @@ type CompilerGateLaneRow {
   arm: CompilerGateArm
 }
 
+// THE UNIT-TEST ROW IS NOT BLOCKING UNDER A DECLARED DROP (operator-approved, escalation
+// msg_e83c070f, 2026-10-05): the step overran its cap on every head after gunbc#12951, so its red
+// said nothing about the diff and refused every merge. The job still runs and reports;
+// gunbc.rung_drop rust_unit_tests_over_their_cap names the trigger that flips it back to LaneBlocks.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
@@ -1516,10 +1520,6 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
         notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
-      // NOT BLOCKING UNDER A DECLARED DROP (operator-approved, escalation msg_e83c070f, 2026-10-05):
-      // the step overran its cap on every head after gunbc#12951, so its red said nothing about the
-      // diff and refused every merge. The job still runs and reports; gunbc.rung_drop
-      // rust_unit_tests_over_their_cap names the trigger that flips this row back to LaneBlocks.
       standing: LaneAnnouncedNotBlocking {
         flip_trigger: "gunbc.rung_drop rust_unit_tests_over_their_cap: the full v1 --lib unit suite completes under its cap on the fleet runner on every head. Sufficient for: the lane red meaning a test failed, never that its clock ran out."
       },
