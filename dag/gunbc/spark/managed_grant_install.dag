@@ -65,8 +65,7 @@ import gunbc.spark.grant_privileged_operation {
   GrantSudoersInstallation,
   grant_sudoers_validation_argv,
   grant_sudoers_installation_argv,
-  RemoveRetiredSudoersDropin,
-  spark_retired_dropin_removal_lease,
+  run_retired_dropin_removal,
 }
 import gunbc.spark.managed_grant_reconcile {
   spark_managed_grants_to_install,
@@ -84,10 +83,9 @@ import gunbc.spark.managed_grant_reconcile {
   spark_managed_grant_sudoers_content,
   SparkInspectDropinShape, InspectDropinShapeUnobserved,
   spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing,
-  spark_inspect_grants_held_only_via_shared,
+  spark_inspect_grants_to_reinstall, spark_grant_named_in,
   SparkRetiredDropinRemovalDecision, RetiredDropinNothingToRemove, RetiredDropinRemovalAdmitted, RetiredDropinRemovalWithheld,
   spark_retired_dropin_removal_decision, spark_retired_dropin_removal_confirmed,
-  spark_retired_shared_inspect_dropin_name, spark_sudoers_dropin_directory,
 }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
@@ -693,35 +691,42 @@ fn spark_inspect_dropin_shape_read(context: FleetSshExecutionContext, host: Host
   }
 }
 
-fn spark_grant_in(grants: List<SparkManagedGrant>, g: SparkManagedGrant) -> Bool {
-  any(grants, x => (spark_managed_grant_dropin_name(grant: x) as String) == (spark_managed_grant_dropin_name(grant: g) as String))
+// THE INSTALL RECEIPTS THE REMOVAL CONSUMES: grants this run installed under their own file whose
+// readback the grantee's own sudo listing confirmed. The install is the one authority for "this grant
+// stands on its own file"; nothing else (not the listing, not the file names) can admit the removal.
+fn spark_grants_installed_and_confirmed(outcomes: List<SparkGrantInstallOutcome>) -> List<SparkManagedGrant> {
+  flat_map(outcomes, o => match o {
+    SparkGrantInstallExecuted { host: _, grant: g, standings: _, privileged: _, readback: rb, cleanup: _ } =>
+      match rb {
+        GrantReadbackConfirmed => [g]
+        GrantReadbackDisagreed { standing: _ } => []
+        GrantReadbackNotAttempted => []
+      }
+    SparkGrantInstallAwaitingOperatorCredential { host: _, grant: _, principal: _ } => []
+    SparkGrantInstallNotAttempted { host: _, grant: _, cause: _ } => []
+  })
 }
 
-// THE REMOVAL, taken only on a fresh reading after the installs and only when the reconcile admits it.
-// Its readback is a third reading: the shared file gone and every inspect grant still held under its
+// THE REMOVAL, decided on a fresh drop-in reading and this run's confirmed install receipts, and its
+// readback a fresh third reading: the shared file gone and every inspect grant still held under its
 // own file, or the run says it did not converge.
 fn spark_retired_dropin_converge(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   administrator: SparkCredentialStanding,
+  confirmed: List<SparkManagedGrant>,
 ) -> SparkRetiredDropinStanding
 {
   match spark_retired_dropin_removal_decision(
-    outcome: spark_grant_probe_outcome(context: context, host: host),
     shape: spark_inspect_dropin_shape_read(context: context, host: host),
+    confirmed: confirmed,
   ) {
     RetiredDropinNothingToRemove => RetiredDropinAbsent
     RetiredDropinRemovalWithheld { cause: c } => RetiredDropinRemovalWithheldOnRun { cause: c }
     RetiredDropinRemovalAdmitted => {
-      let path = join([spark_sudoers_dropin_directory as String, "/", spark_retired_shared_inspect_dropin_name as String], "") as NonEmptyStr
-      let removed = run_privileged_step(
-        context: context, host: host,
-        lease: spark_retired_dropin_removal_lease(
-          host: host, administrator: administrator,
-          dropin_name: spark_retired_shared_inspect_dropin_name,
-          attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
-        ),
-        command: RemoveRetiredSudoersDropin { dropin_path: path },
+      let removed = run_retired_dropin_removal(
+        context: context, host: host, administrator: administrator,
+        attempt_identity: spark_grant_install_ci_attempt_raw as NonEmptyStr,
       )
       if !privileged_step_succeeded(outcome: removed) {
         RetiredDropinRemovalFailed { cause: privileged_step_outcome_wire(outcome: removed) as NonEmptyStr }
@@ -737,9 +742,9 @@ fn spark_retired_dropin_converge(
   }
 }
 
-// The install set is the reconcile's NOT-HELD grants plus the inspect grants held ONLY through the
-// retired shared file (spark_inspect_grants_held_only_via_shared): those must have their own file
-// before the shared one can go, or removing it lapses them.
+// The install set is the reconcile's NOT-HELD grants plus, while the retired shared file is present,
+// EVERY modeled inspect grant (spark_inspect_grants_to_reinstall): each is re-validated and re-installed
+// under its own file so the removal can rest on this run's install receipts.
 fn spark_grant_install_host(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -749,11 +754,11 @@ fn spark_grant_install_host(
 {
   let outcome = spark_grant_probe_outcome(context: context, host: host)
   let missing = spark_managed_grants_to_install(outcome: outcome)
-  let shared_only = filter(
-    spark_inspect_grants_held_only_via_shared(outcome: outcome, shape: spark_inspect_dropin_shape_read(context: context, host: host)),
-    g => !spark_grant_in(grants: missing, g: g),
+  let reinstall = filter(
+    spark_inspect_grants_to_reinstall(shape: spark_inspect_dropin_shape_read(context: context, host: host)),
+    g => !spark_grant_named_in(grants: missing, g: g),
   )
-  let outcomes = map(concat(missing, shared_only), g =>
+  let outcomes = map(concat(missing, reinstall), g =>
     spark_grant_install_execute(
       context: context, host: host, principal: principal,
       administrator: administrator, grant: g,
@@ -761,7 +766,10 @@ fn spark_grant_install_host(
   SparkGrantInstallRun {
     standing_report: spark_managed_grant_report(host: host, outcome: outcome),
     retired_dropin: if fold(outcomes, init: true, f: fn(acc, o) { acc && spark_grant_install_succeeded(outcome: o) }) {
-      spark_retired_dropin_converge(context: context, host: host, administrator: administrator)
+      spark_retired_dropin_converge(
+        context: context, host: host, administrator: administrator,
+        confirmed: spark_grants_installed_and_confirmed(outcomes: outcomes),
+      )
     } else {
       RetiredDropinRemovalWithheldOnRun { cause: "a grant install on this run did not succeed, so the shared drop-in is left in place" as NonEmptyStr }
     },

@@ -4,7 +4,8 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 import v2.std.algebra { filter, length, any }
 import gunbc.spark.managed_grant_reconcile {
   SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
-  spark_inspect_grants_held_only_via_shared, spark_retired_dropin_removal_decision, spark_retired_dropin_removal_confirmed,
+  spark_inspect_grants_to_reinstall, spark_retired_dropin_removal_decision, spark_retired_dropin_removal_confirmed,
+  spark_retired_shared_inspect_dropin_path,
   RetiredDropinNothingToRemove, RetiredDropinRemovalAdmitted, RetiredDropinRemovalWithheld,
   spark_managed_grant_dropin_name,
   spark_inspect_dropin_shape_of_listing,
@@ -21,7 +22,8 @@ import gunbc.fleet_converge_workflow {
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer, SparkGrantOutcome, GrantEnumerated, spark_managed_grant_sudoers_command }
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import gunbc.spark.serving_arm_launch { glm_native_container_name, glm53_staircase_container_name }
-import gunbc.spark.grant_privileged_operation { RemoveRetiredSudoersDropin, admitted_root_argv_words }
+import gunbc.spark.grant_privileged_operation { RemoveRetiredSharedInspectDropin, admitted_root_argv_words, spark_retired_dropin_removal_lease }
+import gunbc.spark.bootstrap_credential { CredentialMaterializationPending }
 import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
 
 // THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
@@ -151,27 +153,28 @@ fn names_of(gs: List<SparkManagedGrant>) -> List<String> {
   map(gs, g => spark_managed_grant_dropin_name(grant: g) as String)
 }
 
-// The trap: native reads HELD through the shared file, so it must be named for installation.
-test fn w_a_grant_held_only_through_the_shared_file_is_named_for_install() -> Bool {
-  names_of(gs: spark_inspect_grants_held_only_via_shared(
-    outcome: listing_of(grants: [inspect_native()]),
-    shape: SharedInspectDropinShape { per_container: [] },
-  )) == ["gunbc-docker-inspect-glm-native-tp4"]
+fn has(gs: List<SparkManagedGrant>, g: SparkManagedGrant) -> Bool {
+  any(names_of(gs: gs), n => n == (spark_managed_grant_dropin_name(grant: g) as String))
 }
 
-// srv5's shape: per-container pair and native beside the shared file; staircase held only via it.
-test fn w_residue_host_names_only_the_grant_without_its_own_file() -> Bool {
-  names_of(gs: spark_inspect_grants_held_only_via_shared(
-    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
-    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-spark-pair"] },
-  )) == ["gunbc-docker-inspect-gunbc-glm53-stair-tp4"]
+data all_three_names: List<String> = ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"]
+
+// While the shared file is present every inspect grant is re-installed under its own file -- even one
+// that reads held and already has a file of its name.
+test fn w_shared_present_reinstalls_every_inspect_grant() -> Bool {
+  let r = spark_inspect_grants_to_reinstall(shape: SharedInspectDropinShape { per_container: all_three_names })
+  has(gs: r, g: inspect_pair()) && has(gs: r, g: inspect_native()) && has(gs: r, g: inspect_stair())
+    && length(spark_inspect_grants_to_reinstall(shape: PerContainerInspectDropinShape { per_container: all_three_names })) == 0
 }
 
-// RED: removing the shared file while native is held only through it would lapse native. Withheld.
-test fn red_removal_is_withheld_while_a_grant_rides_only_on_the_shared_file() -> Bool {
+// THE REVIEW'S RED (gunbc#13373): every expected file NAME present and every grant listed held, but
+// native's file does not carry its grant -- so native's re-install on this run is not confirmed. The
+// removal must be withheld, naming native, because the decision rests on this run's install receipts,
+// not on file names or the listing.
+test fn red_names_present_and_listing_held_but_one_reinstall_unconfirmed_withholds() -> Bool {
   match spark_retired_dropin_removal_decision(
-    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
-    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-gunbc-spark-pair", "gunbc-docker-inspect-gunbc-glm53-stair-tp4"] },
+    shape: SharedInspectDropinShape { per_container: all_three_names },
+    confirmed: [inspect_pair(), inspect_stair()],
   ) {
     RetiredDropinRemovalWithheld { cause: c } => contains(c as String, "gunbc-docker-inspect-glm-native-tp4")
     RetiredDropinRemovalAdmitted => false
@@ -179,10 +182,10 @@ test fn red_removal_is_withheld_while_a_grant_rides_only_on_the_shared_file() ->
   }
 }
 
-test fn w_removal_is_admitted_once_every_inspect_grant_has_its_own_file_and_is_held() -> Bool {
+test fn w_removal_is_admitted_on_this_runs_confirmed_reinstall_of_every_inspect_grant() -> Bool {
   match spark_retired_dropin_removal_decision(
-    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
-    shape: SharedInspectDropinShape { per_container: ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"] },
+    shape: SharedInspectDropinShape { per_container: [] },
+    confirmed: [inspect_pair(), inspect_native(), inspect_stair()],
   ) {
     RetiredDropinRemovalAdmitted => true
     RetiredDropinRemovalWithheld { cause: _ } => false
@@ -190,11 +193,10 @@ test fn w_removal_is_admitted_once_every_inspect_grant_has_its_own_file_and_is_h
   }
 }
 
-// An unread directory never admits a removal.
 test fn w_removal_is_withheld_when_the_directory_is_unread() -> Bool {
   match spark_retired_dropin_removal_decision(
-    outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]),
     shape: InspectDropinShapeUnobserved { cause: "exit=2" as NonEmptyStr },
+    confirmed: [inspect_pair(), inspect_native(), inspect_stair()],
   ) {
     RetiredDropinRemovalWithheld { cause: _ } => true
     RetiredDropinRemovalAdmitted => false
@@ -203,14 +205,17 @@ test fn w_removal_is_withheld_when_the_directory_is_unread() -> Bool {
 }
 
 test fn w_removal_readback_requires_the_file_gone_and_every_inspect_grant_held() -> Bool {
-  let all_three = ["gunbc-docker-inspect-glm-native-tp4", "gunbc-docker-inspect-gunbc-glm53-stair-tp4", "gunbc-docker-inspect-gunbc-spark-pair"]
-  spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three })
-    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three })
-    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: SharedInspectDropinShape { per_container: all_three })
+  spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three_names })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_stair()]), shape: PerContainerInspectDropinShape { per_container: all_three_names })
+    && !spark_retired_dropin_removal_confirmed(outcome: listing_of(grants: [inspect_pair(), inspect_native(), inspect_stair()]), shape: SharedInspectDropinShape { per_container: all_three_names })
 }
 
 // The one removal argv the privileged algebra admits.
-test fn w_removal_argv_is_rm_of_exactly_the_named_dropin() -> Bool {
-  admitted_root_argv_words(command: RemoveRetiredSudoersDropin { dropin_path: "/etc/sudoers.d/gunbc-docker-inspect" as NonEmptyStr })
-    == ["sudo", "-S", "-p", "gunbc-sudo:", "--", "rm", "-f", "--", "/etc/sudoers.d/gunbc-docker-inspect"]
+// The removal arm has no fields, so its argv names only the canonical path -- the same single source
+// the removal lease's purpose and intent derive from. No caller has a spelling for another path.
+test fn w_removal_argv_is_rm_of_exactly_the_canonical_dropin() -> Bool {
+  admitted_root_argv_words(command: RemoveRetiredSharedInspectDropin)
+    == ["sudo", "-S", "-p", "gunbc-sudo:", "--", "rm", "-f", "--", spark_retired_shared_inspect_dropin_path() as String]
+    && (spark_retired_shared_inspect_dropin_path() as String) == "/etc/sudoers.d/gunbc-docker-inspect"
+    && contains(spark_retired_dropin_removal_lease(host: "srv9" as HostIdentity, administrator: CredentialMaterializationPending, attempt_identity: "a" as NonEmptyStr).purpose as String, spark_retired_shared_inspect_dropin_path() as String)
 }

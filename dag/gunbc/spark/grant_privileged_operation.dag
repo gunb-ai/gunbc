@@ -32,6 +32,7 @@ import gunbc.fleet_bootstrap_principal_session {
   FleetPrincipalLegRefused,
 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
+import gunbc.spark.managed_grant_reconcile { spark_retired_shared_inspect_dropin_name, spark_retired_shared_inspect_dropin_path }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   spark_managed_grant_wire,
@@ -136,13 +137,13 @@ fn spark_bootstrap_credential_lease(
   }
 }
 
-// THE REMOVAL'S LEASE, scoped the same way as an install: one named drop-in position on one host,
-// with its own action, so a removal authorization cannot be read as an install one or reach any other
-// file.
+// THE REMOVAL, LEASE AND COMMAND TOGETHER. The lease's scope position, its intent hash and the argv
+// path all derive from the one canonical retired drop-in (spark_retired_shared_inspect_dropin_name /
+// _path), and the lease and the zero-field command are built and run in this one function, so no
+// caller can pair the removal lease with another command or the removal with another lease.
 fn spark_retired_dropin_removal_lease(
   host: HostIdentity,
   administrator: SparkCredentialStanding,
-  dropin_name: NonEmptyStr,
   attempt_identity: NonEmptyStr,
 ) -> AuthorizationRequest<SparkBootstrapSubject> {
   AuthorizationRequest {
@@ -150,7 +151,7 @@ fn spark_retired_dropin_removal_lease(
     scopes: [
       AuthorizationScope {
         verb: Write,
-        resource: NamespacePosition { tree: FilesystemPathTree, path: ["etc", "sudoers.d", dropin_name as String] },
+        resource: NamespacePosition { tree: FilesystemPathTree, path: ["etc", "sudoers.d", spark_retired_shared_inspect_dropin_name as String] },
         action: "posix.sudoers.remove" as AuthorizedAction,
       },
     ],
@@ -160,13 +161,28 @@ fn spark_retired_dropin_removal_lease(
       administrator: administrator,
     },
     attempt: attempt_identity as AttemptIdentity,
-    intent_hash: content_hash_of_value(value: dropin_name as String),
+    intent_hash: content_hash_of_value(value: spark_retired_shared_inspect_dropin_path() as String),
     destructive: true,
     purpose: join([
-      "remove the retired shared sudoers drop-in '", dropin_name as String, "' on ", host as String,
-      " after every grant it carried was installed under its own name and read back held",
+      "remove the retired shared sudoers drop-in ", spark_retired_shared_inspect_dropin_path() as String, " on ", host as String,
+      " after every inspect grant was reinstalled under its own file on this run and read back held",
     ], "") as NonEmptyStr,
   }
+}
+
+fn run_retired_dropin_removal(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  administrator: SparkCredentialStanding,
+  attempt_identity: NonEmptyStr,
+) -> PrivilegedStepOutcome
+{
+  run_privileged_step(
+    context: context,
+    host: host,
+    lease: spark_retired_dropin_removal_lease(host: host, administrator: administrator, attempt_identity: attempt_identity),
+    command: RemoveRetiredSharedInspectDropin,
+  )
 }
 
 // WHERE THE CREDENTIAL LIVES, if anywhere. A pending standing has no resource to name, and saying so
@@ -183,14 +199,14 @@ fn lease_secret_resource(lease: AuthorizationRequest<SparkBootstrapSubject>) -> 
 // RemoteArgv into a generic { argv, stdin } carrier -- would reopen arbitrary script bodies through
 // stdin under root, which is a far larger hole than the one being closed. So only the two commands
 // this bootstrap needs have constructors, and a third cannot be passed through.
-// RemoveRetiredSudoersDropin is the only removal this algebra admits, and only the managed-grant
-// reconcile constructs it (gunbc.spark.managed_grant_install spark_retired_dropin_removal_argv, over
-// gunbc.spark.managed_grant_reconcile's retired drop-in name), after every grant the file carried is
-// installed under its own name and read back held.
+// RemoveRetiredSharedInspectDropin is the only removal this algebra admits, and it has NO FIELDS: the
+// path it removes is gunbc.spark.managed_grant_reconcile spark_retired_shared_inspect_dropin_path,
+// the same single source the removal lease's scope and intent derive from. No caller has a spelling
+// for removing any other path (review of gunbc#13373).
 type AdmittedRootArgv
   = ValidateStagedSudoers { staged_path: NonEmptyStr }
   | InstallStagedSudoers { staged_path: NonEmptyStr, dropin_path: NonEmptyStr }
-  | RemoveRetiredSudoersDropin { dropin_path: NonEmptyStr }
+  | RemoveRetiredSharedInspectDropin
 
 // THE PROMPT IS A SENTINEL, NOT EMPTY, and the empty one was a real defect rather than a style
 // choice. This carried `-p ""` to suppress the prompt entirely; measured on srv6 (2026-08-20), the
@@ -217,7 +233,7 @@ fn admitted_root_argv_words(command: AdmittedRootArgv) -> List<String> {
       ValidateStagedSudoers { staged_path: p } => ["visudo", "-c", "-f", p as String]
       InstallStagedSudoers { staged_path: p, dropin_path: d } =>
         ["install", "-m", "0440", "-o", "root", "-g", "root", p as String, d as String]
-      RemoveRetiredSudoersDropin { dropin_path: d } => ["rm", "-f", "--", d as String]
+      RemoveRetiredSharedInspectDropin => ["rm", "-f", "--", spark_retired_shared_inspect_dropin_path() as String]
     },
   )
 }
@@ -243,7 +259,7 @@ fn admitted_root_argv_label(command: AdmittedRootArgv) -> String {
   match command {
     ValidateStagedSudoers { staged_path: _ } => "validate-staged-sudoers"
     InstallStagedSudoers { staged_path: _, dropin_path: _ } => "install-staged-sudoers"
-    RemoveRetiredSudoersDropin { dropin_path: _ } => "remove-retired-sudoers-dropin"
+    RemoveRetiredSharedInspectDropin => "remove-retired-shared-inspect-dropin"
   }
 }
 
