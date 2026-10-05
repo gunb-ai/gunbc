@@ -216,10 +216,10 @@ type CallbackRealization
 // row's own param_types/return_type (collection_roster_signature_arrow) -- the row IS the signature; no
 // body is read. The receiver carrier the row's ReceiverSelf denotes is named by the form, not assumed: the
 // one primitive-call form today is over the free monoid, and a second carrier is a second form.
-// RULING (calm-boar-904, msg_8e2338e7): this reverses the joint ruling that a bare concat reaches its field
-// only through an imported declaration and that infer never reads the template tables. Reason: the only
-// writable declaration (a .dag body for std.algebra list_append) regresses every caller from the
-// persistent carrier's log(n + m) to O(|left|), and an operator-backed body has no writable surface.
+// THIS REVERSES an earlier boundary (that a bare concat reaches its field only through an imported declaration, and that
+// infer never reads the template tables). The reversal, its reason and its approval are recorded on
+// gunbc.recurring_failure_mode algebra_structure_has_two_representations_with_no_declared_mapping (the collection-concat
+// receipt); the approval is the N7 manager's, cited in gunbc#13207's description, not asserted here.
 type CollectionRosterForm
   = RosterAuthoredStep
   | RosterCallbackStep { realization: CallbackRealization }
