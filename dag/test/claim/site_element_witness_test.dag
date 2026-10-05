@@ -54,7 +54,11 @@ import gunbc.site.element.node_row {
 }
 import gunbc.site.element.relation_table { RelationTable, relation_table, relation_table_rules }
 import gunbc.site.element.node_chain { node_chain, node_chain_rules, node_chain_unfolded_levels }
-import gunbc.site.specimen { specimen_route_path, specimen_content, specimen_layout_rules }
+import gunbc.site.specimen { specimen_route_path, specimen_content, specimen_layout_rules, specimen_field_list_fixture }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldAbsent, FieldPerson, field_list, field_list_rules,
+}
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { Color, Padding }
 
@@ -565,4 +569,70 @@ test fn the_specimen_page_styles_no_element_internals() -> Bool {
 test fn element_rules_carry_no_literal_colour_or_raw_length() -> Bool {
   count(unthemed_color_decls(rules: element_rules())) == 0
     && count(untokened_length_decls(rules: element_rules())) == 0
+}
+
+// FieldList. Each value arm is supplied directly (no producer runs): every arm that shows text
+// draws it as ONE single-line text element carrying the full value in `title`, and a value the
+// caller abbreviated keeps its full text in the DOM for assistive technology.
+fn field_html(value: FieldValue) -> String {
+  html(node: field_list(input: FieldList { rows: [FieldRow { label: "Field", value: value }] }))
+}
+
+fn field_face() -> Fragment {
+  Element { tag: "span", attributes: [], children: [txt("A")] }
+}
+
+data field_long: String = "a-very-long-service-identity@an-equally-long-project.iam.gserviceaccount.com"
+
+test fn field_list_value_arms_render_one_single_line_value_with_the_full_text_in_title() -> Bool {
+  let text = field_html(value: FieldText { text: field_long, full: none })
+  let short = field_html(value: FieldText { text: "attempt 0cfc…", full: Present { value: "attempt 0cfc18886a3d3b10" } })
+  let links = field_html(value: FieldLinks { links: [FieldLink { text: "Parent title", href: "/issue/p", full: none }], unlinked: ["undeclared: q"] })
+  let person = field_html(value: FieldIdentity { person: FieldPerson { face: field_face(), identity: field_long, full: Present { value: join(["Service — ", field_long], "") } } })
+  let control = field_html(value: FieldIdentityControl { person: FieldPerson { face: field_face(), identity: field_long, full: none }, action: "Change assignee", editor: [] })
+  text == join(["<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"text\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text\" title=\"", field_long, "\">", field_long, "</span></dd></div></dl>"], "")
+    && has(s: short, pattern: "title=\"attempt 0cfc18886a3d3b10\"><span aria-hidden=\"true\">attempt 0cfc…</span><span class=\"el-field-list-assistive\">attempt 0cfc18886a3d3b10</span>")
+    && has(s: links, pattern: "<span class=\"el-field-list-text\" title=\"Parent title, undeclared: q\"><a class=\"el-field-list-link\" href=\"/issue/p\" title=\"Parent title\">Parent title</a>, undeclared: q</span>")
+    && has(s: person, pattern: join(["title=\"Service — ", field_long, "\">"], ""))
+    && has(s: person, pattern: "<span class=\"el-field-list-face\" aria-hidden=\"true\">")
+    && has(s: control, pattern: join(["aria-label=\"Change assignee: ", field_long, "\""], ""))
+    && has(s: control, pattern: "data-field-open=\"in-place\"")
+    && has(s: html(node: field_list(input: FieldList { rows: [FieldRow { label: "Status", value: FieldStatusControl { status: DisplayActive, detail: [] } }] })), pattern: "<span class=\"el-status-chip\" data-status-form=\"assigned\">Active</span>")
+    && has(s: field_html(value: FieldAction { text: "3 issues", attributes: [] }), pattern: "<button class=\"el-field-list-action\" type=\"button\" title=\"3 issues\">3 issues</button>")
+}
+
+// An absent value draws "--" and nothing else visible, with its reason in `title` and as the text
+// assistive technology reads; the mark itself is hidden from it.
+test fn field_list_absent_value_renders_the_mark_with_its_reason() -> Bool {
+  field_html(value: FieldAbsent { reason: "Not recorded" })
+    == "<dl class=\"el-field-list\"><div class=\"el-field-list-row\" data-field-value=\"absent\"><dt class=\"el-field-list-label\">Field</dt><dd class=\"el-field-list-value\"><span class=\"el-field-list-text el-field-list-absent\" title=\"Not recorded\"><span aria-hidden=\"true\">--</span><span class=\"el-field-list-assistive\">Not recorded</span></span></dd></div></dl>"
+}
+
+// The rules draw the measured sidebar: a fixed label column clamped as measured, one row pitch,
+// the Label and Body roles, and single-line values cut with an ellipsis.
+test fn field_list_rules_draw_one_pitch_a_fixed_label_column_and_single_line_values() -> Bool {
+  let css = serialize_rules(rules: field_list_rules())
+  has(s: css, pattern: ".el-field-list-row { display: grid; grid-template-columns: clamp(var(--w-field-label-min), 23%, var(--w-field-label-max)) minmax(0, 1fr); column-gap: var(--space-10); align-items: start; min-height: var(--h-field-row);")
+    && has(s: css, pattern: ".el-field-list-text { display: block; min-width: var(--space-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }")
+    && has(s: css, pattern: "min-height: var(--h-button-small)")
+    && has(s: css, pattern: ".el-field-list-face { display: inline-flex; flex: none; width: var(--h-field-avatar); height: var(--h-field-avatar); border-radius: var(--radius-999)")
+}
+
+// The ownership guard reads the field list as a registered element: its rules name only its own
+// classes, a page rule reaching into a row is reported, and the field list may compose the status
+// chip and the build meter without styling either.
+test fn field_list_is_registered_and_guarded() -> Bool {
+  let reach = StaticRule { selector: RawSelector { text: ".issue-rail .el-field-list-value" }, decls: [decl(prop: Padding, value: "0")] }
+  let into_chip = StaticRule { selector: RawSelector { text: ".el-field-list-summary .el-status-chip" }, decls: [decl(prop: Padding, value: "0")] }
+  any(element_styles(), s => s.class_name == "el-field-list")
+    && styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-field-list", rules: field_list_rules() }, ElementStyle { class_name: "el-status-chip", rules: [] }, ElementStyle { class_name: "el-build-meter", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-card", rules: [reach] }, ElementStyle { class_name: "el-field-list", rules: [] }])
+    && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-field-list", rules: [into_chip] }, ElementStyle { class_name: "el-status-chip", rules: [] }])
+}
+
+// The specimen's fixture holds every arm the rail uses and the long values that used to wrap.
+test fn specimen_field_list_fixture_covers_the_rail_cases() -> Bool {
+  let h = html(node: field_list(input: specimen_field_list_fixture()))
+  all(["status-control", "identity-control", "work", "absent", "text", "links", "action", "identity"], k => has(s: h, pattern: join(["data-field-value=\"", k, "\""], "")))
+    && has(s: h, pattern: "iam.gserviceaccount.com")
 }

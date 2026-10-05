@@ -712,6 +712,39 @@ data issue_tracker_measured_relation_table: IssueTrackerMeasuredRelationTable = 
   closed_row_ground: issue_tracker_visual_tokens.background_hover,
 }
 
+// FIELD RAIL ANATOMY (the issue metadata sidebar, shots 01 and 15; probes t1-detail and
+// t8-detail2): a column 331 wide including a 1px hairline on its leading edge, with no card.
+// Each field is inset 19px from both sides and its rows are 36px apart (a 20px row between 8px
+// margins; one row measured 37). The label sits in a column 23% of the row, clamped to 80..120px
+// (the product's bv2-field-label-spacer), followed by 10px of padding; the value is set at
+// 13/20 on one line, and a long identity is truncated rather than wrapped. A person is shown
+// with a 12px circular avatar before the address.
+type IssueTrackerMeasuredFieldRail {
+  width_px: Int
+  divider_px: Int
+  side_inset_px: Int
+  row_pitch_px: Int
+  label_column_pct: Int
+  label_column_min_px: Int
+  label_column_max_px: Int
+  label_gap_px: Int
+  value_line_height_px: Int
+  inline_avatar_px: Int
+}
+
+data issue_tracker_measured_field_rail: IssueTrackerMeasuredFieldRail = IssueTrackerMeasuredFieldRail {
+  width_px: 331,
+  divider_px: 1,
+  side_inset_px: 19,
+  row_pitch_px: 36,
+  label_column_pct: 23,
+  label_column_min_px: 80,
+  label_column_max_px: 120,
+  label_gap_px: 10,
+  value_line_height_px: 20,
+  inline_avatar_px: 12,
+}
+
 // BUTTON ANATOMY: three kinds on the shared radius, all in the heading face at weight 500. Filled
 // is card-coloured text on the action colour; outlined is an action-coloured label on the card
 // colour inside a hairline; text is the action-coloured label alone. Two sizes, the two button

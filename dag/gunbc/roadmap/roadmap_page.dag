@@ -131,7 +131,11 @@ import gunbc.roadmap_presentation {
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
 import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
-import gunbc.site.element.build_meter { build_meter, failure_event_words }
+import gunbc.site.element.build_meter { failure_event_words }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
+}
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
   issue_results_sort_key_wire, issue_results_sort_numeric,
@@ -1511,13 +1515,23 @@ fn issue_component_value(view: WorkRowView) -> String {
   if component == "" { issue_owner_value(view: view) } else { component }
 }
 
+// The rail always shows the component field; a row that declares neither a component nor an
+// owner lane shows it as absent, with that reason.
+fn issue_rail_component_value(view: WorkRowView) -> FieldValue {
+  let component = issue_component_value(view: view)
+  if component == "" { FieldAbsent { reason: "No component or owner lane is declared for this issue" } } else { FieldText { text: component, full: none } }
+}
+
 // THE PARENT FIELD is the membership relation's Parent rows -- never a dependency edge. A node that
 // is a member of nothing reads top-level; a parent the universe does not declare is named as such.
-fn issue_parent_value(parent: NodeRelation) -> List<Fragment> {
+fn issue_parent_value(parent: NodeRelation) -> FieldValue {
   if count(parent.rows) == 0 && count(parent.undeclared) == 0 {
-    [ txt("top-level") ]
+    FieldText { text: "top-level", full: none }
   } else {
-    concat(issue_node_link_nodes(rows: parent.rows), issue_relation_undeclared_nodes(relation: parent))
+    FieldLinks {
+      links: map(parent.rows, row => FieldLink { text: row.node.title, href: row.node.route, full: none }),
+      unlinked: if count(parent.undeclared) == 0 { [] } else { [join([relation_undeclared_text(kind: parent.kind), ": ", join(parent.undeclared, ", ")], "")] },
+    }
   }
 }
 
@@ -1753,22 +1767,11 @@ fn issue_table_markup(rows: List<IssueTableRow>, observation: ObservationImpactV
 // newest first) and lists every attempt — execution history lives here exclusively, never stacked
 // in the workspace rows (owner defect fix 2026-09-23). The page ships the same external client
 // asset the workspace ships; its tab chips are inert on surfaces that carry none.
-fn issue_field_row(label: String, value: List<Fragment>) -> Fragment {
-  el_class("div", "issue-field", concat(
-    [ el_class("span", "issue-field-label", [ txt(label) ]) ],
-    [ el_class("span", "issue-field-value", value) ]))
-}
-
-fn issue_field_text_row(label: String, value: String) -> Fragment {
-  issue_field_row(label: label, value: if value == "" { [] } else { [ txt(value) ] })
-}
-
-fn issue_node_link_nodes(rows: List<RelationRow>) -> List<Fragment> {
-  map(rows, row =>
-    el_attrs("a", [
-      attr(name: "class", value: "issue-link" ),
-      attr(name: "href", value: row.node.route ),
-    ], [ txt(row.node.title) ]))
+// The rail's fields are rows of the FieldList element (gunbc.site.element.field_list); a field
+// with no fact to show is no row, and a field whose fact is known to be missing is an absent
+// value with the reason.
+fn issue_rail_text_rows(label: String, value: String) -> List<FieldRow> {
+  if value == "" { [] } else { [FieldRow { label: label, value: FieldText { text: value, full: none } }] }
 }
 
 // A related id that names no declared node is stated, never dropped and never dressed as a row.
@@ -2453,27 +2456,32 @@ fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<Pr
   }
 }
 
-// THE RIGHT METADATA RAIL (owner mandate): status, assignee (the editable control), reporter,
-// component, parent, blocked-by/blocking, delivery, return-to, modified, observation — the
-// issue's identity and state at a glance, beside the narrative. Rows with no fact OMIT (the
-// mandate's empty-row law), except status and assignee which always render.
+// THE RIGHT METADATA RAIL (owner mandate): status, assignee (the editable control), the work in
+// progress, reporter, component, parent, prerequisites/blocking, delivery, return-to, modified,
+// observation -- the issue's identity and state at a glance, beside the narrative, as one
+// FieldList. Rows with no fact OMIT (the mandate's empty-row law), except status and assignee
+// which always render; a fact known to be missing is an absent value carrying its reason.
 fn issue_metadata_rail_node(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
+  el_class("aside", "issue-rail", [field_list(input: FieldList { rows: issue_rail_rows(view: view, hierarchy: hierarchy, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context) })])
+}
+
+fn issue_rail_rows(view: WorkRowView, hierarchy: IssueHierarchyView, attempts: List<WorkflowAttemptProgress>, events: List<RoadmapEventEnvelope>, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> List<FieldRow> {
   let assignment = roadmap_issue_assignment(envs: events)
   let bar = task_bar_view_of(view: view, observation: observation_impact_view(workflow_refused: none))
-  el_class("aside", "issue-rail", concat([
-    issue_field_row(label: "status", value: [issue_status_node(view: view, events: events)]),
-    issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
-  ], concat(issue_rail_build_meter_nodes(view: view, attempts: attempts, assignment: assignment), [
-    issue_field_text_row(label: "reporter", value: issue_reporter_value(events: events)),
-    issue_field_text_row(label: "component", value: issue_component_value(view: view)),
-    issue_field_row(label: "parent", value: issue_parent_value(parent: hierarchy.membership.parent)),
-    issue_prerequisites_rail_row(view: view, blocked_by: hierarchy.dependency.blocked_by),
-    issue_rail_optional_nodes_row(label: "blocking", value: issue_rail_count_nodes(n: relation_summary(relation: hierarchy.dependency.blocking).total)),
-    issue_rail_optional_row(label: "delivery", value: issue_delivery_value(attempts: attempts)),
-    issue_rail_return_to_row(view: view, assignment: assignment),
-    issue_rail_optional_row(label: "modified", value: issue_modified_value(events: events)),
-    issue_rail_optional_row(label: "observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
-  ])))
+  flat_map([
+    [FieldRow { label: "Status", value: FieldStatusControl { status: issue_display_status(view: view), detail: issue_status_detail_nodes(view: view, events: events) } }],
+    [issue_rail_assignee_row(view: view, attempts: attempts, assignment: assignment, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)],
+    issue_rail_build_meter_rows(view: view, attempts: attempts, assignment: assignment),
+    [FieldRow { label: "Reporter", value: issue_reporter_value(events: events) }],
+    [FieldRow { label: "Component", value: issue_rail_component_value(view: view) }],
+    [FieldRow { label: "Parent", value: issue_parent_value(parent: hierarchy.membership.parent) }],
+    issue_prerequisites_rail_rows(view: view, blocked_by: hierarchy.dependency.blocked_by),
+    issue_rail_count_rows(label: "Blocking", n: relation_summary(relation: hierarchy.dependency.blocking).total),
+    issue_rail_text_rows(label: "Delivery", value: issue_delivery_value(attempts: attempts)),
+    issue_rail_return_to_rows(view: view, assignment: assignment),
+    issue_rail_text_rows(label: "Modified", value: issue_modified_value(events: events)),
+    issue_rail_text_rows(label: "Observation", value: if count(attempts) == 0 { "" } else { bar.signal }),
+  ], rows => rows)
 }
 
 // Status detail keeps the latest ledger standing alongside the observed planning facts.
@@ -2484,74 +2492,63 @@ fn issue_standing_text(s: RoadmapNodeStanding, profiles: List<PrincipalProfile>)
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_display_with_profile(p: p, profiles: profiles).name })
 }
 
+// A principal as the field list shows a person: the avatar circle, the address (the display's
+// detail) on one line, and the full identity for the tooltip.
+fn issue_rail_person(holder: EventPrincipal, profiles: List<PrincipalProfile>) -> FieldPerson {
+  let display = event_principal_display_with_profile(p: holder, profiles: profiles)
+  let workflow = event_principal_is_fabric(p: holder)
+  FieldPerson { face: issue_avatar_chip_node(display: display, workflow: workflow), identity: display.detail, full: Present { value: issue_avatar_title(display: display, workflow: workflow) } }
+}
+
 // The current identity becomes the editor in place; closing restores the projected holder.
-fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> Fragment {
-  let face = match assignment.holder {
-    Absent => unassigned_avatar()
-    Present { value: holder } => issue_avatar_chip_node(display: event_principal_display_with_profile(p: holder, profiles: view.profiles), workflow: event_principal_is_fabric(p: holder))
+fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection, viewer: String, recents: List<EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }) -> FieldRow {
+  let person = match assignment.holder {
+    Absent => FieldPerson { face: unassigned_avatar(), identity: "Unassigned", full: none }
+    Present { value: holder } => issue_rail_person(holder: holder, profiles: view.profiles)
   }
-  let label = match assignment.holder { Absent => "Unassigned" Present { value: holder } => event_principal_display_with_profile(p: holder, profiles: view.profiles).detail }
-  issue_field_row(label: "assignee", value: [el_class("details", "issue-assignee-disclosure", concat([
-    el_attrs("summary", [attr(name: "aria-label", value: concat("Change assignee: ", label))], [face, el_class("span", "issue-assignee-identity", [txt(label)])]),
-  ], issue_detail_action_bar_nodes(view: view, current_assignee: if label == "Unassigned" { "" } else { label }, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))])
+  let current = match assignment.holder { Absent => "" Present { value: _ } => person.identity }
+  FieldRow { label: "Assignee", value: FieldIdentityControl {
+    person: person,
+    action: "Change assignee",
+    editor: issue_detail_action_bar_nodes(view: view, current_assignee: current, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
+  } }
 }
 
 // THE COMPACT WORK SUMMARY, DIRECTLY UNDER THE ASSIGNEE. Whether the issue has one is the
 // producer's decision (gunbc.roadmap.roadmap_build_meter compact_work_summary: Fabric holds it and
-// it has an attempt); the rail only places it, as the BuildMeter element, a link into the Work
+// it has an attempt); the rail only places it, as the field list's Work row, a link into the Work
 // tab carrying the tab chip so the page's tab control opens that tab in place. No summary, no
-// node.
-data issue_rail_meter_class: String = "issue-rail-meter"
-
-fn issue_rail_build_meter_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection) -> List<Fragment> {
+// row.
+fn issue_rail_build_meter_rows(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection) -> List<FieldRow> {
   match compact_work_summary(holder: assignment.holder, attempts: attempts, stale: view.attempt_stale) {
     Absent => []
     Present { value: summary } => [
-      el_class("div", issue_rail_meter_class, [build_meter(summary: summary, link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_anchor)])]),
+      FieldRow { label: "Work", value: FieldWork { summary: summary, link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_anchor)] } },
     ]
   }
 }
 
 // THE RETURN-TO ROW: the stored merge owner the work comes back to (the publication handoff's
-// target) — rendered when any assignment recorded one.
-fn issue_rail_return_to_row(view: WorkRowView, assignment: IssueAssignmentProjection) -> Fragment {
+// target) — a row only when an assignment recorded one.
+fn issue_rail_return_to_rows(view: WorkRowView, assignment: IssueAssignmentProjection) -> List<FieldRow> {
   match assignment.return_to {
-    Present { value: return_to } =>
-      issue_field_row(label: "return to", value: issue_assignee_chip_node(holder: return_to, profiles: view.profiles))
-    Absent =>
-      el_class("div", "issue-field", [])
+    Present { value: return_to } => [FieldRow { label: "Return To", value: FieldIdentity { person: issue_rail_person(holder: return_to, profiles: view.profiles) } }]
+    Absent => []
   }
 }
 
-fn issue_rail_optional_row(label: String, value: String) -> Fragment {
-  if value == "" {
-    el_class("div", "issue-field", [])
-  } else {
-    issue_field_text_row(label: label, value: value)
-  }
-}
-
-fn issue_rail_optional_nodes_row(label: String, value: List<Fragment>) -> Fragment {
-  if count(value) == 0 {
-    el_class("div", "issue-field", [])
-  } else {
-    issue_field_row(label: label, value: value)
-  }
-}
-
-// THE RAIL CARRIES A SIZE, NOT A POPULATION. The rail is a 34ch column: every blocker's headline
-// comma-joined into it wrapped ten titles down the page. The rail names how many, and the count
-// opens the Dependencies tab (the same data-tab-chip the tab strip uses), where each target is its
-// own link. Nothing to count, no row.
-fn issue_rail_count_nodes(n: Int) -> List<Fragment> {
+// THE RAIL CARRIES A SIZE, NOT A POPULATION. Every blocker's headline comma-joined into the rail
+// wrapped ten titles down the page. The rail names how many, and the count opens the
+// Dependencies tab (the same data-tab-chip the tab strip uses), where each target is its own
+// link. Nothing to count, no row.
+fn issue_rail_count_rows(label: String, n: Int) -> List<FieldRow> {
   if n == 0 {
     []
   } else {
-    [ el_attrs("button", [
-        attr(name: "class", value: "issue-rail-link" ),
-        attr(name: "type", value: "button" ),
-        attr(name: "data-tab-chip", value: "dependencies" ),
-      ], [ txt(join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], "")) ]) ]
+    [FieldRow { label: label, value: FieldAction {
+      text: join([to_string(value: n), if n == 1 { " issue" } else { " issues" }], ""),
+      attributes: [attr(name: "data-tab-chip", value: "dependencies")],
+    } }]
   }
 }
 
@@ -2561,10 +2558,10 @@ fn issue_rail_count_nodes(n: Int) -> List<Fragment> {
 // every declared prerequisite, satisfied or not, on the Dependencies tab. Where the row's
 // position was decided without assessing readiness the rail says only how many prerequisites are
 // declared, under a label that claims nothing about them.
-fn issue_prerequisites_rail_row(view: WorkRowView, blocked_by: NodeRelation) -> Fragment {
+fn issue_prerequisites_rail_rows(view: WorkRowView, blocked_by: NodeRelation) -> List<FieldRow> {
   match row_unmet_prerequisites(view: view) {
-    UnmetPrerequisitesAssessed { ids } => issue_rail_optional_nodes_row(label: "Unmet prerequisites", value: issue_rail_count_nodes(n: count(ids)))
-    UnmetPrerequisitesNotAssessed => issue_rail_optional_nodes_row(label: "Prerequisites", value: issue_rail_count_nodes(n: relation_summary(relation: blocked_by).total))
+    UnmetPrerequisitesAssessed { ids } => issue_rail_count_rows(label: "Unmet Prerequisites", n: count(ids))
+    UnmetPrerequisitesNotAssessed => issue_rail_count_rows(label: "Prerequisites", n: relation_summary(relation: blocked_by).total)
   }
 }
 
@@ -2572,8 +2569,8 @@ fn issue_prerequisites_rail_row(view: WorkRowView, blocked_by: NodeRelation) -> 
 // issue on this surface is an authored roadmap row, opened by nobody the ledger can name. The row
 // says so rather than promoting the owner lane (a component, e.g. @shell) to a person. When an
 // IssueCreated kind lands, its author is this value.
-fn issue_reporter_value(events: List<RoadmapEventEnvelope>) -> String {
-  "not recorded (authored roadmap row)"
+fn issue_reporter_value(events: List<RoadmapEventEnvelope>) -> FieldValue {
+  FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" }
 }
 
 // DELIVERY: the latest attempt's short key names the delivery vehicle until issue→PR links land
@@ -3205,18 +3202,17 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection,
 
 }
 
-fn issue_rail_status_text(view: WorkRowView, events: List<RoadmapEventEnvelope>) -> String { issue_status_label(view: view) }
-fn issue_status_node(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> Fragment {
+// What the status control opens onto: the four facts the status was decided from.
+fn issue_status_detail_nodes(view: WorkRowView, events: List<RoadmapEventEnvelope> = []) -> List<Fragment> {
   let facts = issue_status_details(view: view)
-  el_class("details", "issue-status-detail", [
-    el("summary", [status_badge(label: issue_status_label(view: view))]),
+  [
     el_class("dl", "issue-status-facts", [
       el("dt", [txt("Planning")]), el("dd", concat([txt(facts.planning)], if count(events) == 0 { [] } else { [el("p", [txt(issue_standing_text(s: roadmap_node_standing(envs: events), profiles: view.profiles))])] })),
       el("dt", [txt("Current obligation")]), el("dd", [txt(if facts.obligation == "" { "No unsettled obligation" } else { facts.obligation })]),
       el("dt", [txt("Attempt")]), el("dd", [txt(facts.outcome)]),
       el("dt", [txt("Delivery evidence")]), el("dd", if count(facts.evidence) == 0 { [txt("No delivery evidence observed")] } else { map(facts.evidence, e => el("p", [txt(join([e.label, ": ", e.value], ""))])) }),
     ]),
-  ])
+  ]
 }
 
 // Profile disclosure is local UI. No click on this card issues a command.

@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
 }
 import gunbc.design.material { BuildRule, StaticRule, CssDecl, decl }
 import gunbc.design.scale { scale_var, scale_pair, scale_value_wire, space_0, space_2, space_8 }
-import gunbc.site.element.tokens { ElementHeightRow, element_height_rows, card_outer_margin, card_border, radius_code, relation_section_gap }
+import gunbc.site.element.tokens { ElementHeightRow, element_height_rows, card_outer_margin, card_border, radius_code, relation_section_gap, field_rail_width }
 import gunbc.site.element.palette { palette_var, SlotGround, SlotSubtle, SlotBorder }
 import gunbc.site.element.text {
   ElementText, element_text_roles, element_text_name, element_text_decls,
@@ -42,6 +42,10 @@ import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
 import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowDensityGrid, node_row, node_row_header }
 import gunbc.site.element.relation_table { RelationTable, relation_table }
 import gunbc.site.element.node_chain { node_chain }
+import gunbc.site.element.field_list {
+  FieldList, FieldRow, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list,
+}
 import gunbc.site.element.build_meter {
   BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterKind, BuildMeterTypedOperation, BuildMeterRoundsRecorded, BuildMeterWorking,
   BuildMeterReason, BuildMeterRead, BuildMeterWrite, BuildMeterEdit, BuildMeterRun, BuildMeterSearch, BuildMeterReport, build_meter,
@@ -590,6 +594,40 @@ fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
   ])
 }
 
+// THE FIELD LIST, at the rail's width, over a fixture that holds every arm and the cases that
+// used to break the rail: an identity and a link title far longer than the value column, an
+// absent value with its reason, the status control and the assignee control.
+data specimen_field_rail_class: String = "specimen-field-rail"
+
+fn specimen_face(initial: String) -> Fragment {
+  el_attrs("span", [attr(name: "class", value: "site-avatar")], [txt(initial)])
+}
+
+fn specimen_field_list_fixture() -> FieldList {
+  let long_identity = "continuous-integration-auto-heal-publisher@gunbc-fabric.iam.gserviceaccount.com"
+  FieldList { rows: [
+    FieldRow { label: "Status", value: FieldStatusControl { status: DisplayActive, detail: [specimen_note(text: "Planning: ready. Current obligation: none. Attempt: running.")] } },
+    FieldRow { label: "Assignee", value: FieldIdentityControl {
+      person: FieldPerson { face: specimen_face(initial: "C"), identity: long_identity, full: Present { value: join(["Auto-heal publisher — ", long_identity], "") } },
+      action: "Change assignee",
+      editor: [specimen_note(text: "The assign form opens here, in place of the identity.")],
+    } },
+    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_typed_view(attempt_key: "2d5b8f04a1c7e936", rounds: specimen_write_heavy_rounds(), last_at: "2026-09-29T15:10:58Z")), link_attributes: [] } },
+    FieldRow { label: "Reporter", value: FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" } },
+    FieldRow { label: "Component", value: FieldText { text: "@shell", full: none } },
+    FieldRow { label: "Parent", value: FieldLinks { links: [FieldLink { text: "DP-M2: shell-to-dag batch 1 lands, then batch 2 retires the residue of the shell invocation layer", href: issue_page_path(node_id: "dp-m2-shell-residue-retired"), full: none }], unlinked: [] } },
+    FieldRow { label: "Unmet Prerequisites", value: FieldAction { text: "10 issues", attributes: [] } },
+    FieldRow { label: "Return To", value: FieldIdentity { person: FieldPerson { face: specimen_face(initial: "B"), identity: "brian.searls.operator.longname@example.com", full: none } } },
+    FieldRow { label: "Delivery", value: FieldText { text: "attempt 0cfc1888…", full: Present { value: "attempt 0cfc18886a3d3b10" } } },
+  ] }
+}
+
+fn specimen_field_list_section() -> Fragment {
+  specimen_section(label: "FieldList", body: [
+    el_attrs("div", [attr(name: "class", value: specimen_field_rail_class)], [field_list(input: specimen_field_list_fixture())]),
+  ])
+}
+
 fn specimen_meter_section() -> Fragment {
   specimen_section(label: "BuildMeter", body: [
     el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_meters(), m => specimen_meter_node(row: m))),
@@ -602,6 +640,7 @@ fn specimen_content() -> List<Fragment> {
       concat([specimen_source_section(), specimen_composite()], specimen_issue_composite()),
       [
         specimen_meter_section(),
+        specimen_field_list_section(),
         specimen_chain_section(),
         specimen_relation_section(),
         specimen_grid_row_section(),
@@ -664,6 +703,9 @@ fn specimen_layout_rules() -> List<BuildRule> {
       decl(prop: Margin, value: scale_pair(a: space_8, b: space_0)),
     ] },
     StaticRule { selector: ClassSelector { name: specimen_note_class }, decls: element_text_decls(role: ElementLabel) },
+    StaticRule { selector: ClassSelector { name: specimen_field_rail_class }, decls: [
+      decl(prop: MaxWidth, value: scale_var(t: field_rail_width)),
+    ] },
     StaticRule { selector: ClassSelector { name: specimen_meters_class }, decls: [
       decl(prop: Display, value: "grid"),
       decl(prop: GridTemplateColumns, value: "repeat(auto-fill, minmax(min(100%, 30ch), 1fr))"),

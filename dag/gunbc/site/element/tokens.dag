@@ -16,6 +16,7 @@ import extdeps.google.issue_tracker {
   issue_tracker_measured_header_chip,
   issue_tracker_measured_priority_mark,
   issue_tracker_measured_relation_table,
+  issue_tracker_measured_field_rail,
 }
 import gunbc.design.material { CssDecl, decl }
 import gunbc.design.scale {
@@ -49,6 +50,21 @@ data height_grid_row: ScaleToken = named_length_token(name: "h-grid-row", px: 36
 data height_bar: ScaleToken = named_length_token(name: "h-bar", px: issue_tracker_measured_metrics.top_bar_height_px)
 data height_card_label_row: ScaleToken = named_length_token(name: "h-card-label-row", px: issue_tracker_measured_card.label_row_height_px)
 
+// The field list (gunbc.site.element.field_list) and the rail column it sits in. The row pitch,
+// the label column's clamp and gap, the rail's width, divider and inset are the product's
+// sidebar as measured. One is a local adjustment and says so: the product draws a 12px avatar
+// before a name, where the initials this frontend draws inside the circle do not read; the inline
+// avatar takes the measured value line height instead, so it is as tall as the text beside it.
+data height_field_row: ScaleToken = named_length_token(name: "h-field-row", px: issue_tracker_measured_field_rail.row_pitch_px)
+data field_label_min: ScaleToken = named_length_token(name: "w-field-label-min", px: issue_tracker_measured_field_rail.label_column_min_px)
+data field_label_max: ScaleToken = named_length_token(name: "w-field-label-max", px: issue_tracker_measured_field_rail.label_column_max_px)
+data field_label_column_pct: Int = issue_tracker_measured_field_rail.label_column_pct
+data field_label_gap: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_field_rail.label_gap_px)
+data field_avatar: ScaleToken = named_length_token(name: "h-field-avatar", px: issue_tracker_measured_field_rail.value_line_height_px)
+data field_rail_width: ScaleToken = named_length_token(name: "w-field-rail", px: issue_tracker_measured_field_rail.width_px)
+data field_rail_divider: ScaleToken = length_token(prefix: "border", px: issue_tracker_measured_field_rail.divider_px)
+data field_rail_inset: ScaleToken = length_token(prefix: "space", px: issue_tracker_measured_field_rail.side_inset_px)
+
 // One row per adopted height beside the measurement it was adopted from, for the specimen's
 // density table. The touch target is the shared h-control token (ruling R3: 40px under a coarse
 // pointer); it has no upstream measurement because the product does not reflow for touch.
@@ -68,6 +84,8 @@ fn element_height_rows() -> List<ElementHeightRow> {
     ElementHeightRow { label: "Grid row", token: height_grid_row, measured_px: Present { value: issue_tracker_measured_metrics.grid_row_height_px } },
     ElementHeightRow { label: "Card label row", token: height_card_label_row, measured_px: Present { value: issue_tracker_measured_card.label_row_height_px } },
     ElementHeightRow { label: "Top bar", token: height_bar, measured_px: Present { value: issue_tracker_measured_metrics.top_bar_height_px } },
+    ElementHeightRow { label: "Field row", token: height_field_row, measured_px: Present { value: issue_tracker_measured_field_rail.row_pitch_px } },
+    ElementHeightRow { label: "Inline avatar", token: field_avatar, measured_px: Present { value: issue_tracker_measured_field_rail.inline_avatar_px } },
     ElementHeightRow { label: "Touch target", token: height_control, measured_px: Absent },
   ]
 }
@@ -161,6 +179,8 @@ fn element_length_tokens() -> List<ScaleToken> {
     button_small_padding, button_padding, button_border,
     chip_padding, priority_mark_width, priority_mark_border,
     relation_section_gap, relation_cell_padding, relation_row_line, relation_level_indent,
+    height_field_row, field_label_min, field_label_max, field_label_gap, field_avatar,
+    field_rail_width, field_rail_divider, field_rail_inset,
     font_code,
   ], flat_map(measured_text_rows(s: issue_tracker_measured_type_scale), m => [
     text_size_token(m: m), text_leading_token(m: m),

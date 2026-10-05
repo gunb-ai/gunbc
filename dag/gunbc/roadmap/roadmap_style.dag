@@ -49,6 +49,8 @@ import extdeps.google.issue_tracker { issue_results_row_tracks }
 import gunbc.site.element.palette { palette_decls }
 import gunbc.site.element.tokens { element_token_decls }
 import gunbc.site.element.build_meter { build_meter_rules }
+import gunbc.site.element.status_chip { status_chip_rules }
+import gunbc.site.element.field_list { field_list_rules }
 import std.integer { uint8_channel_inclusive_max_value_derived }
 import extdeps.accessibility.wcag_contrast { srgb8_relative_luminance_scaled_for_max, contrast_ratio_x100 }
 import gunbc.design.palette { Swatch, SwatchSet, SwatchSetForUse, swatch_filed, swatch_paint, swatches_of, for_use_combined_set }
@@ -446,7 +448,7 @@ fn activity_round_strip_rules() -> List<BuildRule> {
 // rules, unchanged, and (in roadmap_styles) the element tokens they read.
 fn roadmap_rules() -> List<BuildRule> {
   concat(roadmap_instance_rules(),
-    concat(figure_rules(), concat(activity_round_strip_rules(), concat(standing_chip_rules(), concat(roadmap_behavior_rules(rows: roadmap_behaviors), build_meter_rules())))))
+    concat(figure_rules(), concat(activity_round_strip_rules(), concat(standing_chip_rules(), concat(roadmap_behavior_rules(rows: roadmap_behaviors), concat(build_meter_rules(), concat(status_chip_rules(), field_list_rules())))))))
 }
 
 // The instrument's base rule, with its rest-state paint DERIVED (composition slice 1): the ink/fill/border decls splice in from the family roster's rest member via state_rest_decl at the exact positions the authored order demands, so the rest-to-invite binding is spelled only in dispatch_state_family — the base rule can no longer disagree with the roster it used to restate. Geometry decls stay authored here; they are the button's own facts, not state functions.
@@ -1056,13 +1058,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
       role_decl(prop: Background, r: SurfaceRole),
     ] },
 
-    StaticRule { selector: ClassSelector { name: "issue-link" }, decls: [
-      decl(prop: Color, value: "var(--issue-action-hover)"),
-      decl(prop: TextDecoration, value: "none"),
-    ] },
-    ResponseRule { subject: RawSelector { text: ".issue-link" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
-      decl(prop: TextDecoration, value: "underline")
-    ] },
     StaticRule { selector: ClassSelector { name: "issue-work-history" }, decls: [
       decl(prop: Display, value: "flex"),
       decl(prop: FlexDirection, value: "column"),
@@ -1112,15 +1107,6 @@ fn roadmap_instance_rules_head() -> List<BuildRule> {
 
 
 
-    StaticRule { selector: ClassSelector { name: "issue-rail-link" }, decls: [
-      decl(prop: FontFamily, value: "inherit"),
-      decl(prop: FontSize, value: "inherit"),
-      decl(prop: Color, value: "var(--issue-action-hover)"),
-      decl(prop: Background, value: "transparent"),
-      decl(prop: Border, value: "0"),
-      decl(prop: Padding, value: scale_var(t: space_0)),
-      decl(prop: Cursor, value: "pointer"),
-    ] },
     StaticRule { selector: ClassSelector { name: "issue-assignee-text" }, decls: [
       decl(prop: MarginLeft, value: scale_var(t: space_4)),
       decl(prop: FontSize, value: scale_var(t: text_13)),
