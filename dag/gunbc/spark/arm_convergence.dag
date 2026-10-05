@@ -92,9 +92,20 @@ type ArmRankObservation
   | ArmRankUnread { host: HostIdentity, cause: String }
 
 data arm_observe_complete_word: String = "arm-observe-complete"
+data arm_fact_unread_prefix: String = "unread:"
+data arm_retired_file_key: String = "retired_file="
 data arm_observe_error_path: String = "/run/gunbc-arm-observe.err"
 
 // ── THE PER-RANK OBSERVATION LEG ──────────────────────────────────────────────────────────────
+//
+// feature:remote-shell-body-emission — dissolve-on: the bounded remote operation sequence capability
+// stated once above gunbc.spark.native_serving_apply spark_native_host_apply_script (an ordered list of
+// typed steps against one host, each a modeled operation, so a script body becomes a projection of that
+// sequence). This leg is the same class of string-assembled body as that module's stage scripts and is
+// covered by that marker and that trigger, not admitted by its own; restating the condition here would
+// be a second authority for it. Until it dissolves, every word the parser keys on is a named datum below
+// (the key prefixes, the unread prefix, the completion word), so a script and its parser cannot drift
+// on a spelling or an offset.
 //
 // It only reads. Each fact prints as key=value, key=absent, or key=unread:<cause>, and the leg ends
 // with a completion word, so a leg cut off part way through reads as unread rather than as a host
@@ -106,17 +117,17 @@ fn arm_rank_observe_script(unit_name: NonEmptyStr, container_name: NonEmptyStr, 
   let ctr = shell_quote(arg: container_name as String)
   join([
     "echo \"desired_unit_sha=$(printf '%s' ", shell_quote(arg: planned_unit_text), " | sha256sum | cut -c1-64)\"\n",
-    "if [ -f ", u, " ]; then if s=$(sha256sum < ", u, " | cut -c1-64) && [ -n \"$s\" ]; then echo \"unit_sha=$s\"; else echo 'unit_sha=unread:sha256sum of the unit file failed'; fi\n",
-    "elif [ -e ", u, " ]; then echo 'unit_sha=unread:the unit path is not a regular file'\n",
+    "if [ -f ", u, " ]; then if s=$(sha256sum < ", u, " | cut -c1-64) && [ -n \"$s\" ]; then echo \"unit_sha=$s\"; else echo 'unit_sha=", arm_fact_unread_prefix, "sha256sum of the unit file failed'; fi\n",
+    "elif [ -e ", u, " ]; then echo 'unit_sha=", arm_fact_unread_prefix, "the unit path is not a regular file'\n",
     "else echo unit_sha=absent; fi\n",
-    "if a=$(systemctl show -p ActiveState --value ", unit_name as String, " 2>&1); then echo \"active_state=$a\"; else echo \"active_state=unread:$(printf '%s' \"$a\" | tr '\\n' ' ' | cut -c1-200)\"; fi\n",
+    "if a=$(systemctl show -p ActiveState --value ", unit_name as String, " 2>&1); then echo \"active_state=$a\"; else echo \"active_state=", arm_fact_unread_prefix, "$(printf '%s' \"$a\" | tr '\\n' ' ' | cut -c1-200)\"; fi\n",
     "if c=$(docker container inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", ctr, " 2>", arm_observe_error_path, "); then echo \"container=$c\"\n",
     "elif grep -q 'No such container' ", arm_observe_error_path, "; then echo container=absent\n",
-    "else echo \"container=unread:$(tr '\\n' ' ' < ", arm_observe_error_path, " | cut -c1-200)\"; fi\n",
+    "else echo \"container=", arm_fact_unread_prefix, "$(tr '\\n' ' ' < ", arm_observe_error_path, " | cut -c1-200)\"; fi\n",
     "if [ -f ", r, " ]; then echo \"committed=$(head -c 300 ", r, " | tr '\\n' ' ')\"\n",
-    "elif [ -e ", r, " ]; then echo 'committed=unread:the record path is not a regular file'\n",
+    "elif [ -e ", r, " ]; then echo 'committed=", arm_fact_unread_prefix, "the record path is not a regular file'\n",
     "else echo committed=absent; fi\n",
-    join(map(arm_retired_transaction_suffixes, sfx => join(["if [ -e ", u, sfx, " ]; then echo retired_file=", u, sfx, "; fi\n"], "")), ""),
+    join(map(arm_retired_transaction_suffixes, sfx => join(["if [ -e ", u, sfx, " ]; then echo ", arm_retired_file_key, u, sfx, "; fi\n"], "")), ""),
     "echo ", arm_observe_complete_word, "\n",
   ], "")
 }
@@ -130,7 +141,7 @@ fn arm_fact_of(lines: List<String>, key: String) -> ArmFact {
     Absent => FactUnread { cause: join(["the observation printed no ", key, " line"], "") }
     Present { value: v } =>
       if v == "absent" { FactAbsent }
-      else if starts_with(s: v, prefix: "unread:") { FactUnread { cause: substring(s: v, start: 7, end: length(v)) } }
+      else if starts_with(s: v, prefix: arm_fact_unread_prefix) { FactUnread { cause: substring(s: v, start: length(arm_fact_unread_prefix), end: length(v)) } }
       else if v == "" { FactUnread { cause: join(["the observation printed an empty ", key], "") } }
       else { FactRead { value: v } }
   }
@@ -148,7 +159,7 @@ fn arm_rank_observation_of(host: HostIdentity, stdout: String) -> ArmRankObserva
       active_state: arm_fact_of(lines: lines, key: "active_state"),
       container: arm_fact_of(lines: lines, key: "container"),
       committed: arm_fact_of(lines: lines, key: "committed"),
-      retired_files: flat_map(lines, l => if starts_with(s: l, prefix: "retired_file=") { [substring(s: l, start: 13, end: length(l))] } else { [] as List<String> }),
+      retired_files: flat_map(lines, l => if starts_with(s: l, prefix: arm_retired_file_key) { [substring(s: l, start: length(arm_retired_file_key), end: length(l))] } else { [] as List<String> }),
     } }
   }
 }
