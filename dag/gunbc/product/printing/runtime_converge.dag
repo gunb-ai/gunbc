@@ -1,0 +1,35 @@
+module product.printing.runtime_converge
+import std.types {String,Bool,NonEmptyStr}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import product.printing.runtime_dependencies {runtime_packages,ubuntu2404}
+import gunbc.host_effect {SshShell}
+import gunbc.host_effect_realize {srv3_ensure_apt,AptPackageInstalled,Srv3PredicateHolds,Srv3PredicateFails,Srv3PredicateUnobserved}
+import gunbc.fleet.printer_federation {printer_lan_host_identity}
+import gunbc.typed_argv_exec {typed_argv_exec_over_ssh,TypedArgvExecConverged,TypedArgvExecRefused}
+import extdeps.tools.gnu_coreutils {cat_command}
+import extdeps.filesystem.filesystem_io {Filesystem}
+
+type RuntimeConvergence {admitted:Bool,evidence:String}
+
+// Explicit Ubuntu package convergence on the modeled printer LAN host. The same
+// package roots gate preparation. Reuse the existing observe/install/readback
+// lifecycle; an unreadable observation never authorizes a blind installation.
+fn run(receipt:String) -> ProcessExit {
+ let host=printer_lan_host_identity() as NonEmptyStr
+ let read=cat_command(path:"/etc/os-release")
+ match typed_argv_exec_over_ssh(host:host,argv:concat([read.program.invocation as String],read.arguments)) {
+  TypedArgvExecRefused {reason:r}=>return exit_failure(reason:r)
+  TypedArgvExecConverged {result:r}=>if r.exit_code!=0 || !ubuntu2404(text:r.stdout) {return exit_failure(reason:"Print runtime convergence requires an observed Ubuntu 24.04 target")}
+ }
+ let outcomes=map(runtime_packages(),p=>{
+  let verdict=srv3_ensure_apt(subject:AptPackageInstalled {package:p},package:p,require_version_probe:false,transport:SshShell {ssh_host:host})
+  match verdict {
+   Srv3PredicateHolds=>RuntimeConvergence {admitted:true,evidence:concat(p as String,"=present")}
+   Srv3PredicateFails=>RuntimeConvergence {admitted:false,evidence:concat(p as String,"=absent-after-convergence")}
+   Srv3PredicateUnobserved {reason:r}=>RuntimeConvergence {admitted:false,evidence:join([p as String,"=unobserved: ",r],"")}
+  }
+ })
+ let body=join(concat([concat("host=",host as String)],map(outcomes,o=>o.evidence)),"\n")
+ if !Filesystem.Write(path:receipt,content:body).success {return exit_failure(reason:"Cannot preserve dependency convergence receipt")}
+ if all(outcomes,o=>o.admitted) {ExitSuccess} else {exit_failure(reason:body)}
+}

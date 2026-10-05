@@ -87,6 +87,16 @@ data orca_slicer_linux_aarch64_appimage_sha256: NonEmptyStr = "e1a07275a25f17662
 // clearing the floor as "runs" is overstating its own measurement.
 data orca_slicer_required_glibc: GlibcVersion = glibc_version(major: 2, minor: 38)
 
+// Direct Ubuntu 24.04 package roots for the selected AppImage's host runtime.
+// AppRun names WebKitGTK 4.1, JavaScriptCoreGTK 4.1, OpenGL, GLU and EGL as
+// external libraries. Ubuntu owns their transitive dependencies; --help is still
+// required to establish that the effective runtime loads, not just that dpkg knows it.
+// Package mapping: https://packages.ubuntu.com/noble/libwebkit2gtk-4.1-0
+// and https://packages.ubuntu.com/noble/libopengl0 (read 2026-10-05).
+data orca_ubuntu2404_runtime_packages: List<NonEmptyStr> = [
+ "libopengl0", "libglu1-mesa", "libegl1", "libwebkit2gtk-4.1-0", "libjavascriptcoregtk-4.1-0",
+]
+
 // A capability may be spent only inside with_verified_orca's private-copy lifetime.
 // The archive is copied first and the copy is checked against the selected asset's digest.
 // The callback can return only a process result, never the capability. Both probe and slice

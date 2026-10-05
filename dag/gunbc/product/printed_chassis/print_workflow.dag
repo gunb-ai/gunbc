@@ -1,6 +1,8 @@
 module product.printed_chassis.print_workflow
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
+import product.printing.runtime_dependencies {check}
+import product.printing.runtime_converge
 
 import std.types {String,NonEmptyStr,List,FilePath}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -46,6 +48,7 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
  if !read.success {return exit_failure(reason:"Cannot read fleet print plan")}
  let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Malformed printer queues, duplicate identities or invalid placements")}
  if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Preparation output must be an absolute writable directory")}
+ match check(appimage:appimage,receipt:concat(output,"/runtime.json")) {ExitSuccess=>{} other=>return other}
  match check_residential_cad(output:concat(output,"/cad")) {ExitSuccess=>{} other=>return other}
  let results=map(specs,s=>prepare_queue(spec:s,output:output,appimage:appimage,machine:machine,filament:filament,process:process))
  if any(results,r=>match r {QueuePreparationRefused {reason:_}=>true QueueReadyForApproval {queue:_}=>false}) {return exit_failure(reason:"Fleet preparation refused; inspect per-plate preparation logs; no approvals or printer starts sent")}
@@ -65,3 +68,7 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
   }
  }
 }
+
+// Explicit dependency-provisioning phase. The print phase only observes; callers
+// request convergence through this same workflow root when the host needs setup.
+fn converge_runtime(receipt:String) -> ProcessExit {runtime_converge.run(receipt:receipt)}

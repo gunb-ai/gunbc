@@ -1,0 +1,69 @@
+module product.printing.runtime_dependencies
+import std.types {String,NonEmptyStr,List,Bool,FilePath}
+import std.process {ProcessExit,ExitSuccess,exit_failure}
+import extdeps.printing.orca_slicer {orca_ubuntu2404_runtime_packages,with_verified_orca,orca_version_probe_command,orca_slicer_linux_aarch64_appimage_sha256}
+import extdeps.opencascade.ocp {ocp_ubuntu2404_runtime_packages}
+import extdeps.cadquery.cadquery {cadquery_import_probe_command}
+import product.printed_chassis.cad_toolchain {cad_toolchain_python_requirements,python_distribution_name,python_distribution_version}
+import extdeps.dpkg {DpkgPackageInstalled,DpkgPackageNotInstalled,DpkgPackageUnknown,DpkgQueryUndecidable,dpkg_query_status_command,dpkg_query_status_verdict_of}
+import extdeps.exec.command {LocalExec,env_prefixed_command_in}
+import extdeps.shell
+import extdeps.shell.exec {ProcessRan,ProcessNotSpawned,ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused}
+import gunbc.command_runner {run_shell_command_observe_outcome,run_shell_command_capture}
+import extdeps.filesystem.filesystem_io {Filesystem}
+import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_array,serialize_json}
+import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed,JsonDocumentUnreadable,json_field_string,FieldRead,FieldAbsent,FieldMalformed}
+
+// One declared host-package population feeds both preparation admission and the
+// separate modeled convergence entry. Preparation itself performs no installs.
+// This is the Ubuntu 24.04 direct-host realization, not a claim about other routes.
+fn runtime_packages() -> List<NonEmptyStr> {
+ concat(ocp_ubuntu2404_runtime_packages,orca_ubuntu2404_runtime_packages)
+}
+fn ubuntu2404(text:String) -> Bool {
+ let lines=split(text,"\n")
+ let ids=filter(lines,l=>starts_with(s:l,prefix:"ID="))
+ let versions=filter(lines,l=>starts_with(s:l,prefix:"VERSION_ID="))
+ count(ids)==1 && count(versions)==1 && all(ids,l=>l=="ID=ubuntu"||l=="ID=\"ubuntu\"") && all(versions,l=>l=="VERSION_ID=24.04"||l=="VERSION_ID=\"24.04\"")
+}
+type RuntimePackageReading {package:NonEmptyStr,admitted:Bool,evidence:String}
+fn observe_package(package:NonEmptyStr) -> RuntimePackageReading {
+ match run_shell_command_observe_outcome(command:dpkg_query_status_command(package:package),transport:LocalExec) {
+  ProcessNotSpawned {program:_,cause:c}=>RuntimePackageReading {package:package,admitted:false,evidence:c as String}
+  ProcessRan {observation:o}=>RuntimePackageReading {package:package,admitted:match dpkg_query_status_verdict_of(exit_code:o.exit_code,stdout:o.stdout,stderr:o.stderr) {
+   DpkgPackageInstalled=>true DpkgPackageNotInstalled {status:_}=>false DpkgPackageUnknown=>false DpkgQueryUndecidable {reason:_}=>false
+  },evidence:concat(o.stdout,o.stderr)}
+ }
+}
+fn cad_versions_match(text:String) -> Bool {
+ match parse_json_document(s:text) {
+  JsonDocumentUnreadable {gap:_}=>false
+  JsonDocumentParsed {value:v}=>all(cad_toolchain_python_requirements,r=>match json_field_string(obj:v,key:python_distribution_name(r:r) as String) {
+   FieldRead {value:found}=>found==(python_distribution_version(r:r) as String) FieldAbsent=>false FieldMalformed {cause:_}=>false
+  })
+ }
+}
+fn check(appimage:String,receipt:String) -> ProcessExit {
+ let os_read=Filesystem.Read(path:"/etc/os-release")
+ if !os_read.success || !ubuntu2404(text:os_read.content) {return exit_failure(reason:"Print runtime dependency provider requires an observed Ubuntu 24.04 host")}
+ let packages=map(runtime_packages(),p=>observe_package(package:p))
+ let evidence=serialize_json(v:json_object(members:[json_kv(key:"os_release",value:json_string(s:os_read.content)),json_kv(key:"packages",value:json_array(elements:map(packages,p=>json_object(members:[json_kv(key:"package",value:json_string(s:p.package as String)),json_kv(key:"evidence",value:json_string(s:p.evidence))]))))]))
+ if !Filesystem.WriteCreateNew(path:concat(receipt,".packages.json"),content:evidence).success {return exit_failure(reason:"Cannot preserve runtime package observation")}
+ let missing=filter(packages,p=>!p.admitted)
+ if count(missing)>0 {return exit_failure(reason:concat("Declared print runtime packages absent or unreadable; use product.printing.runtime_converge.run: ",join(map(missing,p=>p.package as String),", ")))}
+ let cad=match run_shell_command_capture(command:cadquery_import_probe_command(distributions:map(cad_toolchain_python_requirements,r=>python_distribution_name(r:r) as String)),transport:LocalExec) {
+  ProcessRefused {exit_code:_,stderr:e}=>return exit_failure(reason:concat("Declared CAD Python dependencies could not import: ",e))
+  ProcessOutputAbsent=>return exit_failure(reason:"CAD dependency probe returned no versions")
+  ProcessOutputPresent {text:t}=>t
+ }
+ if !cad_versions_match(text:cad) {return exit_failure(reason:"CAD Python versions differ from the declared dependencies")}
+ let scratch=concat(receipt,".orca")
+ if !shell.Mkdir.Parents(path:scratch as FilePath).success {return exit_failure(reason:"Cannot isolate runtime probe output")}
+ let orca=with_verified_orca(appimage:appimage as FilePath,use:e=>run_shell_command_capture(command:env_prefixed_command_in(directory:scratch,bindings:[],command:orca_version_probe_command(executable:e)),transport:LocalExec))
+ match orca {
+  ProcessRefused {exit_code:_,stderr:e}=>exit_failure(reason:concat("Pinned Orca runtime probe failed before CAD preparation: ",e))
+  ProcessOutputAbsent=>exit_failure(reason:"Orca runtime probe returned no help output")
+  ProcessOutputPresent {text:t}=>if Filesystem.WriteCreateNew(path:receipt,content:serialize_json(v:json_object(members:[json_kv(key:"cad_versions",value:json_string(s:cad)),json_kv(key:"orca_archive_sha256",value:json_string(s:orca_slicer_linux_aarch64_appimage_sha256 as String)),json_kv(key:"orca_probe",value:json_string(s:t))]))).success {ExitSuccess} else {exit_failure(reason:"Cannot preserve runtime dependency receipt")}
+ }
+}
+fn run(appimage:String,receipt:String) -> ProcessExit {check(appimage:appimage,receipt:receipt)}
