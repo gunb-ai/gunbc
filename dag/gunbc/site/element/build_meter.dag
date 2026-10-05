@@ -4,39 +4,49 @@ import std.types { Bool, Int, List, String }
 import std.markup { Fragment, Element, Attribute, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.design.material {
-  BuildRule, StaticRule, ResponseRule, AmbientRule, SelfResponse, WithinSubject,
+  BuildRule, CssDecl, StaticRule, ResponseRule, AmbientRule, SelfResponse, WithinSubject,
   OnHover, OnFocusVisible, OnStateClass, MotionCycle, Keyframe, TimingToken, RunOnce, RunForever,
   respond_fast, restore_gentle, decl,
 }
-import gunbc.design.scale { scale_var, scale_border, space_0, space_1, space_2, space_4, border_2 }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_1, space_2, space_4, border_1, border_2 }
 import gunbc.site.element.tokens { radius_element }
 import gunbc.site.element.palette {
   PaletteSlot, palette_var, SlotAction, SlotBorder, SlotError, SlotHover, SlotSurface, SlotTextDim,
   SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
   SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
 }
-import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
+import gunbc.site.element.text { element_text_decls, ElementLabel }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegmentKind, WorkflowSegmentState, workflow_segment_kind_label, workflow_segment_state_key,
+}
+import gunbc.workflow_reconcile { WorkflowFactKey }
+import gunbc.roadmap.roadmap_submission {
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffYielded, HandoffEvidenceRefused, HandoffDeclaredBlocked,
+  HandoffSubmitted, HandoffVerificationFailed, HandoffAwaitingIntegration, HandoffBlockedOnIntegration,
+  HandoffPublicationOwed, HandoffBlockedOnPublication, HandoffPublished, submission_readiness_key,
+}
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
-  AnimationDelay, AnimationDuration, Background, BorderRadius, Display, Fill, FlexDirection,
-  Gap, Margin, Opacity, Outline, Overflow, Padding, TextDecoration, Transform, WhiteSpace, RawProperty,
+  AlignItems, AnimationDelay, AnimationDuration, Background, BorderRadius, BoxShadow, Display, Fill, Gap, Height,
+  Margin, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width, RawProperty,
 }
 
-// BuildMeter: one attempt's recorded progress as a short strip of marks with one worker standing
-// at its working edge, and the same facts in text beside it. It takes a BuildMeterView, the typed
-// view a producer derives from one attempt (gunbc.roadmap.roadmap_build_meter build_meter_view),
-// and draws only that: it holds no polling, no workflow rule and no notion of success.
+// BuildMeter: one attempt's recorded work as a quiet visual link. It draws a strip of the recent
+// rounds, one small gunbai worker at the working edge and a mark for how the attempt stands, and
+// it shows no prose: the facts are carried by the link's accessible name, by a one-line digest
+// shown on hover or focus, and by the Work tab the link opens. It takes a CompactWorkSummary, the
+// value the producer (gunbc.roadmap.roadmap_build_meter compact_work_summary) derives from one
+// attempt, and draws only that: no polling, no workflow rule, no definition of success.
 //
-// Three facts stay separate in the view and in the drawing. Recorded rounds decide which marks
-// exist. Observed activity decides the worker's pose. The last round's recorded time is stated in
-// text and is a record time, not a liveness signal. There is no percentage and no implied total:
-// the strip has no target width, and a long run draws its most recent rounds and states how many
-// earlier ones it does not draw.
+// Three facts stay separate in the summary and in the drawing. Coverage says what the round
+// record holds: rounds, none yet, or not recorded by this instrumentation. Outcome says how the
+// attempt stands: working, waiting, failed (with a digest naming the event to open), published.
+// Staleness says the attempt was launched on a revision the deployed tree has moved past. None is
+// inferred from another; a refused attempt with unrecorded rounds shows both.
 //
-// The drawing is a still that is complete with scripting off and with reduced motion. Motion is
-// decoration over it: a slow blink, a glance, a nap, one beat when a round lands. None of it
-// carries a fact, and all of it is removed under prefers-reduced-motion by the shared rule that
-// stills every ambient cycle and transition.
+// The drawing is complete with scripting off and under reduced motion. Motion is decoration over
+// it (a slow blink, a glance, a nap, one beat when a round lands), carries no fact, and is removed
+// under prefers-reduced-motion by the shared rule that stills every ambient cycle and transition.
 
 // The operation kinds a mark can have. The set is closed; a producer supplies only the kinds its
 // records distinguish, and this element draws whichever arrive.
@@ -87,13 +97,14 @@ fn build_meter_kind_lane(kind: BuildMeterKind) -> Int {
   }
 }
 
-// A write changes the work itself, so its mark is drawn full at any count and lit along its top.
+// A write and an edit change the work itself, so their marks are drawn full at any count and lit
+// along the top.
 fn build_meter_kind_is_lit(kind: BuildMeterKind) -> Bool {
   match kind {
     BuildMeterWrite => true
+    BuildMeterEdit => true
     BuildMeterReason => false
     BuildMeterRead => false
-    BuildMeterEdit => false
     BuildMeterRun => false
     BuildMeterSearch => false
     BuildMeterReport => false
@@ -104,9 +115,29 @@ data build_meter_kinds: List<BuildMeterKind> = [
   BuildMeterRun, BuildMeterWrite, BuildMeterEdit, BuildMeterRead, BuildMeterSearch, BuildMeterReason, BuildMeterReport,
 ]
 
+// WHERE A MARK'S COUNT COMES FROM. A typed operation is a count of operations the producer that
+// dispatched them recorded by kind. The other two are what the round ledger records today, and a
+// mark built from them says so: a tool call count is calls of unrecorded kind, drawn in the run
+// lane; a changed-path rise is how far the worktree's changed-path count rose over the round, an
+// observation of the tree rather than a count of writes, drawn in the write lane. Both are legacy
+// inferences that typed operations replace when the producer records them.
+type BuildMeterEvidence
+  = BuildMeterTypedOperation
+  | BuildMeterToolCallCount
+  | BuildMeterChangedPathCountRise
+
+fn build_meter_evidence_key(evidence: BuildMeterEvidence) -> String {
+  match evidence {
+    BuildMeterTypedOperation => "typed"
+    BuildMeterToolCallCount => "tool-calls"
+    BuildMeterChangedPathCountRise => "changed-paths"
+  }
+}
+
 type BuildMeterMark {
   kind: BuildMeterKind
   count: Int
+  evidence: BuildMeterEvidence
 }
 
 type BuildMeterRound {
@@ -116,13 +147,15 @@ type BuildMeterRound {
   output_tokens: Int
 }
 
-// The rounds as the record has them: a list (possibly empty) with the last round's recorded time,
-// or the reason the record could not be read. An unread record is never an empty list.
-type BuildMeterRounds
-  = BuildMeterRoundsRecorded { rounds: List<BuildMeterRound>, last_recorded_at: String? }
-  | BuildMeterRoundsUnobserved { reason: String }
+// WHAT THE ROUND RECORD HOLDS, separately from how the attempt stands. No round yet is a record
+// that was read and holds none; not recorded is an attempt whose rounds this instrumentation never
+// captured. Neither says whether work happened.
+type BuildMeterCoverage
+  = BuildMeterNoRoundYet
+  | BuildMeterRoundsRecorded { rounds: List<BuildMeterRound>, last_recorded_at: String }
+  | BuildMeterRoundsNotRecorded { reason: String }
 
-// What the worker is doing, decided by observed activity and never by the marks.
+// What the worker is doing, decided by observed activity and the outcome, never by the marks.
 type BuildMeterPose
   = BuildMeterWorking
   | BuildMeterWaitingForSeat
@@ -140,28 +173,72 @@ fn build_meter_pose_key(pose: BuildMeterPose) -> String {
   }
 }
 
-// A stage that ended without completing, named as the page names it, with its recorded reason.
-type BuildMeterHalt {
-  subject: String
-  reason: String
+// HOW AN ATTEMPT FAILED, as the producer classifies its failure events. A refusal is a stage that
+// declined to proceed on the evidence it had; a verification failure is a candidate the
+// verification stage judged; an activity failure is any other stage that ended failed; a spent
+// budget is the harness stopping the agent at its round budget, which ends the stage without
+// anything failing; a blocked handoff is a candidate that could not be submitted or published.
+type FailureKind
+  = FailureRefused
+  | FailureVerificationFailed
+  | FailureActivityFailed
+  | FailureBudgetSpent
+  | FailureHandoffBlocked
+
+fn failure_kind_key(kind: FailureKind) -> String {
+  match kind {
+    FailureRefused => "refused"
+    FailureVerificationFailed => "verification-failed"
+    FailureActivityFailed => "failed"
+    FailureBudgetSpent => "budget-spent"
+    FailureHandoffBlocked => "handoff-blocked"
+  }
+}
+
+// The words for one failure event: the stage's own label and what happened to it. The Work tab's
+// failure rows and this element's accessible name both read these, so the two cannot disagree.
+fn failure_event_words(kind: FailureKind, stage: WorkflowSegmentKind) -> String {
+  join([workflow_segment_kind_label(kind: stage), " ", match kind {
+    FailureRefused => "refused"
+    FailureVerificationFailed => "failed"
+    FailureActivityFailed => "failed"
+    FailureBudgetSpent => "stopped at its round budget"
+    FailureHandoffBlocked => "blocked"
+  }], "")
+}
+
+// The digest the producer derives from an attempt's failure events: the primary event, by its
+// workflow obligation identity, how many failure events the attempt has (one or more by
+// construction: no digest is made from none), the round the primary event is tied to when the
+// record ties it to one, its stage, and the Work tab destination that opens it.
+type FailureDigest {
+  kind: FailureKind
+  primary_event: WorkflowFactKey
+  event_count: Int
+  round: Int?
+  stage: WorkflowSegmentKind
+  destination: String
 }
 
 type BuildMeterView {
   attempt_key: String
-  stage_label: String
-  stage_state: String
-  seat_wait: String?
-  rounds: BuildMeterRounds
+  attempt_label: String
+  stage: WorkflowSegmentKind?
+  stage_state: WorkflowSegmentState?
+  coverage: BuildMeterCoverage
   pose: BuildMeterPose
-  halts: List<BuildMeterHalt>
-  outcome: String?
+  stale: Bool
+  failure: FailureDigest?
+  handoff: CandidateHandoffState
+  destination: String
 }
 
-type BuildMeter {
-  view: BuildMeterView
+// The element's input: one issue's compact work summary, its view and the revision that names the
+// view. The revision is the producer's content hash of everything the element can draw or say.
+type CompactWorkSummary {
   subject: String
-  href: String
-  link_attributes: List<Attribute>
+  view: BuildMeterView
+  revision: String
 }
 
 data build_meter_class: String = "el-build-meter"
@@ -173,11 +250,9 @@ data build_meter_arm_class: String = "el-build-meter-arm"
 data build_meter_droop_class: String = "el-build-meter-droop"
 data build_meter_sleep_class: String = "el-build-meter-sleep"
 data build_meter_blink_class: String = "el-build-meter-blink"
-data build_meter_text_class: String = "el-build-meter-text"
-data build_meter_stage_class: String = "el-build-meter-stage"
-data build_meter_line_class: String = "el-build-meter-line"
-data build_meter_halt_class: String = "el-build-meter-halt"
-data build_meter_outcome_class: String = "el-build-meter-outcome"
+data build_meter_name_class: String = "el-build-meter-name"
+data build_meter_badge_class: String = "el-build-meter-badge"
+data build_meter_digest_class: String = "el-build-meter-digest"
 
 // State classes a client may set on the element. They change decoration only.
 data build_meter_drowsy_class: String = "el-build-meter-drowsy"
@@ -186,20 +261,25 @@ data build_meter_waking_class: String = "el-build-meter-waking"
 data build_meter_beat_class: String = "el-build-meter-beat"
 
 data build_meter_subject_attribute: String = "data-build-meter"
-data build_meter_key_attribute: String = "data-meter-key"
+data build_meter_revision_attribute: String = "data-attempt-view-revision"
 data build_meter_rounds_attribute: String = "data-meter-rounds"
 data build_meter_pose_attribute: String = "data-meter-pose"
+data build_meter_coverage_attribute: String = "data-meter-coverage"
+data build_meter_outcome_attribute: String = "data-meter-outcome"
 data build_meter_look_attribute: String = "data-meter-look"
 data build_meter_kind_attribute: String = "data-kind"
+data build_meter_evidence_attribute: String = "data-evidence"
 data build_meter_paint_attribute: String = "data-paint"
 data build_meter_lid_attribute: String = "data-lid"
+data build_meter_worker_attribute: String = "data-worker"
+data build_meter_edge_attribute: String = "data-edge"
+data build_meter_history_attribute: String = "data-history"
 data build_meter_look_left: String = "left"
 data build_meter_look_right: String = "right"
 
-// The member under which a producer tells a page that already shows the meter what the current
-// view's key is. The producer and the page's client both read the name here. The key is all that
-// travels with every observation; a page whose drawn key differs asks for the rendering itself.
-data build_meter_wire_key_member: String = "meter_key"
+// The member under which the workflow observation names each attempt's current view revision.
+// The producer and the page's client both read the name here.
+data build_meter_wire_revision_member: String = "attempt_view_revision"
 
 // Geometry, in the drawing's own units; one unit is one CSS pixel.
 data build_meter_visible_rounds: Int = 24
@@ -212,26 +292,37 @@ data build_meter_floor: Int = 21
 data build_meter_art_height: Int = 22
 data build_meter_worker_width: Int = 20
 data build_meter_worker_top: Int = 3
+data build_meter_unrecorded_width: Int = 31
 
-fn build_meter_all_rounds(rounds: BuildMeterRounds) -> List<BuildMeterRound> {
-  match rounds {
+fn build_meter_all_rounds(coverage: BuildMeterCoverage) -> List<BuildMeterRound> {
+  match coverage {
     BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: _ } => rs
-    BuildMeterRoundsUnobserved { reason: _ } => []
+    BuildMeterNoRoundYet => []
+    BuildMeterRoundsNotRecorded { reason: _ } => []
+  }
+}
+
+fn build_meter_coverage_key(coverage: BuildMeterCoverage) -> String {
+  match coverage {
+    BuildMeterRoundsRecorded { rounds: _, last_recorded_at: _ } => "recorded"
+    BuildMeterNoRoundYet => "none-yet"
+    BuildMeterRoundsNotRecorded { reason: _ } => "not-recorded"
   }
 }
 
 fn build_meter_round_count(view: BuildMeterView) -> Int {
-  count(build_meter_all_rounds(rounds: view.rounds))
+  count(build_meter_all_rounds(coverage: view.coverage))
 }
 
-// A long run draws its most recent rounds; the earlier ones are counted in text, never squeezed.
+// A long run draws its most recent rounds; the earlier ones are counted in the name, never
+// squeezed.
 fn build_meter_hidden_count(view: BuildMeterView) -> Int {
   let n = build_meter_round_count(view: view)
   if n > build_meter_visible_rounds { n - build_meter_visible_rounds } else { 0 }
 }
 
 fn build_meter_drawn_rounds(view: BuildMeterView) -> List<BuildMeterRound> {
-  build_meter_all_rounds(rounds: view.rounds).skip(n: build_meter_hidden_count(view: view))
+  build_meter_all_rounds(coverage: view.coverage).skip(n: build_meter_hidden_count(view: view))
 }
 
 // The size of a round's base, from its recorded output tokens. It is a coarse step, not a scale
@@ -246,22 +337,107 @@ fn build_meter_seed(attempt_key: String) -> Int {
   total - (total / 7) * 7
 }
 
-// Everything the element shows, as one string. Two views with the same key draw the same still,
-// so a client that holds a drawn meter can tell whether a newer view differs without reading it.
-fn build_meter_view_key(view: BuildMeterView) -> String {
-  join([
-    view.attempt_key,
-    build_meter_pose_key(pose: view.pose),
-    view.stage_label,
-    view.stage_state,
-    match view.seat_wait { Present { value: w } => w  Absent => "" },
-    match view.rounds {
-      BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: at } => join([to_string(count(rs)), match at { Present { value: t } => t  Absent => "" }], "@")
-      BuildMeterRoundsUnobserved { reason } => reason
-    },
-    join(map(view.halts, h => join([h.subject, h.reason], ":")), ";"),
-    match view.outcome { Present { value: o } => o  Absent => "" },
-  ], "|")
+fn build_meter_is_published(handoff: CandidateHandoffState) -> Bool {
+  match handoff {
+    HandoffPublished { head_sha: _, pr_number: _, url: _ } => true
+    HandoffAwaitingWorker => false
+    HandoffYielded { reason: _ } => false
+    HandoffEvidenceRefused { reason: _ } => false
+    HandoffDeclaredBlocked { head_sha: _, readiness: _, explanation: _ } => false
+    HandoffSubmitted { head_sha: _ } => false
+    HandoffVerificationFailed { head_sha: _, verdict_key: _ } => false
+    HandoffAwaitingIntegration { head_sha: _ } => false
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => false
+    HandoffPublicationOwed { head_sha: _ } => false
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => false
+  }
+}
+
+// THE WORDS FOR A HANDOFF STATE, the one place the frontend says them. They name what the
+// attempt's candidate has reached and never the issue: a published candidate is on offer for
+// review, which is not the issue being done. Before a handoff there is nothing to say.
+fn build_meter_handoff_words(state: CandidateHandoffState) -> String? {
+  match state {
+    HandoffAwaitingWorker => none
+    HandoffYielded { reason: _ } => Present { value: "Yielded without a submission" }
+    HandoffEvidenceRefused { reason: _ } => Present { value: "Submission evidence refused" }
+    HandoffDeclaredBlocked { head_sha: _, readiness, explanation: _ } =>
+      Present { value: join(["Handed back by the worker, declared ", submission_readiness_key(r: readiness)], "") }
+    HandoffSubmitted { head_sha: _ } => Present { value: "Submitted, awaiting verification" }
+    HandoffVerificationFailed { head_sha: _, verdict_key } => Present { value: join(["Blocked on verification, verdict ", verdict_key], "") }
+    HandoffAwaitingIntegration { head_sha: _ } => Present { value: "Verified, awaiting integration" }
+    HandoffBlockedOnIntegration { head_sha: _, cause: _ } => Present { value: "Blocked on integration" }
+    HandoffPublicationOwed { head_sha: _ } => Present { value: "Verified, publication owed" }
+    HandoffBlockedOnPublication { head_sha: _, cause: _ } => Present { value: "Blocked on publication" }
+    HandoffPublished { head_sha: _, pr_number, url: _ } => Present { value: join(["Published for review, pull request ", to_string(pr_number)], "") }
+  }
+}
+
+fn build_meter_events_words(n: Int) -> String {
+  if n == 1 { "One failure event" } else { join([to_string(n), " failure events"], "") }
+}
+
+fn build_meter_rounds_words(coverage: BuildMeterCoverage) -> String {
+  match coverage {
+    BuildMeterNoRoundYet => "No round recorded yet"
+    BuildMeterRoundsNotRecorded { reason: _ } => "Rounds not recorded for this attempt"
+    BuildMeterRoundsRecorded { rounds, last_recorded_at } =>
+      join([if count(rounds) == 1 { "1 round recorded" } else { join([to_string(count(rounds)), " rounds recorded"], "") }, ", the last at ", last_recorded_at], "")
+  }
+}
+
+fn build_meter_stage_words(view: BuildMeterView) -> String {
+  match view.failure {
+    Present { value: d } => failure_event_words(kind: d.kind, stage: d.stage)
+    Absent => match view.pose {
+      BuildMeterWaitingForSeat => "Waiting for a serving seat"
+      BuildMeterWorking => build_meter_current_stage_words(view: view)
+      BuildMeterStopped => build_meter_current_stage_words(view: view)
+      BuildMeterDone => build_meter_current_stage_words(view: view)
+      BuildMeterIdle => build_meter_current_stage_words(view: view)
+    }
+  }
+}
+
+fn build_meter_current_stage_words(view: BuildMeterView) -> String {
+  match view.stage {
+    Absent => "Stage unavailable"
+    Present { value: k } => join([workflow_segment_kind_label(kind: k), " ", match view.stage_state {
+      Present { value: st } => workflow_segment_state_key(state: st)
+      Absent => "unavailable"
+    }], "")
+  }
+}
+
+fn build_meter_sentence(text: String) -> String {
+  join([text, "."], "")
+}
+
+// THE LINK'S ACCESSIBLE NAME: every fact the drawing shows, in words, ending with where the link
+// goes. It is the element's whole statement for assistive technology and is read from the view
+// alone.
+fn build_meter_accessible_name(view: BuildMeterView) -> String {
+  join(concat(concat(concat(concat(
+    [build_meter_sentence(text: build_meter_stage_words(view: view))],
+    match view.failure { Present { value: d } => [build_meter_sentence(text: build_meter_events_words(n: d.event_count))]  Absent => [] }),
+    [build_meter_sentence(text: build_meter_rounds_words(coverage: view.coverage))]),
+    concat(
+      match build_meter_handoff_words(state: view.handoff) { Present { value: w } => [build_meter_sentence(text: w)]  Absent => [] },
+      if view.stale { ["Launched on an earlier revision."] } else { [] })),
+    [build_meter_sentence(text: join(["Open attempt ", view.attempt_label, match view.failure { Present { value: _ } => " failures"  Absent => " work" }], ""))]),
+    " ")
+}
+
+// The one optional line shown on hover or focus: the stage and the most telling count.
+fn build_meter_digest_line(view: BuildMeterView) -> String {
+  match view.failure {
+    Present { value: d } => join([failure_event_words(kind: d.kind, stage: d.stage), " · ", to_string(d.event_count), if d.event_count == 1 { " event" } else { " events" }], "")
+    Absent => join([build_meter_stage_words(view: view), " · ", match view.coverage {
+      BuildMeterNoRoundYet => "no round yet"
+      BuildMeterRoundsNotRecorded { reason: _ } => "rounds not recorded"
+      BuildMeterRoundsRecorded { rounds, last_recorded_at: _ } => join([to_string(count(rounds)), if count(rounds) == 1 { " round" } else { " rounds" }], "")
+    }], "")
+  }
 }
 
 fn build_meter_svg(tag: String, attributes: List<Attribute>, children: List<Fragment>) -> Fragment {
@@ -285,20 +461,31 @@ fn build_meter_translate(x: Int, y: Int) -> Attribute {
   attr(name: "transform", value: join(["translate(", to_string(x), " ", to_string(y), ")"], ""))
 }
 
+fn build_meter_lane_y(kind: BuildMeterKind) -> Int {
+  build_meter_lanes_top + (build_meter_lane_count - 1 - build_meter_kind_lane(kind: kind)) * build_meter_mark_height
+}
+
 // One recorded operation kind in one round: a mark in the kind's lane. A count of one is drawn
-// lighter than a larger count. A write is always drawn full, with a lit top edge.
+// lighter than a larger count; a write or an edit is always drawn full, lit along its top.
 fn build_meter_mark_nodes(mark: BuildMeterMark) -> List<Fragment> {
-  let y = build_meter_lanes_top + (build_meter_lane_count - 1 - build_meter_kind_lane(kind: mark.kind)) * build_meter_mark_height
-  let kind = attr(name: build_meter_kind_attribute, value: build_meter_kind_key(kind: mark.kind))
+  let y = build_meter_lane_y(kind: mark.kind)
+  let tags = [
+    attr(name: build_meter_kind_attribute, value: build_meter_kind_key(kind: mark.kind)),
+    attr(name: build_meter_evidence_attribute, value: build_meter_evidence_key(evidence: mark.evidence)),
+  ]
   let lit = build_meter_kind_is_lit(kind: mark.kind)
   concat(
     [build_meter_rect(x: 0, y: y, w: build_meter_mark_width, h: build_meter_mark_height,
-      attributes: if mark.count > 1 || lit { [kind] } else { [kind, attr(name: "opacity", value: ".6")] })],
+      attributes: if mark.count > 1 || lit { tags } else { concat(tags, [attr(name: "opacity", value: ".6")]) })],
     if lit { [build_meter_rect(x: 0, y: y, w: build_meter_mark_width, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "lit"), attr(name: "opacity", value: ".3")])] } else { [] })
 }
 
 fn build_meter_mark_text(mark: BuildMeterMark) -> String {
-  join([build_meter_kind_key(kind: mark.kind), " ", to_string(mark.count)], "")
+  match mark.evidence {
+    BuildMeterTypedOperation => join([build_meter_kind_key(kind: mark.kind), " ", to_string(mark.count)], "")
+    BuildMeterToolCallCount => join([to_string(mark.count), if mark.count == 1 { " tool call" } else { " tool calls" }], "")
+    BuildMeterChangedPathCountRise => join([to_string(mark.count), if mark.count == 1 { " more changed path" } else { " more changed paths" }], "")
+  }
 }
 
 fn build_meter_round_title(round: BuildMeterRound) -> String {
@@ -309,15 +496,139 @@ fn build_meter_round_title(round: BuildMeterRound) -> String {
   ], "")
 }
 
-fn build_meter_round_node(index: Int, round: BuildMeterRound) -> Fragment {
+fn build_meter_failure_round(view: BuildMeterView) -> Int? {
+  match view.failure {
+    Present { value: d } => d.round
+    Absent => none
+  }
+}
+
+// A failure the record ties to a round is drawn in that round's column: a refused operation as a
+// broken mark across the lanes, a failed verification as a seal over the column.
+fn build_meter_round_failure_nodes(view: BuildMeterView, round: BuildMeterRound) -> List<Fragment> {
+  match view.failure {
+    Absent => []
+    Present { value: d } => match d.round {
+      Absent => []
+      Present { value: step } => if step != round.step { [] } else { match d.kind {
+        FailureVerificationFailed => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "seal"), build_meter_translate(x: 0 - 2, y: 0)], children: [build_meter_seal_node()])]
+        FailureRefused => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
+        FailureActivityFailed => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
+        FailureBudgetSpent => []
+        FailureHandoffBlocked => []
+      } }
+    }
+  }
+}
+
+fn build_meter_broken_mark_nodes() -> List<Fragment> {
+  [build_meter_painted(paint: "stop", children: [
+    build_meter_rect(x: 0, y: build_meter_lanes_top, w: 1, h: 2, attributes: []),
+    build_meter_rect(x: 1, y: build_meter_lanes_top + 2, w: 1, h: 2, attributes: []),
+    build_meter_rect(x: 2, y: build_meter_lanes_top + 4, w: 1, h: 2, attributes: []),
+    build_meter_rect(x: 1, y: build_meter_lanes_top + 6, w: 1, h: 2, attributes: []),
+    build_meter_rect(x: 0, y: build_meter_lanes_top + 8, w: 1, h: 2, attributes: []),
+  ])]
+}
+
+fn build_meter_round_node(view: BuildMeterView, index: Int, round: BuildMeterRound) -> Fragment {
   let step = build_meter_token_step(output_tokens: round.output_tokens)
   build_meter_svg(tag: "g", attributes: [
     attr(name: "data-round", value: to_string(round.step)),
     build_meter_translate(x: index * build_meter_round_pitch, y: 0),
-  ], children: concat([
+  ], children: concat(concat([
     build_meter_svg(tag: "title", attributes: [], children: [txt(build_meter_round_title(round: round))]),
     build_meter_rect(x: 0, y: build_meter_floor - step, w: build_meter_mark_width, h: step, attributes: [attr(name: build_meter_paint_attribute, value: "base")]),
-  ], flat_map(round.marks, m => build_meter_mark_nodes(mark: m))))
+  ], flat_map(round.marks, m => build_meter_mark_nodes(mark: m))), build_meter_round_failure_nodes(view: view, round: round)))
+}
+
+// Rounds this instrumentation did not record: a hollow, dotted frame where the history would be.
+// It is drawn the same width whatever happened, so it never reads as a count, and in the record's
+// own neutral paint, so it never reads as a failure.
+fn build_meter_unrecorded_nodes() -> List<Fragment> {
+  let xs = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]
+  let ys = [5, 7, 9, 11, 13, 15, 17]
+  [build_meter_painted(paint: "base", children: concat(concat(
+    map(xs, x => build_meter_rect(x: x, y: build_meter_lanes_top, w: 1, h: 1, attributes: [])),
+    map(xs, x => build_meter_rect(x: x, y: build_meter_floor - 1, w: 1, h: 1, attributes: []))),
+    concat(
+      map(ys, y => build_meter_rect(x: 0, y: y, w: 1, h: 1, attributes: [])),
+      map(ys, y => build_meter_rect(x: 30, y: y, w: 1, h: 1, attributes: [])))))]
+}
+
+// No round recorded yet: three dots on the floor where the strip will start.
+fn build_meter_no_round_nodes() -> List<Fragment> {
+  [build_meter_painted(paint: "base", children: [
+    build_meter_rect(x: 0, y: build_meter_floor - 1, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 3, y: build_meter_floor - 1, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 6, y: build_meter_floor - 1, w: 1, h: 1, attributes: []),
+  ])]
+}
+
+// A failed verification's seal: a small ring with a cross, in the error colour.
+fn build_meter_seal_node() -> Fragment {
+  build_meter_painted(paint: "stop", children: [
+    build_meter_rect(x: 2, y: 0, w: 3, h: 1, attributes: []),
+    build_meter_rect(x: 1, y: 1, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 5, y: 1, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 0, y: 2, w: 1, h: 3, attributes: []),
+    build_meter_rect(x: 6, y: 2, w: 1, h: 3, attributes: []),
+    build_meter_rect(x: 1, y: 5, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 5, y: 5, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 2, y: 6, w: 3, h: 1, attributes: []),
+    build_meter_rect(x: 2, y: 2, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 4, y: 2, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 3, y: 3, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 2, y: 4, w: 1, h: 1, attributes: []),
+    build_meter_rect(x: 4, y: 4, w: 1, h: 1, attributes: []),
+  ])
+}
+
+// A stage that failed with no round to tie it to: a stop cap at the working edge.
+fn build_meter_stop_cap_node() -> Fragment {
+  build_meter_painted(paint: "stop", children: [
+    build_meter_rect(x: 0, y: 2, w: 5, h: 2, attributes: []),
+    build_meter_rect(x: 2, y: 4, w: 1, h: build_meter_floor - 4, attributes: []),
+  ])
+}
+
+// The harness stopping the agent at its budget is not a failure: a closing bracket in the record's
+// own neutral paint.
+fn build_meter_budget_bracket_node() -> Fragment {
+  build_meter_painted(paint: "prop", children: [
+    build_meter_rect(x: 0, y: 2, w: 3, h: 1, attributes: []),
+    build_meter_rect(x: 2, y: 2, w: 1, h: build_meter_floor - 2, attributes: []),
+    build_meter_rect(x: 0, y: build_meter_floor - 1, w: 3, h: 1, attributes: []),
+  ])
+}
+
+// The mark at the working edge for a failure the record does not tie to a round; none when it
+// does (the column carries it) or when there is no failure.
+fn build_meter_edge_mark(view: BuildMeterView) -> Fragment? {
+  match view.failure {
+    Absent => none
+    Present { value: d } => match d.round {
+      Present { value: _ } => none
+      Absent => Present { value: match d.kind {
+        FailureVerificationFailed => build_meter_edge_group(edge: "seal", y: 7, mark: build_meter_seal_node())
+        FailureRefused => build_meter_edge_group(edge: "stop-cap", y: 0, mark: build_meter_stop_cap_node())
+        FailureActivityFailed => build_meter_edge_group(edge: "stop-cap", y: 0, mark: build_meter_stop_cap_node())
+        FailureHandoffBlocked => build_meter_edge_group(edge: "stop-cap", y: 0, mark: build_meter_stop_cap_node())
+        FailureBudgetSpent => build_meter_edge_group(edge: "budget", y: 0, mark: build_meter_budget_bracket_node())
+      } }
+    }
+  }
+}
+
+fn build_meter_edge_group(edge: String, y: Int, mark: Fragment) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: edge), build_meter_translate(x: 0, y: y)], children: [mark])
+}
+
+fn build_meter_edge_mark_width(view: BuildMeterView) -> Int {
+  match build_meter_edge_mark(view: view) {
+    Absent => 0
+    Present { value: _ } => 10
+  }
 }
 
 // The worker is the gunbai mark at strip size: a wide flat-topped slab, two round eyes set far
@@ -339,6 +650,20 @@ data build_meter_body_rows: List<BuildMeterBox> = [
   build_meter_box(x: 0, y: 3, w: 20, h: 10),
   build_meter_box(x: 1, y: 13, w: 18, h: 1), build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1),
 ]
+// The outline of the same body, for a paused (stale) worker: the body's edge pixels, hollow feet,
+// eyes and mouth as flat strokes.
+data build_meter_edge_rows: List<BuildMeterBox> = [
+  build_meter_box(x: 4, y: 0, w: 12, h: 1),
+  build_meter_box(x: 2, y: 1, w: 2, h: 1), build_meter_box(x: 16, y: 1, w: 2, h: 1),
+  build_meter_box(x: 1, y: 2, w: 1, h: 1), build_meter_box(x: 18, y: 2, w: 1, h: 1),
+  build_meter_box(x: 0, y: 3, w: 1, h: 10), build_meter_box(x: 19, y: 3, w: 1, h: 10),
+  build_meter_box(x: 1, y: 13, w: 1, h: 1), build_meter_box(x: 18, y: 13, w: 1, h: 1),
+  build_meter_box(x: 2, y: 14, w: 2, h: 1), build_meter_box(x: 16, y: 14, w: 2, h: 1),
+  build_meter_box(x: 4, y: 15, w: 12, h: 1),
+  build_meter_box(x: 3, y: 16, w: 1, h: 2), build_meter_box(x: 6, y: 16, w: 1, h: 2), build_meter_box(x: 4, y: 17, w: 2, h: 1),
+  build_meter_box(x: 13, y: 16, w: 1, h: 2), build_meter_box(x: 16, y: 16, w: 1, h: 2), build_meter_box(x: 14, y: 17, w: 2, h: 1),
+  build_meter_box(x: 4, y: 6, w: 3, h: 1), build_meter_box(x: 13, y: 6, w: 3, h: 1), build_meter_box(x: 8, y: 9, w: 4, h: 1),
+]
 data build_meter_light_rows: List<BuildMeterBox> = [build_meter_box(x: 5, y: 1, w: 5, h: 1), build_meter_box(x: 3, y: 2, w: 2, h: 1), build_meter_box(x: 2, y: 3, w: 1, h: 2)]
 data build_meter_shade_rows: List<BuildMeterBox> = [build_meter_box(x: 2, y: 14, w: 16, h: 1), build_meter_box(x: 4, y: 15, w: 12, h: 1), build_meter_box(x: 19, y: 6, w: 1, h: 6)]
 data build_meter_feet_rows: List<BuildMeterBox> = [build_meter_box(x: 3, y: 16, w: 4, h: 2), build_meter_box(x: 13, y: 16, w: 4, h: 2)]
@@ -354,12 +679,12 @@ fn build_meter_lid_rects(rows: List<Int>) -> List<Fragment> {
   flat_map(build_meter_eye_lefts, x => map(rows, y => build_meter_rect(x: x, y: y, w: 4, h: 1, attributes: [])))
 }
 
-// A lid group is drawn over the eyes in the body colour. `on` is the pose's own still; a group
+// A lid group is drawn over the eyes in the lid colour. `on` is the pose's own still; a group
 // that is off is there for decoration to raise.
 fn build_meter_lid_group(class_name: String, rows: List<Int>, on: Bool) -> Fragment {
   build_meter_svg(tag: "g", attributes: [
     attr(name: "class", value: class_name),
-    attr(name: build_meter_paint_attribute, value: "body"),
+    attr(name: build_meter_paint_attribute, value: "lid"),
     attr(name: build_meter_lid_attribute, value: if on { "on" } else { "off" }),
   ], children: build_meter_lid_rects(rows: rows))
 }
@@ -405,14 +730,33 @@ fn build_meter_eye_node(x: Int) -> Fragment {
 
 // Standing: feet under the body. Sitting (a published attempt): no feet, the body two units
 // lower and on the floor, eyes shut.
-fn build_meter_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
+fn build_meter_worker_node(pose: BuildMeterPose, stale: Bool, x: Int) -> Fragment {
+  if stale { build_meter_paused_worker_node(x: x) } else { build_meter_solid_worker_node(pose: pose, x: x) }
+}
+
+// Paused: the attempt was launched on a revision the deployed tree has moved past, so its worker
+// stands as an outline. It neither works nor sleeps, and it carries no colour of its own.
+fn build_meter_paused_worker_node(x: Int) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [build_meter_translate(x: x, y: build_meter_worker_top)], children: [
+    build_meter_svg(tag: "g", attributes: [
+      attr(name: "class", value: build_meter_worker_class),
+      attr(name: build_meter_worker_attribute, value: "outline"),
+    ], children: [build_meter_painted(paint: "edge", children: build_meter_rows(rows: build_meter_edge_rows))]),
+  ])
+}
+
+fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
   let sits = build_meter_pose_sits(pose: pose)
+  let reaches = build_meter_pose_reaches(pose: pose)
   build_meter_svg(tag: "g", attributes: [
     build_meter_translate(x: x, y: if sits { build_meter_worker_top + 2 } else { build_meter_worker_top }),
-  ], children: [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_worker_class)], children: concat(
+  ], children: [build_meter_svg(tag: "g", attributes: [
+    attr(name: "class", value: build_meter_worker_class),
+    attr(name: build_meter_worker_attribute, value: "solid"),
+  ], children: concat(
     concat(
       if sits { [] } else { [build_meter_painted(paint: "shade", children: build_meter_rows(rows: build_meter_feet_rows))] },
-      if build_meter_pose_reaches(pose: pose) {
+      if reaches {
         [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_arm_class), attr(name: build_meter_paint_attribute, value: "body")], children: [build_meter_rect(x: 0 - 2, y: 8, w: 3, h: 3, attributes: [])])]
       } else { [] }),
     [
@@ -445,147 +789,62 @@ fn build_meter_hourglass_node(x: Int) -> Fragment {
   ])
 }
 
-type BuildMeterArtLayout {
-  strip_width: Int
-  stop_x: Int
-  worker_x: Int
-  width: Int
+fn build_meter_history_width(view: BuildMeterView) -> Int {
+  match view.coverage {
+    BuildMeterRoundsRecorded { rounds: _, last_recorded_at: _ } => count(build_meter_drawn_rounds(view: view)) * build_meter_round_pitch - 1
+    BuildMeterNoRoundYet => 7
+    BuildMeterRoundsNotRecorded { reason: _ } => build_meter_unrecorded_width
+  }
 }
 
-fn build_meter_art_layout(drawn: Int, pose: BuildMeterPose) -> BuildMeterArtLayout {
-  let strip = drawn * build_meter_round_pitch
-  let after_strip = if drawn == 0 { 0 } else { strip + 3 }
-  let stopped = match pose {
-    BuildMeterStopped => true
-    BuildMeterWorking => false
-    BuildMeterWaitingForSeat => false
-    BuildMeterDone => false
-    BuildMeterIdle => false
+fn build_meter_history_nodes(view: BuildMeterView) -> List<Fragment> {
+  match view.coverage {
+    BuildMeterRoundsRecorded { rounds: _, last_recorded_at: _ } =>
+      map(enumerate(build_meter_drawn_rounds(view: view)), pair => build_meter_round_node(view: view, index: pair.first, round: pair.second))
+    BuildMeterNoRoundYet => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_history_attribute, value: "none-yet")], children: build_meter_no_round_nodes())]
+    BuildMeterRoundsNotRecorded { reason: _ } => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_history_attribute, value: "not-recorded")], children: build_meter_unrecorded_nodes())]
   }
-  let waiting = match pose {
+}
+
+fn build_meter_art(view: BuildMeterView) -> Fragment {
+  let history = build_meter_history_width(view: view)
+  let edge_x = history + 3
+  let worker_x = edge_x + build_meter_edge_mark_width(view: view) + (if build_meter_pose_reaches(pose: view.pose) && !view.stale { 2 } else { 0 })
+  let waiting = match view.pose {
     BuildMeterWaitingForSeat => true
     BuildMeterWorking => false
     BuildMeterStopped => false
     BuildMeterDone => false
     BuildMeterIdle => false
   }
-  let worker_x = after_strip + (if stopped { 5 } else { 0 }) + (if build_meter_pose_reaches(pose: pose) { 2 } else { 0 })
-  BuildMeterArtLayout {
-    strip_width: strip,
-    stop_x: after_strip,
-    worker_x: worker_x,
-    width: worker_x + build_meter_worker_width + (if waiting { 11 } else { 1 }),
-  }
-}
-
-fn build_meter_art(view: BuildMeterView) -> Fragment {
-  let drawn = build_meter_drawn_rounds(view: view)
-  let layout = build_meter_art_layout(drawn: count(drawn), pose: view.pose)
-  let finish = match view.pose {
-    BuildMeterDone => if count(drawn) == 0 { [] } else { [build_meter_rect(x: 0, y: build_meter_floor, w: layout.strip_width - 1, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")])] }
-    BuildMeterWorking => []
-    BuildMeterWaitingForSeat => []
-    BuildMeterStopped => []
-    BuildMeterIdle => []
-  }
-  let stop = match view.pose {
-    BuildMeterStopped => [build_meter_rect(x: layout.stop_x, y: 1, w: 2, h: build_meter_floor - 1, attributes: [attr(name: build_meter_paint_attribute, value: "stop")])]
-    BuildMeterWorking => []
-    BuildMeterWaitingForSeat => []
-    BuildMeterDone => []
-    BuildMeterIdle => []
-  }
-  let prop = match view.pose {
-    BuildMeterWaitingForSeat => [build_meter_hourglass_node(x: layout.worker_x + build_meter_worker_width + 4)]
-    BuildMeterWorking => []
-    BuildMeterStopped => []
-    BuildMeterDone => []
-    BuildMeterIdle => []
+  let width = worker_x + build_meter_worker_width + (if waiting { 11 } else { 1 })
+  let finish = if build_meter_is_published(handoff: view.handoff) && history > 0 {
+    [build_meter_rect(x: 0, y: build_meter_floor, w: history, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")])]
+  } else { [] }
+  let edge = match build_meter_edge_mark(view: view) {
+    Present { value: mark } => [build_meter_svg(tag: "g", attributes: [build_meter_translate(x: edge_x, y: 0)], children: [mark])]
+    Absent => []
   }
   build_meter_svg(tag: "svg", attributes: [
     attr(name: "class", value: build_meter_art_class),
     attr(name: "aria-hidden", value: "true"),
     attr(name: "focusable", value: "false"),
-    attr(name: "width", value: to_string(layout.width)),
+    attr(name: "width", value: to_string(width)),
     attr(name: "height", value: to_string(build_meter_art_height)),
-    attr(name: "viewBox", value: join(["0 0 ", to_string(layout.width), " ", to_string(build_meter_art_height)], "")),
+    attr(name: "viewBox", value: join(["0 0 ", to_string(width), " ", to_string(build_meter_art_height)], "")),
     attr(name: "shape-rendering", value: "crispEdges"),
   ], children: concat(
-    map(enumerate(drawn), pair => build_meter_round_node(index: pair.first, round: pair.second)),
-    concat(finish, concat(stop, concat([build_meter_worker_node(pose: view.pose, x: layout.worker_x)], prop)))))
+    build_meter_history_nodes(view: view),
+    concat(finish, concat(edge, concat(
+      [build_meter_worker_node(pose: view.pose, stale: view.stale, x: worker_x)],
+      if waiting { [build_meter_hourglass_node(x: worker_x + build_meter_worker_width + 4)] } else { [] })))))
 }
 
-fn build_meter_rounds_noun(n: Int) -> String {
-  if n == 1 { "1 round recorded" } else { join([to_string(n), " rounds recorded"], "") }
-}
-
-fn build_meter_earlier_text(hidden: Int) -> String {
-  join(["+", to_string(hidden), " earlier"], "")
-}
-
-fn build_meter_line(class_name: String, children: List<Fragment>) -> Fragment {
-  el_attrs("span", [attr(name: "class", value: class_name)], children)
-}
-
-fn build_meter_rounds_line(view: BuildMeterView) -> Fragment {
-  match view.rounds {
-    BuildMeterRoundsUnobserved { reason } =>
-      build_meter_line(class_name: build_meter_line_class, children: [txt(join(["Rounds unobserved: ", reason], ""))])
-    BuildMeterRoundsRecorded { rounds: rs, last_recorded_at: at } => {
-      let hidden = build_meter_hidden_count(view: view)
-      let counted = join([
-        build_meter_rounds_noun(n: count(rs)),
-        if hidden == 0 { "" } else { join([" · ", build_meter_earlier_text(hidden: hidden)], "") },
-      ], "")
-      build_meter_line(class_name: build_meter_line_class, children: match at {
-        Absent => [txt(counted)]
-        Present { value: t } => [
-          txt(join([counted, " · last round "], "")),
-          el_attrs("time", [attr(name: "datetime", value: t)], [txt(t)]),
-        ]
-      })
-    }
+fn build_meter_outcome_key(view: BuildMeterView) -> String {
+  match view.failure {
+    Present { value: d } => failure_kind_key(kind: d.kind)
+    Absent => if build_meter_is_published(handoff: view.handoff) { "published" } else { "open" }
   }
-}
-
-fn build_meter_stage_text(view: BuildMeterView) -> String {
-  join([view.stage_label, " ", view.stage_state], "")
-}
-
-// A stop is stated as its subject and its reason. When the subject is the stage line just above
-// it, the reason stands alone under that line; a stop with no recorded reason is its subject.
-fn build_meter_halt_text(halt: BuildMeterHalt, stage: String) -> String {
-  if halt.reason == "" { halt.subject } else if halt.subject == stage { halt.reason } else { join([halt.subject, ": ", halt.reason], "") }
-}
-
-// The first stage that stopped is stated with its reason; any further ones are counted.
-fn build_meter_halt_lines(halts: List<BuildMeterHalt>, stage: String) -> List<Fragment> {
-  match halts.first() {
-    Absent => []
-    Present { value: first } => concat(
-      [build_meter_line(class_name: build_meter_halt_class, children: [txt(build_meter_halt_text(halt: first, stage: stage))])],
-      if count(halts) == 1 { [] } else {
-        [build_meter_line(class_name: build_meter_line_class, children: [txt(join(["+", to_string(count(halts) - 1), " more stopped"], ""))])]
-      })
-  }
-}
-
-fn build_meter_text(view: BuildMeterView) -> Fragment {
-  el_attrs("span", [attr(name: "class", value: build_meter_text_class)], concat(
-    [build_meter_line(class_name: build_meter_stage_class, children: [txt(build_meter_stage_text(view: view))])],
-    concat(
-      match view.seat_wait {
-        Present { value: w } => [build_meter_line(class_name: build_meter_line_class, children: [txt(w)])]
-        Absent => []
-      },
-      concat(
-        [build_meter_rounds_line(view: view)],
-        concat(
-          build_meter_halt_lines(halts: view.halts, stage: build_meter_stage_text(view: view)),
-          match view.outcome {
-            Present { value: o } => [build_meter_line(class_name: build_meter_outcome_class, children: [txt(o)])]
-            Absent => []
-          })))))
 }
 
 data build_meter_blink_period_property: String = "meter-blink-period"
@@ -599,24 +858,40 @@ fn build_meter_seed_style(attempt_key: String) -> String {
   ], "")
 }
 
-// The body is everything that changes with the view. A client that receives a newer body swaps
-// it whole; the link around it, with its destination, stays as the page rendered it.
-fn build_meter_body(view: BuildMeterView) -> Fragment {
+// The body is everything that changes with the summary. A client that receives a newer body swaps
+// it whole, and takes the newer link destination with it.
+fn build_meter_body(summary: CompactWorkSummary) -> Fragment {
+  let view = summary.view
   el_attrs("span", [
     attr(name: "class", value: build_meter_body_class),
-    attr(name: build_meter_key_attribute, value: build_meter_view_key(view: view)),
+    attr(name: build_meter_revision_attribute, value: summary.revision),
     attr(name: build_meter_rounds_attribute, value: to_string(build_meter_round_count(view: view))),
     attr(name: build_meter_pose_attribute, value: build_meter_pose_key(pose: view.pose)),
+    attr(name: build_meter_coverage_attribute, value: build_meter_coverage_key(coverage: view.coverage)),
+    attr(name: build_meter_outcome_attribute, value: build_meter_outcome_key(view: view)),
     attr(name: "style", value: build_meter_seed_style(attempt_key: view.attempt_key)),
-  ], [build_meter_art(view: view), build_meter_text(view: view)])
+  ], concat(concat(
+    [build_meter_art(view: view)],
+    match view.failure {
+      Present { value: d } => if d.event_count > 1 {
+        [el_attrs("span", [attr(name: "class", value: build_meter_badge_class), attr(name: "aria-hidden", value: "true")], [txt(join(["×", to_string(d.event_count)], ""))])]
+      } else { [] }
+      Absent => []
+    }),
+    [
+      el_attrs("span", [attr(name: "class", value: build_meter_name_class)], [txt(build_meter_accessible_name(view: view))]),
+      el_attrs("span", [attr(name: "class", value: build_meter_digest_class), attr(name: "aria-hidden", value: "true")], [txt(build_meter_digest_line(view: view))]),
+    ]))
 }
 
-fn build_meter(input: BuildMeter) -> Fragment {
+// The element: one link whose destination is the view's, carrying the subject so a client can
+// find it, and whatever placement attributes the page gives it.
+fn build_meter(summary: CompactWorkSummary, link_attributes: List<Attribute>) -> Fragment {
   el_attrs("a", concat([
     attr(name: "class", value: build_meter_class),
-    attr(name: "href", value: input.href),
-    attr(name: build_meter_subject_attribute, value: input.subject),
-  ], input.link_attributes), [build_meter_body(view: input.view)])
+    attr(name: "href", value: summary.view.destination),
+    attr(name: build_meter_subject_attribute, value: summary.subject),
+  ], link_attributes), [build_meter_body(summary: summary)])
 }
 
 // Timing of the decoration. These are the element's own: they are long idle periods and one
@@ -717,10 +992,30 @@ fn build_meter_lid_state_rule(state_class: String, lid_class: String, opacity: S
   ] }
 }
 
+
+fn build_meter_visually_hidden_decls() -> List<CssDecl> {
+  [
+    decl(prop: Position, value: "absolute"),
+    decl(prop: Width, value: scale_var(t: space_1)),
+    decl(prop: Height, value: scale_var(t: space_1)),
+    decl(prop: Margin, value: build_meter_negative(length: scale_var(t: space_1))),
+    decl(prop: Overflow, value: "hidden"),
+    decl(prop: RawProperty { name: "clip" }, value: "rect(0 0 0 0)"),
+    decl(prop: WhiteSpace, value: "nowrap"),
+  ]
+}
+
+fn build_meter_reveal_rule(trigger_hover: Bool) -> BuildRule {
+  ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: WithinSubject { target: join([".", build_meter_digest_class], "") }, trigger: if trigger_hover { OnHover } else { OnFocusVisible }, transition_props: "opacity", timing: respond_fast, base_decls: [], response_decls: [
+    decl(prop: Opacity, value: "1"),
+  ] }
+}
+
 fn build_meter_rules() -> List<BuildRule> {
   concat([
     StaticRule { selector: ClassSelector { name: build_meter_class }, decls: [
-      decl(prop: Display, value: "block"),
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Position, value: "relative"),
       decl(prop: Padding, value: scale_var(t: space_4)),
       decl(prop: Margin, value: build_meter_negative(length: scale_var(t: space_4))),
       decl(prop: BorderRadius, value: scale_var(t: radius_element)),
@@ -728,32 +1023,38 @@ fn build_meter_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: ClassSelector { name: build_meter_body_class }, decls: [
       decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
+      decl(prop: AlignItems, value: "flex-end"),
       decl(prop: Gap, value: scale_var(t: space_2)),
     ] },
     StaticRule { selector: ClassSelector { name: build_meter_art_class }, decls: [
       decl(prop: Display, value: "block"),
       decl(prop: Overflow, value: "visible"),
     ] },
-    StaticRule { selector: ClassSelector { name: build_meter_text_class }, decls: [
-      decl(prop: Display, value: "flex"),
-      decl(prop: FlexDirection, value: "column"),
-      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
-    ] },
-    StaticRule { selector: ClassSelector { name: build_meter_stage_class }, decls: element_text_decls(role: ElementBody) },
-    StaticRule { selector: ClassSelector { name: build_meter_line_class }, decls: element_text_decls(role: ElementLabel) },
-    StaticRule { selector: ClassSelector { name: build_meter_outcome_class }, decls: element_text_decls(role: ElementBody) },
-    StaticRule { selector: RawSelector { text: join([".", build_meter_line_class, " time"], "") }, decls: [
+    StaticRule { selector: ClassSelector { name: build_meter_badge_class }, decls: concat(element_text_decls(role: ElementLabel), [
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: TextDecoration, value: "none"),
       decl(prop: WhiteSpace, value: "nowrap"),
-    ] },
-    StaticRule { selector: ClassSelector { name: build_meter_halt_class }, decls: concat(element_text_decls(role: ElementLabel), [
-      decl(prop: RawProperty { name: "border-inline-start" }, value: scale_border(w: border_2, color_var: palette_var(slot: SlotError))),
-      decl(prop: RawProperty { name: "padding-inline-start" }, value: scale_var(t: space_4)),
+    ]) },
+    StaticRule { selector: ClassSelector { name: build_meter_name_class }, decls: build_meter_visually_hidden_decls() },
+    StaticRule { selector: ClassSelector { name: build_meter_digest_class }, decls: concat(element_text_decls(role: ElementLabel), [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "top" }, value: "100%"),
+      decl(prop: RawProperty { name: "left" }, value: scale_var(t: space_0)),
+      decl(prop: RawProperty { name: "z-index" }, value: "2"),
+      decl(prop: Padding, value: scale_pair(a: space_2, b: space_4)),
+      decl(prop: Background, value: palette_var(slot: SlotSurface)),
+      decl(prop: BoxShadow, value: join(["inset 0 0 0 ", scale_var(t: border_1), " ", palette_var(slot: SlotBorder)], "")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_element)),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: Opacity, value: "0"),
+      decl(prop: RawProperty { name: "pointer-events" }, value: "none"),
     ]) },
     build_meter_paint_rule(paint: "body", value: palette_var(slot: SlotMeterWorker)),
+    build_meter_paint_rule(paint: "lid", value: palette_var(slot: SlotMeterWorker)),
     build_meter_paint_rule(paint: "light", value: palette_var(slot: SlotMeterWorkerLight)),
     build_meter_paint_rule(paint: "shade", value: palette_var(slot: SlotMeterWorkerShade)),
     build_meter_paint_rule(paint: "feature", value: palette_var(slot: SlotMeterWorkerFeature)),
+    build_meter_paint_rule(paint: "edge", value: palette_var(slot: SlotTextDim)),
     build_meter_paint_rule(paint: "base", value: palette_var(slot: SlotBorder)),
     build_meter_paint_rule(paint: "prop", value: palette_var(slot: SlotTextDim)),
     build_meter_paint_rule(paint: "stop", value: palette_var(slot: SlotError)),
@@ -767,11 +1068,14 @@ fn build_meter_rules() -> List<BuildRule> {
       build_meter_lid_rest_rule(class_name: build_meter_blink_class),
       ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
         decl(prop: Background, value: palette_var(slot: SlotHover)),
+        decl(prop: TextDecoration, value: "none"),
       ] },
       ResponseRule { subject: ClassSelector { name: build_meter_class }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "outline-color", timing: respond_fast, base_decls: [], response_decls: [
         decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
         decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_0)),
       ] },
+      build_meter_reveal_rule(trigger_hover: true),
+      build_meter_reveal_rule(trigger_hover: false),
       build_meter_glance_rule(trigger_hover: true),
       build_meter_glance_rule(trigger_hover: false),
       build_meter_look_rule(side: build_meter_look_left, x: build_meter_negative(length: scale_var(t: space_1))),
