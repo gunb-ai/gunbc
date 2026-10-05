@@ -1,5 +1,6 @@
 module v2.test.parse.typescript
 
+import v2.std.verification { EqualsClaim, Integration, ManualAnchorAbsent, TestClaim, TestClassification, Tier1, manual_claim_anchor }
 import test.claim.parse_test_typescript_grammar { ts_parse_accepted, ts_parse_bool_atom, ts_tokenize_and_parse_source }
 
 data ts_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
