@@ -2141,7 +2141,7 @@ data unimported_bare_provider_dispositions: List<UnimportedBareProviderDispositi
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_enforcement/gate_test.dag", name: "lens_registry_v0_parallelism", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_enforcement/gate_test.dag", name: "qualified_name_from_dotted_string", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_enforcement/gate_test.dag", name: "standing_intent_registry", standing: Retired { cause: ImportsFixed } },
-  UnimportedBareProviderDisposition { file: "src/v2/test/lens_mock_totality/cron_mock_totality_test.dag", name: "PublishedMockCase", standing: ActiveDebt },
+  UnimportedBareProviderDisposition { file: "src/v2/test/lens_mock_totality/cron_mock_totality_test.dag", name: "PublishedMockCase", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_mock_totality/cron_mock_totality_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_mock_totality/diagnostic_mock_totality_test.dag", name: "SubstrateInputsOnly", standing: Retired { cause: ImportsFixed } },
   UnimportedBareProviderDisposition { file: "src/v2/test/lens_mock_totality/filesystem_mock_totality_test.dag", name: "PublishedMockCase", standing: ActiveDebt },
