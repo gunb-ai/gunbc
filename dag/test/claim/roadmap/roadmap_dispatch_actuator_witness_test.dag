@@ -66,7 +66,8 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_provider_inner_argv,
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
-  CursorProviderSpawnUnwired,
+  CursorProviderOffCustodyHost,
+  CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
   ClaudeProviderCredentialUnbound,
@@ -1097,7 +1098,8 @@ test fn witness_codex_account_default_passes_no_model_flag() -> Bool {
 fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
   match inner {
     DispatchProviderInnerArgvReady { argv } => join(argv, separator: "\0")
-    CursorProviderSpawnUnwired { reason: r } => r as String
+    CursorProviderOffCustodyHost { reason: r } => r as String
+    CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String
     ClaudeProviderCredentialUnbound { reason: r } => r as String

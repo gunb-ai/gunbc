@@ -198,6 +198,8 @@ import gunbc.roadmap_provider_events {
   codex_provider_event_projection_args,
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
+import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
+import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -2125,11 +2127,21 @@ data gunbc_harness_needs_instance_reason: NonEmptyStr = "the gunbc harness worke
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
-  | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+  | CursorProviderOffCustodyHost { reason: NonEmptyStr }
+  | CodexProviderOffCustodyHost { reason: NonEmptyStr }
   | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
   | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
 
-data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
+// THE WORKER-TURN CREDENTIALS LIVE ON ONE HOST EACH (gunbc.cursor_harness_credential,
+// gunbc.codex_harness_credential), so a Cursor or Codex spawn on any other instance host refuses here
+// rather than running against an ambient login. The instance-less Cursor form cannot check the host
+// at all and refuses. On the custody host, codex runs with CODEX_HOME set to the custody directory,
+// never the instance's ambient login, and the run holds its flock for its whole life.
+data provider_custody_host_unknown_reason: NonEmptyStr = "no dashboard instance: the worker-turn credential's custody host cannot be checked" as NonEmptyStr
+
+fn provider_off_custody_host_reason(provider_label: String, custody_host: HostIdentity, instance_host: NonEmptyStr) -> NonEmptyStr {
+  join([provider_label, " worker-turn credential is held only on ", custody_host as String, "; this instance runs on ", instance_host as String], "") as NonEmptyStr
+}
 
 // THE HARNESS SPAWN. The worker is this repository's own binary running a .dag entry, so there is
 // no runtime to install, no provider home to seed and no version to reconcile against a committed
@@ -2244,7 +2256,7 @@ fn dispatch_provider_inner_argv(
         ),
       }
     CursorDispatchProvider =>
-      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+      CursorProviderOffCustodyHost { reason: provider_custody_host_unknown_reason }
     GunbcHarnessProvider =>
       GunbcHarnessSpawnNeedsInstance { reason: gunbc_harness_needs_instance_reason }
   }
@@ -2308,30 +2320,46 @@ fn dispatch_provider_inner_argv_for_instance(
         ),
       )
     CodexDispatchProvider =>
-      match dashboard_instance_provider_executable(instance: instance) {
-        Absent =>
-          CodexProviderExecutableAbsent {
-            reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
-          }
-        Present { value: codex_program } =>
-          DispatchProviderInnerArgvReady {
-            argv: shape_codex_exec_argv_for_programs(
-              env_program: dispatch_capability_program(
-                environment: instance.execution_environment,
-                cap: EnvironmentBindingCapability,
+      if (instance.host_identity as String) != (codex_worker_turn_custody_host as String) {
+        CodexProviderOffCustodyHost {
+          reason: provider_off_custody_host_reason(provider_label: "codex", custody_host: codex_worker_turn_custody_host, instance_host: instance.host_identity),
+        }
+      } else {
+        match dashboard_instance_provider_executable(instance: instance) {
+          Absent =>
+            CodexProviderExecutableAbsent {
+              reason: dashboard_instance_provider_executable_refusal_detail(instance: instance) as NonEmptyStr,
+            }
+          Present { value: codex_program } =>
+            DispatchProviderInnerArgvReady {
+              argv: codex_harness_turn_argv(
+                command: shape_codex_exec_argv_for_programs(
+                  env_program: dispatch_capability_program(
+                    environment: instance.execution_environment,
+                    cap: EnvironmentBindingCapability,
+                  ),
+                  program: codex_program as String,
+                  codex_home: codex_worker_turn_codex_home as String,
+                  cwd: worktree_path,
+                  prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
+                  reasoning_effort: effort,
+                  model: model,
+                  spec: dispatch_codex_exec_spec,
+                ),
               ),
-              program: codex_program as String,
-              codex_home: dashboard_instance_provider_state_root(instance: instance) as String,
-              cwd: worktree_path,
-              prompt: join([brief, "\n\n", dispatch_codex_start_prompt], ""),
-              reasoning_effort: effort,
-              model: model,
-              spec: dispatch_codex_exec_spec,
-            ),
-          }
+            }
+        }
       }
     CursorDispatchProvider =>
-      CursorProviderSpawnUnwired { reason: cursor_provider_spawn_unwired_reason }
+      if (instance.host_identity as String) != (cursor_worker_turn_custody_host as String) {
+        CursorProviderOffCustodyHost {
+          reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
+        }
+      } else {
+        DispatchProviderInnerArgvReady {
+          argv: cursor_worker_turn_argv(worktree_path: worktree_path, prompt: brief as NonEmptyStr),
+        }
+      }
     GunbcHarnessProvider =>
       DispatchProviderInnerArgvReady {
         argv: gunbc_harness_spawn_argv(
@@ -3121,9 +3149,14 @@ fn dispatch_spawn_commands_for_resolved_instance(
     brief: brief,
     alignment_chain_fingerprint: alignment_chain_fingerprint(chain: chain),
   ) {
-    CursorProviderSpawnUnwired { reason } =>
+    CursorProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
-        step: "cursor-provider-spawn" as NonEmptyStr,
+        step: "cursor-credential-custody-host" as NonEmptyStr,
+        detail: reason as String,
+      }
+    CodexProviderOffCustodyHost { reason } =>
+      DispatchSpawnRefused {
+        step: "codex-credential-custody-host" as NonEmptyStr,
         detail: reason as String,
       }
     CodexProviderExecutableAbsent { reason } =>

@@ -1,0 +1,129 @@
+module test.claim.worker_turn_dispatch_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.optional { Present, Absent }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance, srv2_lab_dashboard_instance }
+import gunbc.roadmap_dispatch_actuator {
+  DispatchProviderInnerArgv,
+  DispatchProviderInnerArgvReady,
+  CodexProviderExecutableAbsent,
+  CursorProviderOffCustodyHost,
+  CodexProviderOffCustodyHost,
+  ClaudeProviderCredentialUnbound,
+  GunbcHarnessSpawnNeedsInstance,
+  CursorDispatchProvider,
+  CodexDispatchProvider,
+  DispatchCliProvider,
+  dispatch_provider_inner_argv_for_instance,
+}
+import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
+import gunbc.cursor_harness_credential { cursor_worker_turn_api_key_host_path }
+import gunbc.codex_harness_credential { codex_harness_turn_lock_path, codex_worker_turn_codex_home }
+import gunbc.host_layout { srv2_roadmap_codex_home }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRODUCTION SPAWN FOLD for a dashboard instance, with nothing supplied but the instance: these
+// claims exercise dispatch_provider_inner_argv_for_instance over the declared srv1 and srv2 instances,
+// so a change that sends a Cursor or Codex turn to an ambient login, or to a host that does not hold
+// the credential, reds here.
+fn inner_for(instance: HostDashboardInstance, provider: DispatchCliProvider) -> DispatchProviderInnerArgv {
+  dispatch_provider_inner_argv_for_instance(
+    instance: instance,
+    provider: provider,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+    session_uuid: "00000000-0000-4000-8000-000000000000",
+    node_id: "node-worker-turn" as NonEmptyStr as RoadmapNodeId,
+    attempt_key: "0123456789abcdef",
+    worktree_path: "/tmp/w",
+    brief: "brief",
+    alignment_chain_fingerprint: "fp",
+  )
+}
+
+fn ready_argv(inner: DispatchProviderInnerArgv) -> List<String>? {
+  match inner {
+    DispatchProviderInnerArgvReady { argv } => Present { value: argv }
+    CodexProviderExecutableAbsent { reason: _ } => none
+    CursorProviderOffCustodyHost { reason: _ } => none
+    CodexProviderOffCustodyHost { reason: _ } => none
+    ClaudeProviderCredentialUnbound { reason: _ } => none
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => none
+  }
+}
+
+fn first_word_is(argv: List<String>, word: String) -> Bool {
+  match argv.first() {
+    Present { value: w } => w == word
+    Absent => false
+  }
+}
+
+fn has_pair(argv: List<String>, flag: String, value: String) -> Bool {
+  string_contains(s: join(argv, separator: "\0"), pattern: join(["\0", flag, "\0", value], ""))
+}
+
+// THE CURSOR ROUTE on the custody host: the key is exported from the custody file inside the child
+// (the shared sh wrapper is the first word and the custody path is its argument), the agent runs
+// unattended in print mode against the attempt worktree, and no word of the argv is --api-key.
+test fn a_cursor_turn_on_srv2_binds_the_custody_key_through_the_env_wrapper() -> Bool {
+  match ready_argv(inner: inner_for(instance: srv2_lab_dashboard_instance(), provider: CursorDispatchProvider)) {
+    Absent => false
+    Present { value: argv } =>
+      first_word_is(argv: argv, word: "sh")
+        && any(argv, a => a == cursor_worker_turn_api_key_host_path as String)
+        && any(argv, a => a == "cursor-agent")
+        && any(argv, a => a == "--print")
+        && any(argv, a => a == "--force")
+        && any(argv, a => a == "--trust")
+        && has_pair(argv: argv, flag: "--sandbox", value: "enabled")
+        && has_pair(argv: argv, flag: "--workspace", value: "/tmp/w")
+        && !any(argv, a => a == "--api-key")
+  }
+}
+
+test fn a_cursor_turn_off_its_custody_host_refuses() -> Bool {
+  match inner_for(instance: srv1_live_dashboard_instance(), provider: CursorDispatchProvider) {
+    CursorProviderOffCustodyHost { reason } => string_contains(s: reason as String, pattern: "srv2")
+    DispatchProviderInnerArgvReady { argv: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CodexProviderOffCustodyHost { reason: _ } => false
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+// THE CODEX ROUTE on the custody host: the whole command runs under the exclusive non-blocking flock
+// on the custody lock, with conflict exit 75, and CODEX_HOME is the custody directory -- never the
+// instance's ambient roadmap login, which is the arm this replaced.
+test fn a_codex_turn_on_srv2_runs_under_the_flock_on_the_custody_codex_home() -> Bool {
+  match inner_for(instance: srv2_lab_dashboard_instance(), provider: CodexDispatchProvider) {
+    DispatchProviderInnerArgvReady { argv } =>
+      first_word_is(argv: argv, word: "flock")
+        && any(argv, a => a == "--exclusive")
+        && any(argv, a => a == "--nonblock")
+        && has_pair(argv: argv, flag: "--conflict-exit-code", value: "75")
+        && any(argv, a => a == codex_harness_turn_lock_path as String)
+        && any(argv, a => a == concat("CODEX_HOME=", codex_worker_turn_codex_home as String))
+        && !any(argv, a => a == concat("CODEX_HOME=", srv2_roadmap_codex_home as String))
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderOffCustodyHost { reason: _ } => false
+    CodexProviderOffCustodyHost { reason: _ } => false
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
+  match inner_for(instance: srv1_live_dashboard_instance(), provider: CodexDispatchProvider) {
+    CodexProviderOffCustodyHost { reason } => string_contains(s: reason as String, pattern: "srv2")
+    DispatchProviderInnerArgvReady { argv: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderOffCustodyHost { reason: _ } => false
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}

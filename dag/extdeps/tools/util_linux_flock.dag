@@ -1,0 +1,30 @@
+module extdeps.tools.util_linux_flock
+
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+import std.types { NonEmptyStr, String, Int, List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// flock(1), util-linux: "flock [options] <file>|<directory> <command> [<argument>...]" -- take a lock
+// on the file, run the command, and release the lock when the command exits. Read from the
+// installed util-linux 2.41.5 --help and man7.org on 2026-10-05. The lock is held by the process for
+// exactly the command's lifetime and the kernel drops it when the process dies, so a crashed command
+// leaves no lock to recover. Only the exclusive, non-blocking form is modeled: -n/--nonblock ("fail
+// rather than wait") with -E/--conflict-exit-code naming the exit status a conflict reports, so a
+// caller can tell "someone else holds it" apart from the command's own failures.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/flock.1.html"
+  }
+}
+
+fn flock_program() -> ProgramIdentity = uncataloged_program(invocation: "flock")
+
+fn flock_exclusive_nonblocking_words(lock_path: NonEmptyStr, conflict_exit_code: Int, command: List<String>) -> List<String> {
+  concat(
+    [flock_program().invocation as String, "--exclusive", "--nonblock", "--conflict-exit-code", to_string(value: conflict_exit_code), lock_path as String],
+    command,
+  )
+}
