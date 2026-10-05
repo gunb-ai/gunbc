@@ -51,7 +51,7 @@ import test.claim.machine_intake_prior_life_boundary_witness { prior_life_full_d
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
-  ArrivalStepIncomplete, PriorLifeBoundaryIncomplete, PriorLifeInputs, prior_life_boundary_step_ref,
+  ArrivalStepIncomplete, PriorLifeBoundaryIncomplete, PriorLifeInputs, prior_life_boundary_step_ref, prior_life_boundary, PriorLifeIdentityForAnotherInstance,
   IdentityBindObserveRefused, IdentityObserveRefusal, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
   IdentityBindInputs, AccessDiscoverEstablished, BoardSerialAgreementRefusal, BoardSerialsDisagree, SmbiosSessionForAnotherController, classify_board_serial_agreement,
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
@@ -548,6 +548,32 @@ test fn w_identity_bind_refuses_an_access_receipt_from_another_run() -> Bool {
         Absent => false
       }
     }
+  }
+}
+
+// AND PRIORLIFEBOUNDARY'S, on the real path: an IdentityBindProvisional receipt mtjade1 really minted
+// in ANOTHER run cannot be archived under this run's instance. The step refuses naming that receipt's
+// instance before the phase reads or writes anything, so no prior-life receipt exists for an identity
+// instance its key does not match.
+test fn w_prior_life_boundary_refuses_an_identity_receipt_from_another_run() -> Bool {
+  match established_access(o: real_access(run: run_b, subject: mtjade1_key, read: read_mtjade1_current_manager_read())) {
+    Absent => false
+    Present { value: access_b } =>
+      match step_outcome_receipt(outcome: identity_bind_provisional(key: step_instance_key(run: run_b, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: access_b, inputs: mtjade1_identity_bind_inputs())) {
+        Present { value: r } =>
+          match r {
+            IdentityBindReceipt { receipt: identity_b } => {
+              let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> = prior_life_boundary(key: step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key), identity: identity_b, platform: mt_jade_platform_ref, world: prior_life_full_dry_world())
+              let refusal: ArrivalStepRefusal? = step_outcome_refusal(outcome: outcome)
+              match refusal {
+                Present { value: c } => match c { PriorLifeIdentityForAnotherInstance { identity: k } => ((k.run as NonEmptyStr) as String) == "o1c1-witness-run-b"  _ => false }
+                Absent => false
+              }
+            }
+            _ => false
+          }
+        Absent => false
+      }
   }
 }
 
