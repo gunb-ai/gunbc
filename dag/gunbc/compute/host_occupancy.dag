@@ -19,7 +19,7 @@ import extdeps.systemd {
   SystemdUnitActiveState, Active, Inactive, Activating, Deactivating, Reloading, Failed,
   parse_systemd_unit_active_state, systemd_unit_active_state_wire_label,
 }
-import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 
 // ── WHO IS ALREADY USING THIS HOST: A READING, TAKEN ON THE HOST, BEFORE AN EFFECT IS ADMITTED ─
 //
@@ -85,6 +85,7 @@ type HostOperationLeg
 type HostOperationRan
   = HostOperationExited { exit_code: Int, stdout: String, stderr: String }
   | HostOperationNotRun { cause: String }
+  | HostOperationResultUnreceived { cause: String }
 
 fn host_operation_ran(run: fn(List<String>) -> ArgvRun, operation: HostOperation) -> HostOperationRan {
   match host_operation_materialize_argv(operation: operation) {
@@ -92,6 +93,7 @@ fn host_operation_ran(run: fn(List<String>) -> ArgvRun, operation: HostOperation
     ArgvMaterialized { argv: argv } =>
       match run(argv) {
         ArgvLegDidNotRun { cause: c } => HostOperationNotRun { cause: join([host_operation_label(operation: operation), " did not run: ", c], "") }
+        ArgvLegMayHaveRun { cause: c } => HostOperationResultUnreceived { cause: join([host_operation_label(operation: operation), " may have run, no result received: ", c], "") }
         ArgvRan { exit_code: code, stdout: out, stderr: err } => HostOperationExited { exit_code: code, stdout: out, stderr: err }
       }
   }
@@ -104,6 +106,7 @@ fn host_operation_exit_unread(operation: HostOperation, code: Int, err: String) 
 fn host_operation_leg(run: fn(List<String>) -> ArgvRun, operation: HostOperation, accepted_exits: List<Int>) -> HostOperationLeg {
   match host_operation_ran(run: run, operation: operation) {
     HostOperationNotRun { cause: c } => HostOperationLegUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => HostOperationLegUnread { cause: c }
     HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
       if any(accepted_exits, e => e == code) { HostOperationLegRead { stdout: out } }
       else { HostOperationLegUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
@@ -125,6 +128,7 @@ fn read_unit_activity(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr) -> Un
   let operation = SystemctlIsActive { unit: unit }
   match host_operation_ran(run: run, operation: operation) {
     HostOperationNotRun { cause: c } => UnitUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => UnitUnread { cause: c }
     HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
       match systemctl_is_active_exit(code: code) {
         Absent => UnitUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) }

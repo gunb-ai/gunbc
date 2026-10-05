@@ -1,0 +1,66 @@
+module extdeps.cloud.gcp.iam_deny
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { String, NonEmptyStr, Secret, List }
+import extdeps.cloud.gcp.iam { IamCondition }
+import extdeps.cloud.gcp.gcp { GcpOperation }
+import extdeps.cloud.gcp.errors { GcpErrorShape }
+import extdeps.transports.rest { RestOutcome }
+import extdeps.ietf.http_semantics { GET, POST }
+import std.resources { Network }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "cloud.google.com/iam/docs/reference/rest/v2/policies" }
+}
+
+// IAM v2 policies: attachment_point is one URL-encoded resource-name segment.
+// https://docs.cloud.google.com/iam/docs/reference/rest/v2/policies/createPolicy
+// https://docs.cloud.google.com/iam/docs/reference/rest/v2/policies
+type GcpDenyRule {
+  denied_principals: List<String> from "deniedPrincipals"
+  denied_permissions: List<String> from "deniedPermissions"
+  exception_principals: List<String>? from "exceptionPrincipals"
+  exception_permissions: List<String>? from "exceptionPermissions"
+  denial_condition: IamCondition? from "denialCondition"
+}
+
+type GcpDenyPolicyRule { deny_rule: GcpDenyRule? from "denyRule" }
+
+type GcpDenyPolicyWire { name: String, etag: String, rules: List<GcpDenyPolicyRule>? }
+
+service gcp.IamDeny {
+  config { endpoint: "https://iam.googleapis.com", auth: Bearer, auth_input: access_token }
+
+  operation GetPolicy {
+    requires Network
+    input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr }
+    output { name: String, etag: String, rules: List<GcpDenyPolicyRule>?, outcome: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/v2/policies/\{attachment_point\}/denypolicies/\{policy_id\}" }
+    response {
+      200 => GcpDenyPolicyWire
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      404 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+
+  operation CreatePolicy {
+    requires Network
+    input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr, rules: List<GcpDenyPolicyRule> }
+    output { operation_name: String from "name", outcome: RestOutcome }
+    transport rest { method: POST, path: "/v2/policies/\{attachment_point\}/denypolicies",
+      query: { policyId: policy_id }, body: { rules: rules } }
+    response {
+      200 => GcpOperation
+      401 => GcpErrorShape
+      403 => GcpErrorShape
+      409 => GcpErrorShape
+      429 => GcpErrorShape
+      5xx => GcpErrorShape
+    }
+  }
+}

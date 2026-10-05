@@ -1024,7 +1024,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     diff_text: &str,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     // No census: `enrolled_test_fns` stays empty. Attribution tests read `edited_test_fns` /
@@ -1033,7 +1032,6 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         None,
@@ -1047,14 +1045,12 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names(
     base_test_decl_names: &std::collections::HashMap<String, HashSet<String>>,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
-    let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
     let added = parse_unified_diff_added_paths(diff_text);
     let rename_from = parse_unified_diff_rename_sources(diff_text);
     floor_diff_edits_from_line_ranges(
         index,
         &line_ranges,
-        &changed,
         &departed,
         &added,
         Some(base_test_decl_names),
@@ -1074,7 +1070,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
     floor_diff_edits_from_line_ranges_reading(
         index,
         &parse_unified_diff_line_ranges(diff_text),
-        &parse_unified_diff_changed_new_lines(diff_text),
         &parse_unified_diff_departed_paths(diff_text),
         &parse_unified_diff_added_paths(diff_text),
         Some(base_test_decl_names),
@@ -1089,7 +1084,6 @@ pub(crate) fn floor_diff_edits_from_diff_text_with_base_names_and_sources(
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1098,7 +1092,6 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
     floor_diff_edits_from_line_ranges_reading(
         index,
         line_ranges_by_file,
-        changed_new_lines_by_file,
         departed_paths,
         added_paths,
         base_test_decl_names,
@@ -1126,7 +1119,6 @@ fn read_working_tree_source(file_norm: &str) -> Result<Option<String>, String> {
 pub(crate) fn floor_diff_edits_from_line_ranges_reading(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
     added_paths: &HashSet<String>,
     base_test_decl_names: Option<&std::collections::HashMap<String, HashSet<String>>>,
@@ -1204,21 +1196,16 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             m
         });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        // (start line, name, is_data, last line). The last line is filled after sorting: the
-        // last non-blank line before the next declaration starts. It is what lets a
-        // pure-deletion gap between two declarations be told from one inside a declaration. It
-        // errs toward CHARGING: a leading comment of the next declaration counts as the
-        // previous one's tail, so deleting it over-selects, never under-selects.
-        let mut decls: Vec<(i64, String, bool, Option<i64>)> = Vec::new();
+        let mut decls: Vec<(i64, String, bool)> = Vec::new();
         for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
             let line = byte_to_line_col(nl.clone(), item.span.start).line;
             let name = authored_name_at(single_si.clone(), item.clone());
             let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-            decls.push((line, name, is_data, None));
+            decls.push((line, name, is_data));
         }
         for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _, _)| n == &name) {
-                decls.push((line, name, false, None));
+            if !decls.iter().any(|(_, n, _)| n == &name) {
+                decls.push((line, name, false));
             }
         }
         if decls.is_empty() {
@@ -1231,42 +1218,7 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
             touched_entry_files.insert(file_norm.clone());
             continue;
         }
-        decls.sort_by_key(|(line, _, _, _)| *line);
-        {
-            let lines: Vec<&str> = content.lines().collect();
-            let count = decls.len();
-            for i in 0..count {
-                let start = decls[i].0;
-                let next = if i + 1 < count {
-                    decls[i + 1].0 - 1
-                } else {
-                    lines.len() as i64
-                };
-                let mut last = start;
-                for l in start..=next {
-                    if lines
-                        .get((l - 1).max(0) as usize)
-                        .is_some_and(|t| !t.trim().is_empty())
-                    {
-                        last = l;
-                    }
-                }
-                decls[i].3 = Some(last);
-            }
-        }
-        let first_decl_line = decls[0].0;
-        let mut changed =
-            changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
-        // Deletion-only hunks (`-` rows, zero `+` width) still carry a new-side anchor in the
-        // hunk header; fall back to parsed ranges when no `+`/`-` rows were attributed.
-        if changed.is_empty() {
-            for r in ranges {
-                let end = if r.end < r.start { r.start } else { r.end };
-                for l in r.start..=end {
-                    changed.insert(l);
-                }
-            }
-        }
+        decls.sort_by_key(|(line, _, _)| *line);
         // A PATH WHOSE DECLARATION SET IS ESTABLISHED FRESH CONTRIBUTES EVERY DECLARATION IT
         // CARRIES, and the line ranges do not establish that set — they only report which lines
         // the diff happened to print.
@@ -1297,71 +1249,33 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
         // universe is this file's parsed decl list, not the corpus, so it is the precise answer
         // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
-        if added_paths.contains(&file_norm) {
-            for (line, _, _, _) in &decls {
-                changed.insert(*line);
-            }
-        }
-        // Module-line edits (line 1) stay fail-closed for modifies — renaming can
-        // change entry identity. Wholly-added files necessarily touch line 1.
-        if changed.contains(&1) && !added_paths.contains(&file_norm) {
-            return Err(format!("diff before first declaration in {file_path}"));
-        }
-        // PURE-DELETION GAPS ARE CHARGED BY WHERE THE GAP LIES, NOT BY THE LINE AFTER IT. Under
-        // `-U0` a deletion-only hunk names no surviving line; both parsers anchor it at L+1, the
-        // line after the gap, which charged the NEXT declaration whenever whole declarations were
-        // deleted between two others -- force-running an unchanged neighbour under the
-        // changed-witness policy (`gunbc.recurring_failure_mode`
-        // `a_pure_deletion_force_runs_its_unchanged_neighbour`, measured on gunbc#13103). A gap
-        // at or before the first declaration stays a pre-declaration (file-grain) edit; a gap
-        // strictly inside a declaration's span charges that declaration; a gap between
-        // declarations charges none, because what it removed no longer exists to select.
-        // The module-line refusal above already read the gap at line 1.
-        let gaps: HashSet<i64> = if added_paths.contains(&file_norm) {
-            HashSet::new()
+        let charged: HashSet<usize> = if added_paths.contains(&file_norm) {
+            (0..decls.len()).collect()
         } else {
-            ranges
-                .iter()
-                .filter(|r| r.deletion_gap)
-                .map(|r| r.start)
-                .collect()
+            // A DECLARATION IS CHANGED WHEN ITS OWN TEXT DIFFERS AT BASE AND HEAD, joined by
+            // name -- never by which lines a hunk names. Git's `-U0` alignment is free to print a
+            // deletion between two similar declarations as a hunk that starts or ends inside the
+            // neighbour, and any line-ownership rule then charges a declaration nobody touched
+            // (`gunbc.recurring_failure_mode` `a_pure_deletion_force_runs_its_unchanged_neighbour`,
+            // both the gap form of gunbc#13103 and the leading-comment form of gunbc#13126). The
+            // base is reconstructed from the head and the diff's own removed lines, so this is
+            // the same single observation, read without its alignment.
+            let head_lines: Vec<&str> = content.lines().collect();
+            let starts: Vec<(i64, String)> =
+                decls.iter().map(|(l, n, _)| (*l, n.clone())).collect();
+            let attribution = declaration_text_attribution(&head_lines, &starts, ranges);
+            // Module-line edits stay fail-closed for modifies — renaming can change entry
+            // identity. Wholly-added files necessarily touch line 1.
+            if attribution.module_line_changed {
+                return Err(format!("diff before first declaration in {file_path}"));
+            }
+            if attribution.pre_declaration_changed {
+                touched_entry_files.insert(file_norm.clone());
+            }
+            attribution.changed
         };
-        let mut gap_pre_decl = false;
-        let mut gap_charged: HashSet<usize> = HashSet::new();
-        for &g in &gaps {
-            changed.remove(&g);
-            if g <= first_decl_line {
-                gap_pre_decl = true;
-                continue;
-            }
-            for (i, (start, _, _, last)) in decls.iter().enumerate() {
-                let bound = last.unwrap_or_else(|| {
-                    decls
-                        .get(i + 1)
-                        .map(|(l, _, _, _)| l - 1)
-                        .unwrap_or(i64::MAX)
-                });
-                if *start < g && g <= bound {
-                    gap_charged.insert(i);
-                }
-            }
-        }
-        let has_pre_decl = gap_pre_decl || changed.iter().any(|&l| l < first_decl_line);
-        let has_post_decl =
-            !gap_charged.is_empty() || changed.iter().any(|&l| l >= first_decl_line);
-        if has_pre_decl {
-            touched_entry_files.insert(file_norm.clone());
-            if !has_post_decl {
-                continue;
-            }
-        }
-        for i in 0..decls.len() {
-            let (line, name, is_data, _) = &decls[i];
-            let decl_end = decls
-                .get(i + 1)
-                .map(|(l, _, _, _)| l - 1)
-                .unwrap_or(i64::MAX);
-            if !gap_charged.contains(&i) && !changed.iter().any(|&l| l >= *line && l <= decl_end) {
+        for (i, (_, name, is_data)) in decls.iter().enumerate() {
+            if !charged.contains(&i) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -1405,6 +1319,126 @@ pub(crate) fn floor_diff_edits_from_line_ranges_reading(
         touched_entry_files,
         touched_declarations,
     })
+}
+
+/// What one modified file's declarations look like once each is compared with itself at the
+/// diff base. `changed` holds indices into the head declaration list the caller supplied.
+struct DeclarationTextAttribution {
+    module_line_changed: bool,
+    pre_declaration_changed: bool,
+    changed: HashSet<usize>,
+}
+
+/// A declaration's OWN text: from its first line up to the next declaration, without the
+/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
+/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
+/// comment never changes this declaration's text.
+fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
+    let mut end = next.min(lines.len());
+    while end > start {
+        let t = lines[end - 1].trim();
+        if t.is_empty() || t.starts_with("//") {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    lines[start..end].join("\n")
+}
+
+/// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
+/// parsed, so this reads layout: a column-0 line that is not a comment or a closing bracket. It
+/// errs toward splitting -- a false split shortens a base declaration and so CHARGES its head
+/// counterpart, and a missed one lengthens it and charges too; neither direction un-charges an
+/// edited declaration.
+fn removed_line_opens_declaration(line: &str) -> Option<String> {
+    let first = line.chars().next()?;
+    if first.is_whitespace() || matches!(first, '}' | ')' | ']' | '"') || line.starts_with("//") {
+        return None;
+    }
+    const MARKERS: [&str; 6] = ["test", "pub", "fn", "data", "type", "probe"];
+    line.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|w| !w.is_empty() && !MARKERS.contains(w))
+        .map(str::to_string)
+        .next()
+        .or_else(|| Some(String::new()))
+}
+
+/// Compare every head declaration with the base declaration of the same name. The base file is
+/// the head with each hunk's new-side lines replaced by its removed lines, which `-U0` carries
+/// in full, so the comparison needs no second read and no alignment.
+fn declaration_text_attribution(
+    head: &[&str],
+    decls: &[(i64, String)],
+    ranges: &[FileLineRange],
+) -> DeclarationTextAttribution {
+    let mut hunks: Vec<&FileLineRange> = ranges.iter().collect();
+    hunks.sort_by_key(|r| r.new_start);
+    let mut base: Vec<String> = Vec::new();
+    let mut base_opens: Vec<(usize, String)> = Vec::new();
+    let mut head_to_base: Vec<Option<usize>> = vec![None; head.len()];
+    let mut h = 0usize;
+    for r in hunks {
+        let before = if r.new_count > 0 {
+            r.new_start - 1
+        } else {
+            r.new_start
+        };
+        let before = (before.max(0) as usize).min(head.len());
+        while h < before {
+            head_to_base[h] = Some(base.len());
+            base.push(head[h].to_string());
+            h += 1;
+        }
+        for line in &r.removed {
+            if let Some(name) = removed_line_opens_declaration(line) {
+                base_opens.push((base.len(), name));
+            }
+            base.push(line.clone());
+        }
+        h = (h + r.new_count.max(0) as usize).min(head.len());
+    }
+    while h < head.len() {
+        head_to_base[h] = Some(base.len());
+        base.push(head[h].to_string());
+        h += 1;
+    }
+    let head_owned: Vec<String> = head.iter().map(|l| l.to_string()).collect();
+    for (line, name) in decls {
+        if let Some(Some(b)) = head_to_base.get((*line - 1).max(0) as usize) {
+            base_opens.push((*b, name.clone()));
+        }
+    }
+    base_opens.sort();
+    base_opens.dedup_by_key(|(b, _)| *b);
+    let first_head = (decls[0].0 - 1).max(0) as usize;
+    let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
+    let pre_declaration_changed =
+        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let module_line_changed = head_owned.first() != base.first();
+    let mut changed = HashSet::new();
+    for (i, (line, name)) in decls.iter().enumerate() {
+        let start = (*line - 1).max(0) as usize;
+        let next = decls
+            .get(i + 1)
+            .map(|(l, _)| (*l - 1).max(0) as usize)
+            .unwrap_or(head_owned.len());
+        let text = declaration_own_text(&head_owned, start, next);
+        let unchanged = base_opens.iter().enumerate().any(|(j, (b, n))| {
+            n == name && {
+                let next_b = base_opens.get(j + 1).map(|(x, _)| *x).unwrap_or(base.len());
+                declaration_own_text(&base, *b, next_b) == text
+            }
+        });
+        if !unchanged {
+            changed.insert(i);
+        }
+    }
+    DeclarationTextAttribution {
+        module_line_changed,
+        pre_declaration_changed,
+        changed,
+    }
 }
 
 /// One projected row of the CHANGED-WITNESS PROJECTION. The standing vocabulary is
@@ -1473,7 +1507,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     for path in &changed_paths {
         line_ranges_by_file.entry(path.clone()).or_default();
     }
-    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
     let rename_from = parse_unified_diff_rename_sources(&diff_text);
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
@@ -1502,7 +1535,6 @@ fn changed_and_enrolled_witness_identities_with_index(
     let edits = floor_diff_edits_from_line_ranges(
         index,
         &line_ranges_by_file,
-        &changed_new_lines_by_file,
         &departed_paths,
         &added_paths,
         Some(&base_test_decl_names),
