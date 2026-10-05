@@ -2,6 +2,7 @@ module gunbc.machine_intake_bmc_secure
 
 import std.types { Bool, EpochMs, Int, List, Map, NonEmptyStr, String, list_length }
 import v2.std.algebra { filter }
+import std.decl_ref { decl_ref }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.algebra { FreeSemigroup }
@@ -68,6 +69,7 @@ import gunbc.machine_intake_bmc_rotation_route {
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.types { RedfishAccountRole }
 import extdeps.bmc.ipmi_channel {
+  ipmi_controller_channel_census,
   IpmiChannelCensusMember,
   IpmiChannelNumber,
   IpmiControllerChannelCensus,
@@ -1242,6 +1244,8 @@ type BmcAccountStateObservation sole_constructor {
   endpoint: BmcControllerEndpoint
   firmware: BmcFirmwareReleaseIdentity
   managed: ManagedCredentialReference
+  managed_user: IpmiUserId
+  attempt: AttemptIdentity
   read_floor: ObserverClockInstant
   managed_probe: ObservedCredentialProbe
   channel_census: IpmiControllerChannelCensus
@@ -1260,6 +1264,8 @@ fn observed_bmc_account_state(
   endpoint: BmcControllerEndpoint,
   firmware: BmcFirmwareReleaseIdentity,
   managed: ManagedCredentialReference,
+  managed_user: IpmiUserId,
+  attempt: AttemptIdentity,
   read_floor: ObserverClockInstant,
   managed_probe: ObservedCredentialProbe,
   channel_census: IpmiControllerChannelCensus,
@@ -1271,12 +1277,18 @@ fn observed_bmc_account_state(
   break_glass: ManagedCredentialReference,
   break_glass_probe: ObservedCredentialProbe,
   controller_clock: ControllerClockReading?,
-) -> BmcAccountStateObservation {
+) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_read_bmc_account_state"),
+  ]
+{
   BmcAccountStateObservation {
     subject: subject,
     endpoint: endpoint,
     firmware: firmware,
     managed: managed,
+    managed_user: managed_user,
+    attempt: attempt,
     read_floor: read_floor,
     managed_probe: managed_probe,
     channel_census: channel_census,
@@ -1757,6 +1769,8 @@ type BmcAccountPlanRefusal
   | PublishedGenerationNotGoalBound { generation: ManagedCredentialReference, goal: ManagedCredentialReference }
   | GenerationFetchedAfterPlan { target: AccountWriteTarget, fetched_at: ObserverClockInstant, planned_at: ObserverClockInstant }
   | PlanPrecedesDivergedReading { read_floor: ObserverClockInstant, planned_at: ObserverClockInstant }
+  | PlanPrecedesReading { planned_at: ObserverClockInstant }
+  | ManagedUserNotTheAuthenticatedAccount { supplied: IpmiUserId, authenticated: IpmiUserId }
   | ChannelCloseRouteNotSupplied { channels: List<IpmiChannelNumber> }
   | ChannelCloseApprovalAbsent { channel: IpmiChannelNumber }
   | ChannelWriteNotAdmitted { channel: IpmiChannelNumber, admission: RotationApplyAdmission }
@@ -1853,10 +1867,15 @@ fn published_channels_left_open(observed: BmcAccountStateObservation) -> List<Ip
 
 // THE PROJECTION. Present only when the observation established the managed account's authentication
 // at or after its read floor and took its census at or after that floor; the access rows are the
-// census's Get User Access rows for the managed user, and the readback carries the observation's own
-// endpoint and build. The attempt is the approval's, so the admission's same-run check binds the
-// approval to this read.
-fn project_managed_administrator_readback(observed: BmcAccountStateObservation, managed_user: IpmiUserId, attempt: AttemptIdentity) -> ManagedAdministratorReadback? {
+// census's Get User Access rows for the AUTHENTICATED managed user the observation recorded, and the
+// readback carries the observation's own endpoint, build and attempt -- all set by the observation's
+// producer, none by a consumer. The admission then compares that attempt with the approval's, so an
+// approval for another run refuses. Admitted only to admitted_channel_writes: no facade returns it.
+fn project_managed_administrator_readback(observed: BmcAccountStateObservation) -> ManagedAdministratorReadback?
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "admitted_channel_writes"),
+  ]
+{
   match observed.managed_probe {
     ObservedCredentialAccepted { reading: r } =>
       if observer_instant_precedes(earlier: r.observed_at, later: observed.read_floor) || observer_instant_precedes(earlier: observed.census_observed_at, later: observed.read_floor) {
@@ -1866,14 +1885,22 @@ fn project_managed_administrator_readback(observed: BmcAccountStateObservation, 
           value: managed_administrator_readback_projected(
             endpoint: observed.endpoint,
             firmware: observed.firmware,
-            attempt: attempt,
-            managed_user: managed_user,
-            access: filter(observed.channel_census.user_access, a => (a.user as Int) == (managed_user as Int)),
+            attempt: observed.attempt,
+            managed_user: observed.managed_user,
+            access: filter(observed.channel_census.user_access, a => (a.user as Int) == (observed.managed_user as Int)),
           ),
         }
       }
     ObservedCredentialRejected { reading: _ } => none
     ObservedCredentialUnestablished { detail: _ } => none
+  }
+}
+
+fn managed_probe_instant(probe: ObservedCredentialProbe, fallback: ObserverClockInstant) -> ObserverClockInstant {
+  match probe {
+    ObservedCredentialAccepted { reading: r } => r.observed_at
+    ObservedCredentialRejected { reading: r } => r.observed_at
+    ObservedCredentialUnestablished { detail: _ } => fallback
   }
 }
 
@@ -1895,7 +1922,7 @@ type ChannelWritesAdmission
   = ChannelWritesAdmitted { writes: List<PlannedChannelAccessWrite> }
   | ChannelWritesRefused { cause: BmcAccountPlanRefusal }
 
-fn admitted_channel_writes(observed: BmcAccountStateObservation, managed_user: IpmiUserId, input: ChannelCloseInput?) -> ChannelWritesAdmission {
+fn admitted_channel_writes(observed: BmcAccountStateObservation, input: ChannelCloseInput?) -> ChannelWritesAdmission {
   let open = published_channels_left_open(observed: observed)
   if list_length(items: open) == 0 {
     ChannelWritesAdmitted { writes: [] }
@@ -1911,10 +1938,7 @@ fn admitted_channel_writes(observed: BmcAccountStateObservation, managed_user: I
               match approval_for_request(route: inp.route, request: request, approvals: inp.approvals) {
                 Absent => ChannelWritesRefused { cause: ChannelCloseApprovalAbsent { channel: ch } }
                 Present { value: approval } => {
-                  let readback = match approval {
-                    RedemptionAdmitted { claims: cl, decided_by: _ } => project_managed_administrator_readback(observed: observed, managed_user: managed_user, attempt: cl.attempt)
-                    RedemptionRefused { cause: _ } => none
-                  }
+                  let readback = project_managed_administrator_readback(observed: observed)
                   let admission = admit_rotation_apply(
                     standing: inp.route,
                     target_endpoint: observed.endpoint,
@@ -1965,6 +1989,10 @@ fn plan_bmc_account_action(
         Apply { plan: due } =>
           if observer_instant_precedes(earlier: planned_at, later: o.read_floor) {
             BmcAccountPlanRefused { cause: PlanPrecedesDivergedReading { read_floor: o.read_floor, planned_at: planned_at } }
+          } else if observer_instant_precedes(earlier: planned_at, later: o.census_observed_at) || observer_instant_precedes(earlier: planned_at, later: managed_probe_instant(probe: o.managed_probe, fallback: o.read_floor)) {
+            BmcAccountPlanRefused { cause: PlanPrecedesReading { planned_at: planned_at } }
+          } else if (managed_user as Int) != (o.managed_user as Int) {
+            BmcAccountPlanRefused { cause: ManagedUserNotTheAuthenticatedAccount { supplied: managed_user, authenticated: o.managed_user } }
           } else {
             let next = fetched_generation_reference(fetched: managed_generation)
             let in_force = goal.managed
@@ -1981,7 +2009,7 @@ fn plan_bmc_account_action(
                   match admitted_account_write(target: PublishedAccountTarget, user: o.published_user, route: published_route, endpoint: o.endpoint, firmware: o.firmware, approval: published_approval, generation: published_generation, planned_at: planned_at) {
                     PlannedAccountWriteRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                     PlannedAccountWriteAdmitted { write: pw } =>
-                      match admitted_channel_writes(observed: o, managed_user: managed_user, input: channel_close) {
+                      match admitted_channel_writes(observed: o, input: channel_close) {
                         ChannelWritesRefused { cause: c } => BmcAccountPlanRefused { cause: c }
                         ChannelWritesAdmitted { writes: cw } =>
                       BmcAccountPlanned {
@@ -2175,7 +2203,11 @@ fn dry_published_lan_probes(
 }
 
 // ONE READ OF THE WORLD'S ACCOUNT STATE. read_at_millis is the realization's observer schedule; every
-// reading in the observation is taken at it.
+// reading in the observation is taken at it. The census MEMBERS (which channels exist, their media and
+// LAN addresses) are the supplied channel layout; every Get User Access row is read from the world, so a
+// readback after a channel-access write reports what the write did. managed_user is the IPMI user the
+// managed probe authenticated as, and attempt is the run this read belongs to: both are recorded here,
+// by the producer, and never assigned later by a consumer.
 fn dry_read_bmc_account_state(
   world: BmcWorld,
   subject: MachineIntakeSubject,
@@ -2190,6 +2222,7 @@ fn dry_read_bmc_account_state(
   published_account: PublishedAccountKind,
   break_glass: ManagedCredentialReference,
   break_glass_password: String,
+  attempt: AttemptIdentity,
   read_at_millis: EpochMs,
 ) -> BmcAccountStateObservation {
   let at = dry_bmc_account_instant(millis: read_at_millis)
@@ -2198,9 +2231,11 @@ fn dry_read_bmc_account_state(
     endpoint: endpoint,
     firmware: firmware,
     managed: managed,
+    managed_user: managed_user,
+    attempt: attempt,
     read_floor: at,
     managed_probe: dry_probe(world: world, user: managed_user, password: managed_password, what: "managed", at: at),
-    channel_census: census,
+    channel_census: ipmi_controller_channel_census(members: census.members, user_access: world.ipmi_user_access),
     census_evidence: dry_evidence(text: join(["dry channel census of ", endpoint.host as String, " at ", to_string(read_at_millis as Int)], "")),
     census_observed_at: at,
     published_probes: dry_published_lan_probes(world: world, census: census, published_user: published_user, published_password: published_password, at: at),

@@ -46,10 +46,12 @@ import extdeps.crypto.mac { MacKeyId }
 import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove, approval_capability_protocol }
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.secret_ref_credential { SecretCredentialFetch, SecretCredentialReady, SecretCredentialFetchRefused }
-import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_with_ipmi_user_access, bmc_ipmi_get_user_access }
+import v2.std.algebra { any, filter }
 import gunbc.machine_intake_bmc_rotation_route {
   IpmiSetUserPrivilegeLimit, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved,
   RotationApplyWouldLeaveNoAdministrator, rotation_route_candidate, PublicStandardOperation,
+  ManagedReadbackFromAnotherRun, ManagedAccountNotAdministratorOnChannel,
   BmcRotationRouteStanding,
   BmcAccountWriteRequest,
   IpmiSetUserPassword,
@@ -74,6 +76,7 @@ import gunbc.machine_intake_bmc_rotation_route {
 }
 import gunbc.machine_intake_bmc_secure {
   ChannelCloseInput, ChannelCloseRouteNotSupplied, ChannelCloseApprovalAbsent, ChannelWriteNotAdmitted,
+  PlanPrecedesReading, ManagedUserNotTheAuthenticatedAccount,
   BmcSecureGoal,
   BmcAccountActionDue,
   PublishedGenerationNotGoalBound,
@@ -294,7 +297,22 @@ fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialRe
   read_with(w: w, subject: subject, managed: managed, managed_password: managed_password, census_value: census(published_lan_privilege_closed: closed), account: PublishedAccountRetired, at: at)
 }
 
+// THE WORLD HOLDS THE CHANNEL ACCESS, AND THE READ TAKES IT FROM THERE. seeded adds the supplied census's
+// Get User Access rows to the world only for (channel, user) pairs the world does not already hold, so a
+// row a channel-access write set is kept, and a read after the write reports the write -- never the
+// census the scenario started from.
+fn seeded(w: BmcWorld, census_value: IpmiControllerChannelCensus) -> BmcWorld {
+  bmc_with_ipmi_user_access(
+    world: w,
+    rows: concat(w.ipmi_user_access, filter(census_value.user_access, r => !any(w.ipmi_user_access, h => (h.user as Int) == (r.user as Int) && (h.channel as Int) == (r.channel as Int)))),
+  )
+}
+
 fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, at: EpochMs) -> BmcAccountStateObservation {
+  read_in(w: seeded(w: w, census_value: census_value), subject: subject, managed: managed, managed_password: managed_password, census_value: census_value, account: account, attempt: "attempt-1", at: at)
+}
+
+fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, attempt: String, at: EpochMs) -> BmcAccountStateObservation {
   dry_read_bmc_account_state(
     world: w,
     subject: subject,
@@ -309,6 +327,7 @@ fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredent
     published_account: account,
     break_glass: goal_break_glass_ref(),
     break_glass_password: break_glass_password,
+    attempt: attempt as AttemptIdentity,
     read_at_millis: at,
   )
 }
@@ -476,7 +495,11 @@ fn plan_with(
 }
 
 fn plan_closing(reading: BmcAccountStateObservation, channel_close: ChannelCloseInput?) -> BmcAccountPlanOutcome? {
-  plan_full_closing(reading: reading, goal: goal_v1(), managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), published_generation_value: break_glass_generation(), channel_close: channel_close, planned_at: t_plan)
+  plan_closing_as(reading: reading, claimed_managed_user: managed_user, channel_close: channel_close)
+}
+
+fn plan_closing_as(reading: BmcAccountStateObservation, claimed_managed_user: IpmiUserId, channel_close: ChannelCloseInput?) -> BmcAccountPlanOutcome? {
+  plan_full_as(reading: reading, goal: goal_v1(), claimed_managed_user: claimed_managed_user, managed_route: grounded_route(user: managed_user), managed_generation_value: managed_generation(version: "2", fetch_at: t_fetch), published_generation_value: break_glass_generation(), channel_close: channel_close, planned_at: t_plan)
 }
 
 fn plan_full(
@@ -499,6 +522,19 @@ fn plan_full_closing(
   channel_close: ChannelCloseInput?,
   planned_at: EpochMs,
 ) -> BmcAccountPlanOutcome? {
+  plan_full_as(reading: reading, goal: goal, claimed_managed_user: managed_user, managed_route: managed_route, managed_generation_value: managed_generation_value, published_generation_value: published_generation_value, channel_close: channel_close, planned_at: planned_at)
+}
+
+fn plan_full_as(
+  reading: BmcAccountStateObservation,
+  goal: BmcSecureGoal,
+  claimed_managed_user: IpmiUserId,
+  managed_route: BmcRotationRouteStanding,
+  managed_generation_value: ManagedCredentialGenerationFetched?,
+  published_generation_value: ManagedCredentialGenerationFetched?,
+  channel_close: ChannelCloseInput?,
+  planned_at: EpochMs,
+) -> BmcAccountPlanOutcome? {
   match managed_generation_value {
     Absent => none
     Present { value: mg } =>
@@ -510,7 +546,7 @@ fn plan_full_closing(
               subject: lab_subject(),
               goal: goal,
               reading: reading,
-              managed_user: managed_user,
+              managed_user: claimed_managed_user,
               managed_route: managed_route,
               managed_approval: rotation_approval(s: managed_route, user: route_user(s: managed_route)),
               managed_generation: mg,
@@ -541,7 +577,12 @@ fn admission_label(a: RotationApplyAdmission) -> String {
     RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
     RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
     RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
-    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => "would-leave-no-administrator"
+    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: c } =>
+      match c {
+        ManagedReadbackFromAnotherRun { readback: _, approved: _ } => "would-leave-no-administrator:another-run"
+        ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "would-leave-no-administrator:not-administrator-on-channel"
+        _ => "would-leave-no-administrator"
+      }
   }
 }
 
@@ -579,6 +620,8 @@ fn plan_label(o: BmcAccountPlanOutcome?) -> String {
             PublishedGenerationNotGoalBound { generation: _, goal: _ } => "published-generation-not-goal-bound"
             GenerationFetchedAfterPlan { target: _, fetched_at: _, planned_at: _ } => "fetched-after-plan"
             PlanPrecedesDivergedReading { read_floor: _, planned_at: _ } => "plan-precedes-reading"
+            PlanPrecedesReading { planned_at: _ } => "plan-precedes-reading"
+            ManagedUserNotTheAuthenticatedAccount { supplied: _, authenticated: _ } => "managed-user-not-authenticated-account"
             ChannelCloseRouteNotSupplied { channels: _ } => "channel-close-route-not-supplied"
             ChannelCloseApprovalAbsent { channel: _ } => "channel-close-approval-absent"
             ChannelWriteNotAdmitted { channel: _, admission: a } => join(["channel-write-not-admitted:", admission_label(a: a)], "")
@@ -906,4 +949,76 @@ test fn an_apply_whose_post_read_fails_the_goal_generation_mints_no_receipt() ->
     applied_at: t_apply,
     readback_at: t_readback,
   ) == join(["refused:post-read-not-held:", apply_on_finding(finding: BreakGlassGenerationRejected)], "")
+}
+
+// ── the projection's inputs come from the observation producer (side-chat review of 8960bbe511) ───
+
+fn close_ch2() -> BmcAccountWriteRequest {
+  IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: 2, user: published_user, privilege: IpmiPrivilegeNoAccess) }
+}
+
+fn close_approval_in(route: BmcRotationRouteStanding, attempt: String) -> Redemption {
+  RedemptionAdmitted {
+    claims: ApprovalCapabilityClaims {
+      protocol: approval_capability_protocol,
+      issuer: "gunbc-approval-broker" as NonEmptyStr,
+      audience: "srv1" as NonEmptyStr,
+      authority: rotation_apply_authority,
+      escalation_id: "o1a2-close" as NonEmptyStr,
+      request_revision: rotation_route_request_identity(standing: route, request: close_ch2()),
+      decision: ProposeApprove,
+      attempt: attempt as AttemptIdentity,
+      issued_at: "2026-10-05T00:00:00Z",
+      expires_at: "2026-10-05T00:15:00Z",
+      key_id: "broker-2026-10" as MacKeyId,
+    },
+    decided_by: "operator" as NonEmptyStr,
+  }
+}
+
+// On the REAL plan path, with the published account open on channel 2: read A (attempt-1) with an
+// approval for run B refuses as another run; A with A plans the one write; a reading in which another
+// user (4), not the authenticated managed user, holds ADMINISTRATOR on channel 2 refuses; and a plan
+// claiming a managed user other than the one the read authenticated refuses. A read later than the plan
+// refuses at PlanPrecedesDivergedReading (the dry read takes every reading at one instant).
+test fn the_channel_close_readback_is_bound_to_the_observed_run_and_account() -> Bool {
+  let route = rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: close_ch2(), citation: lab_route_fixture_citation)
+  let base = census_with(serial_privilege_open: true, unaddressed_lan_open: false)
+  let other_admin = ipmi_controller_channel_census(members: base.members, user_access: concat(base.user_access, [ipmi_user_channel_access(channel: 2, user: 4, privilege: IpmiPrivilegeAdministrator)]))
+  let a = secured_read(census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired)
+  let later = read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_with_managed_row(managed_on_2: true), account: PublishedAccountRetired, at: t_plan + 1)
+  channel_plan_label(o: plan_closing(reading: a, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-2")] } })) == "channel-write-not-admitted:would-leave-no-administrator:another-run"
+    && channel_plan_label(o: plan_closing(reading: a, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } })) == "planned:1"
+    && channel_plan_label(o: plan_closing(reading: secured_read(census_value: other_admin, account: PublishedAccountRetired), channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } })) == "channel-write-not-admitted:would-leave-no-administrator:not-administrator-on-channel"
+    && channel_plan_label(o: plan_closing_as(reading: a, claimed_managed_user: 4, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } })) == "managed-user-not-authenticated-account"
+    && channel_plan_label(o: plan_closing(reading: later, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } })) == "plan-precedes-reading"
+}
+
+// ── one nonempty real plan through the dry application, the post-read and the phase (item 3) ─────
+
+// The published account open on serial channel 2, the managed account ADMINISTRATOR there. The plan's
+// one channel write runs through dry_apply_bmc_account_plan; the post-read takes channel access from
+// the RESULTING world (not from the census the scenario started with), and the phase converges.
+// The world then holds the published user at NO ACCESS on channel 2 and the managed user still at
+// ADMINISTRATOR there.
+test fn a_planned_channel_close_is_applied_read_back_and_converges() -> Bool {
+  let route = rotation_route_from_citation(endpoint: lab_endpoint, firmware: lab_firmware(), request: close_ch2(), citation: lab_route_fixture_citation)
+  let layout = census_with_managed_row(managed_on_2: true)
+  let initial = seeded(w: world_secured(), census_value: layout)
+  let before = read_in(w: initial, subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: layout, account: PublishedAccountRetired, attempt: "attempt-1", at: t_read)
+  match plan_closing(reading: before, channel_close: Present { value: ChannelCloseInput { route: route, approvals: [close_approval_in(route: route, attempt: "attempt-1")] } }) {
+    Absent => false
+    Present { value: o } =>
+      match o {
+        BmcAccountPlanRefused { cause: _ } => false
+        BmcAccountPlanned { plan: p } => {
+          let step = dry_apply_bmc_account_plan(world: initial, plan: p, managed_fetch: managed_v2_fetch(), published_fetch: ready(secret: "bmc-lab-o1b-admin", version: "4", bytes: break_glass_password), applied_at_millis: t_apply)
+          let after = read_in(w: step.world, subject: lab_subject(), managed: p.goal.managed, managed_password: managed_password_v2, census_value: layout, account: PublishedAccountRetired, attempt: "attempt-1", at: t_readback)
+          list_length(items: p.channel_writes) == 1
+            && phase_label(o: bmc_secure_phase_applied(application: step.application, post_read: after)) == "converged:applied"
+            && match bmc_ipmi_get_user_access(world: step.world, user: published_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeNoAccess  Absent => false }
+            && match bmc_ipmi_get_user_access(world: step.world, user: managed_user, channel: 2) { Present { value: v } => v == IpmiPrivilegeAdministrator  Absent => false }
+        }
+      }
+  }
 }
