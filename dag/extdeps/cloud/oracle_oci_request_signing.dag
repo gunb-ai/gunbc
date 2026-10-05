@@ -2,9 +2,9 @@ module extdeps.cloud.oracle_oci_request_signing
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.crypto.sha2 { sha256 }
+import extdeps.numeric.base16 { base16_decode_lower }
+import v2.std.optional { Absent, Present }
 import std.encoding { base64_encode, Standard }
-import std.integer { QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints }
 import std.types { Int, List, NonEmptyStr, String }
 
 // OCI API REQUEST SIGNING, the upstream specification: what is signed and how the Authorization
@@ -67,13 +67,17 @@ fn oci_ascii_octets(text: String) -> OciBodyOctets {
   oci_ascii_octets_from(text: text, index: 0, acc: [])
 }
 
-// The digest is 32 octets each in [0, 255], so the octet admission cannot refuse it. The refused arm
-// is the admission's own vocabulary and returns the empty string, which no OCI endpoint accepts as a
-// digest, so the request is refused by the server rather than signed over an invented hash.
-fn oci_sha256_base64(octets: List<Int>) -> String {
-  match uint8_octets_of_ints(values: sha256(message: octets)) {
-    QualifiedOctetsReady { value } => base64_encode(octets: value, variant: Standard)
-    QualifiedOctetsRefused { observed } => ""
+// The digest comes from the std sha256_hex_of_text host seam rather than the pure extdeps.crypto.sha2
+// fold. The seam exists for this cost: the pure fold is hundreds of thousands of interpreted steps per
+// digest, and every signed POST takes one. The pure fold stays the seam's differential oracle
+// (test.claim.sha256_host_known_answer_witness). The seam hashes the text's UTF-8 bytes, which for the
+// ASCII body this module admits are the code points oci_ascii_octets checked. Lowercase hex that does
+// not decode yields the empty string, which no OCI endpoint accepts as a digest, so the server refuses
+// the request rather than one being signed over an invented hash.
+fn oci_sha256_base64(text: String) -> String {
+  match base16_decode_lower(hex: sha256_hex_of_text(text: text)) {
+    Present { value } => base64_encode(octets: value, variant: Standard)
+    Absent => ""
   }
 }
 
@@ -197,7 +201,7 @@ fn oci_signing_plan(req: OciRequest) -> OciSigningPlan {
           cause: join(["OCI request body has a non-ASCII character at index ", to_string(index), "; only an ASCII body is signed, so its byte length is its character length"], "") as NonEmptyStr,
         }
         OciBodyOctetsReady { octets } => {
-          let digest = oci_sha256_base64(octets: octets)
+          let digest = oci_sha256_base64(text: text)
           let length = string_length(text)
           OciSigningReady {
             signing_string: join([
