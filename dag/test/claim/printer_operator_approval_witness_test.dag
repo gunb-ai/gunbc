@@ -53,9 +53,9 @@ test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
   report_has_state_and_error(text: "{\"print\":{\"gcode_state\":\"IDLE\",\"print_error\":83902511}}")
 }
 
+// Path ownership is independent of the request's cryptographic construction.
+// Supplied approval identities must stay in the fixed durable claim directory.
 test fn durable_claim_is_bound_to_approval_identity() -> Bool {
- // Path ownership is independent of the request's cryptographic construction.
- // Supplied approval identities must stay in the fixed durable claim directory.
  start_claim_path(escalation_id:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
  start_claim_path(escalation_id:"printer-start-a")!=start_claim_path(escalation_id:"printer-start-b")
 }

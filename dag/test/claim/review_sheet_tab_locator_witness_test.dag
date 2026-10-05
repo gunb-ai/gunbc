@@ -8,7 +8,7 @@ import extdeps.google.sheets {
   sheets_sheet_id_read,
   sheets_sheet_index_read,
 }
-import extdeps.transports.rest { RestOutcome, RestStatusRefused }
+import extdeps.transports.rest { RestResult, RestRefused, RestStatusRefused }
 import gunbc.review_sheet_tab_locator {
   ReviewTabStanding,
   TabLocated,
@@ -231,8 +231,7 @@ test fn the_first_tabs_absent_sheet_id_reads_as_zero_rather_than_refusing() -> B
 test fn a_refused_status_is_unreadable_and_carries_the_status_rather_than_reading_as_absent() -> Bool {
   match review_tab_standing_of_outcome(
     spreadsheet_id: witness_spreadsheet_id,
-    outcome: RestStatusRefused { status: 403, body: "caller lacks Sheets access" },
-    read: SpreadsheetRead { spreadsheetId: none, sheets: none },
+    outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "caller lacks Sheets access" } },
   ) {
     TabUnreadable { cause: c } => string_contains(s: c as String, pattern: "403")
     TabAbsent => false

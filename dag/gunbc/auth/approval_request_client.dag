@@ -1,8 +1,5 @@
 module gunbc.auth.approval_request_client
 
-import gunbc.auth.approval_cutover_posture { ApprovalCutoverPosture, approval_cutover_posture, RoadmapServesAndWrites, BrokerServesAndWrites, BrokerOwnsAlone }
-import gunbc.auth.approval_broker_endpoint { approval_broker_loopback_base_url, approval_broker_listen_port, approval_broker_submit_path }
-
 import std.types { Bool, NonEmptyStr, String, Timestamp, Secret }
 import std.scoped_authorization { AuthorizationRequest }
 import extdeps.crypto.mac {
@@ -20,24 +17,37 @@ import gunbc.auth.approval_request_submission {
 }
 import gunbc.fleet_posix_accounts { fleet_operator_email }
 import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.auth.approval_writer_authority {
+  approval_writer_authority, approval_writer_process, ApprovalServingProcess, RoadmapProcess, BrokerProcess,
+}
+import gunbc.auth.approval_broker_endpoint {
+  approval_broker_loopback_base_url, approval_broker_listen_port, approval_broker_submit_path,
+}
 
+// THE CLIENT DIALS THE WRITER, AND WHICH PROCESS THAT IS IS NOT THIS MODULE'S FACT. It used to read
+// the roadmap instance's listen bind, which was right while the roadmap held the store and silently
+// wrong from the stage-4 posture flip onward: run 37265259209 (gcp_iam_converge, srv1) POSTed to the
+// roadmap's port and was refused with a 503 naming the broker as writer. The origin is now derived
+// from gunbc.auth.approval_writer_authority -- the same row both serving processes consult before a
+// store effect -- so the address a client dials and the process that admits the write cannot
+// disagree; the broker's address and paths come from gunbc.auth.approval_broker_endpoint.
 data approval_request_submit_path: NonEmptyStr = approval_broker_submit_path
 
-// Local submissions must follow the same cutover posture as writer authority. The
-// roadmap endpoint deliberately refuses store writes after the broker takes ownership.
-fn approval_loopback_origin_for(posture: ApprovalCutoverPosture) -> NonEmptyStr {
-  match posture {
-    RoadmapServesAndWrites => {
+fn approval_loopback_origin_for(writer: ApprovalServingProcess) -> NonEmptyStr {
+  match writer {
+    RoadmapProcess => {
       let instance = srv1_live_dashboard_instance()
-      concat(concat("http://", instance.listen_host as String), concat(":", to_string(instance.listen_port))) as NonEmptyStr
+      concat(
+        concat("http://", instance.listen_host as String),
+        concat(":", to_string(instance.listen_port)),
+      ) as NonEmptyStr
     }
-    BrokerServesAndWrites => approval_broker_loopback_base_url(port: approval_broker_listen_port)
-    BrokerOwnsAlone => approval_broker_loopback_base_url(port: approval_broker_listen_port)
+    BrokerProcess => approval_broker_loopback_base_url(port: approval_broker_listen_port)
   }
 }
 
 fn approval_loopback_origin() -> NonEmptyStr {
-  approval_loopback_origin_for(posture: approval_cutover_posture)
+  approval_loopback_origin_for(writer: approval_writer_process(authority: approval_writer_authority))
 }
 
 fn approval_submit_url() -> NonEmptyStr {

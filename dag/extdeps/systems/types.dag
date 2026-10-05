@@ -1,7 +1,7 @@
 module extdeps.systems.types
 
 import v2.std.algebra { filter }
-import std.types { NonEmptyStr, List, Int, Bool }
+import std.types { NonEmptyStr, List, Int, Bool, String }
 import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt }
 import std.nat { Nat }
 import extdeps.storage.types { PcieLink }
@@ -110,6 +110,79 @@ type CoherentSuperchipCatalogRow {
 // link. Derived, never authored, so the two tiers cannot disagree with their sum.
 fn coherent_superchip_coherent_capacity(row: CoherentSuperchipCatalogRow) -> ByteSize {
   byte_size(count: byte_size_count(b: row.gpu.memory.capacity) + byte_size_count(b: row.cpu_memory.memory.capacity))
+}
+
+// ── A SYSTEM'S MEMORY COMPONENTS, ADDRESSABLE ────────────────────────────────────────────────────
+//
+// The rows above carry each memory's FACTS but give no way to name "this memory of this system", so
+// a consumer that places bytes on one memory and not another had nothing to point at. These are
+// derived projections over the existing fields and add no figures. A component's identity is the
+// system's own catalog name plus how its GPU reaches that memory.
+//
+// Addressability is a physical fact about the package, not a deployment choice:
+// - the integrated SoC's one pool serves CPU and GPU alike;
+// - a superchip's GPU memory is reached directly;
+// - its CPU memory is reached across the coherent chip-to-chip link at that link's per-direction
+//   rate.
+// A new system shape adds its own projection here. No generic enum of memories grows an arm.
+type GpuMemoryAddressability
+  = GpuAndCpuShareOnePool
+  | GpuAddressesDirectly
+  | GpuAddressesAcrossCoherentLink { per_direction: Bandwidth }
+
+// SEALED: the row-shape projections below are the only constructors, so a component always carries
+// facts copied from a catalog row and never hand-assembled ones.
+type SystemMemoryComponent sole_constructor {
+  system: NonEmptyStr
+  memory: MemoryFacts
+  addressability: GpuMemoryAddressability
+}
+
+fn integrated_system_unified_memory(row: IntegratedComputeSystemCatalogRow) -> SystemMemoryComponent {
+  SystemMemoryComponent { system: row.soc_model, memory: row.memory, addressability: GpuAndCpuShareOnePool }
+}
+
+fn integrated_system_memory_components(row: IntegratedComputeSystemCatalogRow) -> List<SystemMemoryComponent> {
+  [integrated_system_unified_memory(row: row)]
+}
+
+fn coherent_superchip_memory_components(row: CoherentSuperchipCatalogRow) -> List<SystemMemoryComponent> {
+  [
+    SystemMemoryComponent { system: row.model, memory: row.gpu.memory, addressability: GpuAddressesDirectly },
+    SystemMemoryComponent {
+      system: row.model,
+      memory: row.cpu_memory.memory,
+      addressability: GpuAddressesAcrossCoherentLink { per_direction: row.chip_to_chip_bandwidth_per_direction },
+    },
+  ]
+}
+
+fn gpu_memory_addressability_wire(a: GpuMemoryAddressability) -> NonEmptyStr {
+  match a {
+    GpuAndCpuShareOnePool => "unified" as NonEmptyStr
+    GpuAddressesDirectly => "gpu-local" as NonEmptyStr
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => "across-coherent-link" as NonEmptyStr
+  }
+}
+
+// IDENTITY IS THE WHOLE FACT, not a name:
+// - the system;
+// - the memory's capacity and kind;
+// - the complete addressability, including a coherent link's rate.
+// Equality on the two coproducts is the derived structural equality (DESIGN §4: operations come
+// from inhabitance), so a new arm needs no table here.
+// Two components agree only when every fact agrees. A row edited to different memory, or to a
+// different link rate, under the same system name projects a component that is NOT the original's,
+// so a tier join can never alias them.
+fn system_memory_component_same(a: SystemMemoryComponent, b: SystemMemoryComponent) -> Bool {
+  (a.system as String) == (b.system as String)
+    && byte_size_count(b: a.memory.capacity) == byte_size_count(b: b.memory.capacity)
+    && a.memory.memory_kind == b.memory.memory_kind
+    && a.addressability == b.addressability
+}
+
+fn system_memory_component_wire(c: SystemMemoryComponent) -> NonEmptyStr {
+  join([c.system as String, "/", gpu_memory_addressability_wire(a: c.addressability) as String], "") as NonEmptyStr
 }
 
 // ── COMPLETE SUPERCHIP SERVERS ───────────────────────────────────────────────────────────────

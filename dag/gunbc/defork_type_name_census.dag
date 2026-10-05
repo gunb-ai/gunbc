@@ -204,8 +204,8 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     names: ["Int8", "Int16", "Int32", "Int64", "Int128", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.machine_constraints` `Compose` / `MachineWidth<N>` + `std.integer` `Int`/`UInt`",
-      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth<WordN>` + `v2.std.integer` `Int`/`UInt`",
-      class: "same concept, every referent divergent"
+      v2_side: "→ `std.machine_constraints` `Compose` / `MachineWidth<N>` + `v2.std.integer` `Int`/`UInt`",
+      class: "same concept, Int/UInt referent divergent"
     },
     disposition: ForkNeedsDecisionRecord { family: "integer family" }
   },
@@ -213,17 +213,8 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     names: ["IntPlatform", "UIntPlatform"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth`",
-      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth`/`PointerWidth`",
-      class: "text near-identical, every referent divergent"
-    },
-    disposition: ForkNeedsDecisionRecord { family: "integer family" }
-  },
-  SharedTypeNameRow {
-    names: ["Compose", "MachineWidth"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`std.machine_constraints` — phantom composition / width over `WidthResolution`",
-      v2_side: "`v2.std.integer` / `v2.std.machine` — opaque, unconstrained parameter",
-      class: "same concept, divergent constraint"
+      v2_side: "→ `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth`",
+      class: "text near-identical, Int/UInt referent divergent"
     },
     disposition: ForkNeedsDecisionRecord { family: "integer family" }
   },
@@ -248,6 +239,11 @@ data defork_census_rows: List<SharedTypeNameRow> = [
 ]
 
 data defork_census_resolved: List<ResolvedSharedTypeName> = [
+  ResolvedSharedTypeName {
+    names: ["Compose", "MachineWidth"],
+    resolution: ResolvedByDeletingV2 { reason: "N7-2 root B: v2 gained kinded type parameters (`v2.std.type_binder` `type_application_conformance`), so the kinded `std.machine_constraints` `MachineWidth<bits: WidthResolution>` normalizes on the native route; `v2.std.machine` `MachineWidth`/`PointerWidth` and `v2.std.integer` `Compose` are deleted and `v2.std.integer` imports them from `std.machine_constraints` (its `MachineWidth<WordN>` rows were kind-wrong and now read `MachineWidth<N>`)" },
+    change: 13038
+  },
   ResolvedSharedTypeName {
     names: ["String"],
     resolution: ResolvedByDeletingDag { reason: "operator-ruled retirement of `std.string_type` `String` (`= FreeMonoid<Char>`), the duplicate of `v2.std.text` `String`. It had zero importers after gunbc#12512 deleted the 81 that used it as host text (XL-0T ruling B), verified by the #12760 literal-site census. `v2.std.text` `String` stays the one structural declaration, and `v2.std.node` `String` is the distinct host-text concept (gunbc.recurring_failure_mode carrier_by_spelling)" },
