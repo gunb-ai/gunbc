@@ -2,7 +2,7 @@ module test.claim.self_host_01_tokenize_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (01_tokenize): the driver (the roster's driver_rel) checks the
+// Wet self-host behavioral receipt (01_tokenize): the rendered driver (the roster row's contract, also run interpreted) checks the
 // .dag contract on the EMITTED module with no seed oracle -- tokenize over ModeledLexRules accepts a
 // source every character of which a rule matches, as that token stream, and refuses one carrying an
 // unmatched character (tokenize_lex_e1_unrecognized_char); --inject-fault asserts only that the
