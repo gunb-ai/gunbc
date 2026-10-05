@@ -1741,6 +1741,119 @@ fn ct_declaration_field_reference_identity_test() -> String {
   )
 }
 
+// The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
+// two modules that each declare `Slot` with a different parameter list, and each Slot names a type
+// whose own header is Clone-bounded, so each owes its OWN parameters the bound.
+fn ct_same_leaf_type_declarations_emit_by_identity_test() -> String {
+  concat(
+    "    // TWO MODULES DECLARE ONE LEAF WITH DIFFERENT PARAMETER LISTS. v1.compiler.infer_emit_info\n",
+    "    // TypeDeclIndex was a Map<leaf, Node>, last write wins, so the Clone-bound fixpoint held ONE\n",
+    "    // Slot row and the other Slot's parameters were filtered against it: its header printed bare\n",
+    "    // while its field named Inner<_: Clone> (rustc E0277). The fixture is red in BOTH fold orders:\n",
+    "    // whichever Slot is folded last, the other one loses its bound.\n",
+    "    #[test]\n",
+    "    fn same_leaf_type_declarations_emit_their_own_bounds() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let sources = || -> Vec<std::rc::Rc<SourceFile>> { vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf/wide.dag\".to_string(), content: \"module hom.wide\\n\\ntype Inner<C> {\\n  value: C\\n}\\n\\ntype Slot<A, B> {\\n  first: Inner<A>\\n  second: Inner<B>\\n}\\n\\ntype WideHolder<X, Y> {\\n  slot: Slot<X, Y>\\n}\\n\\ntype WidePolicy<X, Y> {\\n  decide: fn(Slot<X, Y>) -> Int\\n}\\n\\ntype WideRoster<X, Y> {\\n  slots: List<Slot<X, Y>>\\n}\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf/narrow.dag\".to_string(), content: \"module hom.narrow\\n\\nimport hom.wide { Inner }\\n\\ntype Slot<T> {\\n  held: Inner<T>\\n}\\n\\ntype NarrowHolder<Z> {\\n  slot: Slot<Z>\\n}\\n\\nfn narrow_of<Z>(value: Z) -> Slot<Z> {\\n  Slot { held: Inner { value: value } }\\n}\\n\".to_string() }),\n",
+    "        ] };\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources().into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let emitted = |module: &str| -> String { result.files.iter().find(|f| f.path.contains(module)).map(|f| f.content.clone()).unwrap_or_default() };\n",
+    "        let wide = emitted(\"hom_wide\");\n",
+    "        let narrow = emitted(\"hom_narrow\");\n",
+    "        assert!(wide.contains(\"pub struct Slot<A: Clone, B: Clone>\"), \"hom.wide Slot must carry its own two bounds:\\n\{wide}\");\n",
+    "        assert!(narrow.contains(\"pub struct Slot<T: Clone>\"), \"hom.narrow Slot must carry its own bound:\\n\{narrow}\");\n",
+    "        // The holders name Slot through a REFERENCE, so the bound they inherit depends on which\n",
+    "        // declaration the reference resolves to.\n",
+    "        assert!(wide.contains(\"pub struct WideHolder<X: Clone, Y: Clone>\"), \"\{wide}\");\n",
+    "        assert!(narrow.contains(\"pub struct NarrowHolder<Z: Clone>\"), \"\{narrow}\");\n",
+    "        assert!(!wide.contains(\"compile_error!\") && !narrow.contains(\"compile_error!\"), \"a reference resolve stamped must not refuse:\\n\{wide}\\n\{narrow}\");\n",
+    "        // THE ROUTE, per reference position: each holder's Slot reference resolves to the Slot of\n",
+    "        // its own module, and never through the spelling, which two modules share.\n",
+    "        let receipt = crate::v1_tests_claim_carrier_realization_census::typed_census_from_sources(std::rc::Rc::new(sources().into()));\n",
+    "        assert!(!receipt.starts_with(\"REFUSED\"), \"\{receipt}\");\n",
+    "        let route_at = |enclosing: &str, authored: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == \"declaration_field\" && c[3] == authored)\n",
+    "                .map(|c| c[13].to_string()).collect()\n",
+    "        };\n",
+    "        assert_eq!(route_at(\"WideHolder\", \"Slot\"), vec![\"carried_declaration:Resolved:hom.wide.Slot\".to_string()], \"\{receipt}\");\n",
+    "        assert_eq!(route_at(\"NarrowHolder\", \"Slot\"), vec![\"carried_declaration:Resolved:hom.narrow.Slot\".to_string()], \"\{receipt}\");\n",
+    "        // A REFERENCE BENEATH THE HEAD is its own position: a function type's parameter and a type\n",
+    "        // argument. Resolve stamps the whole reference tree, so neither falls to the spelling.\n",
+    "        let beneath = |enclosing: &str, position: &str| -> Vec<String> {\n",
+    "            receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "                .filter(|c| c[1] == enclosing && c[2] == position && c[3] == \"Slot\")\n",
+    "                .map(|c| c[13].to_string()).collect()\n",
+    "        };\n",
+    "        assert_eq!(beneath(\"WidePolicy\", \"declaration_field/fn_type_param\"), vec![\"carried_declaration:Resolved:hom.wide.Slot\".to_string()], \"\{receipt}\");\n",
+    "        assert_eq!(beneath(\"WideRoster\", \"declaration_field/type_arg\"), vec![\"carried_declaration:Resolved:hom.wide.Slot\".to_string()], \"\{receipt}\");\n",
+    "        // A SIGNATURE is the same position on a function item.\n",
+    "        let signature: Vec<String> = receipt.lines().skip(1).map(|l| l.split('\\t').collect::<Vec<_>>())\n",
+    "            .filter(|c| c[1] == \"narrow_of\" && c[2] == \"fn_signature_return\" && c[3] == \"Slot\")\n",
+    "            .map(|c| c[13].to_string()).collect();\n",
+    "        assert_eq!(signature, vec![\"carried_declaration:Resolved:hom.narrow.Slot\".to_string()], \"\{receipt}\");\n",
+    "        assert!(!receipt.contains(\"LeafAmbiguous\"), \"no reference in this fixture may fall to the shared spelling:\\n\{receipt}\");\n",
+    "    }\n\n"
+  )
+}
+
+// The refusing arm of the same resolution: a reference resolve cannot bind, spelling a leaf two
+// modules declare.
+fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
+  concat(
+    "    // A REFERENCE NO ARM RESOLVES REFUSES, AND SAYS WHICH LEAF. hom.third names Slot through a\n",
+    "    // qualifier no module answers to, so resolve binds nothing and stamps nothing; two modules\n",
+    "    // declare Slot, so the spelling does not decide either. The leaf-keyed index took whichever Slot\n",
+    "    // was folded last. THE CONTROL is the same reference in a closure with ONE Slot: the spelling\n",
+    "    // then names a sole declarer and the holder emits with that declaration's bound.\n",
+    "    #[test]\n",
+    "    fn unbound_reference_to_a_twice_declared_leaf_refuses() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let wide = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_refusal/wide.dag\".to_string(), content: \"module hom.wide\\n\\ntype Inner<C> {\\n  value: C\\n}\\n\\ntype Slot<A, B> {\\n  first: Inner<A>\\n  second: Inner<B>\\n}\\n\".to_string() });\n",
+    "        let narrow = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_refusal/narrow.dag\".to_string(), content: \"module hom.narrow\\n\\ntype Slot<T> {\\n  held: T\\n}\\n\".to_string() });\n",
+    "        let third = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_refusal/third.dag\".to_string(), content: \"module hom.third\\n\\ntype Odd<K> {\\n  slot: no.such.module.Slot<K>\\n}\\n\".to_string() });\n",
+    "        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {\n",
+    "            let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "            result.files.iter().find(|f| f.path.contains(\"hom_third\")).map(|f| f.content.clone()).unwrap_or_default()\n",
+    "        };\n",
+    "        let red = emitted(vec![wide(), narrow(), third()]);\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"item 'Odd' references type 'Slot', which more than one module of this closure declares\"), \"two declarers and no identity must refuse, naming the leaf:\\n\{red}\");\n",
+    "        let control = emitted(vec![narrow(), third()]);\n",
+    "        assert!(control.contains(\"pub struct Odd<K: Clone>\") && !control.contains(\"more than one module of this closure declares\"), \"a sole declarer resolves by spelling:\\n\{control}\");\n",
+    "    }\n\n"
+  )
+}
+
+// The referencing-module arm admits only a bare spelling: a qualified reference to another module's
+// declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
+fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
+  concat(
+    "    // A QUALIFIED REFERENCE IS NOT DECIDED BY THE LOCAL DECLARER. hom.local declares its own Slot\n",
+    "    // and ALSO names no.such.module.Slot, which resolve cannot bind, so the reference reaches the\n",
+    "    // emitter unstamped while two modules declare Slot. The referencing-module arm\n",
+    "    // (v1.compiler.infer_emit_info type_decl_referencing_module_declarer) would pick the LOCAL Slot:\n",
+    "    // the wrong-declarer class itself. It is admitted only for a bare spelling, so this refuses.\n",
+    "    // THE CONTROL is the same module without the second declarer: the spelling names a sole\n",
+    "    // declarer, and nothing refuses.\n",
+    "    #[test]\n",
+    "    fn qualified_reference_is_not_decided_by_the_local_declarer() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let wide = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_qualified/wide.dag\".to_string(), content: \"module hom.wide\\n\\ntype Inner<C> {\\n  value: C\\n}\\n\\ntype Slot<A, B> {\\n  first: Inner<A>\\n  second: Inner<B>\\n}\\n\".to_string() });\n",
+    "        let local = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_qualified/local.dag\".to_string(), content: \"module hom.local\\n\\ntype Slot<T> {\\n  held: T\\n}\\n\\ntype Odd<K> {\\n  slot: no.such.module.Slot<K>\\n}\\n\".to_string() });\n",
+    "        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {\n",
+    "            let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "            result.files.iter().find(|f| f.path.contains(\"hom_local\")).map(|f| f.content.clone()).unwrap_or_default()\n",
+    "        };\n",
+    "        let red = emitted(vec![wide(), local()]);\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"item 'Odd' references type 'Slot', which more than one module of this closure declares\"), \"a qualified unstamped reference must refuse, not take the local Slot:\\n\{red}\");\n",
+    "        let control = emitted(vec![local()]);\n",
+    "        assert!(control.contains(\"pub struct Odd<K: Clone>\") && !control.contains(\"more than one module of this closure declares\"), \"a sole declarer resolves by spelling:\\n\{control}\");\n",
+    "    }\n\n"
+  )
+}
+
 // Cause 3's refusal: one header may bind a type-parameter name once, because a binder's identity is
 // (owner, name). The Rust it renders says what the row discriminates.
 fn ct_duplicate_type_parameter_refuses_test() -> String {
@@ -1893,6 +2006,9 @@ fn ct_coercion_tests() -> String {
     ct_kernel_identity_single_authority_test(),
     ct_type_reference_identity_split_test(),
     ct_declaration_field_reference_identity_test(),
+    ct_same_leaf_type_declarations_emit_by_identity_test(),
+    ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
+    ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }

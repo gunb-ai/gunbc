@@ -396,20 +396,20 @@ fn result_return_pass_exit(pass: ResultReturnPass) -> ProcessExit {
 // than one result for the attempt, or a result naming a claim other than the bound one -- each
 // named by its step, and none of them reported as the attempt's answer.
 type ResultReturnedObservation
-  = ResultReturnedObserved { node: RoadmapNodeId, event: RoadmapEventId, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, recorded_at: String }
+  = ResultReturnedObserved { node: RoadmapNodeId, attempt: NonEmptyStr, event: RoadmapEventId, claim: RoadmapEventId, return_to: EventPrincipal, outcome: AttemptResultOutcome, recorded_at: String }
   | ResultNotReturned { attempt_key: String }
   | ResultNotOwed { reason: String }
   | ResultReturnedUnobserved { step: String, reason: String }
 
 fn result_returned_observation_of_envelope(env: RoadmapEventEnvelope, node_envelopes: List<RoadmapEventEnvelope>, bound_claim: RoadmapEventId) -> ResultReturnedObservation {
   match env.event.kind {
-    ResultReturned { attempt: _, claim, outcome } =>
+    ResultReturned { attempt, claim, outcome } =>
       if (claim as String) != (bound_claim as String) {
         ResultReturnedUnobserved { step: "binding", reason: join(["the issue carries a result for this attempt naming claim ", claim as String, ", but the attempt is bound to claim ", bound_claim as String], "") }
       } else {
         match result_claim_join(node_envelopes: node_envelopes, claim: claim) {
           ResultRequestJoined { claim: joined, return_to } =>
-            ResultReturnedObserved { node: env.event.node, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
+            ResultReturnedObserved { node: env.event.node, attempt: attempt, event: env.id, claim: joined, return_to: return_to, outcome: outcome, recorded_at: env.event.recorded_at }
           ResultRequestUnjoinable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
           ResultRequestNone { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
           ResultRequestUnreadable { reason } => ResultReturnedUnobserved { step: "claim", reason: reason }
@@ -465,11 +465,9 @@ fn result_returned_observation_of(read: RoadmapEventsRead, binding: AttemptReque
 }
 
 // ONE ATTEMPT'S RESULT, READ FOR ITS EXACT IDENTITY: the attempt's launch binding from its attempt
-// state and its issue's history from the event log. Its consumer in this module is
-// result_returned_report, the operator's entry.
-// DECLARED FRONTIER: the dogfood route receipt (gunbc.roadmap_dogfood_route) is to fold this reader
-// as its result-returned stage; the trigger is the change that makes that receipt call it -- until
-// then no receipt consumes this function and none is claimed.
+// state and its issue's history from the event log. Its consumers are result_returned_report, the
+// operator's entry, and gunbc.roadmap_service_evidence service_evidence_inputs_for_attempt, which
+// binds completion_time and failure_attribution from it for the dogfood route's service evidence.
 fn result_returned_observe_for_attempt(instance: HostDashboardInstance, node_id: String, attempt_key: String) -> CarrierClosed<ResultReturnedObservation> {
   if attempt_key == "" || node_id == "" {
     CarrierClosed { result: ResultReturnedUnobserved { step: "attempt-identity", reason: "the issue or the attempt key is empty, so there is no attempt to read a result for" }, close: SnapshotNotOpened }
@@ -489,7 +487,7 @@ fn result_returned_observe_for_attempt(instance: HostDashboardInstance, node_id:
 
 fn result_returned_observation_text(o: ResultReturnedObservation) -> String {
   match o {
-    ResultReturnedObserved { node, event, claim, return_to, outcome, recorded_at } =>
+    ResultReturnedObserved { node, attempt: _, event, claim, return_to, outcome, recorded_at } =>
       join(["returned on issue ", node as String, " (event ", event as String, ", ", recorded_at, ") for claim ", claim as String, " to ", event_principal_label(p: return_to), ": ", attempt_result_outcome_text(o: outcome)], "")
     ResultNotReturned { attempt_key } => join(["no result has been returned for attempt ", attempt_key], "")
     ResultNotOwed { reason } => join(["no result is owed: ", reason], "")

@@ -29,7 +29,7 @@ import std.optional {
 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Node, Symbol }
-import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, type_alias_renaming }
+import v2.std.type_binder { AliasRenaming, NotARenaming, PureRenamingOf, binder_conj_names, type_alias_renaming }
 import v2.std.qualified_name {
   QualifiedName,
   qualified_name_init,
@@ -87,7 +87,7 @@ type SymbolIndex {
   bound_declarings: Map<QualifiedName, FreeMonoid<QualifiedName>>
   declared_payloads: Map<QualifiedName, DeclaredPayloadKind>
   renaming_aliases: Map<QualifiedName, Symbol>
-  declared_type_params: Map<QualifiedName, List<Symbol>>
+  declared_type_params: Map<QualifiedName, Node>
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
   module_roots: Map<QualifiedName, ModuleRootDeclared>
@@ -403,7 +403,7 @@ fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: Qualifi
   map_contains_key(m: index.declared_resources, key: qualified_path)
 }
 
-fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
+fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: Node) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
@@ -418,10 +418,16 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
 }
 
 fn symbol_index_declared_type_params_at(index: SymbolIndex, qualified_path: QualifiedName) -> List<Symbol> {
-  match map_lookup(m: index.declared_type_params, key: qualified_path) {
-    Present { value: params } => params
+  match symbol_index_declared_binders_at(index: index, qualified_path: qualified_path) {
+    Present { value: binders } => binder_conj_names(conj: binders)
     Absent => Empty
   }
+}
+
+// THE BINDER CONJ A DECLARATION BINDS, kinds included (v2.std.type_binder type_param_kind_optional).
+// Absent for a declaration that binds no type parameters.
+fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
+  map_lookup(m: index.declared_type_params, key: qualified_path)
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
