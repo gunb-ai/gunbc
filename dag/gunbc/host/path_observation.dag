@@ -1,8 +1,9 @@
 module gunbc.host.path_observation
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
-import std.measure { ByteSize }
-import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.bytes { utf8_encode_bytes, bytes_octets }
+import extdeps.tools.stat { StatFileKind, RegularFileKind, DirectoryKind, SymbolicLinkKind, SocketKind, FifoKind, CharacterDeviceKind, BlockDeviceKind, UnknownKind, stat_file_kind_word, StatFileTypeOutcome, StatFileTypeObserved, StatPathAbsent, StatFileTypeUnread, stat_file_type_outcome }
 import gunbc.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
 import gunbc.compute.host_occupancy { host_operation_ran, HostOperationRan, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
@@ -35,20 +36,14 @@ type HostPathKind
   | HostPathAbsent
   | HostPathUnread { cause: String }
 
-// ABSENCE IS READ FROM THE DIAGNOSTIC, not from the exit code alone. stat exits 1 both for a path that
-// does not exist and for one it could not examine, so the exit code cannot separate them; the C
-// library's strerror(ENOENT) text, which stat prints, can. It is upstream's wording, not a typed code,
-// so a change in it turns an absent path into an unread one -- the safe direction, because unread
-// refuses.
-data path_enoent_text: String = "No such file or directory"
-
+// ABSENCE IS extdeps.tools.stat's decision (stat_file_type_outcome), read from stat's TERMINAL reason
+// only, so a path that spells the ENOENT phrase cannot make a refused read absent (side-chat ruling on
+// #13427).
 fn host_path_kind_of_exit(code: Int, stdout: String, stderr: String, operation: HostOperation) -> HostPathKind {
-  match stat_file_type_reading(success: code == 0, output: stdout) {
-    StatFileTypeRead { kind: k } => HostPathPresent { kind: k }
-    StatFileTypeUnanswered { cause: c } =>
-      if code != 0 && string_contains(s: stderr, pattern: path_enoent_text) { HostPathAbsent }
-      else if code == 0 { HostPathUnread { cause: join([host_operation_label(operation: operation), ": ", c], "") } }
-      else { HostPathUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: stderr) } }
+  match stat_file_type_outcome(exit_code: code, stdout: stdout, stderr: stderr) {
+    StatFileTypeObserved { kind: k } => HostPathPresent { kind: k }
+    StatPathAbsent => HostPathAbsent
+    StatFileTypeUnread { cause: c } => HostPathUnread { cause: join([host_operation_label(operation: operation), ": ", c], "") }
   }
 }
 
@@ -61,9 +56,15 @@ fn host_path_kind(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> HostPa
   }
 }
 
+// SmallFileText IS THE WHOLE FILE (side-chat ruling on #13427): the read asks for limit + 1 bytes, and a
+// file that yielded more than limit bytes is SmallFileTooLarge, never its first limit bytes standing for
+// the whole. The count is of the bytes the text re-encodes to; the remote leg decodes stdout lossily,
+// replacing an invalid sequence with U+FFFD (three bytes) rather than dropping it, so a multi-byte
+// character cut at the bound can only make the count larger, the refusing direction.
 type SmallFileRead
   = SmallFileText { text: String }
   | SmallFileAbsent
+  | SmallFileTooLarge { limit: ByteSize }
   | SmallFileUnread { cause: String }
 
 // A SMALL FILE, READ AFTER ITS KIND IS KNOWN. Only a regular file is read, and only its first `limit`
@@ -92,12 +93,13 @@ fn small_file_not_regular(path: NonEmptyStr, kind: StatFileKind) -> SmallFileRea
 }
 
 fn small_file_head(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: ByteSize) -> SmallFileRead {
-  let operation = HeadBytes { path: path, count: limit }
+  let operation = HeadBytes { path: path, count: byte_size(count: byte_size_count(b: limit) + 1) }
   match host_operation_ran(run: run, operation: operation) {
     HostOperationNotRun { cause: c } => SmallFileUnread { cause: c }
     HostOperationResultUnreceived { cause: c } => SmallFileUnread { cause: c }
     HostOperationExited { exit_code: code, stdout: out, stderr: err } =>
-      if code == 0 { SmallFileText { text: out } }
-      else { SmallFileUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+      if code != 0 { SmallFileUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: err) } }
+      else if count(bytes_octets(b: utf8_encode_bytes(s: out))) > byte_size_count(b: limit) { SmallFileTooLarge { limit: limit } }
+      else { SmallFileText { text: out } }
   }
 }

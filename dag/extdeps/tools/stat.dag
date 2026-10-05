@@ -3,6 +3,7 @@ module extdeps.tools.stat
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
 import std.types { Bool, NonEmptyStr, List, Unit, Int, String }
+import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -274,5 +275,40 @@ fn stat_file_type_reading(success: Bool, output: String) -> StatFileTypeReading 
     }
   } else {
     StatFileTypeUnanswered { cause: "the metadata read did not complete" }
+  }
+}
+
+// ── ONE TYPED OUTCOME OF A FILE-TYPE READ, ABSENCE INCLUDED ──────────────────────────────────
+//
+// A non-completion is ABSENT only when stat's own TERMINAL reason is ENOENT. GNU stat prints
+// "stat: cannot statx '<path>': <reason>", so the reason is the text after the LAST ": " on the last
+// line -- the path comes before it, and a path that happens to spell the ENOENT phrase cannot satisfy
+// this, because the real reason (e.g. "Permission denied") is what the line ends with. The reason is
+// strerror(ENOENT) in the C locale, upstream's wording rather than a typed code: a locale or wording
+// change turns an absent path into an unread one, which refuses.
+type StatFileTypeOutcome
+  = StatFileTypeObserved { kind: StatFileKind }
+  | StatPathAbsent
+  | StatFileTypeUnread { cause: String }
+
+data stat_enoent_terminal_reason: String = ": No such file or directory"
+
+fn stat_terminal_line(stderr: String) -> String {
+  match filter(map(split(s: stderr, delimiter: "\n"), l => trim(l)), l => l != "").last() {
+    Present { value: l } => l
+    Absent => ""
+  }
+}
+
+fn stat_file_type_outcome(exit_code: Int, stdout: String, stderr: String) -> StatFileTypeOutcome {
+  if exit_code == 0 {
+    match stat_file_type_reading(success: true, output: stdout) {
+      StatFileTypeRead { kind: k } => StatFileTypeObserved { kind: k }
+      StatFileTypeUnanswered { cause: c } => StatFileTypeUnread { cause: c }
+    }
+  } else {
+    let line = stat_terminal_line(stderr: stderr)
+    if ends_with(s: line, suffix: stat_enoent_terminal_reason) { StatPathAbsent }
+    else { StatFileTypeUnread { cause: join(["stat exited ", to_string(exit_code), ": ", line], "") } }
   }
 }

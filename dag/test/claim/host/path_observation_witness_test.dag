@@ -8,7 +8,7 @@ import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
 import extdeps.tools.stat { StatFileKind, stat_file_kind_word }
 import gunbc.host.path_observation {
   HostPathKind, HostPathPresent, HostPathAbsent, HostPathUnread, host_path_kind,
-  SmallFileRead, SmallFileText, SmallFileAbsent, SmallFileUnread, small_file_read,
+  SmallFileRead, SmallFileText, SmallFileAbsent, SmallFileTooLarge, SmallFileUnread, small_file_read,
 }
 
 // THE TWO ROWS' REAL ROUTE: each operation materializes, from its extdeps declaration, the argv the
@@ -28,7 +28,7 @@ data w_path: NonEmptyStr = "/var/lib/gunbc/arm-committed/u.service"
 
 // A HOST THAT ANSWERS stat WITH ONE RESULT AND head WITH ANOTHER, dispatched on the program the leg runs.
 fn w_host(stat: ArgvRun, head: ArgvRun) -> fn(List<String>) -> ArgvRun {
-  fn(argv) { if starts_with(s: join(argv, " "), prefix: "/usr/bin/stat ") { stat } else if starts_with(s: join(argv, " "), prefix: "head -c 300 -- ") { head } else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", join(argv, " ")], "") } } }
+  fn(argv) { if starts_with(s: join(argv, " "), prefix: "/usr/bin/stat ") { stat } else if starts_with(s: join(argv, " "), prefix: "head -c 301 -- ") { head } else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", join(argv, " ")], "") } } }
 }
 
 fn w_ran(code: Int, out: String, err: String) -> ArgvRun { ArgvRan { exit_code: code, stdout: out, stderr: err } }
@@ -53,8 +53,31 @@ test fn w_path_kind_separates_absent_from_unread() -> Bool {
 // absent; a directory at the path, or a head that fails, is unread rather than empty text.
 test fn w_a_small_file_is_read_only_when_it_is_a_regular_file() -> Bool {
   let read = fn(stat, head) { small_file_read(run: w_host(stat: stat, head: head), path: w_path, limit: byte_size(count: 300)) }
-  (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 0, out: "fp8-16 4d2e607d", err: "")) { SmallFileText { text: t } => t == "fp8-16 4d2e607d"  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
-    && (match read(w_ran(code: 1, out: "", err: "stat: cannot statx: No such file or directory"), w_unused) { SmallFileAbsent => true  SmallFileText { text: _ } => false  SmallFileUnread { cause: _ } => false })
-    && (match read(w_ran(code: 0, out: "directory\n", err: ""), w_unused) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "is a directory")  SmallFileAbsent => false  SmallFileText { text: _ } => false })
-    && (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 1, out: "", err: "head: error reading: Input/output error")) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "Input/output error")  SmallFileAbsent => false  SmallFileText { text: _ } => false })
+  (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 0, out: "fp8-16 4d2e607d", err: "")) { SmallFileText { text: t } => t == "fp8-16 4d2e607d"  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 1, out: "", err: "stat: cannot statx: No such file or directory"), w_unused) { SmallFileAbsent => true  SmallFileText { text: _ } => false  SmallFileTooLarge { limit: _ } => false  SmallFileUnread { cause: _ } => false })
+    && (match read(w_ran(code: 0, out: "directory\n", err: ""), w_unused) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "is a directory")  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileText { text: _ } => false })
+    && (match read(w_ran(code: 0, out: "regular file\n", err: ""), w_ran(code: 1, out: "", err: "head: error reading: Input/output error")) { SmallFileUnread { cause: c } => string_contains(s: c, pattern: "Input/output error")  SmallFileAbsent => false  SmallFileTooLarge { limit: _ } => false  SmallFileText { text: _ } => false })
+}
+
+// RED (side-chat ruling on #13427): a path that SPELLS the ENOENT phrase, refused for another reason, is
+// unread -- stat's terminal reason decides, not a substring anywhere in its diagnostic.
+test fn w_a_path_spelling_enoent_does_not_make_a_refusal_absent() -> Bool {
+  match host_path_kind(run: w_host(stat: w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/No such file or directory/record': Permission denied\n"), head: w_unused), path: "/var/lib/gunbc/No such file or directory/record" as NonEmptyStr) {
+    HostPathUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")
+    HostPathAbsent => false
+    HostPathPresent { kind: _ } => false
+  }
+}
+
+// RED (side-chat ruling on #13427): the first 300 bytes look like a whole committed record, but byte 301
+// exists -- the read asked for 301 and got 301, so it is TOO LARGE, never the record. Exactly 300 bytes
+// is the whole file.
+data w_ten: String = "xxxxxxxxxx"
+
+fn w_hundred() -> String { join([w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten], "") }
+
+test fn w_a_file_longer_than_the_bound_is_too_large_not_its_prefix() -> Bool {
+  let read = fn(text) { small_file_read(run: w_host(stat: w_ran(code: 0, out: "regular file\n", err: ""), head: w_ran(code: 0, out: text, err: "")), path: w_path, limit: byte_size(count: 300)) }
+  (match read(join(["fp8-16 abcd\n", w_hundred(), w_hundred(), w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, w_ten, "xxxxxxxxx"], "")) { SmallFileTooLarge { limit: _ } => true  SmallFileText { text: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
+    && (match read(join([w_hundred(), w_hundred(), w_hundred()], "")) { SmallFileText { text: t } => length(t) == 300  SmallFileTooLarge { limit: _ } => false  SmallFileAbsent => false  SmallFileUnread { cause: _ } => false })
 }
