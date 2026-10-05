@@ -265,6 +265,27 @@ fn control_optional_brand_value(d: NonEmptyStr?) -> String {
   }
 }
 
+// THE INNER-TYPE ARM: the literal's parent IS the declared inner type, so the row holds a value of T
+// and is spelled as one. ControlShape's present variant carries one field, so a wrong inner-type
+// comparison would unwrap `ControlCircle { radius: 3 }` to a bare `3`, which the emitted enum cannot
+// parse -- the row would fail at run time rather than answer 3.
+type ControlShape
+  = ControlCircle { radius: Int }
+  | ControlNoShape
+
+data control_optional_shape_row: ControlShape? = ControlCircle { radius: 3 }
+
+fn control_optional_shape_radius(s: ControlShape?) -> Int {
+  match s {
+    Present { value: shape } =>
+      match shape {
+        ControlCircle { radius: r } => r
+        ControlNoShape => 0
+      }
+    Absent => 0 - 1
+  }
+}
+
 fn optional_data_row_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase {
@@ -274,6 +295,10 @@ fn optional_data_row_cases() -> List<NativeEmissionCase> {
     NativeEmissionCase {
       identity: "optional_data_row_red_absent_answers_absent",
       held: control_optional_brand_value(d: control_optional_brand_absent) == ""
+    },
+    NativeEmissionCase {
+      identity: "optional_data_row_inner_type_literal_is_a_value_of_t",
+      held: control_optional_shape_radius(s: control_optional_shape_row) == 3
     }
   ]
 }
@@ -432,7 +457,8 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",
   "optional_data_row_present_answers_its_value",
-  "optional_data_row_red_absent_answers_absent"
+  "optional_data_row_red_absent_answers_absent",
+  "optional_data_row_inner_type_literal_is_a_value_of_t"
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {

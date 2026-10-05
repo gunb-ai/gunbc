@@ -502,7 +502,11 @@ fn emit_data_fields_json(value: Node, source_indices: Map<String, NewlineIndex>,
 // Within an optional row, a variant literal whose parent IS the declared inner type is a value of T
 // and is spelled as one; any other one-field variant literal is the option's present arm and is
 // unwrapped to its payload. Control: gunbc.instruments.native_emission_controls optional_data_row_cases
-// and its Optional-named collision case.
+// -- the present and absent rows, and a row whose literal's parent is the declared inner type (a wrong
+// inner-type comparison would unwrap it and fail at run time). A coproduct merely NAMED Optional
+// cannot be emitted at all today (type rendering decides host-option by leaf name); that case is
+// lane 2K's RED, not covered here. The more-than-one-field refusal emits a compile_error! and has no
+// run-time case.
 fn emit_declared_optional_row_json(value: Node, inner_type_name: String, source_indices: Map<String, NewlineIndex>, variant_wire: Map<String, DataVariantWireSpelling>) -> EmitterOutcome {
   match value.expr_data {
     ExprLiteral { value: LitNull } => Emitted { json: "null" }
