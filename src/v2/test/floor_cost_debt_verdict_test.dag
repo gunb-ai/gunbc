@@ -1,0 +1,83 @@
+module v2.test.floor_cost_debt_verdict
+
+import std.types { List }
+import v2.std.text { String }
+import v2.workflow.floor_cost_debt_verdict {
+  CostDebtAdmissionReading, CostDebtAdmittedIdentities, CostDebtRosterUnreadableAtBase, CostDebtRosterUntokenizableAtBase,
+  cost_debt_admitted_identities,
+  cost_debt_verdict_standing, cost_debt_verdict_refuses, cost_debt_verdict_refusal_cause,
+}
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, PassedOverBudget, BudgetRefusedBeforeVerdict, PanickedBeforeVerdict,
+}
+import v2.std.algebra { contains }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RULE UNDER TEST is `v2.workflow.floor_cost_debt_verdict`: a cost-debt row the change admits
+// is run for its verdict without the eval-step budget, and the row is refused unless that verdict
+// passed. Each test drives ONE planted row through both halves the floor composes -- the admission
+// read over a supplied base roster source, then the verdict standing over the outcome the claim
+// reached -- so it asserts the floor's answer for that row and not only one classifier's arm.
+//
+// The base and head rosters are SUPPLIED (DESIGN section 3, a witness discriminates at one
+// interface). The real path -- `cost_debt_admitted_identities_at_base` showing the roster at the
+// floor's comparison base and reading the evaluated head roster -- runs on the required floor of
+// every change that modifies `src/v2/workflow/floor_cost_debt.dag`, which is the population it
+// exists for; the change that lands this file modifies it for that reason.
+
+fn base_roster_source() -> String {
+  "module fixture.roster\nfn chunk() -> List<String> {\n  [\"t.w_old\"]\n}\n"
+}
+
+fn head_roster() -> List<String> {
+  ["t.w_old", "t.w_fails", "t.w_heavy"]
+}
+
+fn admitted(identity: String) -> Bool {
+  match cost_debt_admitted_identities(base_source: base_roster_source(), head_roster: head_roster()) {
+    CostDebtAdmittedIdentities { identities: ids } => contains(xs: ids, item: identity, eq: fn(a, b) { a == b })
+    CostDebtRosterUnreadableAtBase { stderr: _ } => false
+    CostDebtRosterUntokenizableAtBase => false
+  }
+}
+
+// The floor's answer for one rostered identity on this change: refused exactly when the change
+// admits it and its unbudgeted run did not pass.
+fn row_refused(identity: String, outcome: ClaimDisposition) -> Bool {
+  admitted(identity: identity) && cost_debt_verdict_refuses(standing: cost_debt_verdict_standing(outcome: outcome))
+}
+
+// RED: a planted row over a semantically failing claim is refused, under the cause that names it.
+test fn a_planted_cost_row_over_a_failing_claim_is_refused() -> Bool {
+  row_refused(identity: "t.w_fails", outcome: Failed {})
+    && cost_debt_verdict_refusal_cause(standing: cost_debt_verdict_standing(outcome: Failed {})) == "CostDebtRowHidesSemanticRed"
+}
+
+// RED: an expected-red enrolment does not launder the failure -- the cost row would suppress it.
+test fn a_planted_cost_row_over_an_enrolled_expected_red_is_refused() -> Bool {
+  row_refused(identity: "t.w_fails", outcome: KnownRedHeld {})
+}
+
+// RED: no verdict is not a pass -- the wall deadline and a panic both refuse, as unreached.
+test fn a_planted_cost_row_whose_claim_reaches_no_verdict_is_refused() -> Bool {
+  row_refused(identity: "t.w_fails", outcome: BudgetRefusedBeforeVerdict {})
+    && row_refused(identity: "t.w_fails", outcome: PanickedBeforeVerdict {})
+    && cost_debt_verdict_refusal_cause(standing: cost_debt_verdict_standing(outcome: PanickedBeforeVerdict {})) == "CostDebtRowVerdictUnreached"
+}
+
+// POSITIVE CONTROL: a passing claim over its budget is exactly what a cost row is for; admitted.
+test fn a_planted_cost_row_over_a_passing_over_budget_claim_is_admitted() -> Bool {
+  admitted(identity: "t.w_heavy")
+    && !row_refused(identity: "t.w_heavy", outcome: PassedOverBudget {})
+    && !row_refused(identity: "t.w_heavy", outcome: Passed {})
+}
+
+// CONTROL: a row the base already carried is not an admission, so this change does not run it.
+test fn a_row_the_base_already_carried_is_not_admitted() -> Bool {
+  !admitted(identity: "t.w_old") && !row_refused(identity: "t.w_old", outcome: Failed {})
+}

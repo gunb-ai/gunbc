@@ -43276,6 +43276,13 @@ pub struct RequiredFloorOutcome {
     /// roster (`v2.workflow.floor_cost_debt`), and refusing a PR for them would be the
     /// externalization DESIGN section 5 names: moving an accepted cost onto whoever pushed next.
     pub enrolment_margin_blocking: Vec<ChangedWitnessBlocker>,
+    /// COST-DEBT ROWS WHOSE CLAIM DID NOT PASS when this change required its verdict, each with
+    /// its cause. Authority: `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing`.
+    /// The population is the rostered identities this change ADMITS (head roster, not base) or
+    /// RESTORES (touches the witness of), so it cannot red a PR for a row it did not author or
+    /// touch. A cost row may never hide a semantic red: this blocks whatever the expected-red
+    /// roster says, because a withhold suppresses that enrolment.
+    pub cost_debt_verdict_refused: Vec<ChangedWitnessBlocker>,
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {

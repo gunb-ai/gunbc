@@ -2185,6 +2185,16 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     for over_cost in &outcome.completed_over_cost_requirement {
         eprintln!("required-floor: COMPLETED-OVER-COST-REQUIREMENT {over_cost}");
     }
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "required-floor: COST-DEBT-ROW-REFUSED {} cause={} — this change admits or restores a \
+             floor_cost_debt row, and its claim did not pass when run for its verdict without the \
+             eval-step budget. A cost row withholds a witness for COST; standing over a failing or \
+             verdict-less claim it hides a semantic red. Repair the claim, or keep the row out of \
+             the roster and name the red where reds are carried.",
+            blocker.identity, blocker.cause
+        );
+    }
     for blocker in &outcome.enrolment_margin_blocking {
         eprintln!(
             "required-floor: ENROLMENT-MARGIN-REFUSED {} cause={} — this change ENROLS this \
@@ -2332,6 +2342,9 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // debt it did not author. Authority:
         // `v2.workflow.floor_enrolment_margin.enrolment_margin_standing_blocks`.
         && outcome.enrolment_margin_blocking.is_empty()
+        // A COST ROW MAY NEVER HIDE A SEMANTIC RED. A rostered identity this change admits or
+        // restores must pass; authority `v2.workflow.floor_cost_debt_verdict`.
+        && outcome.cost_debt_verdict_refused.is_empty()
 }
 
 fn required_floor_measurement_blockers(
@@ -2383,6 +2396,9 @@ fn required_floor_measurement_blockers(
     // The distinction was computed in `changed_witness_projection_rows` and dropped on the way
     // out (`gunbc.recurring_failure_mode` `non_verdict_disposition_surfaces_as_refusal`).
     for blocker in &outcome.changed_witness_blocking {
+        add(&blocker.identity, &blocker.cause);
+    }
+    for blocker in &outcome.cost_debt_verdict_refused {
         add(&blocker.identity, &blocker.cause);
     }
     // SAME DISCIPLINE, SAME REASON: the cause comes from the row. The enrolment gate distinguishes

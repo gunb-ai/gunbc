@@ -1,0 +1,152 @@
+module v2.workflow.floor_cost_debt_verdict
+
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.algebra { contains, list_reverse }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.text { String }
+import std.types { GitRef, FilePath, List }
+import extdeps.git
+import v2.workflow.floor_cost_debt { floor_cost_debt_roster }
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+}
+
+// A COST ROW MAY NEVER HIDE A SEMANTIC RED (swift-bat-688's triage, gunbc#13327).
+//
+// `v2.workflow.floor_cost_debt` withholds a rostered identity from execution because its cost is
+// over the line, and says nothing about its verdict. So a row is only honest while its claim
+// PASSES: a row over a failing claim is a semantic red the floor has stopped reading. That is not
+// hypothetical. `v2.test.claim.body_lowering.single_arm_match` regressed at gunbc#13056 and two of
+// its identities sat in `floor_cost_debt_censored_chunk_03`, so every required lane stayed green
+// over a v2 body-lowering regression.
+//
+// THE WALL STANDS AT THE TWO MOMENTS A ROW'S VERDICT IS IN QUESTION, and the floor runs the claim
+// at both for its verdict alone:
+//   - ADMISSION: an identity the head roster carries and the base roster does not
+//     (`cost_debt_admitted_identities_at_base`). Without this the row is declined at build on the
+//     very change that adds it, so nothing ever establishes that the claim it hides passes.
+//   - RESTORATION: a rostered identity whose witness the change touches -- the changed-witness
+//     override `v2.workflow.required_floor` `ChangedCostDebtVerdictOnly` already plans.
+// At both the claim must reach a passing verdict. Being over budget is the row's whole reason to
+// exist, so it is never what refuses here: an admitted claim is run WITHOUT the eval-step budget,
+// and a pass over budget is the positive control. Untouched rows are not re-run on every floor --
+// that is the cost the roster exists to avoid.
+//
+// WHAT REFUSES: a reached verdict that FAILED, including one the expected-red roster enrols. An
+// expected red is a declared red and has its own roster, `v2.workflow.floor_expected_red`; a cost row
+// standing on it suppresses that enrolment (the floor's `suppress_withheld`), so the red stops being
+// observed. That is the same hiding by another route, and this file's sibling header says it
+// already: a withheld row "is a different fact from a known red, and may not ride the same carrier".
+// And NO VERDICT: a claim that never reached one (the wall deadline, a panic, a route gap, a
+// runtime error, an unreadable observation) has not shown that the row hides no red, so admitting it
+// would be ⊤-as-ignorance read as ⊤-as-answer (DESIGN section 5).
+type CostDebtVerdictStanding =
+    CostDebtVerdictPassed
+  | CostDebtRowHidesSemanticRed
+  | CostDebtRowVerdictUnreached
+
+// Exhaustive over `ClaimDisposition`, so a new outcome arm must be placed here and cannot be absorbed.
+fn cost_debt_verdict_standing(outcome: ClaimDisposition) -> CostDebtVerdictStanding {
+  match outcome {
+    Passed => CostDebtVerdictPassed {}
+    PassedOverBudget => CostDebtVerdictPassed {}
+    KnownRedNowPassing => CostDebtVerdictPassed {}
+    Failed => CostDebtRowHidesSemanticRed {}
+    KnownRedHeld => CostDebtRowHidesSemanticRed {}
+    BudgetRefusedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    BudgetTerminalWithoutSafetyCause => CostDebtRowVerdictUnreached {}
+    HostToolUnresolvedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    RouteGapBeforeVerdict => CostDebtRowVerdictUnreached {}
+    RuntimeErroredBeforeVerdict => CostDebtRowVerdictUnreached {}
+    PanickedBeforeVerdict => CostDebtRowVerdictUnreached {}
+    NotAttemptedAfterAbort => CostDebtRowVerdictUnreached {}
+    ObservationUnreadableBeforeVerdict => CostDebtRowVerdictUnreached {}
+  }
+}
+
+// The cause a refusing standing prints, and the empty string on the one that does not refuse.
+fn cost_debt_verdict_refusal_cause(standing: CostDebtVerdictStanding) -> String {
+  match standing {
+    CostDebtVerdictPassed => ""
+    CostDebtRowHidesSemanticRed => "CostDebtRowHidesSemanticRed"
+    CostDebtRowVerdictUnreached => "CostDebtRowVerdictUnreached"
+  }
+}
+
+fn cost_debt_verdict_refuses(standing: CostDebtVerdictStanding) -> Bool {
+  match standing {
+    CostDebtVerdictPassed => false
+    CostDebtRowHidesSemanticRed => true
+    CostDebtRowVerdictUnreached => true
+  }
+}
+
+// ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────
+//
+// THE HEAD SIDE IS THE ROSTER ITSELF, EVALUATED. The base side is the roster file as it stood at the
+// floor's comparison base, and it cannot be evaluated beside the head: both declare
+// `v2.workflow.floor_cost_debt`, so they cannot resolve in one pool. It is read at TOKEN grain
+// instead, the way `v2.workflow.floor_cost_debt_edit` reads a base declaration: an identity counts
+// as carried at the base when one of the base file's string-literal tokens spells it.
+//
+// WHY THAT READING CANNOT ADMIT TOO LITTLE BY CONSTRUCTION, AND WHERE IT COULD. Every roster row is
+// a string literal in a chunk function, so every base row is among the base literals: no row the
+// base carried is ever read as admitted. The direction it could miss is a head row that the base
+// spelled in a literal OUTSIDE the roster (a prose string), which would read as carried and skip
+// the probe. The roster file has no such literal today -- its only other strings are the
+// population report's labels, none of which is identity-shaped -- and a comment is not a token
+// (DESIGN section 4c), so the residue is a literal someone would have to author into that file.
+// Evaluating the base roster in its own pool would close it; that is the next rung, and it waits
+// on a pool that can hold two revisions of one module.
+//
+// A BASE THAT CANNOT BE SHOWN REFUSES. `git show` exits non-zero both for a path absent at the
+// base and for a bad ref (`extdeps.git` `Show`), so the read cannot tell those apart and does not
+// guess: the roster has existed since long before this wall, so the floor asks only when the diff
+// modified the roster, and an unreadable base is its own arm, never an empty roster that would
+// admit every row at once or none.
+type CostDebtAdmissionReading =
+    CostDebtAdmittedIdentities { identities: List<String> }
+  | CostDebtRosterUnreadableAtBase { stderr: String }
+  | CostDebtRosterUntokenizableAtBase
+
+fn cost_debt_string_literal_spells(lexeme: String, identity: String) -> Bool {
+  lexeme == concat(concat("\"", identity), "\"")
+}
+
+// The head rows no base string literal spells, in roster order.
+fn cost_debt_admitted_identities(base_source: String, head_roster: List<String>) -> CostDebtAdmissionReading {
+  match tokenize(text: base_source, file: ^cost_debt_admission_base, rules: dag_language_model().lex) {
+    Rejected { diagnostics: _ } => CostDebtRosterUntokenizableAtBase {}
+    Accepted { value: stream, diagnostics: _ } => {
+      let literals = fold(token_stream_all(stream: stream), init: [], f: fn(acc, tok) {
+        if tok.class == ^dag_token_string_literal { concat([tok.lexeme], acc) } else { acc }
+      })
+      CostDebtAdmittedIdentities {
+        identities: list_reverse(xs: fold(head_roster, init: [], f: fn(acc, identity) {
+          if contains(xs: literals, item: identity, eq: fn(lexeme, id) { cost_debt_string_literal_spells(lexeme: lexeme, identity: id) }) {
+            acc
+          } else {
+            concat([identity], acc)
+          }
+        }))
+      }
+    }
+  }
+}
+
+// THE WET ENTRY THE FLOOR CALLS when its diff modified the roster file: show the base, then compare
+// it with the head roster as evaluated.
+fn cost_debt_admitted_identities_at_base(base: String, path: String) -> CostDebtAdmissionReading {
+  let shown = git.Core.Show(ref: base as GitRef, path: path as FilePath)
+  if shown.success {
+    cost_debt_admitted_identities(base_source: shown.content, head_roster: floor_cost_debt_roster())
+  } else {
+    CostDebtRosterUnreadableAtBase { stderr: shown.stderr }
+  }
+}

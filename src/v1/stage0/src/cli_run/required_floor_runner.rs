@@ -1553,6 +1553,31 @@ fn changed_and_enrolled_witness_identities_with_index(
         &edits.enrolled_test_fns,
         &quarantined,
     )?;
+    // ADMISSION IS A CHANGE TO THE IDENTITY'S STANDING, SO IT JOINS THE CHANGED SET. A row added
+    // to `v2.workflow.floor_cost_debt` would otherwise be declined at build on the very change
+    // that adds it, and nothing would ever establish that the claim it withholds passes
+    // (`v2.workflow.floor_cost_debt_verdict`). Asked only when the diff modified the roster; a
+    // roster ADDED by this change has no base, and every row it carries is then an admission.
+    let mut cost_debt_admitted: Vec<String> = Vec::new();
+    if changed_paths.iter().any(|p| p == FLOOR_COST_DEBT_ROSTER)
+        && !added_paths.contains(FLOOR_COST_DEBT_ROSTER)
+    {
+        let base = floor_diff_comparison_readout()?.base().to_string();
+        cost_debt_admitted = cost_debt_admitted_identities(&base)?;
+        eprintln!(
+            "[floor-cost-debt-admission] base={base} admitted={}",
+            cost_debt_admitted.len()
+        );
+        for identity in &cost_debt_admitted {
+            eprintln!("[floor-cost-debt-admission] identity={identity} run=unbudgeted-for-verdict");
+        }
+    }
+    let mut changed = changed;
+    for identity in &cost_debt_admitted {
+        if !changed.contains(identity) {
+            changed.push(identity.clone());
+        }
+    }
     // THE THIRD PROJECTION IS THE COMPILE SUBJECT, not another witness roster. A helper-fn
     // or type-decl edit lands in `touched_entry_files` and until this was consumed only by
     // skip-before-resolve and module-grain affected proofs -- never by Strict preparation.
@@ -1603,6 +1628,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
+        cost_debt_admitted,
         diff_paths,
         compile_subject: CompileSubjectSeeds {
             touched_modules,
@@ -1618,6 +1644,9 @@ fn changed_and_enrolled_witness_identities_with_index(
 pub(crate) struct FloorDiffProjections {
     pub changed_witnesses: Vec<String>,
     pub newly_enrolled_witnesses: Vec<String>,
+    /// Rows this change adds to `v2.workflow.floor_cost_debt`, already inside `changed_witnesses`;
+    /// they run for their verdict WITHOUT the eval-step budget (`v2.workflow.floor_cost_debt_verdict`).
+    pub cost_debt_admitted: Vec<String>,
     /// Every path the diff names, changed or departed, as the checker-input rule reads them.
     pub diff_paths: Vec<String>,
     pub compile_subject: CompileSubjectSeeds,
@@ -2298,6 +2327,124 @@ pub(crate) fn floor_enrolment_typed_cost_debt_identities(
         }
     }
     Ok(out)
+}
+
+/// `v2.workflow.floor_cost_debt`: the roster whose admissions `v2.workflow.floor_cost_debt_verdict`
+/// reads against the diff base.
+const FLOOR_COST_DEBT_ROSTER: &str = "src/v2/workflow/floor_cost_debt.dag";
+/// `v2.workflow.floor_cost_debt_verdict`: every decision about a cost row's verdict.
+const FLOOR_COST_DEBT_VERDICT: &str = "src/v2/workflow/floor_cost_debt_verdict.dag";
+
+/// THE ROWS THIS CHANGE ADMITS TO THE COST-DEBT ROSTER: head roster rows the base roster did not
+/// carry, decided by `v2.workflow.floor_cost_debt_verdict` `cost_debt_admitted_identities_at_base`.
+/// The host supplies the comparison base the floor already resolved and decodes the closed
+/// `CostDebtAdmissionReading` by arm; an unreadable or untokenizable base REFUSES rather than
+/// reading as an empty roster, which would admit every row at once.
+fn cost_debt_admitted_identities(base: &str) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    let (graph, indices) =
+        resolve_entry_graph_shared(&default_source_roots(), FLOOR_COST_DEBT_VERDICT)
+            .map_err(|e| format!("floor_cost_debt_verdict resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let args = [
+        (Some("base".to_string()), str_value(base)),
+        (Some("path".to_string()), str_value(FLOOR_COST_DEBT_ROSTER)),
+    ];
+    let reading = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "cost_debt_admitted_identities_at_base",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("cost_debt_admitted_identities_at_base: {e}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &reading
+    else {
+        return Err(format!(
+            "cost_debt_admitted_identities_at_base returned {}, expected a CostDebtAdmissionReading variant",
+            floor_value_shape(Some(&reading))
+        ));
+    };
+    match ctx.resolve(*variant_name).as_str() {
+        "CostDebtAdmittedIdentities" => match ctx.field(fields, "identities") {
+            Some(Value::List(ids)) => ids
+                .iter()
+                .map(|id| match id {
+                    Value::Str(id) => Ok(id.to_string()),
+                    other => Err(format!(
+                        "CostDebtAdmittedIdentities carries a non-String identity {}",
+                        floor_value_shape(Some(other))
+                    )),
+                })
+                .collect(),
+            _ => Err("CostDebtAdmittedIdentities carries no `identities` list".to_string()),
+        },
+        "CostDebtRosterUnreadableAtBase" => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterUnreadableAtBase base={base} \
+             path={FLOOR_COST_DEBT_ROSTER} stderr={} -- the change modifies the roster, so it must \
+             exist at the base to decide which rows it admits",
+            match ctx.field(fields, "stderr") {
+                Some(Value::Str(e)) => e.to_string(),
+                _ => String::new(),
+            }
+        )),
+        "CostDebtRosterUntokenizableAtBase" => Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=CostDebtRosterUntokenizableAtBase base={base} \
+             path={FLOOR_COST_DEBT_ROSTER} -- the base roster did not tokenize, so which rows this \
+             change admits cannot be read"
+        )),
+        other => Err(format!(
+            "cost_debt_admitted_identities_at_base returned unknown variant {other}"
+        )),
+    }
+}
+
+/// THE COST-DEBT VERDICT WALL over the claims this run executed for a cost row's verdict.
+/// Mirror of `v2.workflow.floor_cost_debt_verdict` `cost_debt_verdict_standing` and
+/// `cost_debt_verdict_refusal_cause`; the match is exhaustive, so a new `ClaimDisposition` arm
+/// must be placed here as it must there. `verdict_required` is every rostered identity this
+/// change admits or restores; an identity with no terminal row was planned and never reached
+/// one, which is a refusal and never a pass.
+pub(crate) fn cost_debt_verdict_refusals(
+    terminal: &[ClaimTerminalRow],
+    verdict_required: &BTreeSet<String>,
+) -> Vec<ChangedWitnessBlocker> {
+    let outcomes: HashMap<&str, ClaimDisposition> = terminal
+        .iter()
+        .map(|row| (row.qualified.as_str(), claim_disposition(row)))
+        .collect();
+    verdict_required
+        .iter()
+        .filter_map(|identity| {
+            let cause = match outcomes.get(identity.as_str()) {
+                Some(
+                    ClaimDisposition::Passed
+                    | ClaimDisposition::PassedOverBudget
+                    | ClaimDisposition::KnownRedNowPassing,
+                ) => return None,
+                Some(ClaimDisposition::Failed | ClaimDisposition::KnownRedHeld) => {
+                    "CostDebtRowHidesSemanticRed"
+                }
+                Some(
+                    ClaimDisposition::BudgetRefusedBeforeVerdict
+                    | ClaimDisposition::HostToolUnresolvedBeforeVerdict
+                    | ClaimDisposition::RouteGapBeforeVerdict
+                    | ClaimDisposition::RuntimeErroredBeforeVerdict
+                    | ClaimDisposition::PanickedBeforeVerdict
+                    | ClaimDisposition::NotAttemptedAfterAbort
+                    | ClaimDisposition::ObservationUnreadableBeforeVerdict,
+                )
+                | None => "CostDebtRowVerdictUnreached",
+            };
+            Some(ChangedWitnessBlocker {
+                identity: identity.clone(),
+                cause: cause.to_string(),
+            })
+        })
+        .collect()
 }
 
 /// `v2.workflow.floor_unimported_bare_provider_debt_roster`: the debt the rule inherited.
@@ -6877,35 +7024,44 @@ pub fn run_required_floor(
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
     // that diff changed. Re-observing the diff after execution would create two authorities
     // over which identities this run promised to execute.
-    let (changed_witnesses, newly_enrolled_witnesses, compile_subject, diff_paths) =
-        match changed_and_enrolled_witness_identities_with_index(
-            &gate_entry_index,
-            source_roots,
-            planning_index.as_ref(),
-        ) {
-            Ok(projections) => (
-                Some(projections.changed_witnesses),
-                Some(projections.newly_enrolled_witnesses),
-                Some(projections.compile_subject),
-                Some(projections.diff_paths),
-            ),
-            Err(e) if commit != "local" && !commit.is_empty() => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
+    let (
+        changed_witnesses,
+        newly_enrolled_witnesses,
+        compile_subject,
+        diff_paths,
+        cost_debt_admitted,
+    ) = match changed_and_enrolled_witness_identities_with_index(
+        &gate_entry_index,
+        source_roots,
+        planning_index.as_ref(),
+    ) {
+        Ok(projections) => (
+            Some(projections.changed_witnesses),
+            Some(projections.newly_enrolled_witnesses),
+            Some(projections.compile_subject),
+            Some(projections.diff_paths),
+            projections
+                .cost_debt_admitted
+                .into_iter()
+                .collect::<HashSet<String>>(),
+        ),
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
                  changed-witness execution sublane could not observe or attribute the CI diff"
-                ));
-            }
-            Err(e) => {
-                eprintln!(
+            ));
+        }
+        Err(e) => {
+            eprintln!(
                 "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
             );
-                // ALL FOUR PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
-                // `None` here is "this run could not look", which is a different fact from "this run
-                // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
-                // own not-measured arm turns on, so it may not be lost at its source.
-                (None, None, None, None)
-            }
-        };
+            // ALL FOUR PROJECTIONS GO UNEVALUATED TOGETHER, because they come from one observation.
+            // `None` here is "this run could not look", which is a different fact from "this run
+            // looked and found nothing" (`Some(vec![])`) — the distinction the enrolment gate's
+            // own not-measured arm turns on, so it may not be lost at its source.
+            (None, None, None, None, HashSet::new())
+        }
+    };
     // THE PARSE INDEX'S LAST READER HAS RETURNED. It was lent for the planning row alone, and
     // holding it for the rest of the floor kept a corpus-wide index resident through preparation
     // and evaluation that nothing after this line reads.
@@ -8605,7 +8761,13 @@ pub fn run_required_floor(
                 // other edit takes the new-witness one. The decision and the budget are the .dag's;
                 // the host supplies the head bytes and the comparison base it already resolved.
                 // Computed before the claim is built because the identity moves into it.
-                let eval_step_budget = if let Some(census) = corpus_census.get(&identity) {
+                // AN ADMITTED ROW RUNS WITHOUT THE BUDGET (`v2.workflow.floor_cost_debt_verdict`):
+                // being over it is the row's whole reason to exist, so the question this run asks
+                // is only whether the claim passes. The figure below is never compared -- the step
+                // gate stands down for `cost_debt_admitted` -- and the wall deadline stays armed.
+                let eval_step_budget = if cost_debt_admitted.contains(&identity) {
+                    grandfathered_eval_step_budget
+                } else if let Some(census) = corpus_census.get(&identity) {
                     census.budget_steps
                 } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
@@ -8625,6 +8787,7 @@ pub fn run_required_floor(
                             .filter(|name| {
                                 let id = format!("{}.{}", file.module_path, name);
                                 changed_witness_set.contains(&id)
+                                    && !cost_debt_admitted.contains(&id)
                                     && cost_debt_roster.contains(&id)
                                     && !grandfathered_roster.contains(&id)
                                     && !corpus_census.contains_key(&id)
@@ -9634,6 +9797,7 @@ pub fn run_required_floor(
         changed_witness_rows: 0,
         changed_witness_blocking: Vec::new(),
         enrolment_margin_blocking: Vec::new(),
+        cost_debt_verdict_refused: Vec::new(),
     };
     let mut receipted: HashSet<String> = HashSet::new();
 
@@ -9955,6 +10119,7 @@ pub fn run_required_floor(
         if matches!(terminality, ClaimTerminality::VerdictReached { .. })
             && receipt.eval_steps > claim.eval_step_budget
             && !eval_step_cost_drop.contains(&claim.qualified)
+            && !cost_debt_admitted.contains(&claim.qualified)
         {
             // WHICH TIER REFUSED, NAMED IN THE SENTENCE THAT BLOCKS. The two are different facts
             // with different remedies: a grandfathered row over 500ms-equivalent has grown past the
@@ -11702,6 +11867,33 @@ pub fn run_required_floor(
     if let Some(rows) = &changed_projection_rows {
         outcome.changed_witness_rows = rows.len();
     }
+    // THE COST-DEBT VERDICT WALL (`v2.workflow.floor_cost_debt_verdict`). Every rostered identity
+    // this change admits or restores ran for its verdict; a row over a claim that did not pass is
+    // refused here whatever the expected-red roster says, because a withhold suppresses that
+    // enrolment and the red would stop being read.
+    let cost_debt_verdict_required: BTreeSet<String> = changed_witness_set
+        .iter()
+        .filter(|identity| {
+            cost_debt_roster.contains(*identity) && cost_debt_verdict_only.contains(*identity)
+        })
+        .cloned()
+        .collect();
+    outcome.cost_debt_verdict_refused =
+        cost_debt_verdict_refusals(&terminal_rows, &cost_debt_verdict_required);
+    eprintln!(
+        "[floor-cost-debt-verdict] required={} admitted={} refused={} (authority \
+         v2.workflow.floor_cost_debt_verdict)",
+        cost_debt_verdict_required.len(),
+        cost_debt_admitted.len(),
+        outcome.cost_debt_verdict_refused.len()
+    );
+    for blocker in &outcome.cost_debt_verdict_refused {
+        eprintln!(
+            "REQUIRED-FLOOR REFUSAL cause={} identity={} -- a floor_cost_debt row this change \
+             admits or restores stands over a claim that did not pass",
+            blocker.cause, blocker.identity
+        );
+    }
     // THE ENROLMENT MARGIN GATE (operator ruling 2026-09-11). Authority:
     // `v2.workflow.floor_enrolment_margin`.
     //
@@ -13266,6 +13458,60 @@ mod changed_witness_projection_tests {
             expected_red: false,
             outcome,
         }
+    }
+
+    fn cost_debt_required(ids: &[&str]) -> BTreeSet<String> {
+        ids.iter().map(|id| id.to_string()).collect()
+    }
+
+    /// RED: a planted cost row over a semantically failing claim is refused, under the cause
+    /// `v2.workflow.floor_cost_debt_verdict` names.
+    #[test]
+    fn cost_debt_row_over_a_failing_claim_is_refused() {
+        let refused = cost_debt_verdict_refusals(
+            &[terminal("m.fails", ClaimOutcome::Fail)],
+            &cost_debt_required(&["m.fails"]),
+        );
+        assert_eq!(refused.len(), 1);
+        assert_eq!(refused[0].identity, "m.fails");
+        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+    }
+
+    /// RED: an expected-red enrolment does not launder it -- the withhold suppresses that
+    /// enrolment, so a held red under a cost row is still a red nobody reads.
+    #[test]
+    fn cost_debt_row_over_an_enrolled_expected_red_is_refused() {
+        let mut row = terminal("m.known", ClaimOutcome::Fail);
+        row.expected_red = true;
+        let refused = cost_debt_verdict_refusals(&[row], &cost_debt_required(&["m.known"]));
+        assert_eq!(refused.len(), 1);
+        assert_eq!(refused[0].cause, "CostDebtRowHidesSemanticRed");
+    }
+
+    /// RED: a required row with no terminal verdict is unreached, never a pass.
+    #[test]
+    fn cost_debt_row_without_a_verdict_is_refused_as_unreached() {
+        let refused = cost_debt_verdict_refusals(&[], &cost_debt_required(&["m.silent"]));
+        assert_eq!(refused.len(), 1);
+        assert_eq!(refused[0].cause, "CostDebtRowVerdictUnreached");
+    }
+
+    /// POSITIVE CONTROL: a passing row is admitted, and a failing claim this change neither
+    /// admits nor restores is not this wall's to judge.
+    #[test]
+    fn cost_debt_row_over_a_passing_claim_is_admitted() {
+        let refused = cost_debt_verdict_refusals(
+            &[
+                terminal("m.heavy", ClaimOutcome::Pass),
+                terminal("m.other", ClaimOutcome::Fail),
+            ],
+            &cost_debt_required(&["m.heavy"]),
+        );
+        assert!(
+            refused.is_empty(),
+            "{:?}",
+            refused.iter().map(|b| &b.identity).collect::<Vec<_>>()
+        );
     }
 
     /// Positive control: a planned changed identity with a terminal Pass is the ONE green

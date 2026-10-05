@@ -1,0 +1,20 @@
+module gunbc.floor_cost_debt_verdict_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the cost-debt VERDICT wall: a floor_cost_debt row the change admits or
+// restores must stand over a passing claim. The modeled authority is
+// v2.workflow.floor_cost_debt_verdict; the declarations below are its seed-side reader and mirror at
+// the required floor's diff and terminal boundaries, not a second policy.
+data floor_cost_debt_verdict_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_admitted_identities", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_verdict_refusals", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor plans and executes its claims in the seed. Which rows a change admits is decided by v2.workflow.floor_cost_debt_verdict cost_debt_admitted_identities_at_base; the seed reader `cost_debt_admitted_identities` hands it the comparison base the floor already resolved and decodes the closed CostDebtAdmissionReading by arm, refusing an unreadable or untokenizable base rather than reading it as an empty roster. The verdict standing is cost_debt_verdict_standing; `cost_debt_verdict_refusals` is its exhaustive mirror over the terminal rows run_required_floor holds privately, the same seam the changed-witness projection mirrors at.\n\nWHAT IT REPAIRS: a cost row hid a semantic red. Two v2.test.claim.body_lowering.single_arm_match identities regressed at gunbc#13056 while rostered in floor_cost_debt_censored_chunk_03, and every required lane stayed green (gunbc#13327). Before this, a row was declined at build on the very change that added it, so nothing ever established that the claim it withholds passes.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program; the required floor guards it, and this closes a hole through which a v2 compiler regression went unread. It adds no language behavior, no seed feature, no emitted surface and no flag: nothing an author writes can stand the wall down.\n\nHAND-ITEM DELTA: +2, the two declarations above. The admitted set riding FloorDiffProjections, the unbudgeted planning arm, the step-gate stand-down and the cost_debt_verdict_refused outcome field are edits inside declarations that already existed.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete both seed declarations when the self-emitted claim executor builds the required floor's claim roster and its terminal ledger and calls v2.workflow.floor_cost_debt_verdict cost_debt_admitted_identities_at_base and cost_debt_verdict_standing directly. NOT retired by the cost-debt roster reaching zero: an empty roster still needs its next admission judged.",
+  current_boundary: "v2.workflow.floor_cost_debt_verdict cost_debt_admitted_identities_at_base -> v1_compiler.cli_run.required_floor_runner cost_debt_admitted_identities -> v1_compiler.cli_run.required_floor_runner run_required_floor -> v1_compiler.cli_run.required_floor_runner cost_debt_verdict_refusals -> v1_compiler.cli_run RequiredFloorOutcome cost_debt_verdict_refused"
+}
