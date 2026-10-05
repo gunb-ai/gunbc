@@ -474,7 +474,7 @@ fn present_celsius(samples: List<TemperatureSample>) -> List<Int> {
 }
 
 fn any_disabled(samples: List<TemperatureSample>) -> Bool {
-  any(samples, s => match s { TemperatureSensorDisabled => true _ => false })
+  any(samples, s => match s { TemperatureSensorDisabled => true TemperatureReadingPresent { celsius: _ } => false TemperatureReadingUnavailable => false })
 }
 
 fn bmc_standing_crossed(standing: BmcThresholdStanding) -> Bool {
@@ -579,11 +579,11 @@ fn assess_bmc_events(window: BmcEventWindow) -> SignalVerdict {
     BmcEventLogContinuityUnestablished { cause } =>
       signal_unknown(unknown: EventLogContinuityUnestablished { cause: cause })
     BmcEventsObserved { history_count, appended } => {
-      let corrected = count(filter(appended, e => match e.kind { CorrectedMemoryErrorEvent => true _ => false }))
-      let uncorrected = count(filter(appended, e => match e.kind { UncorrectedMemoryErrorEvent => true _ => false }))
-      let hot = flat_map(appended, e => match e.kind { DimmThermalEvent { subject, asserted } => if asserted { [subject] } else { [] } _ => [] })
-      let crossed = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted { [sensor] } else { [] } _ => [] })
-      let crossed_critical = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted && critical { [sensor] } else { [] } _ => [] })
+      let corrected = count(filter(appended, e => match e.kind { CorrectedMemoryErrorEvent => true UncorrectedMemoryErrorEvent => false MemoryErrorDetailEvent => false DimmThermalEvent { subject: _, asserted: _ } => false SensorThresholdEvent { sensor: _, critical: _, asserted: _ } => false UnclassifiedEvent => false }))
+      let uncorrected = count(filter(appended, e => match e.kind { UncorrectedMemoryErrorEvent => true CorrectedMemoryErrorEvent => false MemoryErrorDetailEvent => false DimmThermalEvent { subject: _, asserted: _ } => false SensorThresholdEvent { sensor: _, critical: _, asserted: _ } => false UnclassifiedEvent => false }))
+      let hot = flat_map(appended, e => match e.kind { DimmThermalEvent { subject, asserted } => if asserted { [subject] } else { [] } CorrectedMemoryErrorEvent => [] UncorrectedMemoryErrorEvent => [] MemoryErrorDetailEvent => [] SensorThresholdEvent { sensor: _, critical: _, asserted: _ } => [] UnclassifiedEvent => [] })
+      let crossed = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted { [sensor] } else { [] } CorrectedMemoryErrorEvent => [] UncorrectedMemoryErrorEvent => [] MemoryErrorDetailEvent => [] DimmThermalEvent { subject: _, asserted: _ } => [] UnclassifiedEvent => [] })
+      let crossed_critical = flat_map(appended, e => match e.kind { SensorThresholdEvent { sensor, critical, asserted } => if asserted && critical { [sensor] } else { [] } CorrectedMemoryErrorEvent => [] UncorrectedMemoryErrorEvent => [] MemoryErrorDetailEvent => [] DimmThermalEvent { subject: _, asserted: _ } => [] UnclassifiedEvent => [] })
       SignalVerdict {
         deviations: flat_map([
           if corrected > 0 { [MemoryErrorEventsLogged { corrected: true, events: corrected }] } else { [] },
@@ -599,7 +599,11 @@ fn assess_bmc_events(window: BmcEventWindow) -> SignalVerdict {
           if history_count > 0 { [HistoricalEventResidueUndispositioned { entries: history_count }] } else { [] },
           flat_map(appended, e => match e.kind {
             UnclassifiedEvent => [BmcEventUnclassified { entry: e.message }]
-            _ => []
+            CorrectedMemoryErrorEvent => []
+            UncorrectedMemoryErrorEvent => []
+            MemoryErrorDetailEvent => []
+            DimmThermalEvent { subject: _, asserted: _ } => []
+            SensorThresholdEvent { sensor: _, critical: _, asserted: _ } => []
           }),
         ], group => group),
         refusal: none,

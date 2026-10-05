@@ -11,8 +11,12 @@ import std.content_hash {
   fnv1a64_structural_hex_digest,
   serialize_content_hash,
 }
-import extdeps.pin {
-  Pin,
+import extdeps.filesystem.filesystem_io {
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+}
+import extdeps.pin {  Pin,
   ExactPin,
   PinAdmission,
   PinIntegrityAdmitted,
@@ -250,51 +254,51 @@ fn validation_oracle_declaration_count(
 
 fn validation_oracle_observe_from_source(
   oracle: ValidationOracleRef,
-  source_readable: Bool,
-  source: String,
-  read_error: String,
+  source_read: FilesystemReadOutcome,
 ) -> OracleObservation {
-  if !source_readable {
-    OracleMissing {
-      oracle: oracle,
-      detail: join([
-        "validation oracle source could not be obtained at ",
-        oracle.entry as String,
-        ": ",
-        read_error,
-      ], ""),
-    }
-  } else {
-    let declarations = validation_oracle_declaration_count(
-      source: source,
-      function: oracle.function,
-    )
-    if declarations == 0 {
+  match source_read {
+    FilesystemReadRefused { error } =>
       OracleMissing {
         oracle: oracle,
         detail: join([
-          "validation oracle source at ",
+          "validation oracle source could not be obtained at ",
           oracle.entry as String,
-          " declares no ",
-          oracle.function as String,
+          ": ",
+          error,
         ], ""),
       }
-    } else if declarations > 1 {
-      OracleAmbiguous {
-        oracle: oracle,
-        declaration_count: declarations,
-      }
-    } else {
-      let unpinned = validation_oracle_unpinned_dependencies(source: source)
-      if count(unpinned) > 0 {
-        OracleDependsOnUnpinnedOracle {
+    FilesystemReadSucceeded { content: source } => {
+      let declarations = validation_oracle_declaration_count(
+        source: source,
+        function: oracle.function,
+      )
+      if declarations == 0 {
+        OracleMissing {
           oracle: oracle,
-          imports: unpinned,
+          detail: join([
+            "validation oracle source at ",
+            oracle.entry as String,
+            " declares no ",
+            oracle.function as String,
+          ], ""),
+        }
+      } else if declarations > 1 {
+        OracleAmbiguous {
+          oracle: oracle,
+          declaration_count: declarations,
         }
       } else {
-        OracleFound {
-          oracle: oracle,
-          identity: validation_oracle_source_identity(source: source),
+        let unpinned = validation_oracle_unpinned_dependencies(source: source)
+        if count(unpinned) > 0 {
+          OracleDependsOnUnpinnedOracle {
+            oracle: oracle,
+            imports: unpinned,
+          }
+        } else {
+          OracleFound {
+            oracle: oracle,
+            identity: validation_oracle_source_identity(source: source),
+          }
         }
       }
     }
@@ -1017,7 +1021,35 @@ fn validation_receipt_string_member(
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: sv } => ValidationReceiptMemberRead { value: sv }
-        _ =>
+        JsonNull =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonBool { value: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonNumber { lexeme: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonArray { elements: _ } =>
+          ValidationReceiptMemberUnreadable {
+            reason: concat(
+              "validation receipt ",
+              concat(key, " is not a JSON string"),
+            ),
+          }
+        JsonObject { members: _ } =>
           ValidationReceiptMemberUnreadable {
             reason: concat(
               "validation receipt ",

@@ -1,7 +1,20 @@
 module gunbc.roadmap.roadmap_event_carrier
 
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, GitRef }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemFileObservation,
+  FilesystemFileRead,
+  FilesystemFileAbsent,
+  FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree,
+  FilesystemFileSubjectRefused,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
@@ -324,6 +337,30 @@ fn roadmap_event_same_command(a: RoadmapEvent, b: RoadmapEvent) -> Bool {
   a.node == b.node && a.author == b.author && a.parent == b.parent && a.kind == b.kind
 }
 
+// The operation receipt is observed, not read-and-kind-matched: the old flow branched on the
+// host error's error_kind string ("not_found"), which breaks on every host phrasing. The
+// observation authority establishes absence from the listing, so a missing receipt is an
+// established fact (proceed with the append), a listed-but-unreadable receipt is a refusal that
+// says whether the operation already ran is UNKNOWN, and a readable receipt decodes.
+fn roadmap_event_append_after_no_operation_receipt(
+  layout: RoadmapEventCarrierLayout,
+  event: RoadmapEvent,
+  env: RoadmapEventEnvelope,
+  operation: String,
+  receipt_path: String,
+  expected_commit: String,
+) -> RoadmapEventAppend {
+  match roadmap_events_read_synced(layout: layout, node: event.node) {
+    EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
+    EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
+      else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
+        EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
+      } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
+        EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
+      } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: expected_commit) }
+  }
+}
+
 fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: RoadmapEvent, operation: String) -> RoadmapEventAppend {
   let env = roadmap_event_envelope(e: event)
   match roadmap_event_carrier_sync(layout: layout) {
@@ -332,27 +369,47 @@ fn roadmap_event_append_private(layout: RoadmapEventCarrierLayout, event: Roadma
       CarrierExecFailed { exit_code: _, stderr } => EventAppendRefused { id: env.id, step: "snapshot-revision", reason: stderr }
       CarrierExecOk { stdout: revision } => {
         let receipt_path = roadmap_event_operation_path(event: event, operation: operation)
-        let receipt = Filesystem.Read(path: concat(layout.worktree as String, concat("/", receipt_path)))
-        if operation != "" && receipt.success {
-          match roadmap_event_decode(text: receipt.content) {
-            RoadmapEventUndecodable { reason } => EventAppendRefused { id: env.id, step: "operation-read", reason: reason }
-            RoadmapEventDecoded { envelope: previous } => if roadmap_event_same_command(a: previous.event, b: event) {
-              let committed = Filesystem.Read(path: concat(layout.worktree as String, concat("/", roadmap_event_file_relative(node: previous.event.node, id: previous.id))))
-              if committed.success && committed.content == receipt.content { EventAlreadyPresent { id: previous.id } }
-              else { EventAppendRefused { id: env.id, step: "operation-read", reason: "operation receipt has no matching committed event" } }
-            } else { EventAppendRefused { id: env.id, step: "operation-conflict", reason: "operation identity already belongs to another issue/principal/payload/precondition" } }
+        if operation == "" {
+          roadmap_event_append_after_no_operation_receipt(
+            layout: layout,
+            event: event,
+            env: env,
+            operation: operation,
+            receipt_path: receipt_path,
+            expected_commit: trim(revision),
+          )
+        } else {
+          match filesystem_file_observation_of_path(path: concat(layout.worktree as String, concat("/", receipt_path))) {
+            FilesystemFileRead { path: _, content } =>
+              match roadmap_event_decode(text: content) {
+                RoadmapEventUndecodable { reason } => EventAppendRefused { id: env.id, step: "operation-read", reason: reason }
+                RoadmapEventDecoded { envelope: previous } => if roadmap_event_same_command(a: previous.event, b: event) {
+                  let committed = Filesystem.Read(path: concat(layout.worktree as String, concat("/", roadmap_event_file_relative(node: previous.event.node, id: previous.id))))
+                  match filesystem_read_outcome(content: committed.content, success: committed.success, error: committed.error) {
+                    FilesystemReadRefused { error } =>
+                      EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the committed event at this operation's address could not be read, so whether the operation already ran is unknown: ", error], "") }
+                    FilesystemReadSucceeded { content: committed_text } => if committed_text == content { EventAlreadyPresent { id: previous.id } }
+                      else { EventAppendRefused { id: env.id, step: "operation-read", reason: "operation receipt has no matching committed event" } }
+                  }
+                } else { EventAppendRefused { id: env.id, step: "operation-conflict", reason: "operation identity already belongs to another issue/principal/payload/precondition" } }
+              }
+            FilesystemFileAbsent(_) =>
+              roadmap_event_append_after_no_operation_receipt(
+                layout: layout,
+                event: event,
+                env: env,
+                operation: operation,
+                receipt_path: receipt_path,
+                expected_commit: trim(revision),
+              )
+            FilesystemFileIndeterminate { cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt could not be observed, so whether the operation already ran is unknown: ", cause], "") }
+            FilesystemFileObservationsDisagree { path: _, cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt observation is self-contradictory, so whether the operation already ran is unknown: ", cause], "") }
+            FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+              EventAppendRefused { id: env.id, step: "operation-read", reason: join(["the operation receipt path was refused before any filesystem call ran: ", cause], "") }
           }
-        } else if operation != "" && receipt.error_kind != "not_found" {
-          EventAppendRefused { id: env.id, step: "operation-read", reason: receipt.error }
-        } else { match roadmap_events_read_synced(layout: layout, node: event.node) {
-          EventsReadRefused { node: _, step, reason } => EventAppendRefused { id: env.id, step: step, reason: reason }
-          EventsRead { node: _, envelopes } => if any(envelopes, existing => existing.id == env.id) { EventAlreadyPresent { id: env.id } }
-            else if !roadmap_event_admitted_after(envs: envelopes, event: event) {
-              EventAppendRefused { id: env.id, step: "result-requires-binding", reason: "a result is written only through the bound result append, which builds it from the attempt's own binding; the generic append does not admit one" }
-            } else if !roadmap_event_parent_admitted(event: event, envelopes: envelopes) {
-              EventAppendRefused { id: env.id, step: "revision-conflict", reason: "expected issue revision does not match the committed issue head" }
-            } else { roadmap_event_publish_private(layout: layout, env: env, operation: operation, receipt_path: receipt_path, expected_commit: trim(revision)) }
-        } }
+        }
       }
     }
   }
@@ -422,7 +479,10 @@ type EventFileRead
 fn roadmap_events_decode_all(node: RoadmapNodeId, dir: String, names: List<String>) -> RoadmapEventsRead {
   let reads = map(filter(names, n => ends_with(s: n, suffix: ".json")), n => {
     let r = Filesystem.Read(path: join([dir, "/", n], ""))
-    if r.success { EventFileContent { content: r.content } } else { EventFileUnreadable { detail: r.error } }
+    match filesystem_read_outcome(content: r.content, success: r.success, error: r.error) {
+      FilesystemReadSucceeded { content } => EventFileContent { content: content }
+      FilesystemReadRefused { error } => EventFileUnreadable { detail: error }
+    }
   })
   roadmap_events_decode_reads(node: node, reads: reads)
 }
