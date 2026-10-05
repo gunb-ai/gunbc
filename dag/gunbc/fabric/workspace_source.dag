@@ -227,7 +227,7 @@ type WorkspaceSourceMemberKind = SourceFile | SourceSymlink
 
 type WorkspaceSourceLine
   = WorkspaceSourceMember { member: NonEmptyStr, kind: WorkspaceSourceMemberKind }
-  | WorkspaceSourceExcluded { member: NonEmptyStr, by: WorkspaceExclusion, bytes: Int }
+  | WorkspaceSourceExcluded { member: NonEmptyStr, by: WorkspaceExclusion, bytes: ByteSize }
   | WorkspaceSourceBuildOutput { member: NonEmptyStr }
   | WorkspaceSourceUnparsed { line: String }
 
@@ -240,26 +240,34 @@ fn workspace_root_member(root: WorkspaceSourceRoot, relative: String) -> String 
 fn workspace_source_line(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, line: String) -> WorkspaceSourceLine {
   match split(line, separator: "\t") {
     Cons { head: kind, tail: Cons { head: _, tail: Cons { head: relative, tail: Cons { head: _, tail: Cons { head: size_text, tail: Empty } } } } } =>
-      if relative == "" || !workspace_is_int(text: size_text) {
-        WorkspaceSourceUnparsed { line: line }
-      } else {
-        let member = workspace_root_member(root: root, relative: relative) as NonEmptyStr
-        match workspace_path_exclusion(exclusions: exclusions, path: member as String) {
-          Present { value: x } => WorkspaceSourceExcluded { member: member, by: x, bytes: match parse_int(s: size_text) { Present { value: n } => n  Absent => 0 } }
-          Absent =>
-            if workspace_path_is_build_output(root: root, relative: relative) {
-              WorkspaceSourceBuildOutput { member: member }
-            } else if kind == "f" {
-              WorkspaceSourceMember { member: member, kind: SourceFile }
-            } else if kind == "l" {
-              WorkspaceSourceMember { member: member, kind: SourceSymlink }
-            } else {
-              WorkspaceSourceUnparsed { line: line }
-            }
-        }
+      match parse_int(s: size_text) {
+        Absent => WorkspaceSourceUnparsed { line: line }
+        Present { value: n } =>
+          if relative == "" || n < 0 {
+            WorkspaceSourceUnparsed { line: line }
+          } else {
+            workspace_source_line_sized(root: root, exclusions: exclusions, kind: kind, relative: relative, size: byte_size(count: n), line: line)
+          }
       }
     Empty => WorkspaceSourceUnparsed { line: line }
     Cons { head: _, tail: _ } => WorkspaceSourceUnparsed { line: line }
+  }
+}
+
+fn workspace_source_line_sized(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, kind: String, relative: String, size: ByteSize, line: String) -> WorkspaceSourceLine {
+  let member = workspace_root_member(root: root, relative: relative) as NonEmptyStr
+  match workspace_path_exclusion(exclusions: exclusions, path: member as String) {
+    Present { value: x } => WorkspaceSourceExcluded { member: member, by: x, bytes: size }
+    Absent =>
+      if workspace_path_is_build_output(root: root, relative: relative) {
+        WorkspaceSourceBuildOutput { member: member }
+      } else if kind == "f" {
+        WorkspaceSourceMember { member: member, kind: SourceFile }
+      } else if kind == "l" {
+        WorkspaceSourceMember { member: member, kind: SourceSymlink }
+      } else {
+        WorkspaceSourceUnparsed { line: line }
+      }
   }
 }
 
@@ -277,29 +285,22 @@ type WorkspaceSourceTally {
   unparsed: List<String>
 }
 
-fn workspace_is_int(text: String) -> Bool {
-  match parse_int(s: text) { Present { value: _ } => true  Absent => false }
+// THE EXCLUDED SIZES OF ONE CLASS, partitioned by matching the class itself.
+fn workspace_excluded_sizes(lines: List<WorkspaceSourceLine>, class: WorkspaceExclusionClass) -> List<ByteSize> {
+  flat_map(lines, l => match l {
+    WorkspaceSourceExcluded { member: _, by: x, bytes: b } =>
+      match class {
+        CredentialExclusion => match x.class { CredentialExclusion => [b]  TranscriptExclusion => [] }
+        TranscriptExclusion => match x.class { CredentialExclusion => []  TranscriptExclusion => [b] }
+      }
+    WorkspaceSourceMember { member: _, kind: _ } => []
+    WorkspaceSourceBuildOutput { member: _ } => []
+    WorkspaceSourceUnparsed { line: _ } => []
+  })
 }
 
-fn workspace_some(x: Int?) -> Bool {
-  match x { Present { value: _ } => true  Absent => false }
-}
-
-fn workspace_exclusion_class_eq(a: WorkspaceExclusionClass, b: WorkspaceExclusionClass) -> Bool {
-  match a {
-    CredentialExclusion => match b { CredentialExclusion => true  TranscriptExclusion => false }
-    TranscriptExclusion => match b { CredentialExclusion => false  TranscriptExclusion => true }
-  }
-}
-
-// The bytes an excluded line withheld, when its exclusion is of the given class.
-fn workspace_line_excluded_bytes(line: WorkspaceSourceLine, class: WorkspaceExclusionClass) -> Int? {
-  match line {
-    WorkspaceSourceExcluded { member: _, by: x, bytes: n } => if workspace_exclusion_class_eq(a: x.class, b: class) { Present { value: n } } else { none }
-    WorkspaceSourceMember { member: _, kind: _ } => none
-    WorkspaceSourceBuildOutput { member: _ } => none
-    WorkspaceSourceUnparsed { line: _ } => none
-  }
+fn workspace_bytes_total(sizes: List<ByteSize>) -> ByteSize {
+  byte_size(count: fold(sizes, init: 0, f: (acc, b) => acc + measure_count(m: b)))
 }
 
 fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceExclusion>, listing: String) -> WorkspaceSourceTally {
@@ -314,16 +315,16 @@ fn workspace_source_tally(root: WorkspaceSourceRoot, exclusions: List<WorkspaceE
     files: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceFile } => true  WorkspaceSourceMember { member: _, kind: SourceSymlink } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     symlinks: length(filter(lines, l => match l { WorkspaceSourceMember { member: _, kind: SourceSymlink } => true  WorkspaceSourceMember { member: _, kind: SourceFile } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     excluded: length(filter(lines, l => match l { WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceBuildOutput { member: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
-    excluded_credentials: length(filter(lines, l => workspace_some(x: workspace_line_excluded_bytes(line: l, class: CredentialExclusion)))),
+    excluded_credentials: length(workspace_excluded_sizes(lines: lines, class: CredentialExclusion)),
     excluded_credential_members: flat_map(lines, l => match l {
-      WorkspaceSourceExcluded { member: m, by: x, bytes: _ } => if workspace_exclusion_class_eq(a: x.class, b: CredentialExclusion) { [m] } else { [] }
+      WorkspaceSourceExcluded { member: m, by: x, bytes: _ } => match x.class { CredentialExclusion => [m]  TranscriptExclusion => [] }
       WorkspaceSourceMember { member: _, kind: _ } => []
       WorkspaceSourceBuildOutput { member: _ } => []
       WorkspaceSourceUnparsed { line: _ } => []
     }),
-    excluded_credential_bytes: byte_size(count: fold(lines, init: 0, f: (acc, l) => acc + match workspace_line_excluded_bytes(line: l, class: CredentialExclusion) { Present { value: n } => n  Absent => 0 })),
-    excluded_transcripts: length(filter(lines, l => workspace_some(x: workspace_line_excluded_bytes(line: l, class: TranscriptExclusion)))),
-    excluded_transcript_bytes: byte_size(count: fold(lines, init: 0, f: (acc, l) => acc + match workspace_line_excluded_bytes(line: l, class: TranscriptExclusion) { Present { value: n } => n  Absent => 0 })),
+    excluded_credential_bytes: workspace_bytes_total(sizes: workspace_excluded_sizes(lines: lines, class: CredentialExclusion)),
+    excluded_transcripts: length(workspace_excluded_sizes(lines: lines, class: TranscriptExclusion)),
+    excluded_transcript_bytes: workspace_bytes_total(sizes: workspace_excluded_sizes(lines: lines, class: TranscriptExclusion)),
     build_output: length(filter(lines, l => match l { WorkspaceSourceBuildOutput { member: _ } => true  WorkspaceSourceMember { member: _, kind: _ } => false  WorkspaceSourceExcluded { member: _, by: _, bytes: _ } => false  WorkspaceSourceUnparsed { line: _ } => false })),
     unparsed: flat_map(lines, l => match l {
       WorkspaceSourceUnparsed { line: t } => [t]
