@@ -376,7 +376,18 @@ type RosterSignatureLookup
   | RosterPrimitiveCallSignatureUnreadable
 
 fn collection_roster_primitive_call_signature_at(path: String) -> RosterSignatureLookup {
-  match collection_roster_row_at(path: path) {
+  collection_roster_primitive_call_signature_in(rows: collection_roster_rows, path: path)
+}
+
+// The lookup over a SUPPLIED roster, so the unreadable arm's RED is authorable at this interface (DESIGN section 4b,
+// review 76235): the production lookup above passes the one real roster.
+fn collection_roster_primitive_call_signature_in(rows: List<CollectionRosterRow>, path: String) -> RosterSignatureLookup {
+  match fold_list(xs: rows, empty: optional_absent(), cons: fn(acc, r) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if r.row.module_path + "." + r.row.decl_name == path { optional_present(value: r) } else { acc }
+    }
+  }) {
     Absent => NotARosterPrimitiveCallRow
     Present { value: r } =>
       match r.form {

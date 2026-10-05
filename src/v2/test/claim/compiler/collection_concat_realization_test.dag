@@ -1,10 +1,11 @@
 module v2.test.claim.compiler.collection_concat_realization
 
-import v2.compiler.fold_lowering { CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
-import v2.compiler.infer { InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal, infer_type_instantiated }
+import v2.compiler.fold_lowering { collection_roster_primitive_call_signature_in, CollectionRosterRow, NotARosterPrimitiveCallRow, RosterFreeMonoidPrimitiveCall, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_row_optional, collection_roster_primitive_call_signature_at, collection_roster_signature_arrow }
+import v2.compiler.infer { infer_roster_reference_facts, InferFormalMatched, InferFormalShapeMismatch, infer_formals_from_domain, infer_match_generic_formal, infer_type_instantiated }
 import v2.test.claim.compiler.infer_fold_member_instance { fmi_assemble, fmi_infer_tree, fmi_reason }
 import std.types { Bool, List }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason, node_locus }
+import v2.test.claim.compiler.compile_eval_thesis_proof { compile_eval_thesis_termination_proof }
 import v2.std.qualified_name { declaration_reference_node, declaration_reference_path_optional, parameter_reference_path_optional, qualified_name_last_segment, qualified_name_to_dotted_string }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -195,20 +196,28 @@ test fn cca_signature_lookup_tells_a_primitive_row_from_a_fold_row() -> Bool {
   })
 }
 
-// SUPPLIED, RED: a primitive-call row whose template the projection cannot read (here a result named by a
-// spelling no kernel row carries) yields NO signature -- the input that the lookup turns into
-// RosterPrimitiveCallSignatureUnreadable and infer into a located refusal
-// (infer_reason_roster_row_signature_unreadable), never a typing by the template. No live row reaches that arm today;
-// this pins the projection that would feed it.
-test fn cca_unreadable_template_yields_no_signature() -> Bool {
-  let row = CollectionRosterRow {
+// SUPPLIED, RED, AT INFER (review 76235; lively-crane-656: a refusal arm whose RED cannot be authored is decoration).
+// A roster holding one primitive-call row whose template the projection cannot read (a result named by a spelling
+// no kernel row carries) is SUPPLIED to the lookup; its answer goes to infer's own roster arm, which must REFUSE with
+// infer_reason_roster_row_signature_unreadable, located at the reference -- never type it by the template value.
+fn cca_unreadable_row() -> CollectionRosterRow {
+  CollectionRosterRow {
     head: symbol_intern_lexeme(lexeme: "cca_unreadable"),
     template: { name: "cca_unreadable", param_types: [], return_type: NamedTemplate { name: "cca_no_such_kernel_type" }, size_effect: none, cost_shape: none, callback_element_position: none },
     row: DeclarationRef { module_path: "std.algebra", decl_name: "cca_unreadable", field: WholeDeclaration },
     form: RosterFreeMonoidPrimitiveCall
   }
-  match collection_roster_signature_arrow(row: row) {
-    Absent => true
-    Present { value: _ } => false
-  }
+}
+
+test fn cca_unreadable_roster_row_refuses_at_infer_located() -> Bool {
+  let reference = node_synthetic(kind: TypeNode { connective: Atom { identity: ^cca_unreadable_reference } }, children: [])
+  let lookup = collection_roster_primitive_call_signature_in(rows: [cca_unreadable_row()], path: "std.algebra.cca_unreadable")
+  (match lookup {
+    RosterPrimitiveCallSignatureUnreadable => true
+    RosterPrimitiveCallSignature { arrow: _ } => false
+    NotARosterPrimitiveCallRow => false
+  }) && (match infer_roster_reference_facts(lookup: lookup, n: reference, descent_proof: compile_eval_thesis_termination_proof()) {
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^infer_reason_roster_row_signature_unreadable
+    Accepted { value: _, diagnostics: _ } => false
+  })
 }
