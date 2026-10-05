@@ -190,7 +190,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -17016,9 +17016,15 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 }
 
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  // The corpus symbol index is built once over every module (build_symbol_index_census) and every
+  // module's type environment carries the same one, so the first module's is the closure's.
+  let qualified_names = match modules |> first {
+    Present { value: m } => m.type_env.symbol_index
+    Absent => empty_symbol_index()
+  }
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
-    type_decl_items: empty_type_decl_index(),
+    type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()

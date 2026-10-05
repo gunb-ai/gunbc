@@ -16,12 +16,12 @@ import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   LeafOwner, SingleOwner, LeafAmbiguous,
-  SourceSpan, qualified_last_segment, module_path_segments,
+  SourceSpan, qualified_last_segment,
   DeclaredCallableIdentity, callable_identity,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
 import std.types { is_kernel_type }
-import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   normalize_access_type_node, resolved_type,
@@ -155,6 +155,7 @@ type TypeDeclIndex {
   identity_by_declaring_span: Map<String, String>
   leaf_owners: Map<String, LeafOwner>
   identities_by_leaf: Map<String, List<String>>
+  qualified_names: SymbolIndex
 }
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -181,7 +182,7 @@ type TypeDeclResolution
   | TypeDeclNotDeclared
 
 fn empty_type_decl_index() -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map() }
+  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map(), qualified_names: empty_symbol_index() }
 }
 
 fn type_decl_identity(owner_module: String, decl_name: String) -> String {
@@ -223,7 +224,8 @@ fn type_decl_index_insert(index: TypeDeclIndex, owner_module: String, decl_name:
       Absent => index.identity_by_declaring_span
     },
     leaf_owners: map_insert(index.leaf_owners, decl_name, type_decl_leaf_owner_after(prior: map_get(index.leaf_owners, decl_name), owner_module: owner_module)),
-    identities_by_leaf: map_insert(index.identities_by_leaf, decl_name, type_decl_leaf_identities_with(prior: map_get(index.identities_by_leaf, decl_name), identity: identity))
+    identities_by_leaf: map_insert(index.identities_by_leaf, decl_name, type_decl_leaf_identities_with(prior: map_get(index.identities_by_leaf, decl_name), identity: identity)),
+    qualified_names: index.qualified_names
   }
 }
 
@@ -290,7 +292,7 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
           let leaf = qualified_last_segment(name: authored)
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
-            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { type_decl_qualifier_declarer(index: index, leaf: l, authored: authored) }
+            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { type_decl_qualifier_declarer(index: index, authored: authored) }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
@@ -320,19 +322,27 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
 // one; they are owed a stamp in the DECLARING module's scope. Its trigger is
 // referencing_module_declarer_route_dissolves_on.
 // THE QUALIFIER'S DECLARER. A qualified spelling (std.materialization_ladder.Frame) names its declaring
-// module in the reference itself, so an unstamped qualified reference is decided by that module and by
-// no other: it resolves when the qualifier is a module that declares the leaf, and otherwise
-// (no.such.module.Slot) stays LeafAmbiguous and refuses. Counted as qualified_spelling; interim under
-// referencing_module_declarer_route_dissolves_on, whose capability (every reference stamped in its
-// declaring scope) removes both arms.
-fn type_decl_qualifier_declarer(index: TypeDeclIndex, leaf: String, authored: String) -> String? {
-  let segments = module_path_segments(path: authored)
-  let qualifier = segments |> take((segments |> count) - 1) |> join(separator: ".")
-  let identity = type_decl_identity(owner_module: qualifier, decl_name: leaf)
-  match map_get(index.by_identity, identity) {
-    Present { value: _ } => Present { value: identity }
+// module in the reference itself, so an unstamped qualified reference is decided by the language's
+// qualified-name authority and by nothing else: the corpus symbol index
+// (v1.compiler.infer_env symbol_index_lookup, the lookup lookup_qualified_module_projection performs
+// for every dotted reference resolve reads), joined to the declaration's identity on its declaring
+// span exactly as RouteDeclaringSpan joins it. No module path is parsed here, so this arm cannot
+// disagree with resolve about which declaration a qualified name denotes. A name the index does not
+// hold (no.such.module.Slot) stays LeafAmbiguous and refuses. Counted as qualified_spelling; interim
+// under referencing_module_declarer_route_dissolves_on.
+fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> String? {
+  match symbol_index_lookup(index: index.qualified_names, qualified_name: authored) {
+    Present { value: decl } =>
+      match decl.ident_span {
+        Present { value: sp } => map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp))
+        Absent => none
+      }
     Absent => none
   }
+}
+
+fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
+  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names }
 }
 
 data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
