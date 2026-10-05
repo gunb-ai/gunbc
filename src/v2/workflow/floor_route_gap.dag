@@ -1,7 +1,7 @@
 module v2.workflow.floor_route_gap
 
 import std.types { List }
-import v2.std.algebra { Cons, Empty, contains, list_flat_map }
+import v2.std.algebra { Cons, Empty, list_flat_map }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
 // says merely that some route gap once existed; it cannot object when the witness reaches a
@@ -2346,12 +2346,15 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
 // a runner-side copy would be a second authority over one decision, the shape the changed-
 // selection capability documented at v2.workflow.required_floor's dissolve-on note retires.
 //
-// COST, NAMED: one frame call per required run, linear in suppressed x declared. The
-// changed-selection capability measured per-probe re-folds at roughly 38,000 eval steps and
-// retired the mirror for it; the route-gap suppressed population is smaller than the corpus
-// census roster and this call is not per claim. If the roster or the gate grows the join back
-// into a cost, the corpus census's served-once shape (floor_pure_producer_share) is the named
-// retirement.
+// COST, NAMED, AND SHAPE-FIXED: the relation is one call per required run, LINEAR in the
+// suppressed population, and it never scans a corpus-sized list. Membership is marshaled per
+// suppressed row as a Boolean the runner reads from its keyed disposition index
+// (cost_debt_disposition_index.contains_key, O(1) per identity) -- the declared-identity
+// universe is the discovery walk's own knowledge and stays on the walk's side of the marshal;
+// flattening it into a list the .dag re-scans was the corpus-sized join this shape retires
+// (541 suppressed x 28,274 declared on run 37236808750 would have been ~15M interpreted
+// comparisons per required run). The arm decision itself stays here: membership is an input
+// fact, what each arm MEANS is the authority's.
 // THE GROUND IS A DECLARED COPRODUCT, NOT A LABEL. Suppression grounds are a closed set -- the
 // floor removes a row as outside the required gate, as withheld cost debt, or as declined for
 // want of a CI wet lane -- so the field carries that set, and a fabricated ground is a
@@ -2364,7 +2367,11 @@ fn floor_route_gap_expectation_chunk_38() -> List<FloorRouteGapExpectation> {
 // (src/v2/test/fixture/route_gap_admission_partition.dag) instead of forking silently.
 type FloorRouteGapSuppressionGround = OutsideRequiredGate | WithheldCostDebt | DeclinedNoCiWetLane
 
-type FloorRouteGapSuppressedRow = { identity: String, ground: FloorRouteGapSuppressionGround }
+type FloorRouteGapSuppressedRow = {
+  identity: String,
+  ground: FloorRouteGapSuppressionGround,
+  declared: Bool,
+}
 
 // THE TWO ARMS AT IDENTITY GRAIN. A declared suppressed row is MEASUREMENT: it keeps its ground
 // and the run names it, and for identities whose module the 2026-08-29 gate cut withdrew that
@@ -2375,17 +2382,12 @@ type FloorRouteGapAdmissionRow =
     FloorRouteGapAdmissionMeasuredRow { identity: String, ground: FloorRouteGapSuppressionGround }
   | FloorRouteGapAdmissionRefusedRow { identity: String }
 
-fn floor_route_gap_string_eq(left: String, right: String) -> Bool {
-  left == right
-}
-
 fn floor_route_gap_admission_partition(
   suppressed: List<FloorRouteGapSuppressedRow>,
-  declared: List<String>,
 ) -> List<FloorRouteGapAdmissionRow> {
   map(
     suppressed,
-    row => match contains(xs: declared, item: row.identity, eq: floor_route_gap_string_eq) {
+    row => match row.declared {
       true => FloorRouteGapAdmissionMeasuredRow { identity: row.identity, ground: row.ground }
       false => FloorRouteGapAdmissionRefusedRow { identity: row.identity }
     },

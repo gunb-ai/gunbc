@@ -104,16 +104,20 @@ runs remote/CI only.
 The partition decision is now **modeled on the .dag authority** —
 `v2.workflow.floor_route_gap.floor_route_gap_admission_partition` is the single implementation of the
 route-gap admission decision; the Rust call site marshals the run's real values (suppressed identities
-with their declared ground arms, and the discovery walk's declared-identity index) into it through
-`run_in_context_with_args`, and an earlier Rust classifier (`route_gap_suppressed_undeclared`) was
-**deleted** rather than kept beside the call — one implementation, a net reduction of seed decision
-surface; the seed receipt counts +5 hand items (three for the floor expectation, two for the modeled
-partition's shared marshal: the entry name and the suppressed-row marshal). What would move even the
+with their declared ground arms and their per-row membership bit, read O(1) from the keyed disposition
+index) into it through `run_in_context_with_args`, and an earlier Rust classifier
+(`route_gap_suppressed_undeclared`) was **deleted** rather than kept beside the call — one implementation,
+a net reduction of seed decision surface; the seed receipt counts +5 hand items (three for the floor
+expectation, two for the modeled partition's shared marshal: the entry name and the suppressed-row
+marshal). Membership travels per row as a Boolean so the relation never re-scans a corpus-sized list: an
+earlier shape flattened the 28,274-identity declared index for the .dag to linearly re-scan per suppressed
+row (541 x 28,274 ≈ 15M interpreted string comparisons per required run) — a cost-shape defect, fixed per
+DESIGN §6 rather than retired on "n is small here". What would move even the
 marshal into the .dag is a
 modeled declared-identity projection the regen lane would maintain; deliberately not built. The
-refuse-if-undeclared decision could not have been expressed in .dag on its own because the run-time
-declared index is discovery-walk knowledge (the roster decodes in a hermetic frame whose subject is the
-gate closure); modeling the RELATION and marshaling the index in is the resolution of that.
+refuse-if-undeclared decision could not have been expressed in .dag on its own because the
+declared universe is discovery-walk knowledge (the roster decodes in a hermetic frame whose subject is the
+gate closure); modeling the RELATION and marshaling the membership bit per row is the resolution of that.
 
 1. **The wall (closure)**: a refused row names an enrollment the tree does not declare (module or tail
    absent from the discovery roots; the disposition index covers every declared witness identity,

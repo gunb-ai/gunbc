@@ -708,6 +708,7 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
                     "ExactReplayBaseline",
                     "PushBeforeBaseline",
                     "PushParentBaseline",
+                    "MergeGroupBaseBaseline",
                     "OperatorOverrideBaseline",
                 ] {
                     if ctx.sym_eq(*variant_name, name) {
@@ -3231,8 +3232,8 @@ impl UnimportedBareProviderRosterReading {
 /// file carries (through the loader's own `unimported_bare_providers`). The `.dag`
 /// (`unimported_bare_provider_roster_standing`) decides everything: delete-without-retire, each
 /// cause's truth, staleness, and whether a carried pair is active debt. `checked` is the route's own
-/// files (touched, or entry) plus every ImportsFixed row's file, so a retirement is re-derived on
-/// every run rather than trusted once.
+/// files (the whole pool on the floor, the entry files on the entry route) plus every ImportsFixed
+/// row's file, so a retirement is re-derived on every run rather than trusted once.
 fn unimported_bare_provider_standing_refusals(
     route: &str,
     index: &MultiEntryIndex,
@@ -3319,8 +3320,8 @@ fn unimported_bare_provider_standing_refusals(
         .collect())
 }
 
-/// THE RULE ON THE REQUIRED FLOOR, applied where the floor already knows what the diff touched.
-/// Coherence and standing run on every diff; the edit judgment runs when the roster itself changed,
+/// THE RULE ON THE REQUIRED FLOOR. Coherence runs on every diff and standing over every pool file;
+/// the edit judgment runs when the roster itself changed,
 /// against the roster evaluated at the diff base. The change that ADDS the roster has no base, and
 /// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
 /// reported before the line stops.
@@ -3372,15 +3373,32 @@ pub(crate) fn unimported_bare_provider_gate(
             }
         }
     }
+    // THE STANDING JUDGMENT RUNS OVER THE WHOLE POOL, NOT THE DIFF. Scoped to touched files, a
+    // pair born in an UNTOUCHED file -- by a resolver change elsewhere, as #12540 made every bare
+    // kernel-type spelling resolve by its declaration -- never refused here, while the entry route
+    // (`unimported_bare_provider_entry_refusals`) refused the same file the first time anyone ran it:
+    // two harnesses disagreeing about admission of one file. The roster is a monotone debt contract,
+    // which DESIGN 5 admits only over a closed subject universe checked at identity grain, and a
+    // diff is not that universe. It reads the floor's warm index and never resolves; its cost and
+    // population are re-derived on every run by the `unimported-bare-provider-gate` phase line
+    // below (`judged_files=`, `standing_ms=`).
+    let standing_started = std::time::Instant::now();
+    let pool_files: Vec<String> = index
+        .source_files
+        .values()
+        .map(|sf| workspace_relative_repo_path(&sf.path))
+        .collect();
     refusals.extend(unimported_bare_provider_standing_refusals(
         ROUTE,
         index,
         &head,
-        changed_paths,
+        &pool_files,
     )?);
     eprintln!(
-        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} refusals={}",
+        "[floor-phase] phase=unimported-bare-provider-gate touched_paths={} judged_files={} standing_ms={} refusals={}",
         changed_paths.len(),
+        pool_files.len(),
+        standing_started.elapsed().as_millis(),
         refusals.len()
     );
     if refusals.is_empty() {
@@ -3697,7 +3715,8 @@ pub(crate) fn enrolment_margin_standing_for(
     // block exists to repair, and asking the cost population first rebuilds it one gate over.
     match enrolment_gate_execution_disposition(identity, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
-        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness)
+        | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsReachConsumer) => {}
         // Named, not caught: a new arm must state whether the margin gate runs for it.
         Some(
             other @ (crate::cli_run::RequiredFloorDisposition::DeclinedLongModule { .. }
@@ -4134,7 +4153,8 @@ pub(crate) fn changed_witness_projection_rows(
             },
             Some(
                 RequiredFloorDisposition::Planned
-                | RequiredFloorDisposition::PlannedAsChangedWitness,
+                | RequiredFloorDisposition::PlannedAsChangedWitness
+                | RequiredFloorDisposition::PlannedAsReachConsumer,
             ) => {
                 let outcome = outcomes.get(identity.as_str()).copied();
                 // THE COST POLICY THIS IDENTITY EXECUTED UNDER, and the measurement published
@@ -4418,7 +4438,7 @@ fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> Local
         // THE ROUTE OR THE PROGRAM REFUSED. Each is a located typed refusal in its own right; the
         // lane keeps the class and hands the reader that diagnostic.
         O::NotBool { got } => LocalRepoWetObserved::Refused(format!("not a Bool: {got}")),
-        O::RuntimeError { cause, message } => {
+        O::RuntimeError { cause, message, .. } => {
             LocalRepoWetObserved::Refused(format!("runtime error {cause:?}: {message}"))
         }
         O::HostToolUnresolved { name, probed } => LocalRepoWetObserved::Refused(format!(
@@ -8244,6 +8264,59 @@ pub fn run_required_floor(
             }
         }
     }
+    // THE PER-PR v2 DIFFERENTIAL'S POPULATION: reached witness declarations homed under the v2
+    // claim root. Which of them are claims is the discovery loop's answer, not this one's.
+    // PLANNED ON THE MERGE GROUP ONLY (operator ruling, 2026-10-01; `v2.workflow.floor_subject_seed`
+    // `reach_planned_for_event`). The event is read through the authority that chose this run's
+    // diff window. On any other event no reach consumer is planned, and the floor says so with the
+    // count it would have reached, so the deferral is announced and never silent.
+    // AN UNREADABLE EVENT REFUSES ON CI: read as "not a merge group" it would silently defer the
+    // differential on the one event that must run it. A local run has no CI event and is a
+    // pull-request-shaped run for this purpose.
+    let reach_event = match floor_diff_baseline_readout() {
+        Ok((_, event)) => event,
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachEventUnreadable {e} -- whether this run is the \
+                 merge group's, and so whether it judges the reach differential, is unknown"
+            ))
+        }
+        Err(_) => String::new(),
+    };
+    let reach_planned =
+        crate::cli_run::reach_base_standings::reach_planned_for_event(source_roots, &reach_event)?;
+    let reached_v2_witness_declarations = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .count();
+    if !reach_planned {
+        eprintln!(
+            "{}",
+            crate::cli_run::reach_base_standings::reach_deferred_line(
+                &reach_event,
+                reached_v2_witness_declarations
+            )
+        );
+    }
+    let reach_consumer_candidates: HashSet<String> = compile_subject
+        .iter()
+        .filter_map(|subject| match &subject.interface_consumers {
+            InterfaceConsumerPlanning::Selected { body_reach, .. } => Some(body_reach),
+            _ => None,
+        })
+        .flat_map(|reach| reach.reached.iter())
+        .filter(|r| reach_planned && r.witness_carrier && r.rel_path.starts_with("src/v2/"))
+        .map(|r| format!("{}.{}", r.module_path, r.declaration))
+        .collect();
+    let reach_consumer_module_seeds: BTreeSet<String> = reach_consumer_candidates
+        .iter()
+        .filter_map(|identity| identity.rsplit_once('.').map(|(m, _)| m.to_string()))
+        .collect();
     // A ROW-ONLY ROSTER EDIT names subjects the diff never touched: the typed non-fold-residue
     // check can only judge a row whose subject module is PREPARED, so the subjects of rows the diff
     // added or deleted become seeds here (read at the floor's own diff base; an unreadable base
@@ -8363,6 +8436,7 @@ pub fn run_required_floor(
             .flat_map(|subject| subject.touched_modules.iter().cloned()),
     )
     .chain(interface_consumer_seeds.iter().cloned())
+    .chain(reach_consumer_module_seeds.iter().cloned())
     .chain(nfr_row_subject_modules.iter().cloned())
     .collect();
     // The strict resolve's graph is attributed by bytes where the floor frees it (entry_resolve
@@ -9577,6 +9651,7 @@ pub fn run_required_floor(
     // read off this set rather than maintained beside it: a count and a population kept in step
     // by hand are two computations of one fact, and the count is the weaker one.
     let mut declared_identity_set: HashSet<String> = HashSet::new();
+    let mut reach_consumer_planned: HashSet<String> = HashSet::new();
     let mut sites_offered = 0usize;
     let mut disposition_rows: Vec<RequiredFloorDispositionRow> = Vec::new();
     let mut storage_agreement_rows: Vec<LongHomeStorageAgreementRow> = Vec::new();
@@ -9599,6 +9674,8 @@ pub fn run_required_floor(
     } else {
         Vec::new()
     };
+    // The control for the one-judgment-per-file rule: judgments (each lexing base and head once)
+    // must equal changed files, not changed identities.
     for file in files {
         let matched_prefix = long_home_prefixes
             .iter()
@@ -9852,12 +9929,22 @@ pub fn run_required_floor(
             }
             // THE FOURTH DECLINE, AFTER COST DEBT so a rostered identity outside the gate still
             // enters `cost_debt_seen` and the roster's staleness check keeps its meaning.
-            if !inside_required_gate {
+            // A REACH CONSUMER REPLACES ONLY THIS DECLINE. Inside the gate a claim keeps its
+            // absolute verdict (a differential would weaken it); a changed witness keeps its own
+            // arm above; a long-home, fixture or cost-debt decline is a separate authority and
+            // stands. What changes is that an out-of-gate v2 claim whose evaluation this diff can
+            // move is run, and judged by whether its verdict moved.
+            let reach_consumer =
+                !inside_required_gate && reach_consumer_candidates.contains(&identity);
+            if !inside_required_gate && !reach_consumer {
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedOutsideRequiredGate,
                 });
                 continue;
+            }
+            if reach_consumer {
+                reach_consumer_planned.insert(identity.clone());
             }
             // NO SECOND DUPLICATE WALL LIVES HERE. This arm used to re-test uniqueness over the
             // PLANNED identities only, which is the same invariant the offered-side insert above
@@ -9869,7 +9956,11 @@ pub fn run_required_floor(
             planned_identities.insert(identity.clone());
             disposition_rows.push(RequiredFloorDispositionRow {
                 identity: identity.clone(),
-                disposition: RequiredFloorDisposition::Planned,
+                disposition: if reach_consumer {
+                    RequiredFloorDisposition::PlannedAsReachConsumer
+                } else {
+                    RequiredFloorDisposition::Planned
+                },
             });
             // THE TIER, DERIVED FROM ROSTER MEMBERSHIP AND FROM NOTHING ELSE -- after the corpus-census
             // arm, whose members are judged by their evaluated allowance alone.
@@ -10087,7 +10178,8 @@ pub fn run_required_floor(
     for row in &disposition_rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned
-            | RequiredFloorDisposition::PlannedAsChangedWitness => {}
+            | RequiredFloorDisposition::PlannedAsChangedWitness
+            | RequiredFloorDisposition::PlannedAsReachConsumer => {}
             RequiredFloorDisposition::DeclinedLongModule { .. } => long_declined += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => fixture_declined += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => outside_gate_declined += 1,
@@ -10877,6 +10969,22 @@ pub fn run_required_floor(
     // over a folded manifest plausibly does. Whether that is what this recovers is exactly what
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
+    // THE REACH DIFFERENTIAL'S STANDING is read here, while the policy frame is alive, because
+    // the frame is released on the next line and the differential is decided after the fold.
+    let reach_blocking_budget_ms = match v1_interpreter::run_in_context(
+        &hermetic,
+        "v2.workflow.required_floor.reach_differential_blocking_budget",
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => n as u64,
+        other => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ReachDifferentialStandingUnreadable \
+                 reach_differential_blocking_budget (Milliseconds) returned {}",
+                floor_value_shape(other.as_ref().ok())
+            ))
+        }
+    };
     drop(hermetic);
     drop(policy_scope);
 
@@ -10916,6 +11024,7 @@ pub fn run_required_floor(
         modules_resolved: prepared.modules_resolved,
         modules_excluded: prepared.modules_excluded,
         sites_offered,
+        reach_differential_blocking: Vec::new(),
         declined_long_module: long_declined,
         declined_fixture_member: fixture_declined,
         declined_outside_required_gate: outside_gate_declined,
@@ -11027,6 +11136,7 @@ pub fn run_required_floor(
     // `Some(identity)` exactly when a claim's evaluation unwound and stopped the fold.
     let mut halted_by: Option<String> = None;
     let mut known_red_held: usize = 0;
+    let mut reach_head_standings: Vec<(String, String)> = Vec::new();
     let mut known_red_now_passing: usize = 0;
     let mut known_red_budget_refused: usize = 0;
     let mut known_red_passed_over_budget: usize = 0;
@@ -11389,6 +11499,7 @@ pub fn run_required_floor(
                 &result,
                 expected_red_roster.contains(claim.qualified.as_str()),
             ),
+            &result,
         );
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the
@@ -11469,6 +11580,23 @@ pub fn run_required_floor(
             outcome: result.clone(),
         });
         let passed = matches!(result, ClaimOutcome::Pass);
+        // A REACH CONSUMER'S VERDICT IS A HEAD STANDING, NOT A PASS/FAIL OF THIS FLOOR. It was
+        // never gated, so main may already carry it red; whether THIS change moved it is the
+        // differential's question (`v2.workflow.required_floor` `claim_differential`), answered
+        // against the base standing. It leaves the fold here, after its terminal row, so no
+        // arm below can count it as a failure, a route gap or a budget refusal.
+        if reach_consumer_planned.contains(&claim.qualified) {
+            // THE HEAD STANDING USES THE BASE ARM'S OWN CLASSIFIER, so one function decides what
+            // is a verdict on both sides: a non-verdict at head (a wall interruption under host
+            // load, say) is not_measured, never failed. Read as failed it would make a passing
+            // base a regression and block on load (neat-boar-16, srv1 rerun, 2026-10-01).
+            let head_name = match crate::cli_run::reach_base_standings::base_standing_of(&result) {
+                Ok(standing) => standing.name().to_string(),
+                Err(_) => "not_measured".to_string(),
+            };
+            reach_head_standings.push((claim.qualified.clone(), head_name));
+            continue;
+        }
         if expected_red {
             // ONE DISPATCH. Every arm does its own work here rather than classifying once and
             // re-deriving the answer below: two dispatches over one value agree only as long
@@ -11672,7 +11800,7 @@ pub fn run_required_floor(
                     // population. The comment it replaced described the key as normalizing away
                     // per-row identities; it did the opposite.
                     let detail = match &result {
-                        ClaimOutcome::RuntimeError { cause, message } => {
+                        ClaimOutcome::RuntimeError { cause, message, .. } => {
                             *known_red_runtime_error_causes
                                 .entry(cause.token())
                                 .or_insert(0) += 1;
@@ -12310,6 +12438,237 @@ pub fn run_required_floor(
         );
     }
     outcome.known_red_held = known_red_held;
+    // THE HEAD SIDE OF THE PER-PR v2 DIFFERENTIAL. Observed and published; the base side and
+    // the blocking join arrive with the main-sha baseline (adhoc-be476b8f-943 follow-up).
+    reach_head_standings.sort();
+    // THE BASE SIDE AND THE VERDICT. Head standings were observed above. The base standing for
+    // exactly these identities comes from a separate process at the diff base
+    // (`reach_base_standings`), and each verdict, and whether it blocks, is
+    // `v2.workflow.required_floor` `reach_claim_verdict`, which delegates to `claim_differential`
+    // and `claim_differential_blocks`. This function decides neither (review 72143).
+    if !reach_head_standings.is_empty() {
+        let diff_base: Option<String> = compile_subject.as_ref().and_then(|subject| match &subject
+            .interface_consumers
+        {
+            InterfaceConsumerPlanning::Selected { base, .. } => Some(base.clone()),
+            _ => None,
+        });
+        let blocking_budget_ms = reach_blocking_budget_ms;
+        // A FRAME OVER THE DIFFERENTIAL'S OWN AUTHORITY, built only when there are reached
+        // claims: the policy frame was released before the fold (see the drop above).
+        let verdict_frame = {
+            let entry = process_workspace_root().join("src/v2/workflow/required_floor.dag");
+            let (graph, indices) =
+                resolve_entry_graph_shared(source_roots, &entry.to_string_lossy())
+                    .map_err(|e| format!("reach differential authority resolve: {e}"))?;
+            make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Hermetic)
+        };
+        // ONLY A CLAIM THAT CAN BLOCK NEEDS A BASE. `reach_head_cannot_block` is derived from
+        // claim_differential_blocks over every base arm; a claim it exempts is never run at base
+        // and never blocks. That is 60 of 1481 for a one-line v2.std.node edit (srv1, 2026-10-01).
+        let (identities, head_cannot_block) =
+            reach_base_identities(&verdict_frame, &reach_head_standings)?;
+        // A claim's entry FILE, which the explicit-witness-admission roster keys on, from the
+        // corpus index this floor already read; an unindexed module answers "" and so matches no
+        // roster row rather than a guessed one.
+        let reach_claim_entry = |identity: &str| -> String {
+            identity
+                .rsplit_once('.')
+                .and_then(|(module, _)| floor_corpus.index.get(module))
+                .map(|source| source.path.clone())
+                .unwrap_or_default()
+        };
+        // REPORT-ONLY DOES NOT PAY FOR THE BASE ARM: running it without blocking would charge
+        // the run that cost while deciding nothing. So the run names what it did not do.
+        let base_arm = if blocking_budget_ms == 0 {
+            Err("BaseArmNotRun reach_differential_standing is DifferentialReportOnly".to_string())
+        } else {
+            match &diff_base {
+                Some(_) if identities.is_empty() => Ok(HashMap::new()),
+                Some(base) => run_reach_base_arm(
+                    source_roots,
+                    base,
+                    &identities,
+                    claim_wall_safety_limit_ms,
+                    blocking_budget_ms,
+                ),
+                None => {
+                    Err("no diff base: the interface-consumer planning did not select".to_string())
+                }
+            }
+        };
+        let base_sha = diff_base.clone().unwrap_or_default();
+        // THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED: not-measured when the base
+        // side was not run, ran-at-merge-base when it was (review 73484).
+        let baseline_line = reach_baseline_line(&verdict_frame, blocking_budget_ms, &base_sha)?;
+        match base_arm {
+            Err(cause) => {
+                // THE HEAD SIDE IS STILL REPORTED, CLAIM BY CLAIM. These claims were executed at
+                // head by the fold above; without a base there is no verdict, but a reached claim
+                // that FAILS at head is a typed, counted finding the queue must see, never silence
+                // (the gunbc#12582 shape: five reached claims failing with nothing printed).
+                let head_failed: Vec<&String> = reach_head_standings
+                    .iter()
+                    .filter(|(_, head)| head == "failed")
+                    .map(|(identity, _)| identity)
+                    .collect();
+                for (identity, head) in &reach_head_standings {
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} head={head} base=not-measured"
+                    );
+                }
+                for identity in &head_failed {
+                    eprintln!(
+                        "[floor-reach-finding] ReachedClaimFailedAtHead identity={identity} -- \
+                         reached by this change's body edits and failing at its head; whether it \
+                         passed at base was not measured"
+                    );
+                }
+                let failure = format!(
+                    "REACH-DIFFERENTIAL REFUSAL cause=BaseArmRefused {cause} -- the base side of \
+                     {} reached claims was not measured, so no verdict is read and none is \
+                     assumed; head_failed={}",
+                    identities.len(),
+                    head_failed.len()
+                );
+                eprintln!("[floor-phase] phase=reach-differential {baseline_line} {failure}");
+                if blocking_budget_ms > 0 {
+                    // EVERY CLAIM THE REFUSED ARM LEFT UNJUDGED, BY NAME: the arm refused as a
+                    // whole, so each identity it would have judged blocks as base_arm_refused.
+                    outcome.reach_differential_blocking.extend(
+                        identities
+                            .iter()
+                            .map(|identity| (identity.clone(), "base_arm_refused".to_string())),
+                    );
+                }
+            }
+            Ok(base) => {
+                let mut blocking: Vec<(String, String)> = Vec::new();
+                let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+                for (identity, head_name) in &reach_head_standings {
+                    if head_cannot_block.contains(identity) {
+                        *counts.entry("head_cannot_block".to_string()).or_default() += 1;
+                        eprintln!(
+                            "[floor-reach-differential] identity={identity} base=not-run \
+                             head={head_name} differential=head_cannot_block blocks=false"
+                        );
+                        continue;
+                    }
+                    let base_name = base.get(identity).map(String::as_str).unwrap_or("missing");
+                    let verdict = v1_interpreter::run_in_context_with_args(
+                        &verdict_frame,
+                        "v2.workflow.required_floor.reach_claim_verdict",
+                        &[
+                            (
+                                Some("identity".to_string()),
+                                v1_interpreter::str_value(identity),
+                            ),
+                            (
+                                Some("entry".to_string()),
+                                v1_interpreter::str_value(reach_claim_entry(identity)),
+                            ),
+                            (
+                                Some("function".to_string()),
+                                v1_interpreter::str_value(
+                                    identity.rsplit_once('.').map(|(_, f)| f).unwrap_or(""),
+                                ),
+                            ),
+                            (
+                                Some("base".to_string()),
+                                v1_interpreter::str_value(base_name),
+                            ),
+                            (
+                                Some("head".to_string()),
+                                v1_interpreter::str_value(head_name),
+                            ),
+                        ],
+                        false,
+                    )
+                    .map_err(|e| format!("reach_claim_verdict({identity}): {e}"))?;
+                    let (differential, blocks) = match &verdict {
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdict") => {
+                            match (
+                                verdict_frame.field(fields, "differential"),
+                                verdict_frame.field(fields, "blocks"),
+                            ) {
+                                (
+                                    Some(v1_interpreter::Value::Str(d)),
+                                    Some(v1_interpreter::Value::Bool(b)),
+                                ) => (d.to_string(), *b),
+                                _ => {
+                                    return Err(format!(
+                                        "reach_claim_verdict({identity}): malformed ReachVerdict"
+                                    ))
+                                }
+                            }
+                        }
+                        v1_interpreter::Value::Variant {
+                            variant_name,
+                            fields,
+                            ..
+                        } if verdict_frame.sym_eq(*variant_name, "ReachVerdictRefused") => {
+                            let reason = match verdict_frame.field(fields, "reason") {
+                                Some(v1_interpreter::Value::Str(r)) => r.to_string(),
+                                _ => String::new(),
+                            };
+                            ("refused".to_string(), {
+                                blocking.push((identity.clone(), format!("refused: {reason}")));
+                                true
+                            })
+                        }
+                        other => {
+                            return Err(format!(
+                                "reach_claim_verdict({identity}) returned an arm this host does \
+                                 not know: {}",
+                                verdict_frame.format_value(other)
+                            ))
+                        }
+                    };
+                    *counts.entry(differential.clone()).or_default() += 1;
+                    eprintln!(
+                        "[floor-reach-differential] identity={identity} base={base_name} \
+                         head={head_name} differential={differential} blocks={blocks}"
+                    );
+                    if blocks && differential != "refused" {
+                        blocking.push((identity.clone(), differential.clone()));
+                        // THE DEQUEUED AUTHOR'S RECEIPT: each identity this change newly broke, by
+                        // name, so nobody has to rerun the queue to learn what failed.
+                        if differential == "regressed" || differential == "new_claim" {
+                            eprintln!(
+                                "[floor-reach-finding] NewlyFailedAtHead identity={identity} \
+                                 base={base_name} head={head_name} differential={differential}"
+                            );
+                        }
+                    }
+                }
+                let mode = if blocking_budget_ms > 0 {
+                    "blocking"
+                } else {
+                    "report_only"
+                };
+                eprintln!(
+                    "[floor-phase] phase=reach-differential {baseline_line} mode={mode} \
+                     planned={} verdicts={counts:?} {}={}",
+                    reach_head_standings.len(),
+                    if blocking_budget_ms > 0 {
+                        "blocking"
+                    } else {
+                        "would_block"
+                    },
+                    blocking.len()
+                );
+                if blocking_budget_ms > 0 {
+                    outcome.reach_differential_blocking.extend(blocking);
+                }
+            }
+        }
+    } else {
+        eprintln!("[floor-phase] phase=reach-differential planned=0");
+    }
     outcome.route_gap_held = route_gap_held;
     outcome.known_red_now_passing = known_red_now_passing;
     outcome.known_red_budget_refused = known_red_budget_refused;
@@ -13305,6 +13664,7 @@ pub(crate) fn required_floor_disposition_label(
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
         RequiredFloorDisposition::PlannedAsChangedWitness => "planned_as_changed_witness",
+        RequiredFloorDisposition::PlannedAsReachConsumer => "planned_as_reach_consumer",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
@@ -13343,6 +13703,7 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::DeclinedNoCiWetLane { pattern } => pattern,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
         | RequiredFloorDisposition::DeclinedCostDebt => "",
@@ -14522,6 +14883,7 @@ mod changed_witness_projection_tests {
             known_red_passed_over_budget: 0,
             known_red_host_tool_unresolved_held: 0,
             known_red_host_effect_refused: 0,
+            reach_differential_blocking: Vec::new(),
             stale_quarantine: Vec::new(),
             interrupted_before_verdict: Vec::new(),
             completed_over_cost_requirement: Vec::new(),
@@ -18467,6 +18829,210 @@ fn declared_no_ci_wet_lane_population() -> &'static std::collections::HashSet<St
     })
 }
 
+/// THE BASE ARM'S POPULATION: the reached claims whose head standing CAN block under some base,
+/// as `v2.workflow.required_floor` `reach_head_cannot_block` decides from claim_differential_blocks.
+/// Returns (identities to run at base, identities exempt because their head cannot block). An
+/// exempt claim is never run at base and never blocks.
+pub(crate) fn reach_base_identities(
+    frame: &v1_interpreter::InterpContext,
+    head_standings: &[(String, String)],
+) -> Result<(Vec<String>, HashSet<String>), String> {
+    let mut exempt: HashSet<String> = HashSet::new();
+    let mut needs_base: Vec<String> = Vec::new();
+    for (identity, head_name) in head_standings {
+        match v1_interpreter::run_in_context_with_args(
+            frame,
+            "v2.workflow.required_floor.reach_head_cannot_block",
+            &[(
+                Some("head".to_string()),
+                v1_interpreter::str_value(head_name),
+            )],
+            false,
+        ) {
+            Ok(v1_interpreter::Value::Bool(true)) => {
+                exempt.insert(identity.clone());
+            }
+            Ok(v1_interpreter::Value::Bool(false)) => needs_base.push(identity.clone()),
+            other => {
+                return Err(format!(
+                    "reach_head_cannot_block({identity}) returned {}",
+                    floor_value_shape(other.as_ref().ok())
+                ))
+            }
+        }
+    }
+    Ok((needs_base, exempt))
+}
+
+/// THE BASELINE ARM THE RUN REPORTS IS THE ONE THAT HAPPENED (review 73484): `not-measured`
+/// when the base side is not run (report-only), `ran-at-merge-base` when it is. Rendered by
+/// `v2.workflow.required_floor` `baseline_standing_line`; this only chooses which arm happened.
+pub(crate) fn reach_baseline_line(
+    frame: &v1_interpreter::InterpContext,
+    blocking_budget_ms: u64,
+    base_sha: &str,
+) -> Result<String, String> {
+    let (function, args) = if blocking_budget_ms == 0 {
+        (
+            "v2.workflow.required_floor.reach_baseline_not_measured_line",
+            vec![(
+                Some("cause".to_string()),
+                v1_interpreter::str_value("reach_differential_standing is DifferentialReportOnly"),
+            )],
+        )
+    } else {
+        (
+            "v2.workflow.required_floor.reach_baseline_ran_at_merge_base_line",
+            vec![
+                (
+                    Some("main_sha".to_string()),
+                    v1_interpreter::str_value(base_sha),
+                ),
+                (
+                    Some("cause".to_string()),
+                    v1_interpreter::str_value("no per-landing baseline store exists yet"),
+                ),
+            ],
+        )
+    };
+    // Matched by reference: `Value` implements Drop (#12886), so a pattern may not move out of it.
+    let result = v1_interpreter::run_in_context_with_args(frame, function, &args, false);
+    match &result {
+        Ok(v1_interpreter::Value::Str(line)) => Ok(line.to_string()),
+        other => Err(format!(
+            "{function} returned {}",
+            floor_value_shape(other.as_ref().ok())
+        )),
+    }
+}
+
+/// Run the base side of the reach differential: a detached worktree at `base`, this binary in
+/// `--reach-base-standings` mode with its working directory there, and the standings it prints.
+/// Every failure to produce a COMPLETE set of standings is an `Err` the caller reports by name;
+/// no identity gets a default standing. With a positive `budget_ms` the whole arm is bounded by
+/// it and an arm over it refuses (`BaseArmOverBudget`), never truncating to the claims that
+/// finished.
+fn run_reach_base_arm(
+    source_roots: &[String],
+    base: &str,
+    identities: &[String],
+    claim_wall_limit_ms: u64,
+    budget_ms: u64,
+) -> Result<HashMap<String, String>, String> {
+    let root = process_workspace_root();
+    let scratch = root.join(format!("target/reach_base_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let worktree = scratch.join("tree");
+    std::fs::create_dir_all(&scratch).map_err(|e| format!("reach base scratch: {e}"))?;
+    let identities_file = scratch.join("identities.txt");
+    std::fs::write(&identities_file, identities.join("\n"))
+        .map_err(|e| format!("reach base identities: {e}"))?;
+    let added = std::process::Command::new("git")
+        .current_dir(&root)
+        .args(["worktree", "add", "--detach", "--quiet"])
+        .arg(&worktree)
+        .arg(base)
+        .status()
+        .map_err(|e| format!("git worktree add: {e}"))?;
+    if !added.success() {
+        return Err(format!("git worktree add at {base} exited {added}"));
+    }
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let mut command = std::process::Command::new(exe);
+    command.current_dir(&worktree);
+    for r in source_roots {
+        let rel = std::path::Path::new(r)
+            .strip_prefix(&root)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| r.clone());
+        command.arg("--source-root").arg(rel);
+    }
+    command
+        .arg("--reach-base-standings")
+        .arg(&identities_file)
+        .arg("--claim-wall-limit-ms")
+        .arg(claim_wall_limit_ms.to_string())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit());
+    let started = std::time::Instant::now();
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("spawn base arm: {e}"))?;
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("base arm wait: {e}"))?
+        {
+            break status;
+        }
+        if budget_ms > 0 && started.elapsed().as_millis() as u64 > budget_ms {
+            let _ = child.kill();
+            let _ = child.wait();
+            remove_reach_base_worktree(&root, &worktree, &scratch);
+            return Err(format!(
+                "BaseArmOverBudget wall_ms>{budget_ms} identities={}",
+                identities.len()
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    };
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        use std::io::Read;
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let wall_ms = started.elapsed().as_millis();
+    remove_reach_base_worktree(&root, &worktree, &scratch);
+    eprintln!(
+        "[floor-phase] phase=reach-base-arm base={base} identities={} wall_ms={wall_ms} exit={status}",
+        identities.len()
+    );
+    if let Some(line) = stdout
+        .lines()
+        .find(|l| l.starts_with("reach-base-refused "))
+    {
+        return Err(format!("BaseArmNotAVerdict {line}"));
+    }
+    if !status.success() {
+        return Err(format!("BaseArmFailed exit={status}"));
+    }
+    let mut standings: HashMap<String, String> = HashMap::new();
+    for line in stdout.lines() {
+        let Some(rest) = line.strip_prefix("reach-base identity=") else {
+            continue;
+        };
+        let Some((identity, standing)) = rest.split_once(" standing=") else {
+            return Err(format!("BaseArmUnparseable {line:?}"));
+        };
+        standings.insert(identity.to_string(), standing.to_string());
+    }
+    let missing: Vec<&String> = identities
+        .iter()
+        .filter(|i| !standings.contains_key(*i))
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "BaseArmIncomplete {} of {} identities have no standing, first {:?}",
+            missing.len(),
+            identities.len(),
+            missing.first()
+        ));
+    }
+    Ok(standings)
+}
+
+fn remove_reach_base_worktree(
+    root: &std::path::Path,
+    worktree: &std::path::Path,
+    scratch: &std::path::Path,
+) {
+    let _ = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["worktree", "remove", "--force"])
+        .arg(worktree)
+        .status();
+    let _ = std::fs::remove_dir_all(scratch);
+}
 /// WHICH DISPOSITIONS DECIDE A CHANGED-WITNESS SELECTION, as an EXHAUSTIVE match: a new
 /// `RequiredFloorDisposition` arm does not compile here until it states whether it counts, which
 /// is the structural ceiling of `gunbc.recurring_failure_mode.a_new_decision_arm_the_downstream_join_does_not_admit`
@@ -18476,6 +19042,7 @@ fn decides_a_changed_selection(disposition: &RequiredFloorDisposition) -> bool {
         RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -18497,6 +19064,7 @@ fn suppresses_a_changed_witness_enrollment(disposition: &RequiredFloorDispositio
         RequiredFloorDisposition::DeclinedNoCiWetLane { .. } => true,
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::PlannedAsChangedWitness
+        | RequiredFloorDisposition::PlannedAsReachConsumer
         | RequiredFloorDisposition::DeclinedLongModule { .. }
         | RequiredFloorDisposition::DeclinedFixtureMember { .. }
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
@@ -18582,6 +19150,24 @@ mod changed_witness_sublane_join_tests {
             .expect("a declined wet selection is decided");
     }
 
+    /// A reach consumer is NOT a changed-witness selection: its row does not satisfy a selection
+    /// (selected_without_disposition) and, unselected, is not foreign (the join stays clean).
+    #[test]
+    fn a_planned_as_reach_consumer_row_is_not_a_changed_selection() {
+        assert!(!decides_a_changed_selection(
+            &RequiredFloorDisposition::PlannedAsReachConsumer
+        ));
+        let rows = vec![row("m.r", RequiredFloorDisposition::PlannedAsReachConsumer)];
+        changed_witness_sublane_join(&HashSet::new(), &rows)
+            .expect("an unselected reach consumer is not foreign to the join");
+        let expected: HashSet<String> = ["m.r"].iter().map(|s| s.to_string()).collect();
+        let missing = changed_witness_sublane_join(&expected, &rows).unwrap_err();
+        assert!(
+            missing.contains("selected_without_disposition=[m.r]"),
+            "{missing}"
+        );
+    }
+
     /// The join is still exact: a selection with no deciding row refuses, and a deciding row with no
     /// selection refuses, whichever arm decided it.
     #[test]
@@ -18643,10 +19229,44 @@ mod changed_selections_outside_discovery_mirror_tests {
             .collect()
     }
 
+    /// A `List<T>` value in either realization the interpreter produces: the host vector, or the
+    /// free-monoid `Cons`/`Empty` chain a `.dag` fold builds (`v2.std.algebra` `list_reverse`
+    /// returns one since gunbc#13138). Anything else is not a list and panics with its own name.
+    fn list_items(ctx: &v1_interpreter::InterpContext, value: &Value) -> Vec<Value> {
+        let mut out = Vec::new();
+        let mut cursor = value.clone();
+        loop {
+            let next = match &cursor {
+                Value::List(items) => {
+                    out.extend(items.iter().cloned());
+                    return out;
+                }
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(*variant_name, "Empty") && fields.is_empty() => return out,
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } if ctx.sym_eq(*variant_name, "Cons") => {
+                    let (Some(head), Some(tail)) =
+                        (ctx.field(fields, "head"), ctx.field(fields, "tail"))
+                    else {
+                        panic!("a Cons cell of the .dag decider's list lacks head or tail");
+                    };
+                    out.push(head.clone());
+                    tail.clone()
+                }
+                _ => panic!("the .dag decider did not return a List"),
+            };
+            cursor = next;
+        }
+    }
+
     fn dag_rows(ctx: &v1_interpreter::InterpContext, value: &Value) -> BTreeMap<String, String> {
-        let Value::List(rows) = value else {
-            panic!("the .dag decider did not return a List");
-        };
+        let rows = list_items(ctx, value);
         let mut out = BTreeMap::new();
         for row in rows.iter() {
             let Value::Record { fields, .. } = row else {
