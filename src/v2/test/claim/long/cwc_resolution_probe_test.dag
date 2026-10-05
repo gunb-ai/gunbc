@@ -10,7 +10,7 @@ import v2.std.arrow_signature { declared_signature }
 import v2.std.declaration_marker { test_marker_channel_empty }
 import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { content_hash, core_edge_label }
+import v2.std.node { Connective, content_hash, core_edge_label }
 import v2.std.node_query { binder_edge, construct_node, construct_node_elided }
 import v2.std.qualified_name { qualified_name_spine_of_atoms }
 
@@ -77,7 +77,7 @@ fn cwc_atom(identity: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: identity } }, children: [], occurrence_id: OccurrenceSynthetic }
 }
 
-fn cwc_node(connective: TypeConnective, children: List<Edge>) -> Node {
+fn cwc_node(connective: Connective, children: List<Edge>) -> Node {
   Node { kind: TypeNode { connective: connective }, children: children, occurrence_id: OccurrenceSynthetic }
 }
 
@@ -198,6 +198,13 @@ fn cwc_parse_of(src: String) -> Outcome<Node> {
   })
 }
 
+fn cwc_norm_of_module() -> Outcome<NormalizedTree> {
+  match cwc_parse_of(src: cwc_src_cwc_module) {
+    Accepted { value: p, diagnostics: _ } => normalize(parse_tree: p)
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
 // THE ONE REAL-PATH CLAIM, and the pairing for every fixture above. It asserts the route, not only
 // the answer: the real parser emits the supplied malformed-coproduct parse tree; real normalize of the
 // cwc module emits the supplied cwc root, so its ReviewEvent Disj and the shapes the resolve fixtures
@@ -209,7 +216,7 @@ test fn cwc_cwc_module_resolve_accepts() -> Bool {
     Accepted { value: p, diagnostics: _ } => content_hash(n: p) == content_hash(n: cwc_pt_malformed())
     Rejected { diagnostics: _ } => false
   }
-  parse_pairs && match bind_outcome(o: cwc_parse_of(src: cwc_src_cwc_module), f: fn(p) { normalize(parse_tree: p) }) {
+  parse_pairs && match cwc_norm_of_module() {
     Accepted { value: tree, diagnostics: _ } =>
       (content_hash(n: tree.root) == content_hash(n: cwc_root_cwc_module()))
         && match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
