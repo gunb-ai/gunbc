@@ -283,9 +283,10 @@ fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, comman
 }
 
 // The full invocation, and the authority the materialized operation argv is checked against. It
-// COMPOSES the option words through the one projection rather than re-deriving them; if this fold
-// and the transport template ever disagree about word order,
-// systemd_run_transient_operation_argv_matches_authority goes red.
+// COMPOSES the option words through the one projection rather than re-deriving them. The
+// transport template carries no words of its own beyond the program head, so this fold's order IS
+// the executed order; systemd_run_transient_operation_argv_matches_authority witnesses the head
+// spelling and refuses embedded newlines (see its comment for the narrowed check).
 // Word order: --unit, the properties, --collect, then -- (main's green nbd witness pins this
 // order over the retired blob's --unit, --collect, properties; the union cannot hold both, and
 // main is the landed authority). The retained variant below is the same builder WITHOUT the

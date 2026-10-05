@@ -222,11 +222,15 @@ fn argv_exact_token_equal(left: List<String>, right: List<String>) -> Bool {
   }
 }
 
-// The transport template is declared, not re-derived, so this predicate now compares the
-// materialized words against the words the caller's typed command projects: if the operation's
-// declared transport and the authority's projection ever disagree about word order or content, it
-// goes red here — the property population the old two-folds-agree check could not see is exactly
-// what this join sees, because both sides now come from the one projection.
+// The transport template carries no words of its own beyond the program head, so this predicate
+// is narrow by construction: the materialized words are ["systemd-run"] ++ the caller's
+// command_argv, and the authority is the same command's own words — tail order and property
+// population CANNOT disagree, both sides come from the one projection. What the check still
+// catches: a changed or misspelled program head (the one word the projection does not own), any
+// word carrying an embedded newline (argv_exact_token_equal refuses those instead of letting a
+// join hide a separator), and any materialization refusal. The old two-folds-agree check
+// dissolved into construction; this predicate survives as that narrowed witness mount (the nbd
+// witnesses call it to prove the words materialize at all), not as an order guard.
 fn systemd_run_transient_operation_argv_matches_authority(command: ArgvCommand) -> Bool {
   let authority = argv_words(command: command)
   match systemd_run_transient_operation_argv(command: command) {
