@@ -1,5 +1,6 @@
 module v2.std.integer
 
+import std.coercion { unicode_scalar_unfold }
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, GroupCompletion, OrderedRing, Ordering, Less, Equal, Greater, list_snoc_item }
 import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
@@ -20,22 +21,13 @@ import v2.std.node_query { find_named_child }
 import std.integer { Signedness, Signed, Unsigned }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
 import std.types { NonEmptyStr, List }
-import v2.std.machine {
-  Byte,
-  MachineWidth,
-  PointerWidth,
-  Word8,
-  Word16,
-  Word32,
-  Word64,
-  Word128
-}
+import v2.std.machine { Byte }
+import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 import std.bit { Word64 }
 type Int = GroupCompletion<Nat>
 type UInt = Nat
-type Compose<carrier, dimension>
 
 type Representation
   = TwosComplement
@@ -44,17 +36,17 @@ type Representation
 
 type OverflowDisposition = Wrapping | Saturating | UndefinedBehavior | Trapping
 
-type Int8 = Compose<Int, MachineWidth<Word8>>
-type Int16 = Compose<Int, MachineWidth<Word16>>
-type Int32 = Compose<Int, MachineWidth<Word32>>
-type Int64 = Compose<Int, MachineWidth<Word64>>
-type Int128 = Compose<Int, MachineWidth<Word128>>
+type Int8 = Compose<Int, MachineWidth<8>>
+type Int16 = Compose<Int, MachineWidth<16>>
+type Int32 = Compose<Int, MachineWidth<32>>
+type Int64 = Compose<Int, MachineWidth<64>>
+type Int128 = Compose<Int, MachineWidth<128>>
 
-type UInt8 = Compose<UInt, MachineWidth<Word8>>
-type UInt16 = Compose<UInt, MachineWidth<Word16>>
-type UInt32 = Compose<UInt, MachineWidth<Word32>>
-type UInt64 = Compose<UInt, MachineWidth<Word64>>
-type UInt128 = Compose<UInt, MachineWidth<Word128>>
+type UInt8 = Compose<UInt, MachineWidth<8>>
+type UInt16 = Compose<UInt, MachineWidth<16>>
+type UInt32 = Compose<UInt, MachineWidth<32>>
+type UInt64 = Compose<UInt, MachineWidth<64>>
+type UInt128 = Compose<UInt, MachineWidth<128>>
 
 type IntPlatform = Compose<Int, MachineWidth<PointerWidth>>
 type UIntPlatform = Compose<UInt, MachineWidth<PointerWidth>>
@@ -1179,7 +1171,7 @@ fn integer_string_to_decimal_digits_step(
 }
 
 fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
-  integer_string_to_decimal_digits_step(s: chars(s: s), acc: Empty)
+  integer_string_to_decimal_digits_step(s: unicode_scalar_unfold(s: s), acc: Empty)
 }
 
 fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {

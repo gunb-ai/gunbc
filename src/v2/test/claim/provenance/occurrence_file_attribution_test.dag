@@ -6,12 +6,14 @@ import v2.compiler.program_assembly {
   IngestAssembly,
   LocatedIngestRoots,
   assemble_program_from_ingest_located,
+  program_assembly_advisories_extend,
   LocatedNormalizedTree,
   located_roots_and_spans_from_source_root_ingest
 }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, fold_list, length }
+import v2.std.collection { list_at_optional }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.cli.compile_cli {
   CliEmitClosure,
@@ -27,7 +29,7 @@ import v2.cli.compile_cli {
 import v2.std.algebra { list_reverse, list_starts_with }
 import v2.std.text { char_eq }
 import v2.std.cross_tree.import_model { DagTree }
-import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual, WholeFile }
+import v2.std.diagnostic { Accepted, ByteRange, Diagnostic, Diagnostics, ExternalContractUnknown, NonEmptyDiagnostics, None, Rejected, Some, Textual, Unavailable, WholeFile, diagnostics_has_reason, invariant_port_locus }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
@@ -431,5 +433,46 @@ fn native_route_roots_have_distinct_occurrences(roots: FreeMonoid<NormalizedTree
               }
           }
       }
+  }
+}
+
+fn advisory_count(d: Diagnostics) -> Int {
+  match d {
+    None => 0
+    Some { diagnostics: n } => 1 + length(xs: n.tail)
+  }
+}
+
+fn supplied_advisory(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(port: ^occurrence_file_attribution, invariant: reason),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The reason at a tail position, or a marker no supplied advisory carries.
+fn tail_reason_at(d: NonEmptyDiagnostics, index: Int) -> Symbol {
+  match list_at_optional(xs: d.tail, index: index) {
+    Present { value: x } => x.reason
+    Absent => ^tail_position_absent
+  }
+}
+
+// THE PER-FILE EXTEND KEEPS EVERY ADVISORY, IN ORDER, WITHOUT RE-COPYING THE CHAIN. Supplied chains
+// at program_assembly_advisories_extend's boundary: a first file's two advisories, then a second
+// file's one, must come out as the three in that order; an empty side leaves the other unchanged.
+test fn the_assembly_advisory_extend_keeps_every_files_advisories_in_order_holds() -> Bool {
+  let first = Some { diagnostics: NonEmptyDiagnostics { head: supplied_advisory(reason: ^adv_a), tail: [supplied_advisory(reason: ^adv_b)] } }
+  let second = Some { diagnostics: NonEmptyDiagnostics { head: supplied_advisory(reason: ^adv_c), tail: [] } }
+  match program_assembly_advisories_extend(acc: first, more: second) {
+    None => false
+    Some { diagnostics: d } =>
+      d.head.reason == ^adv_a
+        && length(xs: d.tail) == 2
+        && tail_reason_at(d: d, index: 0) == ^adv_b
+        && tail_reason_at(d: d, index: 1) == ^adv_c
+        && advisory_count(d: program_assembly_advisories_extend(acc: None, more: second)) == 1
+        && advisory_count(d: program_assembly_advisories_extend(acc: first, more: None)) == 2
   }
 }

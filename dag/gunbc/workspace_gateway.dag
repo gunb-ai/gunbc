@@ -1,0 +1,27 @@
+module gunbc.workspace_gateway
+
+import std.types { String, NonEmptyStr }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.fleet_intent_network { fleet_intent_network }
+import gunbc.fleet_posix_accounts { fleet_posix_operator_principal, grounded_posix_principal_name }
+
+// The gateway is the selected host, not a fleet-global interpretation of a reused guest IP.
+// Admission of the administrator-owned gateway roster includes host SSH forwarding/access.
+type WorkspaceGateway {
+  slot: RunnerSlotIdentity
+  host_account: NonEmptyStr
+  tailnet_name: NonEmptyStr
+}
+
+// Placement eligibility must observe this existing fleet principal's access on the host.
+// The endpoint is a projection of fleet naming and account authorities, never browser input.
+fn workspace_fleet_gateway(slot: RunnerSlotIdentity) -> WorkspaceGateway? {
+  match fleet_intent_network.tailnet_domain {
+    Absent => none
+    Present { value: domain } => Present { value: WorkspaceGateway {
+      slot: slot,
+      host_account: grounded_posix_principal_name(p: fleet_posix_operator_principal()),
+      tailnet_name: join([slot.host as String, ".", domain as String], "") as NonEmptyStr,
+    } }
+  }
+}

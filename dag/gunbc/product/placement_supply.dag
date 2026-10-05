@@ -4,8 +4,8 @@ import std.types { NonEmptyStr, Bool, List, String, Int, brand }
 import std.measure { RackUnit }
 import std.decl_ref { DeclarationRef }
 import extdeps.dhcp.v4 { MacAddress }
+import product.host_identity { HostIdentity, host_identity_eq }
 
-type HostIdentity = NonEmptyStr where brand("HostIdentity")
 type PhysicalAssetIdentity = NonEmptyStr where brand("PhysicalAssetIdentity")
 type SiteIdentity = NonEmptyStr where brand("SiteIdentity")
 type RoomIdentity = NonEmptyStr where brand("RoomIdentity")
@@ -13,18 +13,8 @@ type RackIdentity = NonEmptyStr where brand("RackIdentity")
 type RackShelfIdentity = NonEmptyStr where brand("RackShelfIdentity")
 type ProcurementReceiptIdentity = NonEmptyStr where brand("ProcurementReceiptIdentity")
 
-// EQUALITY FOR THE BRANDED IDENTITY, BESIDE THE TYPE THAT DECLARES IT.
-//
-// Two hosts are the same host when their identities are the same string, and the brand is what
-// stops an arbitrary NonEmptyStr standing in for one. Callers were spelling this inline as
-// `x as String == y as String`, which the grammar does not accept in an `if` condition -- so the
-// choice was a helper here or a `let` at every site, and a comparison for a type belongs with the
-// type rather than being re-derived by each consumer.
-fn host_identity_eq(a: HostIdentity, b: HostIdentity) -> Bool {
-  a as String == b as String
-}
-
-// The same comparison for physical assets, and it lives here for the same reason the one above does:
+// The same comparison for physical assets, and it lives here for the same reason product.host_identity
+// host_identity_eq lives beside HostIdentity:
 // product.placement_supply owns PhysicalAssetIdentity, so consumers that need to ask whether two
 // asset identities are the same asset should not each re-derive it. It was re-derived once already
 // -- product.printed_chassis.manufacturing_manifest defined a private copy -- which was tolerable
@@ -35,8 +25,8 @@ fn physical_asset_identity_eq(a: PhysicalAssetIdentity, b: PhysicalAssetIdentity
   a as String == b as String
 }
 
-// The same comparison for sites, beside SiteIdentity for the reason host_identity_eq is beside
-// HostIdentity: gunbc.network_boot_delivery compares an observed edge or client site against the
+// The same comparison for sites, beside SiteIdentity for the reason product.host_identity
+// host_identity_eq is beside HostIdentity: gunbc.network_boot_delivery compares an observed edge or client site against the
 // expected one, and re-spelling it inline as `as String` would accept any NonEmptyStr in either slot.
 fn site_identity_eq(a: SiteIdentity, b: SiteIdentity) -> Bool {
   a as String == b as String

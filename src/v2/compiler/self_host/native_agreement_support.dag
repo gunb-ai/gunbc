@@ -13,6 +13,7 @@ import v2.std.native_agreement {
 }
 import v2.std.runtime { RuntimeValue }
 import v2.std.verdict { Verdict, Pass, SemanticMismatch, BuildFailed, RunFailed, Deferred }
+import v2.std.text { String }
 
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,

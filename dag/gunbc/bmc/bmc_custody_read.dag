@@ -7,11 +7,13 @@ import extdeps.cloud.gcp.secret_manager {
   SmAccessVersionSecretDecodeRefused,
 }
 import extdeps.transports.rest {
-  classify_rest_outcome,
+  classify_rest_refusal,
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestExchangeCommitAmbiguous,
-  RestExchangePerformance,
+  RestExchangeRefusal,
   RestExchangeStatusRefused,
-  RestExchangeSucceeded,
   RestExchangeUndecodable,
   RestExchangeUnreached,
   RestReadExchange,
@@ -32,31 +34,29 @@ type CustodyCredentialRead
   | CustodyCredentialAbsent
   | CustodyCredentialUnreadable { cause: String }
 
-fn custody_read_refusal_cause(performance: RestExchangePerformance) -> CustodyCredentialRead? {
+fn custody_read_refusal_cause(performance: RestExchangeRefusal) -> CustodyCredentialRead {
   match performance {
-    RestExchangeSucceeded => none
     RestExchangeStatusRefused { status: status, body: body } =>
-      Present { value: if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } } }
-    RestExchangeCommitAmbiguous { detail: d } => Present { value: CustodyCredentialUnreadable { cause: d as String } }
-    RestExchangeUnreached { cause: c } => Present { value: CustodyCredentialUnreadable { cause: c as String } }
-    RestExchangeUndecodable { status: _, cause: c } => Present { value: CustodyCredentialUnreadable { cause: c as String } }
+      if status == 404 { CustodyCredentialAbsent } else { CustodyCredentialUnreadable { cause: concat("Secret Manager refused the read: ", body) } }
+    RestExchangeCommitAmbiguous { detail: d } => CustodyCredentialUnreadable { cause: d as String }
+    RestExchangeUnreached { cause: c } => CustodyCredentialUnreadable { cause: c as String }
+    RestExchangeUndecodable { status: _, cause: c } => CustodyCredentialUnreadable { cause: c as String }
   }
 }
 
-// ONE MATCH OVER THE CLASSIFIED OUTCOME (review 67867): a success decodes the payload, every other
-// arm is the refusal custody_read_refusal_cause already named. There is no second pass that has to
-// invent an answer for a success it can no longer see.
+// ONE MATCH OVER THE RESULT (review 67867): an answer decodes the payload, a refusal is the arm
+// custody_read_refusal_cause names for it. The payload exists only in the answered arm.
 fn bmc_custody_credential(secret_id: NonEmptyStr, token: Secret) -> CustodyCredentialRead
 {
-  resp = gcp.SecretManager.AccessVersion(
+  return match gcp.SecretManager.AccessVersion(
     access_token: token,
     project_id: fleet_secrets_gcp_project,
     secret: secret_id,
     version: "latest"
-  )
-  return match custody_read_refusal_cause(performance: classify_rest_outcome(standing: RestReadExchange { rest: resp.outcome })) {
-    Present { value: refusal } => refusal
-    none => match decode_sm_access_version_secret_wire(data_b64: resp.data_b64) {
+  ) {
+    RestRefused { refusal } =>
+      custody_read_refusal_cause(performance: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }))
+    RestAnswered { answer } => match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
       SmAccessVersionSecretDecoded { credential: c } => CustodyCredentialHeld { password: c as String }
       SmAccessVersionSecretDecodeRefused { cause: _ } => CustodyCredentialUnreadable { cause: "the custody payload did not decode" }
     }

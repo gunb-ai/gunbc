@@ -75,6 +75,8 @@ type ArgvCommand sole_constructor {
 // the same way production does -- the rule extdeps.shell.exec transport_script_seal already sets.
 fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvCommand
   admit_callers: [
+    decl_ref(module_path: "extdeps.ssh.openssh_port_forwarding", decl_name: "ssh_stdio_forward_command"),
+    decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_file_owned_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "scp_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command"),
     decl_ref(module_path: "extdeps.exec.command", decl_name: "env_prefixed_command_in"),
@@ -89,6 +91,7 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_pull_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_container_inspect_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_ps_running_command"),
+    decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_ps_running_all_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_build_spec_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_image_digest_command"),
@@ -101,6 +104,13 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_rename_command"),
     decl_ref(module_path: "extdeps.docker.cli", decl_name: "docker_logs_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_create_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_snapshot_read_only_command"),
+    decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_delete_command"),
+    decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_repository_create_filesystem_command"),
+    decl_ref(module_path: "extdeps.tools.kopia", decl_name: "kopia_snapshot_create_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_files_sha256_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owner_executable_files_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),

@@ -1,5 +1,9 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
+import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
+import gunbc.host_boot_attempt_admission {
+  PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
+}
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
@@ -10,7 +14,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeo
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootPhaseTiming, mtcollins1_boot_phase_timing_not_taken, mtcollins1_boot_phase_timing_text }
+import gunbc.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -26,7 +30,10 @@ import gunbc.machine_intake_ampere_smpro_observation {
 }
 import gunbc.machine_intake_mtcollins1_smpro_observation { mtcollins1_smpro_site }
 import extdeps.ampere.smpro_register { smpro_gpi_ras_err_reg }
-import gunbc.machine_intake_mtcollins1_bmc_sensor_observation { mtcollins1_sensor_table_text, mtcollins1_sensor_anomalies }
+import gunbc.machine_intake_megarac_sensor_observation { MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming, megarac_sensor_table_text, megarac_sensor_anomalies }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming }
 import extdeps.bmc.redfish_memory_inventory {
   RedfishMemoryMember, RedfishProcessorMember, RedfishResourceStatus, RedfishMemoryLocation,
   RedfishResourceState, StateAbsent, StateDisabled, StateUnavailableOffline, StateStandbyOffline,
@@ -66,8 +73,8 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
   Carrier, SolConsole, KvmScreen, SmproRegisters, SmproErrorRegisters, SystemEventLog, SensorTable, ChassisPower, RedfishInventory, VirtualMedia, HostCaptureMarkers,
   CarrierCoverage, CarrierStanding, CarrierRead, CarrierReadEmpty, CarrierPartial, CarrierRefused, CarrierNotTaken,
   PowerOnHandoff, HandoffPoweredOn, HandoffNotConfirmed, SelEvidence, SelEventsRead, SelEventsNotRead,
-  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequestNotRecorded,
-  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, StimulusApplicationNotRecorded, PopulationNotRecorded, FirmwareReadbacksNotRecorded,
+  WatchdogUnobserved, ExpectedSockets, ExpectedTopologyNotRecorded,
+  PopulationLiveObserved, PopulationOperatorAttested, PopulationConflicted, SlotRow, PopulationNotRecorded,
   ProcessorMissingOnExpectedSocket, ProcessorSocketDuplicated, ProcessorSocketUnreadable, ProcessorNotNominal, ProcessorAbsentOnExpectedSocket, MemoryBelowRecordedPopulation, MemoryNotNominal, SelHardwareEvent,
   mtcollins1_power_on_account, mtcollins1_power_on_account_text, mtcollins1_power_on_account_notes, SpanConsoleReading, span_console_readings,
 }
@@ -78,7 +85,7 @@ import gunbc.machine_intake_ampere_socket_console_observation {
 import gunbc.machine_intake_host_capture_envelope { HostCaptureLiveStream, host_capture_lines }
 import gunbc.machine_intake_mtcollins1_memory_census_observation { mtcollins1_slots, mtcollins1_census_sol_artifact_path }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
-import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_text }
+import gunbc.machine_intake_megarac_kvm_still { KvmObserverRecord, kvm_observer_record_text }
 import gunbc.machine_intake_mount_establishment { RemoteMediaMountStanding }
 import gunbc.machine_intake_megarac_media_attach {
   AttachReadiness,
@@ -346,7 +353,7 @@ type SdrCacheReading
 // is not made, and the reading says why: an uncached `sdr elist` re-reads the whole repository
 // from a controller that has just been power-cycled, the cost the cache exists to avoid.
 type SensorReading
-  = SensorsRead { lines: List<SdrLineResult>, at: NonEmptyStr }
+  = SensorsRead { lines: List<SdrLineResult>, at: NonEmptyStr, naming: MegaRacSdrSocketNamingRule }
   | SensorsUnread { cause: BmcReadCause }
   | SensorsNotTaken { reason: NonEmptyStr }
 
@@ -406,6 +413,13 @@ fn attempt_identity_text(a: AttemptIdentityReading) -> String {
 data mtcollins1_boot_diagnostics_path: String = "artifacts/mtcollins1-boot-diagnostics.txt"
 
 data mtcollins1_boot_retained_artifact_prefix: String = "artifacts/mtcollins1-boot-"
+
+// THE KVM OBSERVER'S DIRECTORY, one per attempt, under the retained prefix so the upload that carries
+// the diagnostics carries the journal and every still. The observer (gunbc.machine_intake_megarac_kvm_still
+// megarac_kvm_observer_start) is handed it; where a boot retains its evidence is the boot's fact.
+fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
+  concat("artifacts/mtcollins1-boot-kvm-", attempt)
+}
 
 // ── THE ATTEMPT'S OWN RUN RECORD ─────────────────────────────────────────────────────────────
 //
@@ -864,7 +878,7 @@ type MtCollins1BootRunRecord {
   override_after: BootParam5Reading
   override: BootOverrideConsumption
   power_after: PowerAfterAttempt
-  timing: MtCollins1BootPhaseTiming
+  timing: BootPhaseTiming
 }
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
@@ -879,7 +893,7 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
     override_after: BootParam5NotTaken { reason: reason },
     override: OverrideNotHandedOff { reason: reason },
     power_after: PowerAfterNotTaken { reason: reason },
-    timing: mtcollins1_boot_phase_timing_not_taken(reason: reason),
+    timing: boot_phase_timing_not_taken(reason: reason),
   }
 }
 
@@ -1006,8 +1020,8 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
     concat("end_media=", end_media_text(e: r.end_media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
-    "-- phase timing (gunbc.machine_intake_mtcollins1_boot_phase_timing) --",
-    mtcollins1_boot_phase_timing_text(t: r.timing),
+    "-- phase timing (gunbc.managed_host_boot_phase_timing) --",
+    boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
     boot_param5_text(label: "after", r: r.override_after),
     "-- smpro pass at power on --",
@@ -1020,7 +1034,7 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
 // `screen` is the attempt's KVM screen: the held observer's establishment, its journal of boundary
 // and lifecycle events, every still with its instant and sha256 (or why it is not hash-bound), the
 // gaps between stills, and the separately timestamped teardown. Evidence only: no finding and no
-// verdict reads it (gunbc.machine_intake_mtcollins1_kvm_still).
+// verdict reads it (gunbc.machine_intake_megarac_kvm_still).
 type MtCollins1BootDiagnosticBundle {
   attempt: AttemptIdentityReading
   outcome: String
@@ -1033,6 +1047,7 @@ type MtCollins1BootDiagnosticBundle {
   console: ConsoleReading
   run: MtCollins1BootRunRecord
   screen: KvmObserverRecord
+  configuration: AttemptConfigurationReceipt
 }
 
 fn inventory_not_taken(reason: NonEmptyStr) -> InventoryReading {
@@ -1127,7 +1142,7 @@ fn smpro_text(s: SmproReading) -> String {
 
 fn sensor_anomalies(s: SensorReading, receipt: AttemptConfigurationReceipt) -> List<BmcAnomaly> {
   match s {
-    SensorsRead { lines: ls, at: _ } => mtcollins1_sensor_anomalies(lines: ls, sockets: mtcollins1_census_sockets(), expected: expected_socket_list(receipt: receipt))
+    SensorsRead { lines: ls, at: _, naming: n } => megarac_sensor_anomalies(naming: n, lines: ls, sockets: mtcollins1_census_sockets(), expected: expected_socket_list(receipt: receipt))
     SensorsUnread { cause: _ } => []
     SensorsNotTaken { reason: _ } => []
   }
@@ -1313,7 +1328,7 @@ fn sel_channel(channel: NonEmptyStr, s: SelSnapshotReading) -> BmcChannelRead {
   } }
 }
 
-fn members_channel(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
+fn members_channel<T>(channel: NonEmptyStr, m: MembersReading<T>) -> BmcChannelRead {
   BmcChannelRead { channel: channel, standing: match m {
     MembersRead { members: _ } => BmcChannelAnswered
     MembersUnread { cause: c } => BmcChannelFailed { cause: c }
@@ -1352,7 +1367,7 @@ fn bmc_channel_reads(bundle: MtCollins1BootDiagnosticBundle) -> List<BmcChannelR
       SdrCacheNotTaken { reason: _ } => BmcChannelNotAttempted
     } },
     BmcChannelRead { channel: "ipmi sdr elist", standing: match bundle.sensors {
-      SensorsRead { lines: _, at: _ } => BmcChannelAnswered
+      SensorsRead { lines: _, at: _, naming: _ } => BmcChannelAnswered
       SensorsUnread { cause: c } => BmcChannelFailed { cause: c }
       SensorsNotTaken { reason: _ } => BmcChannelNotAttempted
     } },
@@ -1484,7 +1499,7 @@ fn sel_coverage(delta: SelDeltaReading) -> CarrierStanding {
 
 fn sensor_coverage(s: SensorReading) -> CarrierStanding {
   match s {
-    SensorsRead { lines: ls, at: _ } => if count(ls) == 0 { CarrierReadEmpty } else { CarrierRead }
+    SensorsRead { lines: ls, at: _, naming: _ } => if count(ls) == 0 { CarrierReadEmpty } else { CarrierRead }
     SensorsUnread { cause: c } => CarrierRefused { cause: bmc_read_cause_text(cause: c) as NonEmptyStr }
     SensorsNotTaken { reason: r } => CarrierNotTaken { reason: r }
   }
@@ -1542,31 +1557,9 @@ fn mtcollins1_boot_coverage(bundle: MtCollins1BootDiagnosticBundle) -> List<Carr
   ]
 }
 
-// THE ATTEMPT CONFIGURATION RECEIPT THIS RUN CAN FREEZE TODAY. The fleet-converge boot takes no
-// stimulus, population, expected-topology or pre-actuation firmware receipt yet, so those fields are
-// NotRecorded with that reason and every question needing them is open; the historical census and
-// orientation rows are deliberately NOT used (they map topology, never current occupancy, and are no
-// expectation of THIS attempt), so no topology degradation is minted from them. DECLARED FRONTIER: the receipt's live inputs land
-// with the boot workflow's stimulus-receipt input (docs/plans/power-on-sequence-model.md section 10);
-// until then the account says what it cannot judge rather than judging it.
-data mtcollins1_receipt_input_frontier: NonEmptyStr = "the fleet-converge boot takes no stimulus, population or pre-actuation firmware receipt yet"
-
-fn mtcollins1_attempt_configuration_receipt(attempt: AttemptIdentityReading) -> AttemptConfigurationReceipt {
-  AttemptConfigurationReceipt {
-    subject: "mtcollins1",
-    attempt: attempt_identity_text(a: attempt) as NonEmptyStr,
-    expected: ExpectedTopologyNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    requested: StimulusRequestNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    applied: StimulusApplicationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    cpus: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    dimms: PopulationNotRecorded { reason: mtcollins1_receipt_input_frontier },
-    firmware: FirmwareReadbacksNotRecorded { reason: mtcollins1_receipt_input_frontier },
-  }
-}
-
 fn mtcollins1_boot_evidence(bundle: MtCollins1BootDiagnosticBundle) -> PowerOnEvidence {
   let delta = sel_delta_reading(before: bundle.sel_before, after: bundle.sel_after)
-  let receipt = mtcollins1_attempt_configuration_receipt(attempt: bundle.attempt)
+  let receipt = bundle.configuration
   PowerOnEvidence {
     configuration: receipt,
     handoff: handoff_standing(h: bundle.run.handoff_media),
@@ -1772,7 +1765,7 @@ fn console_text(c: ConsoleReading) -> String {
 
 fn sensors_text(s: SensorReading) -> String {
   match s {
-    SensorsRead { lines: ls, at: a } => concat("read at ", a as String, ": ", mtcollins1_sensor_table_text(lines: ls, sockets: mtcollins1_census_sockets()))
+    SensorsRead { lines: ls, at: a, naming: n } => concat("read at ", a as String, ": ", megarac_sensor_table_text(naming: n, lines: ls, sockets: mtcollins1_census_sockets()))
     SensorsUnread { cause: c } => concat("UNREAD: ", bmc_read_cause_text(cause: c))
     SensorsNotTaken { reason: why } => concat("NOT TAKEN: ", why as String)
   }
@@ -1882,25 +1875,37 @@ fn mtcollins1_boot_sdr_cache(username: NonEmptyStr, password_file: NonEmptyStr, 
   }
 }
 
-fn mtcollins1_boot_sensors(username: NonEmptyStr, password_file: NonEmptyStr, sdr: SdrCacheReading) -> SensorReading
+// THE SDR READ IS A MEGARAC SOCKET-NAMING OPERATION ON THE MANAGED HOST: the controller's endpoint and
+// account come off its binding, and the read is made only for a host admitted for SDR socket naming
+// (gunbc.megarac_managed_host), so a reading always carries the naming its build was read to use and a
+// controller whose naming is unread is not read at all.
+fn mtcollins1_boot_sensors(password_file: NonEmptyStr, sdr: SdrCacheReading) -> SensorReading
 {
   match sdr {
-    SdrCacheDumped { path: p, at: _ } => {
-      let at = clock_now_probed_at_or_unknown()
-      let r = diagnostic.ipmi.Tool.SdrElistAuthenticatedCached(
-        bmc_host: mtcollins1_endpoint.host,
-        username: username,
-        password_file: password_file,
-        sdr_cache_file: p,
-        deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
-        kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
-      )
-      if r.success {
-        SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at }
-      } else {
-        SensorsUnread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+    SdrCacheDumped { path: p, at: _ } =>
+      match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacSdrSocketNaming) {
+        MegaRacHostRefused { cause: c } => SensorsNotTaken { reason: megarac_host_refusal_text(cause: c) }
+        MegaRacHostAdmitted { host: h } =>
+          match megarac_sdr_socket_naming(host: h) {
+            SdrSocketNamingRefused { reason: why } => SensorsNotTaken { reason: why }
+            SdrSocketNamingBound { naming: naming } => {
+              let at = clock_now_probed_at_or_unknown()
+              let r = diagnostic.ipmi.Tool.SdrElistAuthenticatedCached(
+                bmc_host: h.binding.observation.endpoint.host,
+                username: h.binding.account,
+                password_file: password_file,
+                sdr_cache_file: p,
+                deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+                kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+              )
+              if r.success {
+                SensorsRead { lines: sdr_decode_lines(stdout: r.stdout), at: at, naming: naming }
+              } else {
+                SensorsUnread { cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr) }
+              }
+            }
+          }
       }
-    }
     SdrCacheUnread { cause: c } => SensorsNotTaken { reason: concat("no SDR cache was dumped (", bmc_read_cause_kind(cause: c), "), and an uncached sdr elist is not made") as NonEmptyStr }
     SdrCacheNotTaken { reason: why } => SensorsNotTaken { reason: why }
   }
@@ -1931,9 +1936,6 @@ fn mtcollins1_boot_chassis_power(username: NonEmptyStr, password_file: NonEmptyS
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_power_after_poll"),
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_channel_lost"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_stale_power_off_poll"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_power_after_stale_power_off"),
   ]
 {
   let r = diagnostic.ipmi.Tool.ChassisStatus(
@@ -2548,5 +2550,24 @@ fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: MtCollins1
         ExitSuccess => ExitSuccess
         ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | diagnostics bundle could not be written: ", e) }
       }
+  }
+}
+
+// ── THE PRE-POWER READS (gunbc.host_boot_attempt_admission attempt_configuration_with_pre_power) ──
+// Taken by the boot run after admission and before actuation. hpm check's table is parsed by
+// extdeps.bmc.ipmitool_hpm_check; a failed read carries the controller's own cause.
+fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, clearance: BootAttemptClearance, run_attempt: NonEmptyStr) -> PrePowerFirmware {
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.HpmCheck(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", mtcollins1_endpoint.host as String, " at ", at as String], "") as NonEmptyStr)
+  } else {
+    PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
   }
 }

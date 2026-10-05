@@ -1,9 +1,11 @@
 module test.claim.roadmap_register_witness
+import gunbc.site.brand { site_brand_link }
+import gunbc.site.document { site_styles, site_styles_rules, site_styles_theme_css }
 
 import std.types { Int, String, Bool }
 import std.markup { Fragment, Element, FragmentText, RawNode }
 import gunbc.design.material {
-  BuildRule, StaticRule, CssDecl, decl,
+  BuildRule, StaticRule, ResponseRule, AmbientRule, CssDecl, decl,
   Material, FieldArea, PointArea, paint, reduced_motion_block, respond_fast,
   serialize_rules,
 }
@@ -15,7 +17,9 @@ import gunbc.design.theme {
   theme_root_css,
 }
 import gunbc.site.moodboard { moodboard_rules, moodboard_css }
-import gunbc.design.theme_transition { unthemed_color_decls, untokened_length_decls }
+import v2.std.algebra { any, filter }
+import extdeps.languages.css.selectors { selector_subject_wire }
+import gunbc.design.theme_transition { rule_decls, unthemed_color_decls, untokened_length_decls }
 import gunbc.design.scale { scale_root_css }
 import gunbc.site.markup { txt, el_class }
 import gunbc.design.interaction {
@@ -23,8 +27,8 @@ import gunbc.design.interaction {
   ElementId, DispatchBtnElement, element_id_eq, element_id_key,
   verb_key, coverage_gaps, coverage_complete,
 }
-import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_instance_rules }
-import gunbc.roadmap_page { roadmap_header }
+import gunbc.roadmap_style { roadmap_rules, roadmap_css, roadmap_styles, roadmap_instance_rules }
+import gunbc.site.document { site_header }
 import gunbc.roadmap_interaction {
   roadmap_elements, roadmap_behaviors,
   roadmap_unrealized_behaviors,
@@ -53,7 +57,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // used-but-undeclared each red (names-not-values made executable). Slice 3 is the PROPAGATION PROOF
 // (the operator-named deliverable): one in-memory perturbation of a day-theme material moves the
 // shared theme_root_css derivation both pages embed verbatim (proven by string containment against
-// each page's shipped css), and both surfaces consume the perturbed role — one authority edit,
+// the production theme-emission fragments), and both surfaces consume the perturbed role — one authority edit,
 // every site moves, by derivation not hand-hunt. The scoped control: a FigureLitRole perturbation
 // moves the shared var block but reaches PAINT only on the site (moodboard consumes
 // var(--figure-lit); the roadmap's archetype demand excludes it and its rules carry no such var) —
@@ -64,7 +68,7 @@ test fn witness_roadmap_theme_set_coherent() -> Bool {
 }
 
 test fn witness_roadmap_colors_all_routed() -> Bool {
-  unthemed_color_decls(rules: roadmap_rules()).length() == 0
+  unthemed_color_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))).length() == 0
 }
 
 fn rogue_hex_rule() -> BuildRule {
@@ -72,14 +76,14 @@ fn rogue_hex_rule() -> BuildRule {
 }
 
 test fn witness_local_hex_literal_refused() -> Bool {
-  let caught = unthemed_color_decls(rules: concat(roadmap_rules(), [rogue_hex_rule()]))
+  let caught = unthemed_color_decls(rules: concat(site_styles_rules(styles: site_styles(rules: roadmap_rules())), [rogue_hex_rule()]))
   caught.length() == 1
     && all(caught, c =>
       c.selector == ".rogue-link" && c.prop == "color" && c.value == "#0969da")
 }
 
 test fn witness_roadmap_lengths_all_tokened() -> Bool {
-  untokened_length_decls(rules: roadmap_instance_rules()).length() == 0
+  untokened_length_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_instance_rules()))).length() == 0
 }
 
 fn rogue_px_rule() -> BuildRule {
@@ -87,23 +91,32 @@ fn rogue_px_rule() -> BuildRule {
 }
 
 test fn witness_local_px_literal_refused() -> Bool {
-  let caught = untokened_length_decls(rules: concat(roadmap_instance_rules(), [rogue_px_rule()]))
+  let caught = untokened_length_decls(rules: concat(site_styles_rules(styles: site_styles(rules: roadmap_instance_rules())), [rogue_px_rule()]))
   caught.length() == 1
     && all(caught, c => c.selector == ".rogue-pad" && c.prop == "padding" && c.value == "14px")
 }
 
+fn rules_consume(rules: List<BuildRule>, token: String) -> Bool {
+  any(rules, r => any(rule_decls(rule: r), d => string_contains(s: d.value, pattern: token)))
+}
+
 test fn witness_scale_block_is_the_px_home() -> Bool {
   string_contains(s: scale_root_css(), pattern: "14px")
-    && string_contains(s: roadmap_css(), pattern: "var(--text-14)")
-    && untokened_length_decls(rules: roadmap_instance_rules()).length() == 0
+    && rules_consume(rules: site_styles_rules(styles: roadmap_styles()), token: "var(--text-14)")
+    && untokened_length_decls(rules: site_styles_rules(styles: site_styles(rules: roadmap_instance_rules()))).length() == 0
 }
 
 test fn witness_derived_responses_ship_with_reduced_motion_collapse() -> Bool {
-  reduced_motion_block(rules: roadmap_rules()) != ""
-    && string_contains(s: roadmap_css(), pattern: "@media (prefers-reduced-motion: reduce)")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:hover")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:focus-visible")
-    && string_contains(s: roadmap_css(), pattern: ".dispatch-btn:active")
+  let rules = filter(site_styles_rules(styles: roadmap_styles()), r => match r {
+    ResponseRule { subject, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => selector_subject_wire(s: subject) == ".dispatch-btn"
+    StaticRule { selector: _, decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+  let css = serialize_rules(rules: rules)
+  string_contains(s: reduced_motion_block(rules: rules), pattern: "@media (prefers-reduced-motion: reduce)")
+    && string_contains(s: css, pattern: ".dispatch-btn:hover")
+    && string_contains(s: css, pattern: ".dispatch-btn:focus-visible")
+    && string_contains(s: css, pattern: ".dispatch-btn:active")
 }
 
 test fn witness_roadmap_coverage_complete() -> Bool {
@@ -159,7 +172,8 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
       all(e.verbs, w => archetype_admits_verb(a: dashboard_archetype, v: w)))
 }
 
-// Replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed
+// Superseded 2026-10-04: the owner chose the linked gunb robot mark.
+// Historical context: replaced witness_header_carries_shared_mark at A1 (presentation recon, operator-signed
 // 2026-08-01): the header's brand element is the TEXT wordmark, not the site mark — the mark that
 // stood here was gunbc.site.mark candidate A, an unselected brand experiment whose aria-label said
 // gunb.ai on a gunbc tool surface (rationale on gunbc.roadmap_page.roadmap_wordmark_note). The
@@ -169,7 +183,7 @@ test fn witness_archetype_verbs_match_declared_elements() -> Bool {
 data header_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's children now sit inside one div.header-inner composition frame (header_composition_frame_note — header and content share the page measure), so the wordmark no longer sits at direct-child depth. The scan is a RECURSIVE descent over the header's Fragment subtree, not a depth-pinned adjacency check: the CLAIM is 'the header carries the wordmark', and a fixed depth constant would only be the accidental nesting pinned one level looser — the same re-pin the A1 header note warns against, and it would red spuriously the next time a wrapper lands. Descent is on the Fragment sub-value relation (a node's children), so it terminates on the tree it walks (the std.layout render_go shape)."
 
 fn fragment_is_wordmark(c: Fragment) -> Bool {
-  c == el_class("span", "wordmark", [ txt("gunbc") ])
+  c == site_brand_link()
 }
 
 fn subtree_carries_wordmark(f: Fragment) -> Bool {
@@ -193,8 +207,8 @@ fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
 }
 
 test fn witness_header_carries_wordmark() -> Bool {
-  header_subtree_carries_wordmark(h: roadmap_header(page: "roadmap"))
-    && header_subtree_carries_wordmark(h: roadmap_header(page: "daily workspace"))
+  header_subtree_carries_wordmark(h: site_header(page: "roadmap"))
+    && header_subtree_carries_wordmark(h: site_header(page: "daily workspace"))
 }
 
 // An unbounded subtree search buys depth-independence at the cost of being easy to satisfy, so it
@@ -214,7 +228,7 @@ test fn witness_header_wordmark_scan_discriminates() -> Bool {
     && !header_subtree_carries_wordmark(h: Element {
       tag: "div",
       attributes: [],
-      children: [ el_class("span", "wordmark", [ txt("gunbc") ]) ],
+      children: [ site_brand_link() ],
     })
 }
 
@@ -246,19 +260,19 @@ test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
   let unchanged = base == moved
   !unchanged
     && string_contains(s: moved, pattern: paint(m: probe_canvas_material()))
-    && string_contains(s: roadmap_css(), pattern: base)
+    && string_contains(s: site_styles_theme_css(styles: roadmap_styles()), pattern: base)
     && string_contains(s: moodboard_css(), pattern: theme_root_css(base: night_theme, alternate: day_theme))
-    && string_contains(s: serialize_rules(rules: roadmap_rules()), pattern: "var(--canvas)")
-    && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--canvas)")
+    && rules_consume(rules: site_styles_rules(styles: roadmap_styles()), token: "var(--canvas)")
+    && rules_consume(rules: moodboard_rules(), token: "var(--canvas)")
 }
 
 test fn witness_round_strip_percolates_once_and_pulses_forever() -> Bool {
-  let css = serialize_rules(rules: roadmap_rules())
+  let css = serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules())))
   string_contains(s: css, pattern: "@keyframes round-fill {")
     && string_contains(s: css, pattern: "scaleX(0)")
     && string_contains(s: css, pattern: "animation: round-fill 800ms ease-out 1 both")
     && string_contains(s: css, pattern: "animation: round-pulse 3000ms ease-in-out infinite")
-    && string_contains(s: reduced_motion_block(rules: roadmap_rules()), pattern: "animation: none")
+    && string_contains(s: reduced_motion_block(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))), pattern: "animation: none")
 }
 
 test fn witness_propagation_scoped_by_demand() -> Bool {
@@ -268,7 +282,7 @@ test fn witness_propagation_scoped_by_demand() -> Bool {
   let unchanged = base == moved
   !unchanged
     && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--figure-lit)")
-    && !string_contains(s: serialize_rules(rules: roadmap_rules()), pattern: "var(--figure-lit)")
+    && !string_contains(s: serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules()))), pattern: "var(--figure-lit)")
 }
 
 
@@ -283,7 +297,7 @@ test fn witness_propagation_scoped_by_demand() -> Bool {
 // sheet: the stage-segment rule is a selector rule, and the root variable blocks the sheet adds
 // carry none.
 test fn witness_stage_segments_have_a_width_contract() -> Bool {
-  let rules = serialize_rules(rules: roadmap_rules())
+  let rules = serialize_rules(rules: site_styles_rules(styles: site_styles(rules: roadmap_rules())))
   string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0); flex: 1 }")
     && !string_contains(s: rules, pattern: ".stage-segment { min-width: var(--space-0) }")
 }

@@ -1,8 +1,8 @@
 module gunbc.host_maintenance_hold_reason
 
 import std.types { NonEmptyStr }
-import product.placement_supply { host_identity_eq }
-import gunbc.fleet_intent_network { operator_host_mtcollins1 }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host { ManagedHost }
 
 // THE VARIABLE AN OPERATOR NAMES THEIR MAINTENANCE REASON THROUGH IS MAINTENANCE POLICY, not a fact

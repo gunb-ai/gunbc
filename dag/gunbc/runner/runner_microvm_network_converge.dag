@@ -28,7 +28,7 @@ import gunbc.actions_run_binding { fleet_converge_expected_host_env_name }
 import gunbc.runner_host_deploy { RunnerHostDeploy, runner_slot_identities_of }
 import extdeps.network.ipv4 { render_ipv4_address, render_ipv4_prefix }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, ReadNftRuleset, ReadConntrackExpectations,
   ReadLegacyXtablesRules, ReadUserspaceConntrackHelpers,

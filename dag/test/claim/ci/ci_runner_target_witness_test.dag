@@ -1,6 +1,8 @@
 module test.claim.ci_runner_target_witness
 
 import gunbc.ci_runner_target { ci_runner_target_spec, gunbc_ci_selected_runner_spec }
+import extdeps.languages.yaml.gha_workflow { runner_label_string, runner_yaml, string_list_flow }
+import gunbc.runner_slot_allocation { gunbc_floor_minimum_viable_armed_budget }
 
 test fn witness_fleet_target_projects_fleet_derivation() -> Bool {
   ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()
