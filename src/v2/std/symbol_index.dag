@@ -17,6 +17,7 @@ import v2.std.collection {
   empty_map,
   map_get,
   map_insert,
+  map_contains_key,
   map_lookup
 }
 import v2.std.optional {
@@ -391,24 +392,15 @@ fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedNa
 }
 
 fn symbol_index_is_module_root_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.module_roots, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  map_contains_key(m: index.module_roots, key: qualified_path)
 }
 
 fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.namespace_bodies, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  map_contains_key(m: index.namespace_bodies, key: qualified_path)
 }
 
 fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.declared_resources, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  map_contains_key(m: index.declared_resources, key: qualified_path)
 }
 
 fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
