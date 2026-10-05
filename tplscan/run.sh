@@ -10,5 +10,5 @@ if [ "$SIDE" = before ]; then
   t=tplscan/v2main; d=tplscan/dagmain
 fi
 for f in "$@"; do
-  echo "=== $SIDE $f"; $B run --source-root "$d" --source-root "$t" --source-root tplscan/drv --entry tplscan/drv/drive.dag --function $f 2>&1 | grep -v "pre-entry\|typecheck" | tail -120 || true
+  echo "=== $SIDE $f"; $B run --source-root "$d" --source-root "$t" --source-root tplscan/drv --entry tplscan/drv/${ENTRY:-drive}.dag --function $f 2>&1 | grep -v "pre-entry\|typecheck" | tail -120 || true
 done
