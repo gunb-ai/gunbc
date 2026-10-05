@@ -299,8 +299,15 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 // first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
 // silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
 // exceeds two thirds of the cap.
+// RE-DERIVED 2026-10-05: after gunbc#12951 restored the lane over main's population, the step hit the
+// 40-minute cap with every test that ran passing (job 111941683683 on gunbc#13420: the cost_debt_*
+// and reach_base_standings tests each resolve a live .dag entry graph, minutes apiece). That wall is
+// CENSORED at 40, so it is a lower bound on the true maximum; the rule applied to it gives 40 x 1.5 =
+// 60. If a fleet wall then exceeds 40 (two thirds of 60), re-derive again from the uncensored wall.
+// The cost shape is the real defect (DESIGN section 3: those tests re-derive a live graph per test
+// where the claim needs only supplied inputs); it is rostered for its own repair, not hidden by this cap.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 40)
+  minute(count: 60)
 }
 
 // Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
