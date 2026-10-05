@@ -25267,7 +25267,7 @@ pub(crate) fn rrb_take<T: Clone>(items: &RrbVector<T>, n: i64) -> RrbVector<T> {
 }
 
 #[cfg(test)]
-mod linear_slice_tests {
+mod slice_cost_tests {
     use super::*;
     use std::cell::Cell;
 

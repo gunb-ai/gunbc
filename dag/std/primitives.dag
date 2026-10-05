@@ -414,11 +414,16 @@ data append_contract: PrimitiveContract = {
 // when either half copied its result, each slice paid the remainder and the walk was quadratic in
 // the list (DESIGN section 6, bare minimum cost). Both realizations hold the list as an RRB vector
 // (the interpreter's Value::List, v1_rt's im::Vector), whose split is logarithmic, so the slice
-// costs log len to form and only its own length to read.
+// costs log len to form and only its own length to read. That removes the quadratic remainder
+// copying; it does not make an offset walk linear, since every member read is get_contract's
+// log n on this carrier, so a walk that reads each offset is O(n log n).
+//
+// THE COUNT IS CLAMPED, AND A NEGATIVE COUNT IS THE WHOLE LIST. Both realizations take
+// k = if n < 0 then len else min(n, len): skip keeps len - k members and take keeps k.
 data skip_contract: PrimitiveContract = {
   name: "skip",
   work: "log len",
-  output_size: "max(0, len - n)",
+  output_size: "len - k where k = if n < 0 then len else min(n, len)",
   certainty: Proven,
   carrier_cost: CarrierSensitive { ephemeral_work: "len - n", persistent_work: "log len" }
 }
@@ -426,7 +431,7 @@ data skip_contract: PrimitiveContract = {
 data take_contract: PrimitiveContract = {
   name: "take",
   work: "log len",
-  output_size: "min(len, n)",
+  output_size: "k where k = if n < 0 then len else min(n, len)",
   certainty: Proven,
   carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log len" }
 }

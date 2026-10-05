@@ -245,7 +245,7 @@ fn rt_collection_ops() -> String {
     "pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> { list.push_back(item); list }\n\n",
     "/// std.primitives skip_contract on the persistent carrier: the suffix after `n` members,\n",
     "/// sharing the receiver's tree in O(log n) instead of copying the remainder, so a walk that\n",
-    "/// slices by offset is linear rather than quadratic. A negative `n` skips every member, as\n",
+    "/// slices by offset is O(n log n) rather than quadratic. A negative `n` skips every member, as\n",
     "/// the copying form's saturating `n as usize` did.\n",
     "pub fn list_skip<T: Clone>(items: &Vec<T>, n: i64) -> Vec<T> \{\n",
     "    let k = if n < 0 \{\n",

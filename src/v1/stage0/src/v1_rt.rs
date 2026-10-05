@@ -741,7 +741,7 @@ pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
 
 /// std.primitives skip_contract on the persistent carrier: the suffix after `n` members,
 /// sharing the receiver's tree in O(log n) instead of copying the remainder, so a walk that
-/// slices by offset is linear rather than quadratic. A negative `n` skips every member, as
+/// slices by offset is O(n log n) rather than quadratic. A negative `n` skips every member, as
 /// the copying form's saturating `n as usize` did.
 pub fn list_skip<T: Clone>(items: &Vec<T>, n: i64) -> Vec<T> {
     let k = if n < 0 {

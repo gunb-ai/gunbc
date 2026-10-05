@@ -10,8 +10,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // once; every later read is one member (`get`), the length (`count`) or a bounded slice
 // (`skip` then `take`) folded back to host text. std.primitives get_contract, count_contract,
 // skip_contract and take_contract price each of those at log len or better on the persistent
-// carrier, so the walk is linear in the body on every input -- the property char_at / substring
-// over host text lack on non-ASCII text in the interpreter and on all text in emitted Rust.
+// carrier, so the walk is O(n log n) in the body on every input -- the remainder copying that made
+// it quadratic is gone. Host-text char_at / substring are O(offset) per read on non-ASCII text in
+// the interpreter and on all text in emitted Rust, which is the quadratic this surface avoids.
 // The bodies here are non-ASCII on purpose: that is the input the host-text walk is quadratic on.
 //
 // The wire shape is the length-prefixed field `<decimal count>:<that many code points>`, repeated.

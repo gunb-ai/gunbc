@@ -107,6 +107,34 @@ fn repo_self_test_command() -> String {
   )
 }
 
+// A NAMED SUBSET OF ONE PACKAGE'S UNIT TESTS, for a control that must execute on the merge path
+// while the whole-package run above is off it (gunbc.rung_drop rust_unit_tests_off_the_merge_path).
+// The filters are libtest's substring filters after `--`; an empty list would run the whole
+// package, which is repo_self_test_command's request and not this one.
+fn repo_self_targeted_test_command(package: String, filters: List<String>) -> String {
+  join(concat(["cargo test", repo_self_build_profile_flag, "-p", package, "--lib", "--"], filters), " ")
+}
+
+// The crate the emitted runtime v1_rt.rs is compiled in (the stage0 partition's foundation crate).
+data repo_self_runtime_package: String = "v1-stage0-runtime"
+
+// THE SLICE COST CONTROLS, ENROLLED. Each module carries a RED that runs the copying form a slice
+// used to take and a GREEN that runs the sharing form, on non-ASCII code points, so the pair
+// discriminates the quadratic rather than merely exercising the slice: v1_interpreter
+// slice_cost_tests (the interpreter arms and the Value drop of a shared slice),
+// v1_interpreter value_depth_walker_tests (the drop's totality at depth, which the drop's
+// nesting threshold must not lose), and v1_rt list_slice_tests (the emitted runtime's
+// list_skip / list_take against the emit templates they replaced).
+fn repo_self_slice_cost_control_command() -> String {
+  join(
+    [
+      repo_self_targeted_test_command(package: repo_self_build_package as String, filters: ["slice_cost_tests", "value_depth_walker_tests"]),
+      repo_self_targeted_test_command(package: repo_self_runtime_package, filters: ["list_slice_tests"])
+    ],
+    "\n"
+  )
+}
+
 // THE LINT PASS OVER EVERY TARGET, as the one invocation DESIGN's "Building & checks" names.
 // `--all-targets` is the whole point: the test and example targets outside `--lib` and `--bins`
 // are compiled by no build command above and executed by no test command, so before this row
