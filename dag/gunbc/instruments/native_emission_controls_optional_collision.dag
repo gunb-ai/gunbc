@@ -1,0 +1,26 @@
+module gunbc.instruments.native_emission_controls_optional_collision
+
+import std.types { Int }
+
+// A NON-KERNEL COPRODUCT THAT HAPPENS TO BE NAMED Optional, for the collision cases in
+// gunbc.instruments.native_emission_controls. It is its own declaration (this module's), not the
+// host option: the Rust target realizes as its host Option only the declaration the kernel optional
+// mint stands for (gunbc.structural_realization_bindings kernel_mint_declaration_rows) and the rows of
+// gunbc.rust_source_type_bindings rust_host_option_carrier_declarations. An emitter that decided
+// host-Option by the type's LEAF NAME rendered every position of this type as Option<..> and never
+// emitted its variants (E0425 cannot find CollisionWrapped). It lives in its own module so it does
+// not shadow the builtin anywhere else in the controls closure. Fixture by still-raven-321 (lane 2C).
+type Optional
+  = CollisionWrapped { value: Int }
+  | CollisionEmpty
+
+data collision_wrapped_row: Optional = CollisionWrapped { value: 7 }
+
+data collision_empty_row: Optional = CollisionEmpty
+
+fn collision_row_value(o: Optional) -> Int {
+  match o {
+    CollisionWrapped { value: v } => v
+    CollisionEmpty => 0
+  }
+}
