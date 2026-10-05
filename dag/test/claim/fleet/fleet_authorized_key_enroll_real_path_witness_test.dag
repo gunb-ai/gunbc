@@ -128,7 +128,16 @@ test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
 // ArgvCommand -- production supplies gcloud_auth_list_accounts_command() bare; the receipt supplies
 // the same command with HOME env-prefixed to a mktemp scratch directory, so gcloud's own log
 // writes land under the scratch and the observer's real home is only read. The receipt publishes
-// through the same path and asserts the real gcloud-auth-list line in the readback.
+// through the same path and asserts the auth-list line in the readback, rejecting a refused
+// capture. THE TIGHTENED AUTH-LIST ASSERTION IS A DECLARED ROUTE GAP: the side chat's fix
+// (review 5411273763) requires "gcloud-binary present" and the auth-list line at
+// outcome=observed or outcome=observed-empty, but the floor runner carries no gcloud -- this
+// run's receipt check (command -v gcloud) exits 127, the body takes the gcloud-absent branch, and
+// no assertion can prove the leg ran. Requiring present here would be a permanent red; asserting
+// absent would pin the runner's poverty instead of the receipt. THE TRIGGER: when a floor runner
+// carries gcloud (or the receipt binds an explicitly scoped binary), the assertion tightens to
+// "gcloud-binary present" plus the auth-list line at outcome=observed or outcome=observed-empty,
+// rejecting gcloud-absent, and this gap closes.
 test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
   fe_with_temp_dir(scenario: fn(dir) {
     let body = fleet_probe_identity_observe_receipt_body(auth_list_command: env_prefixed_command(
@@ -145,6 +154,7 @@ test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
       && string_contains(s: rc.content, pattern: "authorized-keys")
       && string_contains(s: rc.content, pattern: "gcloud-binary")
       && string_contains(s: rc.content, pattern: "gcloud-auth-list")
+      && !string_contains(s: rc.content, pattern: "gcloud-auth-list outcome=refused")
       && string_contains(s: rc.content, pattern: "adc-env")
       && string_contains(s: rc.content, pattern: "adc-file-passwd-home")
   })
