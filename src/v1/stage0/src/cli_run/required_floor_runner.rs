@@ -9292,7 +9292,9 @@ pub fn run_required_floor(
                  held as agreement (dormant, not deleted; MEASUREMENT — the {} arm is owned by \
                  the gate cut of 2026-08-29 and the cost-debt roster, not by this check): {}",
                 named.len(),
-                suppression_ground_label(ground.clone()),
+                crate::v1_compiler_expected_red_roster_join::suppression_ground_label(
+                    ground.clone()
+                ),
                 named.join(", ")
             );
         }
