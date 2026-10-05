@@ -2,7 +2,7 @@ module tools.source_reference_repoint
 
 import std.types { Bool, Int, List, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
-import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized }
 import v2.std.compilers.lexing { Token }
 import gunbc.parsed_import_statement_production { parsed_import_observation_live }
 import gunbc.source_root_read { source_root_walk, source_root_read_file, SourceRootWalkTask, SourceRootPathsRead, SourceRootPathsRefused }
@@ -156,7 +156,12 @@ fn repoint_one_path(path: String) -> ProcessExit {
   match source_root_read_file(path: path) {
     FilesystemExactPathRead { path: observed, content: content } =>
       repoint_one_text(path: observed, content: content)
-    _ => exit_failure(reason: join(["source reference repoint: cannot read ", path], ""))
+    FilesystemExactPathAbsent { path: missing } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", missing, " (absent)"], ""))
+    FilesystemExactPathUnreadable { path: unreadable, kind: _, error: error } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", unreadable, ": ", error], ""))
+    FilesystemExactPathKindUnrecognized { path: unrecognized, observed: observed, error: error } =>
+      exit_failure(reason: join(["source reference repoint: cannot read ", unrecognized, " (", observed, "): ", error], ""))
   }
 }
 
@@ -170,7 +175,11 @@ fn repoint_path_is_pending(path: String) -> Bool {
   match source_root_read_file(path: path) {
     FilesystemExactPathRead { path: observed, content: content } =>
       repointed_source_text(path: observed, text: content, repoints: source_reference_repoints) != content
-    _ => true
+    // A file the walk listed but cannot read is reported as pending, so the verdict refuses and
+    // names it: an unread file is never counted as already repointed.
+    FilesystemExactPathAbsent { path: _ } => true
+    FilesystemExactPathUnreadable { path: _, kind: _, error: _ } => true
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error: _ } => true
   }
 }
 
