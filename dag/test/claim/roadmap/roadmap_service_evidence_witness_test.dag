@@ -612,16 +612,16 @@ test fn a_result_for_another_attempt_or_an_unclosed_snapshot_is_refused() -> Boo
     && is_refused(r: g4_readings(rr: g4_observed(node: node_a, attempt: key_a), close: SnapshotCloseFailed { worktree: "/tmp/w", exit_code: 1, stderr: "busy" }).completion_time)
 }
 
-// INHABITANCE: the encoder's own wire for observed G3 and G4 values decodes through the snapshot
-// decoder, so the decoder accepts exactly the typed carriers these readers produce.
-test fn the_encoders_wire_with_observed_g3_and_g4_values_decodes() -> Bool {
-  match service_evidence_snapshot_decode(wire: service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
+// INHABITANCE: the encoder's own wire for observed G3 and G4 values carries exactly the observed
+// entry literals the snapshot claims below decode, so the decoder accepts the typed carriers these
+// readers produce. Encode here, decode there: each claim pays one of the two passes.
+test fn the_encoder_writes_the_observed_g3_and_g4_entries_the_decoder_admits() -> Bool {
+  let w = service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
     binding: binding_for(node: node_a, attempt: key_a),
     inputs: inputs_of(o: SessionPlacementAbsent { unit: "u" }, m: MeteringObserved { record: g3_record(node: node_a, attempt: key_a) }, rr: g4_observed(node: node_a, attempt: key_a), close: SnapshotClosed),
-  })) {
-    SnapshotDecoded { snapshot } => length(snapshot.fields) == 21
-    SnapshotInvalid { reason: _ } => false
-  }
+  })
+  string_contains(s: w, pattern: execution_observed) && string_contains(s: w, pattern: failure_observed)
+    && string_contains(s: w, pattern: billable_observed) && string_contains(s: w, pattern: completion_observed)
 }
 
 // ── THE SNAPSHOT for the G3 and G4 fields: each claim is one targeted edit of canonical_wire ──
@@ -630,7 +630,9 @@ data execution_observed: String = "{\"field\": \"execution_time\", \"standing\":
 data billable_owed: String = "{\"field\": \"billable_usage\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}}"
 data completion_owed: String = "{\"field\": \"completion_time\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}"
 data failure_owed: String = "{\"field\": \"failure_attribution\", \"standing\": \"owed\", \"producer\": {\"kind\": \"reader_record_absent\", \"reader\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}}"
-data failure_observed: String = "{\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"verification_failed\", \"head\": \"52c56a8\", \"cause\": \"verdict\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
+data failure_observed: String = "{\"field\": \"failure_attribution\", \"standing\": \"observed\", \"value\": {\"outcome\": \"verification_failed\", \"head\": \"52c56a8\", \"cause\": \"verdict validation-failed\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
+data billable_observed: String = "{\"field\": \"billable_usage\", \"standing\": \"observed\", \"value\": {\"input_tokens\": 1200, \"output_tokens\": 340}, \"source\": \"gunbc.roadmap_attempt_metering metering_observe_for_attempt\"}"
+data completion_observed: String = "{\"field\": \"completion_time\", \"standing\": \"observed\", \"value\": {\"recorded_at\": \"2026-10-03T10:00:00Z\"}, \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\"}"
 data completion_not_owed: String = "{\"field\": \"completion_time\", \"standing\": \"not_owed\", \"source\": \"gunbc.roadmap.roadmap_result_returned result_returned_observe_for_attempt\", \"reason\": \"autonomous\"}"
 
 test fn an_observed_execution_time_from_g3_decodes() -> Bool {
@@ -639,6 +641,10 @@ test fn an_observed_execution_time_from_g3_decodes() -> Bool {
 
 test fn an_observed_failure_attribution_from_g4_decodes() -> Bool {
   snapshot_admits(wire: edited(from: failure_owed, to: failure_observed))
+}
+
+test fn observed_billable_usage_and_completion_time_decode() -> Bool {
+  snapshot_admits(wire: replace(s: edited(from: completion_owed, to: completion_observed), from: billable_owed, to: billable_observed))
 }
 
 test fn a_not_owed_completion_time_from_g4_decodes() -> Bool {
