@@ -24,7 +24,7 @@ import extdeps.languages.json.parse {
 }
 import extdeps.shell.credentials { env_credential }
 import extdeps.github.org_actions { OrgRunnerGroupListWire, RunnerGroupVisibility, runner_group_visibility_of_wire }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import std.resources { Network }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
@@ -162,21 +162,26 @@ fn json_member_bool(v: JsonValue, key: String) -> Bool? {
 // §3 fork review 70883 found: the gh-CLI copy fetched GitHub's default page and never compared
 // total_count, so on a page boundary the ensure could read the shakedown group as absent and
 // create a duplicate while the controller refused.
-fn runner_groups_of_rest_read(outcome: RestOutcome, body: OrgRunnerGroupListWire) -> RunnerGroupListDecode {
+fn runner_groups_of_rest_read(outcome: RestResult<OrgRunnerGroupListWire>) -> RunnerGroupListDecode {
   match outcome {
-    RestOk => runner_groups_from_wire(body: body)
-    RestStatusRefused { status: s, body: b } =>
-      RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
-    RestTransportRefused { cause: c } =>
-      RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
-    RestBodyUndecodable { status: s, cause: c } =>
-      RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
+    RestAnswered { answer: body } => runner_groups_from_wire(body: body)
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: s, body: b } =>
+        RunnerGroupListDecodeRefused { reason: join(["GET /orgs/\{org\}/actions/runner-groups answered ", to_string(s), ": ", b], "") as NonEmptyStr }
+      RestTransportRefused { cause: c } =>
+        RunnerGroupListDecodeRefused { reason: concat("runner-groups read unreached: ", c as String) as NonEmptyStr }
+      RestBodyUndecodable { status: s, cause: c } =>
+        RunnerGroupListDecodeRefused { reason: join(["runner-groups body undecodable at ", to_string(s), ": ", c as String], "") as NonEmptyStr }
+    }
   }
 }
 
 fn read_runner_groups(token: Secret, organization: NonEmptyStr) -> RunnerGroupListDecode uses net: Network {
   let listed = github.OrgRunnerGroupsRest.ListOrganizationRunnerGroups(installation_token: token, org: organization)
-  runner_groups_of_rest_read(outcome: listed.outcome, body: listed.result)
+  runner_groups_of_rest_read(outcome: match listed {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
 }
 
 // THE WIRE BODY, PROJECTED INTO THE ROWS THE CONSUMERS READ. Refuses a read that returned fewer

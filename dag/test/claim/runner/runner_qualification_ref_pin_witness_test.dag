@@ -7,9 +7,8 @@ import gunbc.runner.runner_qualification_ref_segment {
 }
 import std.types { Bool, CommitSha, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.transports.rest {
-  RestExchangePerformance, RestExchangeSucceeded, RestExchangeStatusRefused, RestExchangeCommitAmbiguous,
-}
+import extdeps.transports.rest { RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused }
+import extdeps.github.git_database { GitRefWire, GitRefObjectWire }
 import extdeps.github.actions {
   WorkflowTrigger, Push, PullRequest, Schedule, WorkflowDispatch, WorkflowCall, WorkflowRunCompleted, MergeGroup,
 }
@@ -28,6 +27,11 @@ import gunbc.runner.runner_qualification_ref_pin {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A REF AS GitHub's GET /git/ref RETURNS IT, at a supplied commit: the readback this module judges.
+fn ref_at(sha: String) -> GitRefWire {
+  GitRefWire { ref: "refs/heads/qualification/q-1", object: GitRefObjectWire { type: "commit", sha: sha } }
+}
 
 data revision: CommitSha = "1111111111111111111111111111111111111111"
 
@@ -64,19 +68,23 @@ test fn a_ref_outside_refs_heads_qualification_cannot_be_named() -> Bool {
 // adoption; a lost or undecodable answer is ambiguous (removal still owed); only a created ref
 // proceeds to readback.
 test fn a_preexisting_branch_refuses_and_a_lost_create_is_ambiguous() -> Bool {
-  (match branch_create_refusal(performance: RestExchangeStatusRefused { status: 422, body: "Reference already exists" }) {
+  (match branch_create_refusal(created: RestRefused { refusal: RestStatusRefused { status: 422, body: "Reference already exists" } }) {
     Present { value: PinBranchPreexisting { observed_sha: _ } } => true
     _ => false
   })
-    && (match branch_create_refusal(performance: RestExchangeStatusRefused { status: 403, body: "fixture" }) {
+    && (match branch_create_refusal(created: RestRefused { refusal: RestStatusRefused { status: 403, body: "fixture" } }) {
       Present { value: PinBranchCreateRefused { status: s, body: _ } } => s == 403
       _ => false
     })
-    && (match branch_create_refusal(performance: RestExchangeCommitAmbiguous { detail: "fixture: 502 after the write" }) {
+    && (match branch_create_refusal(created: RestRefused { refusal: RestStatusRefused { status: 502, body: "fixture: 502 after the write" } }) {
       Present { value: PinBranchCreateAmbiguous { detail: _ } } => true
       _ => false
     })
-    && (match branch_create_refusal(performance: RestExchangeSucceeded) { Absent => true Present { value: _ } => false })
+    && (match branch_create_refusal(created: RestRefused { refusal: RestTransportRefused { cause: "fixture: connection reset after send" } }) {
+      Present { value: PinBranchCreateAmbiguous { detail: _ } } => true
+      _ => false
+    })
+    && (match branch_create_refusal(created: RestAnswered { answer: ref_at(sha: revision as String) }) { Absent => true Present { value: _ } => false })
 }
 
 fn group_row(id: Int, name: NonEmptyStr) -> RunnerGroupIdentity {
@@ -126,15 +134,15 @@ test fn the_pin_is_minted_only_from_the_exact_revision_and_the_pinned_group() ->
     QualificationBranchNameRefused { attempt: _, cause: _ } => false
     QualificationBranchNamed { name: n } => {
       let pinned_group = group_restricted_to(workflow: qualification_selected_workflow(branch: n.branch))
-      (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: pinned_group) {
+      (match qualification_ref_pin_of(name: n, revision: revision, readback: RestAnswered { answer: ref_at(sha: revision as String) }, group: pinned_group) {
         QualificationRefPinned { pin: p } => (p.name.branch as String) == "qualification/q-1" && (p.revision as String) == (revision as String) && p.group.group.value == 3
         QualificationRefPinRefused { attempt: _, refusal: _ } => false
       })
-        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: "2222222222222222222222222222222222222222", group: pinned_group) {
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestAnswered { answer: ref_at(sha: "2222222222222222222222222222222222222222") }, group: pinned_group) {
           QualificationRefPinRefused { attempt: _, refusal: PinBranchReadbackMismatch { pinned: _, observed: _ } } => true
           _ => false
         })
-        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestExchangeSucceeded, readback_sha: revision as String, group: RunnerGroupRestrictionRefused { name: qualification_runner_group_name, cause: RunnerGroupAbsent }) {
+        && (match qualification_ref_pin_of(name: n, revision: revision, readback: RestAnswered { answer: ref_at(sha: revision as String) }, group: RunnerGroupRestrictionRefused { name: qualification_runner_group_name, cause: RunnerGroupAbsent }) {
           QualificationRefPinRefused { attempt: _, refusal: PinGroupReadbackRefused { standing: _ } } => true
           _ => false
         })
@@ -148,16 +156,16 @@ test fn the_branch_is_removed_only_when_a_read_finds_it_absent() -> Bool {
   match qualification_branch_name(attempt: "q-1") {
     QualificationBranchNameRefused { attempt: _, cause: _ } => false
     QualificationBranchNamed { name: n } =>
-      (match classify_branch_removal(name: n, readback: RestExchangeStatusRefused { status: 404, body: "Not Found" }, readback_sha: "", deleted: true, delete: RestExchangeSucceeded) {
+      (match classify_branch_removal(name: n, readback: RestRefused { refusal: RestStatusRefused { status: 404, body: "Not Found" } }, deleted: true, delete_refusal: none) {
         QualificationBranchRemoved { name: _, deleted: d } => d
         _ => false
       })
-        && (match classify_branch_removal(name: n, readback: RestExchangeSucceeded, readback_sha: revision as String, deleted: true, delete: RestExchangeSucceeded) {
-          QualificationBranchRemovalRefused { name: _, cause: BranchStillPresent { observed_sha: _, delete: _ } } => true
+        && (match classify_branch_removal(name: n, readback: RestAnswered { answer: ref_at(sha: revision as String) }, deleted: true, delete_refusal: none) {
+          QualificationBranchRemovalRefused { name: _, cause: BranchStillPresent { observed_sha: o, delete_refusal: _ } } => o == (revision as String)
           _ => false
         })
-        && (match classify_branch_removal(name: n, readback: RestExchangeStatusRefused { status: 500, body: "fixture" }, readback_sha: "", deleted: true, delete: RestExchangeSucceeded) {
-          QualificationBranchRemovalRefused { name: _, cause: BranchReadUnreadable { performance: _ } } => true
+        && (match classify_branch_removal(name: n, readback: RestRefused { refusal: RestStatusRefused { status: 500, body: "fixture" } }, deleted: true, delete_refusal: none) {
+          QualificationBranchRemovalRefused { name: _, cause: BranchReadUnreadable { refusal: _ } } => true
           _ => false
         })
   }

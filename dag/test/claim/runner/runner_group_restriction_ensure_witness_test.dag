@@ -3,7 +3,7 @@ module test.claim.runner.runner_group_restriction_ensure_witness_test
 import std.types { Bool, String, List, Int, NonEmptyStr }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read, RunnerGroupListDecode }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
-import extdeps.transports.rest { RestOk, RestStatusRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused }
 import gunbc.runner_group_restriction_observation { microvm_shakedown_selected_workflow, microvm_shakedown_runner_group_name }
 import gunbc.runner_group_restriction_ensure {
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused,
@@ -32,7 +32,7 @@ fn group_wire(id: Int, name: String, restricted: Bool, selected: List<String>) -
 }
 
 fn listed(groups: List<OrgRunnerGroupWire>) -> RunnerGroupListDecode {
-  runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire { total_count: count(groups), runner_groups: groups })
+  runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire { total_count: count(groups), runner_groups: groups } })
 }
 
 fn default_group() -> OrgRunnerGroupWire { group_wire(id: 1, name: "Default", restricted: false, selected: []) }
@@ -81,7 +81,7 @@ test fn witness_ensure_refuses_two_groups_with_our_name() -> Bool {
 }
 
 test fn witness_ensure_refuses_an_unreadable_list() -> Bool {
-  match planned_over(read: runner_groups_of_rest_read(outcome: RestStatusRefused { status: 403, body: "Resource not accessible by integration" }, body: OrgRunnerGroupListWire { total_count: 0, runner_groups: [] })) {
+  match planned_over(read: runner_groups_of_rest_read(outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "Resource not accessible by integration" } })) {
     GroupEnsureRefused { cause: c } => string_contains(s: c as String, pattern: "RunnerGroupListUnreadable")
     _ => false
   }
