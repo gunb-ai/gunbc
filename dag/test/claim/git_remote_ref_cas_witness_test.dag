@@ -74,7 +74,7 @@ fn advance_expectation() -> GitRemoteRefExpectation? {
 // The positive control for every row below. git_sha1_object_id returns an option, so a typo in a
 // hex literal yields none, every helper returns none, and each absence-tolerant assertion would
 // be satisfied for the one reason that proves nothing.
-test fn the_fixture_object_ids_decode() -> Bool {
+test fn the_fixture_object_ids_decode() -> Bool  {
   match alpha() {
     Present { value: _ } =>
       match beta() {
@@ -87,7 +87,7 @@ test fn the_fixture_object_ids_decode() -> Bool {
 
 // An advance leases the exact prior it expects to displace. This is the clause that makes the
 // loser of a race refuse rather than overwrite.
-test fn an_advance_leases_the_exact_expected_prior() -> Bool {
+test fn an_advance_leases_the_exact_expected_prior() -> Bool  {
   match advance_expectation() {
     Present { value: e } =>
       lease_is(expected: e, want: concat("--force-with-lease=", concat(desired_ref, concat(":", beta_hex))))
@@ -97,14 +97,14 @@ test fn an_advance_leases_the_exact_expected_prior() -> Bool {
 
 // Creation leases the EMPTY expected value -- git's "must not already exist" -- so ref creation
 // stays a compare-and-swap instead of falling back to an unconditional push.
-test fn a_creation_leases_an_empty_expected_value() -> Bool {
+test fn a_creation_leases_an_empty_expected_value() -> Bool  {
   lease_is(expected: RemoteRefMustBeAbsent, want: concat("--force-with-lease=", concat(desired_ref, ":")))
 }
 
 // The refspec moves the new oid onto the ref, and does not vary with the expectation: the lease
 // carries the precondition, the refspec carries the intent. A shape that folded the expectation
 // into the refspec would push a different object depending on what the remote happened to hold.
-test fn the_refspec_names_the_new_oid_and_is_independent_of_the_expectation() -> Bool {
+test fn the_refspec_names_the_new_oid_and_is_independent_of_the_expectation() -> Bool  {
   let want = concat(alpha_hex, concat(":", desired_ref))
   match request_with(expected: RemoteRefMustBeAbsent) {
     Present { value: created } =>

@@ -42,7 +42,7 @@ fn emitted_driver_script() -> String {
 
 // claim_executor refuses every mode below its argument guard with `provide at least one
 // --source-root`, and the fixed-point call is below it. The RED is the recipe as it stood.
-test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool {
+test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool  {
   let script = emitted_driver_script()
   string_contains(
     s: script,
@@ -53,7 +53,7 @@ test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_c
 
 // The backtick must reach the reader as a backtick, which inside the emitted double quotes means
 // it must be escaped in the script bytes. Unescaped, bash consumes it before the author sees it.
-test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
+test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool  {
   let script = emitted_driver_script()
   string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
     && string_contains(s: script, pattern: "- `\\([a-z0-9_]*") == false
@@ -62,7 +62,7 @@ test fn heal_recipe_row_extractor_survives_the_drivers_own_quoting() -> Bool {
 // The two heal-delegated projections carry different row identities: a failure mode is a slug
 // bullet, a rung drop is a heading. One extractor must name both, or the check reads zero rows on
 // the file it cannot parse and reports a pass it never measured.
-test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> Bool {
+test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> Bool  {
   let script = emitted_driver_script()
   string_contains(s: script, pattern: "\\`\\\\([a-z0-9_]*\\\\)\\`")
     && string_contains(s: script, pattern: "s/^### \\\\(.*\\\\) — .*/\\\\1/p")
@@ -74,7 +74,7 @@ test fn heal_recipe_extracts_row_identity_from_both_delegated_projections() -> B
 // own argv substituted into the instruction it was printing. Escaping does not save it -- the
 // escaper doubles backslashes before the reader sees them -- so the line pipes into a parameterless
 // function instead.
-test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool {
+test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool  {
   let script = emitted_driver_script()
   string_contains(s: script, pattern: "git show <base-ref>:$merged_path | rows")
     && string_contains(s: script, pattern: "rows <base-ref>") == false
@@ -84,7 +84,7 @@ test fn heal_recipe_names_only_the_variable_the_driver_defines() -> Bool {
 // binding is the whole of it: a Scaffold that names no declaration marks nothing, and a trigger
 // that names the artifact rather than the capability retires while the capability stays dead
 // (DESIGN section 4b(3)).
-test fn emitted_driver_carries_a_bound_medium_disposition_with_a_capability_trigger() -> Bool {
+test fn emitted_driver_carries_a_bound_medium_disposition_with_a_capability_trigger() -> Bool  {
   match generated_artifact_merge_driver_emit_scaffold {
     Scaffold { dissolves_to: to, bind: b } =>
       match to { RealizationDispatch => true _ => false }

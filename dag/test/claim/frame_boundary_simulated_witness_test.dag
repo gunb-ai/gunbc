@@ -33,7 +33,7 @@ fn is_unmaterialized_for(a: BoundaryAdmission, tree: NamespaceTree) -> Bool {
   }
 }
 
-test fn simulated_boundary_satisfies_spec() -> Bool {
+test fn simulated_boundary_satisfies_spec() -> Bool  {
   is_materialized_convention(
     a: boundary_admits(
       required_trees: require_network,
@@ -42,7 +42,7 @@ test fn simulated_boundary_satisfies_spec() -> Bool {
   )
 }
 
-test fn simulated_boundary_closes_only_given_layers() -> Bool {
+test fn simulated_boundary_closes_only_given_layers() -> Bool  {
   is_unmaterialized_for(
     a: boundary_admits(
       required_trees: require_network,
@@ -52,7 +52,7 @@ test fn simulated_boundary_closes_only_given_layers() -> Bool {
   )
 }
 
-test fn simulated_boundary_grade_is_convention() -> Bool {
+test fn simulated_boundary_grade_is_convention() -> Bool  {
   is_materialized_convention(
     a: boundary_admits(
       required_trees: [UriTree, FilesystemPathTree],

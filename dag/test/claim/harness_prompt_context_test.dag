@@ -41,7 +41,7 @@ fn fx_seg(input: PromptInput, content: String) -> PromptSegment {
 
 // THE SNAPSHOT DIGEST IS DERIVATION-EXACT: identical inputs digest identically, and any moved
 // revision moves it.
-test fn identical_snapshots_digest_identically_and_any_revision_moves_it() -> Bool {
+test fn identical_snapshots_digest_identically_and_any_revision_moves_it() -> Bool  {
   let base = prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r1")]))
   base == prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r1")]))
     && base != prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [fx_authority(id: "a", revision: "r2")]))
@@ -51,7 +51,7 @@ test fn identical_snapshots_digest_identically_and_any_revision_moves_it() -> Bo
 // STANDING IS IDENTITY (review 5358022153): the same artifact as a hypothesis and as an
 // established observation are two different inputs, and a length-prefixed preimage cannot be
 // manufactured by a field containing a separator.
-test fn a_standing_change_is_a_different_input_not_a_restated_one() -> Bool {
+test fn a_standing_change_is_a_different_input_not_a_restated_one() -> Bool  {
   prompt_input_canonical_text(input: fx_evidence(standing: Hypothesis, required: false))
     != prompt_input_canonical_text(input: fx_evidence(standing: EstablishedObservation, required: false))
     && prompt_input_canonical_text(input: fx_evidence(standing: EstablishedObservation, required: false))
@@ -60,7 +60,7 @@ test fn a_standing_change_is_a_different_input_not_a_restated_one() -> Bool {
 
 // ASSEMBLY IS THE EXACT JOIN: a withdrawn input renders ZERO segments; a required input that never
 // rendered refuses; an input rendered twice refuses; a segment foreign to the snapshot refuses.
-test fn the_assembly_join_is_exact() -> Bool {
+test fn the_assembly_join_is_exact() -> Bool  {
   let authority = fx_authority(id: "a", revision: "r1")
   let withdrawn = fx_evidence(standing: Withdrawn, required: false)
   let snapshot = fx_snapshot(inputs: [authority, withdrawn])
@@ -131,7 +131,7 @@ test fn the_assembly_join_is_exact() -> Bool {
 }
 
 // THE SEGMENT ORDER IS THE SNAPSHOT'S, not the caller's render order.
-test fn the_plan_orders_segments_by_snapshot_input_order() -> Bool {
+test fn the_plan_orders_segments_by_snapshot_input_order() -> Bool  {
   let a = fx_authority(id: "a", revision: "r1")
   let b = GuidanceInput { receipt_identity: "g1", resolved: false, required: true }
   match prompt_plan_assemble(
@@ -149,7 +149,7 @@ test fn the_plan_orders_segments_by_snapshot_input_order() -> Bool {
 
 // THE SEMANTIC ARTIFACT carries exact extents over the joined text, and the provider artifacts of
 // one plan share the semantic digest while their wire digests differ.
-test fn the_semantic_and_wire_identities_are_distinct() -> Bool {
+test fn the_semantic_and_wire_identities_are_distinct() -> Bool  {
   let a = fx_authority(id: "a", revision: "r1")
   let b = GuidanceInput { receipt_identity: "g1", resolved: false, required: true }
   match prompt_plan_assemble(

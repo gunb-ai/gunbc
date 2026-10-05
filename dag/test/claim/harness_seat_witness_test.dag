@@ -57,7 +57,7 @@ fn w_engine_max_num_seqs(group: FabricGroup) -> Int {
   }
 }
 
-test fn each_group_has_its_own_partition() -> Bool {
+test fn each_group_has_its_own_partition() -> Bool  {
   (harness_seat_partition(group: FabricGroupA, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-a-quality-seat-v1"
     && (harness_seat_partition(group: FabricGroupB, class: InteractiveQualitySensitive, ceiling: harness_interactive_quality_seats) as String) == "group-group-b-quality-seat-v1"
 }
@@ -73,7 +73,7 @@ test fn each_group_has_its_own_partition() -> Bool {
 // equality against the policy constant alone would stay green if someone re-derived the ceiling from
 // the engine and happened to set max_num_seqs to one. Requiring them to disagree makes any
 // re-derivation red while the engine keeps its own limit.
-test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limit() -> Bool {
+test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limit() -> Bool  {
   w_engine_max_num_seqs(group: FabricGroupA) == 32
     && w_engine_max_num_seqs(group: FabricGroupB) == 32
     && harness_interactive_quality_seats == 1
@@ -85,7 +85,7 @@ test fn the_seat_ceiling_is_a_quality_policy_and_never_the_engines_sequence_limi
 
 // The interim arm SAYS declared policy in its own constructor, so no consumer can read a derived
 // capacity out of it, and the unestablished arm exists and is reachable by name.
-test fn the_interim_ceiling_names_itself_declared_policy_and_the_refusal_arm_exists() -> Bool {
+test fn the_interim_ceiling_names_itself_declared_policy_and_the_refusal_arm_exists() -> Bool  {
   (match harness_seat_capacity(group: FabricGroupA, class: InteractiveQualitySensitive) {
      SeatCeilingByDeclaredPolicy { class: _, pool: _, seats: n } => n == harness_interactive_quality_seats
      AdmissionCeilingUnestablished { group: _, cause: _ } => false
@@ -98,7 +98,7 @@ test fn the_interim_ceiling_names_itself_declared_policy_and_the_refusal_arm_exi
 
 // THE SEAT DEADLINE IS THE DECLARED REQUEST DEADLINE PLUS THE RELEASE ALLOWANCE, and the release
 // law is quiescence-required, because the engine cannot fence a superseded holder.
-test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool {
+test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quiescence() -> Bool  {
   harness_seat_policy.maximum_duration_seconds == second_count(s: harness_request_deadline) + harness_seat_release_allowance_seconds
     && (match harness_seat_policy.release_law { QuiescenceRequired => true  FencedResource => false })
 }
@@ -115,7 +115,7 @@ test fn the_seat_policy_is_declared_from_the_request_deadline_and_requires_quies
 // capacity is owed by gunbc.rung_drop harness_seat_ceiling_by_operator_policy and is not discharged
 // by this row. A witness asserting only the first half would go green on a build that had quietly
 // re-read the ceiling off the engine.
-test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
+test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool  {
   harness_interactive_quality_seats == 1
     && w_ceiling(group: FabricGroupA) == 1
     && w_ceiling(group: FabricGroupB) == 1
@@ -140,7 +140,7 @@ test fn the_quality_ceiling_is_one_and_is_not_a_capacity_claim() -> Bool {
 // ceiling off the desired unit fails the last conjunct; one that fused the two classes fails the
 // tolerant-differs-from-quality conjunct; the row moving no longer fails anything, which is the
 // point of not copying it.
-test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool {
+test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_sequence_limit() -> Bool  {
   w_tolerant_ceiling(group: FabricGroupA) == w_route_ceiling(group: FabricGroupA)
     && w_tolerant_ceiling(group: FabricGroupB) == w_route_ceiling(group: FabricGroupB)
     && w_tolerant_ceiling(group: FabricGroupA) != w_ceiling(group: FabricGroupA)
@@ -161,7 +161,7 @@ test fn the_tolerant_pool_is_a_separate_pool_whose_ceiling_is_not_the_engines_se
 // head the partition is at is what separates them -- it moves on every append, so the loser
 // re-observes a head the winner wrote. The last pair below is the discriminating one: everything else
 // held equal, two different heads must give two different references.
-test fn an_acquisition_reference_separates_rounds_offers_and_processes() -> Bool {
+test fn an_acquisition_reference_separates_rounds_offers_and_processes() -> Bool  {
   let a1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String
   let a2 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-a@100.5" as NonEmptyStr, now: 1757200000, round: 2, head: "aaa111" as NonEmptyStr) as String
   let b1 = harness_seat_reference(attempt: "worker:/w/one" as NonEmptyStr, offer_key: "group-b@200.5" as NonEmptyStr, now: 1757200000, round: 1, head: "aaa111" as NonEmptyStr) as String

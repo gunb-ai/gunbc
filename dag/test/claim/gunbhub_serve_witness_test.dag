@@ -211,7 +211,7 @@ fn witness_repo_path_route_binding_declared() -> Bool {
   )
 }
 
-test fn gunbhub_serve_keystone_holds() -> Bool {
+test fn gunbhub_serve_keystone_holds() -> Bool  {
   witness_static_table_has_two_get_routes()
     && witness_static_table_browse_row_matches_host_contract()
     && witness_static_table_repo_path_row_is_m1_placeholder()

@@ -21,6 +21,6 @@ fn w_hash_spelling_is_not_realized_as_the_seed_string_alias() -> Bool {
   )
 }
 
-test fn hash_spelling_is_not_realized_as_the_seed_string_alias() -> Bool {
+test fn hash_spelling_is_not_realized_as_the_seed_string_alias() -> Bool  {
   w_hash_spelling_is_not_realized_as_the_seed_string_alias()
 }

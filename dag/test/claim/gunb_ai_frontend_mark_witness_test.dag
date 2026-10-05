@@ -16,7 +16,7 @@ import extdeps.gunb_ai.frontend {
 // authors the body at x 10..110 inside a 0..120 viewBox -- INSET on both sides. Only after
 // translate(-12 -12) scale(1.2) does it span the frame exactly. A witness that merely checked the
 // body was "about right" would pass on the untransformed coordinates too.
-test fn w_the_body_spans_the_full_declared_frame() -> Bool {
+test fn w_the_body_spans_the_full_declared_frame() -> Bool  {
   match mark_body {
     MarkCircle { center_x: cx, center_y: cy, radius: r } => false
     MarkRoundedRect { x: x, y: y, width: w, height: h, corner_radius: cr } =>
@@ -29,7 +29,7 @@ test fn w_the_body_spans_the_full_declared_frame() -> Bool {
 
 // A face whose eyes are not symmetric is wrong in a way no dimension check would catch: both eyes
 // could be individually plausible and the mark still lopsided. This asserts the PAIR.
-test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
+test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool  {
   match mark_eye_left {
     MarkRoundedRect { x: a, y: b, width: c, height: d, corner_radius: e } => false
     MarkCircle { center_x: lx, center_y: ly, radius: lr } =>
@@ -44,7 +44,7 @@ test fn w_the_eyes_are_symmetric_about_the_frame_centre() -> Bool {
 }
 
 // 60 mm is the declared insert width BECAUSE it divides: 60000 um over 1200 tenths is exactly 50.
-test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> Bool {
+test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> Bool  {
   match mark_scale_for_width(width: micrometer(count: 60000)) {
     MarkScaleZeroWidth { requested_width: w } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
@@ -57,7 +57,7 @@ test fn w_sixty_millimetres_scales_to_exactly_fifty_micrometres_per_tenth() -> B
 // THE DISCRIMINATING RED. 50 mm is a perfectly reasonable-sounding insert width and it does NOT
 // divide 1200: 50000/1200 leaves 800. Without this arm the scale would round every feature
 // independently and a circle would stop being concentric with the opening it sits in.
-test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool {
+test fn w_a_width_that_does_not_divide_the_frame_refuses() -> Bool  {
   match mark_scale_for_width(width: micrometer(count: 50000)) {
     MarkScaleZeroWidth { requested_width: w } => false
     MarkScaleExact { ratio: per } => false
@@ -126,7 +126,7 @@ fn feature_inside_body(f: MarkFeature) -> Bool {
 
 // Every cut must land in material. A feature outside the body would be an opening cut through air --
 // on screen a stray dot, in plastic a hole in the board the insert is supposed to cover.
-test fn w_every_feature_lies_inside_the_body() -> Bool {
+test fn w_every_feature_lies_inside_the_body() -> Bool  {
   let inside = gunb_stoic_giant_mark.features |> filter(f => feature_inside_body(f: f)) |> count
   let total = gunb_stoic_giant_mark.features |> count
   total == 3 && inside == total
@@ -152,7 +152,7 @@ data mark_feature_above_the_body: MarkFeature = MarkCircle {
   radius: mark_frame_length(tenths: 96),
 }
 
-test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bool {
+test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bool  {
   feature_inside_body(f: mark_feature_above_the_body) == false
     && feature_min_x(f: mark_feature_above_the_body) >= 0
     && feature_max_x(f: mark_feature_above_the_body) <= mark_frame_span
@@ -167,7 +167,7 @@ test fn w_a_feature_inside_the_frame_but_above_the_body_is_not_contained() -> Bo
 //
 // It asserts the arm AND the value it carries. A refusal that named the wrong width would still
 // have refused, and a refusal is not evidence that the function understood its own input.
-test fn w_a_zero_width_mark_refuses_rather_than_scaling_to_nothing() -> Bool {
+test fn w_a_zero_width_mark_refuses_rather_than_scaling_to_nothing() -> Bool  {
   match mark_scale_for_width(width: micrometer(count: 0)) {
     MarkScaleExact { ratio: per } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false
@@ -179,7 +179,7 @@ test fn w_a_zero_width_mark_refuses_rather_than_scaling_to_nothing() -> Bool {
 // zero first is only correct if it did not also start refusing the smallest LEGITIMATE width. One
 // micrometre per tenth is the least nonzero exact scale the frame admits, so this is the value
 // immediately adjacent to the refusal, and it must still be admitted.
-test fn w_the_smallest_nonzero_exact_width_is_still_admitted() -> Bool {
+test fn w_the_smallest_nonzero_exact_width_is_still_admitted() -> Bool  {
   match mark_scale_for_width(width: micrometer(count: mark_frame_span)) {
     MarkScaleZeroWidth { requested_width: w } => false
     MarkScaleNotDivisible { requested_width: w, frame_span: s, remainder: r } => false

@@ -23,7 +23,7 @@ data coverage_pool_roots: List<String> = ["dag", "src/v2"]
 
 // POSITIVE CONTROL, over the real registry: every rostered artifact's producer resolves. This is
 // the arm that goes red when a producer is renamed, moved or deleted without the map following it.
-test fn every_registered_artifact_producer_resolves_in_the_dag_population() -> Bool {
+test fn every_registered_artifact_producer_resolves_in_the_dag_population() -> Bool  {
   every_generated_artifact_producer_covered(pool_roots: coverage_pool_roots)
     && count(generated_artifact_producer_refusals(pool_roots: coverage_pool_roots)) == 0
     && count(generated_artifact_producer_rows()) > 0
@@ -64,7 +64,7 @@ fn coverage_is_uncovered_at(c: GeneratedArtifactProducerCoverage, path: String) 
   }
 }
 
-test fn a_planted_artifact_whose_producer_is_outside_the_population_refuses_by_name() -> Bool {
+test fn a_planted_artifact_whose_producer_is_outside_the_population_refuses_by_name() -> Bool  {
   let rows = concat(generated_artifact_producer_rows(), [planted_row()])
   let refusals = generated_artifact_producer_refusals_over(rows: rows, pool_roots: coverage_pool_roots)
   count(refusals) == 1
@@ -75,7 +75,7 @@ test fn a_planted_artifact_whose_producer_is_outside_the_population_refuses_by_n
 
 // THE REFUSAL IS ON THE PLANT, NOT ON ITS NEIGHBOURS: the real rows beside the plant stay covered
 // in the same fold, so the red is located rather than a population-wide flip.
-test fn the_planted_refusal_leaves_every_real_row_covered() -> Bool {
+test fn the_planted_refusal_leaves_every_real_row_covered() -> Bool  {
   let rows = concat(generated_artifact_producer_rows(), [planted_row()])
   let coverage = generated_artifact_producer_coverage_over(rows: rows, pool_roots: coverage_pool_roots)
   count(coverage) == count(rows)

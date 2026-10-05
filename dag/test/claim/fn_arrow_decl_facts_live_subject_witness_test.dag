@@ -42,21 +42,21 @@ fn declares(decls: List<FnArrowDecl>, qualified_name: String) -> Bool {
   any(xs: decls, predicate: fn(decl) { decl.qualified_name == qualified_name })
 }
 
-test fn alpha_subject_yields_the_alpha_declaration() -> Bool {
+test fn alpha_subject_yields_the_alpha_declaration() -> Bool  {
   declares(decls: fn_arrow_decl_facts_live(pool_roots: alpha_root, pool_files: no_files), qualified_name: alpha_marker)
 }
 
-test fn alpha_subject_excludes_the_beta_declaration() -> Bool {
+test fn alpha_subject_excludes_the_beta_declaration() -> Bool  {
   !declares(decls: fn_arrow_decl_facts_live(pool_roots: alpha_root, pool_files: no_files), qualified_name: beta_marker)
 }
 
-test fn beta_subject_excludes_the_alpha_declaration() -> Bool {
+test fn beta_subject_excludes_the_alpha_declaration() -> Bool  {
   !declares(decls: fn_arrow_decl_facts_live(pool_roots: beta_root, pool_files: no_files), qualified_name: alpha_marker)
 }
 
 // POSITIVE CONTROL. Both markers are reachable when both roots are named, so the two exclusion
 // rows above are excluding something that exists rather than passing over an empty answer.
-test fn naming_both_roots_yields_both_declarations() -> Bool {
+test fn naming_both_roots_yields_both_declarations() -> Bool  {
   let decls = fn_arrow_decl_facts_live(pool_roots: both_roots, pool_files: no_files)
   declares(decls: decls, qualified_name: alpha_marker)
     && declares(decls: decls, qualified_name: beta_marker)
@@ -71,13 +71,13 @@ test fn naming_both_roots_yields_both_declarations() -> Bool {
 // that widened a file to its parent would still exclude beta and the exclusion row would pass for
 // the wrong reason. That is why the pair is here rather than a single presence row: the inclusion
 // row fails if the file is not read at all, and together they pin the population to the file.
-test fn a_named_file_yields_its_own_declaration() -> Bool {
+test fn a_named_file_yields_its_own_declaration() -> Bool  {
   declares(
     decls: fn_arrow_decl_facts_live(pool_roots: no_roots, pool_files: alpha_file),
     qualified_name: alpha_marker
   )
 }
 
-test fn a_named_file_yields_only_its_own_declaration() -> Bool {
+test fn a_named_file_yields_only_its_own_declaration() -> Bool  {
   length(xs: fn_arrow_decl_facts_live(pool_roots: no_roots, pool_files: alpha_file)) == 1
 }

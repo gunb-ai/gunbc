@@ -82,22 +82,22 @@ fn retires_own_identity(row: HostConvergenceCensusRow) -> Bool {
   }
 }
 
-test fn w_production_census_is_admitted() -> Bool {
+test fn w_production_census_is_admitted() -> Bool  {
   host_convergence_census_is_admitted()
 }
 
-test fn w_production_standing_is_the_admit_fold() -> Bool {
+test fn w_production_standing_is_the_admit_fold() -> Bool  {
   match host_convergence_census_standing {
     CensusWellFormed { rows: rows } => length(xs: rows) == length(xs: host_convergence_census_rows)
     CensusMalformed { cause: _ } => false
   }
 }
 
-test fn w_fixture_well_formed_pair_is_admitted() -> Bool {
+test fn w_fixture_well_formed_pair_is_admitted() -> Bool  {
   census_is_well_formed(census: admit_host_convergence_census(rows: well_formed_pair()))
 }
 
-test fn w_duplicate_identity_refuses() -> Bool {
+test fn w_duplicate_identity_refuses() -> Bool  {
   let a = fixture_row(
     name: "dup",
     mutates: false,
@@ -111,7 +111,7 @@ test fn w_duplicate_identity_refuses() -> Bool {
   }
 }
 
-test fn w_derived_mutates_follows_host_effect_status() -> Bool {
+test fn w_derived_mutates_follows_host_effect_status() -> Bool  {
   fold(
     well_formed_pair(),
     init: true,
@@ -121,7 +121,7 @@ test fn w_derived_mutates_follows_host_effect_status() -> Bool {
   )
 }
 
-test fn w_intended_authority_follows_bind_target() -> Bool {
+test fn w_intended_authority_follows_bind_target() -> Bool  {
   fold(
     well_formed_pair(),
     init: true,
@@ -137,7 +137,7 @@ test fn w_intended_authority_follows_bind_target() -> Bool {
   )
 }
 
-test fn w_non_retain_owes_declaration_retires_of_identity() -> Bool {
+test fn w_non_retain_owes_declaration_retires_of_identity() -> Bool  {
   fold(
     well_formed_pair(),
     init: true,
@@ -154,7 +154,7 @@ test fn w_non_retain_owes_declaration_retires_of_identity() -> Bool {
   )
 }
 
-test fn w_self_successor_refuses() -> Bool {
+test fn w_self_successor_refuses() -> Bool  {
   let id = cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "self")
   let row = census_row(
     identity: id,
@@ -172,7 +172,7 @@ test fn w_self_successor_refuses() -> Bool {
   }
 }
 
-test fn w_identity_join_covers_required_fixture_identities() -> Bool {
+test fn w_identity_join_covers_required_fixture_identities() -> Bool  {
   let rows = well_formed_pair()
   let required = [
     cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
@@ -181,7 +181,7 @@ test fn w_identity_join_covers_required_fixture_identities() -> Bool {
   identity_join_covered(j: census_identity_join(required: required, rows: rows))
 }
 
-test fn w_identity_join_missing_required_identity_is_red() -> Bool {
+test fn w_identity_join_missing_required_identity_is_red() -> Bool  {
   let rows = well_formed_pair()
   let required = [
     cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
@@ -193,7 +193,7 @@ test fn w_identity_join_missing_required_identity_is_red() -> Bool {
   }
 }
 
-test fn w_identity_join_is_not_count_equality() -> Bool {
+test fn w_identity_join_is_not_count_equality() -> Bool  {
   let rows = well_formed_pair()
   let required_wrong_name_same_count = [
     cite(module_path: "test.claim.host_convergence_census_witness", decl_name: "alpha"),
@@ -203,7 +203,7 @@ test fn w_identity_join_is_not_count_equality() -> Bool {
     && length(xs: required_wrong_name_same_count) == length(xs: rows)
 }
 
-test fn w_select_realization_is_in_the_production_join() -> Bool {
+test fn w_select_realization_is_in_the_production_join() -> Bool  {
   identity_join_covered(
     j: census_identity_join(required: [std_decision()], rows: host_convergence_census_rows),
   )

@@ -19,18 +19,18 @@ data sibling_bound_snoc_source: String = "module test.claim.sibling_bound_snoc_p
 
 data concrete_formal_source: String = "module test.claim.concrete_formal_probe\nimport std.types { Int, String }\ntype SbItem { v: Int }\ntype SbOther { w: String }\nfn sb_other() -> SbOther { SbOther { w: \"o\" } }\nfn sb_take(b: SbItem) -> SbItem { b }\nfn probe() -> SbItem { sb_take(b: sb_other()) }\n"
 
-test fn sibling_bound_mismatch_is_refused_or_counted_never_silent() -> Bool {
+test fn sibling_bound_mismatch_is_refused_or_counted_never_silent() -> Bool  {
   any_class_count_for(source: sibling_bound_pair_source, wanted_class: "DeclaredTypeNotInhabited")
     + any_class_count_for(source: sibling_bound_pair_source, wanted_class: "DeclaredTypeInhabitanceUndecided") >= 1
 }
 
-test fn the_same_mismatch_at_a_concrete_formal_refuses() -> Bool {
+test fn the_same_mismatch_at_a_concrete_formal_refuses() -> Bool  {
   any_class_count_for(source: concrete_formal_source, wanted_class: "DeclaredTypeNotInhabited") >= 1
 }
 
 // The second specimen the row's SUFFICIENT FOR names: the std generic whose parameter is fixed by
 // the list argument, the shape a fold step reaches when it pushes a foreign element.
-test fn sibling_bound_snoc_mismatch_is_refused_or_counted_never_silent() -> Bool {
+test fn sibling_bound_snoc_mismatch_is_refused_or_counted_never_silent() -> Bool  {
   any_class_count_for(source: sibling_bound_snoc_source, wanted_class: "DeclaredTypeNotInhabited")
     + any_class_count_for(source: sibling_bound_snoc_source, wanted_class: "DeclaredTypeInhabitanceUndecided") >= 1
 }

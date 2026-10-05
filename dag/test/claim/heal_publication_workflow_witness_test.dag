@@ -133,14 +133,14 @@ fn step_if_condition(s: Step) -> String {
 
 // THE RED FOR THE CREDENTIAL HALF. If this ever answered false, the candidate-phase check above
 // would be satisfied by a predicate that admits a write grant.
-test fn witness_a_write_grant_is_a_publication_credential() -> Bool {
+test fn witness_a_write_grant_is_a_publication_credential() -> Bool  {
   job_permissions_carry_write(permissions: Present { value: a_write_grant() })
     && !job_permissions_carry_write(permissions: Present { value: a_read_grant() })
 }
 
 // AN ID-TOKEN GRANT IS ALSO ONE, because it is the capability to federate to a cloud identity that
 // holds the key -- which is exactly how gunbc#10887 reached the App private key from a PR job.
-test fn witness_an_id_token_grant_is_a_publication_credential() -> Bool {
+test fn witness_an_id_token_grant_is_a_publication_credential() -> Bool  {
   job_permissions_carry_write(permissions: Present { value: WorkflowPermissions {
     contents: Present { value: PermRead },
     pull_requests: none,
@@ -152,14 +152,14 @@ test fn witness_an_id_token_grant_is_a_publication_credential() -> Bool {
 
 // AN ABSENT GRANT IS TREATED AS WRITE-CAPABLE, not as none: a job that declares no permissions
 // inherits the workflow's, so silence is not a restriction.
-test fn witness_an_undeclared_grant_is_not_read_only() -> Bool {
+test fn witness_an_undeclared_grant_is_not_read_only() -> Bool  {
   job_permissions_carry_write(permissions: none)
 }
 
 // THE RED FOR THE EXECUTION HALF. A checkout naming a ref is fetching something other than this
 // workflow's own commit, and for the publisher the only thing it could name is the branch under
 // review; the control beside it is the checkout the publisher actually emits.
-test fn witness_a_checkout_naming_a_ref_is_another_subject() -> Bool {
+test fn witness_a_checkout_naming_a_ref_is_another_subject() -> Bool  {
   checkout_step_names_another_subject(step: checkout_with(rows: [
     kv(key: "ref", value: yaml_string(s: "${{ github.event.workflow_run.head_sha }}"))
   ]))
@@ -188,12 +188,12 @@ fn a_bare_run_step(cond: String?) -> Step {
   }
 }
 
-test fn witness_the_publisher_build_runs_only_when_a_repair_is_owed() -> Bool {
+test fn witness_the_publisher_build_runs_only_when_a_repair_is_owed() -> Bool  {
   let owed = heal_publisher_candidate_has_entries_condition()
   step_if_condition(s: heal_publisher_only_when_repair_owed(step: a_bare_run_step(cond: none))) == owed
 }
 
-test fn witness_the_build_gate_composes_rather_than_overwrites() -> Bool {
+test fn witness_the_build_gate_composes_rather_than_overwrites() -> Bool  {
   let owed = heal_publisher_candidate_has_entries_condition()
   let gated = step_if_condition(s: heal_publisher_only_when_repair_owed(step: a_bare_run_step(cond: Present { value: "always()" })))
   gated == join(["(always()) && (", owed, ")"], "") && gated != owed

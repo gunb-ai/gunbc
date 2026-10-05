@@ -30,7 +30,7 @@ import extdeps.boards.gigabyte {
 // replacement asserts the DIFFERENCE, which is the true and more useful statement: both boards can
 // be fed by an ATX supply, but their board-side interfaces and connection rituals are not the same.
 
-test fn witness_board_power_interfaces_differ() -> Bool {
+test fn witness_board_power_interfaces_differ() -> Bool  {
   asrock_altrad8ud_1l2t_physical_profile.atx_24pin_count == 0
     && asrock_altrad8ud_1l2t_physical_profile.eps_8pin_count == 3
     && gigabyte_mp72_hb0_physical_profile.atx_24pin_count == 1
@@ -46,7 +46,7 @@ test fn witness_board_power_interfaces_differ() -> Bool {
 // statement or fixture measurement closes this would repeat the exact mistake above: a plausible
 // number rendered as a fact.
 
-test fn witness_required_input_population_stays_unresolved() -> Bool {
+test fn witness_required_input_population_stays_unresolved() -> Bool  {
   match asrock_altrad8ud_required_input_population {
     PowerInputPopulationSpecified { required_inputs } => false,
     PowerInputPopulationUnresolved { available_inputs } => available_inputs == 3,
@@ -57,7 +57,7 @@ test fn witness_required_input_population_stays_unresolved() -> Bool {
 // requires the gate to be non-empty, so a later edit cannot quietly promote the board to
 // UnitReceiptHeld without the receipts that word implies.
 
-test fn witness_candidate_board_standing_is_listing_only() -> Bool {
+test fn witness_candidate_board_standing_is_listing_only() -> Bool  {
   match gigabyte_mp72_hb0_procurement_standing {
     CatalogReadOnly => false,
     ListingObserved => true,
@@ -73,7 +73,7 @@ test fn witness_candidate_board_standing_is_listing_only() -> Bool {
 // heavier, hotter, larger failure domain. Area falls by roughly 23 percent for equal sockets; it
 // does not halve.
 
-test fn witness_dual_socket_density_claim_is_the_true_one() -> Bool {
+test fn witness_dual_socket_density_claim_is_the_true_one() -> Bool  {
   let dual_area = square_millimeter_count(m: board_profile_area(p: gigabyte_mp72_hb0_physical_profile)) * 3
   let single_area = square_millimeter_count(m: board_profile_area(p: asrock_altrad8ud_1l2t_physical_profile)) * 6
   let dual_power = watt_count(w: board_profile_max_socket_power(p: gigabyte_mp72_hb0_physical_profile))

@@ -21,49 +21,49 @@ import product.fs_box_published_claims {
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-test fn v4_data_sheet_lists_qsfp28_and_qsfp_dd_but_not_qsfp56() -> Bool {
+test fn v4_data_sheet_lists_qsfp28_and_qsfp_dd_but_not_qsfp56() -> Bool  {
   sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))
     && sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 24))
     && qsfp56_named_on_v4_data_sheet() == false
 }
 
-test fn observed_identifier_0x11_is_qsfp28_on_the_data_sheet() -> Bool {
+test fn observed_identifier_0x11_is_qsfp28_on_the_data_sheet() -> Bool  {
   sff_identifier_named_on_v4_data_sheet(id: transceiver_identifier_from_byte(code: 17))
 }
 
-test fn faq_adds_firefox_the_data_sheet_does_not() -> Bool {
+test fn faq_adds_firefox_the_data_sheet_does_not() -> Bool  {
   faq_lists_firefox() && datasheet_lists_firefox() == false
 }
 
-test fn online_configuration_writes_fewer_fields_than_box_pro() -> Bool {
+test fn online_configuration_writes_fewer_fields_than_box_pro() -> Bool  {
   (fs_box_v3_v4_v5_faq.online_configuration_fields |> count)
     < (fs_box_v3_v4_v5_faq.box_pro_fields |> count)
 }
 
-test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool {
+test fn faq_names_hpe_compatible_optics_as_not_reconfigurable() -> Bool  {
   any(
     fs_box_v3_v4_v5_faq.reconfiguration_not_supported,
     row => (row as String) == "HPE-compatible SFP+/SFP28/XFP/QSFP+/QSFP28 transceivers",
   )
 }
 
-test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool {
+test fn data_sheet_configurable_media_are_fs_optics_and_cables() -> Bool  {
   string_contains(
     s: fs_box_v4_data_sheet.configurable_media as String,
     pattern: "FS transceivers and DAC/AOC cables",
   )
 }
 
-test fn data_sheet_and_faq_spell_macos_differently() -> Bool {
+test fn data_sheet_and_faq_spell_macos_differently() -> Bool  {
   any(fs_box_v4_data_sheet.operating_systems, row => string_contains(s: row as String, pattern: "Mac OS"))
     && any(fs_box_v3_v4_v5_faq.operating_systems, row => string_contains(s: row as String, pattern: "macOS"))
 }
 
-test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool {
+test fn data_sheet_two_v4_colors_and_a_v3_ordering_line() -> Bool  {
   fs_box_v4_color_sku_count() == 2 && fs_box_v4_ordering_names_part(name: "FS BOX V3" as NonEmptyStr)
 }
 
-test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
+test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool  {
   (fs_box_v4_data_sheet.battery_endurance_condition as String) == "without interrupting configuration"
     && minute_count(m: fs_box_v4_data_sheet.battery_endurance_low_power_sfp) == 540
     && minute_count(m: fs_box_v4_data_sheet.battery_endurance_high_power_qsfp_dd) == 210
@@ -71,7 +71,7 @@ test fn data_sheet_battery_interrupt_is_endurance_not_write_recovery() -> Bool {
     && string_contains(s: fs_box_v4_data_sheet.warranty as String, pattern: "5-year limited warranty")
 }
 
-test fn data_sheet_quantities_use_measure_carriers() -> Bool {
+test fn data_sheet_quantities_use_measure_carriers() -> Bool  {
   millivolt_count(v: fs_box_v4_data_sheet.power.battery) == 3700
     && millivolt_count(v: fs_box_v4_data_sheet.power.usb) == 5000
     && micrometer_count(m: fs_box_v4_data_sheet.size.height) == 28700
@@ -82,12 +82,12 @@ test fn data_sheet_quantities_use_measure_carriers() -> Bool {
     && celsius_count(c: fs_box_v4_data_sheet.operating_temperature.maximum) == 50
 }
 
-test fn data_sheet_names_bluetooth_4_2_and_usb_c() -> Bool {
+test fn data_sheet_names_bluetooth_4_2_and_usb_c() -> Bool  {
   string_contains(s: fs_box_v4_data_sheet.bluetooth_protocol as String, pattern: "V4.2 BLE")
     && string_contains(s: fs_box_v4_data_sheet.charging_connector as String, pattern: "USB Type-C")
 }
 
-test fn faq_trial_freezes_and_has_a_24_hour_buffer() -> Bool {
+test fn faq_trial_freezes_and_has_a_24_hour_buffer() -> Bool  {
   minute_count(m: fs_box_v3_v4_v5_faq.trial_period) == 10080
     && fs_box_v3_v4_v5_faq.trial_frozen_on_expiry
     && minute_count(m: fs_box_v3_v4_v5_faq.formal_account_buffer) == 1440
@@ -98,16 +98,16 @@ test fn faq_trial_freezes_and_has_a_24_hour_buffer() -> Bool {
     )
 }
 
-test fn faq_does_not_attest_byte_192_rewrite() -> Bool {
+test fn faq_does_not_attest_byte_192_rewrite() -> Bool  {
   faq_attests_extended_compliance_rewrite() == false
 }
 
-test fn faq_internet_requirement_reaches_the_instruction() -> Bool {
+test fn faq_internet_requirement_reaches_the_instruction() -> Bool  {
   current_fs_box_internet_constraint_instruction()
     != fs_box_internet_constraint_instruction(works_offline: true)
 }
 
-test fn leg_programming_stays_transcribed_uncited() -> Bool {
+test fn leg_programming_stays_transcribed_uncited() -> Bool  {
   match fs_box_v4_leg_programming.standing {
     TranscribedUncited { read_obligation: o } =>
       string_contains(s: o as String, pattern: "neither states per-leg programming")
@@ -115,7 +115,7 @@ test fn leg_programming_stays_transcribed_uncited() -> Bool {
   }
 }
 
-test fn nvidia_eth_coding_stays_transcribed_uncited() -> Bool {
+test fn nvidia_eth_coding_stays_transcribed_uncited() -> Bool  {
   match fs_nvidia_eth_leg_coding.standing {
     TranscribedUncited { read_obligation: o } =>
       string_contains(s: o as String, pattern: "do not mention byte 192")
@@ -123,11 +123,11 @@ test fn nvidia_eth_coding_stays_transcribed_uncited() -> Bool {
   }
 }
 
-test fn tool_name_is_the_data_sheet_product_name() -> Bool {
+test fn tool_name_is_the_data_sheet_product_name() -> Bool  {
   (fs_box_v4_leg_programming.tool as String) == (fs_box_v4_data_sheet.product_name as String)
 }
 
-test fn both_publications_are_cited_to_their_pdfs() -> Bool {
+test fn both_publications_are_cited_to_their_pdfs() -> Bool  {
   match fs_box_v4_data_sheet.standing {
     CitedToAuthority { authority: a } =>
       (a.uri.locator as String) == "resource.fs.com/mall/doc/20230224114704wojcth.pdf"

@@ -121,7 +121,7 @@ fn verdict_for(claims: OidcIdTokenClaims, policy: OidcIdTokenVerdictPolicy) -> O
 }
 
 // THE POSITIVE CONTROL: every check passes, the verdict is Verified carrying the claims.
-test fn a_fully_conforming_token_verifies() -> Bool {
+test fn a_fully_conforming_token_verifies() -> Bool  {
   match verdict_for(claims: control_claims(), policy: control_policy()) {
     OidcIdTokenVerified { claims: c } => c.subject == control_claims().subject
     OidcIdTokenRefused { cause: _ } => false
@@ -130,7 +130,7 @@ test fn a_fully_conforming_token_verifies() -> Bool {
 
 // THE SIGNATURE ARM: a refused signature input is the verdict's first refusal, before any claim
 // is read — an unverified token never reaches iss/aud/exp.
-test fn a_refused_signature_refuses_before_any_claim_check() -> Bool {
+test fn a_refused_signature_refuses_before_any_claim_check() -> Bool  {
   match verify_oidc_id_token(
     claims: control_claims(),
     signature: OidcIdTokenSignatureRefused { reason: "no JWKS key matched the token header" },
@@ -145,7 +145,7 @@ test fn a_refused_signature_refuses_before_any_claim_check() -> Bool {
 
 // THE ISSUER ARM: a token from another issuer — even one that passes every other check —
 // refuses, naming both sides.
-test fn a_wrong_issuer_refuses_with_both_sides_named() -> Bool {
+test fn a_wrong_issuer_refuses_with_both_sides_named() -> Bool  {
   let claims = claims_with(
     issuer: JwtUriString { value: "https://issuer.evil.example" as NonEmptyStr, scheme: "https" as NonEmptyStr },
     audience: control_audience(),
@@ -167,7 +167,7 @@ test fn a_wrong_issuer_refuses_with_both_sides_named() -> Bool {
 
 // THE AUDIENCE ARM: a token minted for another client refuses, and one admitted audience among
 // several presented verifies.
-test fn a_token_for_another_client_refuses_at_the_audience_arm() -> Bool {
+test fn a_token_for_another_client_refuses_at_the_audience_arm() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: JwtAudienceSingle { value: JwtBareString { value: "approvals-web-prod" as NonEmptyStr } },
@@ -183,7 +183,7 @@ test fn a_token_for_another_client_refuses_at_the_audience_arm() -> Bool {
   }
 }
 
-test fn one_admitted_audience_among_several_presented_verifies() -> Bool {
+test fn one_admitted_audience_among_several_presented_verifies() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: JwtAudienceMultiple {
@@ -205,7 +205,7 @@ test fn one_admitted_audience_among_several_presented_verifies() -> Bool {
 
 // THE EXPIRY ARM: a token one second past the observed instant refuses; a fractional component
 // on either side refuses rather than rounding.
-test fn an_expired_token_refuses_at_the_expiry_arm() -> Bool {
+test fn an_expired_token_refuses_at_the_expiry_arm() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -225,7 +225,7 @@ test fn an_expired_token_refuses_at_the_expiry_arm() -> Bool {
   }
 }
 
-test fn a_fractional_expiry_refuses_rather_than_rounding() -> Bool {
+test fn a_fractional_expiry_refuses_rather_than_rounding() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -243,7 +243,7 @@ test fn a_fractional_expiry_refuses_rather_than_rounding() -> Bool {
 }
 
 // THE NONCE ARM: a token answering a different transaction refuses.
-test fn a_wrong_nonce_refuses_at_the_nonce_arm() -> Bool {
+test fn a_wrong_nonce_refuses_at_the_nonce_arm() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -262,7 +262,7 @@ test fn a_wrong_nonce_refuses_at_the_nonce_arm() -> Bool {
 
 // THE EMAIL ARM: unverified AND absent email_verified are the same refusal — "the provider did
 // not say" is not "the provider said true".
-test fn an_unverified_email_refuses() -> Bool {
+test fn an_unverified_email_refuses() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -279,7 +279,7 @@ test fn an_unverified_email_refuses() -> Bool {
   }
 }
 
-test fn an_absent_email_verified_refuses() -> Bool {
+test fn an_absent_email_verified_refuses() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -301,7 +301,7 @@ test fn an_absent_email_verified_refuses() -> Bool {
 
 // THE HOSTED-DOMAIN ARM: hd == gunb.ai is the Workspace gate. A different hd refuses; a MISSING
 // hd is a mismatch, not a pass — consumer accounts simply do not carry the claim.
-test fn a_wrong_hosted_domain_refuses() -> Bool {
+test fn a_wrong_hosted_domain_refuses() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -318,7 +318,7 @@ test fn a_wrong_hosted_domain_refuses() -> Bool {
   }
 }
 
-test fn an_absent_hosted_domain_refuses() -> Bool {
+test fn an_absent_hosted_domain_refuses() -> Bool  {
   let claims = claims_with(
     issuer: control_issuer(),
     audience: control_audience(),
@@ -341,7 +341,7 @@ test fn an_absent_hosted_domain_refuses() -> Bool {
 // THE hd VOCABULARY rides the claims record as Google's hosted-domain claim, and picture as the
 // OIDF standard claim — both optional, both wire-decoded by the realization, neither
 // load-bearing at any other check.
-test fn the_hd_and_picture_claim_vocabulary_is_representable() -> Bool {
+test fn the_hd_and_picture_claim_vocabulary_is_representable() -> Bool  {
   let claims = control_claims()
   claims.hosted_domain == Present { value: OidcHostedDomain { domain: "gunb.ai" as NonEmptyStr } }
     && match claims.standard.picture {
@@ -352,7 +352,7 @@ test fn the_hd_and_picture_claim_vocabulary_is_representable() -> Bool {
 
 // LOGIN SCOPES ARE ONLY openid/email/profile: the closed coproduct labels the three, and no API
 // scope constructor exists to request Gmail/Contacts/Directory/Drive at login.
-test fn login_scopes_are_restricted_to_openid_email_profile() -> Bool {
+test fn login_scopes_are_restricted_to_openid_email_profile() -> Bool  {
   oidc_login_scope_label(scope: OidcScopeOpenId) == "openid"
     && oidc_login_scope_label(scope: OidcScopeEmail) == "email"
     && oidc_login_scope_label(scope: OidcScopeProfile) == "profile"
@@ -360,7 +360,7 @@ test fn login_scopes_are_restricted_to_openid_email_profile() -> Bool {
 
 // RELATIVE-RETURN-PATH ADMISSION: a same-origin path admits; a protocol-relative spelling and an
 // absolute URL refuse — the redirect target can never leave the origin.
-test fn return_path_admission_keeps_the_redirect_on_the_origin() -> Bool {
+test fn return_path_admission_keeps_the_redirect_on_the_origin() -> Bool  {
   match admit_login_return_path(raw: "/issue/abc") {
     ReturnPathAdmitted { path: p } => (p.path as String) == "/issue/abc"
     ReturnPathRefused { raw: _, reason: _ } => false
@@ -376,7 +376,7 @@ test fn return_path_admission_keeps_the_redirect_on_the_origin() -> Bool {
 }
 
 // THE TRANSACTION LIFETIME is a total fold over the model's clock string.
-test fn a_login_transaction_expires_at_its_bound() -> Bool {
+test fn a_login_transaction_expires_at_its_bound() -> Bool  {
   let t = OidcLoginTransaction {
     state: "state-1" as NonEmptyStr,
     nonce: "nonce-abc" as NonEmptyStr,
@@ -442,7 +442,7 @@ fn witness_fixture_key() -> JwkRsaPublicKey {
 // THE WIRE DECODE reads a real compact serialization end to end: the header's alg and kid, the
 // required core, the standard claims, and the signing input — the exact bytes the signature
 // must cover.
-test fn the_wire_decode_reads_header_claims_and_signing_input() -> Bool {
+test fn the_wire_decode_reads_header_claims_and_signing_input() -> Bool  {
   match oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization) {
     OidcIdTokenWireRefused { reason: _ } => false
     OidcIdTokenWireDecoded { claims: c, header: h, signing_input: si } =>
@@ -478,7 +478,7 @@ test fn the_wire_decode_reads_header_claims_and_signing_input() -> Bool {
 
 // A FRACTIONAL NUMERICDATE KEEPS ITS DIGITS, and a missing required-core member refuses with
 // the member named: the decode describes the RFC without rounding or normalizing anything away.
-test fn the_wire_decode_keeps_fractional_digits_and_refuses_missing_core() -> Bool {
+test fn the_wire_decode_keeps_fractional_digits_and_refuses_missing_core() -> Bool  {
   match oidc_id_token_wire_decode(token: join([witness_fixture_header_segment(), ".", witness_fixture_fractional_payload_segment(), ".c2ln"], "") as JwtCompactSerialization) {
     OidcIdTokenWireRefused { reason: _ } => false
     OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } =>
@@ -505,7 +505,7 @@ test fn the_wire_decode_keeps_fractional_digits_and_refuses_missing_core() -> Bo
 // THE SPKI ASSEMBLY reproduces, byte for byte, the SPKI document openssl itself publishes for
 // the fixture key — the in-model DER assembler (length encodings, the sign guard on the
 // modulus, the algorithm identifier) is exactly right against an independent computation.
-test fn the_spki_assembly_matches_openssl_s_own_document() -> Bool {
+test fn the_spki_assembly_matches_openssl_s_own_document() -> Bool  {
   match rsa_spki_of_jwk(key: witness_fixture_key()) {
     DerRefused { reason: _ } => false
     DerOctets { octets: assembled } => assembled == witness_fixture_spki_octets()
@@ -515,7 +515,7 @@ test fn the_spki_assembly_matches_openssl_s_own_document() -> Bool {
 // JWKS SELECTION IS BY KID AND REFUSES A KEY OUTSIDE THE SET: the fold returns the announced
 // key, and a kid the set does not hold is JwksKeyNotFound carrying WHICH key was asked for —
 // never a fallback to some key in the set.
-test fn jwks_selection_answers_the_announced_kid_and_refuses_the_unknown() -> Bool {
+test fn jwks_selection_answers_the_announced_kid_and_refuses_the_unknown() -> Bool  {
   match jwks_select_key(keys: [witness_fixture_key()], key_id: witness_fixture_key_id) {
     JwksKeySelected { key: k } => (k.key_id as String) == "fixture-key-1"
     JwksKeyNotFound { key_id: _ } => false
@@ -540,7 +540,7 @@ fn supplied_decoded_wire() -> OidcIdTokenWire {
   }
 }
 
-test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool {
+test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool  {
   match oidc_id_token_signature_of_parts(
     wire: supplied_decoded_wire(),
     resolved: JwksResolveRefused { step: "fetch", reason: "the origin did not answer" },
@@ -569,7 +569,7 @@ test fn a_jwks_fetch_failure_refuses_the_signature_and_never_verifies() -> Bool 
 // valid verification to OidcIdTokenSignatureVerified naming the key, and every other
 // verification outcome to a located refusal — so no consumer can reach the verified arm from a
 // refused realization, and the verdict fold above it refuses at the signature check.
-test fn only_an_affirmative_realization_mints_the_verified_arm() -> Bool {
+test fn only_an_affirmative_realization_mints_the_verified_arm() -> Bool  {
   match oidc_id_token_signature_of_verification(key: witness_fixture_key(), verification: Rs256SignatureValid) {
     OidcIdTokenSignatureVerified { key: ref } =>
       (ref.key_id as String) == "fixture-key-1"
@@ -590,7 +590,7 @@ test fn only_an_affirmative_realization_mints_the_verified_arm() -> Bool {
 // landed verdict policy exactly when the fixture key stands behind the signature, and the
 // refusal arms the decode produced upstream still refuse downstream. This is the seam the
 // serve route binds: verify_oidc_id_token receives the producer's outcome, not a claim set.
-test fn the_realized_signature_feeds_the_landed_verdict_fold() -> Bool {
+test fn the_realized_signature_feeds_the_landed_verdict_fold() -> Bool  {
   match oidc_id_token_wire_decode(token: witness_fixture_wire() as JwtCompactSerialization) {
     OidcIdTokenWireRefused { reason: _ } => false
     OidcIdTokenWireDecoded { claims: c, header: _, signing_input: _ } =>

@@ -20,7 +20,7 @@ fn set_reading(class: String, members: Int, all: Int, after: Int, end: Int) -> T
 // EXCLUSIVE IS all - after, THE TOTAL IS all - end, AND THE RESIDUAL IS total - Σ exclusives: two
 // classes from their own runs, 30 and 20 of a 100-byte graph, share the other 50. The total is the
 // FIRST run's, so the second run's slightly larger graph does not move it.
-test fn exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops() -> Bool {
+test fn exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops() -> Bool  {
   match typed_graph_exclusive_report(readings: [
     reading(class: "type_env", all: 1000, after: 970, end: 900),
     reading(class: "items", all: 1004, after: 984, end: 902),
@@ -36,7 +36,7 @@ test fn exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops() -> 
 
 // A DROP THAT RAISED LIVE BYTES IS NOT A READING OF A DROP, and refuses naming its class rather
 // than flooring the exclusive at zero.
-test fn a_drop_that_raised_live_bytes_refuses_naming_the_class() -> Bool {
+test fn a_drop_that_raised_live_bytes_refuses_naming_the_class() -> Bool  {
   match typed_graph_exclusive_report(readings: [reading(class: "interface", all: 1000, after: 1010, end: 900)]) {
     ExclusiveReadingTorn { class: c, cause: _ } => c == "interface" as NonEmptyStr
     _ => false
@@ -45,7 +45,7 @@ test fn a_drop_that_raised_live_bytes_refuses_naming_the_class() -> Bool {
 
 // EXCLUSIVES SUMMING PAST THE TOTAL (run-to-run variation across fresh resolves) IS A TYPED ARM, not
 // a zero shared residual.
-test fn exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual() -> Bool {
+test fn exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual() -> Bool  {
   match typed_graph_exclusive_report(readings: [
     reading(class: "type_env", all: 1000, after: 930, end: 900),
     reading(class: "items", all: 1000, after: 950, end: 900),
@@ -56,7 +56,7 @@ test fn exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual() -> 
   }
 }
 
-test fn no_readings_is_empty_not_a_zero_report() -> Bool {
+test fn no_readings_is_empty_not_a_zero_report() -> Bool  {
   match typed_graph_exclusive_report(readings: []) {
     ExclusiveReadingEmpty => true
     _ => false
@@ -66,7 +66,7 @@ test fn no_readings_is_empty_not_a_zero_report() -> Bool {
 // A JOINT SET IS REPORTED, NEVER SUMMED: its bytes include its members' exclusives (30 and 20 here,
 // 70 jointly because they share 20 with each other only), so adding it into the sum would count the
 // members twice and drive the residual below zero. The sum stays the singles' 50 and the residual 50.
-test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool {
+test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool  {
   match typed_graph_exclusive_report(readings: [
     reading(class: "type_env", all: 1000, after: 970, end: 900),
     reading(class: "items", all: 1000, after: 980, end: 900),
@@ -80,7 +80,7 @@ test fn a_joint_set_is_reported_beside_the_sum_and_not_added_into_it() -> Bool {
   }
 }
 
-test fn a_reading_of_no_members_refuses() -> Bool {
+test fn a_reading_of_no_members_refuses() -> Bool  {
   match typed_graph_exclusive_report(readings: [set_reading(class: "nothing", members: 0, all: 1000, after: 1000, end: 900)]) {
     ExclusiveReadingTorn { class: c, cause: _ } => c == "nothing" as NonEmptyStr
     _ => false

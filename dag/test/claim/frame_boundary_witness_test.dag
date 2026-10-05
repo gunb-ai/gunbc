@@ -69,20 +69,20 @@ fn is_unmaterialized_for(a: BoundaryAdmission, tree: NamespaceTree) -> Bool {
   }
 }
 
-test fn frame_boundary_admits_covered_layer() -> Bool {
+test fn frame_boundary_admits_covered_layer() -> Bool  {
   is_materialized_convention(
     a: boundary_admits(required_trees: require_network, provided: net_convention_provided)
   )
 }
 
-test fn frame_boundary_refuses_uncovered_layer() -> Bool {
+test fn frame_boundary_refuses_uncovered_layer() -> Bool  {
   is_unmaterialized_for(
     a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
     tree: UriTree
   )
 }
 
-test fn frame_boundary_grade_is_meet() -> Bool {
+test fn frame_boundary_grade_is_meet() -> Bool  {
   is_materialized_convention(
     a: boundary_admits(
       required_trees: require_network_and_fs,
@@ -91,7 +91,7 @@ test fn frame_boundary_grade_is_meet() -> Bool {
   )
 }
 
-test fn frame_boundary_full_construction_stays_construction() -> Bool {
+test fn frame_boundary_full_construction_stays_construction() -> Bool  {
   is_materialized_construction(
     a: boundary_admits(
       required_trees: require_network,
@@ -102,13 +102,13 @@ test fn frame_boundary_full_construction_stays_construction() -> Bool {
   )
 }
 
-test fn frame_boundary_empty_requirement_admits() -> Bool {
+test fn frame_boundary_empty_requirement_admits() -> Bool  {
   is_materialized_construction(
     a: boundary_admits(required_trees: require_nothing, provided: fs_only_provided)
   )
 }
 
-test fn frame_boundary_refusal_is_located() -> Bool {
+test fn frame_boundary_refusal_is_located() -> Bool  {
   is_unmaterialized_for(
     a: boundary_admits(required_trees: require_network, provided: fs_only_provided),
     tree: UriTree

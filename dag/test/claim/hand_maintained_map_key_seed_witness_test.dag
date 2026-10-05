@@ -45,10 +45,10 @@ fn w_non_roster_name_derives_no_hash() -> Bool {
   )
 }
 
-test fn roster_name_earns_eq_and_hash() -> Bool {
+test fn roster_name_earns_eq_and_hash() -> Bool  {
   w_roster_name_earns_eq_and_hash()
 }
 
-test fn non_roster_name_derives_no_hash() -> Bool {
+test fn non_roster_name_derives_no_hash() -> Bool  {
   w_non_roster_name_derives_no_hash()
 }

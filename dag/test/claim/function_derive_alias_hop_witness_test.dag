@@ -13,7 +13,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // representation and must not narrow its holder. The plain structural alias proves the walk does
 // not narrow every alias. All rows cross the real emitter through compile_dag_rust_emit_check.
 
-test fn structural_alias_to_callable_derives_clone_only() -> Bool {
+test fn structural_alias_to_callable_derives_clone_only() -> Bool  {
   compile_dag_rust_emit_check(
     "module function_derive_alias_hop_witness.structural\n\ntype Handler = fn(Int) -> Int\n\ntype HoldsHandler {\n  handler: Handler\n}\n",
     "src/function_derive_alias_hop_witness_structural.rs",
@@ -22,7 +22,7 @@ test fn structural_alias_to_callable_derives_clone_only() -> Bool {
   )
 }
 
-test fn native_alias_does_not_expose_function_rhs() -> Bool {
+test fn native_alias_does_not_expose_function_rhs() -> Bool  {
   compile_dag_rust_emit_check(
     "module function_derive_alias_hop_witness.native\n\ntype Bytes = fn(Int) -> Int\n\ntype HoldsNativeAlias {\n  value: Bytes\n}\n",
     "src/function_derive_alias_hop_witness_native.rs",
@@ -31,7 +31,7 @@ test fn native_alias_does_not_expose_function_rhs() -> Bool {
   )
 }
 
-test fn structural_alias_to_plain_value_keeps_full_derives() -> Bool {
+test fn structural_alias_to_plain_value_keeps_full_derives() -> Bool  {
   compile_dag_rust_emit_check(
     "module function_derive_alias_hop_witness.plain\n\ntype Plain {\n  value: Int\n}\n\ntype PlainAlias = Plain\n\ntype HoldsPlainAlias {\n  value: PlainAlias\n}\n",
     "src/function_derive_alias_hop_witness_plain.rs",

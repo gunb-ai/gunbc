@@ -29,7 +29,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // projection is NotCommitted, so it is not a heal subject. count == 1 is that policy
 // population, not a measurement copied from the current tree.
 
-test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool {
+test fn only_design_ledgers_delegate_concurrent_regeneration_to_heal() -> Bool  {
   let paths = heal_regenerated_after_provisional_merge_paths()
   count(paths) == 1
     && any(paths, p => p == "docs/design-rung-drops.md")
@@ -83,7 +83,7 @@ fn two_drift_observations() -> List<GeneratedArtifactObservation> {
   ]
 }
 
-test fn two_content_drifts_are_both_reported() -> Bool {
+test fn two_content_drifts_are_both_reported() -> Bool  {
   let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   (f.observation_failures |> count) == 2
     && (f.unadjudicated |> count) == 0
@@ -95,7 +95,7 @@ test fn two_content_drifts_are_both_reported() -> Bool {
 // The old shape returned ONE path regardless of how many artifacts had drifted. Asserting the
 // count alone would still pass a projection that reported the same artifact twice, so this pins
 // both IDENTITIES rather than the cardinality.
-test fn two_content_drifts_name_both_distinct_artifacts() -> Bool {
+test fn two_content_drifts_name_both_distinct_artifacts() -> Bool  {
   let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   let paths = map(f.observation_failures, x => observation_finding_rendered(f: x))
   any(paths, p => string_contains(s: p, pattern: "DESIGN.md")) && any(paths, p => string_contains(s: p, pattern: "ROADMAP.md"))
@@ -103,7 +103,7 @@ test fn two_content_drifts_name_both_distinct_artifacts() -> Bool {
 
 // ORDER INDEPENDENCE. The removed projections were folds that kept whichever failure they met
 // first, so their answer was a function of input order. The complete population must not be.
-test fn finding_population_does_not_depend_on_observation_order() -> Bool {
+test fn finding_population_does_not_depend_on_observation_order() -> Bool  {
   let forward = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   let reversed = generated_artifact_population_findings(
     expected: two_drift_expected(),
@@ -135,7 +135,7 @@ fn mixed_observations() -> List<GeneratedArtifactObservation> {
   ]
 }
 
-test fn every_cause_is_reported_together() -> Bool {
+test fn every_cause_is_reported_together() -> Bool  {
   let f = generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
   (f.observation_failures |> count) == 2
     && (f.unadjudicated |> count) == 1
@@ -151,7 +151,7 @@ test fn every_cause_is_reported_together() -> Bool {
 // tell "two artifacts drifted" from "two artifacts could not be read". This pins the refusal to
 // the provenance bucket BY IDENTITY -- the cause travels with it -- and pins its ABSENCE from the
 // comparison bucket, which is the half that would silently regress if the arm were folded back.
-test fn a_refusal_is_provenance_and_never_a_comparison_result() -> Bool {
+test fn a_refusal_is_provenance_and_never_a_comparison_result() -> Bool  {
   let f = generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
   let causes = map(f.unadjudicated, u => u.cause)
   (f.unadjudicated |> count) == 1
@@ -161,7 +161,7 @@ test fn a_refusal_is_provenance_and_never_a_comparison_result() -> Bool {
 
 // A CLEAN POPULATION MUST LEAVE THE PROVENANCE BUCKET EMPTY, or the field would report findings
 // for runs that reached every verdict -- the mirror defect of hiding them.
-test fn a_fully_observed_population_has_no_unadjudicated_members() -> Bool {
+test fn a_fully_observed_population_has_no_unadjudicated_members() -> Bool  {
   let f = generated_artifact_population_findings(expected: two_drift_expected(), observations: two_drift_observations())
   (f.unadjudicated |> count) == 0 && (f.observation_failures |> count) == 2
 }
@@ -169,7 +169,7 @@ test fn a_fully_observed_population_has_no_unadjudicated_members() -> Bool {
 // DUPLICATE AND MISSING ARE SEPARATE ARMS, because their repairs differ: a missing observation
 // points at the observer or the population producer, a duplicate at population construction or
 // identity aliasing. One ExpectedCardinalityWrong arm would discard that.
-test fn duplicate_and_missing_are_distinct_findings() -> Bool {
+test fn duplicate_and_missing_are_distinct_findings() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact, RoadmapArtifact],
     observations: [
@@ -209,7 +209,7 @@ fn every_cause_observations() -> List<GeneratedArtifactObservation> {
   ]
 }
 
-test fn absence_survives_alongside_every_other_cause() -> Bool {
+test fn absence_survives_alongside_every_other_cause() -> Bool  {
   let f = generated_artifact_population_findings(expected: every_cause_expected(), observations: every_cause_observations())
   let rendered = generated_artifact_population_findings_rendered(f: f)
   ((f.observation_failures |> count) == 3)
@@ -234,7 +234,7 @@ test fn absence_survives_alongside_every_other_cause() -> Bool {
 // non-empty roster produces one finding per expected member and cannot be empty. The second clause
 // is what makes this a test rather than a restatement -- greenness must come from the ROSTER being
 // empty, never from the observations being empty.
-test fn an_empty_observation_population_cannot_green_a_nonempty_roster() -> Bool {
+test fn an_empty_observation_population_cannot_green_a_nonempty_roster() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact, RoadmapArtifact, GitignoreArtifact],
     observations: []
@@ -261,7 +261,7 @@ fn absent_observation(a: GeneratedArtifact, path: String) -> GeneratedArtifactOb
 // one refused artifact, must land in DIFFERENT fields -- absent as an observation finding (a
 // verdict about the repository tree) and refused as unadjudicated (no verdict was reached). A
 // carrier that folded them together fails the second clause while passing the first.
-test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool {
+test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact, RoadmapArtifact],
     observations: [
@@ -279,7 +279,7 @@ test fn absent_is_a_finding_and_refused_is_unadjudicated() -> Bool {
 // remedies are opposite -- absent is a fact about the tree that asks whether the file was ever meant
 // to exist, missing is a completeness defect in the OBSERVER that adjudicated nothing. Here the same
 // two identities produce one of each, in different fields, from one population.
-test fn committed_absent_is_distinct_from_expected_observation_missing() -> Bool {
+test fn committed_absent_is_distinct_from_expected_observation_missing() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact, RoadmapArtifact],
     observations: [absent_observation(a: DesignArtifact, path: "DESIGN.md")]
@@ -297,7 +297,7 @@ test fn committed_absent_is_distinct_from_expected_observation_missing() -> Bool
 // authority; regenerating would have permanently and silently reversed that decision. So the
 // load-bearing clause is the NEGATIVE one: the absent line must not send the reader to main_wet
 // without first asking whether the artifact belongs in the tree at all.
-test fn absent_remedy_asks_whether_the_artifact_should_exist_before_regenerating() -> Bool {
+test fn absent_remedy_asks_whether_the_artifact_should_exist_before_regenerating() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact],
     observations: [absent_observation(a: DesignArtifact, path: "DESIGN.md")]
@@ -318,7 +318,7 @@ test fn absent_remedy_asks_whether_the_artifact_should_exist_before_regenerating
 // ONE ROW PER CONSTRUCTION SHAPE, since that is what the refactor could break differently: a root
 // artifact (no directory prefix in the join), a nested literal, a directory carried by a constant
 // in another module, and a name computed from a slug.
-test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool {
+test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool  {
   (artifact_path(a: DesignArtifact) == "DESIGN.md")
     && (artifact_path(a: GitignoreArtifact) == ".gitignore")
     && (artifact_path(a: WitnessFloorYamlArtifact) == ".github/workflows/witnesses.yml")
@@ -331,7 +331,7 @@ test fn artifact_path_is_byte_identical_after_the_location_split() -> Bool {
 // THE ROOT IS A LISTABLE DIRECTORY, NOT AN ABSENT ONE. A consumer that lists the directory to
 // establish whether the entry is present needs a directory it can actually pass to a listing; the
 // empty string is not one. This is the clause that fails if the root is ever modelled as "".
-test fn root_level_artifacts_carry_a_listable_directory() -> Bool {
+test fn root_level_artifacts_carry_a_listable_directory() -> Bool  {
   (artifact_directory(a: DesignArtifact) == ".")
     && (artifact_name(a: DesignArtifact) == "DESIGN.md")
     && (artifact_directory(a: WitnessFloorYamlArtifact) == ".github/workflows")
@@ -345,7 +345,7 @@ test fn root_level_artifacts_carry_a_listable_directory() -> Bool {
 // suffix satisfies it too; the discriminating half is that a MISSING-OBSERVATION line must NOT name
 // the producer, since regenerating cannot repair an observer that never adjudicated the artifact.
 // Reintroducing any run-level remedy makes this red.
-test fn remedies_are_class_specific_not_universal() -> Bool {
+test fn remedies_are_class_specific_not_universal() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact, RoadmapArtifact],
     observations: [drifted_observation(a: DesignArtifact, path: "DESIGN.md")]
@@ -361,7 +361,7 @@ test fn remedies_are_class_specific_not_universal() -> Bool {
 // 3. MULTI-AXIS SINGLE OBSERVATION -- the leaf must not become a first-remedy projection.
 // ---------------------------------------------------------------------------------------------
 
-test fn one_observation_yields_both_content_and_validation_findings() -> Bool {
+test fn one_observation_yields_both_content_and_validation_findings() -> Bool  {
   let f = generated_artifact_population_findings(
     expected: [DesignArtifact],
     observations: [artifact_observation_fixture(a: DesignArtifact, path: "DESIGN.md", gen: "generated", com: "committed", valid: false)]
@@ -373,7 +373,7 @@ test fn one_observation_yields_both_content_and_validation_findings() -> Bool {
 // 4. POSITIVE CONTROL -- prevents an assessment that reports every member as failing.
 // ---------------------------------------------------------------------------------------------
 
-test fn clean_population_agrees_over_a_nonempty_roster() -> Bool {
+test fn clean_population_agrees_over_a_nonempty_roster() -> Bool  {
   let expected = [DesignArtifact, RoadmapArtifact]
   let observations = [
     clean_observation(a: DesignArtifact, path: "DESIGN.md"),
@@ -389,7 +389,7 @@ test fn clean_population_agrees_over_a_nonempty_roster() -> Bool {
 // HEAL'S SECOND PASS USES THIS SAME ASSESSMENT. This is the discriminating RED for its fixed-point
 // assertion: the first pass wrote "first-pass", the second generation produced "second-pass",
 // and the comparison must refuse with the affected path rather than warn or collapse to clean.
-test fn heal_second_generation_divergence_refuses_and_locates() -> Bool {
+test fn heal_second_generation_divergence_refuses_and_locates() -> Bool  {
   let observations = [artifact_observation_fixture(
     a: DesignFailureModesArtifact,
     path: "docs/design-failure-modes.md",
@@ -412,7 +412,7 @@ test fn heal_second_generation_divergence_refuses_and_locates() -> Bool {
 
 // THE BOOLEAN IS A PROJECTION AND NOT A SECOND OPINION. If the two ever disagreed, the fork this
 // cut removed would be back.
-test fn boolean_projection_agrees_with_the_finding_population() -> Bool {
+test fn boolean_projection_agrees_with_the_finding_population() -> Bool  {
   assess_generated_artifact_population(expected: mixed_expected(), observations: mixed_observations()) == false
     && assess_generated_artifact_population(expected: two_drift_expected(), observations: two_drift_observations()) == false
 }
@@ -429,7 +429,7 @@ fn first_only_projection(f: GeneratedArtifactPopulationFindings) -> Int {
   if (f.observation_failures |> count) == 0 { 0 } else { 1 }
 }
 
-test fn a_first_only_projection_loses_findings_the_population_keeps() -> Bool {
+test fn a_first_only_projection_loses_findings_the_population_keeps() -> Bool  {
   let f = generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
   first_only_projection(f: f) == 1
     && generated_artifact_population_findings_count(f: f) == 5
@@ -438,7 +438,7 @@ test fn a_first_only_projection_loses_findings_the_population_keeps() -> Bool {
 
 // The rendering must carry every finding, not a head. Counting sections rather than characters
 // keeps this from passing on a truncated message that happens to be long.
-test fn rendering_carries_every_class_that_has_findings() -> Bool {
+test fn rendering_carries_every_class_that_has_findings() -> Bool  {
   let r = generated_artifact_population_findings_rendered(
     f: generated_artifact_population_findings(expected: mixed_expected(), observations: mixed_observations())
   )

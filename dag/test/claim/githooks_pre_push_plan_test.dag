@@ -62,7 +62,7 @@ fn witness_check_only_policy_documented() -> Bool {
 // The remaining rows still discriminate on the axis this module owns: witness_nested_rs_
 // triggers_fmt is the positive control for the one surviving binding, and
 // witness_plan_skips_unrelated_path is its red.
-test fn githooks_pre_push_plan_witnesses() -> Bool {
+test fn githooks_pre_push_plan_witnesses() -> Bool  {
   witness_plan_roster_authority()
     && witness_plan_skips_unrelated_path()
     && witness_nested_rs_triggers_fmt()

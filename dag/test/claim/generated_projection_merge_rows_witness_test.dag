@@ -84,7 +84,7 @@ fn has_setting(pattern: String, setting: GeneratedProjectionMergeSetting) -> Boo
 
 // THE ARM ITSELF. Red before the stage0 arm existed: the emitted population was exactly the
 // committed generated-artifact registry, which names no stage0 source glob at all.
-test fn witness_stage0_generated_source_glob_is_claimed_holds() -> Bool {
+test fn witness_stage0_generated_source_glob_is_claimed_holds() -> Bool  {
   has_setting(pattern: stage0_generated_source_pattern, setting: MergeGeneratedArtifact)
     && stage0_generated_source_pattern == "src/v1/stage0/src/*.rs"
 }
@@ -93,7 +93,7 @@ test fn witness_stage0_generated_source_glob_is_claimed_holds() -> Bool {
 // resolve to unspecified if it were hand-maintained; v1_compiler_emit_rust.rs is emitted, so no
 // unset row may claim it. Naming an identity rather than counting is what keeps this from
 // passing vacuously on an empty population.
-test fn witness_emitted_stage0_source_is_not_unset_holds() -> Bool {
+test fn witness_emitted_stage0_source_is_not_unset_holds() -> Bool  {
   row_index_of(pattern: stage0_generated_source_pattern) >= 0
     && !has_setting(
       pattern: "src/v1/stage0/src/v1_compiler_emit_rust.rs",
@@ -103,7 +103,7 @@ test fn witness_emitted_stage0_source_is_not_unset_holds() -> Bool {
 
 // A HAND-MAINTAINED DIRECT CHILD IS TAKEN BACK OUT. cli_run.rs is on the crate layout's claim
 // and is not a registry artifact, so the complement must unset it.
-test fn witness_hand_maintained_stage0_source_is_unset_holds() -> Bool {
+test fn witness_hand_maintained_stage0_source_is_unset_holds() -> Bool  {
   row_index_of(pattern: stage0_generated_source_pattern) >= 0
     && has_setting(pattern: "src/v1/stage0/src/cli_run.rs", setting: MergeAttributeUnspecified)
 }
@@ -116,7 +116,7 @@ fn registry_stage0_artifact_keeps_coverage(path: String) -> Bool {
     && !has_setting(pattern: path, setting: MergeAttributeUnspecified)
 }
 
-test fn witness_registry_artifact_keeps_coverage_holds() -> Bool {
+test fn witness_registry_artifact_keeps_coverage_holds() -> Bool  {
   registry_stage0_artifact_keeps_coverage(
     path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
   )
@@ -128,7 +128,7 @@ test fn witness_registry_artifact_keeps_coverage_holds() -> Bool {
 // ORDER IS A CORRECTNESS PROPERTY AND FAILS SILENTLY. The last matching attributes line wins, so
 // the glob must precede every unset row. Transposed, the unset rows are inert and every
 // hand-maintained stage0 source silently acquires the driver, with no diagnostic anywhere.
-test fn witness_glob_precedes_every_unset_row_holds() -> Bool {
+test fn witness_glob_precedes_every_unset_row_holds() -> Bool  {
   let glob_index = row_index_of(pattern: stage0_generated_source_pattern)
   glob_index >= 0
     && merge_rows() |> all(row => match row.setting {
@@ -139,7 +139,7 @@ test fn witness_glob_precedes_every_unset_row_holds() -> Bool {
 
 // AND THE ORDER SURVIVES INTO THE BYTES, not only into the row list. The rendered glob line must
 // appear before the rendered unset line for a named hand-maintained path.
-test fn witness_rendered_order_places_glob_before_unset_holds() -> Bool {
+test fn witness_rendered_order_places_glob_before_unset_holds() -> Bool  {
   let glob_line = concat(concat(stage0_generated_source_pattern, " "), generated_projection_merge_attribute)
   let unset_line = concat(concat("src/v1/stage0/src/cli_run.rs", " "), generated_projection_merge_attribute_unset)
   let glob_at = emitted_line_index_of(line: glob_line)

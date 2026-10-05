@@ -60,7 +60,7 @@ fn refusal_text(e: ProcessExit) -> String {
 
 // THE POSITIVE CONTROL. A 200 is a creation this run performed and may rely on; without this arm
 // answering Created, every refusal below is satisfied by a classifier that admits nothing.
-test fn witness_a_created_subject_is_created() -> Bool {
+test fn witness_a_created_subject_is_created() -> Bool  {
   match subject_creation(o: ok()) {
     SubjectCreated => true
     SubjectAlreadyPresentUnverified => false
@@ -71,7 +71,7 @@ test fn witness_a_created_subject_is_created() -> Bool {
 // A 409 IS NOT A REFUSAL AND NOT A CONVERGENCE. It says the id is taken and says nothing about the
 // configuration behind it, which for the provider is the attribute condition -- the one fact that
 // decides which workflows may federate at all.
-test fn witness_a_conflict_is_an_unverified_presence() -> Bool {
+test fn witness_a_conflict_is_an_unverified_presence() -> Bool  {
   match subject_creation(o: conflict()) {
     SubjectAlreadyPresentUnverified => true
     SubjectCreated => false
@@ -79,7 +79,7 @@ test fn witness_a_conflict_is_an_unverified_presence() -> Bool {
   }
 }
 
-test fn witness_a_denied_create_is_a_refusal_carrying_its_cause() -> Bool {
+test fn witness_a_denied_create_is_a_refusal_carrying_its_cause() -> Bool  {
   match subject_creation(o: denied()) {
     SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "403")
     SubjectCreated => false
@@ -87,7 +87,7 @@ test fn witness_a_denied_create_is_a_refusal_carrying_its_cause() -> Bool {
   }
 }
 
-test fn witness_an_unreached_service_is_a_refusal_not_a_presence() -> Bool {
+test fn witness_an_unreached_service_is_a_refusal_not_a_presence() -> Bool  {
   match subject_creation(o: RestTransportRefused { cause: "connection reset" }) {
     SubjectCreateRefused { cause } => string_contains(s: cause, pattern: "transport")
     SubjectCreated => false
@@ -131,7 +131,7 @@ fn unclassified_naming(c: FederationClassification, pattern: String) -> Bool {
 }
 
 // NOTHING EXISTS: every subject is created, and nothing is granted until the readback matches.
-test fn witness_nothing_present_classifies_as_create_all() -> Bool {
+test fn witness_nothing_present_classifies_as_create_all() -> Bool  {
   match classify_dedicated_federation(f: heal(), pool: PoolObservedAbsent, providers: ProvidersObserved { providers: [] }, account: AccountObservedAbsent) {
     FederationClassified { create_pool: a, create_provider: b, create_account: c } => a && b && c
     FederationUnclassified { reasons: _ } => false
@@ -140,7 +140,7 @@ test fn witness_nothing_present_classifies_as_create_all() -> Bool {
 
 // THE CONTROL FOR EVERY HALT BELOW: all three present and matching is fully present, so a rerun
 // reaches the bindings.
-test fn witness_present_and_matching_is_fully_present() -> Bool {
+test fn witness_present_and_matching_is_fully_present() -> Bool  {
   let f = heal()
   let c = classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersObserved { providers: [declared_provider(f: f)] }, account: AccountObserved { email: f.service_account as String })
   classified(c: c) && federation_fully_present(c: c)
@@ -148,7 +148,7 @@ test fn witness_present_and_matching_is_fully_present() -> Bool {
 
 // THE RED THE REVIEW NAMED: an EXISTING provider whose condition is not the declared one halts the
 // run, and it halts in the classifier -- before bind_impersonation or any secret cell is reached.
-test fn witness_an_existing_provider_with_another_condition_halts_before_any_grant() -> Bool {
+test fn witness_an_existing_provider_with_another_condition_halts_before_any_grant() -> Bool  {
   let f = heal()
   let p = declared_provider(f: f)
   let lax = WifProviderWire { name: p.name, disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: Present { value: "assertion.repository_owner == 'gunb-ai'" }, oidc: p.oidc }
@@ -157,7 +157,7 @@ test fn witness_an_existing_provider_with_another_condition_halts_before_any_gra
 
 // A SECOND PROVIDER IN THE POOL IS A SECOND ADMISSION RULE, and the pool-wide impersonation member
 // would admit it; so the population must be exactly the declared provider.
-test fn witness_an_extra_provider_in_the_pool_halts() -> Bool {
+test fn witness_an_extra_provider_in_the_pool_halts() -> Bool  {
   let f = heal()
   let p = declared_provider(f: f)
   let extra = WifProviderWire { name: concat(p.name, "-other"), disabled: p.disabled, state: p.state, attribute_mapping: p.attribute_mapping, attribute_condition: p.attribute_condition, oidc: p.oidc }
@@ -165,7 +165,7 @@ test fn witness_an_extra_provider_in_the_pool_halts() -> Bool {
 }
 
 // AN UNREADABLE SUBJECT IS NOT AN ABSENT ONE.
-test fn witness_an_unreadable_population_halts_rather_than_creating() -> Bool {
+test fn witness_an_unreadable_population_halts_rather_than_creating() -> Bool  {
   let f = heal()
   unclassified_naming(c: classify_dedicated_federation(f: f, pool: declared_pool(f: f), providers: ProvidersUnreadable { cause: "status 403" }, account: AccountObserved { email: f.service_account as String }), pattern: "could not be read")
 }
@@ -175,7 +175,7 @@ test fn witness_an_unreadable_population_halts_rather_than_creating() -> Bool {
 // THE BINDING IS TO THE POOL, NOT TO A USER OR A KEY. Every identity that can impersonate the
 // publisher service account is one that already satisfied the provider's attribute condition, so
 // widening this member is how the whole federation stops being tight.
-test fn witness_the_impersonation_cell_binds_the_publisher_pool_as_workload_identity_user() -> Bool {
+test fn witness_the_impersonation_cell_binds_the_publisher_pool_as_workload_identity_user() -> Bool  {
   let c = heal_publisher_impersonation_cell()
   (c.role as String) == (role_iam_workload_identity_user as String)
     && (c.member as String) == heal_publisher_wif_principal_set()
@@ -187,7 +187,7 @@ fn policy_with(bindings: List<GcpBinding>) -> GcpPolicy {
 
 // THE READBACK DISCRIMINATES. A 200 that returned a policy without this cell must not read as
 // present, or the readback after setIamPolicy is a decoration.
-test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_that_does_not() -> Bool {
+test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_that_does_not() -> Bool  {
   let c = heal_publisher_impersonation_cell()
   impersonation_binding_present(policy: policy_with(bindings: [
     GcpBinding { role: c.role, members: [c.member], condition: none }
@@ -208,13 +208,13 @@ test fn witness_the_readback_distinguishes_a_policy_carrying_the_cell_from_one_t
 // THE BOUND IS SPELLED AS A LITERAL AND THAT IS CORRECT HERE, against the ordinary rule: it is an
 // EXTERNAL authority's published constraint, not a measurement of our own tree, so it is exactly the
 // "external or versioned authority" case DESIGN section 5 admits as an oracle.
-test fn witness_the_pool_display_name_is_within_the_services_limit() -> Bool {
+test fn witness_the_pool_display_name_is_within_the_services_limit() -> Bool  {
   string_length(s: heal_publisher_wif_pool_display_name as String) <= 32
 }
 
 // THE DISCRIMINATOR. If string_length answered something constant, the claim above would pass for any
 // name at all; a name known to be over the limit must fail the same predicate.
-test fn witness_a_name_over_the_limit_would_not_pass_that_check() -> Bool {
+test fn witness_a_name_over_the_limit_would_not_pass_that_check() -> Bool  {
   string_length(s: "GitHub heal publisher (protected publication only)") > 32
 }
 
@@ -269,7 +269,7 @@ fn decoded_pool() -> PoolReading {
 }
 
 // THE DECODED FIELDS ARE THE WIRE'S: each renamed nested field reaches its authored name.
-test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool {
+test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool  {
   match decoded_providers() {
     ProvidersObserved { providers: ps } => ps.length() == 1 && match first(ps) {
       Present { value: p } =>
@@ -284,7 +284,7 @@ test fn the_live_provider_list_decodes_its_camel_case_fields() -> Bool {
   }
 }
 
-test fn the_live_pool_decodes_its_display_name() -> Bool {
+test fn the_live_pool_decodes_its_display_name() -> Bool  {
   match decoded_pool() {
     PoolObserved { pool: p } => match p.display_name { Present { value: d } => d == "Mt. Collins boot (one job)"  Absent => false }
     _ => false
@@ -293,7 +293,7 @@ test fn the_live_pool_decodes_its_display_name() -> Bool {
 
 // THE ROUTE THE RERUN TAKES: the created pool and provider, read back off the wire, classify as
 // present and matching, so the operator's rerun adopts them and proceeds to the bindings.
-test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present() -> Bool {
+test fn the_live_mtcollins1_federation_read_back_from_the_wire_is_fully_present() -> Bool  {
   (live_boot_federations() |> count) == 1
     && all(live_boot_federations(), f => {
       let c = classify_dedicated_federation(f: f, pool: decoded_pool(), providers: decoded_providers(), account: AccountObserved { email: f.service_account as String })
@@ -328,10 +328,10 @@ fn providers_body_refusal(body: String) -> String {
   }
 }
 
-test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field() -> Bool {
+test fn an_authored_only_issuer_spelling_refuses_rather_than_populating_the_field() -> Bool  {
   string_contains(s: providers_body_refusal(body: authored_only_issuer_body), pattern: "is the authored name of a field whose declared wire key is `issuerUri`")
 }
 
-test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool {
+test fn both_issuer_spellings_refuse_as_ambiguous() -> Bool  {
   string_contains(s: providers_body_refusal(body: both_issuer_spellings_body), pattern: "the field's spelling is ambiguous")
 }

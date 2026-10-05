@@ -110,19 +110,19 @@ fn gew_total_blocking(source: String) -> Int {
   }
 }
 
-test fn a_generic_effectful_declaration_is_refused_at_parse() -> Bool {
+test fn a_generic_effectful_declaration_is_refused_at_parse() -> Bool  {
   gew_blocking_count(source: gew_generic_effectful_source, wanted: "ParseError") == 1
 }
 
 // THE ARM THAT GOES RED IF THE EFFECT ROW IS DISCARDED. `net.id` needs the `uses` binding, so a
 // zero here is a statement about the repair and not merely about the grammar.
-test fn an_effectful_declaration_binds_the_resource_it_declares() -> Bool {
+test fn an_effectful_declaration_binds_the_resource_it_declares() -> Bool  {
   gew_total_blocking(source: gew_plain_effectful_source) == 0
 }
 
 // GREATER THAN ZERO RATHER THAN AN EXACT COUNT, because a refused declaration head also orphans
 // whatever follows it and the cascade size is not the claim. What is claimed is that the removed
 // spelling is REFUSED: before the cut this same source compiled clean, so the arm discriminates.
-test fn the_removed_func_spelling_is_refused() -> Bool {
+test fn the_removed_func_spelling_is_refused() -> Bool  {
   gew_blocking_count(source: gew_legacy_func_source, wanted: "ParseError") > 0
 }

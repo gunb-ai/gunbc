@@ -174,7 +174,7 @@ fn unknowns_of(goal: HostHealthGoal, observed: HostHealthObserved) -> List<HostH
   }
 }
 
-test fn zero_to_zero_in_one_epoch_establishes_a_zero_delta() -> Bool {
+test fn zero_to_zero_in_one_epoch_establishes_a_zero_delta() -> Bool  {
   match counter_window_standing(left: snap(host: operator_host_srv2, boot: "b1", ce: 0, ue: 0), right: snap(host: operator_host_srv2, boot: "b1", ce: 0, ue: 0)) {
     CounterDeltaEstablished { corrected_delta, uncorrected_delta, opening_residue } =>
       corrected_delta == 0 && uncorrected_delta == 0 && opening_residue.corrected == 0
@@ -182,7 +182,7 @@ test fn zero_to_zero_in_one_epoch_establishes_a_zero_delta() -> Bool {
   }
 }
 
-test fn four_to_five_is_one_new_error_with_four_kept_as_residue() -> Bool {
+test fn four_to_five_is_one_new_error_with_four_kept_as_residue() -> Bool  {
   match counter_window_standing(left: snap(host: operator_host_srv2, boot: "b1", ce: 4, ue: 0), right: snap(host: operator_host_srv2, boot: "b1", ce: 5, ue: 0)) {
     CounterDeltaEstablished { corrected_delta, uncorrected_delta, opening_residue } =>
       corrected_delta == 1 && uncorrected_delta == 0 && opening_residue.corrected == 4
@@ -190,7 +190,7 @@ test fn four_to_five_is_one_new_error_with_four_kept_as_residue() -> Bool {
   }
 }
 
-test fn a_regression_a_reboot_or_a_new_endpoint_set_cannot_construct_a_delta() -> Bool {
+test fn a_regression_a_reboot_or_a_new_endpoint_set_cannot_construct_a_delta() -> Bool  {
   let regressed = match counter_window_standing(left: snap(host: operator_host_srv2, boot: "b1", ce: 5, ue: 0), right: snap(host: operator_host_srv2, boot: "b1", ce: 0, ue: 0)) {
     CounterWindowUnestablished { cause: CounterRegressed } => true
     _ => false
@@ -210,7 +210,7 @@ test fn a_regression_a_reboot_or_a_new_endpoint_set_cannot_construct_a_delta() -
 }
 
 // Without a green for SOME input, every red below could come from an assessment that never agrees.
-test fn a_clean_host_with_every_signal_established_is_satisfied() -> Bool {
+test fn a_clean_host_with_every_signal_established_is_satisfied() -> Bool  {
   match assess_host_health(goal: srv2_goal(baseline: no_baseline()), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)) {
     GoalSatisfied { evidence } => evidence.temperature_sensors_judged == 1 && evidence.fan_headers_judged == 10
     GoalDiverged { deviations: _ } => false
@@ -221,7 +221,7 @@ test fn a_clean_host_with_every_signal_established_is_satisfied() -> Bool {
 
 // srv1 read 255 corrected errors with no admitted baseline on 2026-09-18; this is that shape. The
 // window is stable and adds nothing, and the host still cannot be green.
-test fn a_positive_total_without_a_baseline_is_undispositioned_residue() -> Bool {
+test fn a_positive_total_without_a_baseline_is_undispositioned_residue() -> Bool  {
   let us = unknowns_of(goal: srv2_goal(baseline: no_baseline()), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 255, close_ce: 255), temperatures: srv2_soc_ok))
   count(us) == 1 && any(us, u => match u { HistoricalErrorResidueUndispositioned { residue } => residue.corrected == 255 _ => false })
 }
@@ -229,7 +229,7 @@ test fn a_positive_total_without_a_baseline_is_undispositioned_residue() -> Bool
 // The same residue measured against an admitted baseline that already carried it is green, and one
 // more error since that baseline is a divergence -- so the baseline is what separates history from
 // news, not the in-run window.
-test fn an_admitted_baseline_turns_residue_into_history_and_new_errors_into_divergence() -> Bool {
+test fn an_admitted_baseline_turns_residue_into_history_and_new_errors_into_divergence() -> Bool  {
   let baseline = PriorAdmittedBaseline { snapshot: snap(host: operator_host_srv2, boot: "b1", ce: 255, ue: 0) }
   let quiet = match assess_host_health(goal: srv2_goal(baseline: baseline), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 255, close_ce: 255), temperatures: srv2_soc_ok)) {
     GoalSatisfied { evidence } => evidence.against_baseline
@@ -242,7 +242,7 @@ test fn an_admitted_baseline_turns_residue_into_history_and_new_errors_into_dive
   quiet && one_more
 }
 
-test fn a_baseline_for_another_host_refuses() -> Bool {
+test fn a_baseline_for_another_host_refuses() -> Bool  {
   let foreign = PriorAdmittedBaseline { snapshot: snap(host: operator_host_srv1, boot: "b1", ce: 0, ue: 0) }
   match assess_host_health(goal: srv2_goal(baseline: foreign), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: srv2_soc_ok)) {
     GoalAssessmentRefused { cause: BaselineForAnotherHost { goal_host, baseline_host } } => baseline_host == operator_host_srv1
@@ -250,7 +250,7 @@ test fn a_baseline_for_another_host_refuses() -> Bool {
   }
 }
 
-test fn a_cleared_or_replaced_event_log_is_not_an_empty_delta() -> Bool {
+test fn a_cleared_or_replaced_event_log_is_not_an_empty_delta() -> Bool  {
   let observed = host_health_observed(
     host: operator_host_srv2,
     memory: SignalObserved { observed: window(host: operator_host_srv2, open_ce: 0, close_ce: 0) },
@@ -268,7 +268,7 @@ test fn a_cleared_or_replaced_event_log_is_not_an_empty_delta() -> Bool {
 // srv2's specimen reads zero 1-4 times in 20 on every chassis fan and is satisfied (the positive
 // control above); srv1's two degraded endpoints diverge. A lone zero is therefore not a failure,
 // and the host layer does not re-judge fans -- it carries fan_tach_health's deviations through.
-test fn the_host_layer_carries_the_fan_authoritys_two_srv1_degradations() -> Bool {
+test fn the_host_layer_carries_the_fan_authoritys_two_srv1_degradations() -> Bool  {
   let goal = host_health_goal(
     host: operator_host_srv1,
     fans: fan_tach_goal(expectation: srv1_fan_tach_expectation, minimum_rotating: rotating_floor),
@@ -289,7 +289,7 @@ test fn the_host_layer_carries_the_fan_authoritys_two_srv1_degradations() -> Boo
   }
 }
 
-test fn a_missing_expected_sensor_is_unknown_and_a_duplicate_refuses() -> Bool {
+test fn a_missing_expected_sensor_is_unknown_and_a_duplicate_refuses() -> Bool  {
   let missing = unknowns_of(goal: srv2_goal(baseline: no_baseline()), observed: srv2_observed(memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0), temperatures: []))
   let dup = match assess_host_health(goal: srv2_goal(baseline: no_baseline()), observed: srv2_observed(
     memory: window(host: operator_host_srv2, open_ce: 0, close_ce: 0),
@@ -308,7 +308,7 @@ fn judge_soc(samples: List<TemperatureSample>) -> HostHealthAssessment {
   )
 }
 
-test fn zero_celsius_unavailable_disabled_and_absent_remain_distinct() -> Bool {
+test fn zero_celsius_unavailable_disabled_and_absent_remain_distinct() -> Bool  {
   let zero_is_a_reading = match judge_soc(samples: [present(c: 0)]) { GoalSatisfied { evidence: _ } => true _ => false }
   let unavailable = match judge_soc(samples: [TemperatureReadingUnavailable]) {
     GoalIndeterminate { known_deviations: _, unknowns } => any(non_empty_to_list(unknowns), u => match u { TemperatureReadingNeverPresent { sensor: _, disabled } => !disabled _ => false })
@@ -323,7 +323,7 @@ test fn zero_celsius_unavailable_disabled_and_absent_remain_distinct() -> Bool {
   zero_is_a_reading && unavailable && disabled && absent
 }
 
-test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it() -> Bool {
+test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it() -> Bool  {
   let unestablished = host_health_goal(
     host: operator_host_srv2,
     fans: fan_tach_goal(expectation: srv2_fan_tach_expectation, minimum_rotating: rotating_floor),
@@ -340,7 +340,7 @@ test fn an_unestablished_limit_is_never_green_and_a_cited_one_diverges_above_it(
   never_green && exceeded
 }
 
-test fn one_unreachable_host_prevents_fleet_green_without_hiding_the_others() -> Bool {
+test fn one_unreachable_host_prevents_fleet_green_without_hiding_the_others() -> Bool  {
   let srv1_goal = host_health_goal(
     host: operator_host_srv1,
     fans: fan_tach_goal(expectation: srv1_fan_tach_expectation, minimum_rotating: rotating_floor),
@@ -368,7 +368,7 @@ test fn one_unreachable_host_prevents_fleet_green_without_hiding_the_others() ->
   both_inspected && verdict && srv2_still_green
 }
 
-test fn an_empty_roster_refuses_rather_than_reading_as_a_green_fleet() -> Bool {
+test fn an_empty_roster_refuses_rather_than_reading_as_a_green_fleet() -> Bool  {
   match assess_fleet_health(goals: [], observations: []).assessment {
     GoalAssessmentRefused { cause: EmptyRoster } => true
     _ => false
@@ -377,7 +377,7 @@ test fn an_empty_roster_refuses_rather_than_reading_as_a_green_fleet() -> Bool {
 
 // Corrected memory errors the BMC does not expose are a gap, never a pass and never an in-band read:
 // the goal does not shrink to what the surface happened to carry.
-test fn a_signal_the_bmc_does_not_expose_is_indeterminate_not_satisfied() -> Bool {
+test fn a_signal_the_bmc_does_not_expose_is_indeterminate_not_satisfied() -> Bool  {
   let observed = host_health_observed(
     host: operator_host_srv2,
     memory: SignalNotExposedOutOfBand { observed_surface: "Redfish Memory resources carry no MemoryMetrics" },
@@ -393,7 +393,7 @@ test fn a_signal_the_bmc_does_not_expose_is_indeterminate_not_satisfied() -> Boo
 // srv3's log on 2026-09-18 had 1200 entries of history and was appending corrected ECC records and
 // fan-threshold records. History is residue, an appended ECC record is a deviation, and an appended
 // record nothing classifies is an unknown -- three different answers from one window.
-test fn event_history_is_residue_appended_ecc_diverges_and_the_rest_is_unknown() -> Bool {
+test fn event_history_is_residue_appended_ecc_diverges_and_the_rest_is_unknown() -> Bool  {
   let observed = host_health_observed(
     host: operator_host_srv2,
     memory: SignalObserved { observed: window(host: operator_host_srv2, open_ce: 0, close_ce: 0) },
@@ -416,7 +416,7 @@ test fn event_history_is_residue_appended_ecc_diverges_and_the_rest_is_unknown()
 
 // An assert diverges and its deassert is the recovery; a flapping sensor is one aggregated deviation
 // with a count; the ECC detail record adds nothing to the error it accompanies.
-test fn asserts_aggregate_per_subject_and_deasserts_and_details_add_nothing() -> Bool {
+test fn asserts_aggregate_per_subject_and_deasserts_and_details_add_nothing() -> Bool  {
   let observed = host_health_observed(
     host: operator_host_srv2,
     memory: SignalObserved { observed: window(host: operator_host_srv2, open_ce: 0, close_ce: 0) },

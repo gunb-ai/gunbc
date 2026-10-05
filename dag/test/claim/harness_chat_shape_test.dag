@@ -34,7 +34,7 @@ fn fixture_completion() -> String {
   "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":\"Listing now.\",\"reasoning_content\":\"The user wants files, so list them.\",\"tool_calls\":[{\"id\":\"chatcmpl-tool-1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":365,\"completion_tokens\":41}}"
 }
 
-test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
+test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool  {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: fixture_completion()) {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason, usage } =>
@@ -48,7 +48,7 @@ test fn a_chat_completion_decodes_to_thinking_text_and_tool_use() -> Bool {
 
 // THE ARGUMENTS STRING IS PARSED INTO THE SAME INPUT SHAPE THE MESSAGES DECODER DELIVERS, so the
 // tool dispatcher reads command off one JsonValue regardless of wire.
-test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool {
+test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool  {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: fixture_completion()) {
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
       match blocks.last() {
@@ -60,7 +60,7 @@ test fn tool_call_arguments_are_parsed_from_their_json_string() -> Bool {
 }
 
 // AN UNRECOGNISED finish_reason REFUSES rather than reading as completion.
-test fn an_unknown_finish_reason_is_unreadable() -> Bool {
+test fn an_unknown_finish_reason_is_unreadable() -> Bool  {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"banana\",\"message\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}") {
     HarnessResponseUnreadable { cause: c } => c.contains("banana")
     HarnessResponseParsed { blocks: _, stop_reason: _, usage: _ } => false
@@ -68,7 +68,7 @@ test fn an_unknown_finish_reason_is_unreadable() -> Bool {
 }
 
 // THE REPLAY CARRIES REASONING AS reasoning_content AND THE CALL WITH ITS ARGUMENTS RE-SERIALIZED.
-test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
+test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool  {
   let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: OpenAiChatCompletionsShape, blocks: [
     WireThinkingBlock { thinking: "think first" },
     WireTextBlock { text: "Listing now." },
@@ -81,13 +81,13 @@ test fn the_chat_replay_carries_reasoning_content_and_tool_calls() -> Bool {
 
 // THE MESSAGES-SHAPE REPLAY IS UNCHANGED BY THE NEW REALIZATION: a thinking block still rides as a
 // thinking block, and no reasoning_content key appears.
-test fn the_messages_replay_is_untouched() -> Bool {
+test fn the_messages_replay_is_untouched() -> Bool  {
   let wire = serialize_json(v: harness_assistant_message_json(unit: DeepseekV4FlashOnVllm, shape: AnthropicMessagesShape, blocks: [WireThinkingBlock { thinking: "think first" }]))
   wire.contains("\"type\": \"thinking\"") && !wire.contains("reasoning_content")
 }
 
 // TOOL RESULTS ARE role=tool MESSAGES KEYED BY THE CALL ID, FOLLOWED BY THE BUDGET NOTICE.
-test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool {
+test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool  {
   let msgs = harness_tool_result_messages_json(
     shape: OpenAiChatCompletionsShape,
     results: [HarnessToolResult { tool_use_id: "chatcmpl-tool-1", text: "a b c\n[exit 0]", is_error: false }],
@@ -99,7 +99,7 @@ test fn chat_tool_results_are_tool_messages_then_the_notice() -> Bool {
     && (match msgs.last() { Present { value: m } => serialize_json(v: m).contains("\"role\": \"user\"") && serialize_json(v: m).contains("7")  Absent => false })
 }
 
-test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool {
+test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool  {
   list_length(items: harness_tool_result_messages_json(
     shape: AnthropicMessagesShape,
     results: [HarnessToolResult { tool_use_id: "t1", text: "x", is_error: false }],
@@ -108,12 +108,12 @@ test fn the_messages_shape_still_sends_one_user_message_of_results() -> Bool {
   )) == 1
 }
 
-test fn the_brief_is_a_plain_string_on_the_chat_shape() -> Bool {
+test fn the_brief_is_a_plain_string_on_the_chat_shape() -> Bool  {
   serialize_json(v: harness_user_text_message_json(shape: OpenAiChatCompletionsShape, text: "do it")).contains("\"content\": \"do it\"")
     && serialize_json(v: harness_user_text_message_json(shape: AnthropicMessagesShape, text: "do it")).contains("\"type\": \"text\"")
 }
 
-test fn each_shape_posts_to_its_own_path() -> Bool {
+test fn each_shape_posts_to_its_own_path() -> Bool  {
   harness_backend_path(shape: OpenAiChatCompletionsShape) == "/v1/chat/completions"
     && harness_backend_path(shape: AnthropicMessagesShape) == "/v1/messages"
 }
@@ -168,7 +168,7 @@ fn t_addresses() -> List<String> {
 // on a signed row -- and what it asserts is still what its name says: the routes a turn may be
 // offered to derive from the serving heads through the fleet topology, rather than being spelled.
 // What changed underneath is WHICH authority supplies the heads.
-test fn the_replica_roster_derives_from_the_pair_heads() -> Bool {
+test fn the_replica_roster_derives_from_the_pair_heads() -> Bool  {
   count(t_endpoints()) == count(serving_enrolled_groups)
     && count(t_endpoints()) > 0
     && all(t_addresses(), a => any(t_head_addresses(), h => h == a))
@@ -216,17 +216,17 @@ fn chat_decode_cause(body: String) -> String {
   }
 }
 
-test fn unparseable_tool_call_arguments_refuse_rather_than_decoding_to_an_empty_object() -> Bool {
+test fn unparseable_tool_call_arguments_refuse_rather_than_decoding_to_an_empty_object() -> Bool  {
   let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \"}}"))
   c.contains("run_command") && c.contains("not a JSON document")
 }
 
-test fn a_tool_call_without_arguments_refuses_rather_than_dispatching_an_empty_call() -> Bool {
+test fn a_tool_call_without_arguments_refuses_rather_than_dispatching_an_empty_call() -> Bool  {
   let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":\"c1\",\"function\":{\"name\":\"run_command\"}}"))
   c.contains("run_command") && c.contains("no arguments member")
 }
 
-test fn a_tool_call_without_an_id_refuses_rather_than_addressing_its_result_to_the_empty_string() -> Bool {
+test fn a_tool_call_without_an_id_refuses_rather_than_addressing_its_result_to_the_empty_string() -> Bool  {
   let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}"))
   c.contains("run_command") && c.contains("no string id member")
 }
@@ -248,21 +248,21 @@ fn usage_is_unavailable_naming(usage: HarnessUsageRead, fragment: String) -> Boo
   }
 }
 
-test fn a_completion_without_a_usage_object_reads_as_unavailable_not_as_zero() -> Bool {
+test fn a_completion_without_a_usage_object_reads_as_unavailable_not_as_zero() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}]}"),
     fragment: "no usage object",
   )
 }
 
-test fn a_usage_member_that_is_not_a_number_reads_as_unavailable_not_as_zero() -> Bool {
+test fn a_usage_member_that_is_not_a_number_reads_as_unavailable_not_as_zero() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":\"many\",\"completion_tokens\":2}}"),
     fragment: "prompt_tokens",
   )
 }
 
-test fn a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a_measurement() -> Bool {
+test fn a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a_measurement() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":7}}"),
     fragment: "completion_tokens",
@@ -273,7 +273,7 @@ test fn a_usage_object_missing_one_count_reads_as_unavailable_rather_than_half_a
 // happen somewhere in the decoder; this red holds it on the refusing side of the sign check, because
 // the tempting spelling -- take the magnitude and move on -- turns "-3 tokens" into "3 tokens",
 // which is this module's own failure class one field over.
-test fn a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude() -> Bool {
+test fn a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":-3,\"completion_tokens\":2}}"),
     fragment: "negative",
@@ -286,19 +286,19 @@ test fn a_negative_usage_count_reads_as_unavailable_rather_than_as_its_magnitude
 // so a response carrying `tool_calls` twice decoded to zero tool calls -- which harness_turn_round
 // reads as "the model stopped talking", writes turn.completed for, returns TurnProviderStopped
 // from, and exits ZERO on. The model's commands were dropped and the run reported success.
-test fn a_duplicated_tool_calls_member_refuses_rather_than_reading_as_no_tool_calls() -> Bool {
+test fn a_duplicated_tool_calls_member_refuses_rather_than_reading_as_no_tool_calls() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"content\":\"x\",\"tool_calls\":[{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}],\"tool_calls\":[]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("more than once")
 }
 
-test fn a_duplicated_content_member_refuses_rather_than_dropping_the_message() -> Bool {
+test fn a_duplicated_content_member_refuses_rather_than_dropping_the_message() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"first\",\"content\":\"second\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("content") && c.contains("more than once")
 }
 
 // A MESSAGE THAT IS NOT AN OBJECT REFUSES. The lookup reports not-an-object as its own outcome and
 // the decoder must not read it as "this message has no content and no calls".
-test fn a_message_that_is_not_an_object_refuses() -> Bool {
+test fn a_message_that_is_not_an_object_refuses() -> Bool  {
   chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":\"just a string\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") != ""
 }
 
@@ -311,12 +311,12 @@ fn messages_decode_cause(body: String) -> String {
   }
 }
 
-test fn a_messages_tool_use_block_without_input_refuses() -> Bool {
+test fn a_messages_tool_use_block_without_input_refuses() -> Bool  {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("run_command") && c.contains("no input member")
 }
 
-test fn a_messages_tool_use_block_without_an_id_refuses() -> Bool {
+test fn a_messages_tool_use_block_without_an_id_refuses() -> Bool  {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"name\":\"run_command\",\"input\":{}}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("no string id member")
 }
@@ -324,7 +324,7 @@ test fn a_messages_tool_use_block_without_an_id_refuses() -> Bool {
 // THE POSITIVE CONTROL FOR THE MESSAGES SHAPE: a well-formed body still decodes, carries its
 // tool_use input, and reads both counts. Without this the reds above would be satisfied by a decoder
 // that refused everything.
-test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts() -> Bool {
+test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts() -> Bool  {
   match harness_decode_response(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\",\"input\":{\"command\":\"ls\"}}],\"usage\":{\"input_tokens\":11,\"output_tokens\":22}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage } =>
@@ -341,7 +341,7 @@ test fn a_well_formed_messages_response_still_decodes_with_its_input_and_counts(
 // AN UNKNOWN BLOCK KIND IS STILL SKIPPED RATHER THAN REFUSED, which is the boundary this repair
 // deliberately did not cross: a vendor adding a block type we do not model is not a malformed
 // response. Without this control the repair would read as "refuse anything unfamiliar".
-test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool {
+test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool  {
   match harness_decode_response(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"server_tool_use\",\"id\":\"s1\"},{\"type\":\"text\",\"text\":\"hi\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } => list_length(items: blocks) == 1
@@ -349,7 +349,7 @@ test fn an_unmodelled_block_kind_is_skipped_not_refused() -> Bool {
 }
 
 // AND THE MESSAGES SHAPE TOO: a duplicated tool_use input is not an absent one.
-test fn a_duplicated_messages_tool_use_input_refuses() -> Bool {
+test fn a_duplicated_messages_tool_use_input_refuses() -> Bool  {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"run_command\",\"input\":{},\"input\":{}}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("run_command") && c.contains("twice")
 }
@@ -362,7 +362,7 @@ test fn a_duplicated_messages_tool_use_input_refuses() -> Bool {
 // present-null is its own outcome rather than an arm of malformed. The duplicate reds above are the
 // discriminating other half; both must hold, which is why the pair is authored together -- neither
 // is enrolled beyond this module's own change-selected runs.
-test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool {
+test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool  {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{\\\"command\\\": \\\"ls\\\"}\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
@@ -375,7 +375,7 @@ test fn a_null_content_beside_tool_calls_still_decodes_the_calls() -> Bool {
   }
 }
 
-test fn a_null_reasoning_field_decodes_rather_than_refusing() -> Bool {
+test fn a_null_reasoning_field_decodes_rather_than_refusing() -> Bool  {
   match harness_decode_chat_completion(unit: DeepseekV4FlashOnVllm, body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"reasoning_content\":null,\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
@@ -388,14 +388,14 @@ test fn a_null_reasoning_field_decodes_rather_than_refusing() -> Bool {
 // at a time. Without this red the arm above would read as "null is always fine", which would put
 // back the fabrication this PR removed one member over -- a tool_call whose id is null is just as
 // unaddressable as one with no id at all.
-test fn a_null_tool_call_id_still_refuses() -> Bool {
+test fn a_null_tool_call_id_still_refuses() -> Bool  {
   let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":null,\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"}}"))
   c.contains("run_command") && c.contains("null")
 }
 
 // A DUPLICATED content MEMBER STILL REFUSES EVEN WHEN ONE OF THE TWO IS NULL: present-null is an
 // answer, and two answers are still unknowable.
-test fn a_duplicated_content_member_with_a_null_still_refuses() -> Bool {
+test fn a_duplicated_content_member_with_a_null_still_refuses() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":null,\"content\":\"second\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("content") && c.contains("more than once")
 }
@@ -408,21 +408,21 @@ test fn a_duplicated_content_member_with_a_null_still_refuses() -> Bool {
 // is read by a person deciding what to fix, so "missing" and "sent twice" send them to different
 // places. These reds assert the WORD the arm exists to say, which is what makes reinstating the
 // wildcard fail here rather than pass quietly with a plausible message.
-test fn a_duplicated_usage_count_says_duplicated_rather_than_missing() -> Bool {
+test fn a_duplicated_usage_count_says_duplicated_rather_than_missing() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":7,\"prompt_tokens\":9,\"completion_tokens\":2}}"),
     fragment: "duplicated",
   )
 }
 
-test fn a_usage_member_that_is_not_an_object_says_so_rather_than_reading_as_a_missing_count() -> Bool {
+test fn a_usage_member_that_is_not_an_object_says_so_rather_than_reading_as_a_missing_count() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":\"365 in, 41 out\"}"),
     fragment: "not a JSON object",
   )
 }
 
-test fn a_duplicated_usage_object_says_so_rather_than_reading_as_no_usage() -> Bool {
+test fn a_duplicated_usage_object_says_so_rather_than_reading_as_no_usage() -> Bool  {
   usage_is_unavailable_naming(
     usage: chat_usage_of(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"done\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2},\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}"),
     fragment: "more than once",
@@ -436,19 +436,19 @@ test fn a_duplicated_usage_object_says_so_rather_than_reading_as_no_usage() -> B
 // element is unreadable still refuses, and the cause names that element rather than the readable
 // one beside it. Without them the fold could report any refusal, or the last, and every existing
 // red would still pass.
-test fn a_readable_call_before_an_unreadable_one_still_refuses_and_names_the_bad_one() -> Bool {
+test fn a_readable_call_before_an_unreadable_one_still_refuses_and_names_the_bad_one() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"tool_calls\",\"message\":{\"content\":\"x\",\"tool_calls\":[{\"id\":\"c1\",\"function\":{\"name\":\"first_tool\",\"arguments\":\"{}\"}},{\"id\":\"c2\",\"function\":{\"name\":\"second_tool\"}}]}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("second_tool") && !c.contains("first_tool")
 }
 
-test fn the_earlier_of_two_unreadable_blocks_is_the_one_reported() -> Bool {
+test fn the_earlier_of_two_unreadable_blocks_is_the_one_reported() -> Bool  {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"earlier_tool\"},{\"type\":\"tool_use\",\"id\":\"t2\",\"name\":\"later_tool\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("earlier_tool") && !c.contains("later_tool")
 }
 
 // AND THE READ BLOCKS KEEP WIRE ORDER ACROSS A SKIPPED ONE, which the flat_map has to preserve: an
 // unmodelled block between two modelled ones must vanish without reordering its neighbours.
-test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> Bool {
+test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> Bool  {
   match harness_decode_response(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"first\"},{\"type\":\"server_tool_use\",\"id\":\"s1\"},{\"type\":\"text\",\"text\":\"second\"}],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}") {
     HarnessResponseUnreadable { cause: _ } => false
     HarnessResponseParsed { blocks, stop_reason: _, usage: _ } =>
@@ -464,31 +464,31 @@ test fn an_unmodelled_block_between_two_others_vanishes_without_reordering() -> 
 // a reader looking for a member the sender in fact sent. Each red below asserts the WORD its arm
 // exists to say and that the misleading word is absent, which is what makes reinstating a wildcard
 // fail here rather than pass with a plausible sentence.
-test fn a_duplicated_function_member_says_duplicated_not_missing() -> Bool {
+test fn a_duplicated_function_member_says_duplicated_not_missing() -> Bool  {
   let c = chat_decode_cause(body: chat_with_tool_call(call: "{\"id\":\"c1\",\"function\":{\"name\":\"run_command\",\"arguments\":\"{}\"},\"function\":{\"name\":\"other\",\"arguments\":\"{}\"}}"))
   c.contains("more than once") && !c.contains("carries no function member")
 }
 
-test fn a_duplicated_message_member_says_duplicated_not_missing() -> Bool {
+test fn a_duplicated_message_member_says_duplicated_not_missing() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"a\"},\"message\":{\"content\":\"b\"}}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("more than once") && !c.contains("carries no message member")
 }
 
-test fn a_duplicated_choices_member_says_duplicated_not_missing() -> Bool {
+test fn a_duplicated_choices_member_says_duplicated_not_missing() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":[{\"finish_reason\":\"stop\",\"message\":{\"content\":\"a\"}}],\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("more than once") && !c.contains("carries no choices array")
 }
 
 // AND THE MESSAGES SHAPE'S content, WHICH IS THE SHARPEST OF THE FOUR: a duplicated content member
 // there decided what the model produced this round, and the old sentence said it produced nothing.
-test fn a_duplicated_messages_content_member_says_duplicated_not_missing() -> Bool {
+test fn a_duplicated_messages_content_member_says_duplicated_not_missing() -> Bool  {
   let c = messages_decode_cause(body: "{\"stop_reason\":\"end_turn\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}],\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":2}}")
   c.contains("more than once") && !c.contains("carries no content member")
 }
 
 // FOUND-BUT-NOT-AN-ARRAY IS ITS OWN FACT, separate from the lookup's. It used to fall to the same
 // wildcard and be reported as a missing choices array.
-test fn a_choices_member_that_is_not_an_array_says_so() -> Bool {
+test fn a_choices_member_that_is_not_an_array_says_so() -> Bool  {
   let c = chat_decode_cause(body: "{\"choices\":\"one\",\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":2}}")
   c.contains("not an array") && !c.contains("carries no choices array")
 }
