@@ -100,7 +100,9 @@ fn http_client_get_unix_socket_argv(socket: NonEmptyStr, url: NonEmptyStr, max_t
 // credential carried exactly as GetFollowRedirectsBoundedWithHeaderFile carries it: one header line in
 // a caller-owned file read by curl -H @file, so the bearer is never an argv word
 // (gunbc.credential_argv_exposure) and the body still rides --data @{file}. --fail-with-body keeps an
-// error status's body, which is where a hosted API's typed refusal lives.
+// error status's body, which is where a hosted API's typed refusal lives. The connect deadline is its
+// own input because a caller admitting a send against a quota window needs the request to reach the
+// upstream within a bound it chose; the whole-request deadline bounds the answer, which may be long.
 // PostStdinWithinUnixSocket, THE SAME BOUNDED POST OVER A UNIX SOCKET (curl --unix-socket, curl(1)):
 // the URL still names the scheme, authority and path the server routes on, but the connection is
 // made to the socket file and the kernel attests the caller to the server. The exit codes are
@@ -316,13 +318,14 @@ service http.Client {
 
   operation PostJsonFromFileWithHeaderFile {
     requires Network
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr, header_file: NonEmptyStr, max_seconds: NonEmptyStr }
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr, header_file: NonEmptyStr, connect_seconds: NonEmptyStr, max_seconds: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
       argv: [
         "curl",
         "--fail-with-body",
         "-sS",
+        "--connect-timeout", "{connect_seconds}",
         "--max-time", "{max_seconds}",
         "-X", "POST",
         "{url}",

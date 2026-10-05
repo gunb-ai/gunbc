@@ -14,7 +14,7 @@ import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostS
 import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.fabric_event_log {
   SeatAcquisition, SeatGranted, SeatFull, SeatContended, SeatAcquireRefused, fabric_seat_acquire, seat_acquisition_wire,
-  PoolEventAppend, PoolEventAppended, PoolEventContended, PoolEventAppendRefused, fabric_pool_event_append, pool_event_append_wire,
+  PoolTransition, PoolTransitionAppended, fabric_pool_transition, pool_transition_wire,
 }
 
 // A CALLER LEASES UPSTREAM QUOTA BEFORE IT SPENDS IT. The lease holds the calls it is about to
@@ -27,7 +27,7 @@ import gunbc.fabric_event_log {
 // expiry frees is the unspent remainder.
 
 type QuotaLease
-  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricStorageBinding }
+  = QuotaLeased { grant: LeaseGrant, partition: PartitionId, store: FabricStorageBinding, limit: UpstreamRateLimit }
   | QuotaFull { wire: String }
   | QuotaLeaseRefused { detail: String }
 
@@ -79,7 +79,7 @@ fn fabric_quota_lease_for(short_hostname: String, limit: UpstreamRateLimit, amou
             request: SeatRequest { reference: join([actor as String, "@", to_string(now)], "") as NonEmptyStr, amount: Measure { count: amount }, at: now, term_seconds: term_seconds },
             policy: quota_policy(term_seconds: term_seconds), attempts: 3, budget: 4096,
           ) {
-            SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store }
+            SeatGranted { grant: g, generation: _, attempts_used: _ } => QuotaLeased { grant: g, partition: partition, store: store, limit: limit }
             SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
             other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
           }
@@ -111,12 +111,12 @@ fn fabric_quota_observe_upstream(short_hostname: String, limit: UpstreamRateLimi
             Absent => QuotaObservationRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
             Present { value: term } => {
               let partition = quota_partition(limit: limit)
-              match fabric_pool_event_append(
-                store: store, partition: partition, actor: actor, at: now,
-                payload: PoolUpstreamObserved { remaining: remaining, term_seconds: term }, attempts: 3,
+              match fabric_pool_transition(
+                store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor, at: now,
+                payload: fn(identity) { PoolUpstreamObserved { remaining: remaining, term_seconds: term } }, attempts: 3, budget: 4096,
               ) {
-                PoolEventAppended { id: _ } => QuotaUpstreamRecorded { partition: partition, remaining: remaining }
-                other => QuotaObservationRefused { detail: pool_event_append_wire(a: other) }
+                PoolTransitionAppended { id: _ } => QuotaUpstreamRecorded { partition: partition, remaining: remaining }
+                other => QuotaObservationRefused { detail: pool_transition_wire(t: other) }
               }
             }
           }
@@ -128,24 +128,26 @@ type QuotaSettle
   = QuotaSettled { partition: PartitionId, actual: Nat }
   | QuotaSettleRefused { detail: String }
 
-// SETTLEMENT IS ONE PARTITION APPEND, and the observe/append/retry loop it needs is the carrier's
-// (gunbc.fabric_event_log fabric_pool_event_append), not a second copy here. It used to be a copy:
-// this module held the only one until a compute reservation needed to release, at which point the
-// loop would have existed twice and been free to disagree with itself about a contended head.
+// SETTLEMENT IS ONE CHECKED PARTITION TRANSITION (gunbc.fabric_event_log fabric_pool_transition): the
+// partition is folded and the settlement applied to it before anything is written, under the same
+// compare-and-set the acquisition used. It was an unchecked append, which reported success for a
+// settlement whose lease had already lapsed -- an event the fold refuses on replay, leaving the whole
+// partition unfoldable while the caller believed it had settled. The lease carries its own limit so the
+// settlement folds against the pool the lease was granted from.
 fn fabric_quota_settle(lease: QuotaLease, actual: Nat) -> QuotaSettle {
   match lease {
     QuotaFull { wire: w } => QuotaSettleRefused { detail: join(["nothing to settle: ", w], "") }
     QuotaLeaseRefused { detail: d } => QuotaSettleRefused { detail: join(["nothing to settle: ", d], "") }
-    QuotaLeased { grant: g, partition: p, store: store } =>
+    QuotaLeased { grant: g, partition: p, store: store, limit: limit } =>
       match now_epoch_seconds() {
         Absent => QuotaSettleRefused { detail: "the clock could not be read as epoch seconds" }
         Present { value: now } =>
-          match fabric_pool_event_append(
-            store: store, partition: p, actor: g.reference, at: now,
-            payload: PoolSettled { reference: g.reference, actual: actual }, attempts: 3,
+          match fabric_pool_transition(
+            store: store, partition: p, root: quota_root_pool(limit: limit), actor: g.reference, at: now,
+            payload: fn(identity) { PoolSettled { reference: g.reference, actual: actual } }, attempts: 3, budget: 4096,
           ) {
-            PoolEventAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
-            other => QuotaSettleRefused { detail: pool_event_append_wire(a: other) }
+            PoolTransitionAppended { id: _ } => QuotaSettled { partition: p, actual: actual }
+            other => QuotaSettleRefused { detail: pool_transition_wire(t: other) }
           }
       }
   }
@@ -153,7 +155,7 @@ fn fabric_quota_settle(lease: QuotaLease, actual: Nat) -> QuotaSettle {
 
 fn quota_lease_wire(l: QuotaLease) -> String {
   match l {
-    QuotaLeased { grant: g, partition: p, store: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
+    QuotaLeased { grant: g, partition: p, store: _, limit: _ } => join(["leased ", g.reference as String, " on ", p as String, " fence=", g.fence.grant as String, "@", to_string(g.fence.generation), " expires_at=", to_string(g.expires_at)], "")
     QuotaFull { wire: w } => join(["full ", w], "")
     QuotaLeaseRefused { detail: d } => join(["refused ", d], "")
   }

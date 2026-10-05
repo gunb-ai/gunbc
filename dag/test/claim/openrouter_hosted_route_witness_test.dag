@@ -11,7 +11,7 @@ import extdeps.openrouter.openrouter {
   openrouter_decode_key_read, OpenRouterKeyDecoded, OpenRouterKeyUndecodable,
   KeySpendCappedAtZero, KeySpendUncapped, KeySpendCappedAbove,
   openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
-  CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day,
+  CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
   EffortHigh, EffortMedium,
 }
 import gunbc.harness.harness_reasoning_wire {
@@ -23,12 +23,15 @@ import gunbc.harness.harness_hosted_route {
   hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
   harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
   hosted_key_refusal, hosted_day_remaining,
+  hosted_send_admission, HostedSendAdmitted, HostedSendAdmissionLapsed, HostedSendAdmissionUnread, hosted_send_connect_allowance,
 }
+import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
+import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
 import gunbc.fabric_quota { quota_term_to_window_end }
 import product.capacity.quota { quota_root_pool }
 import product.capacity.pool {
   Pool, pool_acquire, pool_settle, observe_upstream_remaining, PoolOutcome, PoolAdvanced, PoolRefused,
-  LeaseCrossesLapse, LedgerRefusal, pool_reading_at, PoolRead, PoolReadingRefused,
+  LeaseCrossesLapse, LeaseAlreadyLapsed, LedgerRefusal, pool_reading_at, PoolRead, PoolReadingRefused,
 }
 import std.measure { Measure, Count, One, second_count }
 import extdeps.api_rate_limit { UpstreamRateLimit }
@@ -57,6 +60,7 @@ fn w_leased(reference: String) -> QuotaLease {
     },
     partition: join(["quota-openrouter-", reference], "") as PartitionId,
     store: FabricStorageServed { endpoint: "witness" as NonEmptyStr },
+    limit: openrouter_free_models_per_minute,
   }
 }
 
@@ -64,7 +68,7 @@ fn w_leased(reference: String) -> QuotaLease {
 // lease is named as owed back -- a refusal that kept it would hold a slot for a request never sent.
 test fn hosted_round_refuses_full_when_the_day_pool_is_full_and_returns_the_minute_lease() -> Bool {
   match hosted_round_decision(minute: w_leased(reference: "m"), day: Present { value: QuotaFull { wire: "openrouter-free-models-day: 1000/1000" } }) {
-    RoundRefusedFull { wire: w, minute_to_return: Present { value: QuotaLeased { grant: g, partition: _, store: _ } } } =>
+    RoundRefusedFull { wire: w, minute_to_return: Present { value: QuotaLeased { grant: g, partition: _, store: _, limit: _ } } } =>
       w.contains("free-models-day") && (g.reference as String) == "m"
     RoundRefusedFull { wire: _, minute_to_return: _ } => false
     RoundBothLeased { minute: _, day: _ } => false
@@ -303,7 +307,7 @@ fn w_observed(pool: Pool<Count, One>, remaining: Nat, at: Int) -> Pool<Count, On
   match quota_term_to_window_end(limit: day, at: at) {
     Absent => none
     Present { value: term } =>
-      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: term) {
+      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: term, reading: join(["witness@", to_string(at)], "") as NonEmptyStr) {
         PoolAdvanced { pool: p } => Present { value: p }
         PoolRefused { refusal: _ } => none
       }
@@ -347,4 +351,94 @@ test fn a_partial_upstream_remainder_is_the_headroom_and_later_readings_never_re
             })
       }
   }
+}
+
+// ── A TRANSITION IS CHECKED AGAINST THE FOLDED POOL BEFORE IT IS WRITTEN ─────────────────────────
+//
+// gunbc.fabric_event_log fabric_pool_transition appends only what product.capacity.pool_events
+// pool_apply_payload advances on the folded pool -- the same function replay applies. These supply the
+// folded pool and ask that function, which is the decision the carrier makes before any write.
+fn w_env(id: String, at: Int, payload: PoolEvent) -> ChainEnvelope<PoolEvent> {
+  ChainEnvelope {
+    id: id as EventId,
+    event: ChainEvent { partition: "quota-openrouter-free-models-minute" as PartitionId, parent: none, recorded_at: at, actor: "witness" as NonEmptyStr, payload: payload },
+  }
+}
+
+// RED: the minute lease is taken one second before rollover (its term runs to the window end) and the
+// settlement arrives after it. The transition is refused -- so the checked carrier writes nothing and
+// reports no settlement -- and the CONTROL shows why that matters: the same settlement appended blind
+// makes the whole partition unfoldable.
+test fn a_settlement_after_rollover_is_refused_before_it_could_poison_the_partition() -> Bool {
+  let minute = openrouter_free_models_per_minute
+  let at = w_day_start + 59
+  match quota_term_to_window_end(limit: minute, at: at) {
+    Absent => false
+    Present { value: term } => {
+      let acquired = w_env(id: "e1", at: at, payload: PoolAcquired { reference: "charge" as NonEmptyStr, amount: 1, term_seconds: term })
+      match pool_fold(root: quota_root_pool(limit: minute), oldest_first: [acquired]) {
+        PoolFoldRefused { at_event: _, wire: _ } => false
+        PoolFolded { pool: p, generation: _ } =>
+          (match pool_apply_payload(pool: p, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 }, at: w_day_start + 60, identity: "pending:e1" as NonEmptyStr) {
+            PoolRefused { refusal: LeaseAlreadyLapsed { reference: _, lapsed_at: _, at: _ } } => true
+            PoolRefused { refusal: _ } => false
+            PoolAdvanced { pool: _ } => false
+          })
+            && (match pool_apply_payload(pool: p, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 }, at: at, identity: "pending:e1" as NonEmptyStr) {
+              PoolAdvanced { pool: _ } => true
+              PoolRefused { refusal: _ } => false
+            })
+            && (match pool_fold(root: quota_root_pool(limit: minute), oldest_first: [acquired, w_env(id: "e2", at: w_day_start + 60, payload: PoolSettled { reference: "charge" as NonEmptyStr, actual: 1 })]) {
+              PoolFoldRefused { at_event: e, wire: _ } => (e as String) == "e2"
+              PoolFolded { pool: _, generation: _ } => false
+            })
+      }
+    }
+  }
+}
+
+// TWO DECREASING UPSTREAM READINGS IN ONE SECOND STAY REPLAYABLE: each hold is named by its own event,
+// so the second is not a duplicate of the first, and the pool ends at the lower reading.
+test fn two_decreasing_upstream_readings_in_one_second_fold_to_the_lower() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  let at = w_day_start + 100
+  match quota_term_to_window_end(limit: day, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_fold(root: quota_root_pool(limit: day), oldest_first: [
+        w_env(id: "o1", at: at, payload: PoolUpstreamObserved { remaining: 3, term_seconds: term }),
+        w_env(id: "o2", at: at, payload: PoolUpstreamObserved { remaining: 1, term_seconds: term }),
+      ]) {
+        PoolFoldRefused { at_event: _, wire: _ } => false
+        PoolFolded { pool: p, generation: g } => g == 2 && w_day_headroom(pool: p, at: at) == 1
+      }
+  }
+}
+
+// ── THE SEND IS ADMITTED AGAINST THE CHARGE'S DEADLINE ─────────────────────────────────────────
+
+// RED: a valid charge whose window has passed before the transport is reached admits no send.
+test fn a_send_past_its_charge_window_is_not_admitted() -> Bool {
+  let by = w_day_start + 60
+  (match hosted_send_admission(send_by: by, now: by + 1, allowance: hosted_send_connect_allowance) {
+    HostedSendAdmissionLapsed { send_by: b, now: n } => b == by && n == by + 1
+    HostedSendAdmitted => false
+    HostedSendAdmissionUnread { detail: _ } => false
+  })
+    && (match hosted_send_admission(send_by: by, now: by - 2, allowance: hosted_send_connect_allowance) {
+      HostedSendAdmissionLapsed { send_by: _, now: _ } => true
+      HostedSendAdmitted => false
+      HostedSendAdmissionUnread { detail: _ } => false
+    })
+}
+
+// CONTROL: a send that leaves inside its window is admitted however long its answer takes -- the
+// admission never consults the response deadline, which is far longer than any window.
+test fn a_send_inside_its_window_is_admitted_whatever_the_response_deadline() -> Bool {
+  second_count(s: harness_request_deadline) > 60
+    && (match hosted_send_admission(send_by: w_day_start + 60, now: w_day_start + 10, allowance: hosted_send_connect_allowance) {
+      HostedSendAdmitted => true
+      HostedSendAdmissionLapsed { send_by: _, now: _ } => false
+      HostedSendAdmissionUnread { detail: _ } => false
+    })
 }
