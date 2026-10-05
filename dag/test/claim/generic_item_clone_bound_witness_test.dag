@@ -465,3 +465,57 @@ test fn set_struct_hand_written_impls_carry_header_bounds() -> Bool {
 test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
   w_set_coproduct_hand_written_impls_stay_at_the_bare_header()
 }
+
+// A GENERIC FN STORED AS A FUNCTION VALUE FORWARDS ITS BOUND TO THE FN THAT STORES IT. Storing
+// `hdr_scope_of` into an arrow field instantiates it at the storing fn's own generic, so the
+// callee's `T: Clone` is owed there -- the std.key_relation key_relation_global shape. The callee's
+// generic is T, the record's slot is Subject and the wrapper's is S: inference types the reference
+// with the callee's uninstantiated signature, so a join read from the reference would look for a
+// wrapper generic named T, one read from the declaration's field for one named Subject, and
+// either would bound nothing. hdr_keying_via is the hop that bound manufactures: it stores
+// nothing and forwards its own arrow into hdr_keying, so it owes the bound for A.
+//
+// THE CONVERSE ARMS: K reaches no bounded callee generic and gains no Clone, and hdr_keying_plain
+// stores only the values it was handed -- no generic fn is instantiated -- so its S stays without
+// Clone. Without them, "bound every generic of a fn that builds an arrow record" passes the
+// positive arm. The native half is gunbc.instruments.native_emission_controls (fn_value_* cases).
+data hdr_fn_value_fixture: String = "module probe_hdr_fn_value\n\nimport std.types { String }\n\ntype HdrKeying<Subject, Key> {\n  scope_of: fn(Subject) -> String\n  key_of: fn(Subject) -> Key\n}\n\nfn hdr_scope_of<T>(_subject: T) -> String {\n  \"global\"\n}\n\nfn hdr_keying<S, K>(key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: hdr_scope_of, key_of: key_of }\n}\n\nfn hdr_keying_via<A, B>(key_of: fn(A) -> B) -> HdrKeying<A, B> {\n  hdr_keying(key_of: key_of)\n}\n\nfn hdr_keying_plain<S, K>(scope_of: fn(S) -> String, key_of: fn(S) -> K) -> HdrKeying<S, K> {\n  HdrKeying { scope_of: scope_of, key_of: key_of }\n}\n"
+
+fn w_fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    hdr_fn_value_fixture,
+    "src/probe_hdr_fn_value.rs",
+    [
+      "pub fn hdr_scope_of<T: Clone>(",
+      "pub fn hdr_keying<S: Clone + 'static, K: 'static>(",
+      "pub fn hdr_keying_via<A: Clone + 'static, B: 'static>("
+    ],
+    [
+      "pub fn hdr_keying<S: 'static, K: 'static>(",
+      "compile_error"
+    ]
+  )
+}
+
+fn w_fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
+  compile_dag_rust_emit_check(
+    hdr_fn_value_fixture,
+    "src/probe_hdr_fn_value.rs",
+    [
+      "pub fn hdr_keying_plain<S: 'static, K: 'static>("
+    ],
+    [
+      "K: Clone",
+      "B: Clone",
+      "pub fn hdr_keying_plain<S: Clone"
+    ]
+  )
+}
+
+test fn fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
+  w_fn_value_stored_generic_fn_forwards_its_clone_bound()
+}
+
+test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
+  w_fn_value_forwarding_bounds_only_the_instantiated_generic()
+}

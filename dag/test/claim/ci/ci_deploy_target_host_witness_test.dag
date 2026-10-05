@@ -3,12 +3,12 @@ module test.claim.ci_deploy_target_host_witness
 import gunbc.ci_spec { gunbc_ci_deploy_srv1_stage }
 import gunbc.ci_deploy_target_host { host_pinned_runner_spec }
 import gunbc.ci_fleet { srv3_offer, srv4_offer }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.runner_slot_allocation { runner_labels_satisfy_selector }
 import gunbc.runner_registration_labels {
   runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

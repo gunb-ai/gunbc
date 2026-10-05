@@ -1,0 +1,202 @@
+module gunbc.workspace_guest_image
+
+import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
+
+import std.types { String, NonEmptyStr, Bool, List }
+import std.resources { Filesystem }
+import std.measure { mebibyte }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Installable, Description, After, Requires,
+  ServiceType, ExecMode, ExecStart, Restart, ServiceStandardOutput, ServiceStandardError,
+  OutputJournalAndConsole, WantedBy, serialize_systemd_unit_file,
+}
+import extdeps.tools.gnu_coreutils { rm_force_command, rm_recursive_force_command, ln_symbolic_force_command }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import extdeps.tools.squashfs_tools { unsquashfs_extract_command }
+import extdeps.tools.e2fsprogs { Ext4, mke2fs_populate_command }
+import extdeps.posix.test_utility { test_executable_command }
+import extdeps.tools.stat { stat_owner_uid_command, stat_mode_command, stat_field_reading, StatFieldRead, StatFieldUnread }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_admitted }
+import gunbc.microvm_guest_artifacts {
+  runner_guest_kernel_artifact, runner_guest_base_rootfs_artifact,
+  runner_guest_base_artifact_path, guest_artifact_verdict, ArtifactMatchesPin,
+  ArtifactUnpinnedFirstContact, ArtifactBuildReceipt, ArtifactContradictsPin, ArtifactNotMeasured,
+}
+
+// Workspace images reuse the pinned vendor kernel/base, never the Actions runner image.
+// The built ext4 digest must be installed as an administrator-owned image pin before admission.
+type VerifiedWorkspaceImage sole_constructor {
+  identity: NonEmptyStr
+  kernel: String
+  rootfs: String
+}
+
+type WorkspaceImageAdmission
+  = WorkspaceImageVerified { image: VerifiedWorkspaceImage }
+  | WorkspaceImageRefused { reason: String }
+
+type WorkspaceImageProtectedSources sole_constructor { kernel: String, rootfs: String }
+
+fn workspace_image_file_protected(path: String) -> Bool {
+  let uid = stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec))
+  let mode = stat_field_reading(outcome: run_shell_command_capture(command: stat_mode_command(path: path), transport: LocalExec))
+  (match uid { StatFieldRead { value: value } => value == "0" StatFieldUnread { detail: _ } => false })
+    && (match mode { StatFieldRead { value: value } => value == "400" || value == "444" || value == "600" || value == "644" StatFieldUnread { detail: _ } => false })
+}
+
+fn verify_workspace_image(kernel: String, rootfs: String, expected_sha256: NonEmptyStr) -> WorkspaceImageAdmission {
+  if !workspace_image_file_protected(path: kernel) || !workspace_image_file_protected(path: rootfs) {
+    WorkspaceImageRefused { reason: "workspace artifacts must be installed root-owned and protected against other writers before launch admission" }
+  } else {
+    verify_workspace_image_bytes(sources: WorkspaceImageProtectedSources { kernel: kernel, rootfs: rootfs }, expected_sha256: expected_sha256)
+  }
+}
+
+fn verify_workspace_image_bytes(sources: WorkspaceImageProtectedSources, expected_sha256: NonEmptyStr) -> WorkspaceImageAdmission {
+  let kernel = sources.kernel
+  let rootfs = sources.rootfs
+  match guest_artifact_verdict(artifact: runner_guest_kernel_artifact, observed: sha256sum_file_digest_via_shell(path: kernel as NonEmptyStr)) {
+    ArtifactMatchesPin => match sha256sum_file_digest_via_shell(path: rootfs as NonEmptyStr) {
+      Sha256FileDigest { digest: observed } => if (observed.hex as String) == (expected_sha256 as String) {
+        WorkspaceImageVerified { image: VerifiedWorkspaceImage { identity: expected_sha256, kernel: kernel, rootfs: rootfs } }
+      } else { WorkspaceImageRefused { reason: "workspace image contradicts the admitted content pin" } }
+      Sha256FileDigestUnavailable { path: _, reason: r } => WorkspaceImageRefused { reason: r }
+    }
+    ArtifactUnpinnedFirstContact { digest_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactBuildReceipt { digest_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+    ArtifactNotMeasured { reason: _ } => WorkspaceImageRefused { reason: "workspace kernel does not match the shared pinned kernel" }
+  }
+}
+
+fn workspace_guest_bootstrap_script() -> String {
+  join([
+    "#!/bin/sh", "set -eu",
+    "mountpoint -q /proc || mount -t proc proc /proc",
+    "mkdir -p /root/.ssh /run/sshd /workspace",
+    "chmod 700 /root/.ssh",
+    "sed -n '1p' /dev/vdb > /etc/gunbc-allocation",
+    "sed -n '2p' /dev/vdb > /root/.ssh/authorized_keys",
+    "test -s /etc/gunbc-allocation",
+    "grep -q '^ssh-ed25519 ' /root/.ssh/authorized_keys",
+    "chown -R 0:0 /root/.ssh",
+    "chmod 600 /root/.ssh/authorized_keys",
+    "rm -f /etc/ssh/ssh_host_ed25519_key /etc/ssh/ssh_host_ed25519_key.pub",
+    "ssh-keygen -q -t ed25519 -N '' -f /etc/ssh/ssh_host_ed25519_key",
+    "printf 'gunbc-workspace-identity='; cat /etc/gunbc-allocation",
+    "printf 'gunbc-workspace-host-key='; cat /etc/ssh/ssh_host_ed25519_key.pub",
+    "exec /usr/sbin/sshd -D -e -f /etc/ssh/sshd_config.gunbc-workspace",
+    "",
+  ], "\n")
+}
+
+fn workspace_guest_sshd_config() -> String {
+  join([
+    "Port 22", "HostKey /etc/ssh/ssh_host_ed25519_key",
+    "PermitRootLogin prohibit-password", "PasswordAuthentication no",
+    "KbdInteractiveAuthentication no", "PubkeyAuthentication yes",
+    "AuthorizedKeysFile .ssh/authorized_keys", "UsePAM yes", "StrictModes yes",
+    "AllowUsers root", "AllowAgentForwarding no", "X11Forwarding no",
+    "Subsystem sftp internal-sftp", "",
+  ], "\n")
+}
+
+fn workspace_guest_unit() -> SystemdUnitFile {
+  ServiceUnitFile {
+    unit: [
+      Description { text: "Gunbc leased workspace SSH" },
+      After { target: "local-fs.target" },
+      After { target: "dev-vdb.device" },
+      Requires { target: "dev-vdb.device" },
+    ],
+    service: [
+      ServiceType { mode: ExecMode },
+      ExecStart { command: "/bin/sh /usr/local/sbin/gunbc-workspace-bootstrap" },
+      Restart { policy: "no" },
+      ServiceStandardOutput { stream: OutputJournalAndConsole },
+      ServiceStandardError { stream: OutputJournalAndConsole },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" }] },
+  }
+}
+
+fn workspace_tree_path(root: String) -> String { concat(root, "/workspace-tree") }
+fn workspace_image_path(root: String) -> String { concat(root, "/workspace.ext4") }
+
+// The kernel ip= argument owns slot networking. Disable the vendor MAC-derived test network service.
+fn workspace_image_tree_commands(root: String) -> List<ArgvCommand> {
+  let tree = workspace_tree_path(root: root)
+  [
+    rm_recursive_force_command(path: tree),
+    mkdir_parents_command(path: tree),
+    unsquashfs_extract_command(archive: runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact), into_directory: tree),
+    mkdir_parents_command(path: concat(tree, "/usr/local/sbin")),
+    mkdir_parents_command(path: concat(tree, "/etc/systemd/system/multi-user.target.wants")),
+    ln_symbolic_force_command(target: "/proc/net/pnp", link_name: concat(tree, "/etc/resolv.conf")),
+    ln_symbolic_force_command(target: "../gunbc-workspace.service", link_name: concat(tree, "/etc/systemd/system/multi-user.target.wants/gunbc-workspace.service")),
+    rm_force_command(path: concat(tree, "/etc/systemd/system/sysinit.target.wants/fcnet.service")),
+    rm_force_command(path: concat(tree, "/etc/systemd/system/multi-user.target.wants/ssh.service")),
+    rm_force_command(path: concat(tree, "/etc/systemd/system/sockets.target.wants/ssh.socket")),
+    test_executable_command(path: concat(tree, "/usr/sbin/sshd")),
+    test_executable_command(path: concat(tree, "/usr/bin/ssh-keygen")),
+  ]
+}
+
+fn workspace_image_run_commands(commands: List<ArgvCommand>) -> Bool {
+  fold(commands, init: true, f: (ok, command) => if ok {
+    process_outcome_admitted(outcome: run_shell_command_capture(command: command, transport: LocalExec))
+  } else { false })
+}
+
+// Called by the image convergence slice. No VM, mount, loop device or privileged host mutation.
+// A base without SSH refuses; it is never silently replaced with an unpinned apt transaction.
+fn workspace_image_build(root: String) -> Bool {
+  let base = runner_guest_base_artifact_path(root: root, artifact: runner_guest_base_rootfs_artifact)
+  match guest_artifact_verdict(artifact: runner_guest_base_rootfs_artifact, observed: sha256sum_file_digest_via_shell(path: base as NonEmptyStr)) {
+    ArtifactMatchesPin => if workspace_image_run_commands(commands: workspace_image_tree_commands(root: root)) {
+      workspace_image_write_tree(root: root)
+    } else { false }
+    ArtifactUnpinnedFirstContact { digest_hex: _ } => false
+    ArtifactBuildReceipt { digest_hex: _ } => false
+    ArtifactContradictsPin { expected_hex: _, observed_hex: _ } => false
+    ArtifactNotMeasured { reason: _ } => false
+  }
+}
+
+// Image assembly must retain the base archive's ownership. An unprivileged build runs
+// this same entry under fakeroot; otherwise mke2fs would copy the caller's UID into the guest.
+fn workspace_image_tree_ownership(root: String) -> Bool {
+  let tree = workspace_tree_path(root: root)
+  all([tree, concat(tree, "/root"), concat(tree, "/usr/sbin/sshd")], path =>
+    match stat_field_reading(outcome: run_shell_command_capture(command: stat_owner_uid_command(path: path), transport: LocalExec)) {
+      StatFieldRead { value: owner } => owner == "0"
+      StatFieldUnread { detail: _ } => false
+    }
+  )
+}
+
+fn workspace_image_write_tree(root: String) -> Bool {
+  let tree = workspace_tree_path(root: root)
+  let script = Filesystem.Write(path: concat(tree, "/usr/local/sbin/gunbc-workspace-bootstrap"), content: workspace_guest_bootstrap_script())
+  let sshd = Filesystem.Write(path: concat(tree, "/etc/ssh/sshd_config.gunbc-workspace"), content: workspace_guest_sshd_config())
+  let unit = Filesystem.Write(path: concat(tree, "/etc/systemd/system/gunbc-workspace.service"), content: serialize_systemd_unit_file(file: workspace_guest_unit()))
+  if script.success && sshd.success && unit.success && workspace_image_tree_ownership(root: root) {
+    workspace_image_run_commands(commands: [
+      rm_force_command(path: workspace_image_path(root: root)),
+      mke2fs_populate_command(fs: Ext4, image_path: workspace_image_path(root: root), from_directory: tree, size: mebibyte(count: 8192)),
+    ])
+  } else { false }
+}
+
+// Installed images remain under the controller release's existing administrator custody.
+fn workspace_installed_image(release_dir: String, identity: NonEmptyStr) -> WorkspaceImageAdmission {
+  let digest = identity as String
+  if digest.length() != 64 || !all(digest.chars(), cp => base16_is_lower_digit_code_point(cp: cp)) {
+    WorkspaceImageRefused { reason: "workspace image identity must be its lowercase SHA-256" }
+  } else {
+    let root = join([release_dir, "/images/workspace/", digest], "")
+    verify_workspace_image(kernel: concat(concat(root, "/"), runner_guest_kernel_artifact.filename as String), rootfs: concat(root, "/workspace.ext4"), expected_sha256: identity)
+  }
+}

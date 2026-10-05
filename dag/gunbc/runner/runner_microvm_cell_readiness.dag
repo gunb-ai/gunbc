@@ -1,5 +1,8 @@
 module gunbc.runner_microvm_cell_readiness
 
+import std.decl_ref { decl_ref }
+
+import gunbc.workspace_commissioning_evidence { WorkspaceInitialReadinessPermit }
 import std.types { String, NonEmptyStr, Bool, List, Int, Map }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import product.fabric.sanitation {
@@ -7,7 +10,7 @@ import product.fabric.sanitation {
   required_sanitation_facts, SlotScopedNetwork,
 }
 import gunbc.build_cache_instance { runner_slot_instance_name }
-import gunbc.runner_microvm_attempt { MicroVmAttempt, runner_microvm_attempt_unit_name }
+import gunbc.runner_microvm_attempt_identity { MicroVmAttempt, runner_microvm_attempt_unit_name }
 
 data runner_microvm_cell_readiness_disposition: ConstructionMechanism = SingleAuthority
 
@@ -47,10 +50,30 @@ data runner_microvm_cell_readiness_disposition: ConstructionMechanism = SingleAu
 // registration; two records agreeing on those and disagreeing on the device path are one attempt
 // whose record is incoherent, not two attempts, and folding the path into equality would spell that
 // as a mismatch and send a reader at the wrong fact.
+// Workload identity is explicit: workspace recovery never invents a GitHub registration.
+// The bootstrap drive remains an attempt-owned cleanup subject for either workload.
+type MicroVmWorkload
+  = GitHubRunnerWorkload { registration_id: NonEmptyStr }
+  | WorkspaceWorkload { bootstrap_identity: NonEmptyStr, image_identity: NonEmptyStr, lease_expires_unix: Int }
+
+fn microvm_workload_same(a: MicroVmWorkload, b: MicroVmWorkload) -> Bool {
+  match a {
+    GitHubRunnerWorkload { registration_id: ar } => match b {
+      GitHubRunnerWorkload { registration_id: br } => (ar as String) == (br as String)
+      WorkspaceWorkload { bootstrap_identity: _, image_identity: _, lease_expires_unix: _ } => false
+    }
+    WorkspaceWorkload { bootstrap_identity: ab, image_identity: ai, lease_expires_unix: ae } => match b {
+      GitHubRunnerWorkload { registration_id: _ } => false
+      WorkspaceWorkload { bootstrap_identity: bb, image_identity: bi, lease_expires_unix: be } =>
+        (ab as String) == (bb as String) && (ai as String) == (bi as String) && ae == be
+    }
+  }
+}
+
 type InFlightAttempt {
   attempt: MicroVmAttempt
   invocation_id: NonEmptyStr
-  jit_registration_id: NonEmptyStr
+  workload: MicroVmWorkload
   credential_device_path: String
 }
 
@@ -69,7 +92,7 @@ fn in_flight_attempt_unit(attempt: InFlightAttempt) -> NonEmptyStr {
 fn in_flight_attempt_same(a: InFlightAttempt, b: InFlightAttempt) -> Bool {
   (in_flight_attempt_unit(attempt: a) as String) == (in_flight_attempt_unit(attempt: b) as String)
     && (a.invocation_id as String) == (b.invocation_id as String)
-    && (a.jit_registration_id as String) == (b.jit_registration_id as String)
+    && microvm_workload_same(a: a.workload, b: b.workload)
 }
 
 // THE ONE CARRIER FOR "THIS ATTEMPT, ON THIS CELL, AT THIS GENERATION". Sealed, and constructible only
@@ -98,6 +121,20 @@ fn record_cell(record: CellReadinessRecord) -> CellId {
   match record {
     CellAttemptInFlight { cell: c, generation: _, attempt: _ } => c
     CellSettled { cell: c, generation: _, readiness: _ } => c
+  }
+}
+
+// The cell a record proves READY at exactly this generation; an in-flight attempt, a quarantine or
+// any other generation proves nothing, so initial commissioning can ask for generation zero only.
+fn record_ready_cell_at(record: CellReadinessRecord, generation: Int) -> CellId? {
+  match record {
+    CellAttemptInFlight { cell: _, generation: _, attempt: _ } => none
+    CellSettled { cell: _, generation: g, readiness: readiness } => if g != generation { none } else {
+      match readiness {
+        CellReady { cell: ready } => Present { value: ready }
+        CellQuarantined { cell: _, unproven: _ } => none
+      }
+    }
   }
 }
 
@@ -290,10 +327,26 @@ fn admission_of_record(record: CellReadinessRecord, allocation_generation: Int) 
 // identity nobody observed. It carries no readiness parameter: its record is a quarantine with every
 // sanitation fact a microVM cell owes (slot-scoped network) unobserved, at the generation that was about to run, and only a later readback at
 // a higher generation that establishes the facts can clear it.
+// A released reservation advances the CAS clock without inventing a guest attempt.
+// Only the lifecycle's observed release boundary can offer this transition.
+type CellReservationRelease sole_constructor { cell: CellId, held_generation: Int, freed_generation: Int }
+
+fn cell_reservation_released_write(cell: CellId, held_generation: Int, freed_generation: Int) -> CellReadinessWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.workspace_allocation_lifecycle", decl_name: "workspace_advance_released_readiness"),
+    decl_ref(module_path: "test.claim.runner.runner_microvm_cell_readiness_release_witness_test", decl_name: "a_released_reservation_advances_readiness_without_inventing_an_attempt"),
+    decl_ref(module_path: "test.claim.runner.runner_microvm_cell_readiness_release_witness_test", decl_name: "release_generation_advance_refuses_quarantine_and_skips"),
+  ]
+{
+  WriteReservationReleased { receipt: CellReservationRelease { cell: cell, held_generation: held_generation, freed_generation: freed_generation } }
+}
+
 type CellReadinessWrite
-  = WriteAttemptStarted { bound: CellBoundAttempt }
+  = WriteCommissioned { permit: WorkspaceInitialReadinessPermit }
+  | WriteAttemptStarted { bound: CellBoundAttempt }
   | WriteReadbackSettled { bound: CellBoundAttempt, readiness: CellReadiness }
   | WriteUnattributedResidue { cell: CellId, generation: Int }
+  | WriteReservationReleased { receipt: CellReservationRelease }
 
 type CellReadinessWriteResult
   = WriteAccepted { records: List<CellReadinessRecord> }
@@ -308,6 +361,8 @@ type CellReadinessWriteResult
 
 fn write_cell(write: CellReadinessWrite) -> CellId {
   match write {
+    WriteCommissioned { permit: p } => p.cell
+    WriteReservationReleased { receipt: r } => r.cell
     WriteAttemptStarted { bound: b } => b.cell
     WriteReadbackSettled { bound: b, readiness: _ } => b.cell
     WriteUnattributedResidue { cell: c, generation: _ } => c
@@ -316,6 +371,8 @@ fn write_cell(write: CellReadinessWrite) -> CellId {
 
 fn record_of_write(write: CellReadinessWrite) -> CellReadinessRecord {
   match write {
+    WriteCommissioned { permit: p } => CellSettled { cell: p.cell, generation: p.settled_generation, readiness: CellReady { cell: p.cell } }
+    WriteReservationReleased { receipt: r } => CellSettled { cell: r.cell, generation: r.freed_generation, readiness: CellReady { cell: r.cell } }
     WriteAttemptStarted { bound: b } => CellAttemptInFlight { cell: b.cell, generation: b.generation, attempt: b.attempt }
     WriteReadbackSettled { bound: b, readiness: r } => CellSettled { cell: b.cell, generation: b.generation, readiness: r }
     WriteUnattributedResidue { cell: c, generation: g } =>
@@ -371,6 +428,31 @@ fn apply_indexed_write(
   let others = filter(records, r => (record_cell(record: r) as String) != (cell as String))
   let replaced = concat(others, [record_of_write(write: write)])
   match write {
+    WriteCommissioned { permit: p } => match indexed_record(index: index, cell: p.cell) {
+      Absent => if p.settled_generation >= 0 { WriteAccepted { records: replaced } }
+        else { WriteRefusedStale { cell: p.cell, stored: 0, offered: p.settled_generation } }
+      Present { value: stored } => match recovery_owed(stored: stored) {
+        Present { value: owed } => owed
+        Absent => WriteRefusedWouldLoosenQuarantine { cell: p.cell, generation: record_generation(record: stored) }
+      }
+    }
+    WriteReservationReleased { receipt: r } =>
+      match indexed_record(index: index, cell: r.cell) {
+        Absent => WriteRefusedNotAdmitted { cell: r.cell, admission: CellWithdrawn { cell: r.cell, withdrawal: CellNeverSettled } }
+        Present { value: stored } => match recovery_owed(stored: stored) {
+          Present { value: owed } => owed
+          Absent => match stored {
+            CellSettled { cell: _, generation: g, readiness: CellReady { cell: _ } } =>
+              if r.held_generation >= 0 && r.freed_generation > r.held_generation && r.freed_generation - r.held_generation == 1 && (g == r.held_generation || g == r.freed_generation) {
+                WriteAccepted { records: replaced }
+              } else { WriteRefusedStale { cell: r.cell, stored: g, offered: r.freed_generation } }
+            CellSettled { cell: _, generation: g, readiness: CellQuarantined { cell: _, unproven: _ } } =>
+              WriteRefusedWouldLoosenQuarantine { cell: r.cell, generation: g }
+            CellAttemptInFlight { cell: _, generation: g, attempt: a } =>
+              WriteRefusedRecoveryOwed { cell: r.cell, in_flight_generation: g, in_flight_attempt: in_flight_attempt_unit(attempt: a) }
+          }
+        }
+      }
     WriteAttemptStarted { bound: b } =>
       match admission_of_indexed_cell(index: index, cell: b.cell, allocation_generation: b.generation) {
         CellIncarnationAdmitted { cell: _, generation: _ } => WriteAccepted { records: replaced }

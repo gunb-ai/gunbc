@@ -171,9 +171,9 @@ fn family_crate_native_key(members: List<EmitFamilyMember>) -> ContentHash {
 // required floor measured all six within one runner-swing of the 500ms per-claim ceiling (run
 // 34315228217: 458-487ms cpu against limit_ms=500). The members are not portable (InferredTree's
 // facts PartialFunction), so the share point is the deepest portable stage: the emitted crate
-// source plus its native key. Nullary and warm-enrolled in
-// `v2.workflow.floor_pure_producer_share` (floor_cross_claim_pure_producers_warm), which carries
-// the measured recompute/sharing/serve case; the required floor forces it during strict
+// source plus its native key. Nullary, so the derived cross-claim share
+// (`v2.workflow.floor_pure_producer_share` derive_cross_claim_share) admits it when several planned
+// claims reach it; the required floor forces it during strict
 // preparation, outside every per-claim budget, and each claim pays only the cached native run.
 fn logic_family_primary_emitted() -> Outcome<EmittedFamilyCrate> {
   let members = family_crate_members()

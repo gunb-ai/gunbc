@@ -912,7 +912,11 @@ fn rate_limit_buckets_from_by_limit_id(by_id: JsonValue) -> List<CodexRateLimitB
             )
           },
       )
-    _ => []
+    JsonNull => []
+    JsonBool { value: _ } => []
+    JsonNumber { lexeme: _ } => []
+    JsonString { value: _ } => []
+    JsonArray { elements: _ } => []
   }
 }
 

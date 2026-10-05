@@ -21,6 +21,7 @@ import gunbc.live_deploy.spec {
   FabricStorageServeUnit,
   FabricStorageServeMapping,
   ApprovalBrokerFrontDoor,
+  TailnetDoorServeUnit,
   GunbcSourceTree,
   ServeBinary,
   DispatchWorktreeRoot,
@@ -239,6 +240,7 @@ fn ordering_tag(kind: OwnedArtifactKind) -> String {
     FabricStorageServeUnit => ""
     FabricStorageServeMapping => ""
     ApprovalBrokerFrontDoor => ""
+    TailnetDoorServeUnit => ""
     BeltTimerUnit => "belt"
     TailscaleServeMapping => "route"
     DispatchWorktreeRoot => ""

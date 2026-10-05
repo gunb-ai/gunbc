@@ -1,0 +1,272 @@
+module extdeps.linux.tun_fdinfo
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.filesystem.filesystem_io {
+  Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  admit_filesystem_failure_kind, FilesystemFailureKindAdmitted, FilesystemFailureKindUnrecognized, FilesystemNotFound
+}
+import extdeps.linux.procfs { procfs_path_literal, ProcSelfStatus, procfs_status_effective_uid }
+import extdeps.numeric.base16 { base16_word_value }
+import extdeps.ethtool { ethtool_observe_combined_channels, EthtoolCombinedChannels, EthtoolCombinedChannelsCurrent, EthtoolCombinedChannelsUnreadable }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "github.com/torvalds/linux/blob/master/drivers/net/tun.c" }
+}
+
+// tun_chr_show_fdinfo emits iff:<interface>; carrier state alone does not prove no holder.
+// Read twice as root and check kernel attached queues through the device's channel count. Single-queue
+// mode excludes detached queues; multi-queue refuses. The kernel queue count also detects file
+// references held by io_uring/SCM_RIGHTS rather than installed process FDs. Denied reads refuse.
+//
+// WHERE THE QUEUE COUNT COMES FROM: the current combined channel count, read through
+// extdeps.ethtool. This carries over the earlier inline probe's ETHTOOL_GCHANNELS read, and with it
+// that probe's UNVERIFIED assumption that tun answers that request. If it does not, every census is
+// Unreadable, which blocks release and never reports zero. The assumption is a live check before
+// first commissioning (run `ethtool -l <tap>` against a slot's device on srv1).
+//
+// ROOT IS ESTABLISHED, NOT INFERRED FROM DENIALS. A non-root reader is refused by the effective uid
+// on /proc/self/status before anything else is read. Denied fdinfo reads alone would not be
+// enough: hidepid hides other users' pids from a non-root reader WITHOUT an error, so the census
+// would be incomplete and still report a count.
+
+// THE REFUSALS ARE TYPED SO A CLAIM CAN ASSERT THE ROUTE, not only the verdict.
+type TunCensusRefusal
+  = TunCensusSubjectInadmissible
+  | TunCensusReaderIdentityUnreadable
+  | TunCensusReaderNotRoot { euid: Int }
+  | TunCensusFlagsUnreadable
+  | TunCensusMultiQueue
+  | TunCensusQueueCountUnreadable { cause: NonEmptyStr }
+  | TunCensusProcUnreadable { path: String }
+
+// An exact nonnegative count must be affirmed; missing or malformed is not zero. `exited` counts
+// pids and threads that disappeared between being listed and being read. They were skipped, not
+// treated as holders or as refusals.
+type TunDescriptorCensus
+  = TunDescriptorCount { count: Int, exited: Int }
+  | TunInterfaceMissing
+  | TunDescriptorUnreadable { cause: TunCensusRefusal }
+
+// ================= PURE FOLDS OVER SUPPLIED READINGS =================
+
+fn tun_interface_name_admissible(name: String) -> Bool {
+  let cps = name |> chars
+  length(cps) > 0 && all(cps, cp => (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90) || (cp >= 48 && cp <= 57) || cp == 95 || cp == 45)
+}
+
+fn tun_decimal_name(name: String) -> Bool {
+  let cps = name |> chars
+  length(cps) > 0 && all(cps, cp => cp >= 48 && cp <= 57)
+}
+
+// /sys/class/net/<dev>/tun_flags is printed by tun_flags_show as "0x%x". IFF_MULTI_QUEUE is 0x0100
+// (include/uapi/linux/if_tun.h).
+type TunQueueMode = TunSingleQueue | TunMultiQueue | TunFlagsMalformed
+
+fn tun_queue_mode(flags: String) -> TunQueueMode {
+  let t = trim(s: flags)
+  if !starts_with(s: t, prefix: "0x") { TunFlagsMalformed }
+  else { match base16_word_value(word: substring(s: t, start: 2, end: string_length(s: t)), max_digits: 8) {
+    Absent => TunFlagsMalformed
+    Present { value: v } => if (v / 256) % 2 == 1 { TunMultiQueue } else { TunSingleQueue }
+  } }
+}
+
+// One fdinfo body holds the tun file iff a line `iff:<name>` names exactly this interface.
+fn tun_fdinfo_names_interface(content: String, name: String) -> Bool {
+  any(split(s: content, delimiter: "\n"), line =>
+    starts_with(s: line, prefix: "iff:") && trim(s: substring(s: line, start: 4, end: string_length(s: line))) == name)
+}
+
+type TunQueueReading
+  = TunQueuesAttached { count: Int }
+  | TunQueuesRefused { cause: TunCensusRefusal }
+
+fn tun_queue_reading(mode: TunQueueMode, channels: EthtoolCombinedChannels) -> TunQueueReading {
+  match mode {
+    TunFlagsMalformed => TunQueuesRefused { cause: TunCensusFlagsUnreadable }
+    TunMultiQueue => TunQueuesRefused { cause: TunCensusMultiQueue }
+    TunSingleQueue => match channels {
+      EthtoolCombinedChannelsCurrent { count: n } => TunQueuesAttached { count: n }
+      EthtoolCombinedChannelsUnreadable { cause: c } => TunQueuesRefused { cause: TunCensusQueueCountUnreadable { cause: c } }
+    }
+  }
+}
+
+type TunSweep
+  = TunSweepComplete { holders: List<String>, exited: Int }
+  | TunSweepRefused { cause: TunCensusRefusal }
+
+fn tun_holders_union(first: List<String>, second: List<String>) -> Int {
+  length(fold(concat(first, second), init: [], f: (acc, k) => if any(acc, h => h == k) { acc } else { concat(acc, [k]) }))
+}
+
+// THE JOIN: queue count before, two descriptor sweeps, queue count after. The answer is the largest
+// of the distinct holder descriptors and the two queue counts. A refusal at any step refuses the
+// whole census; none of them falls back to zero.
+fn tun_census_join(before: TunQueueReading, first: TunSweep, second: TunSweep, after: TunQueueReading) -> TunDescriptorCensus {
+  match before {
+    TunQueuesRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+    TunQueuesAttached { count: qb } => match first {
+      TunSweepRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+      TunSweepComplete { holders: h1, exited: e1 } => match second {
+        TunSweepRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+        TunSweepComplete { holders: h2, exited: e2 } => match after {
+          TunQueuesRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+          TunQueuesAttached { count: qa } => {
+            let fds = tun_holders_union(first: h1, second: h2)
+            let q = if qb > qa { qb } else { qa }
+            TunDescriptorCount { count: if fds > q { fds } else { q }, exited: e1 + e2 }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ================= THE HOST READS =================
+
+// A listing step: entries, the subject vanished (not_found), or refused (any other failure,
+// including an unrecognized failure kind).
+type TunListing
+  = TunListed { names: List<String> }
+  | TunListingVanished
+  | TunListingRefused
+
+fn tun_listing(success: Bool, entries: String, error_kind: String) -> TunListing {
+  if success { TunListed { names: split(s: entries, delimiter: "\n") |> filter(n => n != "") } }
+  else { match admit_filesystem_failure_kind(observed: error_kind) {
+    FilesystemFailureKindAdmitted { kind: FilesystemNotFound } => TunListingVanished
+    FilesystemFailureKindAdmitted { kind: _ } => TunListingRefused
+    FilesystemFailureKindUnrecognized { observed: _ } => TunListingRefused
+  } }
+}
+
+fn tun_list(path: String) -> TunListing {
+  let l = Filesystem.List(path: path)
+  tun_listing(success: l.success, entries: l.entries, error_kind: l.error_kind)
+}
+
+fn tun_sweep_descriptor(name: String, base: String, key: String, acc: TunSweep, fd: String) -> TunSweep {
+  match acc {
+    TunSweepRefused { cause: _ } => acc
+    TunSweepComplete { holders: hs, exited: ex } => {
+      let path = join([base, "/", fd], "")
+      let r = Filesystem.Read(path: path)
+      match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+        FilesystemExactPathRead { path: _, content: c } =>
+          if tun_fdinfo_names_interface(content: c, name: name) { TunSweepComplete { holders: concat(hs, [join([key, "/", fd], "")]), exited: ex } } else { acc }
+        FilesystemExactPathAbsent { path: _ } => acc
+        FilesystemExactPathUnreadable { path: p, kind: _, error: _ } => TunSweepRefused { cause: TunCensusProcUnreadable { path: p } }
+        FilesystemExactPathKindUnrecognized { path: p, observed: _, error: _ } => TunSweepRefused { cause: TunCensusProcUnreadable { path: p } }
+      }
+    }
+  }
+}
+
+// A thread whose fdinfo directory is missing while the thread itself still lists has hidden its
+// descriptors from this reader, so that refuses. Only a thread that is gone is skipped.
+fn tun_sweep_thread(name: String, taskroot: String, pid: String, acc: TunSweep, tid: String) -> TunSweep {
+  match acc {
+    TunSweepRefused { cause: _ } => acc
+    TunSweepComplete { holders: hs, exited: ex } => {
+      let thread = join([taskroot, "/", tid], "")
+      let base = join([thread, "/fdinfo"], "")
+      match tun_list(path: base) {
+        TunListed { names: fds } => fold(fds, init: acc, f: (a, fd) => tun_sweep_descriptor(name: name, base: base, key: join([pid, "/", tid], ""), acc: a, fd: fd))
+        TunListingRefused => TunSweepRefused { cause: TunCensusProcUnreadable { path: base } }
+        TunListingVanished => match tun_list(path: thread) {
+          TunListingVanished => TunSweepComplete { holders: hs, exited: ex + 1 }
+          other => TunSweepRefused { cause: TunCensusProcUnreadable { path: base } }
+        }
+      }
+    }
+  }
+}
+
+fn tun_sweep_pid(name: String, acc: TunSweep, pid: String) -> TunSweep {
+  match acc {
+    TunSweepRefused { cause: _ } => acc
+    TunSweepComplete { holders: hs, exited: ex } =>
+      if !tun_decimal_name(name: pid) { acc } else {
+        let taskroot = join(["/proc/", pid, "/task"], "")
+        match tun_list(path: taskroot) {
+          TunListed { names: tids } => fold(tids, init: acc, f: (a, tid) => tun_sweep_thread(name: name, taskroot: taskroot, pid: pid, acc: a, tid: tid))
+          TunListingVanished => TunSweepComplete { holders: hs, exited: ex + 1 }
+          TunListingRefused => TunSweepRefused { cause: TunCensusProcUnreadable { path: taskroot } }
+        }
+      }
+  }
+}
+
+fn tun_sweep(name: String) -> TunSweep {
+  match tun_list(path: "/proc") {
+    TunListed { names: pids } => fold(pids, init: TunSweepComplete { holders: [], exited: 0 }, f: (a, pid) => tun_sweep_pid(name: name, acc: a, pid: pid))
+    other => TunSweepRefused { cause: TunCensusProcUnreadable { path: "/proc" } }
+  }
+}
+
+fn tun_flags_path(name: String) -> String {
+  join(["/sys/class/net/", name, "/tun_flags"], "")
+}
+
+fn tun_observe_queues(name: String) -> TunQueueReading {
+  let path = tun_flags_path(name: name)
+  let r = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+    FilesystemExactPathRead { path: _, content: c } =>
+      tun_queue_reading(mode: tun_queue_mode(flags: c), channels: ethtool_observe_combined_channels(device: name as NonEmptyStr))
+    other => TunQueuesRefused { cause: TunCensusFlagsUnreadable }
+  }
+}
+
+fn tun_reader_refusal() -> TunCensusRefusal? {
+  let path = procfs_path_literal(p: ProcSelfStatus) as String
+  let r = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+    FilesystemExactPathRead { path: _, content: c } => match procfs_status_effective_uid(content: c) {
+      Present { value: euid } => if euid == 0 { none } else { Present { value: TunCensusReaderNotRoot { euid: euid } } }
+      Absent => Present { value: TunCensusReaderIdentityUnreadable }
+    }
+    other => Present { value: TunCensusReaderIdentityUnreadable }
+  }
+}
+
+// The census, in the order the refusals are owed: subject, reader identity, interface presence,
+// then the joined observation. Only a not_found on tun_flags is Missing; any other failure to read
+// it is Unreadable.
+fn tun_descriptor_census_observe(name: String) -> TunDescriptorCensus {
+  if !tun_interface_name_admissible(name: name) { TunDescriptorUnreadable { cause: TunCensusSubjectInadmissible } }
+  else { match tun_reader_refusal() {
+    Present { value: c } => TunDescriptorUnreadable { cause: c }
+    Absent => {
+      let path = tun_flags_path(name: name)
+      let r = Filesystem.Read(path: path)
+      match filesystem_exact_read(path: path, content: r.content, success: r.success, error: r.error, error_kind: r.error_kind) {
+        FilesystemExactPathAbsent { path: _ } => TunInterfaceMissing
+        FilesystemExactPathRead { path: _, content: _ } => {
+          let before = tun_observe_queues(name: name)
+          match before {
+            TunQueuesRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+            TunQueuesAttached { count: _ } => {
+              let first = tun_sweep(name: name)
+              match first {
+                TunSweepRefused { cause: c } => TunDescriptorUnreadable { cause: c }
+                TunSweepComplete { holders: _, exited: _ } => {
+                  let second = tun_sweep(name: name)
+                  tun_census_join(before: before, first: first, second: second, after: tun_observe_queues(name: name))
+                }
+              }
+            }
+          }
+        }
+        other => TunDescriptorUnreadable { cause: TunCensusFlagsUnreadable }
+      }
+    }
+  } }
+}

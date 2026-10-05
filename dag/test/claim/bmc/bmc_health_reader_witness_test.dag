@@ -24,9 +24,9 @@ import gunbc.tools.bmc_health_reader_converge {
   reader_login_exit,
 }
 import gunbc.bmc_custody_read { CustodyCredentialAbsent, CustodyCredentialUnreadable, custody_read_refusal_cause }
-import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeSucceeded, RestExchangeUnreached }
+import extdeps.transports.rest { RestExchangeStatusRefused, RestExchangeUnreached }
 import gunbc.bmc_onboarding { srv3_onboarding_plan, srv4_onboarding_plan }
-import gunbc.fleet_intent_network { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import std.process { ExitFailure }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -86,13 +86,13 @@ test fn the_create_body_asks_for_read_only_and_the_secret_is_per_host() -> Bool 
 
 // Only a 404 says the secret is absent; a refused status or an unreached call is a read failure
 // that says nothing about existence (reviews 67836, 67848). The administrator probe and the reader
-// flow both read custody through this one classifier.
+// flow both read custody through this one classifier. An answered read never reaches it: the
+// classifier takes a RestExchangeRefusal, which has no succeeded arm.
 test fn only_a_404_reads_as_absent_custody() -> Bool {
-  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { Present { value: CustodyCredentialAbsent } => true _ => false }
-  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
-  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { Present { value: CustodyCredentialUnreadable { cause: _ } } => true _ => false }
-  let success_decodes = match custody_read_refusal_cause(performance: RestExchangeSucceeded) { none => true _ => false }
-  absent && denied && unreached && success_decodes
+  let absent = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 404, body: "not found" }) { CustodyCredentialAbsent => true _ => false }
+  let denied = match custody_read_refusal_cause(performance: RestExchangeStatusRefused { status: 403, body: "denied" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
+  let unreached = match custody_read_refusal_cause(performance: RestExchangeUnreached { cause: "timeout" }) { CustodyCredentialUnreadable { cause: _ } => true _ => false }
+  absent && denied && unreached
 }
 
 // A login that never reached the BMC keeps its local cause instead of reading as a refused password.

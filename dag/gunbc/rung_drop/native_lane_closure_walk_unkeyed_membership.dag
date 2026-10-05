@@ -1,6 +1,6 @@
 module gunbc.rung_drop.native_lane_closure_walk_unkeyed_membership
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 

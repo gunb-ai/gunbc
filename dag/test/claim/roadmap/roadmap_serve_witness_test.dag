@@ -1,8 +1,11 @@
 module test.claim.roadmap_serve_witness
-import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath }
+import gunbc.site.document { site_styles }
+import std.access { Permit, Deny }
+import gunbc.auth.request_authentication { human_write_admission, tracker_write_authorization_policy, roadmap_deployment_access_policy, ServeActionSaveOwnView }
+import gunbc.auth.request_authentication { RequestAuthenticationEvidence, AuthAbsent, GoogleOidcSession, AccessPathLocalDev, RequestAccessPath, IngressUnattested }
 
 import gunbc.roadmap_serve {
-  RoadmapServeHandler,
+  RoadmapServeHandler, IssueQueryHandler, serve_issue_query,
   roadmap_serve_handle_over,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, DashboardInstanceHandler,
@@ -13,7 +16,8 @@ import gunbc.roadmap_serve {
   SessionsJsonHandler, AttemptsJsonHandler, WorkflowJsonHandler, BeltStopHandler,
   BeltPublishHandler,
   IssueDetailPageHandler, IssueAssignHandler, IssueCommentHandler, IssueAssignmentContextHandler,
-  serve_issue_assignment_context_over,
+  serve_issue_assignment_context_over, serve_issue_view_preferences_over,
+  IssueViewPreferencesReadHandler, IssueViewPreferencesSaveHandler,
   AuthSessionHandler, AuthLoginHandler, AuthGoogleCallbackHandler, AuthLogoutHandler,
   roadmap_serve_route_table_build,
   roadmap_serve_route_specs,
@@ -419,8 +423,8 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 
 // THE TRANSPORT OBSERVATION DOES NOT REACH THE HANDLER AS IDENTITY. Under the 2026-09-25 ruling
 // this is the end-to-end forged-header control: a login supplied at the serve entry is DROPPED
-// unless the access-path modeling vouches for it behind a serve-status readback — and this seam
-// performs no readback — so the consent record names no login. Without this the plumbing could
+// unless the access-path modeling vouches for it — and this entry's ingress attests no peer, so
+// nothing can — so the consent record names no login. Without this the plumbing could
 // be silently laundering the header back into an identity and every unit-level witness would
 // still pass. The positive half (a modeled proxy path carries the observation) is
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
@@ -521,6 +525,7 @@ fn serve_over_plan_declaring(
     path: path,
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     release_revision: deploy_witness_release_revision,
   )
 }
@@ -610,7 +615,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
     stale_nodes: [],
     profiles: [],
     memberships: roadmap_memberships(),
-    stylesheet: "",
+    stylesheet: site_styles(rules: []),
   )) {
     EmitOk { html } => html
     EmitRejected { reason } => reason
@@ -1080,6 +1085,7 @@ fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) ->
     path: "/issue/demo-node/assignment",
     body: "",
     tailscale_identity: "",
+    ingress: IngressUnattested,
     request_headers: headers,
     release_revision: deploy_witness_release_revision,
   )
@@ -1108,4 +1114,24 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
     && malformed.body == "Your session has expired or is unavailable. Sign in again."
     && repeated.status == 400
     && repeated.body == "bad request: duplicate cookie header\n"
+}
+
+
+test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
+  let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } }
+  selects(method: GET, path: "/preferences/issues", want: IssueViewPreferencesReadHandler)
+    && selects(method: POST, path: "/preferences/issues", want: IssueViewPreferencesSaveHandler)
+    && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: false).status == 401
+    && serve_issue_view_preferences_over(instance: srv2_preview_dashboard_instance(), request: anonymous, saving: true).status == 401
+    && match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: no_csrf.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: "", observed_at: "2026-09-27T01:00:00Z") {
+      Deny { refusal: _ } => true
+      Permit => false
+    }
+}
+
+test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
+  let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
+  selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
+    && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400
 }

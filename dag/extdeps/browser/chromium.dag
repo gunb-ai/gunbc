@@ -2,7 +2,7 @@ module extdeps.browser.chromium
 
 import extdeps.exec.program { uncataloged_program }
 
-import std.types { NonEmptyStr, brand }
+import std.types { NonEmptyStr, brand, String }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
