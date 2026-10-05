@@ -1,5 +1,7 @@
 module std.coercion
 
+import std.literal_elaboration { LiteralHomomorphism }
+
 type TypeCheckpoint {
   dag_name: String
   target_type: String
