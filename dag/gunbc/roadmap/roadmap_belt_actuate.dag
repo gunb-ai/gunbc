@@ -28,15 +28,14 @@ import gunbc.roadmap.roadmap_review_function {
 }
 import gunbc.roadmap.roadmap_review_criteria { ReviewCriterion }
 import gunbc.roadmap.roadmap_goal_audit_role { goal_audit_criterion_key, goal_audit_approved, goal_audit_reconcile, goal_audit_brief }
-import extdeps.systemd.systemd_run { SystemdRunCommandReady, SystemdRunCommandRefused }
 import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dispatch_current_attempt_events_path_for_instance }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
-  dispatch_review_unit_name, dispatch_review_unit_command, dispatch_unit_exec_argv,
+  dispatch_review_unit_name, dispatch_review_unit_command,
   dispatch_attempt_audit_dir_for_instance, dispatch_attempt_audit_verdict_path_for_instance, dispatch_attempt_audit_verdict_basename,
-  dispatch_audit_unit_name, dispatch_audit_unit_command, dispatch_unit_exec_argv,
-  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command, dispatch_unit_exec_argv,
-  dispatch_supervisor_attempt_identity,
+  dispatch_audit_unit_name, dispatch_audit_unit_command,
+  dispatch_attempt_supervisor_dir_for_instance, dispatch_supervisor_unit_name, dispatch_supervisor_unit_command,
+  dispatch_supervisor_attempt_identity, dispatch_unit_exec_argv,
 }
 import extdeps.git { shape_git_merge_base_args }
 import gunbc.roadmap_authority {
@@ -116,7 +115,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command, dispatch_unit_exec_argv,
+  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_run,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -1346,15 +1345,10 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
-                    SystemdRunCommandRefused { reason: why } =>
-                      ExecStepFailed { step: "harness-unit-start", detail: why }
-                    SystemdRunCommandReady { command: command } =>
-                      belt_exec_steps(
-                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
-                        workdir: workdir,
-                      )
-                  }
+                  belt_exec_steps(
+                    steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) }],
+                    workdir: workdir,
+                  )
               }
           }
         }
@@ -2573,57 +2567,57 @@ fn belt_supervisor_convene(
               match metering_roster_admit(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, role: MeteredSupervisor { turn: escalation.turn }) {
                 RosterAdmissionRefused { cause: roster_cause } => SpawnFailed { node_id: node.node as String, step: "supervisor-roster", detail: join(["the supervisor was not launched: ", roster_cause], ""), provider: provider_wire_label, launch: launch }
                 RosterAdmitted =>
-              match dispatch_supervisor_unit_command(
-                instance: instance,
-                node_id: nid,
-                attempt_key: escalation.attempt_key,
-                turn: escalation.turn,
-                worktree_path: worktree,
-                brief: belt_supervisor_convene_brief(
-                  node: node,
-                  escalation: escalation,
-                  checkpoint: belt_supervisor_checkpoint_lines(
-                    capture: belt_prior_attempt_capture(instance: instance, node_id: nid, attempt_key: escalation.attempt_key),
-                    head_sha: revision as String,
-                    history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
-                  ),
-                ),
-              ) {
-                SystemdRunCommandRefused { reason: why } =>
-                  SpawnFailed {
-                    node_id: node.node as String,
-                    step: "supervisor-unit-start",
-                    detail: why,
-                    provider: provider_wire_label,
-                    launch: launch,
-                  }
-                SystemdRunCommandReady { command: command } =>
-                  match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
-                    ExecOk { stdout: _ } =>
-                      SupervisorConvened {
-                        node_id: node.node as String,
-                        unit: unit as String,
-                        provider: provider_wire_label,
-                        launch: launch,
-                      }
-                    ExecFailed { program: _, exit_code, stderr } =>
+                  match dispatch_supervisor_unit_command(
+                    instance: instance,
+                    node_id: nid,
+                    attempt_key: escalation.attempt_key,
+                    turn: escalation.turn,
+                    worktree_path: worktree,
+                    brief: belt_supervisor_convene_brief(
+                      node: node,
+                      escalation: escalation,
+                      checkpoint: belt_supervisor_checkpoint_lines(
+                        capture: belt_prior_attempt_capture(instance: instance, node_id: nid, attempt_key: escalation.attempt_key),
+                        head_sha: revision as String,
+                        history_line: belt_supervisor_history_line(instance: instance, node_id: nid, attempt_key: escalation.attempt_key, turn: escalation.turn),
+                      ),
+                    ),
+                  ) {
+                    SystemdRunCommandRefused { reason: why } =>
                       SpawnFailed {
                         node_id: node.node as String,
                         step: "supervisor-unit-start",
-                        detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
+                        detail: why,
                         provider: provider_wire_label,
                         launch: launch,
                       }
-                    ExecRefused { program: _, reason } =>
-                      SpawnFailed {
-                        node_id: node.node as String,
-                        step: "supervisor-unit-start",
-                        detail: reason,
-                        provider: provider_wire_label,
-                        launch: launch,
+                    SystemdRunCommandReady { command: command } =>
+                      match belt_exec(cmd: dispatch_unit_exec_argv(command: command, resolved_program: systemd_run), workdir: worktree) {
+                        ExecOk { stdout: _ } =>
+                          SupervisorConvened {
+                            node_id: node.node as String,
+                            unit: unit as String,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecFailed { program: _, exit_code, stderr } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: join(["the supervisor unit could not be started (exit ", to_string(exit_code), "): ", stderr], ""),
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
+                        ExecRefused { program: _, reason } =>
+                          SpawnFailed {
+                            node_id: node.node as String,
+                            step: "supervisor-unit-start",
+                            detail: reason,
+                            provider: provider_wire_label,
+                            launch: launch,
+                          }
                       }
                   }
-                }
               }
           }
         }
@@ -3368,6 +3362,7 @@ type BeltTickReceipt {
   commit_pass: BeltPassOutcome,
   verify_pass: BeltPassOutcome,
   publish_pass: BeltPassOutcome,
+  metering_pass: BeltPassOutcome,
 }
 
 type BeltTickReceiptRead
@@ -3390,7 +3385,7 @@ type BeltTickReceiptRead
 // DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt there would
 // answer for two instances. A note describing a home the implementation did not and could not
 // safely use is the stale-authority class of DESIGN section 3.
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v5"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v6"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND HAS NEVER BEEN WRITTEN ON ANY INSTANCE. The path was
 // <instance_root>/belt-last-tick.json; every instance_root on srv1 is root:root 0755 while the belt
@@ -3549,6 +3544,9 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                       BeltTickExecutionUnreadable { reason: r } =>
                                         BeltTickReceiptUnreadable { reason: r }
                                       BeltTickExecutionDecoded { execution } => {
+  match belt_pass_outcome_from_member(doc: doc, key: "metering_pass") {
+    BeltPassOutcomeUnreadable { reason: r } => BeltTickReceiptUnreadable { reason: r }
+    BeltPassOutcomeDecoded { outcome: metering_pass } => {
                                         let receipt = BeltTickReceipt {
                                           observed_at: observed_at,
                                           execution: execution,
@@ -3558,6 +3556,7 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                           commit_pass: commit_pass,
                                           verify_pass: verify_pass,
                                           publish_pass: publish_pass,
+                                          metering_pass: metering_pass,
                                         }
                                         match json_object_unique_member(v: doc, key: "receipt_identity") {
                                           JsonMemberFound { value: JsonString { value: claimed } } =>
@@ -3576,6 +3575,8 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                                             BeltTickReceiptUnreadable { reason: "belt tick receipt receipt_identity is missing" }
                                         }
                                       }
+  }
+}
                                     }
                                 }
                             }
@@ -3713,13 +3714,14 @@ fn belt_tick_receipt_identity_text(receipt: BeltTickReceipt) -> String {
     belt_pass_outcome_key(o: receipt.teardown_pass), "|",
     belt_pass_outcome_key(o: receipt.commit_pass), "|",
     belt_pass_outcome_key(o: receipt.verify_pass), "|",
-    belt_pass_outcome_key(o: receipt.publish_pass),
+    belt_pass_outcome_key(o: receipt.publish_pass), "|",
+    belt_pass_outcome_key(o: receipt.metering_pass),
   ], "")
 }
 
 fn belt_tick_receipt_identity_hex(receipt: BeltTickReceipt) -> String {
   content_hash_tagged_structural(
-    tag: "roadmap-belt-tick-receipt-v4" as NonEmptyStr,
+    tag: "roadmap-belt-tick-receipt-v5" as NonEmptyStr,
     payload: content_hash_atom(value: belt_tick_receipt_identity_text(receipt: receipt) as NonEmptyStr),
   ).digest as String
 }
@@ -3797,6 +3799,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
     json_kv(key: "commit_pass", value: belt_pass_outcome_json(o: receipt.commit_pass)),
     json_kv(key: "verify_pass", value: belt_pass_outcome_json(o: receipt.verify_pass)),
     json_kv(key: "publish_pass", value: belt_pass_outcome_json(o: receipt.publish_pass)),
+    json_kv(key: "metering_pass", value: belt_pass_outcome_json(o: receipt.metering_pass)),
   ])
 }
 
@@ -3933,6 +3936,7 @@ type BeltTickResult {
   publish_outcomes: List<BeltPublishOutcome>,
   review_outcomes: List<BeltReviewOutcome>,
   audit_outcomes: List<BeltReviewOutcome>,
+  metering_outcomes: List<MeteringPersist>,
 }
 
 fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
@@ -4240,6 +4244,7 @@ fn belt_tick_for_instance(
         publish_outcomes: [],
         review_outcomes: [],
         audit_outcomes: [],
+        metering_outcomes: [],
       }
     TickPassesRun => {
       let commit_outcomes = belt_commit_attempts_for_instance(instance: instance)
@@ -4257,6 +4262,7 @@ fn belt_tick_for_instance(
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
         review_outcomes: review_outcomes,
         audit_outcomes: audit_outcomes,
+        metering_outcomes: belt_metering_attempts_for_instance(instance: instance),
       }
     }
   }
@@ -4500,6 +4506,7 @@ fn belt_run_once_in(
           publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
           review_outcomes: review_outcomes,
           audit_outcomes: audit_outcomes,
+          metering_outcomes: belt_metering_attempts_for_instance(instance: instance),
         }
       }
     RoadmapAuthorityProjected { doc: doc, accepted: _, withheld: _ } =>
@@ -6983,6 +6990,74 @@ fn belt_commit_outcome_persist(
       )),
     )
     outcome
+  }
+}
+
+// THE PER-ATTEMPT METERING RECORD (gunbc.roadmap_attempt_metering). Every attempt in the workflow
+// ledger is entered in the metering attempt index and, once its worker is terminal, metered against
+// its open roster -- a Provisional record, rewritten each tick so later reviewer, auditor and
+// supervisor rounds and late seat releases are folded in. An indexed attempt that has LEFT the ledger
+// can no longer be spawned for, because every harness spawner iterates that ledger; it is sealed and
+// metered against the seal, which is the only route to a Final record. The pass runs after review
+// and audit, and its outcomes are the tick receipt's metering_pass.
+fn belt_metering_for_attempt(
+  instance: HostDashboardInstance,
+  progress: WorkflowAttemptProgress,
+) -> MeteringPersist {
+  match metering_attempt_index_admit(instance: instance, node_id: progress.node_id, attempt_key: progress.attempt_key) {
+    Present { value: e } => MeteringPersistRefused { cause: join(["the metering attempt index could not be written: ", e], "") }
+    Absent =>
+      if belt_attempt_worker_terminal(provider: progress.provider, evidence: progress.process) {
+        metering_persist_for_attempt(instance: instance, node_id: progress.node_id as RoadmapNodeId, attempt_key: progress.attempt_key, departed: false)
+      } else {
+        MeteringNotDue
+      }
+  }
+}
+
+fn belt_metering_departed(
+  instance: HostDashboardInstance,
+  attempts: List<WorkflowAttemptProgress>,
+) -> List<MeteringPersist> {
+  match metering_attempt_index(instance: instance) {
+    MeteredAttemptsRefused { cause } => [MeteringPersistRefused { cause: join(["the metering attempt index is unreadable: ", cause], "") }]
+    MeteredAttemptsObserved { attempts: indexed } =>
+      flat_map(indexed, a =>
+        if any(attempts, p => p.node_id == a.node_id && p.attempt_key == a.attempt_key) {
+          [] as List<MeteringPersist>
+        } else {
+          [metering_persist_for_attempt(instance: instance, node_id: a.node_id as RoadmapNodeId, attempt_key: a.attempt_key, departed: true)]
+        })
+  }
+}
+
+fn belt_metering_attempts_for_instance(
+  instance: HostDashboardInstance,
+) -> List<MeteringPersist> {
+  match belt_workflow_attempts_observe_for_instance(instance: instance) {
+    WorkflowAttemptsRefused { reason } =>
+      [MeteringPersistRefused { cause: join(["the attempts ledger is unobservable, so no attempt can be metered or sealed: ", reason], "") }]
+    WorkflowAttemptsObserved { attempts } =>
+      concat(
+        map(attempts, progress => belt_metering_for_attempt(instance: instance, progress: progress)),
+        belt_metering_departed(instance: instance, attempts: attempts),
+      )
+  }
+}
+
+// A REFUSED METERING WRITE FAILS THE PASS, counted and named, so a lost record stops the line on the
+// tick receipt rather than surfacing only as an absent record at the reader.
+fn belt_metering_pass_outcome_from(outcomes: List<MeteringPersist>) -> BeltPassOutcome {
+  let refused = outcomes |> flat_map(o => match o {
+    MeteringPersistRefused { cause: c } => [c]
+    MeteringPersisted { path: _, standing: _ } => [] as List<String>
+    MeteringAlreadyFinal => [] as List<String>
+    MeteringNotDue => [] as List<String>
+  })
+  match refused.first() {
+    Absent => BeltPassRecorded
+    Present { value: c } =>
+      BeltPassFailed { reason: join([to_string(count(refused)), " metering record(s) refused; first: ", c], "") }
   }
 }
 
@@ -11509,6 +11584,10 @@ fn belt_tick_receipt_from_result(
     publish_pass: (match result.wholesale {
       TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
       TickPassesRun => belt_publish_pass_outcome_from(outcomes: result.publish_outcomes)
+    }),
+    metering_pass: (match result.wholesale {
+      TickPassesWithheld { refusal } => BeltPassRefused { reason: launch_refusal_reason(r: refusal) }
+      TickPassesRun => belt_metering_pass_outcome_from(outcomes: result.metering_outcomes)
     }),
   }
 }
