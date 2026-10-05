@@ -1,10 +1,18 @@
 module gunbc.roadmap_workflow_command
 
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.content_hash { ContentHash }
 import gunbc.roadmap_verification_receipt { VerificationSubject }
 
 type AttemptKey = String
+
+// The attempt's modeled-state pointer standing, as an established fact of the read that observed it:
+// Observed carries the evidence; Absent is established absence; Unreadable is a pointer that could
+// not be read, with the owner's located cause -- never treated as absence.
+type WorkflowModeledStateStanding
+  = WorkflowModeledStateObserved
+  | WorkflowModeledStateAbsent
+  | WorkflowModeledStateUnreadable { cause: NonEmptyStr }
 
 // THE THREE RETRY SHAPES ARE FIRST-CLASS COMMANDS, NOT INCIDENTAL TMUX CLEANUP. RetryMechanism
 // retries a failed mechanism at the same input identity without a new attempt or a consumed review
@@ -54,8 +62,14 @@ type WorkflowCommandAdmission
   = WorkflowCommandAdmitted
   | WorkflowCommandRefused { reason: String }
 
-fn is_legacy_attempt(modeled_state_present: Bool) -> Bool {
-  !modeled_state_present
+// Legacy standing comes only from an ESTABLISHED absence of the modeled-state pointer. An
+// unreadable pointer has unknown standing and is never legacy here.
+fn is_legacy_attempt(modeled_state: WorkflowModeledStateStanding) -> Bool {
+  match modeled_state {
+    WorkflowModeledStateAbsent => true
+    WorkflowModeledStateObserved => false
+    WorkflowModeledStateUnreadable { cause: _ } => false
+  }
 }
 
 fn admit_start_new_attempt(
@@ -105,8 +119,8 @@ fn admit_retry_mechanism(mints_attempt: Bool) -> WorkflowCommandAdmission {
   }
 }
 
-fn legacy_attempt_cannot_satisfy_obligations(modeled_state_present: Bool) -> Bool {
-  is_legacy_attempt(modeled_state_present: modeled_state_present)
+fn legacy_attempt_cannot_satisfy_obligations(modeled_state: WorkflowModeledStateStanding) -> Bool {
+  is_legacy_attempt(modeled_state: modeled_state)
 }
 
 fn attempt_key_short_form(key: AttemptKey) -> String {

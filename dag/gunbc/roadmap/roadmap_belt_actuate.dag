@@ -549,6 +549,9 @@ import gunbc.roadmap_session_placement {
   session_placement_observe_for_attempt, SessionPlacementUnreadable,
   session_placement_settle_pass, SessionSettlePass, SessionSettlePassRan, SessionSettlePassRefused, session_settle_pass_wire,
 }
+import gunbc.roadmap_workflow_command {
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
+}
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreeObservation, AttemptWorktreePresent, AttemptWorktreeAbsent, AttemptWorktreeUnobserved, attempt_worktree_observation_of,
   WorkflowAttemptEvidence,
@@ -593,9 +596,13 @@ import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_listing_names_entry,
   filesystem_entry_presence,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
   filesystem_read_outcome,
   filesystem_file_observation,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.llm.cli {
   shape_codex_login_status_env_args_for_program,
   shape_codex_version_env_args_for_program,
@@ -1023,9 +1030,7 @@ fn belt_oracle_observe_in_worktree(
   )
   validation_oracle_observe_from_source(
     oracle: oracle,
-    source_readable: read.success,
-    source: read.content,
-    read_error: read.error,
+    source_read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   )
 }
 
@@ -1628,8 +1633,7 @@ fn belt_claude_preflight_decision(
   claude_on_path: Bool,
   home: String,
   trust_store_path: String,
-  trust_store_readable: Bool,
-  trust_store_text: String,
+  trust_store_read: FilesystemReadOutcome,
   trust_root: String,
 ) -> BeltClaudePreflight {
   if !claude_on_path {
@@ -1642,24 +1646,29 @@ fn belt_claude_preflight_decision(
       step: "claude-trust-home",
       detail: "HOME unset or empty — cannot locate the claude trust store (~/.claude.json), so the workspace-trust seed is unknowable; fail-closed",
     }
-  } else if !trust_store_readable {
-    ClaudePreflightRefused {
-      step: "claude-trust-store",
-      detail: concat(
-        concat("claude trust store unreadable at ", trust_store_path),
-        " — claude blocks on its workspace-trust dialog for an unseeded root; seed it by launching claude once under the dispatch worktree root, or converge via the live_deploy membership",
-      ),
-    }
-  } else if !claude_workspace_trust_seeded(config_text: trust_store_text, project_path: trust_root) {
-    ClaudePreflightRefused {
-      step: "claude-trust-seed",
-      detail: concat(
-        concat(concat("workspace trust not seeded for ", trust_root), " in "),
-        concat(trust_store_path, " (projects entry with hasTrustDialogAccepted: true) — claude would block interactively on its trust dialog; ancestor-dir trust inheritance means seeding this ONE root covers every dispatch worktree"),
-      ),
-    }
   } else {
-    ClaudePreflightOk
+    match trust_store_read {
+      FilesystemReadRefused { error: _ } =>
+        ClaudePreflightRefused {
+          step: "claude-trust-store",
+          detail: concat(
+            concat("claude trust store unreadable at ", trust_store_path),
+            " — claude blocks on its workspace-trust dialog for an unseeded root; seed it by launching claude once under the dispatch worktree root, or converge via the live_deploy membership",
+          ),
+        }
+      FilesystemReadSucceeded { content: trust_store_text } =>
+        if !claude_workspace_trust_seeded(config_text: trust_store_text, project_path: trust_root) {
+          ClaudePreflightRefused {
+            step: "claude-trust-seed",
+            detail: concat(
+              concat(concat("workspace trust not seeded for ", trust_root), " in "),
+              concat(trust_store_path, " (projects entry with hasTrustDialogAccepted: true) — claude would block interactively on its trust dialog; ancestor-dir trust inheritance means seeding this ONE root covers every dispatch worktree"),
+            ),
+          }
+        } else {
+          ClaudePreflightOk
+        }
+    }
   }
 }
 
@@ -1674,8 +1683,7 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       claude_on_path: claude_ok,
       home: home,
       trust_store_path: "",
-      trust_store_readable: false,
-      trust_store_text: "",
+      trust_store_read: filesystem_read_outcome(content: "", success: false, error: "unused on refusal"),
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   } else {
@@ -1685,8 +1693,7 @@ fn belt_claude_preflight_for_instance(instance: HostDashboardInstance) -> BeltCl
       claude_on_path: claude_ok,
       home: home,
       trust_store_path: path,
-      trust_store_readable: r.success,
-      trust_store_text: r.content,
+      trust_store_read: filesystem_read_outcome(content: r.content, success: r.success, error: r.error),
       trust_root: dashboard_instance_dispatch_worktree_root(instance: instance) as String,
     )
   }
@@ -3661,37 +3668,41 @@ fn belt_pass_outcome_from_member(doc: JsonValue, key: String) -> BeltPassOutcome
   }
 }
 
-fn belt_tick_receipt_read_from_filesystem(
-  success: Bool,
-  content: String,
-  error: String,
-) -> BeltTickReceiptRead {
-  if success {
-    if trim(content) == "" {
-      BeltTickReceiptAbsent
-    } else {
-      belt_tick_receipt_decode(raw: content)
-    }
-  } else if string_contains(s: error, pattern: "No such file")
-      || string_contains(s: error, pattern: "not found") {
-    BeltTickReceiptAbsent
-  } else {
-    BeltTickReceiptUnreadable {
-      reason: join(["belt tick receipt could not be read: ", error], ""),
-    }
+// The tick receipt read classifies an OBSERVATION, not a host error string: the old classifier
+// text-matched the host's error ("No such file", "not found") to decide absent versus unreadable,
+// which breaks on every host phrasing and every error-transport change. The observation authority
+// establishes absence from the listing instead, and the host error rides inside the cause text.
+fn belt_tick_receipt_read_from_observation(observation: FilesystemFileObservation) -> BeltTickReceiptRead {
+  match observation {
+    FilesystemFileAbsent(_) => BeltTickReceiptAbsent
+    FilesystemFileRead { path: _, content } =>
+      if trim(content) == "" {
+        BeltTickReceiptAbsent
+      } else {
+        belt_tick_receipt_decode(raw: content)
+      }
+    FilesystemFileIndeterminate { cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
+    FilesystemFileObservationsDisagree { path: _, cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } =>
+      BeltTickReceiptUnreadable {
+        reason: join(["belt tick receipt could not be read: ", cause], ""),
+      }
   }
 }
 
 fn belt_tick_receipt_read_for_instance(
   instance: HostDashboardInstance,
 ) -> BeltTickReceiptRead {
-  let read = Filesystem.Read(
-    path: belt_tick_receipt_path_for_instance(instance: instance),
-  )
-  belt_tick_receipt_read_from_filesystem(
-    success: read.success,
-    content: read.content,
-    error: read.error,
+  belt_tick_receipt_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: belt_tick_receipt_path_for_instance(instance: instance),
+    ),
   )
 }
 
@@ -5024,47 +5035,89 @@ fn belt_occurrence_unit_row(unit: String) -> ObservedContainerRow {
 // attempt whose identity cannot be read produces no record, so a live container over it joins
 // nothing and reads Unclassified -- visible, occupying, never reaped -- rather than borrowing
 // today's selection as its meaning.
-fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> List<DurableAttemptRecord> {
+// The attempt's durable occurrence is a typed read outcome, never a silently emptied list: before
+// the fold conversion, an unreadable launch record returned [] and the occurrence census lost the
+// attempt without a word. A refusal here reaches the census as a refusal naming the attempt, the
+// same way an unobservable attempt population already does.
+type AttemptOccurrenceRecordRead
+  = AttemptOccurrenceRecordDecoded { record: DurableAttemptRecord }
+  | AttemptOccurrenceRecordRefused { reason: NonEmptyStr }
+
+fn belt_occurrence_record_from_launch_read(attempt: DispatchAttemptRef, read: FilesystemReadOutcome) -> AttemptOccurrenceRecordRead {
+  match read {
+    FilesystemReadRefused { error } =>
+      AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record could not be read, so its durable occurrence is unknown: ", error], "") }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
+        JsonDocumentUnreadable { gap } =>
+          AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record does not decode as JSON: ", gap], "") }
+        JsonDocumentParsed { value: doc } =>
+          match launch_identity_of_json(doc: doc) {
+            LaunchIdentityUnreadable { reason } =>
+              AttemptOccurrenceRecordRefused { reason: join(["attempt ", attempt.attempt_key, ": the launch record carries no readable launch identity: ", reason], "") }
+            LaunchIdentityDecoded { identity } =>
+              AttemptOccurrenceRecordDecoded {
+                record: DurableAttemptRecord {
+                  node: attempt.node_id as String,
+                  attempt: attempt.attempt_key,
+                  spawn_identity: join([
+                    "cause=", launch_cause_label(c: identity.cause),
+                    " mode=", spawn_mode_label(m: identity.mode),
+                    " instance=", identity.instance_id as String,
+                    " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
+                  ], ""),
+                },
+              }
+          }
+      }
+  }
+}
+
+fn belt_occurrence_record_for_attempt(instance: HostDashboardInstance, attempt: DispatchAttemptRef) -> AttemptOccurrenceRecordRead {
   let path = dispatch_attempt_launch_path_for_instance(
     instance: instance,
     node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: attempt.attempt_key,
   )
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    []
-  } else {
-    match parse_json_document(s: read.content) {
-      JsonDocumentUnreadable { gap: _ } => []
-      JsonDocumentParsed { value: doc } =>
-        match launch_identity_of_json(doc: doc) {
-          LaunchIdentityUnreadable { reason: _ } => []
-          LaunchIdentityDecoded { identity } =>
-            [DurableAttemptRecord {
-              node: attempt.node_id as String,
-              attempt: attempt.attempt_key,
-              spawn_identity: join([
-                "cause=", launch_cause_label(c: identity.cause),
-                " mode=", spawn_mode_label(m: identity.mode),
-                " instance=", identity.instance_id as String,
-                " revision=", git_object_id_wire_hex(oid: identity.revision) as String,
-              ], ""),
-            }]
+  belt_occurrence_record_from_launch_read(
+    attempt: attempt,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  )
+}
+
+// One unreadable attempt refuses the whole census rather than shrinking it silently: a census with
+// a hole is not a census. The refusal names every attempt whose record could not be read.
+type BeltAttemptOccurrenceRecords
+  = BeltAttemptOccurrenceRecordsObserved { records: List<DurableAttemptRecord> }
+  | BeltAttemptOccurrenceRecordsRefused { reason: NonEmptyStr }
+
+fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> BeltAttemptOccurrenceRecords {
+  match belt_attempts_observe_for_instance(instance: instance) {
+    AttemptsRefused { reason } =>
+      BeltAttemptOccurrenceRecordsRefused { reason: join(["the attempt population is unobservable: ", reason], "") }
+    AttemptsObserved { attempts } => {
+      let outcomes = map(attempts, a => belt_occurrence_record_for_attempt(instance: instance, attempt: a))
+      let refusal_reasons = fold(outcomes, init: [], f: (acc, o) => match o {
+        AttemptOccurrenceRecordRefused { reason } => concat(acc, [reason as String])
+        AttemptOccurrenceRecordDecoded { record: _ } => acc
+      })
+      if any(outcomes, o => match o {
+        AttemptOccurrenceRecordRefused { reason: _ } => true
+        AttemptOccurrenceRecordDecoded { record: _ } => false
+      }) {
+        BeltAttemptOccurrenceRecordsRefused { reason: join(refusal_reasons, "; ") as NonEmptyStr }
+      } else {
+        BeltAttemptOccurrenceRecordsObserved {
+          records: flat_map(outcomes, o => match o {
+            AttemptOccurrenceRecordDecoded { record: r } => [r]
+            AttemptOccurrenceRecordRefused { reason: _ } => []
+          }),
         }
+      }
     }
   }
 }
-
-fn belt_occurrence_records_for_instance(instance: HostDashboardInstance) -> List<DurableAttemptRecord>? {
-  match belt_attempts_observe_for_instance(instance: instance) {
-    AttemptsRefused { reason } => none
-    AttemptsObserved { attempts } =>
-      Present {
-        value: attempts |> flat_map(a => belt_occurrence_record_for_attempt(instance: instance, attempt: a)),
-      }
-  }
-}
-
 fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance) -> BeltOccurrencePopulation {
   match belt_sessions_observe_for_instance(instance: instance) {
     ObserveRefused { reason } =>
@@ -5075,9 +5128,9 @@ fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance
           OccurrencePopulationRefused { reason: "the user manager's gunbc unit population is unobservable; the census over half the population is unknowable" }
         Present { value: unit_names } =>
           match belt_occurrence_records_for_instance(instance: instance) {
-            Absent =>
-              OccurrencePopulationRefused { reason: "the durable attempt records are unobservable; occurrence identity cannot be joined" }
-            Present { value: records } =>
+            BeltAttemptOccurrenceRecordsRefused { reason } =>
+              OccurrencePopulationRefused { reason: join(["the durable attempt records are unobservable; occurrence identity cannot be joined: ", reason], "") }
+            BeltAttemptOccurrenceRecordsObserved { records } =>
               OccurrencePopulationObserved {
                 occurrences: occurrence_population(
                   containers: concat(
@@ -5518,6 +5571,132 @@ fn belt_verification_receipt_source(
   }
 }
 
+// The modeled-state pointer read is a typed outcome, and the two failure facts are kept apart: a
+// pointer that is established absent means this attempt has no modeled state; a pointer that could
+// not be read means WHETHER the attempt has modeled state is unknown. Collapsing them -- the old
+// `!read.success || trim(content) == ""` -- made an unreadable pointer claim "has no modeled state
+// pointer", an absence the read never established.
+type WorkflowModeledStatePointerState
+  = WorkflowModeledStatePointerAbsent
+  | WorkflowModeledStatePointerUnreadable { cause: NonEmptyStr }
+
+// The pointer standing decides the subordinate facts' standing: established ABSENCE (no pointer)
+// carries absence-shaped facts -- the legacy arm's own meaning -- while an UNREADABLE pointer
+// carries non-absence variants: the wrong state is unwritable, and nothing downstream may read an
+// unreadable pointer as "not yet".
+fn selection_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> CurrentVerificationSelectionObservation {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => SelectionAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      SelectionUnaddressable {
+        cause: join(["this attempt's current-attempt-key pointer could not be read, so whether a verification window was selected is unknown: ", cause], ""),
+      }
+  }
+}
+
+fn verification_source_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> VerificationReceiptFileSource {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => VerificationReceiptAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      VerificationReceiptUnreadable {
+        detail: join(["this attempt's current-attempt-key pointer could not be read, so its verification receipt could not be located: ", cause], ""),
+      }
+  }
+}
+
+fn publication_source_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> PublicationReceiptSource {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => ReceiptSourceAbsent
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      ReceiptSourceUnreadable {
+        detail: join(["this attempt's current-attempt-key pointer could not be read, so its publication receipt could not be located: ", cause], ""),
+      }
+  }
+}
+
+fn review_report_standing_for_pointer(pointer_state: WorkflowModeledStatePointerState) -> ReviewReport {
+  match pointer_state {
+    WorkflowModeledStatePointerAbsent => review_report_absent(reason: "this attempt has no modeled state pointer, so no review report exists for it")
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      review_report_refused(reason: join(["this attempt's current-attempt-key pointer could not be read, so its review report could not be located: ", cause], ""))
+  }
+}
+
+fn belt_workflow_attempt_evidence_without_modeled_state(
+  instance: HostDashboardInstance,
+  panes: BeltAttemptPanes,
+  attempt: DispatchAttemptRef,
+  pointer_state: WorkflowModeledStatePointerState,
+) -> WorkflowAttemptEvidence {
+  let pointer_reason = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so neither its attempt key nor its head is established: ", cause], "")
+  }
+  let worktree_cause = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so no attempt key names its worktree"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so whether an attempt key names its worktree is unknown: ", cause], "")
+  }
+  let standing = match pointer_state {
+    WorkflowModeledStatePointerAbsent => WorkflowModeledStateAbsent
+    WorkflowModeledStatePointerUnreadable { cause } => WorkflowModeledStateUnreadable { cause: cause }
+  }
+  let placement_detail = match pointer_state {
+    WorkflowModeledStatePointerAbsent =>
+      "this attempt has no modeled state pointer, so no attempt key names its session placement"
+    WorkflowModeledStatePointerUnreadable { cause } =>
+      join(["this attempt's current-attempt-key pointer could not be read, so whether an attempt key names its session placement is unknown: ", cause], "")
+  }
+  let provider_events_error = match pointer_state {
+    WorkflowModeledStatePointerAbsent => ""
+    WorkflowModeledStatePointerUnreadable { cause } => cause as String
+  }
+  WorkflowAttemptEvidence {
+    node_id: attempt.node_id,
+    attempt_key: attempt.attempt_key,
+    branch: attempt.branch,
+    modeled_state: standing,
+    worktree: AttemptWorktreeUnobserved { path: "", cause: worktree_cause },
+    admission_receipt_readable: false,
+    admission_receipt: "",
+    spawn_failure_present: false,
+    spawn_failure: "",
+    provider_events_readable: false,
+    provider_events: "",
+    provider_events_error: provider_events_error,
+    process: attempt_process_for_node(
+      panes: panes,
+      node_id: attempt.node_id,
+      attempt_key: attempt.attempt_key,
+    ),
+    validation_summary: belt_validation_summary_for_node(
+      instance: instance,
+      node_id: attempt.node_id,
+    ),
+    verification_subject: VerificationSubjectUnobserved {
+      reason: pointer_reason,
+    },
+    verification_selection: selection_standing_for_pointer(pointer_state: pointer_state),
+    verification_source: verification_source_standing_for_pointer(pointer_state: pointer_state),
+    publication_subject: PublicationSubjectUnobserved {
+      reason: pointer_reason,
+    },
+    publication_source: publication_source_standing_for_pointer(pointer_state: pointer_state),
+    submission_capture: CaptureUnreadable {
+      reason: pointer_reason,
+    },
+    integration: IntegrationReceiptUnreadable {
+      reason: pointer_reason,
+    },
+    review: review_report_standing_for_pointer(pointer_state: pointer_state),
+    goal_audit: [],
+    session_placement: SessionPlacementUnreadable { unit: "", detail: placement_detail },
+  }
+}
+
 fn belt_workflow_attempt_evidence_for_ref(
   instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
@@ -5529,57 +5708,28 @@ fn belt_workflow_attempt_evidence_for_ref(
       node_id: attempt.node_id as gunbc.roadmap_model.RoadmapNodeId,
     ),
   )
-  if !key_read.success || trim(key_read.content) == "" {
-    WorkflowAttemptEvidence {
-      node_id: attempt.node_id,
-      attempt_key: attempt.attempt_key,
-      branch: attempt.branch,
-      modeled_state_present: false,
-      worktree: AttemptWorktreeUnobserved { path: "", cause: "this attempt has no modeled state pointer, so no attempt key names its worktree" },
-      admission_receipt_readable: false,
-      admission_receipt: "",
-      spawn_failure_present: false,
-      spawn_failure: "",
-      provider_events_readable: false,
-      provider_events: "",
-      provider_events_error: key_read.error,
-      process: attempt_process_for_node(
-        panes: panes,
-        node_id: attempt.node_id,
-        attempt_key: attempt.attempt_key,
-      ),
-      validation_summary: belt_validation_summary_for_node(
+  match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+    FilesystemReadRefused { error } =>
+      belt_workflow_attempt_evidence_without_modeled_state(
         instance: instance,
-        node_id: attempt.node_id,
-      ),
-      verification_subject: VerificationSubjectUnobserved {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      verification_selection: SelectionAbsent,
-      verification_source: VerificationReceiptAbsent,
-      publication_subject: PublicationSubjectUnobserved {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      publication_source: ReceiptSourceAbsent,
-      submission_capture: CaptureUnreadable {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      integration: IntegrationReceiptUnreadable {
-        reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established",
-      },
-      review: review_report_absent(reason: "this attempt has no modeled state pointer, so neither its attempt key nor its head is established"),
-      goal_audit: [],
-      session_placement: SessionPlacementUnreadable { unit: "", detail: "this attempt has no modeled state pointer, so no attempt key names its session placement" },
-    }
-  } else {
-    belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(key_read.content))
+        panes: panes,
+        attempt: attempt,
+        pointer_state: WorkflowModeledStatePointerUnreadable { cause: error as NonEmptyStr },
+      )
+    FilesystemReadSucceeded { content } =>
+      if trim(content) == "" {
+        belt_workflow_attempt_evidence_without_modeled_state(
+          instance: instance,
+          panes: panes,
+          attempt: attempt,
+          pointer_state: WorkflowModeledStatePointerAbsent,
+        )
+      } else {
+        belt_workflow_attempt_evidence_for_key(instance: instance, panes: panes, attempt: attempt, current_key: trim(content))
+      }
   }
 }
 
-// THE ATTEMPT-VARYING RECORDS OF ONE NAMED ATTEMPT, addressed by its key -- the one place the
-// evidence builder's admission, provider-event and spawn-failure reads are named, so a witness can
-// establish that a historical attempt's reads name that attempt and never the node's current
-// projection.
 type BeltAttemptRecordPaths {
   admission: String
   events: String
@@ -5741,7 +5891,7 @@ fn belt_workflow_attempt_evidence_for_key(
       node_id: node_id,
       attempt_key: current_key,
     ),
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: belt_attempt_worktree_observe(instance: instance, node_id: node_id, attempt_key: current_key),
     admission_receipt_readable: admission.success,
     admission_receipt: admission.content,
@@ -5921,15 +6071,16 @@ fn belt_submission_observe(worktree: String) -> BeltSubmissionRead {
     BeltSubmissionObserved { observation: SubmissionAbsent }
   } else {
     let read = Filesystem.Read(path: join([worktree, "/", submission_artifact_name as String], ""))
-    if !read.success {
-      BeltSubmissionUnobservable {
-        reason: join([
-          "the submission artifact was listed and then could not be read, so whether it declares a candidate is unknown: ",
-          read.error,
-        ], ""),
-      }
-    } else {
-      match submission_decode(text: read.content) {
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        BeltSubmissionUnobservable {
+          reason: join([
+            "the submission artifact was listed and then could not be read, so whether it declares a candidate is unknown: ",
+            error,
+          ], ""),
+        }
+      FilesystemReadSucceeded { content } =>
+        match submission_decode(text: content) {
         SubmissionNotDecodable { reason } =>
           BeltSubmissionObserved { observation: SubmissionUndecodable { reason: reason } }
         SubmissionDecoded { submission } =>
@@ -6011,15 +6162,16 @@ fn belt_submission_captures_observe(instance: HostDashboardInstance, worktree: S
           CaptureRosterUnobservable { reason: _ } => acc
           CaptureRosterObserved { captures } => {
             let read = Filesystem.Read(path: join([dir, "/", trim(entry)], ""))
-            if !read.success {
-              CaptureRosterUnobservable {
-                reason: join([
-                  "a submission capture record was listed and then could not be read: ",
-                  trim(entry), " (", read.error, ")",
-                ], ""),
-              }
-            } else {
-              match submission_capture_decode(text: read.content) {
+            match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+              FilesystemReadRefused { error } =>
+                CaptureRosterUnobservable {
+                  reason: join([
+                    "a submission capture record was listed and then could not be read: ",
+                    trim(entry), " (", error, ")",
+                  ], ""),
+                }
+              FilesystemReadSucceeded { content } =>
+                match submission_capture_decode(text: content) {
                 CaptureNotDecodable { reason } =>
                   CaptureRosterUnobservable {
                     reason: join(["the submission capture record ", trim(entry), " does not decode: ", reason], ""),
@@ -6065,12 +6217,13 @@ fn belt_submission_capture_for_head(instance: HostDashboardInstance, worktree: S
     CaptureAbsent
   } else {
     let read = Filesystem.Read(path: join([dir, "/", submission_capture_basename(head_sha: head_sha)], ""))
-    if !read.success {
-      CaptureUnreadable {
-        reason: join(["the submission capture for this head was listed and then could not be read: ", read.error], ""),
-      }
-    } else {
-      match submission_capture_decode(text: read.content) {
+    match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+      FilesystemReadRefused { error } =>
+        CaptureUnreadable {
+          reason: join(["the submission capture for this head was listed and then could not be read: ", error], ""),
+        }
+      FilesystemReadSucceeded { content } =>
+        match submission_capture_decode(text: content) {
         CaptureNotDecodable { reason } =>
           CaptureUnreadable {
             reason: join(["the submission capture at this head's own address does not decode: ", reason], ""),
@@ -6290,15 +6443,16 @@ fn belt_scm_base_sha_observe(instance: HostDashboardInstance, node_id: RoadmapNo
     attempt_key: attempt_key,
   )
   let read = Filesystem.Read(path: path)
-  if !read.success {
-    BaseShaUnobserved {
-      reason: join([
-        "the attempt's spawn origin could not be read, so the intake base is unknown: ",
-        path, " (", read.error, ") — the project base must freeze the recorded dispatch base",
-      ], ""),
-    }
-  } else {
-    match parse_json_document(s: read.content) {
+  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+    FilesystemReadRefused { error } =>
+      BaseShaUnobserved {
+        reason: join([
+          "the attempt's spawn origin could not be read, so the intake base is unknown: ",
+          path, " (", error, ") — the project base must freeze the recorded dispatch base",
+        ], ""),
+      }
+    FilesystemReadSucceeded { content } =>
+      match parse_json_document(s: content) {
       JsonDocumentUnreadable { gap: _ } =>
         BaseShaUnobserved { reason: join(["the spawn origin at ", path, " is not JSON"], "") }
       JsonDocumentParsed { value: doc } =>
@@ -6916,20 +7070,21 @@ fn belt_scm_delta_fold_step(
           }
         WorktreeBind { path } => {
           let read = Filesystem.Read(path: join([worktree, "/", path as String], ""))
-          if !read.success {
-            BeltDeltaFold {
-              store: acc.store,
-              unique: acc.unique,
-              refused: Present {
-                value: join([
-                  "the changed path ", path as String,
-                  " could not be read from the worktree (", read.error,
-                  "), so the tree cannot be captured whole",
-                ], ""),
-              },
-            }
-          } else {
-            belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: read.content)
+          match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+            FilesystemReadRefused { error } =>
+              BeltDeltaFold {
+                store: acc.store,
+                unique: acc.unique,
+                refused: Present {
+                  value: join([
+                    "the changed path ", path as String,
+                    " could not be read from the worktree (", error,
+                    "), so the tree cannot be captured whole",
+                  ], ""),
+                },
+              }
+            FilesystemReadSucceeded { content } =>
+              belt_scm_delta_bind_text(path_of_envelope: path_of_envelope, acc: acc, path: path, text: content)
           }
         }
       }
@@ -10725,12 +10880,13 @@ fn belt_integration_receipt_observe(
         IntegrationReceiptAbsent
       } else {
         let read = Filesystem.Read(path: join([dir, "/", head_sha, ".json"], ""))
-        if !read.success {
-          IntegrationReceiptUnreadable {
-            reason: join(["the integration receipt for this head was listed and then could not be read: ", read.error], ""),
-          }
-        } else {
-          match integration_receipt_decode(text: read.content) {
+        match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
+          FilesystemReadRefused { error } =>
+            IntegrationReceiptUnreadable {
+              reason: join(["the integration receipt for this head was listed and then could not be read: ", error], ""),
+            }
+          FilesystemReadSucceeded { content } =>
+            match integration_receipt_decode(text: content) {
             IntegrationReceiptNotDecodable { reason } =>
               IntegrationReceiptUnreadable {
                 reason: join(["the integration receipt at this head's own address does not decode: ", reason], ""),
@@ -12850,17 +13006,25 @@ fn belt_publish_node_for_instance(
           node_id: node_id as gunbc.roadmap_model.RoadmapNodeId,
         ),
       )
-      if !key_read.success || trim(key_read.content) == "" {
-        PublishDeferred {
-          node_id: node_id,
-          reason: "this node has no current attempt, so there is no branch or head for publication to be about",
-        }
-      } else {
-        belt_publish_attempt_for_instance(
-          instance: instance,
-          node_id: node_id,
-          attempt_key: trim(key_read.content),
-        )
+      match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+        FilesystemReadRefused { error } =>
+          PublishDeferred {
+            node_id: node_id,
+            reason: join(["the node's current-attempt-key pointer could not be read, so whether the node has a current attempt is unknown: ", error], ""),
+          }
+        FilesystemReadSucceeded { content } =>
+          if trim(content) == "" {
+            PublishDeferred {
+              node_id: node_id,
+              reason: "this node has no current attempt, so there is no branch or head for publication to be about",
+            }
+          } else {
+            belt_publish_attempt_for_instance(
+              instance: instance,
+              node_id: node_id,
+              attempt_key: trim(content),
+            )
+          }
       }
     }
       }
