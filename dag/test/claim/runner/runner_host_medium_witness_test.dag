@@ -21,7 +21,7 @@ import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_machine,
 import gunbc.machine_intake_mtcollins1_boot_run {
   MtCollins1BootTerminalVerdict, TerminalAccepted, TerminalRunnerHostAccepted, TerminalRefused, TerminalPending,
   WatchRunnerHostAccepted, watch_tick, SolChannelLive,
-  TerminalWatch, MtCollins1BootActuation, actuation_watch_of, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
+  TerminalWatch, actuation_watch_of, actuation_after_watch, actuation_with_outcome, actuation_not_powered_on, mtcollins1_boot_attempt_of, BmcAccessNotReached,
   mtcollins1_boot_terminal_verdict, mtcollins1_boot_terminal_cause_text, mtcollins1_boot_medium_refusal,
 }
 import gunbc.runner.runner_host_medium {
@@ -282,13 +282,15 @@ fn through(subject: AdmittedBootSubject, reading: RunnerHostUp?) -> RunnerHostUp
   let watch = TerminalWatch { outcome: ExitSuccess, census_ended: false, smpro_census: SmproNotTaken { reason: "supplied" }, screen_reported: [], runner_host: reading }
   let aw = actuation_watch_of(watch: watch, selection: subject.selection, at_power_on: SmproNotTaken { reason: "supplied" }, smpro_read: UptimeRefused { detail: "supplied" }, terminal_read: UptimeRefused { detail: "supplied" })
   let base = actuation_not_powered_on(outcome: aw.outcome, reason: "supplied")
-  let act = MtCollins1BootActuation { outcome: base.outcome, media: base.media, handoff_media: base.handoff_media, end_media: base.end_media, stage: aw.stage, override_before: base.override_before, override_after: base.override_after, power_after: base.power_after, timing: base.timing, screen: base.screen, runner_host: aw.runner_host }
-  mtcollins1_boot_attempt_of(act: act, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied")).runner_host
+  let act = actuation_after_watch(observed: aw, media: base.media, handoff_media: base.handoff_media, end_media: base.end_media, override_before: base.override_before, override_after: base.override_after, power_after: base.power_after, outcome: aw.outcome, screen: base.screen, timing: base.timing)
+  let held = actuation_with_outcome(act: act, outcome: ExitSuccess)
+  mtcollins1_boot_attempt_of(act: held, bmc: BmcAccessNotReached { reason: "supplied" }, configuration: attempt_configuration_not_recorded(host: "mtcollins1", attempt: "supplied", reason: "supplied")).runner_host
 }
 
-// THE READING REACHES THE COMPLETED ATTEMPT, through the real post-watch projections: the accepted
-// verdict's reading, placed on the TerminalWatch the watch loop returns, is the one
-// actuation_watch_of hands the actuation and mtcollins1_boot_attempt_of hands the attempt result, so
+// THE READING REACHES THE COMPLETED ATTEMPT, through every real post-watch projection the production
+// path calls -- actuation_watch_of, actuation_after_watch (mtcollins1_boot_actuate), actuation_with_outcome
+// (mtcollins1_boot_actuate_held) and mtcollins1_boot_attempt_of -- so dropping the reading in any of them
+// turns this red, and
 // GuestIdleMeminfoAndNproc reads all four values off MtCollins1BootAttempt. A watch that accepted no
 // runner host carries none all the way through.
 test fn the_accepted_reading_reaches_the_boot_attempt_result() -> Bool {

@@ -2038,6 +2038,53 @@ type ActuationWatch {
   runner_host: RunnerHostUp?
 }
 
+// THE ACTUATION AFTER THE WATCH, PURE: the watch's stage and its one accepted runner-host reading are
+// taken from the watch itself, so no caller can assemble an actuation that drops the reading the
+// terminal accepted. mtcollins1_boot_actuate builds its result only through this.
+fn actuation_after_watch(
+  observed: ActuationWatch,
+  media: MtCollins1MediaAttachRecord,
+  handoff_media: MtCollins1HandoffMedia,
+  end_media: MtCollins1EndMedia,
+  override_before: BootParam5Reading,
+  override_after: BootParam5Reading,
+  power_after: PowerAfterAttempt,
+  outcome: ProcessExit,
+  screen: KvmObserverRecord,
+  timing: BootPhaseTiming,
+) -> MtCollins1BootActuation {
+  MtCollins1BootActuation {
+    outcome: outcome,
+    media: media,
+    handoff_media: handoff_media,
+    end_media: end_media,
+    stage: observed.stage,
+    override_before: override_before,
+    override_after: override_after,
+    power_after: power_after,
+    timing: timing,
+    screen: screen,
+    runner_host: observed.runner_host,
+  }
+}
+
+// THE SAME ACTUATION UNDER A NEW OUTCOME (the unit hold's release), every observation carried.
+fn actuation_with_outcome(act: MtCollins1BootActuation, outcome: ProcessExit) -> MtCollins1BootActuation {
+  MtCollins1BootActuation {
+    outcome: outcome,
+    media: act.media,
+    handoff_media: act.handoff_media,
+    end_media: act.end_media,
+    stage: act.stage,
+    override_before: act.override_before,
+    override_after: act.override_after,
+    power_after: act.power_after,
+    timing: act.timing,
+    screen: act.screen,
+    runner_host: act.runner_host,
+  }
+}
+
 // THE WATCH'S RESULT AS THE ACTUATION SEES IT, PURE: the terminal watch's outcome, stage and the one
 // accepted runner-host reading pass through unchanged, so the reading the terminal accepted is the
 // reading the attempt result carries (none on every watch that did not accept a runner host).
@@ -2443,7 +2490,8 @@ fn mtcollins1_boot_actuate(
       let power_after_read = proc_uptime_read()
       let teardown = mtcollins1_boot_release_sol(proof: proof, password_file: password_file, pid_path: sol_pid_path, capture_path: sol_capture_path)
       let released = proc_uptime_read()
-      MtCollins1BootActuation {
+      actuation_after_watch(
+        observed: observed,
         media: media,
         handoff_media: gated.media,
         end_media: end_media,
@@ -2455,7 +2503,6 @@ fn mtcollins1_boot_actuate(
             if sol_release_is_clean(outcome: teardown) { ExitSuccess } else { exit_failure(reason: concat("mtcollins1 boot: ", sol_release_outcome_text(outcome: teardown))) }
           other => outcome_attributing_media_loss(outcome: other, loss: media_loss_after_handoff(handoff: gated.media, end: end_media))
         },
-        stage: observed.stage,
         screen: screen_record,
         timing: boot_phase_timing_of(
           hold: hold_acquired,
@@ -2472,8 +2519,7 @@ fn mtcollins1_boot_actuate(
             sol_release: PhaseStepRan { result: sol_release_phase_result(t: teardown), end: released },
           },
         ),
-        runner_host: observed.runner_host,
-      }
+      )
     }
   }
 }
@@ -2568,7 +2614,7 @@ fn mtcollins1_boot_actuate_held(
     sol_capture_path: sol_capture_path,
     resolve_toolchain: resolve_toolchain,
   )
-  MtCollins1BootActuation { outcome: unit_hold_release(proof: proof, outcome: act.outcome), media: act.media, handoff_media: act.handoff_media, end_media: act.end_media, stage: act.stage, override_before: act.override_before, override_after: act.override_after, power_after: act.power_after, timing: act.timing, screen: act.screen, runner_host: act.runner_host }
+  actuation_with_outcome(act: act, outcome: unit_hold_release(proof: proof, outcome: act.outcome))
 }
 
 // EVERY TERMINAL ARM OF A BOOT ATTEMPT GOES THROUGH mtcollins1_boot_conclude (gunbc#12093), which
