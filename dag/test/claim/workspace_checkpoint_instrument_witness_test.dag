@@ -266,6 +266,22 @@ fn numbered_entries(n: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry> {
   if n <= 0 { acc } else { numbered_entries(n: n - 1, acc: Cons { head: entry(path: join(["dir/file-", to_string(n), ".txt"], ""), c: "b"), tail: acc }) }
 }
 
+fn non_ascii_entries(n: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry> {
+  if n <= 0 { acc } else { non_ascii_entries(n: n - 1, acc: Cons { head: entry(path: join(["caf\u{e9}/\u{4e2d}\u{6587} ", to_string(n), ";\u{1f600}:x.txt"], ""), c: "c"), tail: acc }) }
+}
+
+// NON-ASCII PATHS DECODE BY CODE POINT: accented, CJK and astral characters, with the body's own
+// delimiters (space, ';', ':') inside the path, round-trip in order. The length prefix counts code
+// points, so a decoder slicing by byte or by host-text offset would misread every one of them.
+test fn non_ascii_paths_decode_in_order_and_round_trip() -> Bool {
+  let es = non_ascii_entries(n: 40, acc: [])
+  let revision = WorkspaceRevision { writer: WorkspaceWriterEpoch { workspace: "\u{e9}quipe", epoch: 2 }, parent: none, entries: es }
+  match workspace_head_entry_decode(object: workspace_head_entry_object(entry: revision)) {
+    Present { value: WorkspaceRevision { writer: w, parent: _, entries: got } } => (w.workspace as String) == "\u{e9}quipe" && map(got, e => e.path as String) == map(es, e => e.path as String) && round_trips(e: revision)
+    other => false
+  }
+}
+
 // THE LARGER-N CONTROL: the offset walk decodes a revision of many entries in order and round-trips.
 test fn a_forty_entry_revision_decodes_in_order_and_round_trips() -> Bool {
   let es = numbered_entries(n: 40, acc: [])

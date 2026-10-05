@@ -8,6 +8,7 @@ import std.durable_compare_and_set { CasGeneration }
 import std.nat { nat_sub, NatDifference, NatSubtrahendExceedsMinuend }
 import std.fabric_blob { FabricBlobAddress, fabric_blob_object_name }
 import std.content_hash { sha256_hex_digest }
+import std.coercion { unicode_scalar_unfold, unicode_scalar_fold }
 import std.fabric_storage {
   FabricObject, FabricObjectRef,
   FabricHeadExpectation, ExpectHeadAbsent, ExpectHeadAt,
@@ -123,52 +124,56 @@ fn workspace_head_entry_object(entry: WorkspaceHeadEntry) -> FabricObject {
 // decode that misreads is refused there rather than trusted here. Every malformed body is absent.
 // The parent is the object's single link, or none; more than one link is not an entry this module
 // wrote.
-// THE DECODE WALKS ONE BODY STRING BY OFFSET. Every read is either one character at an offset or the
-// bounded slice of one field, never the remainder of the body: on the interpreter's string carrier
-// both are O(1) per character on ASCII text (v1_rt RcStr char_at / substring), so the whole decode
-// is linear in the body. Entries are prepended and reversed once, so the result list is never a
-// copied accumulator, and the walk is tail-recursive -- a loop, not a recursion as deep as the
-// workspace (DESIGN 6, bare minimum cost). A non-ASCII body takes the carrier's code-point fallback,
-// O(offset) per read; the cursor surface that removes it is the carrier's own named next rung.
+// THE DECODE WALKS THE BODY'S CODE POINTS BY OFFSET. The body is unfolded to its code points once
+// (std.coercion unicode_scalar_unfold); every later read is one member (get), the length (count) or
+// one field's bounded slice (skip then take, folded back with unicode_scalar_fold). std.primitives
+// prices each at log len or better on the persistent carrier in the interpreter and in emitted Rust,
+// so the decode is linear in the body on ASCII and non-ASCII text alike -- the property host-text
+// char_at / substring lack (O(offset) on non-ASCII in the interpreter and on all text in emitted
+// Rust). Length prefixes count code points, matching length() in workspace_head_entry_object.
+// Entries are prepended and reversed once, and the walk is tail-recursive (DESIGN 6, bare minimum
+// cost).
 type WorkspaceBodyField {
   value: String
   next: Int
 }
 
-fn workspace_body_literal_at(body: String, at: Int, literal: String) -> Bool {
-  at + length(literal) <= length(body) && substring(s: body, start: at, end: at + length(literal)) == literal
+fn workspace_body_slice(cps: List<Int>, start: Int, end: Int) -> String {
+  unicode_scalar_fold(xs: cps |> skip(n: start) |> take(n: end - start))
+}
+
+fn workspace_body_literal_at(cps: List<Int>, at: Int, literal: String) -> Bool {
+  let n = length(literal)
+  at + n <= count(cps) && workspace_body_slice(cps: cps, start: at, end: at + n) == literal
 }
 
 // The offset of the first `stop` at or after `at`, or absent if the body ends first.
-fn workspace_body_find(body: String, at: Int, stop: String) -> Int? {
-  if at >= length(body) {
-    none
-  } else if char_at(s: body, pos: at) == stop {
-    Present { value: at }
-  } else {
-    workspace_body_find(body: body, at: at + 1, stop: stop)
+fn workspace_body_find(cps: List<Int>, at: Int, stop: Int) -> Int? {
+  match get(xs: cps, index: at) {
+    Absent => none
+    Present { value: c } => if c == stop { Present { value: at } } else { workspace_body_find(cps: cps, at: at + 1, stop: stop) }
   }
 }
 
-// `<tag><decimal length>:<that many characters>` starting at `at`.
-fn workspace_body_prefixed(body: String, at: Int, tag: String) -> WorkspaceBodyField? {
-  if !workspace_body_literal_at(body: body, at: at, literal: tag) {
+// `<tag><decimal length>:<that many code points>` starting at `at`.
+fn workspace_body_prefixed(cps: List<Int>, at: Int, tag: String) -> WorkspaceBodyField? {
+  if !workspace_body_literal_at(cps: cps, at: at, literal: tag) {
     none
   } else {
     let digits_at = at + length(tag)
-    match workspace_body_find(body: body, at: digits_at, stop: ":") {
+    match workspace_body_find(cps: cps, at: digits_at, stop: code_point(c: ":")) {
       Absent => none
       Present { value: colon } =>
         if colon == digits_at {
           none
         } else {
-          match parse_int(s: substring(s: body, start: digits_at, end: colon)) {
+          match parse_int(s: workspace_body_slice(cps: cps, start: digits_at, end: colon)) {
             Absent => none
             Present { value: n } =>
-              if n < 0 || colon + 1 + n > length(body) {
+              if n < 0 || colon + 1 + n > count(cps) {
                 none
               } else {
-                Present { value: WorkspaceBodyField { value: substring(s: body, start: colon + 1, end: colon + 1 + n), next: colon + 1 + n } }
+                Present { value: WorkspaceBodyField { value: workspace_body_slice(cps: cps, start: colon + 1, end: colon + 1 + n), next: colon + 1 + n } }
               }
           }
         }
@@ -176,31 +181,31 @@ fn workspace_body_prefixed(body: String, at: Int, tag: String) -> WorkspaceBodyF
   }
 }
 
-// The characters from `at` up to the next `stop`, and the offset just past it.
-fn workspace_body_until(body: String, at: Int, stop: String) -> WorkspaceBodyField? {
-  match workspace_body_find(body: body, at: at, stop: stop) {
+// The code points from `at` up to the next `stop`, and the offset just past it.
+fn workspace_body_until(cps: List<Int>, at: Int, stop: String) -> WorkspaceBodyField? {
+  match workspace_body_find(cps: cps, at: at, stop: code_point(c: stop)) {
     Absent => none
-    Present { value: end } => Present { value: WorkspaceBodyField { value: substring(s: body, start: at, end: end), next: end + 1 } }
+    Present { value: end } => Present { value: WorkspaceBodyField { value: workspace_body_slice(cps: cps, start: at, end: end), next: end + 1 } }
   }
 }
 
-fn workspace_body_entries(body: String, at: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
-  if at == length(body) {
+fn workspace_body_entries(cps: List<Int>, at: Int, acc: List<WorkspaceEntry>) -> List<WorkspaceEntry>? {
+  if at == count(cps) {
     Present { value: reverse(acc) }
   } else {
-    match workspace_body_prefixed(body: body, at: at, tag: "F") {
+    match workspace_body_prefixed(cps: cps, at: at, tag: "F") {
       Absent => none
       Present { value: path } =>
-        if path.value == "" || !workspace_body_literal_at(body: body, at: path.next, literal: " ") {
+        if path.value == "" || !workspace_body_literal_at(cps: cps, at: path.next, literal: " ") {
           none
         } else {
-          match workspace_body_until(body: body, at: path.next + 1, stop: " ") {
+          match workspace_body_until(cps: cps, at: path.next + 1, stop: " ") {
             Absent => none
             Present { value: hex } =>
               match sha256_hex_digest(hex: hex.value) {
                 Absent => none
                 Present { value: digest } =>
-                  match workspace_body_until(body: body, at: hex.next, stop: ";") {
+                  match workspace_body_until(cps: cps, at: hex.next, stop: ";") {
                     Absent => none
                     Present { value: size } =>
                       match parse_int(s: size.value) {
@@ -209,7 +214,7 @@ fn workspace_body_entries(body: String, at: Int, acc: List<WorkspaceEntry>) -> L
                           if n < 0 {
                             none
                           } else {
-                            workspace_body_entries(body: body, at: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
+                            workspace_body_entries(cps: cps, at: size.next, acc: Cons { head: WorkspaceEntry { path: path.value as NonEmptyStr, chunk: FabricBlobAddress { key: digest }, size: byte_size(count: n) }, tail: acc })
                           }
                       }
                   }
@@ -225,17 +230,17 @@ type WorkspaceBodyHeader {
   next: Int
 }
 
-fn workspace_body_header(body: String, kind: String) -> WorkspaceBodyHeader? {
-  if !workspace_body_literal_at(body: body, at: 0, literal: kind) {
+fn workspace_body_header(cps: List<Int>, kind: String) -> WorkspaceBodyHeader? {
+  if !workspace_body_literal_at(cps: cps, at: 0, literal: kind) {
     none
   } else {
-    match workspace_body_prefixed(body: body, at: length(kind), tag: "W") {
+    match workspace_body_prefixed(cps: cps, at: length(kind), tag: "W") {
       Absent => none
       Present { value: ws } =>
-        if ws.value == "" || !workspace_body_literal_at(body: body, at: ws.next, literal: ";epoch=") {
+        if ws.value == "" || !workspace_body_literal_at(cps: cps, at: ws.next, literal: ";epoch=") {
           none
         } else {
-          match workspace_body_until(body: body, at: ws.next + 7, stop: ";") {
+          match workspace_body_until(cps: cps, at: ws.next + 7, stop: ";") {
             Absent => none
             Present { value: e } =>
               match parse_int(s: e.value) {
@@ -257,17 +262,17 @@ fn workspace_head_entry_decode(object: FabricObject) -> WorkspaceHeadEntry? {
   match parent {
     Absent => none
     Present { value: link } => {
-      let body = object.body as String
-      match workspace_body_header(body: body, kind: "workspace.revision;") {
+      let cps = unicode_scalar_unfold(s: object.body as String)
+      match workspace_body_header(cps: cps, kind: "workspace.revision;") {
         Present { value: h } =>
-          match workspace_body_entries(body: body, at: h.next, acc: []) {
+          match workspace_body_entries(cps: cps, at: h.next, acc: []) {
             Absent => none
             Present { value: es } => Present { value: WorkspaceRevision { writer: h.writer, parent: link, entries: es } }
           }
         Absent =>
-          match workspace_body_header(body: body, kind: "workspace.fence;") {
+          match workspace_body_header(cps: cps, kind: "workspace.fence;") {
             Absent => none
-            Present { value: h } => if h.next == length(body) { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
+            Present { value: h } => if h.next == count(cps) { Present { value: WorkspaceFence { writer: h.writer, parent: link } } } else { none }
           }
       }
     }
