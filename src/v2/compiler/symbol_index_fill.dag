@@ -378,32 +378,6 @@ fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
 // the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
 // reference that wanted them refuses, located, at the reference site -- which is where
 // docs/plans/namespace-resolution-design.md section 13 puts that refusal.
-fn symbol_index_fill_bindings_to_fixed_point(
-  index: SymbolIndex,
-  pending: FreeMonoid<PendingBinding>
-) -> SymbolIndex {
-  let round = symbol_index_bind_pending_round(index: index, pending: pending)
-  if is_empty(xs: round.deferred) {
-    round.index
-  } else if length(xs: round.deferred) == length(xs: pending) {
-    round.index
-  } else {
-    symbol_index_fill_bindings_to_fixed_point(
-      index: round.index,
-      pending: round.deferred
-    )
-  }
-}
-
-fn symbol_index_fill_alias_bindings(
-  index: SymbolIndex,
-  module_qn: QualifiedName,
-  root: Node
-) -> SymbolIndex {
-  symbol_index_fill_bindings_to_fixed_point(
-    index: index,
-    pending: symbol_index_alias_rows_of(module_qn: module_qn, root: root)
-  )
 }
 
 fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
