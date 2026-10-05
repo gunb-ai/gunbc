@@ -9,7 +9,10 @@ import extdeps.github.actions_runner {
 }
 import gunbc.managed_host { ManagedHostBinding, ManagedHostBindingStanding, ManagedHostBound }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_argv, ephemeral_slot_labels }
+import extdeps.systemd.systemd_run {
+  SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunOptionWordsRefusedCause, systemd_run_command_argument_words,
+}
+import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, ephemeral_slot_command, ephemeral_slot_labels }
 
 // THE SECOND BINDING OF ONE JIT MINT: A TRANSIENT systemd UNIT ON A LIVE MANAGED HOST.
 //
@@ -24,7 +27,7 @@ import gunbc.runner_throughput_qualification_route { ephemeral_slot_unit, epheme
 // this fold as the gunbc.managed_host managed_hosts row and nothing else.
 //
 // The unit, its systemd-run argv and its labels are the qualification route's own derivations
-// (gunbc.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_argv /
+// (gunbc.runner_throughput_qualification_route ephemeral_slot_unit / ephemeral_slot_command /
 // ephemeral_slot_labels), so the slot the mint registers is by construction the slot the route
 // stages -- one spelling of the attempt label, not two.
 //
@@ -46,6 +49,7 @@ type HostUnitSlot sole_constructor {
 type HostUnitSlotRefusal
   = HostUnitSlotHostNotBound { standing: ManagedHostBindingStanding }
   | HostUnitSlotRunnerBinaryUnpublished { binary_release: ActionsRunnerRelease }
+  | HostUnitSlotSystemdRunRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 type HostUnitSlotStanding
   = HostUnitSlotBound { slot: HostUnitSlot }
@@ -69,16 +73,21 @@ fn host_unit_slot_for(host: ManagedHostBindingStanding, attempt: NonEmptyStr, wo
         Absent => HostUnitSlotRefused { refusal: HostUnitSlotRunnerBinaryUnpublished { binary_release: host_unit_slot_runner_release } }
         Present { value: artifact } => {
           let unit = ephemeral_slot_unit(host: b.host.host, attempt: attempt)
-          HostUnitSlotBound {
-            slot: HostUnitSlot {
-              host: b,
-              attempt: attempt,
-              workflow: workflow,
-              unit: unit,
-              labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
-              argv: ephemeral_slot_argv(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()),
-              runner: artifact,
-            },
+          match ephemeral_slot_command(unit: unit, desired: gunbc_runner_slot_desired(), command_argv: host_unit_slot_listener_argv()) {
+            SystemdRunCommandRefused { cause: why } =>
+              HostUnitSlotRefused { refusal: HostUnitSlotSystemdRunRefused { cause: why } }
+            SystemdRunCommandReady { command: command } =>
+              HostUnitSlotBound {
+                slot: HostUnitSlot {
+                  host: b,
+                  attempt: attempt,
+                  workflow: workflow,
+                  unit: unit,
+                  labels: ephemeral_slot_labels(host: b.host.host, attempt: attempt),
+                  argv: systemd_run_command_argument_words(command: command),
+                  runner: artifact,
+                },
+              }
           }
         }
       }

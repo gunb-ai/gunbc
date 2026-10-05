@@ -150,6 +150,13 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     IdProperty => ObservationOnly
     KillModeProperty => SettableDirective
     ExitTypeProperty => SettableDirective
+    StandardOutputProperty => SettableDirective
+    StandardErrorProperty => SettableDirective
+    ProtectSystemProperty => SettableDirective
+    ProtectHomeProperty => SettableDirective
+    PrivateTmpProperty => SettableDirective
+    ReadWritePathsProperty => SettableDirective
+    RemainAfterExitProperty => SettableDirective
     EnvironmentProperty => SettableDirective
     EnvironmentFilesProperty => ObservationOnly
     PassEnvironmentProperty => SettableDirective

@@ -11,7 +11,9 @@ import extdeps.shell
 import extdeps.git { shape_git_worktree_add_detached_argv }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_wire_hex }
 import extdeps.systemd.systemd_run {
-  systemd_run_user_wait_arguments, systemd_run_property, SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv,
+  SystemdSummaryPrintingWait, systemd_summary_printing_wait_argv, SystemdSetenvBinding,
+  SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, SystemdRunProperty,
+  systemd_run_user_wait_command,
   SystemdRunWaitSummary, systemd_run_wait_summary, SystemdServiceResultReading, ServiceResultRead, ServiceResultUnrecognized, ServiceResultNotReported,
   SystemdServiceResult, ServiceResultOomKill, systemd_service_result_wire,
   SystemdMemoryPeakReading, MemoryPeakRead, MemoryPeakUnparseable, MemoryPeakNotReported,
@@ -20,6 +22,7 @@ import extdeps.systemd.systemd_run {
   ServiceResultFormatNotGrounded, MemoryPeakFormatNotGrounded,
   SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
+  systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.systemd.systemctl
 import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }
@@ -130,6 +133,12 @@ fn compute_layout(instance: HostDashboardInstance, identity_hex: String) -> Comp
 type ComputeExec
   = ComputeExecOk { stdout: String, stderr: String }
   | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
+
+// The unit launch has its own refusal carrier: the systemd-run builder's typed cause, carried from
+// the one site that can produce it. compute_exec's shared reading never refuses.
+type ComputeUnitRunReading
+  = ComputeUnitRunExecuted { run: ComputeUnitRun }
+  | ComputeUnitRunRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
   let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
@@ -311,7 +320,7 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<String> {
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte) -> List<SystemdRunProperty> {
   compute_grant_unit_properties(granted: granted, working_directory: layout.checkout, process_bounds: none)
 }
 
@@ -366,38 +375,43 @@ type ComputeUnitRun {
 // set must refuse rather than have its figures read against a format nobody has checked. Reading
 // `systemctl --version` there would answer about a DIFFERENT executable than the one that prints the
 // line, which on a mixed install is a different version.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRun {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, granted: Kibibyte) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
-    ComputeUnitRun {
+    ComputeUnitRunExecuted { run: ComputeUnitRun {
       exec: ComputeExecFailed { exit_code: 127, stdout: "", stderr: "this instance's toolchain declares no systemd-run; the local provider runs only under systemd" },
       summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
-    }
+    } }
   } else {
     let standing = summary_format_standing(version_line: match compute_exec(program: systemd_run, workdir: layout.checkout, args: ["--version"]) {
       ComputeExecOk { stdout: v, stderr: _ } => v
       ComputeExecFailed { exit_code: _, stdout: _, stderr: _ } => ""
     })
-    let launcher = systemd_run_user_wait_arguments(
+    match systemd_run_user_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
       properties: compute_unit_properties(layout: layout, granted: granted),
       setenv_bindings: [
-        join(["CARGO_TARGET_DIR=", layout.target_dir], ""),
-        join(["RUSTC_WRAPPER=", sccache_installed_binary_path], ""),
+        SystemdSetenvBinding { name: "CARGO_TARGET_DIR", value: layout.target_dir },
+        SystemdSetenvBinding { name: "RUSTC_WRAPPER", value: sccache_installed_binary_path },
       ],
       command_argv: argv,
-    )
-    let r = compute_exec(
-      program: systemd_run,
-      workdir: layout.checkout,
-      args: systemd_summary_printing_wait_argv(w: launcher),
-    )
-    ComputeUnitRun {
-      exec: r,
-      summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
-        ComputeExecOk { stdout: _, stderr } => stderr
-        ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
-      }),
+    ) {
+      SystemdSummaryPrintingWaitRefused { cause: why } =>
+        ComputeUnitRunRefused { cause: why }
+      SystemdSummaryPrintingWaitReady { wait: launcher } => {
+        let r = compute_exec(
+          program: systemd_run,
+          workdir: layout.checkout,
+          args: systemd_summary_printing_wait_argv(w: launcher),
+        )
+        ComputeUnitRunExecuted { run: ComputeUnitRun {
+          exec: r,
+          summary: systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: match r {
+            ComputeExecOk { stdout: _, stderr } => stderr
+            ComputeExecFailed { exit_code: _, stdout: _, stderr } => stderr
+          }),
+        } }
+      }
     }
   }
 }
@@ -528,34 +542,29 @@ fn unit_termination_decide(o: UnitObservations) -> UnitTermination {
   let population = unit_population(control_group: o.control_group, events: o.events)
   match population {
     PopulationOccupied { detail: d } => UnitPopulated { detail: d }
-    PopulationEmpty { detail: _ } => unit_termination_unoccupied(o: o, population: population)
-    PopulationUnknown { detail: _ } => unit_termination_unoccupied(o: o, population: population)
-  }
-}
-
-// The population did not positively refuse release: decide from load state and attempt completion.
-fn unit_termination_unoccupied(o: UnitObservations, population: UnitPopulation) -> UnitTermination {
-  if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
-    UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
-  } else if !o.attempt_completed {
-    UnitTerminationUnavailable {
-      detail: join([
-        "the attempt did not complete, so its end is not established -- ",
-        match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
-      ], ""),
-    }
-  } else {
-    match population {
-      PopulationEmpty { detail: pd } =>
-        UnitAttemptCompleted {
+    _ =>
+      if o.load_state.queried && trim(s: o.load_state.value) == unit_load_state_absent_wire {
+        UnitAbsentAuthoritatively { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit"], "") }
+      } else if !o.attempt_completed {
+        UnitTerminationUnavailable {
           detail: join([
-            "systemd-run --wait returned success under ", compute_kill_mode_property, "=", compute_kill_mode_value,
-            " and ", pd,
+            "the attempt did not complete, so its end is not established -- ",
+            match population { PopulationEmpty { detail: pd } => join([pd, ", but a realized cgroup can be empty between execs and emptiness does not cover a pending job"], "")  PopulationUnknown { detail: pd } => pd  PopulationOccupied { detail: pd } => pd },
           ], ""),
         }
-      PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
-      PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
-    }
+      } else {
+        match population {
+          PopulationEmpty { detail: pd } =>
+            UnitAttemptCompleted {
+              detail: join([
+                "systemd-run --wait returned success under ", compute_kill_mode_property as String, "=", compute_kill_mode_value as String,
+                " and ", pd,
+              ], ""),
+            }
+          PopulationUnknown { detail: _ } => unit_termination_completed_unread(population: population)
+          PopulationOccupied { detail: _ } => unit_termination_completed_unread(population: population)
+        }
+      }
   }
 }
 
@@ -610,31 +619,26 @@ data unit_result_success_wire: String = "success"
 fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
   match o.population {
     PopulationOccupied { detail: d } => UnitStillRunning { detail: d }
-    PopulationEmpty { detail: _ } => unit_lifecycle_unoccupied(o: o)
-    PopulationUnknown { detail: _ } => unit_lifecycle_unoccupied(o: o)
-  }
-}
-
-// The population did not positively show the unit running: decide from the manager properties.
-fn unit_lifecycle_unoccupied(o: UnitLifecycleObservations) -> UnitLifecycle {
-  if !o.load_state.queried {
-    UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
-  } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
-    UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
-  } else if !o.active_state.queried {
-    UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
-  } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
-    UnitTerminatedFailure { detail: join(["ActiveState=failed, Result=", if o.result.queried { trim(s: o.result.value) } else { "<unreadable>" }], "") }
-  } else if trim(s: o.active_state.value) != unit_active_state_inactive_wire {
-    UnitStillRunning { detail: join(["ActiveState=", trim(s: o.active_state.value)], "") }
-  } else if !o.result.queried {
-    UnitLifecycleUnknown { detail: "the unit is inactive but its Result could not be read, so whether it ended well is not established" }
-  } else if trim(s: o.result.value) == "" {
-    UnitLifecycleUnknown { detail: "the unit is inactive and the manager answered its Result with nothing, which is not a verdict" }
-  } else if trim(s: o.result.value) == unit_result_success_wire {
-    UnitTerminatedSuccess { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", unit_result_success_wire], "") }
-  } else {
-    UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
+    _ =>
+      if !o.load_state.queried {
+        UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
+      } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
+        UnitTerminatedCauseUnknown { detail: join(["LoadState=", unit_load_state_absent_wire, ", so the manager has no record of this unit: a transient --collect unit that ran has been removed, and its cause went with it"], "") }
+      } else if !o.active_state.queried {
+        UnitLifecycleUnknown { detail: "the unit is known to the manager but its active state could not be read" }
+      } else if trim(s: o.active_state.value) == unit_active_state_failed_wire {
+        UnitTerminatedFailure { detail: join(["ActiveState=failed, Result=", if o.result.queried { trim(s: o.result.value) } else { "<unreadable>" }], "") }
+      } else if trim(s: o.active_state.value) != unit_active_state_inactive_wire {
+        UnitStillRunning { detail: join(["ActiveState=", trim(s: o.active_state.value)], "") }
+      } else if !o.result.queried {
+        UnitLifecycleUnknown { detail: "the unit is inactive but its Result could not be read, so whether it ended well is not established" }
+      } else if trim(s: o.result.value) == "" {
+        UnitLifecycleUnknown { detail: "the unit is inactive and the manager answered its Result with nothing, which is not a verdict" }
+      } else if trim(s: o.result.value) == unit_result_success_wire {
+        UnitTerminatedSuccess { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", unit_result_success_wire], "") }
+      } else {
+        UnitTerminatedFailure { detail: join(["ActiveState=", unit_active_state_inactive_wire, ", Result=", trim(s: o.result.value)], "") }
+      }
   }
 }
 
@@ -1627,7 +1631,7 @@ type UnitEnding
 
 fn compute_unit_ending(summary: SystemdRunWaitSummary) -> UnitEnding {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  ServiceResultSuccess => EndingNotOomKill  ServiceResultProtocol => EndingNotOomKill  ServiceResultTimeout => EndingNotOomKill  ServiceResultExitCode => EndingNotOomKill  ServiceResultSignal => EndingNotOomKill  ServiceResultCoreDump => EndingNotOomKill  ServiceResultWatchdog => EndingNotOomKill  ServiceResultStartLimitHit => EndingNotOomKill  ServiceResultResources => EndingNotOomKill }
+    ServiceResultRead { result: r } => match r { ServiceResultOomKill => EndingOomKill  _ => EndingNotOomKill }
     ServiceResultUnrecognized { wire } => EndingUnclassifiable { cause: join(["the manager reported a result this corpus does not recognize: ", wire], "") }
     ServiceResultNotReported { absence } => EndingUnclassifiable { cause: summary_absence_wire(a: absence) }
     ServiceResultFormatNotGrounded { standing } => EndingUnclassifiable { cause: summary_format_standing_wire(s: standing) }
@@ -1661,7 +1665,7 @@ fn compute_failed_unit_outcome(summary: SystemdRunWaitSummary, identity: String,
 // refuses upstream and never reaches here.
 fn compute_summary_is_oom_kill(summary: SystemdRunWaitSummary) -> Bool {
   match summary.result {
-    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  ServiceResultSuccess => false  ServiceResultProtocol => false  ServiceResultTimeout => false  ServiceResultExitCode => false  ServiceResultSignal => false  ServiceResultCoreDump => false  ServiceResultWatchdog => false  ServiceResultStartLimitHit => false  ServiceResultResources => false }
+    ServiceResultRead { result: r } => match r { ServiceResultOomKill => true  _ => false }
     ServiceResultUnrecognized { wire: _ } => false
     ServiceResultNotReported { absence: _ } => false
     ServiceResultFormatNotGrounded { standing: _ } => false
@@ -1755,7 +1759,14 @@ fn compute_spawn_and_collect(
   grant_was_ceiling: Bool,
   launched: AttemptGate,
 ) -> ComputeAttempt {
-  let unit_run = compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted)
+  match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv(instance: instance, layout: layout, op: op, dependency_store: dependency_store), granted: granted) {
+    ComputeUnitRunRefused { cause: cause } =>
+      ComputeAttempt {
+        outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
+        summary: compute_unspawned_summary(),
+        gate: launched,
+      }
+    ComputeUnitRunExecuted { run: unit_run } => {
   let run = unit_run.exec
   let log = Filesystem.Write(path: layout.log_path, content: match run {
     ComputeExecOk { stdout, stderr } => join([stdout, stderr], "")
@@ -1774,6 +1785,8 @@ fn compute_spawn_and_collect(
     },
     summary: summary,
     gate: launched,
+  }
+    }
   }
 }
 
