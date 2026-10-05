@@ -192,7 +192,7 @@ type ServiceEvidenceInputs {
 // field cannot be recorded as pending a reader that has already landed (side-chat note on b422c05).
 // A reader's landing deletes its arm here and adds its member to ServiceEvidenceInputs.
 type PendingServiceReader
-  = PendingSharedComputation
+  = | PendingSharedComputation
 
 fn pending_reader(r: PendingServiceReader) -> ServiceEvidenceReader {
   match r {
