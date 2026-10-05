@@ -1,0 +1,8 @@
+host=srv1
+libgl1=present
+libx11-6=present
+libopengl0=present
+libglu1-mesa=present
+libegl1=present
+libwebkit2gtk-4.1-0=present
+libjavascriptcoregtk-4.1-0=present

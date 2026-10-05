@@ -4,4 +4,4 @@ The durable evidence registry is [`product.printing.failure_incidents`](../../..
 
 The fan grille (G140) and cradle (M140) were printed upright and failed; the exact onset mechanism is unconfirmed. The operator reports deterioration around 60% of the cage height. Do not treat printer completion as physical acceptance.
 
-Verified archive corrections to the externally supplied assessment: brim width is **4 mm**, and M140 reaches **168 mm** high. A flat orientation reduces the upright thin-member risk; it does not eliminate every failure mode. No terminal printer state has been verified in this investigation.
+Verified archive corrections to the externally supplied assessment: brim width is **4 mm**, and M140 reaches **168 mm** high. A flat orientation reduces the upright thin-member risk; it does not eliminate every failure mode. The later [terminal report](terminal-report.json), read through `gunbc.fleet.printer_report.observe_both` before recovery, confirms the exact failed project in FINISH at 100% with error zero. This directly demonstrates that telemetry completion did not establish physical success.

@@ -23,7 +23,7 @@ data rear_fan_upright_20261005:PrintFailureIncident=PrintFailureIncident {
   "Photographs show loose extruded filament and distorted thin fan-area members on the removed build plate.",
   "Operator reports cage-like geometry became messy approximately 60 percent of the way up; onset not captured.",
   "Archive places M140 at 152 x 42 x 168 mm and G140 at 152 x 15 x 152 mm, upright despite modeled flat export planes.",
-  "Start readback matched the intended project in RUNNING with error zero; final telemetry was not verified for this investigation.",
+  "Start readback matched the intended project in RUNNING with error zero. The retained terminal-report.json later matches that same project in FINISH at 100 percent with error zero, despite physical failure.",
   "Posts and pins look recognizable in photos, but their physical acceptance is unrecorded. Printer-01 pieces were reported intact."
  ],
  cause_standing:UnconfirmedCause,
