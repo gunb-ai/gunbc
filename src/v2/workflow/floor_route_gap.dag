@@ -2160,8 +2160,8 @@ fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> 
 
 // The authorized-key enrollment's real-execution witnesses: their first effect is
 // shell.Mktemp.Dir with no mock_response (the pin receipt runs the parameterized apply route
-// against a mktemp scratch home; the probe receipt drives the route's read-only legs and declares
-// the gcloud-auth-list boundary). The file carries a gunbc.ci_layer_roots LocalRepoWetLane
+// against a mktemp scratch home; the probe receipt composes the production receipt body with the
+// auth-list command HOME-scoped to the scratch). The file carries a gunbc.ci_layer_roots LocalRepoWetLane
 // row and all three functions are on local_repo_wet_schedule, so each identity executes in the
 // required floor's wet lane. Triple enrollment as for chunk_31: these expectations, the WetScheduledClaim
 // rows, and the ci_layer_roots row for fleet_authorized_key_enroll_real_path_witness_test.dag.

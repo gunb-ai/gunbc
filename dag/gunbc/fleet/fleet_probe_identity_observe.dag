@@ -196,7 +196,15 @@ fn passwd_probe_for_user(user: ProcessOutcome) -> ProcessOutcome?
 // says which side of it. gcloud-auth-list: the old `|| echo gcloud-absent` folded a FAILING auth
 // list into the same line as a MISSING binary; missing still answers gcloud-absent, and a binary
 // that ran and refused now reports refused with its cause, which is the report §5 asks for.
-fn fleet_probe_identity_observe_wet() -> ProcessExit
+fn fleet_probe_identity_observe_receipt_body(auth_list_command: ArgvCommand) -> String
+// THE RECEIPT BODY, PARAMETERIZED BY THE AUTH-LIST INVOCATION (the side chat's pairing fix on
+// review 5409740742). Production (fleet_probe_identity_observe_wet) supplies
+// gcloud_auth_list_accounts_command() bare; the real-path receipt supplies the SAME command with
+// HOME bound to a mktemp scratch directory (env_prefixed_command), so the one leg that can write
+// under the observer's real ~/.config/gcloud (gcloud's own logs) writes under the scratch
+// instead. Both traverse the same presence decision, the same capture, the same assembly and the
+// same publication -- deleting or miswiring the production branch no longer stays green.
+fn fleet_probe_identity_observe_receipt_body(auth_list_command: ArgvCommand) -> String
 {
   let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
   let passwd_probe = passwd_probe_for_user(user: user)
@@ -205,14 +213,14 @@ fn fleet_probe_identity_observe_wet() -> ProcessExit
   let job_home = shell.Env.Get(name: "HOME" as NonEmptyStr).value
   let jh = match job_home { Absent => ""  Present { value: v } => trim(s: v) }
   let gcloud_present = shell.PosixCommandV.Check(command: "gcloud" as NonEmptyStr).exists
-  let body = join([
+  join([
     join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", passwd_home_receipt_text(obs: passwd_home), " job-home=", env_var_receipt_text(v: job_home), "\n"], ""),
     "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
     if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
     if jh != ph && jh != "" { observe_authorized_keys_line(home: jh) } else { "" },
     observe_text_line(label: "gcloud-binary", value: if gcloud_present { "present" } else { "absent" }),
     if gcloud_present {
-      observe_capture_line(label: "gcloud-auth-list", command: gcloud_auth_list_accounts_command())
+      observe_capture_line(label: "gcloud-auth-list", command: auth_list_command)
     } else {
       observe_text_line(label: "gcloud-auth-list", value: "gcloud-absent")
     },
@@ -222,6 +230,11 @@ fn fleet_probe_identity_observe_wet() -> ProcessExit
       transport: LocalExec,
     ))),
   ], "")
+}
+
+fn fleet_probe_identity_observe_wet() -> ProcessExit
+{
+  let body = fleet_probe_identity_observe_receipt_body(auth_list_command: gcloud_auth_list_accounts_command())
   let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
   if w.success {
     ExitSuccess

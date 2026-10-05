@@ -7,9 +7,8 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import extdeps.tools.gnu_coreutils { ls_long_directory_command, whoami_command }
-import extdeps.posix.test_utility { test_regular_file_command }
-import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
+import extdeps.tools.gnu_coreutils { ls_long_directory_command }
+import gunbc.command_runner { run_shell_command_capture }
 import std.algebra { trim }
 import gunbc.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
@@ -22,17 +21,12 @@ import gunbc.fleet_host_key_enrollment {
   SelfEnrollRefuse,
 }
 import gunbc.fleet_probe_identity_observe {
-  passwd_probe_for_user,
-  passwd_home_observation,
-  passwd_home_of,
-  passwd_home_receipt_text,
-  env_var_receipt_text,
-  observe_authorized_keys_line,
-  adc_env_value,
-  adc_file_observation_text,
-  observe_text_line,
+  fleet_probe_identity_observe_receipt_body,
   fleet_probe_identity_receipt_path,
 }
+import v2.std.orchestration { EnvSet }
+import extdeps.exec.command { env_prefixed_command }
+import extdeps.tools.gcloud { gcloud_auth_list_accounts_command }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -45,11 +39,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fleet_host_key_enroll_apply(home) -- the apply takes the home as a PARAMETER (its production
 // callers resolve the process's own environment and pass it in), so its receipt runs the SAME
 // route body against a mktemp scratch home with zero writes outside the scratch directory -- and
-// the probe receipt's read-only legs through the route's own helpers. THE PROBE RECEIPT DOES NOT
-// EXECUTE THE GCLOUD-AUTH-LIST LEG: gcloud writes its own logs under the observer's REAL
-// ~/.config/gcloud and the model has no environment-scoping operation (shell.Env is Get-only), so
-// the receipt declares that boundary instead of driving the leg; the wet fn's composition (the
-// order of these legs in one body) is witnessed hermetically over supplied outcomes. THE
+// the probe receipt over the production body fn fleet_probe_identity_observe_receipt_body: the
+// body is PARAMETERIZED by the auth-list ArgvCommand, production supplies it bare, and the
+// receipt supplies the SAME command with HOME env-prefixed to a mktemp scratch directory, so the
+// one leg that can write under the observer's real ~/.config/gcloud (gcloud's own logs) writes
+// under the scratch instead. Deleting or miswiring the production presence decision or the
+// auth-list join now breaks this claim -- the body is not reconstructed here. THE
 // ADMITTED EFFECTS, named rather than folded into a neighbour: a temp-directory write
 // (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as excl_local_repo_wet_tempdir_write_reason);
 // mkdir -p and chmod 700/600 over LocalExec (shell.Exec.RunArgv); the owner-only create-exclusive
@@ -128,44 +123,31 @@ test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
   })
 }
 
-// 2. THE PROBE RECEIPT'S READ-ONLY LEGS BY REAL EXECUTION: the same legs fleet_probe_identity_observe_wet
-// composes, driven through the route's OWN helpers in the route's order -- whoami, the passwd probe,
-// the environment reads, the command -v presence check, the authorized_keys read at the passwd home,
-// the ADC file test -- then the same publication write to the checkout's target/ and the readback.
-// THE ONE LEG NOT DRIVEN is gcloud auth list: gcloud writes its own logs under the observer's REAL
-// ~/.config/gcloud and the model has no environment-scoping operation (shell.Env is Get-only), so
-// the receipt writes the declared boundary line where the route would capture the listing; the
-// wet fn's composition over supplied outcomes stays the pairing for that leg's placement.
+// 2. THE PROBE RECEIPT BY REAL EXECUTION, OVER THE PRODUCTION BODY: the claim and the wet fn
+// traverse the SAME fleet_probe_identity_observe_receipt_body, parameterized by the auth-list
+// ArgvCommand -- production supplies gcloud_auth_list_accounts_command() bare; the receipt supplies
+// the same command with HOME env-prefixed to a mktemp scratch directory, so gcloud's own log
+// writes land under the scratch and the observer's real home is only read. The receipt publishes
+// through the same path and asserts the real gcloud-auth-list line in the readback.
 test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
-  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
-  let passwd_probe = passwd_probe_for_user(user: user)
-  let passwd_home = passwd_home_observation(user: user, passwd: passwd_probe)
-  let ph = passwd_home_of(obs: passwd_home)
-  let gcloud_present = shell.PosixCommandV.Check(command: "gcloud" as NonEmptyStr).exists
-  let body = join([
-    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", passwd_home_receipt_text(obs: passwd_home), " job-home=", env_var_receipt_text(v: shell.Env.Get(name: "HOME" as NonEmptyStr).value), "\n"], ""),
-    "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
-    if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
-    observe_text_line(label: "gcloud-binary", value: if gcloud_present { "present" } else { "absent" }),
-    observe_text_line(label: "gcloud-auth-list", value: "not driven here: gcloud writes its own logs under the observer's real ~/.config/gcloud and the model has no environment-scoping operation; this leg's placement is hermetically witnessed"),
-    observe_text_line(label: "adc-env", value: adc_env_value(v: shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS" as NonEmptyStr).value)),
-    observe_text_line(label: "adc-file-passwd-home", value: adc_file_observation_text(outcome: run_shell_command_capture(
-      command: test_regular_file_command(path: concat(ph, "/.config/gcloud/application_default_credentials.json")),
-      transport: LocalExec,
-    ))),
-  ], "")
-  let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
-  let rc = Filesystem.Read(path: fleet_probe_identity_receipt_path)
-  w.success
-    && rc.success
-    && string_contains(s: rc.content, pattern: "observer user=")
-    && string_contains(s: rc.content, pattern: "passwd-home=")
-    && string_contains(s: rc.content, pattern: "job-home=")
-    && string_contains(s: rc.content, pattern: "authorized-keys")
-    && string_contains(s: rc.content, pattern: "gcloud-binary")
-    && string_contains(s: rc.content, pattern: "not driven here")
-    && string_contains(s: rc.content, pattern: "adc-env")
-    && string_contains(s: rc.content, pattern: "adc-file-passwd-home")
+  fe_with_temp_dir(scenario: fn(dir) {
+    let body = fleet_probe_identity_observe_receipt_body(auth_list_command: env_prefixed_command(
+      bindings: [EnvSet { name: "HOME", value: dir as String }],
+      command: gcloud_auth_list_accounts_command(),
+    ))
+    let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
+    let rc = Filesystem.Read(path: fleet_probe_identity_receipt_path)
+    w.success
+      && rc.success
+      && string_contains(s: rc.content, pattern: "observer user=")
+      && string_contains(s: rc.content, pattern: "passwd-home=")
+      && string_contains(s: rc.content, pattern: "job-home=")
+      && string_contains(s: rc.content, pattern: "authorized-keys")
+      && string_contains(s: rc.content, pattern: "gcloud-binary")
+      && string_contains(s: rc.content, pattern: "gcloud-auth-list")
+      && string_contains(s: rc.content, pattern: "adc-env")
+      && string_contains(s: rc.content, pattern: "adc-file-passwd-home")
+  })
 }
 
 // 3. THE CONFIG-PIN ROUTE BY REAL EXECUTION, RESTORED PARAMETERIZED: fleet_host_key_enroll_apply
