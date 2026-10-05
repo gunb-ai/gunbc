@@ -595,24 +595,46 @@ fn render_hook_config_read_refusal(cause: HookConfigReadRefusal) -> String {
   }
 }
 
+// The response-to-attempt step for the CONFIG read, apart from the effect so its refusal arm is
+// reachable by a supplied value -- the same split as registration_attempt_of_response.
+//
+// WHY A 404 IS NOT HookAbsent (fleet-converge run 37215976003). GitHub's reference for
+// GET /app/hook/config (extdeps.github.app app_webhook_config_citation) documents exactly one
+// status, 200, and no "this App has no webhook" response; and the transport
+// (extdeps.github.app GetAppHookConfigJson, curl --fail-with-body) exposes no status code, only
+// that the exchange failed. Minting HookAbsent from a non-success would read an undocumented answer
+// as established absence -- a refusal widened into a confident negative. So every non-success stays
+// HookConfigReadRefused. What the run actually lost was not the hook verdict but the RECEIPT: see
+// HookStanding.
+fn hook_config_attempt_of_response(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> ObservationAttempt<GitHubAppHookConfig, HookConfigReadRefusal> {
+  if !success {
+    ObservationRefused { cause: HookConfigReadRefused { stderr: stderr } }
+  } else {
+    match decode_hook_config_json(body: stdout) {
+      HookConfigDecodeRefused { reason } => ObservationRefused { cause: HookConfigUndecodable { reason: reason } }
+      HookConfigDecoded { config } => ObservationEstablished { observed: config }
+    }
+  }
+}
+
 fn observe_app_hook(app: NonEmptyStr, request: AppJwtReadRequest) -> ObservationAttempt<HookObserved, HookConfigReadRefusal> {
   let response = github.CliAppRegistration.GetAppHookConfigJson(jwt_header_file: request.jwt_header_file)
-  if !response.success {
-    ObservationRefused { cause: HookConfigReadRefused { stderr: response.stderr } }
-  } else {
-    match decode_hook_config_json(body: response.stdout) {
-      HookConfigDecodeRefused { reason } => ObservationRefused { cause: HookConfigUndecodable { reason: reason } }
-      HookConfigDecoded { config } => {
-        let deliveries_response = github.CliAppRegistration.GetAppHookDeliveriesJson(jwt_header_file: request.jwt_header_file)
-        ObservationEstablished { observed: HookObserved {
-          config: config,
-          deliveries: if !deliveries_response.success {
-            ObservationRefused { cause: DeliveriesReadRefused { stderr: deliveries_response.stderr } }
-          } else {
-            decode_deliveries_json(body: deliveries_response.stdout)
-          },
-        } }
-      }
+  match hook_config_attempt_of_response(success: response.success, stdout: response.stdout, stderr: response.stderr) {
+    ObservationRefused { cause } => ObservationRefused { cause: cause }
+    ObservationEstablished { observed: config } => {
+      let deliveries_response = github.CliAppRegistration.GetAppHookDeliveriesJson(jwt_header_file: request.jwt_header_file)
+      ObservationEstablished { observed: HookObserved {
+        config: config,
+        deliveries: if !deliveries_response.success {
+          ObservationRefused { cause: DeliveriesReadRefused { stderr: deliveries_response.stderr } }
+        } else {
+          decode_deliveries_json(body: deliveries_response.stdout)
+        },
+      } }
     }
   }
 }
@@ -777,34 +799,95 @@ fn optional_int_wire(v: Int?) -> String {
   }
 }
 
+// THE HOOK'S STANDING IN THE RECEIPT, as one value with three arms. The receipt used to be
+// constructible only from a HookObserved, so a hook read that refused -- or a registration that
+// diverged, which never attempts the hook -- exited with NO receipt, discarding a registration and
+// permission map that had already been read (run 37215976003: GetAppRegistrationJson succeeded,
+// GetAppHookConfigJson answered 404, nothing was written). A refused or unattempted hook read is
+// carried here as what it is; it is never a satisfied hook, and the exit still fails on it
+// (app_control_plane_failure).
+type HookStanding
+  = HookInspectedStanding { observed: HookObserved, assessment: GoalAssessment<Int, HookDeviation, HookUnknown, Never> }
+  | HookConfigUnread { cause: HookConfigReadRefusal }
+  | HookNotAttempted
+
+fn observed_permissions_wire(r: ObservedAppRegistration) -> String {
+  match r {
+    AppRegistrationReadbackUnavailable => "unavailable"
+    AppRegistrationReadback { app_id: _, requested_permissions } =>
+      join(map(requested_permissions, p => join([p.name.wire_name as String, ":", access_wire(a: p.access)], "")), ",")
+  }
+}
+
+fn hook_standing_wire(hook: HookStanding) -> String {
+  match hook {
+    HookNotAttempted => " hook=not_attempted:registration_not_satisfied"
+    HookConfigUnread { cause } => concat(" hook=unread:", render_hook_config_read_refusal(cause: cause))
+    HookInspectedStanding { observed: hook, assessment } => join([
+      " hook=read",
+      " endpoint=GET-/app/hook/config",
+      " hook_url_scheme=", uri_scheme_wire(s: hook.config.url.scheme) as String,
+      " hook_url=", hook.config.url.locator as String,
+      " observed_content_type=", hook_content_type_wire_name(t: hook.config.content_type) as String,
+      " desired_content_type=", hook_content_type_wire_name(t: gunbai_ci_hook_goal.content_type) as String,
+      " observed_insecure_ssl=", hook_tls_wire_name(t: hook.config.tls) as String,
+      " desired_insecure_ssl=", hook_tls_wire_name(t: gunbai_ci_hook_goal.tls) as String,
+      " observed_secret=", hook_secret_wire(s: hook.config.secret),
+      " desired_secret=", hook_secret_wire(s: gunbai_ci_hook_goal.secret),
+      " standing=", hook_assessment_wire(a: assessment),
+      " deliveries=", deliveries_wire(deliveries: hook.deliveries),
+    ], "")
+  }
+}
+
 fn app_control_plane_receipt_text(
   registration: ObservedAppRegistration,
-  hook: HookObserved,
-  assessment: GoalAssessment<Int, HookDeviation, HookUnknown, Never>,
+  registration_assessment: GoalAssessment<GitHubAppId, RegistrationDeviation, RegistrationUnknown, Never>,
+  hook: HookStanding,
   observed_on: NonEmptyStr
 ) -> String {
   join([
     "app=", gunbai_ci_declared.slug as String,
     " declared_app_id=", to_string(gunbai_ci_declared.app_id.value),
     " observed_app_id=", optional_int_wire(v: registration_observed_app_id(r: registration)),
-    " endpoint=GET-/app/hook/config",
-    " hook_url_scheme=", uri_scheme_wire(s: hook.config.url.scheme) as String,
-    " hook_url=", hook.config.url.locator as String,
-    " observed_content_type=", hook_content_type_wire_name(t: hook.config.content_type) as String,
-    " desired_content_type=", hook_content_type_wire_name(t: gunbai_ci_hook_goal.content_type) as String,
-    " observed_insecure_ssl=", hook_tls_wire_name(t: hook.config.tls) as String,
-    " desired_insecure_ssl=", hook_tls_wire_name(t: gunbai_ci_hook_goal.tls) as String,
-    " observed_secret=", hook_secret_wire(s: hook.config.secret),
-    " desired_secret=", hook_secret_wire(s: gunbai_ci_hook_goal.secret),
-    " standing=", hook_assessment_wire(a: assessment),
-    " deliveries=", deliveries_wire(deliveries: hook.deliveries),
+    " observed_permissions=", observed_permissions_wire(r: registration),
+    " registration_standing=", registration_assessment_wire(a: registration_assessment),
+    hook_standing_wire(hook: hook),
     " observed_at=", observed_on as String, "\n"
   ], "")
 }
 
-// ---------------------------------------------------------------------------------------------
-// The CLI edge.
-// ---------------------------------------------------------------------------------------------
+// The verdict, after the receipt is written: Absent only when the registration AND the hook are
+// both satisfied. Every other standing is a failure reason -- the receipt records it, it does not
+// excuse it.
+fn app_control_plane_failure(
+  registration_assessment: GoalAssessment<GitHubAppId, RegistrationDeviation, RegistrationUnknown, Never>,
+  hook: HookStanding
+) -> String? {
+  match registration_assessment {
+    GoalSatisfied { evidence: _ } => match hook {
+      HookNotAttempted => Present { value: "AppHookNotAttempted: the registration was satisfied but the hook was not read" }
+      HookConfigUnread { cause } => Present { value: render_hook_config_read_refusal(cause: cause) }
+      HookInspectedStanding { observed: _, assessment } => match assessment {
+        GoalSatisfied { evidence: _ } => Absent
+        GoalDiverged { deviations: _ } => Present { value: concat("AppHookDiverged ", hook_assessment_wire(a: assessment)) }
+        GoalIndeterminate { known_deviations: _, unknowns: _ } => Present { value: concat("AppHookIndeterminate ", hook_assessment_wire(a: assessment)) }
+        GoalAssessmentRefused { cause: _ } => Present { value: "AppHookAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never" }
+      }
+    }
+    GoalDiverged { deviations: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+    GoalAssessmentRefused { cause: _ } => Present { value: concat("AppRegistration ", registration_assessment_wire(a: registration_assessment)) }
+  }
+}
+
+fn hook_standing_of(inspection: HookInspection) -> HookStanding {
+  match inspection {
+    GoalObservationRefused { subject: _, goal: _, request: _, cause } => HookConfigUnread { cause: cause }
+    GoalInspected { subject: _, goal: _, request: _, observed, assessment } =>
+      HookInspectedStanding { observed: observed, assessment: assessment }
+  }
+}
 
 type RegistrationInspection = GoalInspection<NonEmptyStr, AppRegistrationGoal, AppJwtReadRequest, ObservedAppRegistration, GitHubAppId, RegistrationDeviation, RegistrationUnknown, RegistrationReadRefusal, Never>
 
@@ -846,43 +929,35 @@ fn app_control_plane_inspect_wet() -> ProcessExit {
       match registration {
         GoalObservationRefused { subject: _, goal: _, request: _, cause } =>
           exit_failure(reason: render_registration_read_refusal(cause: cause))
-        GoalInspected { subject: _, goal: _, request: _, observed: observed_registration, assessment: GoalSatisfied { evidence: _ } } => {
-          let hook: HookInspection = inspect_goal(
-            subject: gunbai_ci_declared.slug,
-            goal: gunbai_ci_hook_goal,
-            request: request,
-            observe: observe_app_hook,
-            assess: assess_app_hook,
+        GoalInspected { subject: _, goal: _, request: _, observed: observed_registration, assessment: registration_assessment } => {
+          let hook: HookStanding = match registration_assessment {
+            GoalSatisfied { evidence: _ } => hook_standing_of(inspection: inspect_goal(
+              subject: gunbai_ci_declared.slug,
+              goal: gunbai_ci_hook_goal,
+              request: request,
+              observe: observe_app_hook,
+              assess: assess_app_hook,
+            ))
+            GoalDiverged { deviations: _ } => HookNotAttempted
+            GoalIndeterminate { known_deviations: _, unknowns: _ } => HookNotAttempted
+            GoalAssessmentRefused { cause: _ } => HookNotAttempted
+          }
+          let receipt = app_control_plane_receipt_text(
+            registration: observed_registration,
+            registration_assessment: registration_assessment,
+            hook: hook,
+            observed_on: clock_now_probed_at_or_unknown()
           )
-          match hook {
-            GoalObservationRefused { subject: _, goal: _, request: _, cause } =>
-              exit_failure(reason: render_hook_config_read_refusal(cause: cause))
-            GoalInspected { subject: _, goal: _, request: _, observed, assessment } => {
-              let receipt = app_control_plane_receipt_text(
-                registration: observed_registration,
-                hook: observed,
-                assessment: assessment,
-                observed_on: clock_now_probed_at_or_unknown()
-              )
-              let wrote = Filesystem.Write(path: app_control_plane_receipt_path, content: receipt)
-              if !wrote.success {
-                exit_failure(reason: concat("AppControlPlaneReceiptWriteRefused: ", wrote.error))
-              } else {
-                match assessment {
-                  GoalSatisfied { evidence: _ } => ExitSuccess
-                  GoalDiverged { deviations: _ } =>
-                    exit_failure(reason: concat("AppHookDiverged ", hook_assessment_wire(a: assessment)))
-                  GoalIndeterminate { known_deviations: _, unknowns: _ } =>
-                    exit_failure(reason: concat("AppHookIndeterminate ", hook_assessment_wire(a: assessment)))
-                  GoalAssessmentRefused { cause: _ } =>
-                    exit_failure(reason: "AppHookAssessmentRefused: unreachable for this binding, whose AssessRefusal is Never")
-                }
-              }
+          let wrote = Filesystem.Write(path: app_control_plane_receipt_path, content: receipt)
+          if !wrote.success {
+            exit_failure(reason: concat("AppControlPlaneReceiptWriteRefused: ", wrote.error))
+          } else {
+            match app_control_plane_failure(registration_assessment: registration_assessment, hook: hook) {
+              Absent => ExitSuccess
+              Present { value: reason } => exit_failure(reason: reason)
             }
           }
         }
-        GoalInspected { subject: _, goal: _, request: _, observed: _, assessment } =>
-          exit_failure(reason: concat("AppRegistration ", registration_assessment_wire(a: assessment)))
       }
     }
   }
