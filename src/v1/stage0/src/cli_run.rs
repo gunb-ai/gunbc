@@ -2402,13 +2402,17 @@ mod process_cwd_mutation_reachability_gate {
         // main.rs and gunbc_cli_dispatch_generated.rs and called only from that dispatch;
         // `run_native_claim_program` -- the `gunbc test` producer in target_invocation_host.rs
         // (#12250), called only from its own TargetProducer match (the other declaration, in
-        // native_lane_runner, is reached by the qualified `cli_run::` spelling).
+        // native_lane_runner, is reached by the qualified `cli_run::` spelling);
+        // `run_native_serve_program` -- its serve twin (#13135), the same shape: the
+        // target_invocation_host.rs producer is called only from its own TargetProducer match, and
+        // native_lane_runner's declaration is reached by the qualified `cli_run::` spelling.
         let expected: BTreeSet<String> = [
             "handle_serve",
             "invoke_bound_target_producer",
             "main",
             "run",
             "run_native_claim_program",
+            "run_native_serve_program",
         ]
         .iter()
         .map(|s| s.to_string())
