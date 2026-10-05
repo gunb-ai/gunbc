@@ -4,6 +4,7 @@ import extdeps.languages.json.emit {JsonNull,JsonBool,JsonNumber,JsonString,Json
 import extdeps.shell.exec {ProcessOutputAbsent,ProcessOutputPresent}
 
 import std.types {String,List,Int,NonEmptyStr,Bool,FilePath}
+import product.printing.process_geometry {preserves_print_plane,prototype_support_policy,support_policy_json,support_settings}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
 import std.measure {millimeter_count}
 import extdeps.printing.bambu_lab_a1_mini {a1_mini_build_envelope}
@@ -27,7 +28,7 @@ type PlatePlacement {id:String,rx:Int,ry:Int,rz:Int,x_um:Int,y_um:Int}
 type PlatePreparation {placements:List<PlatePlacement>,support_free:List<String>}
 data deposited_path_edge_allowance_um:Int=250
 fn placement_admitted(p:PlatePlacement) -> Bool {
- p.id!="" && p.x_um>=0 && p.y_um>=0 && all([p.rx,p.ry,p.rz],n=>n==0||n==90||n==180||n==0-90||n==0-180)
+ preserves_print_plane(rx:p.rx,ry:p.ry) && p.id!="" && p.x_um>=0 && p.y_um>=0 && all([p.rx,p.ry,p.rz],n=>n==0||n==90||n==180||n==0-90||n==0-180)
 }
 fn placement_json(p:PlatePlacement) -> JsonValue {
  json_object(members:[json_kv(key:"id",value:json_string(s:p.id)),json_kv(key:"rotation_degrees",value:json_array(elements:map([p.rx,p.ry,p.rz],v=>json_int(n:v)))),json_kv(key:"minimum_xy_um",value:json_array(elements:map([p.x_um,p.y_um],v=>json_int(n:v))))])
@@ -44,7 +45,7 @@ fn run_kernel(script:String,call:String) -> ProcessExit {
 // Current unpowered PLA process admission. This is explicit product policy, not a
 // filament thermal/structural certification. Nozzle/bed/feed changes need a new policy.
 fn required_settings() -> JsonValue {
- json_object(members:[
+ json_object(members:concat(support_settings(p:prototype_support_policy),[
   json_kv(key:"printer_model",value:json_string(s:"Bambu Lab A1 mini")),
   json_kv(key:"nozzle_diameter",value:json_array(elements:[json_string(s:"0.4")])),
   json_kv(key:"filament_type",value:json_array(elements:[json_string(s:"PLA")])),
@@ -53,7 +54,7 @@ fn required_settings() -> JsonValue {
   json_kv(key:"print_sequence",value:json_string(s:"by layer")),
   json_kv(key:"wall_loops",value:json_string(s:"4")),
   json_kv(key:"sparse_infill_density",value:json_string(s:"20%"))
- ])
+ ]))
 }
 type StagedProfiles {machine:String,filament:String,process:String}
 fn staged_profiles(output:String) -> StagedProfiles {StagedProfiles {machine:concat(output,".machine.json"),filament:concat(output,".filament.json"),process:concat(output,".process.json")}}
@@ -64,10 +65,10 @@ fn stage_profile(source:String,destination:String) -> Bool {
 fn readback_call(project:String,plan:PlatePreparation,receipt:String) -> String {
  let profiles=staged_profiles(output:project)
  let paths=serialize_json(v:json_object(members:[json_kv(key:"machine",value:json_string(s:profiles.machine)),json_kv(key:"filament",value:json_string(s:profiles.filament)),json_kv(key:"process",value:json_string(s:profiles.process))]))
- join(["\nreport=readback(",literal(s:project),",",serialize_json(v:json_array(elements:map(plan.placements,p=>json_string(s:p.id)))),",",serialize_json(v:required_settings()),",",serialize_json(v:envelope_json()),",",serialize_json(v:json_array(elements:map(plan.support_free,s=>json_string(s:s)))),",['bed_temperature_too_high_than_filament','not_support_traditional_timelapse'],",to_string(deposited_path_edge_allowance_um),")\nreport['cad_binding']=json.loads(pathlib.Path(",literal(s:concat(project,".source.3mf.cad-binding.json")),").read_text())\nreport['source_project_sha256']=hashlib.sha256(pathlib.Path(",literal(s:concat(project,".source.3mf")),").read_bytes()).hexdigest()\nreport['profile_sha256']=dict((k,hashlib.sha256(pathlib.Path(v).read_bytes()).hexdigest()) for k,v in ",paths,".items())\nreport['orca_archive_sha256']=",literal(s:orca_slicer_linux_aarch64_appimage_sha256 as String),"\nreport['reader_program_sha256']=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()\npathlib.Path(",literal(s:receipt),").write_text(json.dumps(report,indent=2)+'\\n')\n"],"")
+ join(["\nreport=readback(",literal(s:project),",",serialize_json(v:json_array(elements:map(plan.placements,p=>json_string(s:p.id)))),",",serialize_json(v:required_settings()),",",serialize_json(v:envelope_json()),",",serialize_json(v:json_array(elements:map(plan.support_free,s=>json_string(s:s)))),",['bed_temperature_too_high_than_filament','not_support_traditional_timelapse'],",to_string(deposited_path_edge_allowance_um),")\nsupport_geometry=report['paths'].pop('support_geometry')\nsupport_path=pathlib.Path(",literal(s:concat(project,".supports.json")),")\nsupport_payload=json.dumps(dict(schema='gunbc.generated-support-centerlines.v1',project_sha256=report['project_sha256'],policy=json.loads(",literal(s:serialize_json(v:support_policy_json(p:prototype_support_policy))),"),objects=support_geometry),indent=2).encode()\nsupport_path.write_bytes(support_payload)\nreport['support_geometry_sha256']=hashlib.sha256(support_payload).hexdigest()\nreport['cad_binding']=json.loads(pathlib.Path(",literal(s:concat(project,".source.3mf.cad-binding.json")),").read_text())\nreport['source_project_sha256']=hashlib.sha256(pathlib.Path(",literal(s:concat(project,".source.3mf")),").read_bytes()).hexdigest()\nreport['profile_sha256']=dict((k,hashlib.sha256(pathlib.Path(v).read_bytes()).hexdigest()) for k,v in ",paths,".items())\nreport['orca_archive_sha256']=",literal(s:orca_slicer_linux_aarch64_appimage_sha256 as String),"\nreport['reader_program_sha256']=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()\npathlib.Path(",literal(s:receipt),").write_text(json.dumps(report,indent=2)+'\\n')\n"],"")
 }
 fn prepare(cad:String,plan:PlatePreparation,output:String,appimage:String,machine:String,filament:String,process:String) -> ProcessExit {
- if count(plan.placements)==0 || !all(plan.placements,p=>placement_admitted(p:p)) {return exit_failure(reason:"Invalid plate placements")}
+ if count(plan.placements)==0 || !all(plan.placements,p=>placement_admitted(p:p)) {return exit_failure(reason:"Invalid placements or rotation away from modeled print plane; build-stage stability review required")}
  let profiles=staged_profiles(output:output)
  if !stage_profile(source:machine,destination:profiles.machine) || !stage_profile(source:filament,destination:profiles.filament) || !stage_profile(source:process,destination:profiles.process) {return exit_failure(reason:"Cannot snapshot slicer profiles; malformed input or existing output")}
  let scratch=concat(output,".orca")
