@@ -140,7 +140,7 @@ fn host_dimm_slot_map(oriented: DimmOrientedHost, tech_end: ChassisEnd, history:
                 state: if nat_member(xs: damaged, x: p.connector) { SlotDamaged } else { if nat_member(xs: installed, x: p.connector) { SlotPopulated } else { SlotEmpty } },
               } }
             })
-            let lines = fold(resolved, init: [], f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
+            let lines = fold(resolved, init: [] as List<DimmSlotMapLine>, f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
             if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)) > 0 {
               SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
             } else {
