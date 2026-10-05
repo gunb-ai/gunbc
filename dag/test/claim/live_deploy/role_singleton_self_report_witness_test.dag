@@ -5,6 +5,7 @@ import v2.std.collection { Present, Absent }
 import gunbc.deployment_risk { DeploymentId, ProdRoleHeldBy, NoProdRole, srv1_daily_workspace_deployment, srv2_deploy_deployment }
 import gunbc.roadmap_dashboard_instance { ProdRoleRealization, srv1_live_dashboard_instance }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import std.measure { millisecond_count }
 import extdeps.tailscale.whois { WhoIsNodeNamed, WhoIsNodeUnreadable, whois_node_name }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import gunbc.live_deploy.role_singleton_convergence {
@@ -39,7 +40,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   decode_self_report_in_instance_document,
   role_singleton_self_report_json,
   role_singleton_self_report_member,
-  role_singleton_self_report_max_age_millis,
+  role_singleton_self_report_max_age,
   role_singleton_self_report_of,
   roster_host_tailnet_node,
   host_row,
@@ -164,7 +165,7 @@ test fn srv2s_report_absent_refuses_as_unobservable_never_as_absent() -> Bool {
 // The boundary is the derived fetch deadline: a report exactly that old is admitted, one millisecond
 // older refuses, and so does one from beyond the bound in the reader's future.
 test fn a_stale_report_refuses_and_one_at_the_bound_is_admitted() -> Bool {
-  let bound = role_singleton_self_report_max_age_millis()
+  let bound = millisecond_count(m: role_singleton_self_report_max_age())
   let at_bound = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound, sightings: []))
   let stale = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound - 1, sightings: []))
   let future = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis + bound + 1, sightings: []))
@@ -178,7 +179,7 @@ test fn a_stale_report_refuses_and_one_at_the_bound_is_admitted() -> Bool {
 // received three fetch deadlines after srv1's receipt, is fresh; the same report judged against srv1's
 // receipt instant would read as from the future and refuse.
 test fn a_later_fetched_host_is_judged_against_its_own_receipt() -> Bool {
-  let later = now_millis + 3 * role_singleton_self_report_max_age_millis()
+  let later = now_millis + 3 * millisecond_count(m: role_singleton_self_report_max_age())
   is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_at(node_host: "srv2", r: report(host: "srv2", at: later, sightings: []), received: later)))
     && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_at(node_host: "srv2", r: report(host: "srv2", at: later, sightings: []), received: now_millis)), host: "srv2")
 }

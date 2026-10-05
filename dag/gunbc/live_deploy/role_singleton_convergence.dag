@@ -33,7 +33,8 @@ import gunbc.roadmap_dashboard_instance { HostDashboardInstance }
 import gunbc.live_deploy.spec { deployment_tailnet_url }
 import extdeps.clock { clock_unix_millis_read, ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.tools.curl { curl_localhost_max_time }
-import std.measure { second_count }
+import std.measure { Millisecond, millisecond, millisecond_count, second_to_millisecond }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.http.client
 import extdeps.tailscale.whois { WhoIsNodeName, WhoIsNodeNamed, WhoIsNodeUnreadable, whois_node_name }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, json_object, json_kv, json_string, json_array, json_int }
@@ -842,8 +843,26 @@ type FetchedSelfReport
   = SelfReportServed { peer_node: WhoIsNodeName, body: String, received_at_unix_millis: EpochMs }
   | SelfReportUnserved { cause: String }
 
-fn role_singleton_self_report_max_age_millis() -> Int {
-  second_count(s: curl_localhost_max_time) * 1000
+fn role_singleton_self_report_max_age() -> Millisecond {
+  second_to_millisecond(s: curl_localhost_max_time)
+}
+
+// HOW A REPORT'S INSTANT STANDS AGAINST ITS RECEIPT, as a typed duration on one side or the other: a
+// report produced before its receipt is aged by a Millisecond, one stamped after it leads by one.
+type ReportAge
+  = ReportAgedBy { age: Millisecond }
+  | ReportAheadBy { lead: Millisecond }
+  | ReportAgeUnrepresentable { cause: String }
+
+fn report_age(observed: EpochMs, received: EpochMs) -> ReportAge {
+  match checked_int_magnitude(a: received - observed) {
+    CheckedNatOverflow { cause: _ } => ReportAgeUnrepresentable { cause: "the distance between the report's instant and its receipt overflows" }
+    CheckedNatReady { value: n } => if received >= observed { ReportAgedBy { age: millisecond(count: n) } } else { ReportAheadBy { lead: millisecond(count: n) } }
+  }
+}
+
+fn millisecond_text(m: Millisecond) -> String {
+  join([to_string(millisecond_count(m: m)), "ms"], "")
 }
 
 // THE NODE A ROSTER HOST MUST BE: its host identity under its declared tailnet domain, as MagicDNS
@@ -890,14 +909,21 @@ fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetch
               if (report.host as String) != (host as String) {
                 self_report_unobservable(host: host, cause: join(["the report names host ", report.host as String], ""))
               } else {
-                let age = received_at_unix_millis - report.observed_at_unix_millis
-                let bound = role_singleton_self_report_max_age_millis()
-                if age > bound {
-                  self_report_unobservable(host: host, cause: join(["the report is stale: ", to_string(age), "ms old, bound ", to_string(bound), "ms"], ""))
-                } else if age < 0 - bound {
-                  self_report_unobservable(host: host, cause: join(["the report is from ", to_string(0 - age), "ms after the reader received it, bound ", to_string(bound), "ms"], ""))
-                } else {
-                  reading_of_reported_host(host: host, reading: report.reading)
+                let bound = role_singleton_self_report_max_age()
+                match report_age(observed: report.observed_at_unix_millis, received: received_at_unix_millis) {
+                  ReportAgeUnrepresentable { cause } => self_report_unobservable(host: host, cause: cause)
+                  ReportAgedBy { age } =>
+                    if millisecond_count(m: age) > millisecond_count(m: bound) {
+                      self_report_unobservable(host: host, cause: join(["the report is stale: ", millisecond_text(m: age), " old, bound ", millisecond_text(m: bound)], ""))
+                    } else {
+                      reading_of_reported_host(host: host, reading: report.reading)
+                    }
+                  ReportAheadBy { lead } =>
+                    if millisecond_count(m: lead) > millisecond_count(m: bound) {
+                      self_report_unobservable(host: host, cause: join(["the report is stamped ", millisecond_text(m: lead), " after the reader received it, bound ", millisecond_text(m: bound)], ""))
+                    } else {
+                      reading_of_reported_host(host: host, reading: report.reading)
+                    }
                 }
               }
           }
