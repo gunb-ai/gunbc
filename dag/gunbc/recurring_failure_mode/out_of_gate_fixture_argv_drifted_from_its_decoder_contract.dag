@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.out_of_gate_fixture_argv_drifted_from_its_decoder_contract
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data out_of_gate_fixture_argv_drifted_from_its_decoder_contract: RecurringFailureMode = RecurringFailureMode {
+  identity: "out_of_gate_fixture_argv_drifted_from_its_decoder_contract" as NonEmptyStr,
+  receipts: [
+    "INVALID STATE: an execution fixture hand-writes the argv of a real producer and asks it for a wire shape the decoder it feeds does not model, and the fixture sits outside the required gate, so the refusal is red with no reader. Compounded when the fixture matches the decoder's refusal as cause: _ and reports only a bare string: the red is anonymous.",
+    "RECEIPT: test.manual.git_upstream_model_execution git_r0_typed_execution_read_back asked git for `ls-tree -z --format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)` and `ls-files -z --format=...%x00...`; git emits a real NUL for %x00 (git-ls-tree / git-ls-files FIELD NAMES: %xx interpolates a hex byte), so each record arrives as four NUL-terminated chunks, while extdeps.git.object_store git_decode_ls_tree_z / git_decode_ls_files_stage_z model git's DEFAULT -z record `<a> SP <b> SP <c> TAB <path> NUL`. The first chunk `100644` has no SP, so the split refused GitLsTreeZFramingRefused { GitNulQuartetIncompleteRecord { field_count: 0 } } -- red on main, unrostered, the cause discarded. Reproduced on git 2.47.3. Not a string-carrier loss: NUL survives the String + utf8_encode_bytes route. Fixed by requesting the default records (`ls-tree -z`, `ls-files -z --stage`) and rendering every refusal arm into the diagnostic; the fixture then reads back verified.",
+    "HARM: a real-path inhabitance claim (DESIGN section 3: the claim that the real producer emits the supplied shape) silently stops executing, so the supplied claim witnesses keep passing over a boundary no executing claim exercises. RUNG FOUND AT: mitigatable (manual probe). CEILING: structurally impossible -- the argv is derived from the decoder's declared wire format, so a fixture cannot request a shape its decoder does not read. NEXT-RUNG TRIGGER, NAMING THE CAPABILITY: the git listing argv derived from the decoder's declared wire-format row (one authority for 'which git invocation produces this record shape'), SUFFICIENT FOR every caller of git_decode_ls_tree_z and git_decode_ls_files_stage_z to obtain its argv from it; and, separately, the manual execution module enrolled in an executing lane so its red has a reader.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "test.manual.git_upstream_model_execution", decl_name: "git_r0_typed_execution_read_back", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.git.object_store", decl_name: "git_decode_ls_tree_z", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.git.object_store", decl_name: "git_decode_ls_files_stage_z", field: WholeDeclaration },
+  ],
+}

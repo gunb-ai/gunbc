@@ -7,6 +7,12 @@ import extdeps.filesystem.filesystem_io
 import extdeps.gunbc
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.git.object_store {
+  GitLsTreeZRefusal, GitLsTreeZFramingRefused, GitLsTreeZHeaderNonAscii, GitLsTreeZObjectIdRefused, GitLsTreeZEntryRefused,
+  GitLsFilesStageZRefusal, GitLsFilesStageZFramingRefused, GitLsFilesStageZHeaderNonAscii, GitLsFilesStageZModeRefused,
+  GitLsFilesStageZObjectIdRefused, GitLsFilesStageZStageRefused, GitLsFilesStageZPathRefused, GitPathComponentRefused,
+  GitNulQuartetRefusal, GitNulQuartetMissingTerminator, GitNulQuartetEmptyField, GitNulQuartetIncompleteRecord,
+  GitObjectIdTextRefusal, GitObjectIdTextWrongLength, GitObjectIdTextNonHexadecimal, GitObjectIdTextNonCanonicalUppercase,
+  GitTreeEntryNameDecodeRefusal, GitTreeEntryNameEmpty, GitTreeEntryNameForbiddenOctet, GitTreeModeObjectMismatch, GitTreeEntryNameRefused,
   GitObjectId,
   GitSha1ObjectId,
   GitObjectFormatSha1,
@@ -96,6 +102,56 @@ fn complete_fixture_repository() -> GitRepositoryState {
     refs: repo.refs,
     index: repo.index,
     worktree: repo.worktree,
+  }
+}
+
+// THE REFUSAL KEEPS ITS CAUSE. A decode refusal reaches the diagnostic as its typed arm, rendered
+// totally, so a red here names what refused and where instead of collapsing to an anonymous false.
+fn nul_quartet_refusal_text(cause: GitNulQuartetRefusal) -> String {
+  match cause {
+    GitNulQuartetMissingTerminator => "NulQuartetMissingTerminator"
+    GitNulQuartetEmptyField => "NulQuartetEmptyField"
+    GitNulQuartetIncompleteRecord { field_count } => concat("NulQuartetIncompleteRecord field_count=", to_string(field_count))
+  }
+}
+
+fn object_id_text_refusal_text(cause: GitObjectIdTextRefusal) -> String {
+  match cause {
+    GitObjectIdTextWrongLength { format: _, observed } => concat("ObjectIdTextWrongLength observed=", to_string(observed))
+    GitObjectIdTextNonHexadecimal => "ObjectIdTextNonHexadecimal"
+    GitObjectIdTextNonCanonicalUppercase => "ObjectIdTextNonCanonicalUppercase"
+  }
+}
+
+fn entry_name_refusal_text(cause: GitTreeEntryNameDecodeRefusal) -> String {
+  match cause {
+    GitTreeEntryNameEmpty => "EntryNameEmpty"
+    GitTreeEntryNameForbiddenOctet { octet } => concat("EntryNameForbiddenOctet octet=", to_string(octet))
+  }
+}
+
+fn ls_tree_z_refusal_text(cause: GitLsTreeZRefusal) -> String {
+  match cause {
+    GitLsTreeZFramingRefused { cause: c } => concat("Framing/", nul_quartet_refusal_text(cause: c))
+    GitLsTreeZHeaderNonAscii { field } => concat("HeaderNonAscii field=", field)
+    GitLsTreeZObjectIdRefused { cause: c } => concat("ObjectId/", object_id_text_refusal_text(cause: c))
+    GitLsTreeZEntryRefused { cause: c } =>
+      match c {
+        GitTreeModeObjectMismatch { mode, object_type, name: _ } => concat("Entry/ModeObjectMismatch mode=", concat(mode, concat(" type=", object_type)))
+        GitTreeEntryNameRefused { name: _, cause: n } => concat("Entry/NameRefused/", entry_name_refusal_text(cause: n))
+      }
+  }
+}
+
+fn ls_files_stage_z_refusal_text(cause: GitLsFilesStageZRefusal) -> String {
+  match cause {
+    GitLsFilesStageZFramingRefused { cause: c } => concat("Framing/", nul_quartet_refusal_text(cause: c))
+    GitLsFilesStageZHeaderNonAscii { field } => concat("HeaderNonAscii field=", field)
+    GitLsFilesStageZModeRefused { mode } => concat("ModeRefused mode=", mode)
+    GitLsFilesStageZObjectIdRefused { cause: c } => concat("ObjectId/", object_id_text_refusal_text(cause: c))
+    GitLsFilesStageZStageRefused { stage } => concat("StageRefused stage=", stage)
+    GitLsFilesStageZPathRefused { cause: GitPathComponentRefused { component_index, cause: n } } =>
+      concat("PathRefused component=", concat(to_string(component_index), concat(" ", entry_name_refusal_text(cause: n))))
   }
 }
 
@@ -398,11 +454,8 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         workdir: fixture.path,
         bin_path: "git",
         args: [
-          "-c",
-          "core.quotePath=false",
           "ls-tree",
           "-z",
-          "--format=%(objectmode)%x00%(objecttype)%x00%(objectname)%x00%(path)",
           trim(s: root_tree.stdout),
         ],
         expect: ExpectSuccess,
@@ -435,7 +488,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         args: [
           "ls-files",
           "-z",
-          "--format=%(objectmode)%x00%(objectname)%x00%(stage)%x00%(path)",
+          "--stage",
         ],
         expect: ExpectSuccess,
       )
@@ -550,18 +603,18 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           payload: utf8_encode_bytes(s: tree_wire.stdout),
           format: GitObjectFormatSha1,
         ) {
-          GitLsTreeZRefused { cause: _ } =>
+          GitLsTreeZRefused { cause } =>
             GitR0LiveFixtureExecutionRefused {
-              diagnostic: "git-ls-tree-z-decode-refused",
+              diagnostic: concat("git-ls-tree-z-decode-refused: ", ls_tree_z_refusal_text(cause: cause)),
             }
           GitLsTreeZDecoded { entries: observed_tree_entries } =>
             match git_decode_ls_files_stage_z(
               payload: utf8_encode_bytes(s: index.stdout),
               format: GitObjectFormatSha1,
             ) {
-              GitLsFilesStageZRefused { cause: _ } =>
+              GitLsFilesStageZRefused { cause } =>
                 GitR0LiveFixtureExecutionRefused {
-                  diagnostic: "git-ls-files-stage-z-decode-refused",
+                  diagnostic: concat("git-ls-files-stage-z-decode-refused: ", ls_files_stage_z_refusal_text(cause: cause)),
                 }
               GitLsFilesStageZDecoded { entries: observed_index_entries } =>
                 match git_model_update_ref_exact(
