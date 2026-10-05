@@ -632,7 +632,8 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
         _ => false
       }
     Absent =>
-      if n.module_item_kind == ModuleItemTypeDeclaration {
+      let is_declaration_node = n.module_item_kind == ModuleItemTypeDeclaration
+      if is_declaration_node {
         match kernel_optional_mint_declaration_node(symbols: symbols) {
           Present { value: mint } => same_declaring_span(a: n, b: mint)
           Absent => authored_name_at(source_indices: source_indices, node: n) == kernel_optional_mint_name && n.children |> count > 0
