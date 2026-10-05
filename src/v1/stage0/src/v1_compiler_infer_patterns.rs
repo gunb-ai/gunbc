@@ -75,8 +75,10 @@ pub fn generic_use_slot_bindings(
                 match scrut_node
                     .children
                     .clone()
-                    .get((pair.0.clone()) as usize)
+                    .iter()
                     .cloned()
+                    .skip(pair.0.clone() as usize)
+                    .next()
                 {
                     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone()),
                     std::option::Option::None => acc.clone(),
@@ -1063,7 +1065,13 @@ pub fn specialize_pattern_row(
 ) -> Rc<Vec<Rc<Vec<Rc<MatchPattern>>>>> {
     {
         let head = pattern_row_head(row.clone());
-        let rest = Rc::new(v1_rt::list_skip(&row.clone(), 1));
+        let rest = Rc::new(
+            row.clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .collect::<Vec<_>>(),
+        );
         if crate::v1_std_core::match_pattern_is_irrefutable(head.clone()) {
             Rc::new(vec![v1_rt::concat(
                 Rc::new({
@@ -1134,8 +1142,10 @@ pub fn render_constructor_witness(
             Rc::new(vec![]),
             |acc: _, pair: (i64, Rc<ConstructorField>)| match cells
                 .clone()
-                .get((pair.0.clone()) as usize)
+                .iter()
                 .cloned()
+                .skip(pair.0.clone() as usize)
+                .next()
             {
                 Some(cell) => {
                     if (cell.clone() == "_".to_string()) {
@@ -1200,7 +1210,13 @@ pub fn default_pattern_rows(
         .iter()
         .cloned()
         {
-            __result.push(Rc::new(v1_rt::list_skip(&r.clone(), 1)));
+            __result.push(Rc::new(
+                r.clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            ));
         }
         __result
     })
@@ -1224,7 +1240,14 @@ pub fn exhaustiveness_witnesses(
                 }
             }
             Some(head_type) => {
-                let rest_columns = Rc::new(v1_rt::list_skip(&columns.clone(), 1));
+                let rest_columns = Rc::new(
+                    columns
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match (*constructor_roster_for(head_type.clone(), env.clone())).clone() {
                     ConstructorRoster::ConstructorsOpen => {
                         let defaulted = default_pattern_rows(rows.clone());
@@ -1353,15 +1376,24 @@ pub fn exhaustiveness_witnesses(
                                                         Rc::new(vec![render_constructor_witness(
                                                             c.clone(),
                                                             fields.clone(),
-                                                            Rc::new(v1_rt::list_take(
-                                                                &w.cells.clone(),
-                                                                field_count.clone(),
-                                                            )),
+                                                            Rc::new(
+                                                                w.cells
+                                                                    .clone()
+                                                                    .iter()
+                                                                    .cloned()
+                                                                    .take(field_count.clone()
+                                                                        as usize)
+                                                                    .collect::<Vec<_>>(),
+                                                            ),
                                                         )]),
-                                                        Rc::new(v1_rt::list_skip(
-                                                            &w.cells.clone(),
-                                                            field_count.clone(),
-                                                        )),
+                                                        Rc::new(
+                                                            w.cells
+                                                                .clone()
+                                                                .iter()
+                                                                .cloned()
+                                                                .skip(field_count.clone() as usize)
+                                                                .collect::<Vec<_>>(),
+                                                        ),
                                                     ),
                                                 }));
                                             }

@@ -310,27 +310,6 @@ fn route_qualification_effect() -> PrivilegedEffect {
   }
 }
 
-// BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
-// account to a stored and exact-fetched generation and retire the published account to a break-glass
-// generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
-// value each write replaces is gone, and the published factory value is not restorable by a reapply
-// (artifacts/bmc/mtcollins1-user2-retire-2026-09-13.txt). One controller's accounts, so its reach is one
-// resource. No dispatched run carries it: in this cut it is modeled, with a dry realization only, and
-// the plan mint takes an operator-approved capability (gunbc.auth.approval_broker Redemption) per write,
-// bound to the exact controller, build and request.
-fn bmc_secure_account_rotation_effect() -> PrivilegedEffect {
-  PrivilegedEffect {
-    subject: "rotate a BMC's managed account to a stored generation and retire its published account, over admitted routes on one controller at one firmware build" as NonEmptyStr,
-    frequency: DeviceOnce,
-    reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
-    surface: ApiSurface,
-    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries the BmcSecure account rotation; in cut O1b it is modeled with a dry realization only" as NonEmptyStr },
-    minted_reach: MintsResourceScopedCredential,
-    billing: NoBillingConsequence,
-    witness_discharge: NoWitnessDischarge,
-  }
-}
-
 // ── INTERLOCKS: the state an effect's parameters are honest only under ─────────────────────────
 // A row's reversibility can depend on a fact about the world rather than about the call: the boot
 // above is reversible by reapply only while nobody is working on the unit. That condition is not a
@@ -644,12 +623,6 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
     effect: route_qualification_effect(),
-    realized: RealizedApprovalCapability,
-    divergence_reason: none,
-  },
-  PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "plan_bmc_account_action"),
-    effect: bmc_secure_account_rotation_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },

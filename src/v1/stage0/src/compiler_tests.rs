@@ -4367,13 +4367,9 @@ mod compiler_tests {
         let no_fields = std::rc::Rc::new(im::Vector::new());
         let no_path = std::rc::Rc::new(im::Vector::new());
         let no_shared = std::rc::Rc::new(im::OrdSet::new());
-        let unread_parent = std::rc::Rc::new(
-            crate::std_target_representation::VariantParentIdentity::VariantParentBeforeInference,
-        );
         let unresolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             None,
-            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4389,7 +4385,6 @@ mod compiler_tests {
         let unresolved_rc = crate::v1_compiler_emit_rust::emit_variant_pattern_rc_aware(
             "Add".to_string(),
             None,
-            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             crate::v1_compiler_emit_rust::empty_rc_pattern_analysis(),
@@ -4417,7 +4412,6 @@ mod compiler_tests {
         let resolved = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Add".to_string(),
             Some("BinOp".to_string()),
-            unread_parent.clone(),
             no_fields.clone(),
             no_path.clone(),
             no_shared.clone(),
@@ -4429,7 +4423,6 @@ mod compiler_tests {
         let optional = crate::v1_compiler_emit_rust::emit_variant_pattern(
             "Absent".to_string(),
             None,
-            unread_parent,
             no_fields,
             no_path,
             no_shared,

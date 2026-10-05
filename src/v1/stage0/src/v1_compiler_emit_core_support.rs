@@ -552,7 +552,13 @@ pub fn apply_named_template_nested(
         match keys.clone().first().cloned() {
             std::option::Option::None => template.clone(),
             Some(key) => {
-                let rest = Rc::new(v1_rt::list_skip(&keys.clone(), 1));
+                let rest = Rc::new(
+                    keys.clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 let placeholder =
                     v1_rt::concat(v1_rt::concat("{".to_string(), key.clone()), "}".to_string());
                 match v1_rt::map_get(&bindings, key.clone()) {

@@ -830,8 +830,10 @@ pub fn string_list_eq(
                     break false;
                 } else {
                     {
-                        let __tco_0 = Rc::new(v1_rt::list_skip(&left, 1));
-                        let __tco_1 = Rc::new(v1_rt::list_skip(&right, 1));
+                        let __tco_0 =
+                            Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_1 =
+                            Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         __tco_loop_left = __tco_0;
                         __tco_loop_right = __tco_1;
                         continue;
@@ -864,8 +866,12 @@ pub fn schedule_witness_entry_list_eq(
                                 break false;
                             } else {
                                 {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&left, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&right, 1));
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
                                     __tco_loop_left = __tco_0;
                                     __tco_loop_right = __tco_1;
                                     continue;
@@ -973,8 +979,12 @@ pub fn runnable_batch_eq(
                                 break false;
                             } else {
                                 {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&left, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&right, 1));
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
                                     __tco_loop_left = __tco_0;
                                     __tco_loop_right = __tco_1;
                                     continue;
@@ -1013,8 +1023,12 @@ pub fn schedule_eq(mut __tco_loop_left: Schedule, mut __tco_loop_right: Schedule
                                 break false;
                             } else {
                                 {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&left, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&right, 1));
+                                    let __tco_0 = Rc::new(
+                                        left.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        right.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
                                     __tco_loop_left = __tco_0;
                                     __tco_loop_right = __tco_1;
                                     continue;

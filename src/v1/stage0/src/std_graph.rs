@@ -371,7 +371,13 @@ pub fn is_lexicographic_descent(mut __tco_loop_evidence: Rc<Vec<DescentEvidence>
                     break true;
                 }
                 DescentEvidence::NonIncreasing => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&evidence, 1));
+                    let __tco_0 = Rc::new(
+                        evidence
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     __tco_loop_evidence = __tco_0;
                     continue;
                 }

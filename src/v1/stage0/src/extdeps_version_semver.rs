@@ -105,8 +105,12 @@ pub fn semver_compare_identifiers(
                         Some(ah) => match b.clone().first().cloned() {
                             Some(bh) => match semver_compare_identifier(ah.clone(), bh.clone()) {
                                 Ordering::Equal => {
-                                    let __tco_0 = Rc::new(v1_rt::list_skip(&a, 1));
-                                    let __tco_1 = Rc::new(v1_rt::list_skip(&b, 1));
+                                    let __tco_0 = Rc::new(
+                                        a.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = Rc::new(
+                                        b.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
                                     __tco_loop_a = __tco_0;
                                     __tco_loop_b = __tco_1;
                                     continue;

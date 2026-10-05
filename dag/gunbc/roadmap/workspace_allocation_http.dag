@@ -13,7 +13,7 @@ import gunbc.workspace_allocation { WorkspaceRequest, workspace_profile_parse, w
 import gunbc.workspace_allocation_store { WorkspaceAllocation, WorkspaceRunning, WorkspaceWanted, workspace_phase_wire, workspace_read_owner, WorkspaceStoreReadOk, WorkspaceStoreUnreadable, workspace_record_request_at, workspace_request_release_at, WorkspaceStoreWrite, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused, workspace_allocation_json }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import gunbc.fabric_storage_client { FabricStorageBinding }
-import gunbc.roadmap_allocation_location { allocation_page_path, allocation_release_route }
+import gunbc.roadmap_allocation_location { allocation_page_path }
 
 // JSON is the allocation wire contract. Identity, image, keys and lease are server policy.
 // Duplicate fields and extra authority-bearing fields refuse before any storage operation.
@@ -106,7 +106,7 @@ fn workspace_http_release_over(
     Present { value: submission } => match request.security.authentication {
       GoogleOidcSession { session } => match workspace_write_admission(
         security: request.security, owner: session.principal, policy: policy, deployment_policy: deployment_policy,
-        observed_at: observed_at, route_path: allocation_release_route(), action: ServeActionReleaseAllocation, csrf_presented: submission.csrf_token,
+        observed_at: observed_at, route_path: "/allocations/release", action: ServeActionReleaseAllocation, csrf_presented: submission.csrf_token,
       ) {
         Deny { refusal } => workspace_http_reason(status: 403, reason: access_refusal_reason(refusal: refusal))
         Permit => workspace_http_write(observed_at: observed_at, result: workspace_request_release_at(store: store, owner: session.principal, idempotency_key: allocation_id, expected_generation: submission.generation, observed_at: observed_at))

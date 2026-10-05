@@ -315,12 +315,3 @@ pub fn symbol_capture_declarers() -> Rc<Vec<Rc<SymbolCaptureDeclarer>>> {
         ),
     ])
 }
-
-pub fn rust_host_option_carrier_declarations() -> Rc<Vec<Rc<DeclarationRef>>> {
-    thread_local! {
-        static CACHED: Rc<Vec<Rc<DeclarationRef>>> = {
-            Rc::new(vec![crate::std_decl_ref::decl_ref("v2.std.diagnostic".to_string(), "Diagnostics".to_string())])
-        };
-    }
-    CACHED.with(|c: &Rc<Vec<Rc<DeclarationRef>>>| c.clone())
-}

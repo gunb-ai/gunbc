@@ -1079,87 +1079,25 @@ fn value_eq_calls() -> u64 {
 /// onto a heap worklist and dropped from there with its own children already detached. Shared
 /// children (`Rc` strong count above one) are left in place; their last owner detaches them.
 /// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
-///
-/// A PERSISTENT CARRIER IS DETACHED ONLY ONCE DROP NESTING IS DEEP. A List or Map is an RRB / HAMT
-/// tree whose nodes may be shared with other values -- a `skip` or `map_insert` result shares
-/// all but a logarithmic boundary with its source -- and consuming one into the worklist clones
-/// every member out of the shared nodes, so dropping a slice cost its source's length and a walk
-/// that slices by offset was quadratic in the drop alone. Detaching exists for host-stack depth,
-/// and depth only accrues where one carrier's drop nests another's: below
-/// `VALUE_DROP_INLINE_DEPTH` nested drops the carrier is released by its own drop, which frees
-/// shared nodes by reference count and runs each member's `Value::drop` (itself iterative over
-/// Variant / Record depth); at or beyond it the carrier is detached as before, so a list nested
-/// to any depth still drops in bounded host stack (`value_depth_walker_tests::a_deep_list_drops`).
 impl Drop for Value {
     fn drop(&mut self) {
-        let depth = VALUE_DROP_DEPTH
-            .try_with(|d| {
-                let depth = d.get();
-                d.set(depth + 1);
-                depth
-            })
-            .unwrap_or(VALUE_DROP_INLINE_DEPTH);
-        let detach_carriers = depth >= VALUE_DROP_INLINE_DEPTH;
         let mut pending: Vec<Value> = Vec::new();
-        detach_owned_children(self, &mut pending, detach_carriers);
+        detach_owned_children(self, &mut pending);
         while let Some(mut child) = pending.pop() {
-            detach_owned_children(&mut child, &mut pending, detach_carriers);
+            detach_owned_children(&mut child, &mut pending);
         }
-        // A carrier left attached is released HERE, while the depth is raised: drop glue would
-        // release it only after this function returns and the depth is restored, and a nested
-        // carrier's members would then never see the depth they are at.
-        match self {
-            Value::List(items) => drop(std::mem::replace(items, empty_list_carrier())),
-            Value::Map(entries) => drop(std::mem::replace(entries, empty_map_carrier())),
-            _ => {}
-        }
-        let _ = VALUE_DROP_DEPTH.try_with(|d| d.set(depth));
     }
 }
 
-thread_local! {
-    static EMPTY_LIST_CARRIER: Rc<RrbVector<Value>> = Rc::new(RrbVector::new());
-    static EMPTY_MAP_CARRIER: Rc<HamtMap<CanonKey, Value>> = Rc::new(HamtMap::new());
-}
-
-fn empty_list_carrier() -> Rc<RrbVector<Value>> {
-    EMPTY_LIST_CARRIER
-        .try_with(Rc::clone)
-        .unwrap_or_else(|_| Rc::new(RrbVector::new()))
-}
-
-fn empty_map_carrier() -> Rc<HamtMap<CanonKey, Value>> {
-    EMPTY_MAP_CARRIER
-        .try_with(Rc::clone)
-        .unwrap_or_else(|_| Rc::new(HamtMap::new()))
-}
-
-const VALUE_DROP_INLINE_DEPTH: u32 = 64;
-
-thread_local! {
-    static VALUE_DROP_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-}
-
-// TEST-ONLY WORK OBSERVATION: members moved out of a persistent carrier by drop, so the drop's
-// cost contract is observed as work rather than time.
-#[cfg(test)]
-thread_local! {
-    static DROP_DETACHED_CARRIER_MEMBERS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
-fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>, detach_carriers: bool) {
+fn detach_owned_children(value: &mut Value, pending: &mut Vec<Value>) {
     match value {
-        Value::List(items) if detach_carriers => {
+        Value::List(items) => {
             if let Some(items) = Rc::get_mut(items) {
-                #[cfg(test)]
-                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + items.len() as u64));
                 pending.extend(std::mem::take(items));
             }
         }
-        Value::Map(entries) if detach_carriers => {
+        Value::Map(entries) => {
             if let Some(entries) = Rc::get_mut(entries) {
-                #[cfg(test)]
-                DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.set(c.get() + entries.len() as u64));
                 pending.extend(std::mem::take(entries).into_iter().map(|(_, v)| v));
             }
         }
@@ -12917,13 +12855,17 @@ macro_rules! v1_algebra_method_arms {
             arm "method_call.skip" { "skip" } => {
                 let items = expect_list(&$receiver, "skip")?;
                 let n = expect_int($args.first(), "skip")?;
-                Ok(Value::List(Rc::new(rrb_skip(&items, n))))
+                Ok(list_value(
+                    items.iter().skip(n as usize).cloned().collect::<Vec<_>>(),
+                ))
             },
 
             arm "method_call.take" { "take" } => {
                 let items = expect_list(&$receiver, "take")?;
                 let n = expect_int($args.first(), "take")?;
-                Ok(Value::List(Rc::new(rrb_take(&items, n))))
+                Ok(list_value(
+                    items.iter().take(n as usize).cloned().collect::<Vec<_>>(),
+                ))
             },
 
             arm "method_call.enumerate" { "enumerate" } => {
@@ -22349,7 +22291,7 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.chars_to_string" { "chars_to_string" } => {
                 let cps = match $positional.first().copied() {
-                    Some(v) => free_monoid_items(v).ok_or_else(|| InterpError::TypeError {
+                    Some(v) => free_monoid_to_vec(v).ok_or_else(|| InterpError::TypeError {
                         msg: "chars_to_string expects a list of code points".to_string(),
                     })?,
                     None => {
@@ -22366,9 +22308,7 @@ macro_rules! v1_builtin_arms {
                     .max(0)
                     .min(len)
                     .max(start);
-                let s: String = cps
-                    .skip(start as usize)
-                    .take((end - start) as usize)
+                let s: String = cps[start as usize..end as usize]
                     .iter()
                     .filter_map(|v| match v {
                         Value::Int(cp) => char::from_u32(*cp as u32),
@@ -22379,10 +22319,6 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.get" { "get" } => match $positional.as_slice() {
-                [Value::List(items), idx_val] => {
-                    let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(items, idx)))
-                }
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
@@ -22463,7 +22399,6 @@ macro_rules! v1_builtin_arms {
             },
 
             arm "free_call.count" { "count" } => match $positional.first() {
-                Some(Value::List(items)) => Ok(Some(Value::Int(items.len() as i64))),
                 Some(v) => match free_monoid_to_vec(v) {
                     Some(items) => Ok(Some(Value::Int(items.len() as i64))),
                     None => Ok(None),
@@ -25229,183 +25164,6 @@ fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
             let copied = items.len() as u64;
             (Rc::new(RrbVector::from(items)), copied)
         }),
-    }
-}
-
-/// The members of a code-point (or any FreeMonoid) value as the persistent carrier, sharing a
-/// `Value::List`'s tree rather than flattening it. `free_monoid_to_vec` copies all n members, so a
-/// consumer that reads a slice through it pays O(n) per read and O(n^2) over a walk; this reads the
-/// list form in O(1) and flattens only the Str and Cons forms, which have no shared tree to borrow.
-fn free_monoid_items(val: &Value) -> Option<Rc<RrbVector<Value>>> {
-    match val {
-        Value::List(items) => Some(Rc::clone(items)),
-        other => free_monoid_to_vec(other).map(|items| Rc::new(RrbVector::from(items))),
-    }
-}
-
-/// std.primitives skip_contract on the persistent carrier: the suffix after `n` members, sharing
-/// the receiver's tree, O(log n) rather than a copy of the remainder. A negative `n` keeps the
-/// reading the copying form had (`n as usize` saturates past the end), which skips everything.
-pub(crate) fn rrb_skip<T: Clone>(items: &RrbVector<T>, n: i64) -> RrbVector<T> {
-    let k = if n < 0 {
-        items.len()
-    } else {
-        (n as usize).min(items.len())
-    };
-    items.skip(k)
-}
-
-/// std.primitives take_contract on the persistent carrier: the first `n` members, sharing the
-/// receiver's tree. A negative `n` keeps every member, as the copying form's saturating cast did.
-pub(crate) fn rrb_take<T: Clone>(items: &RrbVector<T>, n: i64) -> RrbVector<T> {
-    let k = if n < 0 {
-        items.len()
-    } else {
-        (n as usize).min(items.len())
-    };
-    items.take(k)
-}
-
-#[cfg(test)]
-mod linear_slice_tests {
-    use super::*;
-    use std::cell::Cell;
-
-    thread_local! {
-        static CLONES: Cell<u64> = const { Cell::new(0) };
-    }
-
-    /// A code point whose every copy is counted, so a slice's cost is read off the carrier's
-    /// own work rather than a clock.
-    #[derive(Debug, PartialEq)]
-    struct CountedCodePoint(u32);
-
-    impl Clone for CountedCodePoint {
-        fn clone(&self) -> Self {
-            CLONES.with(|c| c.set(c.get() + 1));
-            CountedCodePoint(self.0)
-        }
-    }
-
-    fn clones_during<R>(f: impl FnOnce() -> R) -> (R, u64) {
-        let before = CLONES.with(|c| c.get());
-        let r = f();
-        (r, CLONES.with(|c| c.get()) - before)
-    }
-
-    // Non-ASCII on purpose: the interpreter's string carrier is O(1) per index only on ASCII,
-    // which is the case a byte-offset decode is NOT linear on.
-    fn non_ascii_code_points(n: usize) -> RrbVector<CountedCodePoint> {
-        "\u{e9}\u{4e2d}\u{1f600}a"
-            .chars()
-            .cycle()
-            .take(n)
-            .map(|c| CountedCodePoint(c as u32))
-            .collect()
-    }
-
-    const N: usize = 200_000;
-    // im's RRB split copies at most one boundary chunk per tree level; this is that bound with
-    // headroom, and three orders of magnitude below N.
-    const SLICE_COPY_BUDGET: u64 = 2_048;
-
-    #[test]
-    fn a_slice_from_the_middle_copies_only_boundary_chunks() {
-        let cps = non_ascii_code_points(N);
-        let (slice, copied) = clones_during(|| rrb_take(&rrb_skip(&cps, (N / 2) as i64), 7));
-        assert!(
-            copied <= SLICE_COPY_BUDGET,
-            "skip+take copied {copied} members of {N}"
-        );
-        let expected: Vec<u32> = cps.iter().skip(N / 2).take(7).map(|c| c.0).collect();
-        assert_eq!(slice.iter().map(|c| c.0).collect::<Vec<_>>(), expected);
-    }
-
-    // THE RED CONTROL: the copying form these arms had, on the same input and bound. It must
-    // exceed the budget, or the budget does not discriminate the quadratic.
-    #[test]
-    fn the_copying_slice_form_exceeds_the_budget() {
-        let cps = non_ascii_code_points(N);
-        let (_, copied) = clones_during(|| {
-            let rest: RrbVector<_> = cps.iter().skip(N / 2).cloned().collect();
-            rest.iter().take(7).cloned().collect::<RrbVector<_>>()
-        });
-        assert!(
-            copied > SLICE_COPY_BUDGET,
-            "copying form copied only {copied}"
-        );
-    }
-
-    #[test]
-    fn negative_and_overlong_counts_keep_the_copying_forms_reading() {
-        let cps: RrbVector<i64> = (0..10).collect();
-        let copying_skip = |n: i64| {
-            cps.iter()
-                .skip(n as usize)
-                .cloned()
-                .collect::<RrbVector<_>>()
-        };
-        let copying_take = |n: i64| {
-            cps.iter()
-                .take(n as usize)
-                .cloned()
-                .collect::<RrbVector<_>>()
-        };
-        for n in [-3, 0, 4, 10, 11, i64::MAX] {
-            assert_eq!(rrb_skip(&cps, n), copying_skip(n), "skip {n}");
-            assert_eq!(rrb_take(&cps, n), copying_take(n), "take {n}");
-        }
-    }
-
-    fn detached() -> u64 {
-        DROP_DETACHED_CARRIER_MEMBERS.with(|c| c.get())
-    }
-
-    // The slice's drop is part of the slice's cost: a walk drops one slice per step. Below the
-    // nesting threshold the RRB tree releases its nodes by reference count, so dropping a slice
-    // of a shared list moves no member; the copying drop moved the whole suffix.
-    #[test]
-    fn dropping_a_slice_of_a_shared_list_moves_no_member() {
-        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
-        let Value::List(items) = &base else {
-            unreachable!("list_value builds a list")
-        };
-        let slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
-        let before = detached();
-        drop(slice);
-        assert_eq!(detached() - before, 0, "dropping a shared slice walked it");
-        assert_eq!(items.len(), N, "the source survives its slice's drop");
-    }
-
-    // THE RED CONTROL: the same drop once nesting is past the threshold, which is the detaching
-    // path every list drop used to take. It moves the slice's members, so the counter discriminates.
-    #[test]
-    fn the_detaching_drop_moves_the_slice_members() {
-        let base = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
-        let Value::List(items) = &base else {
-            unreachable!("list_value builds a list")
-        };
-        let mut slice = Value::List(Rc::new(rrb_skip(items, (N / 2) as i64)));
-        let before = detached();
-        let mut pending = Vec::new();
-        detach_owned_children(&mut slice, &mut pending, true);
-        assert_eq!(detached() - before, (N - N / 2) as u64);
-    }
-
-    #[test]
-    fn reading_a_list_value_does_not_flatten_it() {
-        let list = list_value((0..N as i64).map(Value::Int).collect::<Vec<_>>());
-        let before = flatten_counters_snapshot();
-        let items = free_monoid_items(&list).expect("a list is a free monoid");
-        assert_eq!(items.len(), N);
-        assert_eq!(
-            flatten_counters_snapshot(),
-            before,
-            "free_monoid_items flattened a Value::List"
-        );
-        // RED CONTROL: the flattening read the get / count / chars_to_string arms used.
-        free_monoid_to_vec(&list).expect("a list is a free monoid");
-        assert_eq!(flatten_counters_snapshot().1 - before.1, N as u64);
     }
 }
 

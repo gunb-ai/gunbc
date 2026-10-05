@@ -95,10 +95,14 @@ pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
         );
         if ((segments.clone().len() as i64) > 1) {
             Rc::new(CandidateSpelling::QualifiedCandidate {
-                authored_qualifier: Rc::new(v1_rt::list_take(
-                    &segments.clone(),
-                    v1_rt::int_sub((segments.clone().len() as i64), 1),
-                ))
+                authored_qualifier: Rc::new(
+                    segments
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .take(v1_rt::int_sub((segments.clone().len() as i64), 1) as usize)
+                        .collect::<Vec<_>>(),
+                )
                 .join(&".".to_string()),
                 member: match segments.clone().last().cloned() {
                     Some(member) => member.clone(),

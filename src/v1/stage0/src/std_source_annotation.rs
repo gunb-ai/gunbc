@@ -140,7 +140,15 @@ pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<Annotatio
         Some(head) => Rc::new(AnnotationAdmission::AnnotationsRefused {
             refusals: Rc::new(FreeSemigroup {
                 head: head.clone(),
-                tail: Rc::new(v1_rt::list_skip(&result.refusals.clone(), 1)),
+                tail: Rc::new(
+                    result
+                        .refusals
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                ),
                 _phantom: std::marker::PhantomData,
             }),
         }),
@@ -398,7 +406,14 @@ pub fn keyed_annotation_rows_agree(
                     agreed: false,
                 }),
                 Some(other) => Rc::new(KeyedAnnotationRowWalk {
-                    rest: Rc::new(v1_rt::list_skip(&acc.rest.clone(), 1)),
+                    rest: Rc::new(
+                        acc.rest
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    ),
                     agreed: ((acc.agreed.clone()
                         && (row.subject_key.clone() == other.subject_key.clone()))
                         && (row.text.clone() == other.text.clone())),

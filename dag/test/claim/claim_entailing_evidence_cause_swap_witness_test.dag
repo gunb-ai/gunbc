@@ -40,9 +40,9 @@ data cause_swap_pass_marker: String = "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: 
 
 // ARM 1 -- THE CAUSE THAT SHOULD BE ADMITTED. The driver ran, reached its comparison, found the
 // planted fault and said so on its own terms before exiting nonzero. This is the real 00_compile
-// inject-fault transcript shape: both lines are what the driver rendered for that row prints
-// (tools.self_host_curated_seed_linked_harness cssl_contract_driver_main_source).
-data cause_swap_fault_detected_stdout: String = "emitted contract inject_fault=true holds=false\nSELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL\n"
+// inject-fault transcript shape: the marker below is what dag/gunbc/instruments/self_host_00_compile_shims/
+// witness_main.rs actually prints.
+data cause_swap_fault_detected_stdout: String = "required_lens_grain_note emitted_len=13 seed_len=402 eq=false\nSELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL\n"
 
 // ARM 2 -- THE CAUSE THAT MUST BE REFUSED, AND IT IS THE WHOLE POINT OF THE FILE. The binary was
 // never built, so the run failed before executing a single comparison. The OLD predicate is

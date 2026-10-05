@@ -409,26 +409,12 @@ data append_contract: PrimitiveContract = {
   carrier_cost: CarrierSensitive { ephemeral_work: "n + m", persistent_work: "log(n + m)" }
 }
 
-// SKIP AND TAKE ARE THE SLICE, AND ON THE PERSISTENT CARRIER THEY SHARE THE RECEIVER'S TREE. A walk
-// that reads a code-point or octet list by offset slices it as `xs |> skip(n: a) |> take(n: b - a)`;
-// when either half copied its result, each slice paid the remainder and the walk was quadratic in
-// the list (DESIGN section 6, bare minimum cost). Both realizations hold the list as an RRB vector
-// (the interpreter's Value::List, v1_rt's im::Vector), whose split is logarithmic, so the slice
-// costs log len to form and only its own length to read.
 data skip_contract: PrimitiveContract = {
   name: "skip",
-  work: "log len",
+  work: "n",
   output_size: "max(0, len - n)",
   certainty: Proven,
-  carrier_cost: CarrierSensitive { ephemeral_work: "len - n", persistent_work: "log len" }
-}
-
-data take_contract: PrimitiveContract = {
-  name: "take",
-  work: "log len",
-  output_size: "min(len, n)",
-  certainty: Proven,
-  carrier_cost: CarrierSensitive { ephemeral_work: "n", persistent_work: "log len" }
+  carrier_cost: CarrierInsensitive
 }
 
 data zip_contract: PrimitiveContract = {
@@ -805,7 +791,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     list_push_contract,
     append_contract,
     skip_contract,
-    take_contract,
     zip_contract,
     enumerate_contract,
     empty_map_contract,

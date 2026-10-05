@@ -257,7 +257,7 @@ Controls:
 - two `AmiMegaRac` controllers with different observed and executed surfaces produce different route standings;
 - a Manager GET alone cannot construct an account-write route.
 
-`rotation_route_consumption_frontier` stands until the held O1b transition: O1b supplies the consumer's code (`gunbc.machine_intake_bmc_secure` `plan_bmc_account_action` computes each write's admission with `admit_rotation_apply` and refuses on every other arm), but not yet its production route.
+`rotation_route_consumption_frontier` is retired by the actuator in O1c reading this standing.
 
 #### `BmcSecure` as a desired state (O1b)
 

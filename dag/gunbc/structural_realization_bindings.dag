@@ -2,7 +2,7 @@ module gunbc.structural_realization_bindings
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
-import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding, KernelMintDeclaration }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelStringLiteral, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold, KernelGrounding }
 import std.coercion { ConversionPlan, UnfoldPhase, InverseUnfoldPhase }
 import std.operator_realization { StructuralOrderingBinding }
 
@@ -112,15 +112,4 @@ data structural_ordering_rows: List<StructuralOrderingBinding> = [
 // same discipline as the rows above: it is never added to make a failing site compile.
 data kernel_grounding_rows: List<KernelGrounding> = [
   KernelGrounding { source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat") }
-]
-
-// WHICH KERNEL MINTS STAND FOR A CORPUS DECLARATION (std.literal_elaboration
-// KernelMintDeclaration). The seed's kernel Optional -- what `T?` resolves to -- is
-// v2.std.optional Optional, the corpus's one declaration of that coproduct. Bound here so a
-// Present or Absent arm carries that declaration's identity whether it was reached through the
-// sugar or through an import.
-data kernel_optional_mint_name: String = "Optional"
-
-data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [
-  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional") }
 ]

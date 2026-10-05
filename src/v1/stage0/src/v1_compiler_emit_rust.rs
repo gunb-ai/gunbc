@@ -5,7 +5,6 @@ use self::AliasDeclArityVerdict::*;
 use self::ClosedAliasPeelVerdict::*;
 use self::FmArmAnalysis::*;
 use self::FmLoweringRefusal::*;
-use self::HostOptionArmReading::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::NativeClaimEffectDemand::*;
 use self::WitnessCtorPathVerdict::*;
@@ -56,7 +55,6 @@ pub use crate::gunbc_rust_emitted_edge::{
     semantic_source_reference_edge,
 };
 pub use crate::gunbc_rust_emitted_edge::{EmittedEdge, EmittedEdgeProvenance};
-pub use crate::gunbc_rust_source_type_bindings::rust_host_option_carrier_declarations;
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 pub use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow;
@@ -67,8 +65,7 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::gunbc_stage0_executable_assembly_generated::generated_host_shell_partition_dependencies;
 pub use crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package;
 pub use crate::gunbc_structural_realization_bindings::{
-    kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name,
-    structural_ordering_rows,
+    kernel_grounding_rows, structural_ordering_rows,
 };
 pub use crate::std_algebra::trim;
 pub use crate::std_algebra::AlgebraFieldTemplate;
@@ -77,22 +74,17 @@ use crate::std_coercion::TypeDeclarationProvenance::{
 };
 use crate::std_coercion::TypeRealizationDecision::*;
 pub use crate::std_coercion::{TypeDeclarationProvenance, TypeRealizationDecision};
+pub use crate::std_decl_ref::decl_ref;
 use crate::std_decl_ref::DeclField::WholeDeclaration;
-pub use crate::std_decl_ref::{decl_ref, declaration_ref_in_list};
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_literal_elaboration::kernel_grounding_for;
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
-use crate::std_literal_elaboration::KernelMintOwnership::{
-    DeclarationDoesNotOwnTheMint, DeclarationOwnsTheMint, KernelMintOwnershipAmbiguous,
-};
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership};
-pub use crate::std_literal_elaboration::{
-    KernelGroundingLookup, KernelMintOwnership, LiteralSourceKind,
-};
+pub use crate::std_literal_elaboration::{KernelGroundingLookup, LiteralSourceKind};
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -135,17 +127,14 @@ use crate::std_target_representation::ExactBindingResolution::{
     ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable, ResolvedExactBinding,
 };
 use crate::std_target_representation::VariantParentIdentity::{
-    VariantParentBeforeInference, VariantParentIdentified, VariantParentUnrecovered,
-};
-use crate::std_target_representation::VariantParentKey::{
-    VariantParentDeclaration, VariantParentKernelType,
+    VariantParentBeforeInference, VariantParentUnrecovered,
 };
 use crate::std_target_representation::VariantValueRealization::{
     VariantParentIdentityUnavailable, VariantRealizesAsTargetValue, VariantRealizesStructurally,
     VariantTargetValueAmbiguous, VariantTargetValueUnbound,
 };
 pub use crate::std_target_representation::{
-    ExactBindingResolution, VariantParentIdentity, VariantParentKey, VariantValueRealization,
+    ExactBindingResolution, VariantParentIdentity, VariantValueRealization,
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
@@ -679,7 +668,14 @@ pub fn render_rust_type_without_applied_binding(
                                 let key_node = crate::v1_compiler_infer_types::child_type_node(
                                     key_child.clone(),
                                 );
-                                let val_node = match n.children.clone().get((1) as usize).cloned() {
+                                let val_node = match n
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .next()
+                                {
                                     Some(val_child) => {
                                         if rust_type_node_is_arrow(val_child.clone()) {
                                             val_child.clone()
@@ -882,20 +878,11 @@ pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
 }
 
 pub fn is_host_optional_carrier_alias(name: String) -> bool {
-    (name.clone() == kernel_optional_mint_name())
+    (name.clone() == "Optional".to_string())
 }
 
 pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
-    {
-        let mut __found = false;
-        for d in rust_host_option_carrier_declarations().iter().cloned() {
-            if (d.decl_name.clone() == name.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
+    (name.clone() == "Diagnostics".to_string())
 }
 
 pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
@@ -931,10 +918,8 @@ pub fn is_host_diagnostics_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    is_host_diagnostics_carrier_alias(crate::v1_std_core::authored_name_at(
-        source_indices.clone(),
-        n.clone(),
-    ))
+    (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
+        == "Diagnostics".to_string())
 }
 
 pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
@@ -2864,7 +2849,7 @@ if peel.clone() {
                                                             } else {
                                                                 if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
                                                     match arg_list.clone().first().cloned() {
-    Some(k) => match arg_list.clone().get((1) as usize).cloned() {
+    Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
     Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(name.clone(), k.clone(), v.clone(), base.clone(), RenderTarget::Rust),
     std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string()),
 },
@@ -3279,7 +3264,7 @@ pub fn rust_alias_rhs_applied_container_or_base(
 ) -> String {
     if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
         match arg_list.clone().first().cloned() {
-            Some(k) => match arg_list.clone().get((1) as usize).cloned() {
+            Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
                 Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(
                     leaf.clone(),
                     k.clone(),
@@ -5904,7 +5889,13 @@ pub fn emit_rust_block_stmts(
                 let next_scope =
                     crate::v1_compiler_emit::scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = registry;
@@ -5957,7 +5948,14 @@ pub fn emit_rust_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -10525,10 +10523,16 @@ pub fn qualified_type_reference_rows(
                                     .map(|s| s.to_string())
                                     .collect::<Vec<_>>(),
                             );
-                            let qualifier = Rc::new(v1_rt::list_take(
-                                &segments.clone(),
-                                v1_rt::int_sub((segments.clone().len() as i64), 1),
-                            ))
+                            let qualifier = Rc::new(
+                                segments
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .take(
+                                        v1_rt::int_sub((segments.clone().len() as i64), 1) as usize
+                                    )
+                                    .collect::<Vec<_>>(),
+                            )
                             .join(&".".to_string());
                             if ((((qualifier.clone() == this_module_name.clone())
                                 || crate::v1_compiler_infer_types::emit_map_has(
@@ -10726,8 +10730,8 @@ pub fn qualified_type_reference_use_lines(
             .cloned()
             {
                 __result.extend(
-                    (*Rc::new(v1_rt::list_take(
-                        &Rc::new({
+                    (*Rc::new(
+                        Rc::new({
                             let mut __result = Vec::new();
                             for l in typed.iter().cloned() {
                                 if (l.text.clone() == text.clone()) {
@@ -10735,9 +10739,12 @@ pub fn qualified_type_reference_use_lines(
                                 }
                             }
                             __result
-                        }),
-                        1,
-                    )))
+                        })
+                        .iter()
+                        .cloned()
+                        .take(1 as usize)
+                        .collect::<Vec<_>>(),
+                    ))
                     .iter()
                     .cloned(),
                 );
@@ -14594,8 +14601,10 @@ pub fn rust_use_after_crate(line: String) -> String {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             )
-            .get((1) as usize)
+            .iter()
             .cloned()
+            .skip(1 as usize)
+            .next()
             {
                 Some(rest) => rest.clone(),
                 std::option::Option::None => "".to_string(),
@@ -14740,8 +14749,10 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .get((1) as usize)
+        .iter()
         .cloned()
+        .skip(1 as usize)
+        .next()
         {
             Some(rest) => match Rc::new(
                 rest.clone()
@@ -14937,8 +14948,10 @@ pub fn rust_use_bound_symbol(entry: String) -> String {
             .map(|s| s.to_string())
             .collect::<Vec<_>>(),
     )
-    .get((1) as usize)
+    .iter()
     .cloned()
+    .skip(1 as usize)
+    .next()
     {
         Some(bound_name) => bound_name.clone(),
         std::option::Option::None => entry.clone(),
@@ -18858,8 +18871,20 @@ pub fn v1_record_decl_slot_arg_name(
                         );
                     } else {
                         {
-                            let __tco_0 = Rc::new(v1_rt::list_skip(&decl_params, 1));
-                            let __tco_1 = Rc::new(v1_rt::list_skip(&type_args, 1));
+                            let __tco_0 = Rc::new(
+                                decl_params
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
+                            let __tco_1 = Rc::new(
+                                type_args
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            );
                             let __tco_2 = slot_name;
                             let __tco_3 = source_indices;
                             __tco_loop_decl_params = __tco_0;
@@ -18933,8 +18958,22 @@ pub fn v1_positional_bound_forwarded_names(
                     v1_rt::concat(
                         here.clone(),
                         v1_positional_bound_forwarded_names(
-                            Rc::new(v1_rt::list_skip(&callee_names.clone(), 1)),
-                            Rc::new(v1_rt::list_skip(&wrapper_names.clone(), 1)),
+                            Rc::new(
+                                callee_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Rc::new(
+                                wrapper_names
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                             callee_bound_param_names.clone(),
                             wrapper_generic_param_names.clone(),
                         ),
@@ -21247,7 +21286,6 @@ pub fn emit_pattern(
             std::option::Option::None => emit_variant_pattern(
                 n.clone(),
                 parent_enum.clone(),
-                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 shared_types.clone(),
@@ -21327,8 +21365,7 @@ pub fn is_optional_variant_name(name: String) -> bool {
 }
 
 pub fn is_optional_like_parent_name(name: String) -> bool {
-    ((name.clone() == kernel_optional_mint_name())
-        || is_host_diagnostics_carrier_alias(name.clone()))
+    ((name.clone() == "Optional".to_string()) || (name.clone() == "Diagnostics".to_string()))
 }
 
 pub fn is_some_like_variant_name(name: String) -> bool {
@@ -21497,90 +21534,9 @@ pub fn unresolved_variant_pattern_refusal(name: String, scrut_type: String) -> S
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum HostOptionArmReading {
-    HostOptionArmIsHostOption,
-    HostOptionArmIsNot,
-    HostOptionArmSpelledWithoutIdentity,
-    HostOptionArmBindingAmbiguous,
-}
-
-pub fn host_option_arm_reading(
-    identity: Rc<VariantParentIdentity>,
-    bare_name: String,
-    inferred_parent: Option<String>,
-    resolved_parent: Option<String>,
-) -> HostOptionArmReading {
-    {
-        let inferred_is_kernel_optional =
-            (inferred_parent.clone().as_deref() == Some(kernel_optional_mint_name()).as_deref());
-        match (*identity.clone()).clone() {
-            VariantParentIdentity::VariantParentIdentified { key: key, .. } => match (*key.clone())
-                .clone()
-            {
-                VariantParentKey::VariantParentDeclaration { declaration: d, .. } => {
-                    match (*crate::std_literal_elaboration::kernel_mint_ownership(
-                        kernel_mint_declaration_rows(),
-                        kernel_optional_mint_name(),
-                        d.clone(),
-                    ))
-                    .clone()
-                    {
-                        KernelMintOwnership::KernelMintOwnershipAmbiguous {
-                            row_count: _, ..
-                        } => HostOptionArmReading::HostOptionArmBindingAmbiguous,
-                        KernelMintOwnership::DeclarationOwnsTheMint => {
-                            HostOptionArmReading::HostOptionArmIsHostOption
-                        }
-                        KernelMintOwnership::DeclarationDoesNotOwnTheMint => {
-                            if crate::std_decl_ref::declaration_ref_in_list(
-                                d.clone(),
-                                rust_host_option_carrier_declarations(),
-                            ) {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            } else {
-                                HostOptionArmReading::HostOptionArmIsNot
-                            }
-                        }
-                    }
-                }
-                VariantParentKey::VariantParentKernelType { kernel_name: _, .. } => {
-                    HostOptionArmReading::HostOptionArmIsNot
-                }
-            },
-            _ => {
-                if !is_optional_variant_name(bare_name.clone()) {
-                    HostOptionArmReading::HostOptionArmIsNot
-                } else {
-                    if inferred_is_kernel_optional.clone() {
-                        HostOptionArmReading::HostOptionArmSpelledWithoutIdentity
-                    } else {
-                        match resolved_parent.clone() {
-                            std::option::Option::None => {
-                                HostOptionArmReading::HostOptionArmIsHostOption
-                            }
-                            Some(parent) => {
-                                if is_optional_like_parent_name(parent.clone()) {
-                                    HostOptionArmReading::HostOptionArmIsHostOption
-                                } else {
-                                    HostOptionArmReading::HostOptionArmIsNot
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21596,7 +21552,6 @@ pub fn emit_variant_pattern(
         emit_resolved_variant_pattern(
             name.clone(),
             parent_enum.clone(),
-            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             shared_types.clone(),
@@ -21610,7 +21565,6 @@ pub fn emit_variant_pattern(
 pub fn emit_resolved_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -21626,24 +21580,9 @@ pub fn emit_resolved_variant_pattern(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let host_option = host_option_arm_reading(
-            parent_identity.clone(),
-            bare_name.clone(),
-            parent_enum.clone(),
-            resolved_parent.clone(),
-        );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
-        let spelled_without_identity =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
-        if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
-        }
-        let optional_variant =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
+            && (is_optional_parent(resolved_parent.clone())
+                || (resolved_parent.clone() == std::option::Option::None)));
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -22254,7 +22193,6 @@ pub fn emit_pattern_rc_aware(
             std::option::Option::None => emit_variant_pattern_rc_aware(
                 n.clone(),
                 parent_enum.clone(),
-                identity.clone(),
                 fbs.clone(),
                 path_prefix.clone(),
                 rc_analysis.clone(),
@@ -22271,7 +22209,6 @@ pub fn emit_pattern_rc_aware(
 pub fn emit_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -22288,7 +22225,6 @@ pub fn emit_variant_pattern_rc_aware(
         emit_resolved_variant_pattern_rc_aware(
             name.clone(),
             parent_enum.clone(),
-            parent_identity.clone(),
             field_bindings.clone(),
             path_prefix.clone(),
             rc_analysis.clone(),
@@ -22303,7 +22239,6 @@ pub fn emit_variant_pattern_rc_aware(
 pub fn emit_resolved_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    parent_identity: Rc<VariantParentIdentity>,
     field_bindings: Rc<Vec<Rc<Node>>>,
     path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
@@ -22320,24 +22255,9 @@ pub fn emit_resolved_variant_pattern_rc_aware(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let host_option = host_option_arm_reading(
-            parent_identity.clone(),
-            bare_name.clone(),
-            parent_enum.clone(),
-            resolved_parent.clone(),
-        );
-        let binding_ambiguous =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmBindingAmbiguous);
-        if binding_ambiguous.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: more than one gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds the kernel optional, so the owner of the pattern arm `".to_string(), bare_name.clone()), "` cannot be decided; the arm is refused rather than lowered".to_string()));
-        }
-        let spelled_without_identity =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmSpelledWithoutIdentity);
-        if spelled_without_identity.clone() {
-            return emit_rust_compile_error_expr(v1_rt::concat(v1_rt::concat("variant realization: the pattern arm `".to_string(), bare_name.clone()), "` was read by inference against the kernel optional, but no declaration identity came with that reading; the arm is refused rather than lowered by spelling".to_string()));
-        }
-        let optional_variant =
-            (host_option.clone() == HostOptionArmReading::HostOptionArmIsHostOption);
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
+            && (is_optional_parent(resolved_parent.clone())
+                || (resolved_parent.clone() == std::option::Option::None)));
         let rust_name = if optional_variant.clone() {
             rust_optional_variant_spelling(bare_name.clone())
         } else {
@@ -24170,7 +24090,14 @@ pub fn rust_empty_map_value_type_str(
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match map_type.children.clone().get((1) as usize).cloned() {
+    match map_type
+        .children
+        .clone()
+        .iter()
+        .cloned()
+        .skip(1 as usize)
+        .next()
+    {
         Some(value_child) => {
             let rendered = render_rust_type(
                 crate::v1_compiler_infer_types::child_type_node(value_child.clone()),
@@ -25907,8 +25834,10 @@ pub fn rust_call_arg_fail_closed_unwrap(
 ) -> String {
     match callee.clone() {
         Some(info) => match function_value_params(info.params.clone())
-            .get((idx.clone()) as usize)
+            .iter()
             .cloned()
+            .skip(idx.clone() as usize)
+            .next()
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
@@ -25952,8 +25881,10 @@ pub fn rust_call_arg_function_value_adapt(
         }
         match callee.clone() {
             Some(info) => match function_value_params(info.params.clone())
-                .get((idx.clone()) as usize)
+                .iter()
                 .cloned()
+                .skip(idx.clone() as usize)
+                .next()
             {
                 Some(param) => {
                     let arity = (crate::v1_std_core::param_node_type_expr(param.clone())
@@ -26063,7 +25994,14 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
                 arg.clone(),
                 scope.type_env.clone().source_indices.clone(),
             ),
-            Rc::new(v1_rt::list_skip(&arg.children.clone(), 1)),
+            Rc::new(
+                arg.children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            ),
         ),
         _ => scope.clone(),
     }
@@ -26104,7 +26042,7 @@ pub fn emit_typed_call(
                     scope.clone(),
                 );
                 let get_list = get_args.clone().first().cloned();
-                let get_idx = get_args.clone().get((1) as usize).cloned();
+                let get_idx = get_args.clone().iter().cloned().skip(1 as usize).next();
                 let get_result = match get_list.clone() {
                     Some(list_arg) => match get_idx.clone() {
                         Some(idx_arg) => {
@@ -26168,8 +26106,10 @@ pub fn emit_typed_call(
                 let update_arg = crate::v1_std_core::arg_value(
                     with_args
                         .clone()
-                        .get((1) as usize)
+                        .iter()
                         .cloned()
+                        .skip(1 as usize)
+                        .next()
                         .clone()
                         .unwrap(),
                 );
@@ -26397,8 +26337,10 @@ pub fn emit_typed_call(
                     let a = pair.1.clone();
                     let arg_emit_info = match application_plan
                         .clone()
-                        .get((idx.clone()) as usize)
+                        .iter()
                         .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
                     {
                         Some(application) => {
                             crate::v1_compiler_infer_emit_info::emit_info_with_expected_type(
@@ -26852,7 +26794,13 @@ pub fn emit_nested_rt_concat(
                     )
                 };
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = next_acc.clone();
                     let __tco_2 = shared_types;
                     __tco_loop_remaining = __tco_0;
@@ -27227,7 +27175,13 @@ pub fn lambda_scope_from_children(
     .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
         let idx = pair.0.clone();
         let param_name = pair.1.clone();
-        let param_type = match param_nodes.clone().get((idx.clone()) as usize).cloned() {
+        let param_type = match param_nodes
+            .clone()
+            .iter()
+            .cloned()
+            .skip(idx.clone() as usize)
+            .next()
+        {
             Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: resolved_type,
@@ -27276,7 +27230,13 @@ pub fn lambda_param_type_strs(
                 let inferred_type = if (fold_acc_uses_fallback.clone() && (idx.clone() == 0)) {
                     std::option::Option::None
                 } else {
-                    match param_nodes.clone().get((idx.clone()) as usize).cloned() {
+                    match param_nodes
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(idx.clone() as usize)
+                        .next()
+                    {
                         Some(pn) => match pn.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved {
                                 node: param_type, ..
@@ -27331,11 +27291,16 @@ pub fn lambda_param_type_strs(
                         std::option::Option::None => std::option::Option::None,
                     }
                 };
-                let fallback_type =
-                    match fallback_types.clone().get((idx.clone()) as usize).cloned() {
-                        Some(ty) => ty.clone(),
-                        std::option::Option::None => "_".to_string(),
-                    };
+                let fallback_type = match fallback_types
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(idx.clone() as usize)
+                    .next()
+                {
+                    Some(ty) => ty.clone(),
+                    std::option::Option::None => "_".to_string(),
+                };
                 let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
                 let ident =
                     crate::v1_compiler_emit::emit_ident(param_name.clone(), RenderTarget::Rust);
@@ -27375,7 +27340,15 @@ pub fn emit_typed_collection_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+            let pn = Rc::new(
+                lambda_expr
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            );
             let param_strs = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
@@ -27446,7 +27419,15 @@ pub fn emit_typed_fold_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = crate::v1_std_core::lambda_body(lambda_expr.clone());
-            let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+            let pn = Rc::new(
+                lambda_expr
+                    .children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .skip(1 as usize)
+                    .collect::<Vec<_>>(),
+            );
             let safe_acc_type = rust_fold_safe_acc_type(acc_type_str.clone());
             let fallback_types = Rc::new({
                 let mut __result = Vec::new();
@@ -27708,7 +27689,7 @@ pub fn emit_rust_fold_method_call(
             scope.type_env.clone().source_indices.clone(),
             acc_type_node.clone(),
         );
-        let fold_lambda_node = match args.clone().get((1) as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => type_variable_node("".to_string()),
         };
@@ -28002,7 +27983,7 @@ pub fn emit_rust_fold_method_call(
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
             .clone();
-        let elem_unused = match args.clone().get((1) as usize).cloned() {
+        let elem_unused = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => fold_lambda_element_unused(
                 crate::v1_std_core::arg_value(a.clone()),
                 scope.type_env.clone().source_indices.clone(),
@@ -28022,7 +28003,7 @@ pub fn emit_rust_fold_method_call(
             iter_template.clone(),
             recv_str.clone(),
         );
-        let step_awaits = match args.clone().get((1) as usize).cloned() {
+        let step_awaits = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => rust_expr_reaches_awaited_call(
                 crate::v1_std_core::arg_value(a.clone()),
                 registry.clone(),
@@ -28044,7 +28025,7 @@ pub fn emit_rust_fold_method_call(
             )
         } else {
             {
-                let fold_fn = match args.clone().get((1) as usize).cloned() {
+                let fold_fn = match args.clone().iter().cloned().skip(1 as usize).next() {
                     Some(a) => emit_typed_fold_lambda(
                         crate::v1_std_core::arg_value(a.clone()),
                         lambda_acc_type_str.clone(),
@@ -28093,13 +28074,13 @@ pub fn emit_rust_effectful_fold_loop(
     ExprData::ExprLambda => {
         let si = scope.type_env.clone().source_indices.clone();
 let ps = crate::v1_std_core::lambda_param_names_at(lambda_expr.clone(), si.clone());
-let pn = Rc::new(v1_rt::list_skip(&lambda_expr.children.clone(), 1));
+let pn = Rc::new(lambda_expr.children.clone().iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 let acc_param_type = rust_fold_safe_acc_type(acc_type_str.clone());
 let acc_name = match ps.clone().first().cloned() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
-let elem_name = match ps.clone().get((1) as usize).cloned() {
+let elem_name = match ps.clone().iter().cloned().skip(1 as usize).next() {
     Some(n) => n.clone(),
     std::option::Option::None => "_".to_string(),
 };
@@ -28200,7 +28181,7 @@ pub fn fold_lambda_element_unused(
                 lambda_expr.clone(),
                 source_indices.clone(),
             );
-            match ps.clone().get((1) as usize).cloned() {
+            match ps.clone().iter().cloned().skip(1 as usize).next() {
                 Some(elem_name) => (elem_name.clone() == "_".to_string()),
                 std::option::Option::None => false,
             }
@@ -28414,10 +28395,15 @@ pub fn emit_rust_map_method_call(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(v1_rt::list_skip(
-                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                1,
-                            )),
+                            Rc::new(
+                                crate::v1_std_core::arg_value(a.clone())
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -28508,10 +28494,15 @@ pub fn emit_rust_map_method_call(
                             let lambda_scope = lambda_scope_from_children(
                                 scope.clone(),
                                 ps.clone(),
-                                Rc::new(v1_rt::list_skip(
-                                    &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                    1,
-                                )),
+                                Rc::new(
+                                    crate::v1_std_core::arg_value(a.clone())
+                                        .children
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1 as usize)
+                                        .collect::<Vec<_>>(),
+                                ),
                             );
                             let body_str = emit_typed_expr(
                                 bd.clone(),
@@ -28627,10 +28618,15 @@ pub fn emit_rust_higher_order_method(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(v1_rt::list_skip(
-                                &crate::v1_std_core::arg_value(a.clone()).children.clone(),
-                                1,
-                            )),
+                            Rc::new(
+                                crate::v1_std_core::arg_value(a.clone())
+                                    .children
+                                    .clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
                         );
                         let body_str = emit_typed_expr(
                             bd.clone(),
@@ -28942,10 +28938,10 @@ pub fn emit_rust_first_method_call(
                     );
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(recv_str.clone(), ".get((".to_string()),
+                            v1_rt::concat(recv_str.clone(), ".iter().cloned().skip(".to_string()),
                             n_str.clone(),
                         ),
-                        ") as usize).cloned()".to_string(),
+                        " as usize).next()".to_string(),
                     )
                 }
             } else {
@@ -34742,7 +34738,14 @@ pub fn emit_tco_init_block_stmts(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -35918,7 +35921,13 @@ pub fn emit_typed_tco_reassign(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };
@@ -38283,7 +38292,16 @@ pub fn emit_shell_call(
         let arg_lines = if ((argv.clone().len() as i64) > 1) {
             Rc::new({
                 let mut __result = Vec::new();
-                for arg in Rc::new(v1_rt::list_skip(&argv.clone(), 1)).iter().cloned() {
+                for arg in Rc::new(
+                    argv.clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
                     __result.push(
                         if shell_argv_element_is_word_list(
                             arg.clone(),
@@ -41532,11 +41550,3 @@ pub struct AliasDeclArityAbsent;
 pub struct AliasDeclArityZeroParam;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AliasDeclArityHasParams;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmIsHostOption;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmIsNot;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmSpelledWithoutIdentity;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct HostOptionArmBindingAmbiguous;

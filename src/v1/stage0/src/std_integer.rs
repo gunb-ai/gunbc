@@ -128,7 +128,13 @@ pub fn first_uint8_out_of_range(mut __tco_loop_remaining: Rc<Vec<i64>>) -> Optio
                     break Some(o.clone());
                 }
                 UInt8Result::UInt8Ready { value: _, .. } => {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     __tco_loop_remaining = __tco_0;
                     continue;
                 }

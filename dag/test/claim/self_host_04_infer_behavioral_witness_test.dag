@@ -2,7 +2,7 @@ module test.claim.self_host_04_infer_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (04_infer): the rendered driver (the roster row's contract, also run interpreted) checks the .dag
+// Wet self-host behavioral receipt (04_infer): the driver (the roster's driver_rel) checks the .dag
 // contract on the EMITTED module with no seed oracle -- emitted infer covers the nodes of its tree
 // and inferred_facts_witness_for_node refuses a node it did not infer; --inject-fault feeds the
 // refused input where the accepted one is expected, so the fault run is red only if the emitted

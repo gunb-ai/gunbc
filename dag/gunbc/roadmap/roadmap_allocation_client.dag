@@ -132,7 +132,6 @@ fn allocation_request_statements() -> List<TsStmt> {
       js_when(cond: js_eq(left: js_get(object: js_id(name: "body"), property: "availability"), right: js_lit(value: workspace_write_unavailable_wire)), stmts: [
         js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeAvailability"), value: js_lit(value: workspace_write_unavailable_wire)),
         js_set(target: js_get(object: js_get(object: js_id(name: "allocationRoot"), property: "dataset"), property: "writeReason"), value: js_id(name: "shown")),
-        js_set(target: js_get(object: js_id(name: "allocationCreate"), property: "disabled"), value: js_id(name: "true")),
         js_do(expr: js_send(object: js_send(object: js_id(name: "document"), method: "querySelectorAll", args: [js_lit(value: "[data-allocation-release]")]), method: "forEach", args: [js_fn(params: ["button"], stmts: [
           js_set(target: js_get(object: js_id(name: "button"), property: "disabled"), value: js_id(name: "true")),
           js_set(target: js_get(object: js_id(name: "button"), property: "title"), value: js_id(name: "shown")),

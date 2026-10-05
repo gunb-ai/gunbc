@@ -35,12 +35,6 @@ fn live_deploy_health_url_for_port(port: Int) -> NonEmptyStr {
   concat(concat("http://127.0.0.1:", to_string(port)), roadmap_site_health_path) as NonEmptyStr
 }
 
-// The health route as a request over a unix socket: the authority is nominal, the socket is where
-// the connection goes.
-fn live_deploy_health_url_over_socket() -> NonEmptyStr {
-  concat("http://localhost", roadmap_site_health_path) as NonEmptyStr
-}
-
 fn live_deploy_service_ready_gate_for_spec(spec: DeploymentSpec) -> ServiceReadyGate {
   let port = deployment_plan_listen_port(spec: spec)
   ServiceReadyGate {

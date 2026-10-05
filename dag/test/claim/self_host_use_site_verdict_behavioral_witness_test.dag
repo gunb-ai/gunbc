@@ -2,7 +2,7 @@ module test.claim.self_host_use_site_verdict_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (use_site_verdict): the rendered driver (the roster row's contract, also run interpreted) checks
+// Wet self-host behavioral receipt (use_site_verdict): the driver (the roster's driver_rel) checks
 // the .dag contract on the EMITTED module with no seed oracle -- every attached verdict round-trips
 // through use_site_verdict_lookup, no edge reads VerdictAbsent, and two verdict edges read
 // exactly VerdictAmbiguous (neither a found verdict nor VerdictAbsent, which would erase the cause);

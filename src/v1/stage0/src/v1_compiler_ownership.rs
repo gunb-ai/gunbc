@@ -296,10 +296,14 @@ pub fn merge_branch_usages(
             let mut __result = Vec::new();
             for b in branches.iter().cloned() {
                 __result.extend(
-                    (*Rc::new(v1_rt::list_skip(
-                        &b.fold_call_nodes.clone(),
-                        base_fold_count.clone(),
-                    )))
+                    (*Rc::new(
+                        b.fold_call_nodes
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(base_fold_count.clone() as usize)
+                            .collect::<Vec<_>>(),
+                    ))
                     .iter()
                     .cloned(),
                 );
@@ -1290,7 +1294,7 @@ pub fn analyze_single_fold(
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => method_call.clone(),
         };
-        let fold_lambda_node = match args.clone().get((1) as usize).cloned() {
+        let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
             std::option::Option::None => method_call.clone(),
         };

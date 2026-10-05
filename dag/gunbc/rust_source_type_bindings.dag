@@ -234,16 +234,3 @@ fn symbol_capture_declarers() -> List<SymbolCaptureDeclarer> {
     symbol_capture_declarer(module_path: "v2.compiler.target_serialize", decl_name: "target_bundle_child", symbol_position: "edge_name")
   ]
 }
-
-// WHICH DECLARED COPRODUCTS THE RUST TARGET REALIZES AS ITS HOST OPTION, at declaration grain, and
-// the ONE place that says so. A pattern arm that carries its owner's identity is judged against
-// these declarations (v1.compiler.emit_rust host_option_arm_reading). The emitter's name-keyed
-// readers -- is_host_diagnostics_carrier_alias and the sites that call it -- no longer hold their
-// own spelling: they project the declaration names off this row, so the fact has one authority
-// and a name-keyed site cannot disagree with an identity-keyed one. It adds no realization:
-// v2.std.diagnostic Diagnostics = None | Some is rendered as the host option today. The kernel
-// optional is NOT a row here: its declaration is bound by gunbc.structural_realization_bindings
-// kernel_mint_declaration_rows, and the consumer reads both.
-data rust_host_option_carrier_declarations: List<DeclarationRef> = [
-  decl_ref(module_path: "v2.std.diagnostic", decl_name: "Diagnostics")
-]

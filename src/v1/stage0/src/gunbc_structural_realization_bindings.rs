@@ -8,8 +8,7 @@ pub use crate::std_decl_ref::DeclarationRef;
 use crate::std_literal_elaboration::LiteralSourceKind::{KernelIntLiteral, KernelStringLiteral};
 use crate::std_literal_elaboration::LiteralUnfolding::{PeanoUnfold, UnicodeScalarSequenceUnfold};
 pub use crate::std_literal_elaboration::{
-    KernelGrounding, KernelMintDeclaration, LiteralHomomorphism, LiteralSourceKind,
-    LiteralUnfolding,
+    KernelGrounding, LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
 pub use crate::std_operator_realization::StructuralOrderingBinding;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -115,25 +114,4 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
             };
         }
     CACHED.with(|c: &Rc<Vec<Rc<KernelGrounding>>>| c.clone())
-}
-
-pub fn kernel_optional_mint_name() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Optional".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
-    thread_local! {
-            static CACHED: Rc<Vec<Rc<KernelMintDeclaration>>> = {
-                Rc::new(vec![Rc::new(KernelMintDeclaration {
-        minted_name: kernel_optional_mint_name(),
-        declaration: crate::std_decl_ref::decl_ref("v2.std.optional".to_string(), "Optional".to_string()),
-    })])
-            };
-        }
-    CACHED.with(|c: &Rc<Vec<Rc<KernelMintDeclaration>>>| c.clone())
 }

@@ -837,12 +837,16 @@ pub fn order_typed_call_args_from_semantics(
             for app in plan.iter().cloned() {
                 __result.extend(
                     (*match app.matched_argument_index.clone() {
-                        Some(argument_index) => {
-                            match args.clone().get((argument_index.clone()) as usize).cloned() {
-                                Some(arg) => Rc::new(vec![arg.clone()]),
-                                std::option::Option::None => Rc::new(vec![]),
-                            }
-                        }
+                        Some(argument_index) => match args
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(argument_index.clone() as usize)
+                            .next()
+                        {
+                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            std::option::Option::None => Rc::new(vec![]),
+                        },
                         std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
@@ -888,7 +892,7 @@ pub fn has_nested_records_node(
                     source_indices.clone(),
                 );
                 if is_map.clone() {
-                    match n.children.clone().get((1) as usize).cloned() {
+                    match n.children.clone().iter().cloned().skip(1 as usize).next() {
                         Some(val_child) => {
                             let __tco_0 =
                                 crate::v1_compiler_infer_types::child_type_node(val_child.clone());
@@ -1957,26 +1961,29 @@ pub fn render_node_type(
                             }
                             std::option::Option::None => "_".to_string(),
                         };
-                        let second_child = match n.children.clone().get((1) as usize).cloned() {
-                            Some(c) => {
-                                if (c.inferred.clone() != std::option::Option::None) {
-                                    render_node_type(
-                                        crate::v1_compiler_infer_types::resolved_type(c.clone()),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
-                                } else {
-                                    render_node_type(
-                                        c.clone(),
-                                        target.clone(),
-                                        shared_types.clone(),
-                                        source_indices.clone(),
-                                    )
+                        let second_child =
+                            match n.children.clone().iter().cloned().skip(1 as usize).next() {
+                                Some(c) => {
+                                    if (c.inferred.clone() != std::option::Option::None) {
+                                        render_node_type(
+                                            crate::v1_compiler_infer_types::resolved_type(
+                                                c.clone(),
+                                            ),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    } else {
+                                        render_node_type(
+                                            c.clone(),
+                                            target.clone(),
+                                            shared_types.clone(),
+                                            source_indices.clone(),
+                                        )
+                                    }
                                 }
-                            }
-                            std::option::Option::None => "_".to_string(),
-                        };
+                                std::option::Option::None => "_".to_string(),
+                            };
                         let tuple_str = render_tuple_parts(
                             Rc::new(vec![first_child.clone(), second_child.clone()]),
                             target.clone(),
@@ -2134,7 +2141,7 @@ pub fn render_node_type(
                     ),
                     std::option::Option::None => "_".to_string(),
                 };
-                let v = match n.children.clone().get((1) as usize).cloned() {
+                let v = match n.children.clone().iter().cloned().skip(1 as usize).next() {
                     Some(vn) => render_node_type(
                         crate::v1_compiler_infer_types::child_type_node(vn.clone()),
                         target.clone(),
@@ -2261,7 +2268,7 @@ pub fn render_tuple_parts(parts: Rc<Vec<String>>, target: RenderTarget) -> Strin
         if ((parts.clone().len() as i64) > 0) {
             if ((parts.clone().len() as i64) == 2) {
                 match parts.clone().first().cloned() {
-                    Some(p0) => match parts.clone().get((1) as usize).cloned() {
+                    Some(p0) => match parts.clone().iter().cloned().skip(1 as usize).next() {
                         Some(p1) => crate::v1_compiler_emit_core_support::apply_type_template2(
                             ts.pair_template.clone(),
                             p0.clone(),
@@ -3464,10 +3471,14 @@ pub fn block_stmts_init(stmts: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     if ((stmts.clone().len() as i64) <= 1) {
         Rc::new(vec![])
     } else {
-        Rc::new(v1_rt::list_take(
-            &stmts.clone(),
-            v1_rt::int_sub((stmts.clone().len() as i64), 1),
-        ))
+        Rc::new(
+            stmts
+                .clone()
+                .iter()
+                .cloned()
+                .take(v1_rt::int_sub((stmts.clone().len() as i64), 1) as usize)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -6639,7 +6650,13 @@ pub fn emit_block_stmts_shared(
                 };
                 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(v1_rt::list_skip(&remaining, 1));
+                    let __tco_0 = Rc::new(
+                        remaining
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
                     let __tco_1 = v1_rt::rc_list_push(text, line.clone());
                     let __tco_2 = next_scope.clone();
                     let __tco_3 = depth;
@@ -6687,7 +6704,14 @@ pub fn emit_init_block_stmts_shared(
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(v1_rt::list_skip(&remaining.clone(), 1));
+                let rest = Rc::new(
+                    remaining
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(1 as usize)
+                        .collect::<Vec<_>>(),
+                );
                 match rest.clone().first().cloned() {
                     std::option::Option::None => {
                         break Rc::new(BlockEmitState {
@@ -8430,7 +8454,13 @@ pub fn emit_typed_tco_reassign_shared(
             let mut __result = Vec::new();
             for pair in pairs.iter().cloned() {
                 __result.push({
-                    let av = match arg_values.clone().get((pair.0.clone()) as usize).cloned() {
+                    let av = match arg_values
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .skip(pair.0.clone() as usize)
+                        .next()
+                    {
                         Some(v) => v.clone(),
                         std::option::Option::None => pair.1.clone(),
                     };

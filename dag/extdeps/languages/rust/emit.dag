@@ -76,8 +76,8 @@ data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "first",     template: "\{recv\}.first().cloned()",                                                                   wraps_result: false },
   { method_name: "enumerate", template: "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",         wraps_result: true },
   { method_name: "chars",     template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",                                      wraps_result: true },
-  { method_name: "skip",      template: "v1_rt::list_skip(&\{recv\}, \{arg\})",                                                       wraps_result: true },
-  { method_name: "take",      template: "v1_rt::list_take(&\{recv\}, \{arg\})",                                                       wraps_result: true },
+  { method_name: "skip",      template: "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
+  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
   { method_name: "is_empty",  template: "\{recv\}.is_empty()",                                                                       wraps_result: false }
 ]
 

@@ -312,14 +312,6 @@ fn dashboard_instance_child(root: FilePath, child: String) -> FilePath {
   join([root as String, "/", child], "") as FilePath
 }
 
-// THE INSTANCE'S TAILNET DOOR: the unix socket its door unit serves on and tailscale serve proxies
-// to. It sits in the instance root, which the service principal owns; who may open it is not what
-// the door relies on -- the handler is handed the kernel-attested peer of every connection
-// (`gunbc serve --unix-socket`, peer_user) and only tailscaled's is the proxy.
-fn dashboard_instance_tailnet_door_socket(instance: HostDashboardInstance) -> NonEmptyStr {
-  dashboard_instance_child(root: instance.instance_root, child: "tailnet-door.sock") as String as NonEmptyStr
-}
-
 fn dashboard_instance_provider_state_root(instance: HostDashboardInstance) -> FilePath {
   match instance.provider_state {
     DashboardExistingProviderState { root, executable: _, binding: _ } => root

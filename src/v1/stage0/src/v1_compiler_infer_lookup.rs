@@ -1002,8 +1002,10 @@ pub fn lookup_field_type_node(
                                             let value_child = match n
                                                 .children
                                                 .clone()
-                                                .get((1) as usize)
+                                                .iter()
                                                 .cloned()
+                                                .skip(1 as usize)
+                                                .next()
                                             {
                                                 Some(child) => {
                                                     crate::v1_compiler_infer_types::child_type_node(
@@ -1269,7 +1271,14 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
             env.source_indices.clone(),
         ) && ((map_type.children.clone().len() as i64) >= 2))
         {
-            match map_type.children.clone().get((1) as usize).cloned() {
+            match map_type
+                .children
+                .clone()
+                .iter()
+                .cloned()
+                .skip(1 as usize)
+                .next()
+            {
                 Some(value_type) => Some(value_type.clone()),
                 std::option::Option::None => std::option::Option::None,
             }
@@ -1631,7 +1640,14 @@ pub fn declared_arg_types_for_method(
                         std::option::Option::None => false,
                     };
                     let non_receiver_templates = if first_is_self.clone() {
-                        Rc::new(v1_rt::list_skip(&t.param_types.clone(), 1))
+                        Rc::new(
+                            t.param_types
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .skip(1 as usize)
+                                .collect::<Vec<_>>(),
+                        )
                     } else {
                         t.param_types.clone()
                     };
