@@ -1,6 +1,6 @@
 module gunbc.live_deploy.role_singleton_convergence
 
-import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.types { String, NonEmptyStr, List, Bool, Int, EpochMs }
 import v2.std.collection { Present, Absent }
 import gunbc.deployment_risk { DeploymentId, deployment_id }
 import std.decl_ref { decl_ref }
@@ -470,7 +470,7 @@ data role_singleton_self_report_route: String = "/instance.json"
 
 type RoleSingletonSelfReport {
   host: NonEmptyStr
-  observed_at_unix_millis: Int
+  observed_at_unix_millis: EpochMs
   reading: HostRoleSingletonReading
 }
 
@@ -808,15 +808,15 @@ fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
           WireTextFound { value: h } => match json_field_int(obj: v, key: "observed_at_unix_millis") {
             FieldAbsent => SelfReportUndecodable { cause: "observed_at_unix_millis is missing" }
             FieldMalformed { cause } => SelfReportUndecodable { cause: cause }
-            FieldRead { value: at } => match json_object_unique_member(v: v, key: "reading") {
+            FieldRead { value: at } => if at < 0 { SelfReportUndecodable { cause: join(["observed_at_unix_millis is negative: ", to_string(at)], "") } } else { match json_object_unique_member(v: v, key: "reading") {
               JsonMemberFound { value: r } => match decode_reading(v: r) {
                 ReadingUndecodable { cause } => SelfReportUndecodable { cause: cause }
-                ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at, reading: reading } }
+                ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at as EpochMs, reading: reading } }
               }
               JsonMemberAbsent => SelfReportUndecodable { cause: "reading is missing" }
               JsonMemberDuplicated { count: _ } => SelfReportUndecodable { cause: "reading is duplicated" }
               JsonMemberNotAnObject => SelfReportUndecodable { cause: "the report is not an object" }
-            }
+            } }
           }
         }
       }
@@ -875,7 +875,7 @@ fn reading_of_reported_host(host: NonEmptyStr, reading: HostRoleSingletonReading
 }
 
 // THE ADJUDICATION OF ONE HOST'S REPORT, from what the fetch returned and the reader's own clock.
-fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now_unix_millis: Int) -> HostRoleSingletonReading {
+fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now_unix_millis: EpochMs) -> HostRoleSingletonReading {
   match fetched {
     SelfReportUnserved { cause } => self_report_unobservable(host: host, cause: cause)
     SelfReportServed { peer_node, body } => match peer_node {
@@ -941,7 +941,7 @@ fn host_row(host: NonEmptyStr, rows: List<DesiredDeployment>) -> DesiredDeployme
   rows |> filter(r => (r.target.ssh_host as String) == (host as String)) |> first
 }
 
-fn self_report_reading_source_with(fetch: fn(DesiredDeployment) -> FetchedSelfReport, now_unix_millis: Int) -> RoleSingletonReadingSource {
+fn self_report_reading_source_with(fetch: fn(DesiredDeployment) -> FetchedSelfReport, now_unix_millis: EpochMs) -> RoleSingletonReadingSource {
   RoleSingletonReadingSource {
     read: (host, rows) => match host_row(host: host, rows: rows) {
       Absent => self_report_unobservable(host: host, cause: "no roster row targets this host")
