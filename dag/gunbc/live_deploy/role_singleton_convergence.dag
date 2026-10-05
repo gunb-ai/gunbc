@@ -16,7 +16,7 @@ import gunbc.roadmap_dashboard_instance {
   ProdRoleHolderUnactuatable,
   prod_role_realization_refusal_detail,
 }
-import gunbc.host_effect { HostEffectTransport, SshShell }
+import gunbc.host_effect { HostEffectTransport }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   HoldsProdRoleSingletons,
@@ -93,10 +93,10 @@ type HostRoleSingletonReading
   = HostRoleSingletonsRead { host: NonEmptyStr, sightings: List<RoleSingletonSighting> }
   | HostRoleSingletonsUnobservable { host: NonEmptyStr, cause: String }
 
-// THE READING SOURCE IS AN INTERFACE. Today it is an ssh probe from the applying host
-// (ssh_probe_reading_source); host self-reports are a second realization of the same signature. Which
-// one production uses is an operator decision still owed (docs/plans/deployment-risk-conformance.md),
-// and the adjudication below is indifferent to it.
+// THE READING SOURCE IS AN INTERFACE. Cross-host observation is host self-report (operator ruling
+// 2026-10-05; gunbc#13339 realizes it). Until that lands the production source is
+// local_only_reading_source: the applying host is read over the apply's own route, and every other
+// roster host is unobservable by construction. The adjudication below is indifferent to which.
 type RoleSingletonReadingSource {
   read: fn(NonEmptyStr, List<DesiredDeployment>) -> HostRoleSingletonReading
 }
@@ -424,14 +424,10 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
   }
 }
 
-// ── The ssh probe reading source ────────────────────────────────────────────────────────────────
-// A REFUSING FALLBACK, not the ruled realization: cross-host observation is host self-report (operator,
-// 2026-10-05) and no cross-host ssh is granted, so a remote leg refuses and the host is unobservable --
-// absence is only ever a successful listing, so an ungranted probe never reads as absent. Each roster host is read over the transport that reaches it from the applying host: the apply's own
-// transport for the host it is applying to, ssh to the target's declared ssh_host for every other
-// roster host. EVERY roster deployment's members are probed on EVERY host -- probing only where a
-// deployment is targeted is what made a realization on the wrong host invisible. A host whose legs
-// refuse is unobservable and stops the line.
+// ── Reading one host ────────────────────────────────────────────────────────────────────────────
+// EVERY roster deployment's members are probed on the host read -- probing only where a deployment is
+// targeted is what made a realization on the wrong host invisible. A host whose legs refuse is
+// unobservable and stops the line; absence is only ever a successful listing.
 type MemberProbe {
   deployment: DeploymentId?
   member: RoleSingletonMember
@@ -568,13 +564,21 @@ fn roster_hosts(rows: List<DesiredDeployment>) -> List<NonEmptyStr> {
   distinct_hosts(hosts: rows |> map(r => r.target.ssh_host))
 }
 
-fn transport_to(host: NonEmptyStr, applying: DeploymentSpec, own: HostEffectTransport) -> HostEffectTransport {
-  if (host as String) == (applying.target.ssh_host as String) { own } else { SshShell { ssh_host: host } }
-}
+// THE D2 INTERIM SOURCE FAILS CLOSED BY CONSTRUCTION. The applying host is read over the apply's own
+// route -- the route the apply already holds to its target, not a cross-host grant. Every other roster
+// host is HostRoleSingletonsUnobservable without any transport being built, so no credential, granted
+// or not, can make a nonlocal host observable here: this module names no ssh transport at all. gunbc#13339
+// replaces this source with host self-report.
+data nonlocal_host_unobservable_cause: String = "self-report has not landed (gunbc#13339): a roster host other than the applying host is not observed by the applying host"
 
-fn ssh_probe_reading_source(applying: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonReadingSource {
+fn local_only_reading_source(applying: DeploymentSpec, own: HostEffectTransport) -> RoleSingletonReadingSource {
   RoleSingletonReadingSource {
-    read: (host, rows) => host_role_singleton_reading(host: host, rows: rows, arm: observation_arm(transport: transport_to(host: host, applying: applying, own: own))),
+    read: (host, rows) =>
+      if (host as String) == (applying.target.ssh_host as String) {
+        host_role_singleton_reading(host: host, rows: rows, arm: observation_arm(transport: own))
+      } else {
+        HostRoleSingletonsUnobservable { host: host, cause: nonlocal_host_unobservable_cause }
+      },
   }
 }
 
@@ -610,7 +614,7 @@ fn assess_and_admit_rostered(spec: DeploymentSpec, own: HostEffectTransport) -> 
   let desired = prod_role_actuated_realization()
   let decision = role_singleton_convergence(
     desired: desired,
-    observed: observe_role_singletons_with(source: ssh_probe_reading_source(applying: spec, own: own), rows: rows),
+    observed: observe_role_singletons_with(source: local_only_reading_source(applying: spec, own: own), rows: rows),
     rows: rows,
       )
   match classify_role_singleton_admission(spec: spec, desired: desired, decision: decision) {

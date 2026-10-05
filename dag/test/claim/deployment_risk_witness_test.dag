@@ -64,7 +64,7 @@ import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
   deployment_fabric_storage_door_socket,
 }
-import gunbc.live_deploy.desired { srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonConvergence,
@@ -101,6 +101,8 @@ import gunbc.live_deploy.role_singleton_convergence {
   classify_role_singleton_admission,
   role_singleton_convergence,
   role_singleton_observation_of,
+  local_only_reading_source,
+  nonlocal_host_unobservable_cause,
   marker_sighting_of,
   MarkerSighting,
   MarkerSightingAbsent,
@@ -111,6 +113,7 @@ import gunbc.live_deploy.role_singleton_convergence {
   MarkerReadRefused,
 }
 import gunbc.live_deploy.member_observe { EntryPresent, EntryAbsent, EntryPresenceIndeterminate }
+import gunbc.host_effect { SshShell }
 import gunbc.managed_directory { managed_directory_admits_reader, managed_directory_permissions }
 import gunbc.fleet_posix_accounts { srv1_ci_deploy_runner_principal }
 import gunbc.fleet_converge_workflow { fleet_converge_gcp_iam_converge_job_under }
@@ -328,7 +331,7 @@ test fn a_prod_role_holder_with_no_instance_refuses_as_unrealized() -> Bool {
 
 // ── The convergence transitions, over supplied per-host sightings ──────────────────────────────
 // Sightings are supplied at the adjudication boundary (DESIGN 3: a witness discriminates at one
-// interface); the ssh probe that produces them in production is ssh_probe_reading_source, and the
+// interface); the production source that produces them is local_only_reading_source, and the
 // positive control below runs the real decision over the real realization.
 fn full_on(host: String, d: DeploymentId) -> List<RoleSingletonSighting> {
   [
@@ -807,4 +810,19 @@ test fn the_marker_readback_has_three_distinct_outcomes() -> Bool {
     _ => false
   }
   exact && absent && unlistable && unreadable
+}
+
+// ── No cross-host transport, whatever credential exists ───────────────────────────────────────
+// THE D2 INTERIM IS FAIL-CLOSED BY CONSTRUCTION, not by an ungranted grant. The apply's own transport is
+// handed a VALID-LOOKING ssh credential to srv2 itself, and srv2 -- a roster host that is not the
+// applying host -- is still unobservable with the self-report cause: the source builds no transport for
+// a nonlocal host, so no credential reaches it. Reading the nonlocal host is pure, so this claim touches
+// no host. gunbc#13339 swaps this refusal for the self-report source.
+test fn a_valid_ssh_credential_cannot_make_a_nonlocal_roster_host_observable() -> Bool {
+  let source = local_only_reading_source(applying: deployment_spec_srv1(), own: SshShell { ssh_host: "srv2" as NonEmptyStr })
+  let read = source.read
+  match read("srv2" as NonEmptyStr, desired_deployment_roster()) {
+    HostRoleSingletonsUnobservable { host, cause } => (host as String) == "srv2" && cause == nonlocal_host_unobservable_cause
+    HostRoleSingletonsRead { host: _, sightings: _ } => false
+  }
 }
