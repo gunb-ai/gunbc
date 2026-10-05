@@ -101,10 +101,11 @@ import extdeps.vllm.weight_offload {
 //
 //   4. TIERS. Supply and demand are per memory tier, and a tier is a catalog memory component
 //      (extdeps.systems.types SystemMemoryComponent). The mint derives the host's components from
-//      the host's catalog row (ArmHostClass) and joins the subject's tiers against them by identity, and the rank roster against (rank, tier). A one-pool host
+//      the host's catalog row (ArmHostClass) and joins the subject's tiers against them by identity. A one-pool host
 //      (a DGX Spark) is the one-tier case, and its verdicts are the ones this module gave before
 //      tiers existed. A superchip with GPU-local and coherent-link memory carries two complete
-//      records per rank, and a term placed in the other tier is NotPlaced, never a zero.
+//      shares per component, each a typed (tier, bound) pair; a tier no share names holds none of
+//      it, by derivation, never by an authored zero.
 //
 // PHASES KEEP TRANSIENTS IN THEIR PHASE, and the engine's decided envelope is a second supply
 // wall on the engine-admitted phases. AN UNMODELED POOL IS UNESTABLISHED, NOT REFUSED: "we have
@@ -284,25 +285,15 @@ fn envelope_constrains_phase(p: ArmMemoryFitPhase) -> Bool {
 // a component-scoped measurement bounds the term above and contributes nothing to a demand lower
 // bound. Open is NEITHER: the named obligation states what measurement would bound it. A zero is
 // not the Open arm in a wig.
-//
-// NotPlaced says the component has no residency in THIS memory tier, because it is placed in
-// `placed_in`, another memory of the same host. The mint holds it to that:
-// - the named tier must be one of the subject's tiers and not this row's own;
-// - the same rank's row in the named tier must carry a real bound for the component.
-// So a component cannot be marked absent from every tier, and a one-pool host cannot carry the arm
-// at all. Supply deductions never take it: a deduction that does not exist in a tier is an exact
-// zero, stated as such.
 type ArmComponentBound
   = ComponentBoundExact { bytes: ByteSize, how: NonEmptyStr }
   | ComponentBoundInterval { lower: ByteSize, upper: ByteSize, how: NonEmptyStr }
   | ComponentBoundCeiling { bytes: ByteSize, receipt: NonEmptyStr }
   | ComponentBoundOpen { obligation: NonEmptyStr }
-  | ComponentBoundNotPlaced { placed_in: SystemMemoryComponent }
 
 fn bound_is_open(b: ArmComponentBound) -> Bool {
   match b {
     ComponentBoundOpen { obligation: _ } => true
-    ComponentBoundNotPlaced { placed_in: _ } => false
     ComponentBoundExact { bytes: _, how: _ } => false
     ComponentBoundInterval { lower: _, upper: _, how: _ } => false
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
@@ -311,7 +302,6 @@ fn bound_is_open(b: ArmComponentBound) -> Bool {
 
 fn bound_upper_opt(b: ArmComponentBound) -> ByteSize? {
   match b {
-    ComponentBoundNotPlaced { placed_in: _ } => Present { value: byte_size(count: 0) }
     ComponentBoundExact { bytes: b, how: _ } => Present { value: b }
     ComponentBoundInterval { lower: _, upper: u, how: _ } => Present { value: u }
     ComponentBoundCeiling { bytes: b, receipt: _ } => Present { value: b }
@@ -321,7 +311,6 @@ fn bound_upper_opt(b: ArmComponentBound) -> ByteSize? {
 
 fn bound_lower(b: ArmComponentBound) -> ByteSize {
   match b {
-    ComponentBoundNotPlaced { placed_in: _ } => byte_size(count: 0)
     ComponentBoundExact { bytes: b, how: _ } => b
     ComponentBoundInterval { lower: l, upper: _, how: _ } => l
     ComponentBoundCeiling { bytes: _, receipt: _ } => byte_size(count: 0)
@@ -350,27 +339,48 @@ fn component_bound_interval(lower: ByteSize, upper: ByteSize, how: NonEmptyStr) 
 // one) and the fold would price the hole as a zero, minting a FitProved that never priced the
 // cache. A record has no omit-or-duplicate spelling; the phase folds read the fields by name.
 //
-// THE ROW IS PER (RANK, MEMORY TIER). A host whose GPU reaches more than one memory (a superchip's
-// device memory and its CPU memory across the coherent link) carries one complete record per tier,
-// so every component answers for every tier. A one-pool host has one tier, so one row per rank, as
-// before.
+//
+// EACH COMPONENT IS PLACED, AND THE PLACEMENT IS NONEMPTY BY CONSTRUCTION. A component's demand is
+// one share, `held`, plus any further shares, `also`. Each share is a typed (memory tier, bound)
+// pair. A component on a one-pool host has exactly one share, in that pool. A checkpoint split
+// across a superchip's GPU-local memory and its coherent-link memory has two. A tier no share names
+// holds none of the component: that absence is derived from the placement and never authored. So a
+// component cannot be "absent everywhere", and a bound cannot belong to a tier other than the one
+// its share names. The mint joins every share's tier against the host's memories by identity.
+type ArmTierShare {
+  tier: SystemMemoryComponent
+  bound: ArmComponentBound
+}
+
+type ArmComponentPlacement {
+  held: ArmTierShare
+  also: List<ArmTierShare>
+}
+
+fn placement_shares(p: ArmComponentPlacement) -> List<ArmTierShare> {
+  concat([p.held], p.also)
+}
+
+fn placed_in(tier: SystemMemoryComponent, bound: ArmComponentBound) -> ArmComponentPlacement {
+  ArmComponentPlacement { held: ArmTierShare { tier: tier, bound: bound }, also: [] as List<ArmTierShare> }
+}
+
 type ArmRankDemand {
   rank: Nat
-  tier: SystemMemoryComponent
-  checkpoint_residency: ArmComponentBound
-  loader_transform: ArmComponentBound
-  runtime_fixed: ArmComponentBound
-  collective_workspace: ArmComponentBound
-  activation_workspace: ArmComponentBound
-  graph_capture: ArmComponentBound
-  kv_cache: ArmComponentBound
-  fragmentation_allowance: ArmComponentBound
+  checkpoint_residency: ArmComponentPlacement
+  loader_transform: ArmComponentPlacement
+  runtime_fixed: ArmComponentPlacement
+  collective_workspace: ArmComponentPlacement
+  activation_workspace: ArmComponentPlacement
+  graph_capture: ArmComponentPlacement
+  kv_cache: ArmComponentPlacement
+  fragmentation_allowance: ArmComponentPlacement
 }
 
 // THE FIELD ACCESSOR, exhaustive over the component coproduct: the folds below ask for a
-// component's bound through this function, so a component added to the census forces the record to
-// grow in the same commit and the record cannot be read at the wrong field.
-fn rank_component_bound(rd: ArmRankDemand, c: ArmMemoryComponent) -> ArmComponentBound {
+// component's placement through this function, so a component added to the census forces the
+// record to grow in the same commit and the record cannot be read at the wrong field.
+fn rank_component_placement(rd: ArmRankDemand, c: ArmMemoryComponent) -> ArmComponentPlacement {
   match c {
     ArmCheckpointResidency => rd.checkpoint_residency
     ArmLoaderTransform => rd.loader_transform
@@ -381,6 +391,35 @@ fn rank_component_bound(rd: ArmRankDemand, c: ArmMemoryComponent) -> ArmComponen
     ArmKvCache => rd.kv_cache
     ArmFragmentationAllowance => rd.fragmentation_allowance
   }
+}
+
+// THE DERIVED PER-TIER ROW: one rank seen in one memory tier. The folds price these. A component
+// with no share in the row's tier reads Absent, meaning it holds nothing here, which is derived and
+// never authored.
+type ArmRowView {
+  demand: ArmRankDemand
+  tier: SystemMemoryComponent
+}
+
+fn row_bound(rv: ArmRowView, c: ArmMemoryComponent) -> ArmComponentBound? {
+  match first(filter(placement_shares(p: rank_component_placement(rd: rv.demand, c: c)), sh => system_memory_component_same(a: sh.tier, b: rv.tier))) {
+    Present { value: sh } => Present { value: sh.bound }
+    Absent => none
+  }
+}
+
+// For the two classification reads (is a term open here, is it a ceiling here), a component with
+// no share in the row's tier is neither. This is the derived absence, read as an exact zero that
+// names why. It never enters a demand sum: demand_for_phase filters the population instead.
+fn row_bound_or_closed(rv: ArmRowView, c: ArmMemoryComponent) -> ArmComponentBound {
+  match row_bound(rv: rv, c: c) {
+    Present { value: b } => b
+    Absent => ComponentBoundExact { bytes: byte_size(count: 0), how: "derived: the component's placement names no share in this tier" as NonEmptyStr }
+  }
+}
+
+fn all_rank_bounds(rd: ArmRankDemand) -> List<ArmComponentBound> {
+  flat_map(arm_memory_components, c => map(placement_shares(p: rank_component_placement(rd: rd, c: c)), sh => sh.bound))
 }
 
 data arm_memory_components: List<ArmMemoryComponent> = [
@@ -568,30 +607,28 @@ fn profile_joins_intent(intent: ServingCapacityIntent, p: ServingLaunchProfile) 
 }
 
 // RANK ROSTER VALIDATION, refusing what a count-only check would miss: the right NUMBER of rows
-// with a duplicated index, or an absent one, is refused. Exactly one row per rank index 0..n-1 per
-// memory tier, as an identity join on (rank, tier), never a count.
-fn rank_tier_row_count(ranks: List<ArmRankDemand>, index: Nat, tier: SystemMemoryComponent) -> Nat {
-  count(filter(ranks, r => r.rank == index && system_memory_component_same(a: r.tier, b: tier)))
+// with a duplicated index, or an absent one, is refused. Exactly one row per rank index 0..n-1. Each
+// row places every component across the host's tiers, so per-tier rows are derived, not authored.
+fn rank_index_count(ranks: List<ArmRankDemand>, index: Nat) -> Nat {
+  count(filter(ranks, r => r.rank == index))
 }
 
-fn rank_roster_valid(ranks: List<ArmRankDemand>, rank_count: Nat, tiers: List<ArmTierSupply>) -> Bool {
-  count(ranks) == rank_count * count(tiers)
-    && all(nat_range_inclusive(lo: 1, hi: rank_count), i =>
-      all(tiers, t => rank_tier_row_count(ranks: ranks, index: i - 1, tier: t.tier) == 1))
+fn rank_roster_valid(ranks: List<ArmRankDemand>, rank_count: Nat) -> Bool {
+  count(ranks) == rank_count
+    && all(nat_range_inclusive(lo: 1, hi: rank_count), i => rank_index_count(ranks: ranks, index: i - 1) == 1)
 }
 
-fn rank_roster_refusal(ranks: List<ArmRankDemand>, rank_count: Nat, tiers: List<ArmTierSupply>) -> NonEmptyStr {
-  if count(ranks) != rank_count * count(tiers) {
+fn rank_roster_refusal(ranks: List<ArmRankDemand>, rank_count: Nat) -> NonEmptyStr {
+  if count(ranks) != rank_count {
     join([
       "the rank roster carries ", to_string(count(ranks)),
       " row(s) against a topology of ", to_string(rank_count),
-      " rank(s) over ", to_string(count(tiers)),
-      " memory tier(s): a tensor-parallel degree is a property of the arm, so the roster must be exactly one row per rank per tier",
+      " rank(s): a tensor-parallel degree is a property of the arm, so the roster must be exactly one row per rank",
     ], "") as NonEmptyStr
   } else {
     join([
       "the rank roster does not hold exactly one row per rank index 0..", to_string(rank_count - 1),
-      " in every memory tier: a duplicated or absent (rank, tier) row means the demand population does not describe this arm",
+      ": a duplicated or absent rank index means the demand population does not describe this arm",
     ], "") as NonEmptyStr
   }
 }
@@ -620,102 +657,41 @@ fn arm_host_memory(host: ArmHostClass) -> List<SystemMemoryComponent> {
 
 // ── THE FACTS INSIDE EACH TIER ARE BOUND TO THAT TIER ────────────────────────────────────────────
 //
-// The tier-set join establishes which tiers exist. These walls establish that what each tier row
-// says belongs to it:
-// - every NotPlaced points at a placed bound in another of the host's tiers;
-// - no supply deduction is NotPlaced;
+// The tier-set join establishes which tiers exist. Two more walls bind what each tier carries:
+// - every share of every placement names one of the host's memories, and no placement names one
+//   memory twice. This is an identity join on the share's typed tier, never on prose.
 // - a tier's pool never reads above its catalog memory's capacity, so a larger memory's pool cannot
-//   stand on a smaller tier;
-// - on a host with more than one tier, every derived or measured bound names the tier it was
-//   derived or measured for, as it already names the checkpoint, runtime and topology.
-fn bound_text(b: ArmComponentBound) -> String? {
-  match b {
-    ComponentBoundExact { bytes: _, how: h } => Present { value: h as String }
-    ComponentBoundInterval { lower: _, upper: _, how: h } => Present { value: h as String }
-    ComponentBoundCeiling { bytes: _, receipt: r } => Present { value: r as String }
-    ComponentBoundOpen { obligation: _ } => none
-    ComponentBoundNotPlaced { placed_in: _ } => none
-  }
-}
-
-fn bound_is_not_placed(b: ArmComponentBound) -> Bool {
-  match b {
-    ComponentBoundNotPlaced { placed_in: _ } => true
-    ComponentBoundExact { bytes: _, how: _ } => false
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => false
-    ComponentBoundCeiling { bytes: _, receipt: _ } => false
-    ComponentBoundOpen { obligation: _ } => false
-  }
-}
-
-fn row_for(ranks: List<ArmRankDemand>, rank: Nat, tier: SystemMemoryComponent) -> ArmRankDemand? {
-  first(filter(ranks, r => r.rank == rank && system_memory_component_same(a: r.tier, b: tier)))
-}
-
-fn not_placed_refusal(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>, rd: ArmRankDemand, c: ArmMemoryComponent) -> NonEmptyStr? {
-  match rank_component_bound(rd: rd, c: c) {
-    ComponentBoundNotPlaced { placed_in: p } => {
-      let where_ = join(["rank ", to_string(rd.rank), " ", arm_memory_component_wire(c: c), " in tier ", system_memory_component_wire(c: rd.tier) as String], "")
-      if system_memory_component_same(a: p, b: rd.tier) {
-        Present { value: join([where_, " is marked not placed but names its own tier as where it is placed"], "") as NonEmptyStr }
-      } else if !any(tiers, t => system_memory_component_same(a: t.tier, b: p)) {
-        Present { value: join([where_, " is marked placed in ", system_memory_component_wire(c: p) as String, ", which is not a memory of this host"], "") as NonEmptyStr }
-      } else {
-        match row_for(ranks: ranks, rank: rd.rank, tier: p) {
-          Absent => Present { value: join([where_, " names a placement tier with no row for this rank"], "") as NonEmptyStr }
-          Present { value: other } =>
-            if bound_is_not_placed(b: rank_component_bound(rd: other, c: c)) {
-              Present { value: join([where_, " is marked placed in ", system_memory_component_wire(c: p) as String, ", but that tier also marks it not placed: the component would be priced nowhere"], "") as NonEmptyStr }
-            } else {
-              none
-            }
-        }
-      }
-    }
-    ComponentBoundExact { bytes: _, how: _ } => none
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => none
-    ComponentBoundCeiling { bytes: _, receipt: _ } => none
-    ComponentBoundOpen { obligation: _ } => none
-  }
-}
-
-fn tier_naming_refusal(tiers: List<ArmTierSupply>, rd: ArmRankDemand, c: ArmMemoryComponent) -> NonEmptyStr? {
-  if count(tiers) < 2 {
-    none
+//   stand on a smaller tier.
+fn placement_refusal(rd: ArmRankDemand, c: ArmMemoryComponent, tiers: List<ArmTierSupply>) -> NonEmptyStr? {
+  let shares = placement_shares(p: rank_component_placement(rd: rd, c: c))
+  let where_ = join(["rank ", to_string(rd.rank), " ", arm_memory_component_wire(c: c)], "")
+  let foreign = filter(shares, sh => !any(tiers, t => system_memory_component_same(a: t.tier, b: sh.tier)))
+  let doubled = filter(shares, sh => count(filter(shares, o => system_memory_component_same(a: o.tier, b: sh.tier))) > 1)
+  if count(foreign) > 0 {
+    Present { value: join([where_, " is placed in a memory this host does not have: ",
+      join(map(foreign, sh => system_memory_component_wire(c: sh.tier) as String), ", ")], "") as NonEmptyStr }
+  } else if count(doubled) > 0 {
+    Present { value: join([where_, " is placed twice in one memory: ",
+      join(map(doubled, sh => system_memory_component_wire(c: sh.tier) as String), ", "),
+      "; one tier carries one share of a component"], "") as NonEmptyStr }
   } else {
-    match bound_text(b: rank_component_bound(rd: rd, c: c)) {
-      Absent => none
-      Present { value: t } =>
-        if string_contains(s: t, pattern: system_memory_component_wire(c: rd.tier) as String) {
-          none
-        } else {
-          Present { value: join([
-            "rank ", to_string(rd.rank), " ", arm_memory_component_wire(c: c), " carries a bound whose derivation or receipt does not name its tier ",
-            system_memory_component_wire(c: rd.tier) as String, ": on a host with more than one memory, a bound is evidence about one of them",
-          ], "") as NonEmptyStr }
-        }
-    }
+    none
   }
 }
 
 fn tier_supply_refusal(ts: ArmTierSupply) -> NonEmptyStr? {
-  let wire = system_memory_component_wire(c: ts.tier) as String
-  if bound_is_not_placed(b: ts.deductions.host_os_control_reserve) || bound_is_not_placed(b: ts.deductions.foreign_residency) {
-    Present { value: join(["a supply deduction of tier ", wire, " is marked not placed: a deduction is a fact about its own tier, and one that does not exist there is an exact zero"], "") as NonEmptyStr }
-  } else {
-    match ts.pool {
-      ArmPoolUnbounded { obligation: _ } => none
-      ArmPoolBounded { span: sp, how: _ } =>
-        if byte_size_count(b: interval_high(interval: sp)) > byte_size_count(b: ts.tier.memory.capacity) {
-          Present { value: join([
-            "the pool of tier ", wire, " reads up to ", to_string(byte_size_count(b: interval_high(interval: sp))),
-            " bytes, above that memory's catalog capacity of ", to_string(byte_size_count(b: ts.tier.memory.capacity)),
-            " bytes: the reading is of another memory",
-          ], "") as NonEmptyStr }
-        } else {
-          none
-        }
-    }
+  match ts.pool {
+    ArmPoolUnbounded { obligation: _ } => none
+    ArmPoolBounded { span: sp, how: _ } =>
+      if byte_size_count(b: interval_high(interval: sp)) > byte_size_count(b: ts.tier.memory.capacity) {
+        Present { value: join([
+          "the pool of tier ", system_memory_component_wire(c: ts.tier) as String, " reads up to ", to_string(byte_size_count(b: interval_high(interval: sp))),
+          " bytes, above that memory's catalog capacity of ", to_string(byte_size_count(b: ts.tier.memory.capacity)),
+          " bytes: the reading is of another memory",
+        ], "") as NonEmptyStr }
+      } else {
+        none
+      }
   }
 }
 
@@ -726,10 +702,7 @@ fn first_refusal(xs: List<NonEmptyStr?>) -> NonEmptyStr? {
 fn tier_facts_refusal(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> NonEmptyStr? {
   first_refusal(concat(
     map(tiers, ts => tier_supply_refusal(ts: ts)),
-    flat_map(ranks, rd => flat_map(arm_memory_components, c => [
-      not_placed_refusal(ranks: ranks, tiers: tiers, rd: rd, c: c),
-      tier_naming_refusal(tiers: tiers, rd: rd, c: c),
-    ]))))
+    flat_map(ranks, rd => map(arm_memory_components, c => placement_refusal(rd: rd, c: c, tiers: tiers)))))
 }
 
 fn tier_facts_ok(ranks: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> Bool {
@@ -782,7 +755,6 @@ fn bound_names_identity(b: ArmComponentBound, ckpt: ServingCheckpoint, rt: Servi
   let rt_wire = serving_runtime_wire(r: rt) as String
   let tp_wire = serving_topology_wire(t: tp) as String
   match b {
-    ComponentBoundNotPlaced { placed_in: _ } => true
     ComponentBoundExact { bytes: _, how: h } =>
       string_contains(s: h as String, pattern: ckpt_wire)
         && string_contains(s: h as String, pattern: tp_wire)
@@ -799,7 +771,7 @@ fn bound_names_identity(b: ArmComponentBound, ckpt: ServingCheckpoint, rt: Servi
 
 fn roster_names_identity(ranks: List<ArmRankDemand>, ckpt: ServingCheckpoint, rt: ServingRuntime, tp: ServingTopology) -> Bool {
   all(ranks, r =>
-    all(arm_memory_components, c => bound_names_identity(b: rank_component_bound(rd: r, c: c), ckpt: ckpt, rt: rt, tp: tp)))
+    all(all_rank_bounds(rd: r), b => bound_names_identity(b: b, ckpt: ckpt, rt: rt, tp: tp)))
 }
 
 // THE DERIVED CHECKPOINT AGGREGATE. The checkpoint row's ceil-GiB figure bounds the TRUE total
@@ -829,19 +801,32 @@ fn open_checkpoint_placement_obligation() -> NonEmptyStr {
   "per-rank checkpoint placement is unread: an even tensor-parallel split is an assumption, not a measurement, and the true per-rank residency follows from the loader's placement decisions; a CheckpointRankResidencyBound measurement per rank bounds it" as NonEmptyStr
 }
 
-// ONE OPEN RANK ROW: every mechanism carried open, the checkpoint with the placement obligation.
-fn open_rank_demand(rank: Nat, tier: SystemMemoryComponent) -> ArmRankDemand {
+// ONE OPEN RANK ROW: every mechanism carried open in EVERY tier of the host, the checkpoint with the
+// placement obligation. Unknown placement is unknown everywhere, not assumed to sit in one memory.
+fn open_placement(held: SystemMemoryComponent, others: List<SystemMemoryComponent>, bound: ArmComponentBound) -> ArmComponentPlacement {
+  ArmComponentPlacement { held: ArmTierShare { tier: held, bound: bound }, also: map(others, t => ArmTierShare { tier: t, bound: bound }) }
+}
+
+fn open_ranks_over(rank_count: Nat, tiers: List<ArmTierSupply>) -> List<ArmRankDemand> {
+  match first(tiers) {
+    Absent => [] as List<ArmRankDemand>
+    Present { value: h } =>
+      map(nat_range_inclusive(lo: 1, hi: rank_count), i =>
+        open_rank_demand(rank: i - 1, held: h.tier, others: map(filter(tiers, t => !system_memory_component_same(a: t.tier, b: h.tier)), t => t.tier)))
+  }
+}
+
+fn open_rank_demand(rank: Nat, held: SystemMemoryComponent, others: List<SystemMemoryComponent>) -> ArmRankDemand {
   ArmRankDemand {
     rank: rank,
-    tier: tier,
-    checkpoint_residency: ComponentBoundOpen { obligation: open_checkpoint_placement_obligation() },
-    loader_transform: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmLoaderTransform, receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr) },
-    runtime_fixed: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmRuntimeFixed, receipt_kind: "RuntimeFixedAllocationBound" as NonEmptyStr) },
-    collective_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr) },
-    activation_workspace: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr) },
-    graph_capture: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr) },
-    kv_cache: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the per-group metadata the layout prices is not vouched for by any emission this repository has read: the honest emission point is upstream vLLM's EngineCore.get_kv_cache_group_metadata (vllm/v1/engine/core.py at the pinned revision, modelled at extdeps.vllm.kv_group_metadata), which carries each group's kind, block size and window but NOT the layer counts and page bytes the layout needs -- that module's layout mint refuses construction from the emission alone, naming exactly the two absent fields, and no other authority this repository can cite vouches for them either. Until a capture vouches for them (a richer engine emission, or another cited authority beside the emission), every capture through gunbc.spark.vllm_kv_layout_observe lands KvLayoutUnreadable and this term stays open. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr },
-    fragmentation_allowance: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr) },
+    checkpoint_residency: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_checkpoint_placement_obligation() }),
+    loader_transform: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmLoaderTransform, receipt_kind: "CheckpointRankResidencyBound" as NonEmptyStr) }),
+    runtime_fixed: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmRuntimeFixed, receipt_kind: "RuntimeFixedAllocationBound" as NonEmptyStr) }),
+    collective_workspace: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmCollectiveWorkspace, receipt_kind: "CollectiveWorkspaceBound" as NonEmptyStr) }),
+    activation_workspace: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmActivationWorkspace, receipt_kind: "ActivationWorkspaceBound" as NonEmptyStr) }),
+    graph_capture: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmGraphCapture, receipt_kind: "GraphCaptureBound" as NonEmptyStr) }),
+    kv_cache: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: "required_kv_bytes derives from the workload intent over the group-aware resolved cache layout (extdeps.vllm.kv_layout), and the per-group metadata the layout prices is not vouched for by any emission this repository has read: the honest emission point is upstream vLLM's EngineCore.get_kv_cache_group_metadata (vllm/v1/engine/core.py at the pinned revision, modelled at extdeps.vllm.kv_group_metadata), which carries each group's kind, block size and window but NOT the layer counts and page bytes the layout needs -- that module's layout mint refuses construction from the emission alone, naming exactly the two absent fields, and no other authority this repository can cite vouches for them either. Until a capture vouches for them (a richer engine emission, or another cited authority beside the emission), every capture through gunbc.spark.vllm_kv_layout_observe lands KvLayoutUnreadable and this term stays open. Observed current_kv from a previous run is a readback and never a demand input" as NonEmptyStr }),
+    fragmentation_allowance: open_placement(held: held, others: others, bound: ComponentBoundOpen { obligation: open_demand_obligation(component: ArmFragmentationAllowance, receipt_kind: "AllocatorFragmentationBound" as NonEmptyStr) }),
   }
 }
 
@@ -895,13 +880,11 @@ fn arm_memory_fit_subject(
                       topology: topology,
                       intent: intent,
                       profile: requested_profile,
-                      ranks: flat_map(nat_range_inclusive(lo: 1, hi: serving_topology_rank_count(t: topology)), i =>
-                        map(tiers, t => open_rank_demand(rank: i - 1, tier: t.tier))),
+                      ranks: open_ranks_over(rank_count: serving_topology_rank_count(t: topology), tiers: tiers),
                       checkpoint_total: span,
                       tiers: tiers,
                     } }
                 }
-              ComponentBoundNotPlaced { placed_in: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
@@ -931,8 +914,8 @@ fn arm_memory_fit_subject_with_rank_demands(
     ArmMemorySubjectRefused { cause: "the executable profile does not derive from the capacity intent (see arm_memory_fit_subject for the full cause shape): the join is enforced identically on every mint" as NonEmptyStr }
   } else if !tier_ok {
     ArmMemorySubjectRefused { cause: tier_set_refusal_cause(host_memory: host_memory, tiers: tiers) }
-  } else if !rank_roster_valid(ranks: ranks, rank_count: rank_count, tiers: tiers) {
-    ArmMemorySubjectRefused { cause: rank_roster_refusal(ranks: ranks, rank_count: rank_count, tiers: tiers) }
+  } else if !rank_roster_valid(ranks: ranks, rank_count: rank_count) {
+    ArmMemorySubjectRefused { cause: rank_roster_refusal(ranks: ranks, rank_count: rank_count) }
   } else if !tier_facts_ok(ranks: ranks, tiers: tiers) {
     ArmMemorySubjectRefused { cause: tier_facts_refusal_cause(ranks: ranks, tiers: tiers) }
   } else if !roster_names_identity(ranks: ranks, ckpt: checkpoint, rt: runtime, tp: topology) {
@@ -960,7 +943,6 @@ fn arm_memory_fit_subject_with_rank_demands(
                       tiers: tiers,
                     } }
                 }
-              ComponentBoundNotPlaced { placed_in: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundExact { bytes: _, how: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundCeiling { bytes: _, receipt: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
               ComponentBoundOpen { obligation: _ } => ArmMemorySubjectRefused { cause: "unreachable: checkpoint_total_span mints an interval or refuses" as NonEmptyStr }
@@ -1055,27 +1037,37 @@ fn demand_term_upper(bound: ArmComponentBound) -> ByteSize? {
   bound_upper_opt(b: bound)
 }
 
+type ArmRowTerm {
+  component: ArmMemoryComponent
+  bound: ArmComponentBound
+}
+
 fn demand_term_lower(bound: ArmComponentBound) -> ByteSize {
   bound_lower(b: bound)
 }
 
-fn demand_for_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) -> ArmPhaseDemand {
-  let resident_components = filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase))
-  let lower = fold(resident_components, init: byte_size(count: 0), f: (acc, c) =>
-    measure_add(a: acc, b: demand_term_lower(bound: rank_component_bound(rd: rd, c: c))))
-  let lower_components = filter(resident_components, c => match rank_component_bound(rd: rd, c: c) {
-    ComponentBoundNotPlaced { placed_in: _ } => false
+// A component with no share in the row's tier is not resident there, so it is not a term of this
+// row at all. It is filtered out of the population, never read as a zero.
+fn demand_for_phase(rv: ArmRowView, phase: ArmMemoryFitPhase) -> ArmPhaseDemand {
+  let resident = flat_map(filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase)), c =>
+    match row_bound(rv: rv, c: c) {
+      Present { value: b } => [ArmRowTerm { component: c, bound: b }]
+      Absent => [] as List<ArmRowTerm>
+    })
+  let lower = fold(resident, init: byte_size(count: 0), f: (acc, t) =>
+    measure_add(a: acc, b: demand_term_lower(bound: t.bound)))
+  let lower_components = map(filter(resident, t => match t.bound {
     ComponentBoundExact { bytes: _, how: _ } => true
     ComponentBoundInterval { lower: _, upper: _, how: _ } => true
     ComponentBoundCeiling { bytes: _, receipt: _ } => false
     ComponentBoundOpen { obligation: _ } => false
-  })
-  let open_components = filter(resident_components, c => bound_is_open(b: rank_component_bound(rd: rd, c: c)))
-  let upper = fold(resident_components, init: Present { value: byte_size(count: 0) }, f: (acc, c) =>
+  }), t => t.component)
+  let open_components = map(filter(resident, t => bound_is_open(b: t.bound)), t => t.component)
+  let upper = fold(resident, init: Present { value: byte_size(count: 0) }, f: (acc, t) =>
     match acc {
       Absent => none
       Present { value: n } =>
-        match demand_term_upper(bound: rank_component_bound(rd: rd, c: c)) {
+        match demand_term_upper(bound: t.bound) {
           Absent => none
           Present { value: b } => Present { value: measure_add(a: n, b: b) }
         }
@@ -1184,6 +1176,10 @@ type ArmMemoryFitVerdict
 // one supply row per tier, so the lookup's absent arm is reachable only by a subject the mints never
 // construct. It is carried as unknown supply, which refuses nothing and leaves the verdict
 // unestablished. It does not read as zero.
+fn subject_rows(subject: ArmMemoryFitSubject) -> List<ArmRowView> {
+  flat_map(subject.ranks, rd => map(subject.tiers, t => ArmRowView { demand: rd, tier: t.tier }))
+}
+
 fn tier_supply_for(subject: ArmMemoryFitSubject, tier: SystemMemoryComponent) -> ArmTierSupply? {
   first(filter(subject.tiers, t => system_memory_component_same(a: t.tier, b: tier)))
 }
@@ -1195,22 +1191,22 @@ fn tier_envelope(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -> ArmEnvelope
   }
 }
 
-fn row_supply_upper(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ByteSize? {
-  match tier_supply_for(subject: subject, tier: rd.tier) {
+fn row_supply_upper(subject: ArmMemoryFitSubject, rv: ArmRowView) -> ByteSize? {
+  match tier_supply_for(subject: subject, tier: rv.tier) {
     Absent => none
     Present { value: ts } => supply_upper_opt(pool: ts.pool, deductions: ts.deductions)
   }
 }
 
-fn row_supply_lower(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ByteSize? {
-  match tier_supply_for(subject: subject, tier: rd.tier) {
+fn row_supply_lower(subject: ArmMemoryFitSubject, rv: ArmRowView) -> ByteSize? {
+  match tier_supply_for(subject: subject, tier: rv.tier) {
     Absent => none
     Present { value: ts } => supply_lower_opt(pool: ts.pool, deductions: ts.deductions)
   }
 }
 
-fn row_envelope(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ArmEnvelopeSpan? {
-  match tier_supply_for(subject: subject, tier: rd.tier) {
+fn row_envelope(subject: ArmMemoryFitSubject, rv: ArmRowView) -> ArmEnvelopeSpan? {
+  match tier_supply_for(subject: subject, tier: rv.tier) {
     Absent => none
     Present { value: ts } => tier_envelope(subject: subject, ts: ts)
   }
@@ -1218,8 +1214,8 @@ fn row_envelope(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ArmEnvelopeS
 
 // A row's envelope is "not governed" when its tier is outside the device allocator. That is
 // different from "governed but unknown", and the obligation pass must tell them apart.
-fn row_envelope_governed(rd: ArmRankDemand) -> Bool {
-  tier_governed_by_engine_envelope(tier: rd.tier)
+fn row_envelope_governed(rv: ArmRowView) -> Bool {
+  tier_governed_by_engine_envelope(tier: rv.tier)
 }
 
 // THE MOST FAVORABLE SUPPLY ONE RANK COULD HAVE, summed over every tier it reaches. Unknown if any
@@ -1293,11 +1289,11 @@ fn aggregate_checkpoint_refusal(subject: ArmMemoryFitSubject) -> ArmMemoryFitVer
 // checkpoint's total bytes claims ranks that cannot hold the checkpoint however the receipts were
 // minted -- a conservation violation, carried as an obligation when it does not itself refuse.
 fn checkpoint_rank_sum(subject: ArmMemoryFitSubject) -> ByteSize? {
-  fold(subject.ranks, init: Present { value: byte_size(count: 0) }, f: (acc, r) =>
+  fold(flat_map(subject.ranks, r => placement_shares(p: r.checkpoint_residency)), init: Present { value: byte_size(count: 0) }, f: (acc, sh) =>
     match acc {
       Absent => none
       Present { value: n } =>
-        match bound_upper_opt(b: r.checkpoint_residency) {
+        match bound_upper_opt(b: sh.bound) {
           Absent => none
           Present { value: c } => Present { value: measure_add(a: n, b: c) }
         }
@@ -1326,7 +1322,7 @@ fn checkpoint_sum_obligation(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> 
 // zero.
 fn refusal_for_rank(
   subject: ArmMemoryFitSubject,
-  rd: ArmRankDemand,
+  rv: ArmRowView,
   supply_up: ByteSize?,
   envelope_up: ByteSize?,
   decided_bp: Nat,
@@ -1335,20 +1331,20 @@ fn refusal_for_rank(
     match acc {
       Present { value: _ } => acc
       Absent => {
-        let demand = demand_for_phase(rd: rd, phase: phase)
+        let demand = demand_for_phase(rv: rv, phase: phase)
         let pool_refusal = match supply_up {
           Absent => none
           Present { value: s } =>
             match byte_size_count(b: demand.lower) > byte_size_count(b: s) {
               true =>
                 Present { value: ArmMemoryFitRefused {
-                  rank: rd.rank,
-                  tiers: [rd.tier],
+                  rank: rv.demand.rank,
+                  tiers: [rv.tier],
                   phase: phase,
                   demand_lower: demand.lower,
                   supply_upper: s,
                   cause: join([
-                    "memory fit REFUSED at rank ", to_string(rd.rank), tier_label(subject: subject, tier: rd.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    "memory fit REFUSED at rank ", to_string(rv.demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                     ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
                     " bytes (carried by ", join(map(demand.lower_components, c => arm_memory_component_wire(c: c)), ", "),
                     ") exceeds the most favorable supply of ", to_string(byte_size_count(b: s)),
@@ -1370,13 +1366,13 @@ fn refusal_for_rank(
                     match byte_size_count(b: demand.lower) > byte_size_count(b: e) {
                       true =>
                         Present { value: ArmMemoryFitRefused {
-                          rank: rd.rank,
-                          tiers: [rd.tier],
+                          rank: rv.demand.rank,
+                          tiers: [rv.tier],
                           phase: phase,
                           demand_lower: demand.lower,
                           supply_upper: e,
                           cause: join([
-                            "memory fit REFUSED at rank ", to_string(rd.rank), tier_label(subject: subject, tier: rd.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                            "memory fit REFUSED at rank ", to_string(rv.demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                             ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
                             " bytes exceeds the decided envelope's most generous reading of ", to_string(byte_size_count(b: e)),
                             " bytes (pool upper at ", to_string(decided_bp),
@@ -1394,14 +1390,14 @@ fn refusal_for_rank(
 }
 
 fn refusal_scan(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict? {
-  fold(subject.ranks, init: Absent, f: fn(acc, rb) {
+  fold(subject_rows(subject: subject), init: Absent, f: fn(acc, rb) {
     match acc {
       Present { value: _ } => acc
       Absent => refusal_for_rank(
         subject: subject,
-        rd: rb,
-        supply_up: row_supply_upper(subject: subject, rd: rb),
-        envelope_up: match row_envelope(subject: subject, rd: rb) {
+        rv: rb,
+        supply_up: row_supply_upper(subject: subject, rv: rb),
+        envelope_up: match row_envelope(subject: subject, rv: rb) {
           Absent => none
           Present { value: e } => Present { value: e.upper }
         },
@@ -1457,15 +1453,14 @@ fn conservation_refusal(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict? {
 // OPEN TERMS ARE NAMED, ONE OBLIGATION EACH, at the rank and component that carry them.
 fn open_term_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
   concat(
-    flat_map(subject.ranks, rb =>
+    flat_map(subject_rows(subject: subject), rb =>
       flat_map(arm_memory_components, c =>
-        match rank_component_bound(rd: rb, c: c) {
+        match row_bound_or_closed(rv: rb, c: c) {
           ComponentBoundOpen { obligation: o } =>
             [join([
-              "rank ", to_string(rb.rank), tier_label(subject: subject, tier: rb.tier), " ", arm_memory_component_wire(c: c),
+              "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " ", arm_memory_component_wire(c: c),
               " has no defensible bound: ", o as String,
             ], "") as NonEmptyStr]
-          ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
           ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
           ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
           ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1478,7 +1473,6 @@ fn tier_deduction_obligations(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -
       match ts.deductions.host_os_control_reserve {
         ComponentBoundOpen { obligation: o } =>
           [join(["the supply deduction", tier_label(subject: subject, tier: ts.tier), " host-os-control-reserve has no defensible upper bound: ", o as String], "") as NonEmptyStr]
-        ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
         ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1486,7 +1480,6 @@ fn tier_deduction_obligations(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -
       match ts.deductions.foreign_residency {
         ComponentBoundOpen { obligation: o } =>
           [join(["the supply deduction", tier_label(subject: subject, tier: ts.tier), " foreign-residency has no defensible upper bound: ", o as String], "") as NonEmptyStr]
-        ComponentBoundNotPlaced { placed_in: _ } => [] as List<NonEmptyStr>
         ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundInterval { lower: _, upper: _, how: _ } => [] as List<NonEmptyStr>
         ComponentBoundCeiling { bytes: _, receipt: _ } => [] as List<NonEmptyStr>
@@ -1495,11 +1488,10 @@ fn tier_deduction_obligations(subject: ArmMemoryFitSubject, ts: ArmTierSupply) -
 
 // INDETERMINATE COMPARISONS ARE NAMED AS OBLIGATIONS TOO, with the conservation law for the
 // checkpoint aggregate folded in.
-fn ceiling_terms_resident_in_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) -> List<ArmMemoryComponent> {
+fn ceiling_terms_resident_in_phase(rv: ArmRowView, phase: ArmMemoryFitPhase) -> List<ArmMemoryComponent> {
   filter(filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase)), c =>
-    match rank_component_bound(rd: rd, c: c) {
+    match row_bound_or_closed(rv: rv, c: c) {
       ComponentBoundCeiling { bytes: _, receipt: _ } => true
-      ComponentBoundNotPlaced { placed_in: _ } => false
       ComponentBoundExact { bytes: _, how: _ } => false
       ComponentBoundInterval { lower: _, upper: _, how: _ } => false
       ComponentBoundOpen { obligation: _ } => false
@@ -1507,11 +1499,11 @@ fn ceiling_terms_resident_in_phase(rd: ArmRankDemand, phase: ArmMemoryFitPhase) 
 }
 
 fn indeterminacy_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
-  let demand_obligations = flat_map(subject.ranks, rb => {
-    let supply_low = row_supply_lower(subject: subject, rd: rb)
-    let envelope = row_envelope(subject: subject, rd: rb)
+  let demand_obligations = flat_map(subject_rows(subject: subject), rb => {
+    let supply_low = row_supply_lower(subject: subject, rv: rb)
+    let envelope = row_envelope(subject: subject, rv: rb)
     flat_map(map(arm_memory_fit_phases, phase => {
-      let demand = demand_for_phase(rd: rb, phase: phase)
+      let demand = demand_for_phase(rv: rb, phase: phase)
       match demand.upper {
         Absent => [] as List<NonEmptyStr>
         Present { value: upper } => {
@@ -1521,10 +1513,10 @@ fn indeterminacy_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> 
               match byte_size_count(b: upper) > byte_size_count(b: low) {
                 true =>
                   [join([
-                    "rank ", to_string(rb.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                     " does not decide: demand upper ", to_string(byte_size_count(b: upper)),
                     " bytes exceeds the conservative supply lower ", to_string(byte_size_count(b: low)),
-                    " bytes; tighten ", join(map(ceiling_terms_resident_in_phase(rd: rb, phase: phase), c => arm_memory_component_wire(c: c)), ", "),
+                    " bytes; tighten ", join(map(ceiling_terms_resident_in_phase(rv: rb, phase: phase), c => arm_memory_component_wire(c: c)), ", "),
                     " or bound the supply deductions tighter",
                   ], "") as NonEmptyStr]
                 false => [] as List<NonEmptyStr>
@@ -1539,7 +1531,7 @@ fn indeterminacy_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> 
                   match byte_size_count(b: upper) > byte_size_count(b: env.lower) {
                     true =>
                       [join([
-                        "rank ", to_string(rb.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                        "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                         " does not decide against the decided envelope: demand upper ", to_string(byte_size_count(b: upper)),
                         " bytes exceeds the envelope at the pool's lower reading (", to_string(byte_size_count(b: env.lower)),
                         " bytes at ", to_string(basis_point_count(bp: subject.profile.decided_gpu_memory_basis_points)),
@@ -1610,14 +1602,14 @@ type ArmRowBinding {
   envelope_lower: ByteSize?
 }
 
-fn row_binding(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ArmRowBinding? {
-  match row_supply_lower(subject: subject, rd: rd) {
+fn row_binding(subject: ArmMemoryFitSubject, rv: ArmRowView) -> ArmRowBinding? {
+  match row_supply_lower(subject: subject, rv: rv) {
     Absent => none
     Present { value: low } =>
-      match row_envelope_governed(rd: rd) {
+      match row_envelope_governed(rv: rv) {
         false => Present { value: ArmRowBinding { supply_low: low, envelope_lower: none } }
         true =>
-          match row_envelope(subject: subject, rd: rd) {
+          match row_envelope(subject: subject, rv: rv) {
             Absent => none
             Present { value: env } => Present { value: ArmRowBinding { supply_low: low, envelope_lower: Present { value: env.lower } } }
           }
@@ -1626,17 +1618,17 @@ fn row_binding(subject: ArmMemoryFitSubject, rd: ArmRankDemand) -> ArmRowBinding
 }
 
 fn proved_worst_corner(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict? {
-  fold(subject.ranks, init: Absent, f: fn(acc, rb) {
-    match row_binding(subject: subject, rd: rb) {
+  fold(subject_rows(subject: subject), init: Absent, f: fn(acc, rb) {
+    match row_binding(subject: subject, rv: rb) {
       Absent => acc
       Present { value: binding } =>
         fold(arm_memory_fit_phases, init: acc, f: fn(acc2, phase) {
-          let demand = demand_for_phase(rd: rb, phase: phase)
+          let demand = demand_for_phase(rv: rb, phase: phase)
           match demand.upper {
             Absent => acc2
             Present { value: upper } => {
               let headroom = subtract_saturating(minuend: phase_binding(supply_low: binding.supply_low, envelope_lower: binding.envelope_lower, phase: phase), subtrahend: upper)
-              let candidate = ArmMemoryFitProved { rank: rb.rank, tier: rb.tier, phase: phase, headroom_bytes: headroom }
+              let candidate = ArmMemoryFitProved { rank: rb.demand.rank, tier: rb.tier, phase: phase, headroom_bytes: headroom }
               match acc2 {
                 Absent => Present { value: candidate }
                 Present { value: prior } =>
@@ -1658,7 +1650,7 @@ fn proved_worst_corner(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict? {
 }
 
 fn every_row_bindable(subject: ArmMemoryFitSubject) -> Bool {
-  all(subject.ranks, rb => match row_binding(subject: subject, rd: rb) {
+  all(subject_rows(subject: subject), rb => match row_binding(subject: subject, rv: rb) {
     Absent => false
     Present { value: _ } => true
   })
@@ -1674,8 +1666,8 @@ fn every_row_bindable(subject: ArmMemoryFitSubject) -> Bool {
 // unknown envelope skip their walls: an unmodeled pool is an obligation, not a refusal.
 fn arm_memory_fit_verdict(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict {
   let rank_count = serving_topology_rank_count(t: subject.topology)
-  if !rank_roster_valid(ranks: subject.ranks, rank_count: rank_count, tiers: subject.tiers) {
-    ArmMemoryFitUnestablished { obligations: [rank_roster_refusal(ranks: subject.ranks, rank_count: rank_count, tiers: subject.tiers)] }
+  if !rank_roster_valid(ranks: subject.ranks, rank_count: rank_count) {
+    ArmMemoryFitUnestablished { obligations: [rank_roster_refusal(ranks: subject.ranks, rank_count: rank_count)] }
   } else {
     match aggregate_checkpoint_refusal(subject: subject) {
       Present { value: v } => v
@@ -1721,7 +1713,7 @@ fn arm_memory_fit_verdict(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict {
 // THE TYPED OPEN-COMPONENT LISTING the experiment plan consumes: a component is open when ANY
 // rank carries it open, read through the same exhaustive accessor the folds use.
 fn arm_memory_subject_open_components(subject: ArmMemoryFitSubject) -> List<ArmMemoryComponent> {
-  filter(arm_memory_components, c => any(subject.ranks, r => bound_is_open(b: rank_component_bound(rd: r, c: c))))
+  filter(arm_memory_components, c => any(subject.ranks, r => any(placement_shares(p: rank_component_placement(rd: r, c: c)), sh => bound_is_open(b: sh.bound))))
 }
 
 // ── THE MEASUREMENT CONTRACT ─────────────────────────────────────────────────────────────────────
@@ -1816,11 +1808,6 @@ type ArmObservationVerdict
 
 fn arm_readback_observation(component: ArmMemoryComponent, predicted: ArmComponentBound, observed: ByteSize, receipt: NonEmptyStr) -> ArmObservationVerdict {
   match predicted {
-    ComponentBoundNotPlaced { placed_in: _ } =>
-      match byte_size_count(b: observed) == 0 {
-        true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
-        false => ArmMemoryModelFalsified { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
-      }
     ComponentBoundExact { bytes: b, how: _ } =>
       match byte_size_count(b: observed) == byte_size_count(b: b) {
         true => ArmObservationConsistent { component: component, predicted_bound: predicted, observed: observed, receipt: receipt }
@@ -2141,18 +2128,32 @@ fn receipt_measurement(class: ArmMeasurementClass) -> ArmMeasurement {
 
 // THE FIELD SETTER, exhaustive over the component coproduct -- the join's route back into the
 // record, so a receipt can replace exactly the field it names and no other.
-fn rank_with_component_bound(rd: ArmRankDemand, component: ArmMemoryComponent, bound: ArmComponentBound) -> ArmRankDemand {
+fn share_with_measurement(sh: ArmTierShare, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmTierShare {
+  if system_memory_component_same(a: sh.tier, b: tier) {
+    ArmTierShare { tier: sh.tier, bound: arm_apply_measurement(current: sh.bound, class: class) }
+  } else {
+    sh
+  }
+}
+
+fn placement_with_measurement(p: ArmComponentPlacement, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmComponentPlacement {
+  ArmComponentPlacement {
+    held: share_with_measurement(sh: p.held, tier: tier, class: class),
+    also: map(p.also, sh => share_with_measurement(sh: sh, tier: tier, class: class)),
+  }
+}
+
+fn rank_with_measurement(rd: ArmRankDemand, component: ArmMemoryComponent, tier: SystemMemoryComponent, class: ArmMeasurementClass) -> ArmRankDemand {
   ArmRankDemand {
     rank: rd.rank,
-    tier: rd.tier,
-    checkpoint_residency: if component == ArmCheckpointResidency { bound } else { rd.checkpoint_residency },
-    loader_transform: if component == ArmLoaderTransform { bound } else { rd.loader_transform },
-    runtime_fixed: if component == ArmRuntimeFixed { bound } else { rd.runtime_fixed },
-    collective_workspace: if component == ArmCollectiveWorkspace { bound } else { rd.collective_workspace },
-    activation_workspace: if component == ArmActivationWorkspace { bound } else { rd.activation_workspace },
-    graph_capture: if component == ArmGraphCapture { bound } else { rd.graph_capture },
-    kv_cache: if component == ArmKvCache { bound } else { rd.kv_cache },
-    fragmentation_allowance: if component == ArmFragmentationAllowance { bound } else { rd.fragmentation_allowance },
+    checkpoint_residency: if component == ArmCheckpointResidency { placement_with_measurement(p: rd.checkpoint_residency, tier: tier, class: class) } else { rd.checkpoint_residency },
+    loader_transform: if component == ArmLoaderTransform { placement_with_measurement(p: rd.loader_transform, tier: tier, class: class) } else { rd.loader_transform },
+    runtime_fixed: if component == ArmRuntimeFixed { placement_with_measurement(p: rd.runtime_fixed, tier: tier, class: class) } else { rd.runtime_fixed },
+    collective_workspace: if component == ArmCollectiveWorkspace { placement_with_measurement(p: rd.collective_workspace, tier: tier, class: class) } else { rd.collective_workspace },
+    activation_workspace: if component == ArmActivationWorkspace { placement_with_measurement(p: rd.activation_workspace, tier: tier, class: class) } else { rd.activation_workspace },
+    graph_capture: if component == ArmGraphCapture { placement_with_measurement(p: rd.graph_capture, tier: tier, class: class) } else { rd.graph_capture },
+    kv_cache: if component == ArmKvCache { placement_with_measurement(p: rd.kv_cache, tier: tier, class: class) } else { rd.kv_cache },
+    fragmentation_allowance: if component == ArmFragmentationAllowance { placement_with_measurement(p: rd.fragmentation_allowance, tier: tier, class: class) } else { rd.fragmentation_allowance },
   }
 }
 
@@ -2179,14 +2180,16 @@ fn receipt_pair_count(receipts: FreeMonoid<ArmComponentReceipt>, rank: Nat, tier
   count(filter(receipts, r => r.rank == rank && system_memory_component_same(a: r.tier, b: tier) && r.component == component))
 }
 
-fn roster_has_rank_tier(ranks: List<ArmRankDemand>, rank: Nat, tier: SystemMemoryComponent) -> Bool {
-  any(ranks, r => r.rank == rank && system_memory_component_same(a: r.tier, b: tier))
+// A receipt lands on one share: the (rank, component) placement's share in the receipt's tier. A
+// receipt for a tier the component has no share in does not land, and the mint refuses it.
+fn roster_has_share(ranks: List<ArmRankDemand>, rank: Nat, component: ArmMemoryComponent, tier: SystemMemoryComponent) -> Bool {
+  any(ranks, r => r.rank == rank && any(placement_shares(p: rank_component_placement(rd: r, c: component)), sh => system_memory_component_same(a: sh.tier, b: tier)))
 }
 
 fn apply_receipt_to_ranks(ranks: List<ArmRankDemand>, r: ArmComponentReceipt) -> List<ArmRankDemand> {
   map(ranks, rd =>
-    if rd.rank == r.rank && system_memory_component_same(a: rd.tier, b: r.tier) {
-      rank_with_component_bound(rd: rd, component: r.component, bound: arm_apply_measurement(current: rank_component_bound(rd: rd, c: r.component), class: r.class))
+    if rd.rank == r.rank {
+      rank_with_measurement(rd: rd, component: r.component, tier: r.tier, class: r.class)
     } else {
       rd
     })
@@ -2209,8 +2212,8 @@ fn arm_memory_fit_subject_with_receipts(
 ) -> ArmMemorySubjectMint {
   let rank_count = serving_topology_rank_count(t: topology)
   let host_memory = arm_host_memory(host: host)
-  let open_ranks = flat_map(nat_range_inclusive(lo: 1, hi: rank_count), i => map(tiers, t => open_rank_demand(rank: i - 1, tier: t.tier)))
-  let rank_out_of_range = first(filter(receipts, r => !roster_has_rank_tier(ranks: open_ranks, rank: r.rank, tier: r.tier)))
+  let open_ranks = open_ranks_over(rank_count: rank_count, tiers: tiers)
+  let rank_out_of_range = first(filter(receipts, r => !roster_has_share(ranks: open_ranks, rank: r.rank, component: r.component, tier: r.tier)))
   let duplicate = first(filter(receipts, r => receipt_pair_count(receipts: receipts, rank: r.rank, tier: r.tier, component: r.component) > 1))
   let provenance_bad = first(filter(receipts, r => !receipt_provenance_names_identity(r: r, ckpt: checkpoint, rt: runtime, tp: topology)))
   match tier_set_refusal(host_memory: host_memory, tiers: tiers) {
@@ -2458,6 +2461,9 @@ type MemoryTerm {
 // the binding. The KV-cache term names the demand-side growth law; the carved-pool SUPPLY
 // observation binds its own term (allocator-carve, static at a fixed allocator decision) beside
 // it, and the two never share a spelling.
+// The MoA census reads each component's HELD share. On the one-pool hosts this census serves, that
+// is the component's only share. A multi-tier census, one term per share, arrives with the first
+// multi-tier receipt binding (the GH200 lane's first launch).
 fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
   [
     MemoryTerm {
@@ -2466,7 +2472,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingStaticResidency,
       phase: ArmPhaseModelLoad,
       lifetime: MemoryLifetimeProcess,
-      bound: rd.checkpoint_residency,
+      bound: rd.checkpoint_residency.held.bound,
       derivation: "checkpoint manifest bytes placed by the loader's TP placement and transformation rules; the term is static across workload and its per-rank placement is NOT an even split unless a placement measurement says so" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2475,7 +2481,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingPhaseTransient,
       phase: ArmPhaseLoaderTransform,
       lifetime: MemoryLifetimePhase,
-      bound: rd.loader_transform,
+      bound: rd.loader_transform.held.bound,
       derivation: "the loader's padding, repacking and temporary copies on top of the resident checkpoint; exists only inside its phase" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2484,7 +2490,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingStaticResidency,
       phase: ArmPhaseModelLoad,
       lifetime: MemoryLifetimeProcess,
-      bound: rd.runtime_fixed,
+      bound: rd.runtime_fixed.held.bound,
       derivation: "runtime-fixed rank residency: allocator metadata, communication context and engine structures that exist from launch for the process life" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2493,7 +2499,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingStaticResidency,
       phase: ArmPhaseProfiling,
       lifetime: MemoryLifetimeLaunch,
-      bound: rd.collective_workspace,
+      bound: rd.collective_workspace.held.bound,
       derivation: "collective communication workspace: sized by the parallelism degree and dtype configuration, not by the request workload" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2502,7 +2508,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingPhaseTransient,
       phase: ArmPhaseProfiling,
       lifetime: MemoryLifetimePhase,
-      bound: rd.activation_workspace,
+      bound: rd.activation_workspace.held.bound,
       derivation: "activation and per-batch workspaces at the profiled batch shape; a phase transient whose peak the engine profiles against the batch ceiling it will actually run" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2511,7 +2517,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingStaticResidency,
       phase: ArmPhaseGraphCapture,
       lifetime: MemoryLifetimeLaunch,
-      bound: rd.graph_capture,
+      bound: rd.graph_capture.held.bound,
       derivation: "CUDA graph capture workspace and what persists after it; static across workload once captured" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2520,7 +2526,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingPerToken,
       phase: ArmPhaseIdleServing,
       lifetime: MemoryLifetimeLaunch,
-      bound: rd.kv_cache,
+      bound: rd.kv_cache.held.bound,
       derivation: "the admitted-sequences demand over the resolved cache roster: fixed-per-sequence state, per-token sparse cache, per-pooled-token index, per-sequence tail, plus grouping and padding; the generic term names the per-token growth law and the exact roster fold below is the only admitted cost" as NonEmptyStr,
     },
     MemoryTerm {
@@ -2529,7 +2535,7 @@ fn memory_terms_for_rank(rd: ArmRankDemand) -> List<MemoryTerm> {
       scaling_law: MemoryScalingChurnAllowance,
       phase: ArmPhasePeakServing,
       lifetime: MemoryLifetimeLaunch,
-      bound: rd.fragmentation_allowance,
+      bound: rd.fragmentation_allowance.held.bound,
       derivation: "allocator fragmentation under churn: an allowance term, bounded only by a conservative construction or a churn-protocol measurement" as NonEmptyStr,
     },
   ]
@@ -2681,7 +2687,6 @@ fn arm_wet_standing_discharges_open(standing: ArmWetStanding, open: ArmComponent
         ArmWetGraphAttributionUnestablished { raw_hundredths_gib: _, receipt: _ } => false
         ArmWetModelFalsified { component: _, predicted: _, observed_bytes: _, receipt: _ } => false
       }
-    ComponentBoundNotPlaced { placed_in: _ } => false
     ComponentBoundExact { bytes: _, how: _ } => false
     ComponentBoundInterval { lower: _, upper: _, how: _ } => false
     ComponentBoundCeiling { bytes: _, receipt: _ } => false

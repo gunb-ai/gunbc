@@ -26,8 +26,8 @@ import gunbc.spark.serving_capacity_intent {
   ServingCapacityIntentAdmitted, ServingCapacityIntentRefused,
 }
 import gunbc.spark.arm_memory_fit {
-  ArmComponentBound, ComponentBoundExact, ComponentBoundOpen, ComponentBoundNotPlaced, ComponentBoundInterval, ComponentBoundCeiling,
-  ArmRankDemand, ArmSupplyDeductions, ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded, ArmTierSupply,
+  ArmComponentBound, ComponentBoundExact, ComponentBoundOpen, ComponentBoundInterval, ComponentBoundCeiling,
+  ArmRankDemand, ArmComponentPlacement, ArmTierShare, placed_in, ArmSupplyDeductions, ArmPoolBound, ArmPoolBounded, ArmPoolUnbounded, ArmTierSupply,
   ArmMemorySubjectReady, ArmMemorySubjectRefused, arm_memory_fit_subject_with_rank_demands,
   arm_memory_fit_verdict, ArmMemoryFitVerdict, ArmMemoryFitProved, ArmMemoryFitRefused, ArmMemoryFitUnestablished,
   ArmCheckpointTierSplit, ArmCheckpointTierSplitMint, ArmCheckpointTierSplitReady, ArmCheckpointTierSplitUnestablished, ArmCheckpointTierSplitRefused, checkpoint_tier_split,
@@ -62,11 +62,8 @@ fn tw_tp_wire() -> String {
   serving_topology_wire(t: SingleSparkTp1) as String
 }
 
-// Every hand-supplied bound in this module is a GPU-local row's, so its derivation names that tier,
-// as the mint requires on a host with more than one memory. The host rows' checkpoint bounds come
-// from checkpoint_tier_split, which names the link tier itself.
 fn tw_how(text: String) -> NonEmptyStr {
-  join([text, " -- supplied value on ", tw_ckpt_wire(), " ", tw_tp_wire(), " tier ", system_memory_component_wire(c: tw_tier(gpu_local: true)) as String], "") as NonEmptyStr
+  join([text, " -- supplied value on ", tw_ckpt_wire(), " ", tw_tp_wire()], "") as NonEmptyStr
 }
 
 fn tw_gib(n: Nat) -> ByteSize {
@@ -77,10 +74,6 @@ fn tw_exact(n: Nat, what: String) -> ArmComponentBound {
   ComponentBoundExact { bytes: tw_gib(n), how: tw_how(text: what) }
 }
 
-// The offload choice keeps every non-checkpoint term on the GPU-local tier (supplied placement).
-fn tw_not_placed() -> ArmComponentBound {
-  ComponentBoundNotPlaced { placed_in: tw_tier(gpu_local: true) }
-}
 
 fn tw_host_memory() -> List<SystemMemoryComponent> {
   coherent_superchip_memory_components(row: nvidia_gh200_480gb_catalog)
@@ -161,34 +154,33 @@ fn tw_split(offloaded_layers: Nat, prefetch: Bool) -> ArmCheckpointTierSplitMint
     how: tw_how(text: "GLM-5.3-Flash FP8 expert stores, config.json at eb9eb208"))
 }
 
-fn tw_device_row(checkpoint: ArmComponentBound) -> ArmRankDemand {
+// ONE RANK ROW. The checkpoint is split by the engine law: its held share is on the GPU-local tier
+// and a second share is on the link tier. Every other term is placed on the GPU-local tier, which is
+// the hypothesis's own placement. The link tier holds none of them, and that is derived from the
+// placement, not authored.
+fn tw_local(bound: ArmComponentBound) -> ArmComponentPlacement {
+  placed_in(tier: tw_tier(gpu_local: true), bound: bound)
+}
+
+fn tw_rank(split: ArmCheckpointTierSplit, kv: ArmComponentPlacement) -> ArmRankDemand {
   ArmRankDemand {
     rank: 0,
-    tier: tw_tier(gpu_local: true),
-    checkpoint_residency: checkpoint,
-    loader_transform: tw_exact(n: 1, what: "loader transient"),
-    runtime_fixed: tw_exact(n: 2, what: "runtime fixed"),
-    collective_workspace: tw_exact(n: 0, what: "no collective at tp1"),
-    activation_workspace: tw_exact(n: 4, what: "activation peak"),
-    graph_capture: tw_exact(n: 2, what: "graph capture"),
-    kv_cache: tw_exact(n: 40, what: "kv arena"),
-    fragmentation_allowance: tw_exact(n: 2, what: "fragmentation"),
+    checkpoint_residency: ArmComponentPlacement {
+      held: ArmTierShare { tier: tw_tier(gpu_local: true), bound: split.device_residency },
+      also: [ArmTierShare { tier: tw_tier(gpu_local: false), bound: split.host_residency }],
+    },
+    loader_transform: tw_local(bound: tw_exact(n: 1, what: "loader transient")),
+    runtime_fixed: tw_local(bound: tw_exact(n: 2, what: "runtime fixed")),
+    collective_workspace: tw_local(bound: tw_exact(n: 0, what: "no collective at tp1")),
+    activation_workspace: tw_local(bound: tw_exact(n: 4, what: "activation peak")),
+    graph_capture: tw_local(bound: tw_exact(n: 2, what: "graph capture")),
+    kv_cache: kv,
+    fragmentation_allowance: tw_local(bound: tw_exact(n: 2, what: "fragmentation")),
   }
 }
 
-fn tw_host_row(checkpoint: ArmComponentBound) -> ArmRankDemand {
-  ArmRankDemand {
-    rank: 0,
-    tier: tw_tier(gpu_local: false),
-    checkpoint_residency: checkpoint,
-    loader_transform: tw_not_placed(),
-    runtime_fixed: tw_not_placed(),
-    collective_workspace: tw_not_placed(),
-    activation_workspace: tw_not_placed(),
-    graph_capture: tw_not_placed(),
-    kv_cache: tw_not_placed(),
-    fragmentation_allowance: tw_not_placed(),
-  }
+fn tw_local_kv() -> ArmComponentPlacement {
+  tw_local(bound: tw_exact(n: 40, what: "kv arena"))
 }
 
 fn tw_verdict_for(offloaded_layers: Nat) -> ArmMemoryFitVerdict? {
@@ -204,7 +196,7 @@ fn tw_verdict_for(offloaded_layers: Nat) -> ArmMemoryFitVerdict? {
         requested_profile: tw_profile(),
         host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog },
         tiers: tw_tiers(),
-        ranks: [tw_device_row(checkpoint: sp.device_residency), tw_host_row(checkpoint: sp.host_residency)]) {
+        ranks: [tw_rank(split: sp, kv: tw_local_kv())]) {
         ArmMemorySubjectRefused { cause: _ } => none
         ArmMemorySubjectReady { subject: s } => Present { value: arm_memory_fit_verdict(subject: s) }
       }
@@ -275,7 +267,7 @@ fn tw_verdicts() -> TwVerdicts {
       intent: tw_intent(), requested_profile: tw_profile(),
       host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog },
       tiers: filter(tw_tiers(), t => system_memory_component_same(a: t.tier, b: device)),
-      ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
+      ranks: [tw_rank_whole()]) {
       ArmMemorySubjectRefused { cause: c } => string_contains(s: c as String, pattern: "does not carry exactly one row for each memory")
       ArmMemorySubjectReady { subject: _ } => false
     },
@@ -284,7 +276,7 @@ fn tw_verdicts() -> TwVerdicts {
       intent: tw_intent(), requested_profile: tw_profile(),
       host: gb10_host_class(),
       tiers: tw_tiers(),
-      ranks: [tw_device_row(checkpoint: tw_exact(n: 306, what: "whole checkpoint"))]) {
+      ranks: [tw_rank_whole()]) {
       ArmMemorySubjectRefused { cause: _ } => true
       ArmMemorySubjectReady { subject: _ } => false
     },
@@ -317,7 +309,6 @@ fn tw_exact_bytes(b: ArmComponentBound) -> Nat {
   match b {
     ComponentBoundExact { bytes: n, how: _ } => byte_size_count(b: n)
     ComponentBoundOpen { obligation: _ } => 1
-    ComponentBoundNotPlaced { placed_in: _ } => 1
     ComponentBoundInterval { lower: _, upper: _, how: _ } => 1
     ComponentBoundCeiling { bytes: _, receipt: _ } => 1
   }
@@ -349,17 +340,6 @@ test fn w_an_offload_choice_larger_than_the_checkpoint_is_refused() -> Bool {
   }
 }
 
-// A NOT-PLACED TERM PREDICTS ZERO IN ITS TIER. Any bytes observed there falsify the placement.
-test fn w_bytes_observed_where_a_term_was_not_placed_falsify_the_placement() -> Bool {
-  (match arm_readback_observation(component: ArmKvCache, predicted: tw_not_placed(), observed: byte_size(count: 1), receipt: "fixture readback" as NonEmptyStr) {
-    ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
-    ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
-  })
-    && (match arm_readback_observation(component: ArmKvCache, predicted: tw_not_placed(), observed: byte_size(count: 0), receipt: "fixture readback" as NonEmptyStr) {
-      ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => true
-      ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => false
-    })
-}
 
 
 // THE SPLIT EXISTS ONLY UNDER AN ESTABLISHED ENGINE LAW. An unread UVA reading leaves it
@@ -395,9 +375,27 @@ test fn w_an_unread_or_relayout_engine_reading_never_prices_a_split() -> Bool {
 
 // ── EACH TIER'S FACTS ARE BOUND TO THAT TIER ─────────────────────────────────────────────────────
 //
-// The reds the side-chat ruling on 15a62c33 names. Each one keeps both GH200 tier identities
-// correct and lies only about what a tier row holds, so each refusal comes from the tier-facts wall
-// and not from the tier-set join.
+// What the side-chat ruling on 15a62c33 and review 76670 asked to be unwritable is now unwritable,
+// with no claim needed to catch it:
+// - a component absent from every tier: a placement always holds one share;
+// - a deduction marked absent: deductions carry bounds only;
+// - a bound whose tier lives in its prose: a share's tier is a typed field.
+// What a caller CAN still write is refused at the mint by a typed identity join. Each red below keeps
+// both GH200 tier identities right and lies only about placement or supply.
+
+fn tw_rank_whole() -> ArmRankDemand {
+  ArmRankDemand {
+    rank: 0,
+    checkpoint_residency: tw_local(bound: tw_exact(n: 306, what: "whole checkpoint")),
+    loader_transform: tw_local(bound: tw_exact(n: 1, what: "loader transient")),
+    runtime_fixed: tw_local(bound: tw_exact(n: 2, what: "runtime fixed")),
+    collective_workspace: tw_local(bound: tw_exact(n: 0, what: "no collective at tp1")),
+    activation_workspace: tw_local(bound: tw_exact(n: 4, what: "activation peak")),
+    graph_capture: tw_local(bound: tw_exact(n: 2, what: "graph capture")),
+    kv_cache: tw_local_kv(),
+    fragmentation_allowance: tw_local(bound: tw_exact(n: 2, what: "fragmentation")),
+  }
+}
 
 fn tw_mint_refusal(rows: List<ArmRankDemand>, tiers: List<ArmTierSupply>) -> String? {
   match arm_memory_fit_subject_with_rank_demands(
@@ -418,86 +416,80 @@ fn tw_refused_with(rows: List<ArmRankDemand>, tiers: List<ArmTierSupply>, patter
   }
 }
 
-fn tw_all_host_rows() -> List<ArmRankDemand>? {
+fn tw_split_rank(kv: ArmComponentPlacement) -> List<ArmRankDemand>? {
   match tw_split(offloaded_layers: 42, prefetch: false) {
-    ArmCheckpointTierSplitReady { split: sp } => Present { value: [tw_device_row(checkpoint: sp.device_residency), tw_host_row(checkpoint: sp.host_residency)] }
+    ArmCheckpointTierSplitReady { split: sp } => Present { value: [tw_rank(split: sp, kv: kv)] }
     ArmCheckpointTierSplitRefused { cause: _ } => none
     ArmCheckpointTierSplitUnestablished { obligations: _ } => none
   }
 }
 
-fn tw_with_device_kv(rows: List<ArmRankDemand>, kv: ArmComponentBound) -> List<ArmRankDemand> {
-  map(rows, r => if tw_is_gpu_local(c: r.tier) {
-    ArmRankDemand {
-      rank: r.rank, tier: r.tier, checkpoint_residency: r.checkpoint_residency, loader_transform: r.loader_transform,
-      runtime_fixed: r.runtime_fixed, collective_workspace: r.collective_workspace, activation_workspace: r.activation_workspace,
-      graph_capture: r.graph_capture, kv_cache: kv, fragmentation_allowance: r.fragmentation_allowance,
-    }
-  } else { r })
-}
-
-// Positive control: the honest rows mint, so each red below differs from an admitted subject only
-// in its lie.
-test fn w_the_honest_two_tier_rows_mint() -> Bool {
-  match tw_all_host_rows() {
+// Positive control: the honest placement mints, so each red below differs from an admitted subject
+// only in its lie.
+test fn w_the_honest_two_tier_placement_mints() -> Bool {
+  match tw_split_rank(kv: tw_local_kv()) {
     Present { value: rows } => match tw_mint_refusal(rows: rows, tiers: tw_tiers()) { Absent => true Present { value: _ } => false }
     Absent => false
   }
 }
 
-// RED 1: the KV cache marked not placed in BOTH tiers (the device row points at the host tier, which
-// already points back). It would be priced nowhere.
-test fn w_a_term_not_placed_in_any_tier_is_refused() -> Bool {
-  match tw_all_host_rows() {
+fn tw_device_headroom(kv: ArmComponentPlacement) -> Nat {
+  let device = tw_tier(gpu_local: true)
+  match tw_split_rank(kv: kv) {
     Present { value: rows } =>
-      tw_refused_with(rows: tw_with_device_kv(rows: rows, kv: ComponentBoundNotPlaced { placed_in: tw_tier(gpu_local: false) }), tiers: tw_tiers(), pattern: "priced nowhere")
+      match arm_memory_fit_subject_with_rank_demands(
+        checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: SingleSparkTp1,
+        intent: tw_intent(), requested_profile: tw_profile(),
+        host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog }, tiers: tw_tiers(), ranks: rows) {
+        ArmMemorySubjectReady { subject: s } => match arm_memory_fit_verdict(subject: s) {
+          ArmMemoryFitProved { rank: _, tier: t, phase: _, headroom_bytes: h } =>
+            if system_memory_component_same(a: t, b: device) { byte_size_count(b: h) } else { 0 }
+          ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => 0
+          ArmMemoryFitUnestablished { obligations: _ } => 0
+        }
+        ArmMemorySubjectRefused { cause: _ } => 0
+      }
+    Absent => 0
+  }
+}
+
+// ROUTE: the KV cache placed wholly on the link tier leaves the GPU-local tier no KV term at all. The
+// device worst corner therefore gains the 40 GiB of headroom the KV took. The absence is derived from
+// the placement and changes the device-tier verdict, which the claim reads.
+test fn w_a_term_placed_on_the_link_tier_is_absent_from_the_device_tier() -> Bool {
+  let local_kv = tw_device_headroom(kv: tw_local_kv())
+  let link_kv = tw_device_headroom(kv: placed_in(tier: tw_tier(gpu_local: false), bound: ComponentBoundExact { bytes: tw_gib(40), how: tw_how(text: "kv arena on the link tier") }))
+  local_kv > 0 && link_kv == local_kv + byte_size_count(b: tw_gib(40))
+}
+
+// RED: a share placed in a memory the host does not have.
+test fn w_a_share_in_a_foreign_memory_is_refused() -> Bool {
+  match tw_split_rank(kv: placed_in(tier: gb10_memory_tier(), bound: tw_exact(n: 40, what: "kv arena"))) {
+    Present { value: rows } => tw_refused_with(rows: rows, tiers: tw_tiers(), pattern: "a memory this host does not have")
     Absent => false
   }
 }
 
-// RED 2: both supply deductions marked not placed.
-test fn w_a_deduction_marked_not_placed_is_refused() -> Bool {
-  match tw_all_host_rows() {
-    Present { value: rows } =>
-      tw_refused_with(rows: rows, tiers: map(tw_tiers(), t => ArmTierSupply {
-        tier: t.tier, pool: t.pool,
-        deductions: ArmSupplyDeductions {
-          host_os_control_reserve: ComponentBoundNotPlaced { placed_in: tw_tier(gpu_local: true) },
-          foreign_residency: ComponentBoundNotPlaced { placed_in: tw_tier(gpu_local: false) },
-        },
-      }), pattern: "is an exact zero")
+// RED: two shares of one component in one memory.
+test fn w_two_shares_in_one_memory_are_refused() -> Bool {
+  match tw_split_rank(kv: ArmComponentPlacement {
+    held: ArmTierShare { tier: tw_tier(gpu_local: true), bound: tw_exact(n: 20, what: "kv arena half") },
+    also: [ArmTierShare { tier: tw_tier(gpu_local: true), bound: tw_exact(n: 20, what: "kv arena other half") }],
+  }) {
+    Present { value: rows } => tw_refused_with(rows: rows, tiers: tw_tiers(), pattern: "placed twice in one memory")
     Absent => false
   }
 }
 
-// RED 3: NotPlaced naming a memory the host does not have, and naming its own tier.
-test fn w_not_placed_naming_a_foreign_or_its_own_tier_is_refused() -> Bool {
-  match tw_all_host_rows() {
-    Present { value: rows } =>
-      tw_refused_with(rows: tw_with_device_kv(rows: rows, kv: ComponentBoundNotPlaced { placed_in: gb10_memory_tier() }), tiers: tw_tiers(), pattern: "not a memory of this host")
-        && tw_refused_with(rows: tw_with_device_kv(rows: rows, kv: ComponentBoundNotPlaced { placed_in: tw_tier(gpu_local: true) }), tiers: tw_tiers(), pattern: "names its own tier")
-    Absent => false
-  }
-}
-
-// RED 4: the HBM and LPDDR5X pool readings swapped. Both tier identities stay right, but the
+// RED: the HBM and LPDDR5X pool readings swapped. Both tier identities stay right, but the
 // GPU-local tier would be priced against the host memory's pool.
 test fn w_swapped_tier_pools_are_refused() -> Bool {
-  match tw_all_host_rows() {
+  match tw_split_rank(kv: tw_local_kv()) {
     Present { value: rows } =>
       tw_refused_with(rows: rows, tiers: [
         ArmTierSupply { tier: tw_tier(gpu_local: true), pool: tw_pool(bytes: nvidia_gh200_480gb_catalog.cpu_memory.memory.capacity), deductions: tw_deductions(gib: 1) },
         ArmTierSupply { tier: tw_tier(gpu_local: false), pool: tw_pool(bytes: nvidia_gh200_480gb_catalog.gpu.memory.capacity), deductions: tw_deductions(gib: 16) },
       ], pattern: "above that memory's catalog capacity")
-    Absent => false
-  }
-}
-
-// RED 5: on a two-tier host, a bound whose derivation does not name its tier is refused.
-test fn w_a_bound_that_does_not_name_its_tier_is_refused() -> Bool {
-  match tw_all_host_rows() {
-    Present { value: rows } =>
-      tw_refused_with(rows: tw_with_device_kv(rows: rows, kv: ComponentBoundExact { bytes: tw_gib(40), how: join(["kv arena -- ", tw_ckpt_wire(), " ", tw_tp_wire()], "") as NonEmptyStr }), tiers: tw_tiers(), pattern: "does not name its tier")
     Absent => false
   }
 }

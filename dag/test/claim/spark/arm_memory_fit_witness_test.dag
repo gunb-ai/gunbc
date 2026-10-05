@@ -50,7 +50,7 @@ import gunbc.spark.arm_memory_fit {
   demand_for_phase,
   arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict, arm_memory_subject_open_components,
-  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply,
+  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply, placed_in,
   arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
@@ -264,15 +264,22 @@ fn fx_tiers(pool: ArmPoolBound, deductions: ArmSupplyDeductions) -> List<ArmTier
 fn fx_rank(rank: Nat, checkpoint: ArmComponentBound) -> ArmRankDemand {
   ArmRankDemand {
     rank: rank,
-    tier: gb10_memory_tier(),
-    checkpoint_residency: checkpoint,
-    loader_transform: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1),
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: checkpoint),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),    rank: rank,
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: checkpoint),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
 }
 
@@ -554,15 +561,14 @@ test fn w_the_shrunk_fully_receipted_intent_is_proved() -> Bool {
 test fn w_the_same_subject_without_one_receipt_is_unestablished() -> Bool {
   let loader_open = ArmRankDemand {
     rank: 0,
-    tier: gb10_memory_tier(),
-    checkpoint_residency: fx_even_checkpoint(),
-    loader_transform: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr },
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: fx_even_checkpoint()),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: ComponentBoundOpen { obligation: "fx-open" as NonEmptyStr }),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
   let ranks = [loader_open, fx_rank(rank: 1, checkpoint: fx_even_checkpoint()), fx_rank(rank: 2, checkpoint: fx_even_checkpoint()), fx_rank(rank: 3, checkpoint: fx_even_checkpoint())]
   match arm_memory_fit_subject_with_rank_demands(
@@ -625,15 +631,14 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
     how: fx_how(text: "fixture: mandatory per-rank demand between the decided envelope's most generous reading and the pool's most generous reading" as NonEmptyStr))
   let terms = ArmRankDemand {
     rank: 0,
-    tier: gb10_memory_tier(),
-    checkpoint_residency: between,
-    loader_transform: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1),
-    runtime_fixed: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2),
-    collective_workspace: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1),
-    activation_workspace: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2),
-    graph_capture: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1),
-    kv_cache: fx_kv_bound(),
-    fragmentation_allowance: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1),
+    checkpoint_residency: placed_in(tier: gb10_memory_tier(), bound: between),
+    loader_transform: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CheckpointRankResidencyBound" as NonEmptyStr, gib: 1)),
+    runtime_fixed: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "RuntimeFixedAllocationBound" as NonEmptyStr, gib: 2)),
+    collective_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "CollectiveWorkspaceBound" as NonEmptyStr, gib: 1)),
+    activation_workspace: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "ActivationWorkspaceBound" as NonEmptyStr, gib: 2)),
+    graph_capture: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "GraphCaptureBound" as NonEmptyStr, gib: 1)),
+    kv_cache: placed_in(tier: gb10_memory_tier(), bound: fx_kv_bound()),
+    fragmentation_allowance: placed_in(tier: gb10_memory_tier(), bound: fx_ceiling(component_kind: "AllocatorFragmentationBound" as NonEmptyStr, gib: 1)),
   }
   match arm_memory_fit_subject_with_rank_demands(
     checkpoint: Glm53NativeFp8,
@@ -1013,14 +1018,14 @@ test fn w_a_measured_receipt_discharges_exactly_its_one_term() -> Bool {
       let rank0 = first(filter(subject.ranks, r => r.rank == 0))
       let rank1 = first(filter(subject.ranks, r => r.rank == 1))
       (match rank0 {
-        Present { value: rd } => match rd.graph_capture {
+        Present { value: rd } => match rd.graph_capture.held.bound {
           ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 1073741824
           _ => false
         }
         Absent => false
       })
         && (match rank1 {
-          Present { value: rd } => match rd.graph_capture {
+          Present { value: rd } => match rd.graph_capture.held.bound {
             ComponentBoundOpen { obligation: _ } => true
             _ => false
           }
@@ -1083,7 +1088,7 @@ test fn w_the_joined_bound_participates_in_falsification() -> Bool {
       match first(filter(subject.ranks, r => r.rank == 0)) {
         Absent => false
         Present { value: rd } =>
-          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
+          match arm_readback_observation(component: ArmGraphCapture, predicted: rd.graph_capture.held.bound, observed: fx_gib(2), receipt: "fx-readback-after-join" as NonEmptyStr) {
             ArmMemoryModelFalsified { component: _, predicted_bound: _, observed: _, receipt: _ } => true
             ArmObservationConsistent { component: _, predicted_bound: _, observed: _, receipt: _ } => false
           }
@@ -1395,7 +1400,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
       let rank3 = first(filter(subject.ranks, r => r.rank == 3))
       (match rank0 {
         Present { value: rd } =>
-          match rd.checkpoint_residency {
+          match rd.checkpoint_residency.held.bound {
             ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 82699595285
             _ => false
           }
@@ -1403,7 +1408,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
       })
         && (match rank1 {
           Present { value: rd } =>
-            match rd.graph_capture {
+            match rd.graph_capture.held.bound {
               ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 0
               _ => false
             }
@@ -1411,7 +1416,7 @@ test fn w_the_wet_bundle_joins_and_discharges_checkpoint_graph_and_kv() -> Bool 
         })
         && (match rank3 {
           Present { value: rd } =>
-            match rd.kv_cache {
+            match rd.kv_cache.held.bound {
               ComponentBoundCeiling { bytes: b, receipt: _ } => byte_size_count(b: b) == 18296560681
               _ => false
             }
@@ -1468,7 +1473,7 @@ test fn w_the_262k_prefill_workspace_is_present_and_named() -> Bool {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
         all(subject.ranks, rb =>
-          match rb.activation_workspace {
+          match rb.activation_workspace.held.bound {
             ComponentBoundOpen { obligation: _ } => true
             _ => false
           })
@@ -2452,14 +2457,14 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
     ArmMemorySubjectReady { subject: subject } =>
       length(subject.ranks) == 4
         && all(subject.ranks, rb =>
-          match rb.checkpoint_residency {
+          match rb.checkpoint_residency.held.bound {
             ComponentBoundExact { bytes: b, how: h } =>
               byte_size_count(b: b) == 83237158776
                 && string_contains(s: h as String, pattern: "DERIVED EXACT by the TP4 placement projection")
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.loader_transform {
+          match rb.loader_transform.held.bound {
             ComponentBoundCeiling { bytes: b, receipt: r } =>
               byte_size_count(b: b) > 0
                 && string_contains(s: r as String, pattern: "page cache")
@@ -2467,37 +2472,37 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.fragmentation_allowance {
+          match rb.fragmentation_allowance.held.bound {
             ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "churn")
             _ => false
           })
         && all(subject.ranks, rb =>
-          match rb.collective_workspace {
+          match rb.collective_workspace.held.bound {
             ComponentBoundInterval { lower: l, upper: _, how: h } =>
               byte_size_count(b: l) == 0 && string_contains(s: h as String, pattern: "discharged by inclusion")
             _ => false
           })
         && (match first(filter(subject.ranks, rb => rb.rank == 0)) {
           Present { value: r0 } =>
-            (match r0.checkpoint_residency {
+            (match r0.checkpoint_residency.held.bound {
               ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
-              && (match r0.runtime_fixed {
+              && (match r0.runtime_fixed.held.bound {
                 ComponentBoundInterval { lower: l, upper: u, how: _ } =>
                   byte_size_count(b: l) == 17825792 && byte_size_count(b: u) == 106681602
                 _ => false
               })
-              && (match r0.activation_workspace {
+              && (match r0.activation_workspace.held.bound {
                 ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 14779376601
                 _ => false
               })
-              && (match r0.graph_capture {
+              && (match r0.graph_capture.held.bound {
                 ComponentBoundInterval { lower: l, upper: u, how: _ } =>
                   byte_size_count(b: l) == 53687091 && byte_size_count(b: u) == 59055801
                 _ => false
               })
-              && (match r0.kv_cache {
+              && (match r0.kv_cache.held.bound {
                 ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 13766049792
                 _ => false
               })
@@ -2505,11 +2510,11 @@ test fn w_the_launch_wall_subject_mints_with_every_carry_named() -> Bool {
         })
         && (match first(filter(subject.ranks, rb => rb.rank == 3)) {
           Present { value: r3 } =>
-            (match r3.checkpoint_residency {
+            (match r3.checkpoint_residency.held.bound {
               ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
               _ => false
             })
-              && (match r3.activation_workspace {
+              && (match r3.activation_workspace.held.bound {
                 ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 7735630235
                 _ => false
               })
@@ -2582,7 +2587,7 @@ test fn w_the_composite_observation_still_discharges_no_placement_term() -> Bool
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.checkpoint_residency { ComponentBoundOpen { obligation: _ } => false _ => true })
+        all(subject.ranks, rb => match rb.checkpoint_residency.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
     })
 }
 
@@ -2801,17 +2806,17 @@ test fn w_the_projection_census_and_conservation_hold_exact() -> Bool {
 test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread() -> Bool {
   let ranks = arm_experiment_kvplan_v2_2026_09_26_launch_wall_ranks()
   length(ranks) == 4
-    && all(ranks, rb => match rb.checkpoint_residency {
+    && all(ranks, rb => match rb.checkpoint_residency.held.bound {
       ComponentBoundExact { bytes: b, how: _ } => byte_size_count(b: b) == 83237158776
       _ => false
     })
     && (match first(filter(ranks, rb => rb.rank == 1)) {
       Present { value: r1 } =>
-        (match r1.runtime_fixed {
+        (match r1.runtime_fixed.held.bound {
           ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
           _ => false
         })
-          && (match r1.collective_workspace {
+          && (match r1.collective_workspace.held.bound {
             ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 3274219983
             _ => false
           })
@@ -2819,11 +2824,11 @@ test fn w_the_projection_places_evenly_and_the_residue_pins_the_composite_spread
     })
     && (match first(filter(ranks, rb => rb.rank == 3)) {
       Present { value: r3 } =>
-        (match r3.runtime_fixed {
+        (match r3.runtime_fixed.held.bound {
           ComponentBoundInterval { lower: _, upper: u, how: _ } => byte_size_count(b: u) == 5260642358
           _ => false
         })
-          && (match r3.collective_workspace {
+          && (match r3.collective_workspace.held.bound {
             ComponentBoundInterval { lower: l, upper: u, how: _ } => byte_size_count(b: l) == 0 && byte_size_count(b: u) == 5260642358
             _ => false
           })
@@ -2898,7 +2903,7 @@ test fn w_the_loader_receipts_mint_from_the_executed_bracket() -> Bool {
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.loader_transform { ComponentBoundOpen { obligation: _ } => false _ => true })
+        all(subject.ranks, rb => match rb.loader_transform.held.bound { ComponentBoundOpen { obligation: _ } => false _ => true })
     })
 }
 
@@ -2999,7 +3004,7 @@ test fn w_the_five_seat_interim_protocol_is_named() -> Bool {
     && (match fx_launch_wall_subject_mint() {
       ArmMemorySubjectRefused { cause: _ } => false
       ArmMemorySubjectReady { subject: subject } =>
-        all(subject.ranks, rb => match rb.fragmentation_allowance {
+        all(subject.ranks, rb => match rb.fragmentation_allowance.held.bound {
           ComponentBoundOpen { obligation: o } => string_contains(s: o as String, pattern: "NEVER RAN")
           _ => false
         })
