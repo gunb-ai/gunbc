@@ -2,8 +2,8 @@ module v2.test.name_resolve.arrow_domain_is_first_positional
 
 import v2.compiler.resolve { arrow_domain_frame_binders, arrow_domain_has_named_bindings }
 import v2.std.arrow_signature { declared_signature }
-import v2.compiler.symbol_index_fill { symbol_index_fill_containment_node }
-import v2.std.symbol_index { disj_variant_counts_in_module, empty_symbol_index, symbol_index_lookup }
+import v2.compiler.symbol_index_fill { disj_variant_counts_in_module, symbol_index_fill_containment_node }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.collection { map_lookup }
 import v2.std.optional { Absent, Present }
