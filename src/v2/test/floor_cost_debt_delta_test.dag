@@ -1,0 +1,64 @@
+module v2.test.floor_cost_debt_delta
+
+import std.types { List }
+import v2.workflow.floor_cost_debt_delta {
+  CostDebtRosterDelta, CostDebtRosterDeltaObserved, CostDebtRosterDeltaUnobserved,
+  cost_debt_roster_delta_from_sources,
+}
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE RULE UNDER TEST is `v2.workflow.floor_cost_debt_delta`: which identities a change moved across
+// the cost-debt roster boundary. The base is a small roster SOURCE (the fold reads the base as
+// tokens); the head is the roster value. Each claim supplies both, so none pays the real roster.
+// The real path -- the base shown from git, the head being `floor_cost_debt_roster()` -- is
+// `cost_debt_roster_delta_at_base`, executed by the required floor on every change that touches
+// the roster file and printed as its `[floor-cost-debt-delta]` lines.
+
+data base_roster_source: String = "module fixture.roster\n\nfn chunk() -> List<String> {\n  [\"m.w.already_rostered\", \"m.w.being_restored\"]\n}\n\ndata note: String = \" censored=\"\n"
+
+fn delta_of(head: List<String>) -> CostDebtRosterDelta {
+  cost_debt_roster_delta_from_sources(base_source: base_roster_source, head_roster: head)
+}
+
+// THE DISCRIMINATING RED OF ADMISSION: an identity on the head roster that the base file never
+// spelled is admitted, and only that one. A fold that read "nothing moved" -- the floor's behaviour
+// before this module, when adding a row ran nothing -- answers an empty `admitted` and fails here.
+test fn a_row_added_at_head_is_admitted() -> Bool {
+  match delta_of(head: ["m.w.already_rostered", "m.w.being_restored", "m.w.newly_admitted"]) {
+    CostDebtRosterDeltaObserved { admitted: a, restored: r } =>
+      (a == ["m.w.newly_admitted"]) && (r == [" censored="])
+    CostDebtRosterDeltaUnobserved { cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED OF RESTORATION: an identity the base spelled and the head roster lacks is
+// restored. The roster file's non-identity literal rides along by design; the host keeps only
+// literals that name a declared test fn.
+test fn a_row_deleted_at_head_is_restored() -> Bool {
+  match delta_of(head: ["m.w.already_rostered"]) {
+    CostDebtRosterDeltaObserved { admitted: a, restored: r } =>
+      (a == []) && (r == ["m.w.being_restored", " censored="])
+    CostDebtRosterDeltaUnobserved { cause: _ } => false
+  }
+}
+
+// THE CONTROL: an unchanged roster moves nothing that names a row.
+test fn an_unchanged_roster_admits_nothing() -> Bool {
+  match delta_of(head: ["m.w.already_rostered", "m.w.being_restored"]) {
+    CostDebtRosterDeltaObserved { admitted: a, restored: r } => (a == []) && (r == [" censored="])
+    CostDebtRosterDeltaUnobserved { cause: _ } => false
+  }
+}
+
+// AN UNREADABLE BASE REFUSES rather than answering "nothing moved".
+test fn an_untokenizable_base_is_unobserved() -> Bool {
+  match cost_debt_roster_delta_from_sources(base_source: "\"", head_roster: ["m.w.x"]) {
+    CostDebtRosterDeltaObserved { admitted: _, restored: _ } => false
+    CostDebtRosterDeltaUnobserved { cause: _ } => true
+  }
+}

@@ -13033,6 +13033,11 @@ pub fn build_live_read_selection_manifest(
 }
 
 impl MultiEntryIndex {
+    /// The source text of the module this index declares under `module`, if any.
+    pub(crate) fn module_source_content(&self, module: &str) -> Option<String> {
+        self.source_files.get(module).map(|sf| sf.content.clone())
+    }
+
     /// This index's opaque identity, for checking a manifest against the index about to consume it.
     pub fn generation(&self) -> u64 {
         self.generation

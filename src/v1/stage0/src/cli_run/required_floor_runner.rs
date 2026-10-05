@@ -891,6 +891,110 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
     Ok(out)
 }
 
+/// The identities a change moved across the cost-debt roster boundary, read from
+/// `v2.workflow.floor_cost_debt_delta` `cost_debt_roster_delta_at_base` at the floor's resolved
+/// comparison base: `(admitted, restored)`. A cost row must never hide a semantic red, so every
+/// moved identity is planned once as a changed witness -- an admitted one under the roster's
+/// verdict-only policy, a restored one under the ordinary line. `None` when the diff does not touch
+/// the roster file, which is the module's own `floor_cost_debt_roster_path`, not a host literal.
+/// The host's share is the two reads the fold cannot perform from here (whether the diff names the
+/// file, and which base the floor resolved) and decoding the record; an unobserved delta REFUSES.
+pub(crate) fn cost_debt_roster_delta_for_diff(
+    diff_paths: &[&String],
+) -> Result<Option<(Vec<String>, Vec<String>)>, String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_cost_debt_delta.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_cost_debt_delta resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let roster_path =
+        match v1_interpreter::run_in_context(&ctx, "floor_cost_debt_roster_path", false)
+            .map_err(|e| format!("floor_cost_debt_roster_path: {e}"))?
+        {
+            Value::Str(path) => path.to_string(),
+            other => {
+                return Err(format!(
+                    "floor_cost_debt_roster_path is not a String: {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+        };
+    if !diff_paths.iter().any(|p| p.as_str() == roster_path) {
+        return Ok(None);
+    }
+    let base = floor_diff_comparison_readout()?.base().to_string();
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "cost_debt_roster_delta_at_base",
+        &[(Some("base".to_string()), str_value(base))],
+        false,
+    )
+    .map_err(|e| format!("cost_debt_roster_delta_at_base: {e}"))?;
+    let Value::Variant {
+        variant_name,
+        fields,
+        ..
+    } = &result
+    else {
+        return Err(
+            "cost_debt_roster_delta_at_base did not return a CostDebtRosterDelta".to_string(),
+        );
+    };
+    if ctx.sym_eq(*variant_name, "CostDebtRosterDeltaUnobserved") {
+        return Err(match ctx.field(fields, "cause") {
+            Some(Value::Str(cause)) => cause.to_string(),
+            _ => "the roster delta is unobserved (no cause)".to_string(),
+        });
+    }
+    if !ctx.sym_eq(*variant_name, "CostDebtRosterDeltaObserved") {
+        return Err("cost_debt_roster_delta_at_base returned an unknown arm".to_string());
+    }
+    let strings = |name: &str| -> Result<Vec<String>, String> {
+        floor_decode_list(&ctx, ctx.field(fields, name))
+            .map_err(|e| format!("CostDebtRosterDelta.{name}: {e}"))?
+            .into_iter()
+            .map(|v| match v {
+                Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "CostDebtRosterDelta.{name} carries {}",
+                    floor_value_shape(Some(other))
+                )),
+            })
+            .collect()
+    };
+    Ok(Some((strings("admitted")?, strings("restored")?)))
+}
+
+/// The moved identities that name a test fn the head tree declares, in sorted order. An admitted
+/// identity that names nothing is already refused by the roster's own reverse join
+/// (`CostDebtRosterStanding::Undeclared`); a restored literal that names nothing is not a witness
+/// (the delta's base side is every string literal of the roster file, see
+/// `v2.workflow.floor_cost_debt_delta`), and planning it would mint a decline for no claim. The
+/// declared test-fn names come from the same scan `test_migration_dag_test_fn_names` performs.
+pub(crate) fn cost_debt_moved_identities(
+    admitted: &[String],
+    restored: &[String],
+    module_content: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    let mut out: Vec<String> = admitted
+        .iter()
+        .chain(restored.iter())
+        .filter(|identity| match identity.rsplit_once('.') {
+            Some((module, function)) => module_content(module).is_some_and(|content| {
+                crate::cli_run::test_migration::test_migration_dag_test_fn_names(&content)
+                    .iter()
+                    .any(|name| name == function)
+            }),
+            None => false,
+        })
+        .cloned()
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
 /// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
 /// listing or show refused -- a refusal is never read as an absent or empty file.
@@ -1600,6 +1704,33 @@ fn changed_and_enrolled_witness_identities_with_index(
         .collect();
     diff_paths.sort();
     diff_paths.dedup();
+    // THE SIXTH PROJECTION: the identities the diff moved across the cost-debt roster boundary
+    // (`v2.workflow.floor_cost_debt_delta`). A roster row is declined at build and asserts no
+    // verdict, so admitting or deleting one is a change to what the floor runs, and the identity
+    // answers once on that change -- as a changed witness, through the projection every other
+    // changed identity takes. Same diff and same base as every projection above.
+    let mut changed = changed;
+    if let Some((admitted, restored)) =
+        cost_debt_roster_delta_for_diff(&diff_paths.iter().collect::<Vec<_>>()).map_err(|e| {
+            format!("REQUIRED-FLOOR REFUSAL cause=CostDebtRosterDeltaUnobserved — {e}")
+        })?
+    {
+        let moved = cost_debt_moved_identities(&admitted, &restored, |module| {
+            index.module_source_content(module)
+        });
+        eprintln!(
+            "[floor-cost-debt-delta] admitted={} restored={} planned_as_changed={}",
+            admitted.len(),
+            restored.len(),
+            moved.len()
+        );
+        for identity in &moved {
+            eprintln!("[floor-cost-debt-delta] identity={identity}");
+        }
+        changed.extend(moved);
+        changed.sort();
+        changed.dedup();
+    }
     Ok(FloorDiffProjections {
         changed_witnesses: changed,
         newly_enrolled_witnesses: enrolled,
@@ -3700,6 +3831,13 @@ pub(crate) fn changed_witness_projection_rows(
                 // rather than a plausible one nobody prints.
                 let (standing, cause): (&'static str, &'static str) = match outcome {
                     Some(ClaimDisposition::KnownRedHeld) => ("planned-and-known-red-held", ""),
+                    // A COST ROW MUST NEVER HIDE A SEMANTIC RED (`v2.workflow.floor_changed_witness`
+                    // `CostDebtRowOverFailingClaim`): a Failed verdict under the cost-debt policy
+                    // names the row standing over it, rather than the generic no-verdict cause.
+                    Some(ClaimDisposition::Failed) if verdict_only_policy => (
+                        "cost-debt-row-over-failing-claim",
+                        "cost_debt_row_over_failing_claim",
+                    ),
                     _ if cost_missing => (
                         "cost-observation-missing-under-verdict-only",
                         "changed_witness_cost_observation_missing_under_verdict_only",
@@ -16031,7 +16169,10 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             blockers,
             vec![RequiredFloorIdentityBlocker {
                 identity: identity.to_string(),
-                cause: "changed_witness_planned_without_terminal_verdict".to_string(),
+                // The long home is the same declaration as a cost-debt row (operator ruling A,
+                // 2026-09-11), so a Failed verdict under its verdict-only policy names the row
+                // standing over a semantic red, not the generic no-verdict cause.
+                cause: "cost_debt_row_over_failing_claim".to_string(),
                 origin: RequiredFloorBlockerOrigin::Changed,
             }]
         );
@@ -17508,5 +17649,55 @@ mod changed_selections_outside_discovery_mirror_tests {
                 "host and .dag deciders disagree on the shared fixture"
             );
         });
+    }
+}
+
+#[cfg(test)]
+mod cost_debt_moved_identity_tests {
+    use super::cost_debt_moved_identities;
+
+    fn module(name: &str) -> Option<String> {
+        match name {
+            "m.witness" => Some(
+                "module m.witness\n\ntest fn fails_semantically() -> Bool {\n  false\n}\n\n\
+                 test fn passes_expensively() -> Bool {\n  true\n}\n"
+                    .to_string(),
+            ),
+            _ => None,
+        }
+    }
+
+    /// An admitted row over a declared claim is planned, so a FAIL under it reaches the
+    /// changed-witness projection (`cost_debt_row_over_failing_claim`) instead of sitting
+    /// declined; the passing-but-expensive control is planned the same way and stays green
+    /// there under the verdict-only policy. A restored literal that names no test fn -- the
+    /// roster file's non-identity strings -- is not planned.
+    #[test]
+    fn moved_identities_keep_declared_witnesses_and_drop_non_witness_literals() {
+        let admitted = vec![
+            "m.witness.fails_semantically".to_string(),
+            "m.witness.passes_expensively".to_string(),
+        ];
+        let restored = vec![
+            " censored=".to_string(),
+            "m.witness.no_such_claim".to_string(),
+            "m.absent.anything".to_string(),
+        ];
+        assert_eq!(
+            cost_debt_moved_identities(&admitted, &restored, module),
+            vec![
+                "m.witness.fails_semantically".to_string(),
+                "m.witness.passes_expensively".to_string(),
+            ]
+        );
+    }
+
+    /// A restored identity that the tree still declares is planned, under the ordinary line.
+    #[test]
+    fn a_restored_declared_identity_is_planned() {
+        assert_eq!(
+            cost_debt_moved_identities(&[], &["m.witness.fails_semantically".to_string()], module),
+            vec!["m.witness.fails_semantically".to_string()]
+        );
     }
 }

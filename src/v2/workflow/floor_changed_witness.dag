@@ -96,6 +96,7 @@ type ChangedWitnessExecutionStanding =
   | PlannedAndKnownRedHeld
   | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
   | CostObservationMissingUnderVerdictOnly
+  | CostDebtRowOverFailingClaim
   | PlannedWithoutTerminalVerdict
   | HermeticRouteGapHeldAndWetPassed { evidence: HermeticRouteGapWetEvidence, identity: String, candidate: String }
   | Declined { disposition: RequiredFloorDisposition }
@@ -212,6 +213,14 @@ type ChangedWitnessDispositionReading =
 // are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
 // here, never absorbed.
 //
+// `CostDebtRowOverFailingClaim` IS A FAILED VERDICT UNDER `ChangedCostDebtVerdictOnly`: the claim ran
+// for its verdict because its witness changed or its roster row was admitted
+// (`v2.workflow.floor_cost_debt_delta`), and it FAILED. It is red under either name; it has its own
+// arm because the remedy differs. A generic no-verdict cause invites the reading "too expensive,
+// rerun"; this one says the row was standing over a semantic red, so the claim must be repaired or
+// the row removed so the red is seen -- a cost row must never hide a semantic red. Under the
+// ordinary policy a Failed verdict keeps `PlannedWithoutTerminalVerdict`.
+//
 // `PlannedAndPassedWithCostDebtObserved` and `CostObservationMissingUnderVerdictOnly` are the two
 // arms the FLOOR-CHANGED-COST-0 ruling adds, and they exist only under
 // `ChangedCostDebtVerdictOnly` -- the join of changed selection with cost-debt enrollment. The
@@ -279,7 +288,11 @@ fn changed_witness_planned_standing(
             OrdinaryChangedWitnessCostPolicy => PlannedWithoutTerminalVerdict {}
             ChangedCostDebtVerdictOnly => changed_witness_verdict_only_standing(cost: cost)
           }
-        Failed => PlannedWithoutTerminalVerdict {}
+        Failed =>
+          match cost_policy {
+            OrdinaryChangedWitnessCostPolicy => PlannedWithoutTerminalVerdict {}
+            ChangedCostDebtVerdictOnly => CostDebtRowOverFailingClaim {}
+          }
         BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
         HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
@@ -333,6 +346,7 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedAndKnownRedHeld => false
     PlannedAndPassedWithCostDebtObserved { observation: _ } => false
     CostObservationMissingUnderVerdictOnly => true
+    CostDebtRowOverFailingClaim => true
     PlannedWithoutTerminalVerdict => true
     HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
       !hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
@@ -412,6 +426,7 @@ fn changed_witness_blocking_cause(standing: ChangedWitnessExecutionStanding) -> 
     PlannedAndKnownRedHeld => ""
     PlannedAndPassedWithCostDebtObserved { observation: _ } => ""
     CostObservationMissingUnderVerdictOnly => "changed_witness_cost_observation_missing_under_verdict_only"
+    CostDebtRowOverFailingClaim => "cost_debt_row_over_failing_claim"
     PlannedWithoutTerminalVerdict => "changed_witness_planned_without_terminal_verdict"
     HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } =>
       "changed_witness_hermetic_route_gap_wet_join_incomplete"

@@ -17,7 +17,7 @@ import v2.workflow.floor_changed_witness {
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
   ChangedWitnessCostObservation, changed_witness_gated_clock_measurement,
   ChangedWitnessCostReading, CostObserved, CostUnobserved,
-  PlannedAndPassedWithCostDebtObserved, CostObservationMissingUnderVerdictOnly,
+  PlannedAndPassedWithCostDebtObserved, CostObservationMissingUnderVerdictOnly, CostDebtRowOverFailingClaim,
   ChangedWitnessRow,
   changed_witness_execution_standing,
   changed_witness_standing_blocks,
@@ -148,6 +148,7 @@ fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
     PlannedAndPassedWithCostDebtObserved { observation: _ } =>
       "planned-and-passed-with-cost-debt-observed"
     CostObservationMissingUnderVerdictOnly => "cost-observation-missing-under-verdict-only"
+    CostDebtRowOverFailingClaim => "cost-debt-row-over-failing-claim"
     PlannedWithoutTerminalVerdict => "planned-without-terminal-verdict"
     HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } => "hermetic-route-gap-held-and-wet-passed"
     Declined { disposition: _ } => "declined"
@@ -585,6 +586,7 @@ test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
     PlannedAndPassed => false
     PlannedAndKnownRedHeld => false
     CostObservationMissingUnderVerdictOnly => false
+    CostDebtRowOverFailingClaim => false
     PlannedWithoutTerminalVerdict => false
     HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } => false
     Declined { disposition: _ } => false
@@ -618,14 +620,31 @@ test fn verdict_only_pass_without_a_published_cost_reds() -> Bool {
   ) == "cost-observation-missing-under-verdict-only"
 }
 
-// ACCEPTANCE ROW: the override moves the COST arm and nothing else. A semantic failure under the
-// override is red.
+// ACCEPTANCE ROW, AND THE DISCRIMINATING RED OF THE COST-ROW WALL: the override moves the COST arm
+// and nothing else, so a semantic failure under it is red -- and red under its OWN standing, because
+// a cost-debt row standing over a failing claim is hiding a semantic red
+// (`v2.workflow.floor_cost_debt_delta`). Before the wall this read `planned-without-terminal-verdict`,
+// which offered its reader the "too expensive, rerun" remedy.
 test fn verdict_only_semantic_failure_reds() -> Bool {
+  let standing = changed_standing_of(
+    reading: verdict_only_changed_reading(
+      terminal: TerminalOutcome { outcome: Failed {} },
+      cost: over_line_observation()
+    )
+  )
+  standing_kind(s: standing) == "cost-debt-row-over-failing-claim"
+    && changed_witness_standing_blocks(standing: standing)
+    && changed_witness_blocking_cause(standing: standing) == "cost_debt_row_over_failing_claim"
+}
+
+// THE CONTROL THAT KEEPS THE NEW ARM NARROW: the identical Failed terminal under the ORDINARY policy
+// keeps the standing it always had. One field separates this witness from the red above.
+test fn ordinary_semantic_failure_keeps_the_no_verdict_standing() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: verdict_only_changed_reading(
-        terminal: TerminalOutcome { outcome: Failed {} },
-        cost: over_line_observation()
+      reading: ordinary_changed_reading(
+        disposition: PlannedAsChangedWitness {},
+        terminal: TerminalOutcome { outcome: Failed {} }
       )
     )
   ) == "planned-without-terminal-verdict"

@@ -1,0 +1,99 @@
+module v2.workflow.floor_cost_debt_delta
+
+import v2.workflow.floor_cost_debt { floor_cost_debt_roster }
+import v2.workflow.floor_cost_debt_edit { cost_debt_edit_source_tokens }
+import v2.extdeps.languages.dag { dag_language_model, dag_string_literal_encoded }
+import v2.std.compilers.lexing { Token }
+import v2.std.algebra { contains, filter, list_reverse }
+import v2.std.optional { Optional, Absent, Present }
+import v2.std.text { String }
+import std.types { GitRef, FilePath, List }
+import extdeps.git
+
+// A COST ROW MUST NEVER HIDE A SEMANTIC RED (swift-bat-688's proposal on gunbc#13327, implemented
+// for sleek-koi-528's lane). A `v2.workflow.floor_cost_debt` row is DECLINED AT BUILD
+// (`DeclinedCostDebt`): it never executes, so it asserts nothing about its claim's verdict. The
+// floor already runs a rostered identity for its verdict when its WITNESS changes
+// (`ChangedCostDebtVerdictOnly`, FLOOR-CHANGED-COST-0), but the changed-witness set was derived from
+// witness-file edits only, so ADDING a roster row ran nothing. That is how
+// `v2.test.claim.body_lowering.single_arm_match` failed two claims for days under
+// `floor_cost_debt_censored_chunk_03` while every lane stayed green
+// (`gunbc.recurring_failure_mode` `match_arms_after_the_second_are_dropped_at_v2_body_lowering`).
+//
+// THIS MODULE ANSWERS WHICH IDENTITIES A CHANGE MOVED ACROSS THE ROSTER BOUNDARY, and nothing else.
+// The host joins `admitted` into the changed-witness set under the verdict-only policy (the CPU line
+// stands down, the wall deadline stays armed) and `restored` under the ordinary policy, so each
+// moved identity reaches a verdict once on the change that moved it. A Failed verdict under the
+// cost-debt policy is refused with its own cause by `v2.workflow.floor_changed_witness`
+// `CostDebtRowOverFailingClaim`.
+//
+// THE BASE IS READ AS TOKENS, NOT EVALUATED. The roster at head is `floor_cost_debt_roster()`
+// itself; the roster at the base is the set of string-literal tokens of the base file, through the
+// corpus's own lexer. Every roster identity is a string literal of that file (the chunks are its
+// only identity-bearing literals), so the base literal set CONTAINS the base roster, and the
+// comparison is made in the encoded-lexeme domain (`dag_string_literal_encoded`), so no decode
+// vocabulary is restated. The superset bias runs one way: an identity that is a base literal but
+// was not composed into the base roster would read as already rostered, never as admitted, so the
+// divergence can only MISS an admission whose literal was already in the file -- stated rather than
+// hidden. `restored` likewise carries every base literal the head roster lacks, including
+// literals that name no witness; the host intersects it with the floor's discovered test-fn
+// population, which it already holds, before anything is planned.
+//
+// AN UNREADABLE BASE REFUSES. A base that cannot be shown or tokenized is not "nothing moved"; the
+// host turns `CostDebtRosterDeltaUnobserved` into a located floor refusal.
+//
+// WHAT THIS DOES NOT COVER: a row that was already on the roster before the change stays unrun
+// until something moves it. That standing population was swept once by executing every roster
+// identity (see the PR that introduced this module); the next rung is a periodic verdict-only sweep
+// of the standing roster, which does not exist yet.
+
+data floor_cost_debt_roster_path: String = "src/v2/workflow/floor_cost_debt.dag"
+
+type CostDebtRosterDelta =
+    CostDebtRosterDeltaObserved { admitted: List<String>, restored: List<String> }
+  | CostDebtRosterDeltaUnobserved { cause: String }
+
+fn cost_debt_string_lexemes(tokens: List<Token>) -> List<String> {
+  list_reverse(xs: fold(tokens, init: [], f: fn(acc, tok) {
+    if tok.class == ^dag_token_string_literal { concat([tok.lexeme], acc) } else { acc }
+  }))
+}
+
+fn cost_debt_roster_delta_from_sources(base_source: String, head_roster: List<String>) -> CostDebtRosterDelta {
+  match cost_debt_edit_source_tokens(source: base_source, rules: dag_language_model().lex) {
+    Absent => CostDebtRosterDeltaUnobserved { cause: "the base roster file does not tokenize" }
+    Present { value: tokens } =>
+      cost_debt_roster_delta_from_lexemes(base_lexemes: cost_debt_string_lexemes(tokens: tokens), head_roster: head_roster)
+  }
+}
+
+fn cost_debt_roster_delta_from_lexemes(base_lexemes: List<String>, head_roster: List<String>) -> CostDebtRosterDelta {
+  let head_encoded = map(head_roster, identity => dag_string_literal_encoded(value: identity))
+  CostDebtRosterDeltaObserved {
+    admitted: filter(xs: head_roster, predicate: fn(identity) {
+      !contains(xs: base_lexemes, item: dag_string_literal_encoded(value: identity), eq: fn(a, b) { a == b })
+    }),
+    restored: map(
+      filter(xs: base_lexemes, predicate: fn(lexeme) { !contains(xs: head_encoded, item: lexeme, eq: fn(a, b) { a == b }) }),
+      lexeme => cost_debt_unframed(lexeme: lexeme)
+    )
+  }
+}
+
+// The lexeme without its framing quotes. A restored lexeme is only ever compared, by the host,
+// against discovered `module.function` identities, which carry no escape, so an escaped literal
+// can only fail to match -- it cannot match a wrong identity.
+fn cost_debt_unframed(lexeme: String) -> String {
+  substring(s: lexeme, start: 1, end: string_length(s: lexeme) - 1)
+}
+
+// THE WET ENTRY THE HOST CALLS, once per run whose diff touches the roster file, at the floor's
+// resolved comparison base.
+fn cost_debt_roster_delta_at_base(base: String) -> CostDebtRosterDelta {
+  let shown = git.Core.Show(ref: base as GitRef, path: floor_cost_debt_roster_path as FilePath)
+  if !shown.success {
+    CostDebtRosterDeltaUnobserved { cause: "the base roster file could not be shown" }
+  } else {
+    cost_debt_roster_delta_from_sources(base_source: shown.content, head_roster: floor_cost_debt_roster())
+  }
+}
