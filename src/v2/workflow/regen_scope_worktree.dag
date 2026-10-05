@@ -38,10 +38,10 @@ type RegenScopeWorktreeAdmission
   | ScopeWorktreeHasUncommittedDag { paths: List<String> }
   | ScopeWorktreeUnobservable { reason: String }
 
+// A record field is "XY path"; a rename source field is the bare path. Both end in the path, so
+// the suffix test reads either; this strips the two status letters and the space only so the
+// refusal names the path rather than the record.
 fn regen_scope_status_field_path(field: String) -> String {
-  // A record field is "XY path"; a rename source field is the bare path. Both end in the path,
-  // so the suffix test below reads either; this strips the two status letters and the space
-  // only so the refusal names the path rather than the record.
   if string_length(s: field) > 3 && substring(s: field, start: 2, end: 3) == " " {
     substring(s: field, start: 3, end: string_length(s: field))
   } else {
