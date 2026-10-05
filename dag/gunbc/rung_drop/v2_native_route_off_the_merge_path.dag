@@ -1,6 +1,6 @@
 module gunbc.rung_drop.v2_native_route_off_the_merge_path
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 

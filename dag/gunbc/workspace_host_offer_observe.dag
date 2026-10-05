@@ -1,0 +1,72 @@
+module gunbc.workspace_host_offer_observe
+
+import std.types { String, NonEmptyStr, List, CommitSha }
+import std.algebra { trim }
+import extdeps.exec.command { LocalExec }
+import extdeps.tools.hostname { hostname_short_read_command }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.clock_read { clock_now_probed_at }
+import product.placement_supply { HostIdentity }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric_storage_binding { fabric_state_storage_binding }
+import gunbc.runner_microvm_slot_controller { bind_slot_host }
+import gunbc.runner_microvm_host_ready { MicrovmHostBound, MicrovmHostBindingRefused }
+import gunbc.runner_microvm_slot_unit { microvm_controller_root }
+import gunbc.live_deploy.release_locus { approval_broker_release_dir, RevisionBoundAtEmission }
+import gunbc.workspace_allocation { WorkspaceRequest }
+import gunbc.workspace_commissioning_store { workspace_commissioning_committed_for_slot, WorkspaceCommissioningSupplyReady, WorkspaceCommissioningSupplyRefused }
+import gunbc.workspace_guest_image { workspace_installed_image, WorkspaceImageVerified, WorkspaceImageRefused }
+import gunbc.workspace_tool_observer { workspace_observe_tools, WorkspaceToolsReady, WorkspaceToolsUnobserved }
+import gunbc.workspace_allocation_supply { workspace_observe_host_supply, WorkspaceHostSupplyObserved, WorkspaceHostSupplyUnavailable }
+import gunbc.workspace_gateway_store { workspace_read_gateway_evidence, WorkspaceGatewayEvidenceRead, WorkspaceGatewayEvidenceUnavailable }
+import gunbc.workspace_offer_producer { WorkspaceHostOfferRead, WorkspaceHostOfferUnmet, workspace_host_offer_admit }
+
+// RUNS ON THE CANDIDATE HOST, inside its installed controller release, and only reads. Every
+// existing host-local observer is reused unchanged; this fold composes them per designated slot.
+// A host with no designated slot answers that fact rather than nothing, so silence never reads
+// as "no supply" at the coordinator.
+fn workspace_observe_host_offers(request: WorkspaceRequest) -> List<WorkspaceHostOfferRead> {
+  match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
+    ProcessOutputAbsent => []
+    ProcessRefused { exit_code: _, stderr: _ } => []
+    ProcessOutputPresent { text: raw } => {
+      let host = trim(s: raw) as HostIdentity
+      let slots = filter(workspace_execution_slot_identities(), slot => (slot.host as String) == (host as String))
+      if slots.count() == 0 { [WorkspaceHostOfferUnmet { host: host, reason: "host has no slot designated for workspace use" }] }
+      else { map(slots, slot => workspace_observe_slot_offer(request: request, host: host, slot: slot)) }
+    }
+  }
+}
+
+fn workspace_observe_slot_offer(request: WorkspaceRequest, host: HostIdentity, slot: RunnerSlotIdentity) -> WorkspaceHostOfferRead {
+  match workspace_commissioning_committed_for_slot(slot: slot) {
+    WorkspaceCommissioningSupplyRefused { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason as NonEmptyStr }
+    WorkspaceCommissioningSupplyReady { committed } => {
+      let release_dir = approval_broker_release_dir(root: microvm_controller_root,
+        revision: RevisionBoundAtEmission { revision: committed.provenance.source_revision as CommitSha }) as NonEmptyStr
+      match workspace_installed_image(release_dir: release_dir as String, identity: request.image) {
+        WorkspaceImageRefused { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason as NonEmptyStr }
+        WorkspaceImageVerified { image } => match bind_slot_host(slot: slot) {
+          MicrovmHostBindingRefused { cause: _ } => WorkspaceHostOfferUnmet { host: host, reason: "slot host binding refused" }
+          MicrovmHostBound { spec, host: _ } => match workspace_observe_tools(release_dir: release_dir, login: spec.job_user) {
+            WorkspaceToolsUnobserved { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
+            WorkspaceToolsReady { observation: tools } => match workspace_observe_host_supply(host: host) {
+              WorkspaceHostSupplyUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
+              WorkspaceHostSupplyObserved { observation: supply } => match workspace_read_gateway_evidence(store: fabric_state_storage_binding(), slot: slot) {
+                WorkspaceGatewayEvidenceUnavailable { reason } => WorkspaceHostOfferUnmet { host: host, reason: reason }
+                WorkspaceGatewayEvidenceRead { evidence: gateway } => match clock_now_probed_at() {
+                  Absent => WorkspaceHostOfferUnmet { host: host, reason: "host offer clock is unavailable" }
+                  Present { value: now } => workspace_host_offer_admit(root: fabric_control_plane_store_root(), request: request,
+                    commissioned: committed, image: image, host: supply, tools: tools, gateway: gateway, now: now as String)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

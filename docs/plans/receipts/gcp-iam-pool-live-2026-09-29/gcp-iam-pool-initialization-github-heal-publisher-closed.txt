@@ -1,0 +1,4 @@
+exclusive-pool-policy-initialization-20260929
+projects/582015116396/locations/global/workloadIdentityPools/github-heal-publisher
+role:54:projects/gunbai-secrets/roles/gunbcIamConvergeProvider;member:66:serviceAccount:iam-converge@gunbai-secrets.iam.gserviceaccount.com;condition:4:none;
+role:49:projects/gunbai-secrets/roles/gunbcIamObservePool;member:65:serviceAccount:iam-observe@gunbai-secrets.iam.gserviceaccount.com;condition:4:none;
