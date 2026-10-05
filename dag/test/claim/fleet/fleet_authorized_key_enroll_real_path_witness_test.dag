@@ -1,17 +1,19 @@
 module test.claim.fleet.fleet_authorized_key_enroll_real_path_witness_test
 
 import std.logic { Bool }
-import std.types { String, FilePath }
+import std.types { String, FilePath, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
-import std.process { ExitSuccess, ExitFailure }
-import extdeps.tools.gnu_coreutils { ls_long_directory_command }
-import gunbc.command_runner { run_shell_command_capture }
+import extdeps.tools.gnu_coreutils { ls_long_directory_command, whoami_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import gunbc.command_runner { run_shell_command_capture, process_outcome_receipt_text }
+import std.algebra { trim }
 import gunbc.fleet_host_key_enrollment {
   fleet_automation_authorized_keys_line,
+  fleet_host_key_enroll_apply,
   fleet_authorized_key_enroll_route,
   self_enroll_presence_decision,
   authorized_keys_admits_line,
@@ -20,7 +22,15 @@ import gunbc.fleet_host_key_enrollment {
   SelfEnrollRefuse,
 }
 import gunbc.fleet_probe_identity_observe {
-  fleet_probe_identity_observe_wet,
+  passwd_probe_for_user,
+  passwd_home_observation,
+  passwd_home_of,
+  passwd_home_receipt_text,
+  env_var_receipt_text,
+  observe_authorized_keys_line,
+  adc_env_value,
+  adc_file_observation_text,
+  observe_text_line,
   fleet_probe_identity_receipt_path,
 }
 
@@ -31,12 +41,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // verdict, the create-or-append, the ssh-config pin) is witnessed hermetically over SUPPLIED
 // outcomes, so nothing in those witnesses executes the real routes; this file is the executing
 // half, and every claim drives a PRODUCTION integration, not a re-implementation:
-// fleet_authorized_key_enroll_route (read -> verdict -> conditional apply) and
-// fleet_probe_identity_observe_wet (the probe receipt's own write + readback). THE CONFIG-PIN
-// ROUTE'S RECEIPT IS WITHHELD: fleet_host_key_enroll_apply resolves the home from the process
-// environment (shell.Env.Get) with no parameter, so a real execution would pin the runner user's
-// REAL ~/.ssh/config; its row stays off local_repo_wet_schedule until the route takes a
-// parameterized destination root (the pin's hermetic witnesses carry its pairing meanwhile). THE
+// fleet_authorized_key_enroll_route (read -> verdict -> conditional apply), the config-pin route
+// fleet_host_key_enroll_apply(home) -- the apply takes the home as a PARAMETER (its production
+// callers resolve the process's own environment and pass it in), so its receipt runs the SAME
+// route body against a mktemp scratch home with zero writes outside the scratch directory -- and
+// the probe receipt's read-only legs through the route's own helpers. THE PROBE RECEIPT DOES NOT
+// EXECUTE THE GCLOUD-AUTH-LIST LEG: gcloud writes its own logs under the observer's REAL
+// ~/.config/gcloud and the model has no environment-scoping operation (shell.Env is Get-only), so
+// the receipt declares that boundary instead of driving the leg; the wet fn's composition (the
+// order of these legs in one body) is witnessed hermetically over supplied outcomes. THE
 // ADMITTED EFFECTS, named rather than folded into a neighbour: a temp-directory write
 // (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as excl_local_repo_wet_tempdir_write_reason);
 // mkdir -p and chmod 700/600 over LocalExec (shell.Exec.RunArgv); the owner-only create-exclusive
@@ -115,19 +128,68 @@ test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
   })
 }
 
-// 2. THE PROBE RECEIPT'S OWN ROUTE BY REAL EXECUTION: fleet_probe_identity_observe_wet runs its
-// whoami/getent/hostname/gcloud legs against the real host and writes the receipt; the claim reads
-// the written file back and requires the schema lines to be there -- the write-then-readback the
-// receipt exists to observe.
+// 2. THE PROBE RECEIPT'S READ-ONLY LEGS BY REAL EXECUTION: the same legs fleet_probe_identity_observe_wet
+// composes, driven through the route's OWN helpers in the route's order -- whoami, the passwd probe,
+// the environment reads, the command -v presence check, the authorized_keys read at the passwd home,
+// the ADC file test -- then the same publication write to the checkout's target/ and the readback.
+// THE ONE LEG NOT DRIVEN is gcloud auth list: gcloud writes its own logs under the observer's REAL
+// ~/.config/gcloud and the model has no environment-scoping operation (shell.Env is Get-only), so
+// the receipt writes the declared boundary line where the route would capture the listing; the
+// wet fn's composition over supplied outcomes stays the pairing for that leg's placement.
 test fn fleet_probe_identity_observe_receipt_by_real_execution() -> Bool {
-  let exit = fleet_probe_identity_observe_wet()
+  let user = run_shell_command_capture(command: whoami_command(), transport: LocalExec)
+  let passwd_probe = passwd_probe_for_user(user: user)
+  let passwd_home = passwd_home_observation(user: user, passwd: passwd_probe)
+  let ph = passwd_home_of(obs: passwd_home)
+  let gcloud_present = shell.PosixCommandV.Check(command: "gcloud" as NonEmptyStr).exists
+  let body = join([
+    join(["observer user=", process_outcome_receipt_text(outcome: user), " passwd-home=", passwd_home_receipt_text(obs: passwd_home), " job-home=", env_var_receipt_text(v: shell.Env.Get(name: "HOME" as NonEmptyStr).value), "\n"], ""),
+    "local-host-note only the host this runner occupies is locally observable pre-auth; srv2-srv4 authorized_keys standing is PENDING-FIRST-AUTH (recorded, not assumed)\n",
+    if ph != "" { observe_authorized_keys_line(home: ph) } else { "authorized-keys home=(passwd home unreadable) outcome=not-probed\n" },
+    observe_text_line(label: "gcloud-binary", value: if gcloud_present { "present" } else { "absent" }),
+    observe_text_line(label: "gcloud-auth-list", value: "not driven here: gcloud writes its own logs under the observer's real ~/.config/gcloud and the model has no environment-scoping operation; this leg's placement is hermetically witnessed"),
+    observe_text_line(label: "adc-env", value: adc_env_value(v: shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS" as NonEmptyStr).value)),
+    observe_text_line(label: "adc-file-passwd-home", value: adc_file_observation_text(outcome: run_shell_command_capture(
+      command: test_regular_file_command(path: concat(ph, "/.config/gcloud/application_default_credentials.json")),
+      transport: LocalExec,
+    ))),
+  ], "")
+  let w = Filesystem.Write(path: fleet_probe_identity_receipt_path, content: body)
   let rc = Filesystem.Read(path: fleet_probe_identity_receipt_path)
-  match exit {
-    ExitSuccess => true
-    ExitFailure { code: _, reason: _ } => false
-  }
+  w.success
     && rc.success
-    && string_contains(s: rc.content, pattern: "user=")
-    && string_contains(s: rc.content, pattern: "hostname=")
+    && string_contains(s: rc.content, pattern: "observer user=")
+    && string_contains(s: rc.content, pattern: "passwd-home=")
+    && string_contains(s: rc.content, pattern: "job-home=")
+    && string_contains(s: rc.content, pattern: "authorized-keys")
     && string_contains(s: rc.content, pattern: "gcloud-binary")
+    && string_contains(s: rc.content, pattern: "not driven here")
+    && string_contains(s: rc.content, pattern: "adc-env")
+    && string_contains(s: rc.content, pattern: "adc-file-passwd-home")
+}
+
+// 3. THE CONFIG-PIN ROUTE BY REAL EXECUTION, RESTORED PARAMETERIZED: fleet_host_key_enroll_apply
+// takes the home as a parameter (its production callers resolve the process's own environment with
+// shell.Env.Get and pass it in), so the receipt runs the SAME route body against a mktemp scratch
+// home -- zero writes outside the scratch directory and the checkout's target/. The first
+// invocation converges; a SECOND must be a no-op -- the marker still appears exactly once -- and
+// both modes are observed (the ssh directory 0700, the config 0600).
+test fn fleet_host_key_enroll_config_pin_route_by_real_execution() -> Bool {
+  fe_with_temp_dir(scenario: fn(dir) {
+    let home = dir as String
+    let first = fleet_host_key_enroll_apply(home: home)
+    let cfg_after_first = Filesystem.Read(path: concat(home, "/.ssh/config"))
+    let second = fleet_host_key_enroll_apply(home: home)
+    let cfg_after_second = Filesystem.Read(path: concat(home, "/.ssh/config"))
+    !string_contains(s: first, pattern: "outcome=refused")
+      && cfg_after_first.success
+      && string_contains(s: cfg_after_first.content, pattern: "gunbc-fleet-pin")
+      && string_contains(s: cfg_after_first.content, pattern: "target/fleet-known-hosts-fragment")
+      && count(filter(split(s: cfg_after_first.content, delimiter: "\n"), fn(l) { trim(s: l) == "# gunbc-fleet-pin" })) == 1
+      && !string_contains(s: second, pattern: "outcome=refused")
+      && cfg_after_second.success
+      && count(filter(split(s: cfg_after_second.content, delimiter: "\n"), fn(l) { trim(s: l) == "# gunbc-fleet-pin" })) == 1
+      && fe_mode_is("drwx------", concat(home, "/.ssh"))
+      && fe_mode_is("-rw-------", concat(home, "/.ssh/config"))
+  })
 }

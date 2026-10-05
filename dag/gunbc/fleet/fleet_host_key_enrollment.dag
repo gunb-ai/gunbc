@@ -366,15 +366,18 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // THE PIN, ONE DECLARED SEQUENCE OVER THE PROCESS'S OWN HOME. The deleted script ran a shell to do
 // five things -- mkdir -p, touch, grep for the marker, append four lines with $(pwd) inside a
 // substitution, chmod 600 -- and folded "config unreadable" into "config unpinned". Each step is
-// now its own declared carrier: the home is the process's own environment (shell.Env.Get; unset
-// refuses, where the shell would have built /.ssh at the filesystem root), the working directory is
+// now its own declared carrier: the home is a PARAMETER of the apply (its production callers
+// resolve the process's own environment with shell.Env.Get and pass it in; a resolution that
+// yields no home refuses, where the shell would have built /.ssh at the filesystem root -- and the
+// parameter is what lets the real-path receipt run this route against a mktemp scratch home with
+// zero writes outside it), the working directory is
 // a captured pwd (so the fragment path stays absolute, which is why the substitution existed -- ssh
 // resolves UserKnownHostsFile against the user's home, not the invoking directory), touch is the
 // put-if-absent create whose occupied arm says "read what is there", the marker check is a content
 // question over the read, the append is a modeled read-then-write of the SAME bytes `>>` would have
 // added, and the mode is a typed chmod. The fragment path is built once, from one capture, so the
 // pinned line and the staged file cannot disagree about where the fragment lives.
-fn fleet_host_key_enroll_apply() -> String
+fn fleet_host_key_enroll_apply(home: String) -> String
 {
   if length(fleet_host_key_enrollments) == 0 {
     "enroll outcome=refused cause=registry-empty\n"
@@ -384,12 +387,8 @@ fn fleet_host_key_enroll_apply() -> String
     let endpoints = join(map(fleet_host_key_enrollments, k => k.endpoint), " ")
     let w = Filesystem.Write(path: staged, content: fragment)
     if w.success {
-      let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
-        Absent => ""
-        Present { value: raw } => trim(s: raw)
-      }
       if home == "" {
-        "enroll outcome=refused cause=HOME unset: the registry rides with the process's own home, and there is none to pin\n"
+        "enroll outcome=refused cause=home resolution empty: the registry rides with the caller's resolved home, and there is none to pin\n"
       } else {
         let ssh_dir = concat(home, "/.ssh")
         let cfg = concat(ssh_dir, "/config")
@@ -532,7 +531,11 @@ fn pin_readback_block(staged: String) -> String {
 
 fn fleet_host_key_enroll_wet() -> ProcessExit
 {
-  let receipt = fleet_host_key_enroll_apply()
+  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  let receipt = fleet_host_key_enroll_apply(home: home)
   let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
   if wr.success {
     if string_contains(s: receipt, pattern: "outcome=refused") {
