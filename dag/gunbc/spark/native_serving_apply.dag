@@ -1115,7 +1115,7 @@ fn spark_native_wait_leg_host(l: SparkNativeWaitLeg) -> HostIdentity {
 
 fn spark_native_wait_leg_verdict(l: SparkNativeWaitLeg, expected: AwaitedIncarnation?) -> AwaitedVerdict {
   match l {
-    WaitLegOutlivedBound { host: h, bound: b, stdout: _ } => AwaitedLegOutlivedBound { host: h, bound_seconds: second_count(s: b) }
+    WaitLegOutlivedBound { host: h, bound: b, stdout: _ } => AwaitedLegOutlivedBound { host: h, bound: b }
     WaitLegReturned { leg: r } => spark_native_leg_awaited_verdict(o: r.outcome, expected: expected)
   }
 }
@@ -1128,7 +1128,7 @@ fn spark_native_awaited_refusals(vs: List<AwaitedVerdict>) -> List<String> {
   flat_map(vs, v => match v {
     AwaitedObserved { awaited: _ } => [] as List<String>
     AwaitedRefused { host: h, cause: c } => [join([h as String, ": ", c], "")]
-    AwaitedLegOutlivedBound { host: h, bound_seconds: n } => [join([h as String, ": the wait leg outlived its bound of ", to_string(n), "s and was killed"], "")]
+    AwaitedLegOutlivedBound { host: h, bound: n } => [join([h as String, ": the wait leg outlived its bound of ", to_string(second_count(s: n)), "s and was killed"], "")]
   })
 }
 
@@ -1139,7 +1139,7 @@ fn spark_native_front_door_refusals(legs: List<SparkNativeWaitLeg>, awaited: Lis
     let host = spark_native_wait_leg_host(l: l)
     match spark_native_wait_leg_verdict(l: l, expected: awaited_for_host(awaited: awaited, host: host)) {
       AwaitedRefused { host: h, cause: c } => [join([h as String, ": ", c], "")]
-      AwaitedLegOutlivedBound { host: h, bound_seconds: n } => [join([h as String, ": the front-door leg outlived its bound of ", to_string(n), "s and was killed"], "")]
+      AwaitedLegOutlivedBound { host: h, bound: n } => [join([h as String, ": the front-door leg outlived its bound of ", to_string(second_count(s: n)), "s and was killed"], "")]
       AwaitedObserved { awaited: _ } =>
         match l {
           WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => [] as List<String>
