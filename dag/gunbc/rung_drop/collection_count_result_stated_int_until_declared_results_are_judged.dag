@@ -29,7 +29,7 @@ data collection_count_result_stated_int_until_declared_results_are_judged: RungD
     population: [
       "v2.std.node: the 13 bare count( sites (sizes of edge and child lists), bound to collection_count_shape",
       "v2.std.node_query: the 3 bare count( sites, bound to collection_count_shape",
-      "every other bare count( call in src/v2 that binds to collection_count_shape: 283 bare count( sites across 70 files at the XL-2 census (a word-bounded scan), each typed Int rather than Nat",
+      "every other bare count( call in src/v2 that binds to collection_count_shape (a bare head no in-scope declaration claims), each typed Int rather than Nat",
       "the SEED's method typing: v1.compiler 04_method reads algebra_templates_for_profile, which includes free_monoid_collection_templates, so a seed method-form count (`xs |> count`, `xs.count()`) over a FreeMonoid is typed by this row's Int (review 76274). The seed grounds std.nat Nat to the kernel integer (gunbc.structural_realization_bindings kernel_grounding_rows), so the REALIZED type of that result is unchanged; the declared type is what is narrowed",
     ],
     restoration_trigger: "BOTH capabilities: v2 infer elaborates an integer literal at an expected type through gunbc.structural_realization_bindings literal_homomorphism_rows (gunbc#13320), AND v2 infer derives and judges a call's result type when the callee returns a declared (non-kernel) type (gunbc.recurring_failure_mode call_result_of_a_declared_return_type_unjudged_in_v2_infer) -- SUFFICIENT FOR collection_count_shape to return std.nat Nat with every count result judged at its consuming position and every literal at those positions written as it is today. Restoration: the row returns Nat and this drop retires.",
