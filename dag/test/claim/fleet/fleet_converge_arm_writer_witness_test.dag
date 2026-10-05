@@ -1,0 +1,58 @@
+module test.claim.fleet.fleet_converge_arm_writer_witness_test
+
+import std.types { Bool, String }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_converge_workflow {
+  FleetConvergeWorkflowMode, SparkArmGroupLaunch, SparkNativeServingApply, SparkArmGroupLoad, SparkArmGroupObserve, SparkArmGroupLaunchPlan,
+  fleet_converge_workflow_modes, fleet_converge_mode_writes_arm, fleet_converge_mode_mutation_domain, fleet_arm_group_mutation_group,
+  FleetMutationDomain, SubjectDomain, ExecutorDomain, TargetHostDomain, ReadOnlyOwnRun,
+}
+import gunbc.spark.fabric_switch_observed { FabricGroupA, FabricGroupB, fabric_group_wire }
+import gunbc.spark.arm_group_launch_dispatch { arm_group_launch_arm_options, arm_group_of_word, ArmGroupNamed, ArmGroupWordRefused }
+
+// The arm converge keeps no fence (docs/plans/arm-convergence-recovery-design.md): two converges of one
+// arm are kept apart only by the fleet-converge job's concurrency group. These claims are the wall that
+// every arm-writing mode is in its arm group's.
+
+// ── WRITERS ARE SERIALIZED BY THE JOB'S CONCURRENCY GROUP, EXHAUSTIVELY ───────────────────────
+//
+// valiant-crab-775, 2026-10-05, condition (1): every mode that writes an arm's hosts or its committed
+// record joins that arm group's concurrency group, read from the workflow's own rows with no default.
+// fleet_converge_mode_writes_arm is a total match over every mode, so a new mode must answer; this
+// claim reads every mode's answer against its emitted concurrency domain.
+fn w_domain_is_group(d: FleetMutationDomain, group: String) -> Bool {
+  match d {
+    SubjectDomain { group: g } => g == group
+    ExecutorDomain => false
+    TargetHostDomain => false
+    ReadOnlyOwnRun => false
+  }
+}
+
+test fn w_every_arm_writing_mode_joins_its_arm_groups_concurrency_group() -> Bool {
+  all(fleet_converge_workflow_modes, m => match fleet_converge_mode_writes_arm(mode: m) {
+    Absent => true
+    Present { value: g } => w_domain_is_group(d: fleet_converge_mode_mutation_domain(mode: m), group: fleet_arm_group_mutation_group(g: g))
+  })
+}
+
+// THE ROSTER IS PINNED BY NAME so the claim above cannot be satisfied by classifying every mode as
+// writing nothing (a roster witness over a classification ratifies it): the launch mode writes Group A,
+// Group B's native apply writes Group B, and the load, observe and plan modes write no arm.
+test fn w_the_arm_writing_modes_are_the_launch_and_the_native_apply() -> Bool {
+  (match fleet_converge_mode_writes_arm(mode: SparkArmGroupLaunch) { Present { value: g } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: FabricGroupA) as String)  Absent => false })
+    && (match fleet_converge_mode_writes_arm(mode: SparkNativeServingApply) { Present { value: g } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: FabricGroupB) as String)  Absent => false })
+    && (match fleet_converge_mode_writes_arm(mode: SparkArmGroupLoad) { Present { value: _ } => false  Absent => true })
+    && (match fleet_converge_mode_writes_arm(mode: SparkArmGroupObserve) { Present { value: _ } => false  Absent => true })
+    && (match fleet_converge_mode_writes_arm(mode: SparkArmGroupLaunchPlan) { Present { value: _ } => false  Absent => true })
+    && count(filter(fleet_converge_workflow_modes, m => match fleet_converge_mode_writes_arm(mode: m) { Present { value: _ } => true  Absent => false })) == 2
+}
+
+// THE LAUNCH MODE'S ONE GROUP IS EVERY ARM'S IT CAN SELECT: each arm word the mode accepts names Group A,
+// so the mode's single concurrency group is the arm group of every arm it can write.
+test fn w_every_arm_the_launch_mode_selects_is_on_its_group() -> Bool {
+  all(arm_group_launch_arm_options(), a => match arm_group_of_word(arm: a) {
+    ArmGroupNamed { group: g } => (fabric_group_wire(g: g) as String) == (fabric_group_wire(g: FabricGroupA) as String)
+    ArmGroupWordRefused { cause: _ } => false
+  })
+}

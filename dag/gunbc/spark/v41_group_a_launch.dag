@@ -25,7 +25,7 @@ import gunbc.spark.runtime_architecture_registry_reading { ArchitectureRegistryR
 import gunbc.spark.serving_arm { ServingRuntime, GunbcDeepseekV41EngramProduced, DeepseekV41FlashDba1be0a, FourSparkTp4, ArmIntent, ArmBoundedExperiment, ServingLaunchProfile, deepseek_v41_launch_policy, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished }
 import gunbc.spark.serving_arm_launch { ArmContainerIdentity, ArmNodeLaunch }
 import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender }
-import gunbc.spark.native_serving_apply { SparkNativeArmSteps, SparkNativeHostStep }
+import gunbc.spark.native_serving_apply { SparkNativeArmSteps, SparkNativeHostStep, NativeArmStepsRefused }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
 import gunbc.spark.pair_serving_authority { PairServingGroupAuthority }
 import gunbc.spark.v41_runtime_candidate { V41CandidateStanding, V41CandidateKeyed, V41CandidateUnestablished, V41CandidateRefused, v41_candidate, v41_candidate_recipe, V41IdentityStanding, V41IdentityKeyed, V41IdentityUnestablished, V41IdentityRefused, v41_runtime_artifact_key, v41_candidate_inputs, v41_candidate_partition }
@@ -46,7 +46,7 @@ import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, Spar
 import gunbc.spark.v41_capacity_measurement { V41MeasurementLaunchShape, v41_measurement_launch_shape }
 import gunbc.spark.serving_capacity_intent { uniform_cold_seats, envelope_at_cold_floor, profile_for_envelope, ServingCapacityIntentAdmitted, ServingCapacityIntentRefused }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
-import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmLaunchAdmission, GroupArmLaunchAdmittedForAdoptionOnly, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, GroupArmHostOccupancy, ArmSuccessorStanding, ArmSuccessorKeyed, ArmSuccessorUnkeyed, NoIncumbentDeclared, ArmPreApply, ArmPreApplyPassed, ArmPreApplyStopped, ArmPreApplyWire, group_arm_launch_plan, group_arm_unit_renders, group_arm_steps, group_arm_launch_admission, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, group_arm_memory_need, group_arm_read_occupancy, group_arm_apply_admitted }
+import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchPlanned, GroupArmLaunchRefused, GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, GroupArmHostOccupancy, ArmSuccessorStanding, ArmSuccessorKeyed, ArmSuccessorUnkeyed, ArmPreApply, ArmPreApplyPassed, ArmPreApplyStopped, ArmPreApplyWire, group_arm_launch_plan, group_arm_unit_renders, group_arm_steps, group_arm_launch_admission, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, group_arm_memory_need, group_arm_read_occupancy, group_arm_apply_admitted, GroupArmCommittedAuthority }
 import gunbc.spark.fabric_serving_assignment { fabric_serving_assignment_for_launch }
 // ── THE V4.1 FOUR-RANK LAUNCH ON GROUP A, AS ONE MORE CALL SITE OF THE ARM LAUNCHER ─────────────
 //
@@ -510,10 +510,10 @@ fn v41_group_a_launch_admission(
   occupancy: List<GroupArmHostOccupancy>,
 ) -> GroupArmLaunchAdmission {
   group_arm_launch_admission(
-    group: FabricGroupA, purpose: v41_group_a_purpose, plan: v41_arm_plan(p: plan),
+    group: FabricGroupA, purpose: v41_group_a_purpose, units: v41_group_a_units, plan: v41_arm_plan(p: plan),
     authority: authority, successor: v41_successor(candidate: candidate),
     arm_causes: v41_runtime_key_causes(plan: plan, candidate: candidate),
-    held: held, occupancy: occupancy, incumbent: NoIncumbentDeclared,
+    held: held, occupancy: occupancy,
     grant_row: StandingGrantRowNotOnMain { cause: "V4.1 launches only under a D0 suspension for its candidate, never under the standing grant" })
 }
 
@@ -521,10 +521,10 @@ fn v41_group_a_launch_admission(
 fn v41_group_a_launch_admission_live(plan: V41GroupALaunchPlan, occupancy: List<GroupArmHostOccupancy>) -> GroupArmLaunchAdmission {
   let candidate = v41_candidate().standing
   group_arm_launch_admission_live(
-    group: FabricGroupA, purpose: v41_group_a_purpose, plan: v41_arm_plan(p: plan),
+    group: FabricGroupA, purpose: v41_group_a_purpose, units: v41_group_a_units, plan: v41_arm_plan(p: plan),
     successor: v41_successor(candidate: candidate),
     arm_causes: v41_runtime_key_causes(plan: plan, candidate: candidate),
-    occupancy: occupancy, incumbent: NoIncumbentDeclared)
+    occupancy: occupancy)
 }
 
 // ── THE DRY RUN ──────────────────────────────────────────────────────────────────────────────
@@ -538,7 +538,7 @@ fn v41_group_a_dry_run_report(plan: V41GroupALaunchPlan, admission: GroupArmLaun
     V41GroupALaunchUnestablished { obligations: _ } => [] as List<ArmPreApplyWire>
     V41GroupALaunchRefused { causes: _ } => [] as List<ArmPreApplyWire>
   }
-  group_arm_dry_run_report(title: "V4.1 Group A TP4 launch", intent: v41_group_a_intent, units: v41_group_a_units, plan: v41_arm_plan(p: plan), pre_apply: pre, incumbent: NoIncumbentDeclared, admission: admission)
+  group_arm_dry_run_report(title: "V4.1 Group A TP4 launch", intent: v41_group_a_intent, units: v41_group_a_units, plan: v41_arm_plan(p: plan), pre_apply: pre, admission: admission)
 }
 
 // THE DRY RUN'S INPUTS. The manifest is handed in (the entry derives it with v41_group_a_manifest, as
@@ -756,7 +756,7 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
   }
   let registry = v41_registry_reading_of(probe: probe, image: image, host: ctx.host, observed_at: now_word)
   let plan = v41_group_a_launch_plan(inputs: V41GroupALaunchInputs { held: held, registry_reading: registry, manifest: v41_group_a_manifest() })
-  let occupancy = group_arm_read_occupancy(ctx: ctx, hosts: hosts, units: v41_group_a_units, incumbent: NoIncumbentDeclared, need: v41_group_a_memory_need())
+  let occupancy = group_arm_read_occupancy(ctx: ctx, hosts: hosts, units: v41_group_a_units, need: v41_group_a_memory_need())
   let admission = v41_group_a_launch_admission_live(plan: plan, occupancy: occupancy)
   let reads_receipt = join([
     join(["image receipt run=", image.receipt_run as String, " tag=", subject.tag as String, " config_digest=", render_oci_content_digest_wire(d: image.config), "\n"], ""),
@@ -766,14 +766,29 @@ fn v41_group_a_launch_session(now_word: String, context: FleetSshExecutionContex
   ], "")
   match admission {
     GroupArmLaunchAdmissionRefused { causes: _ } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: admission refused; no host was staged and no serving unit was touched\n"], ""), converged: false }
-    GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => SparkBuildHostWork { receipt: join([reads_receipt, "NOT LAUNCHED: V4.1 declares no incumbent, so a dangling-transaction admission cannot arise here and is refused\n"], ""), converged: false }
     GroupArmLaunchAdmitted => {
       let work = group_arm_apply_admitted(
-        intent: v41_group_a_intent, units: v41_group_a_units, plan: v41_arm_plan(p: plan), incumbent: NoIncumbentDeclared,
-        context: context, ctx: ctx, now_word: now_word,
+        intent: v41_group_a_intent, units: v41_group_a_units, plan: v41_arm_plan(p: plan),
+        committed: v41_committed_authority(plan: plan),
+        context: context, ctx: ctx,
         pre_apply: fn(steps) { v41_pre_apply(ctx: ctx, context: context, plan: plan, steps: steps) })
       SparkBuildHostWork { receipt: join([reads_receipt, work.receipt], ""), converged: work.converged }
     }
+  }
+}
+
+// V4.1 HAS ONE COMMITTED LABEL. Its plan depends on reads this session takes (the held image and its
+// registry reading), so a recorded label re-renders through THIS session's plan, and any other label
+// refuses: there is no other V4.1 step to return to.
+data v41_group_a_committed_label: NonEmptyStr = "v41-group-a" as NonEmptyStr
+
+fn v41_committed_authority(plan: V41GroupALaunchPlan) -> GroupArmCommittedAuthority {
+  GroupArmCommittedAuthority {
+    label: v41_group_a_committed_label,
+    render: fn(l) {
+      if (l as String) == (v41_group_a_committed_label as String) { group_arm_steps(intent: v41_group_a_intent, units: v41_group_a_units, p: v41_arm_plan(p: plan)) }
+      else { NativeArmStepsRefused { cause: join(["the committed record names ", l as String, ", which is not the V4.1 Group A arm"], "") as NonEmptyStr } }
+    },
   }
 }
 

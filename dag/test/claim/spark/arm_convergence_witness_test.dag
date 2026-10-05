@@ -1,0 +1,227 @@
+module test.claim.spark.arm_convergence_witness_test
+
+import std.types { Bool, String, List, NonEmptyStr, Int }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import gunbc.spark.arm_convergence {
+  ArmRankDesired, ArmRankObservation, ArmRankRead, ArmRankUnread, ArmRankObserved, ArmFact, FactRead, FactAbsent, FactUnread,
+  ArmRealizedRanks, ArmRankDeviation, ArmRankUnknown, ArmAssessRefusal, ArmRankReadbackRefusal, ArmConvergeApply,
+  ArmCommittedReading, ArmCommitted, ArmNotCommitted,
+  arm_rank_observation_of, arm_rank_observe_script, arm_observe_complete_word,
+  arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_ranks,
+  arm_committed_reading, arm_committed_reproduced,
+}
+
+// ── ARM RECOVERY AS CONVERGENCE: THE DECISION, OVER SUPPLIED OBSERVATIONS ─────────────────────
+//
+// Every observation below is SUPPLIED at the assessment's interface (DESIGN section 3: a witness
+// discriminates at one interface), shaped as the observation leg prints it and parsed by the real
+// parser, so the route from the leg's words to the decision is the production one. The inhabitance of
+// the leg itself -- that the real script prints these keys on a real host -- is first established by the
+// first converge under the arm launch mode; w_the_observe_script_prints_every_key_the_parser_reads pins
+// the shape half here and is not that evidence.
+
+data w_hosts: List<String> = ["srv6", "srv5", "srv8", "srv7"]
+
+fn w_desired() -> List<ArmRankDesired> {
+  map(w_hosts, h => ArmRankDesired {
+    host: h as HostIdentity,
+    unit_name: if h == "srv6" { "gunbc-glm53-stair-head.service" as NonEmptyStr } else { "gunbc-glm53-stair-rank.service" as NonEmptyStr },
+    container_name: "glm53-stair" as NonEmptyStr,
+    is_head: h == "srv6",
+  })
+}
+
+data w_sha_planned: String = "1111111111111111111111111111111111111111111111111111111111111111"
+data w_sha_other: String = "2222222222222222222222222222222222222222222222222222222222222222"
+
+// One rank's observation leg stdout, exactly as arm_rank_observe_script prints it.
+fn w_leg(unit_sha: String, active: String, container: String, committed: String) -> String {
+  join([
+    "desired_unit_sha=", w_sha_planned, "\n",
+    "unit_sha=", unit_sha, "\n",
+    "active_state=", active, "\n",
+    "container=", container, "\n",
+    "committed=", committed, "\n",
+    arm_observe_complete_word, "\n",
+  ], "")
+}
+
+fn w_obs(host: String, stdout: String) -> ArmRankObservation {
+  arm_rank_observation_of(host: host as HostIdentity, stdout: stdout)
+}
+
+fn w_running(host: String) -> ArmRankObservation {
+  w_obs(host: host, stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: join(["fp8-16 ", w_sha_planned], "")))
+}
+
+fn w_decide(observed: List<ArmRankObservation>) -> UpsertDecision<ArmConvergeApply> {
+  arm_converge_decision(desired: w_desired(), assessment: arm_structural_assessment(desired: w_desired(), observed: observed))
+}
+
+// THE PLAN IS THE WHOLE ARM: Apply, carrying every desired rank, head included, in the desired order.
+fn w_applies_the_whole_arm(d: UpsertDecision<ArmConvergeApply>) -> Bool {
+  match d {
+    Apply { plan: p } => {
+      let ranks = arm_converge_apply_ranks(p: p)
+      count(ranks) == count(w_hosts)
+        && all(zip_hosts(ranks: ranks), x => x)
+        && count(filter(ranks, r => r.is_head)) == 1
+    }
+    Noop => false
+    Refuse { reason: _ } => false
+  }
+}
+
+fn zip_hosts(ranks: List<ArmRankDesired>) -> List<Bool> {
+  map(w_hosts, h => any(ranks, r => (r.host as String) == h))
+}
+
+fn w_refuses_naming(d: UpsertDecision<ArmConvergeApply>, fragment: String) -> Bool {
+  match d {
+    Refuse { reason: r } => string_contains(s: r as String, pattern: fragment)
+    Noop => false
+    Apply { plan: _ } => false
+  }
+}
+
+// ── TONIGHT'S LESSON (valiant-crab-775, 2026-10-05), THE RED A PER-HOST REPAIR FAILS ────────────
+//
+// At 03:27Z the head was started alone: the workers had failed at 02:48Z, so the head timed out at the
+// rendezvous with 1 of 4 joined. The observation that preceded it: the head's unit present as planned
+// but inactive with no container, every worker's unit failed with no container. The plan must restart
+// the WHOLE arm -- a plan naming only the head is the red, and ArmConvergeApply has no field that could
+// name a subset (its sole constructor is the decision, which always hands it the whole roster).
+test fn w_a_stopped_head_beside_failed_workers_restarts_the_whole_arm() -> Bool {
+  w_applies_the_whole_arm(d: w_decide(observed: [
+    w_obs(host: "srv6", stdout: w_leg(unit_sha: w_sha_planned, active: "inactive", container: "absent", committed: "absent")),
+    w_obs(host: "srv5", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+    w_obs(host: "srv8", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+    w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+  ]))
+}
+
+// THE SAME LESSON FROM THE OTHER SIDE: a head that IS running beside workers that are not is still the
+// whole arm's restart -- the head's incarnation joined no epoch the workers are in.
+test fn w_a_running_head_beside_stopped_workers_restarts_the_whole_arm() -> Bool {
+  w_applies_the_whole_arm(d: w_decide(observed: [
+    w_running(host: "srv6"),
+    w_obs(host: "srv5", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+    w_obs(host: "srv8", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+    w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "failed", container: "absent", committed: "absent")),
+  ]))
+}
+
+// THE STATE NO LEFTOVER KIND MATCHED (run 37254736596): three ranks rolled back and running, the head
+// carrying the restored unit file but stopped. The retired classifier refused it and held Group A down;
+// here it is simply GoalDiverged, and the plan restarts the whole arm.
+test fn w_the_mixed_state_that_matched_no_leftover_kind_converges() -> Bool {
+  let observed = [
+    w_obs(host: "srv6", stdout: w_leg(unit_sha: w_sha_planned, active: "inactive", container: "absent", committed: "absent")),
+    w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7"),
+  ]
+  w_applies_the_whole_arm(d: w_decide(observed: observed))
+    && match arm_structural_assessment(desired: w_desired(), observed: observed) {
+      GoalDiverged { deviations: _ } => true
+      GoalSatisfied { evidence: _ } => false
+      GoalIndeterminate { known_deviations: _, unknowns: _ } => false
+      GoalAssessmentRefused { cause: _ } => false
+    }
+}
+
+// EVERY RANK RUNNING IS NOT YET ONE EPOCH: a rank whose container has restarted is a deviation, and so is
+// a rank the readback refused on an otherwise structurally satisfied arm -- both restart the whole arm.
+test fn w_a_restarted_container_or_a_refused_readback_restarts_the_whole_arm() -> Bool {
+  let restarted = [w_running(host: "srv6"), w_running(host: "srv5"),
+    w_obs(host: "srv8", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 1", committed: "absent")),
+    w_running(host: "srv7")]
+  let all_running = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]
+  let after_readback = arm_assessment_after_readback(
+    structural: arm_structural_assessment(desired: w_desired(), observed: all_running),
+    refusals: [ArmRankReadbackRefusal { host: "srv8" as HostIdentity, cause: "the transport verdict is unread" }])
+  w_applies_the_whole_arm(d: w_decide(observed: restarted))
+    && w_applies_the_whole_arm(d: arm_converge_decision(desired: w_desired(), assessment: after_readback))
+}
+
+// A UNIT FILE THAT IS NOT THE DESIRED STEP'S is a deviation even with everything running: the arm
+// serves another step.
+test fn w_another_steps_unit_restarts_the_whole_arm() -> Bool {
+  w_applies_the_whole_arm(d: w_decide(observed: [
+    w_obs(host: "srv6", stdout: w_leg(unit_sha: w_sha_other, active: "active", container: "0123456789ab true 0", committed: "absent")),
+    w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7"),
+  ]))
+}
+
+// THE POSITIVE CONTROL: every rank as planned, active, one running never-restarted container, readback
+// clean -> Noop. Nothing is touched.
+test fn w_a_realized_arm_is_noop() -> Bool {
+  let all_running = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]
+  match arm_converge_decision(desired: w_desired(), assessment: arm_assessment_after_readback(
+    structural: arm_structural_assessment(desired: w_desired(), observed: all_running), refusals: [] as List<ArmRankReadbackRefusal>)) {
+    Noop => true
+    Apply { plan: _ } => false
+    Refuse { reason: _ } => false
+  }
+}
+
+// ── UNKNOWN IS NEVER ABSENT, AND REMEDIATION OVER IT IS REFUSED ────────────────────────────────
+//
+// A container the daemon could not be asked about, or a leg that never completed, refuses -- and it
+// refuses EVEN WHEN another rank's deviation is proven, because unknowns win over deviations
+// (std.goal_assessment assess_by_deviations_and_unknowns). The RED this guards: an inspect failure read
+// as "no container" would plan a restart over a rank whose state nobody read.
+test fn w_an_unread_rank_refuses_naming_it_and_is_never_read_as_absent() -> Bool {
+  let unread_container = w_obs(host: "srv8", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "unread:Cannot connect to the Docker daemon", committed: "absent"))
+  let cut_off = w_obs(host: "srv7", stdout: "desired_unit_sha=x\nunit_sha=y\n")
+  w_refuses_naming(d: w_decide(observed: [w_running(host: "srv6"), w_running(host: "srv5"), unread_container, w_running(host: "srv7")]), fragment: "srv8: container unread")
+    && w_refuses_naming(d: w_decide(observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), cut_off]), fragment: "srv7: unread")
+    && w_refuses_naming(d: w_decide(observed: [
+         w_obs(host: "srv6", stdout: w_leg(unit_sha: w_sha_planned, active: "inactive", container: "absent", committed: "absent")),
+         w_running(host: "srv5"), unread_container, w_running(host: "srv7")]), fragment: "srv8: container unread")
+    && match cut_off { ArmRankUnread { host: _, cause: _ } => true  ArmRankRead { observed: _ } => false }
+}
+
+// THE ROSTER IS AN IDENTITY JOIN: three observations for four ranks, or the right count on the wrong
+// hosts, refuses rather than assessing a different arm.
+test fn w_a_roster_that_is_not_the_desired_arms_refuses() -> Bool {
+  w_refuses_naming(d: w_decide(observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8")]), fragment: "not the desired arm's roster")
+    && w_refuses_naming(d: w_decide(observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv9")]), fragment: "not the desired arm's roster")
+}
+
+// ── THE LAST COMMITTED ARM ───────────────────────────────────────────────────────────────────
+//
+// A committed arm is one step on EVERY rank; a missing record or two labels is not one. And the return
+// is admitted only if the re-rendered step reproduces every recorded unit hash on its own host.
+test fn w_the_committed_arm_is_one_label_on_every_rank() -> Bool {
+  let all_committed = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]
+  let one_missing = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"),
+    w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: "absent"))]
+  let split = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"),
+    w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: join(["fp8-64 ", w_sha_planned], "")))]
+  (match arm_committed_reading(observed: all_committed) { ArmCommitted { label: l, unit_shas: s } => (l as String) == "fp8-16" && count(s) == 4  ArmNotCommitted { cause: _ } => false })
+    && (match arm_committed_reading(observed: one_missing) { ArmCommitted { label: _, unit_shas: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "3 of 4") })
+    && (match arm_committed_reading(observed: split) { ArmCommitted { label: _, unit_shas: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "different steps") })
+}
+
+test fn w_a_return_is_admitted_only_when_the_rerender_reproduces_the_record() -> Bool {
+  let committed = arm_committed_reading(observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")])
+  let same = map(w_hosts, h => w_obs(host: h, stdout: w_leg(unit_sha: w_sha_other, active: "inactive", container: "absent", committed: "absent")))
+  let drifted = concat(map(["srv6", "srv5", "srv8"], h => w_obs(host: h, stdout: w_leg(unit_sha: w_sha_other, active: "inactive", container: "absent", committed: "absent"))),
+    [w_obs(host: "srv7", stdout: join(["desired_unit_sha=", w_sha_other, "\nunit_sha=absent\nactive_state=inactive\ncontainer=absent\ncommitted=absent\n", arm_observe_complete_word, "\n"], ""))])
+  arm_committed_reproduced(reading: committed, rerendered: same)
+    && !arm_committed_reproduced(reading: committed, rerendered: drifted)
+    && !arm_committed_reproduced(reading: ArmNotCommitted { cause: "none" }, rerendered: same)
+}
+
+// ── THE OBSERVATION LEG'S SHAPE, AND WHAT IT IS NOT ─────────────────────────────────────────────
+//
+// The real script prints every key the parser reads and the completion word. This is SHAPE: the
+// execution evidence is the first converge's receipt.
+test fn w_the_observe_script_prints_every_key_the_parser_reads() -> Bool {
+  let o = arm_rank_observe_script(unit_name: "gunbc-glm53-stair-head.service" as NonEmptyStr, container_name: "glm53-stair" as NonEmptyStr, planned_unit_text: "[Unit]\n")
+  all(["desired_unit_sha=", "unit_sha=", "active_state=", "container=", "committed=", "retired_file="], k => string_contains(s: o, pattern: k))
+    && string_contains(s: o, pattern: join(["echo ", arm_observe_complete_word], ""))
+    && string_contains(s: o, pattern: "/var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service")
+}

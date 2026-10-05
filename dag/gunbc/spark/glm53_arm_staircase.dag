@@ -20,14 +20,15 @@ import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import extdeps.vllm.environment { vllm_environment_variable_name, VllmFlashinferAutotuneSkipOps }
 import extdeps.docker.cli { DockerEnvAssignment }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_utilization, group_b_restoration_window_tokens, group_b_restoration_max_batched_tokens, group_b_experiment_subject_seats }
-import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmittedForAdoptionOnly, group_arm_adopt_dangling, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, ArmDeclaredIncumbent, NoIncumbentDeclared, IncumbentDeclared, ArmIncumbentUnit, group_arm_launch_plan, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
+import gunbc.spark.native_serving_apply { SparkNativeArmSteps, NativeArmStepsRefused }
+import gunbc.spark.group_arm_launch { GroupArmLaunchInputs, GroupArmLaunchPlan, GroupArmLaunchAdmission, GroupArmLaunchAdmitted, GroupArmLaunchAdmissionRefused, group_arm_plan_hosts, group_arm_launch_plan, group_arm_steps, GroupArmCommittedAuthority, group_arm_row_successor, arm_successor_wire, group_arm_launch_admission_live, group_arm_dry_run_occupancy, group_arm_dry_run_report, ArmDryPlan, ArmWetSession, ArmPreApplyPassed, group_arm_read_occupancy, group_arm_memory_need, group_arm_apply_admitted }
 
 // ── THE GLM-5.3-FLASH STAIRCASE ON GROUP A: THE ARM'S INPUTS, AND NOTHING ELSE ─────────────────
 //
 // WHAT THIS MODULE IS. One caller of gunbc.spark.group_arm_launch -- the deployment-independent launch
 // transaction -- supplying what is GLM's and Group A's: the checkpoint per staircase, the cold floor, the
-// ceiling per step, the scheduler gate above the floor, the unit and container names, and the declared
-// incumbent. It plans, renders and admits nothing itself. Operator-approved program, 2026-10-02 (relayed
+// ceiling per step, the scheduler gate above the floor, the unit and container names, and which
+// recorded labels re-render to which step. It plans, renders and admits nothing itself. Operator-approved program, 2026-10-02 (relayed
 // by snappy-bat-66; ruled by valiant-crab-775, deforking cut 8): Group A is a dev environment, every
 // step is a bounded experiment, and nothing here promotes.
 
@@ -254,59 +255,39 @@ fn glm53_step_inputs(s: Glm53StaircaseStep) -> GroupArmLaunchInputs? {
   }
 }
 
-// ── THE DECLARED INCUMBENT, PER STEP ──────────────────────────────────────────────────────────
+// ── THE COMMITTED-STEP AUTHORITY ──────────────────────────────────────────────────────────────
 //
-// STEP N > 1 SUPERSEDES STEP N - 1, WHICH IS THIS ARM'S OWN TWO UNITS ON GROUP A's FOUR HOSTS
-// (approved by valiant-crab-775, 2026-10-02). THE FIRST STEP SUPERSEDES NOTHING, AND THAT IS A READING,
-// NOT AN ASSUMPTION: the serve snappy-bat-66 handed over on .225 could not be described by its launcher
-// (archived), so Group A's occupancy was read instead -- fleet-converge run 37087495838 (mode
-// spark_arm_group_observe, 2026-10-03) found no running container and no GPU compute process on any of
-// srv5, srv6, srv7 or srv8, and no serving unit beyond the system's own. There is nothing to declare.
-// If a serve appears before the first step runs, it is an undeclared occupant and the admission
-// refuses on it, exactly as for any other.
-type Glm53StepIncumbent
-  = Glm53IncumbentResolved { incumbent: ArmDeclaredIncumbent }
-
-type Glm53IncumbentChoice = SupersedePreviousStep | SupersedeNothing
-
-fn glm53_previous_step_incumbent(lines_hosts: List<HostIdentity>) -> ArmDeclaredIncumbent {
-  IncumbentDeclared {
-    units: concat(
-      map(filter(enumerate(lines_hosts), p => p.first == 0), p => ArmIncumbentUnit { host: p.second, unit_name: glm53_staircase_units.head_unit_name }),
-      map(filter(enumerate(lines_hosts), p => p.first != 0), p => ArmIncumbentUnit { host: p.second, unit_name: glm53_staircase_units.rank_unit_name })),
-    provenance: "the staircase's previous step: this arm's own head unit on rank zero's host and its rank unit on the others" as NonEmptyStr,
+// A STEP IS COMMITTED UNDER ITS OWN WIRE, and a recorded wire re-renders through this module's own step
+// table, so a return to the last committed arm plans exactly that step. An unknown wire refuses: the
+// staircase has no nearby step to guess. There is no declared incumbent any more: the arm's own units are
+// the converge's subject (gunbc.spark.group_arm_launch), so the step before is what the converge observes
+// and, if it deviates, stops with every rank.
+fn glm53_step_steps(s: Glm53StaircaseStep) -> SparkNativeArmSteps {
+  match glm53_step_inputs(s: s) {
+    Absent => NativeArmStepsRefused { cause: glm53_step_unplanned_cause(s: s) as NonEmptyStr }
+    Present { value: inputs } => group_arm_steps(intent: inputs.intent, units: inputs.units, p: group_arm_launch_plan(inputs: inputs))
   }
 }
 
-fn glm53_step_incumbent(choice: Glm53IncumbentChoice, hosts: List<HostIdentity>) -> Glm53StepIncumbent {
-  match choice {
-    SupersedeNothing => Glm53IncumbentResolved { incumbent: NoIncumbentDeclared }
-    SupersedePreviousStep => Glm53IncumbentResolved { incumbent: glm53_previous_step_incumbent(lines_hosts: hosts) }
+fn glm53_committed_render(label: NonEmptyStr) -> SparkNativeArmSteps {
+  match glm53_step_of_wire(word: label as String) {
+    Absent => NativeArmStepsRefused { cause: join(["the committed record names ", label as String, ", which is not a step of the GLM-5.3-Flash staircase"], "") as NonEmptyStr }
+    Present { value: s } => glm53_step_steps(s: s)
   }
 }
 
-fn glm53_incumbent_choice_wire(c: Glm53IncumbentChoice) -> NonEmptyStr {
-  match c {
-    SupersedePreviousStep => "previous-step" as NonEmptyStr
-    SupersedeNothing => "none" as NonEmptyStr
-  }
-}
-
-data glm53_incumbent_choices: List<Glm53IncumbentChoice> = [SupersedePreviousStep, SupersedeNothing]
-
-fn glm53_incumbent_choice_of_wire(word: String) -> Glm53IncumbentChoice? {
-  first(filter(glm53_incumbent_choices, c => (glm53_incumbent_choice_wire(c: c) as String) == word))
+fn glm53_committed_authority(s: Glm53StaircaseStep) -> GroupArmCommittedAuthority {
+  GroupArmCommittedAuthority { label: glm53_step_wire(s: s), render: fn(l) { glm53_committed_render(label: l) } }
 }
 
 // ── THE DRY PLAN AND THE WET SESSION ─────────────────────────────────────────────────────────────
 //
 // BOTH ARE THE ONE PATH'S, over this step's inputs. The dry plan reaches no host except the read of the
-// authority log, and reports the step's plan, every host's unit, container line, preflight and apply,
-// the declared incumbent, the admission verdict with every refusal named, and the successor key a D0
-// suspension would have to name. The wet session reads every planned host's occupancy over the
-// declared incumbent's units, admits against the live authority, and only then runs the incumbent
-// bracket and the arm transaction (gunbc.spark.group_arm_launch group_arm_apply_admitted). GLM has no
-// pre-apply work of its own.
+// authority log, and reports the step's plan, every host's unit, container line, observe, preflight,
+// stop and apply, the admission verdict with every refusal named, and the successor key a D0
+// suspension would have to name. The wet session reads every planned host's occupancy with this arm's
+// own units as its subject, admits against the live authority, and only then runs the converge
+// (gunbc.spark.group_arm_launch group_arm_apply_admitted). GLM has no pre-apply work of its own.
 fn glm53_step_title(s: Glm53StaircaseStep) -> String {
   join(["GLM-5.3-Flash Group A staircase step ", glm53_step_wire(s: s) as String], "")
 }
@@ -318,14 +299,14 @@ fn glm53_step_unplanned_cause(s: Glm53StaircaseStep) -> String {
   }
 }
 
-fn glm53_step_report(s: Glm53StaircaseStep, inputs: GroupArmLaunchInputs, plan: GroupArmLaunchPlan, incumbent: ArmDeclaredIncumbent, admission: GroupArmLaunchAdmission) -> String {
+fn glm53_step_report(s: Glm53StaircaseStep, inputs: GroupArmLaunchInputs, plan: GroupArmLaunchPlan, admission: GroupArmLaunchAdmission) -> String {
   join([
-    group_arm_dry_run_report(title: glm53_step_title(s: s), intent: inputs.intent, units: inputs.units, plan: plan, pre_apply: [], incumbent: incumbent, admission: admission),
+    group_arm_dry_run_report(title: glm53_step_title(s: s), intent: inputs.intent, units: inputs.units, plan: plan, pre_apply: [], admission: admission),
     arm_successor_wire(s: group_arm_row_successor(inputs: inputs)),
   ], "")
 }
 
-fn glm53_step_dry_plan(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice) -> ArmDryPlan {
+fn glm53_step_dry_plan(s: Glm53StaircaseStep) -> ArmDryPlan {
   match glm53_step_inputs(s: s) {
     Absent => ArmDryPlan {
       report: join([glm53_step_title(s: s), " -- DRY RUN\nplan: REFUSED\n  - ", glm53_step_unplanned_cause(s: s), "\n"], ""),
@@ -333,54 +314,42 @@ fn glm53_step_dry_plan(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice) -> A
     }
     Present { value: inputs } => {
       let plan = group_arm_launch_plan(inputs: inputs)
-      match glm53_step_incumbent(choice: choice, hosts: group_arm_plan_hosts(p: plan)) {
-        Glm53IncumbentResolved { incumbent: incumbent } => {
-          let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: group_arm_dry_run_occupancy(group: FabricGroupA), incumbent: incumbent)
-          ArmDryPlan { report: glm53_step_report(s: s, inputs: inputs, plan: plan, incumbent: incumbent, admission: admission), admission: admission }
-        }
-      }
+      let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, units: inputs.units, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: group_arm_dry_run_occupancy(group: FabricGroupA))
+      ArmDryPlan { report: glm53_step_report(s: s, inputs: inputs, plan: plan, admission: admission), admission: admission }
     }
   }
 }
 
-fn glm53_step_session(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice, now_word: String, context: FleetSshExecutionContext, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
+fn glm53_step_session(s: Glm53StaircaseStep, now_word: String, context: FleetSshExecutionContext, ctx: SparkMaterializeContext) -> SparkBuildHostWork {
   match glm53_step_inputs(s: s) {
     Absent => SparkBuildHostWork { receipt: join(["NOT LAUNCHED: ", glm53_step_unplanned_cause(s: s), "\n"], ""), converged: false }
     Present { value: inputs } => {
       let plan = group_arm_launch_plan(inputs: inputs)
       let hosts = group_arm_plan_hosts(p: plan)
-      match glm53_step_incumbent(choice: choice, hosts: hosts) {
-        Glm53IncumbentResolved { incumbent: incumbent } => {
-          let occupancy = group_arm_read_occupancy(ctx: ctx, hosts: hosts, units: inputs.units, incumbent: incumbent, need: group_arm_memory_need(gpu_memory_utilization: inputs.profile.decided_gpu_memory_basis_points))
-          let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: occupancy, incumbent: incumbent)
-          let report = glm53_step_report(s: s, inputs: inputs, plan: plan, incumbent: incumbent, admission: admission)
-          match admission {
-            GroupArmLaunchAdmissionRefused { causes: _ } =>
-              SparkBuildHostWork { receipt: join([report, "NOT LAUNCHED: admission refused; the incumbent and every serving unit are untouched\n"], ""), converged: false }
-            GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => {
-              let work = group_arm_adopt_dangling(intent: inputs.intent, units: inputs.units, plan: plan, context: context, ctx: ctx, now_word: now_word)
-              SparkBuildHostWork { receipt: join([report, work.receipt], ""), converged: work.converged }
-            }
-            GroupArmLaunchAdmitted => {
-              let work = group_arm_apply_admitted(
-                intent: inputs.intent, units: inputs.units, plan: plan, incumbent: incumbent,
-                context: context, ctx: ctx, now_word: now_word,
-                pre_apply: fn(steps) { ArmPreApplyPassed { receipt: "" } })
-              SparkBuildHostWork { receipt: join([report, work.receipt], ""), converged: work.converged }
-            }
-          }
+      let occupancy = group_arm_read_occupancy(ctx: ctx, hosts: hosts, units: inputs.units, need: group_arm_memory_need(gpu_memory_utilization: inputs.profile.decided_gpu_memory_basis_points))
+      let admission = group_arm_launch_admission_live(group: FabricGroupA, purpose: inputs.purpose, units: inputs.units, plan: plan, successor: group_arm_row_successor(inputs: inputs), arm_causes: [], occupancy: occupancy)
+      let report = glm53_step_report(s: s, inputs: inputs, plan: plan, admission: admission)
+      match admission {
+        GroupArmLaunchAdmissionRefused { causes: _ } =>
+          SparkBuildHostWork { receipt: join([report, "NOT LAUNCHED: admission refused; every serving unit is untouched\n"], ""), converged: false }
+        GroupArmLaunchAdmitted => {
+          let work = group_arm_apply_admitted(
+            intent: inputs.intent, units: inputs.units, plan: plan, committed: glm53_committed_authority(s: s),
+            context: context, ctx: ctx,
+            pre_apply: fn(steps) { ArmPreApplyPassed { receipt: "" } })
+          SparkBuildHostWork { receipt: join([report, work.receipt], ""), converged: work.converged }
         }
       }
     }
   }
 }
 
-fn glm53_step_wet_session(s: Glm53StaircaseStep, choice: Glm53IncumbentChoice) -> ArmWetSession {
+fn glm53_step_wet_session(s: Glm53StaircaseStep) -> ArmWetSession {
   ArmWetSession {
     title: glm53_step_title(s: s) as NonEmptyStr,
     group: FabricGroupA,
     attempt_raw: join(["glm53-group-a-staircase-", glm53_step_wire(s: s) as String], ""),
     identity_file_name: "gunbc-glm53-group-a-staircase-admin-password" as NonEmptyStr,
-    session: fn(now_word, context, ctx) { glm53_step_session(s: s, choice: choice, now_word: now_word, context: context, ctx: ctx) },
+    session: fn(now_word, context, ctx) { glm53_step_session(s: s, now_word: now_word, context: context, ctx: ctx) },
   }
 }

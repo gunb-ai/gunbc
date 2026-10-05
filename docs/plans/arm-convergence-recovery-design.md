@@ -103,7 +103,7 @@ fence, backup and marker files as a declared, one-time migration step (§4).
 
 The fence's only remaining job is to serialize writers, and an existing authority already does
 that: the fleet-converge job's `concurrency` group, emitted from `ci_spec` through
-`gunbc.fleet.fleet_converge_workflow`. GitHub releases the group exactly when the **job** ends, so
+`gunbc.fleet_converge_workflow`. GitHub releases the group exactly when the **job** ends, so
 the group's own state is the holder-liveness read the hold would have needed. That covers the
 parent's three conditions on the hold:
 
