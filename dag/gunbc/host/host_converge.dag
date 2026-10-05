@@ -4,7 +4,7 @@ import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_unit {
   runner_unit_template_name,
   runner_all_slots_unit_glob,

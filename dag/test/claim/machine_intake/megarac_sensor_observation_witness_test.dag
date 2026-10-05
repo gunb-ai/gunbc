@@ -1,0 +1,157 @@
+module test.claim.machine_intake.megarac_sensor_observation_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.optional { Present }
+import extdeps.bmc.ipmi_sdr { SdrLineResult, SdrLineDecoded, SdrTypeLine, sdr_decode_lines }
+import gunbc.machine_intake_mtcollins1_32dimm_bringup_observation { mtcollins1_sdr_capture }
+import gunbc.machine_intake_megarac_sensor_observation {
+  MegaRacSdrSocketNamingRule, SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming,
+  megarac_sensor_socket, megarac_socket_sensor_lines, megarac_socket_unstructured_lines,
+  megarac_sensor_anomalies, megarac_sensor_table_text,
+}
+import gunbc.machine_intake_mtcollins1_power_on_account { BmcAnomaly }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming, MegaRacVirtualMediaAttach }
+import gunbc.machine_intake_mtcollins1_power_on_account { SensorNotNominal, SensorLineWithoutReadingNotNominal, SocketSensorsAbsent }
+import std.measure { byte_size_count }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// THE INPUT IS THIS CONTROLLER'S OWN `sdr elist`, read whole from the committed capture the
+// 32-DIMM bring-up row names (mtcollins1_sdr_capture: 7899 bytes, ASCII, so its length in scalars
+// is its byte count). Both sockets were up when it was read. A missing path reads as empty on
+// this route, so every claim over it first asserts the length.
+fn table_text() -> String {
+  Filesystem.Read(path: mtcollins1_sdr_capture.artifact_path as String).content
+}
+
+// THE NAMING IS READ THROUGH THE REAL ADMISSION OF THE MANAGED HOST mtcollins1 (gunbc.megarac_managed_host,
+// operation MegaRacSdrSocketNaming): its observed build is the one the prefix was read on. Every claim
+// below reads through it, so a host that stopped admitting would turn each of them red.
+fn rule() -> MegaRacSdrSocketNamingRule? {
+  match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacSdrSocketNaming) {
+    MegaRacHostRefused { cause: _ } => none
+    MegaRacHostAdmitted { host: h } =>
+      match megarac_sdr_socket_naming(host: h) {
+        SdrSocketNamingBound { naming: n } => Present { value: n }
+        SdrSocketNamingRefused { reason: _ } => none
+      }
+  }
+}
+
+fn naming_bound() -> Bool {
+  match rule() { Present { value: _ } => true  Absent => false }
+}
+
+fn socket_of(name: String) -> Int? {
+  match rule() { Present { value: n } => megarac_sensor_socket(naming: n, name: name)  Absent => none }
+}
+
+fn socket_lines(lines: List<SdrLineResult>, socket: Int) -> List<SdrTypeLine> {
+  match rule() { Present { value: n } => megarac_socket_sensor_lines(naming: n, lines: lines, socket: socket)  Absent => [] }
+}
+
+fn socket_unstructured(lines: List<SdrLineResult>, socket: Int) -> List<String> {
+  match rule() { Present { value: n } => megarac_socket_unstructured_lines(naming: n, lines: lines, socket: socket)  Absent => [] }
+}
+
+fn anomalies(lines: List<SdrLineResult>, sockets: List<Int>, expected: List<Int>?) -> List<BmcAnomaly> {
+  match rule() { Present { value: n } => megarac_sensor_anomalies(naming: n, lines: lines, sockets: sockets, expected: expected)  Absent => [] }
+}
+
+fn table_text_of(lines: List<SdrLineResult>, sockets: List<Int>) -> String {
+  match rule() { Present { value: n } => megarac_sensor_table_text(naming: n, lines: lines, sockets: sockets)  Absent => "" }
+}
+
+// A CARRIER ADMITTED FOR ANOTHER MEGARAC OPERATION MINTS NO NAMING.
+test fn a_host_admitted_for_virtual_media_mints_no_socket_naming() -> Bool {
+  naming_bound() && match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacVirtualMediaAttach) {
+    MegaRacHostRefused { cause: _ } => false
+    MegaRacHostAdmitted { host: h } => match megarac_sdr_socket_naming(host: h) { SdrSocketNamingRefused { reason: _ } => true  _ => false }
+  }
+}
+
+fn table_read_whole() -> Bool {
+  naming_bound() && table_text().length() == (byte_size_count(b: mtcollins1_sdr_capture.byte_count) as Int)
+}
+
+fn table() -> List<SdrLineResult> {
+  sdr_decode_lines(stdout: table_text())
+}
+
+fn socket_total(lines: List<SdrLineResult>, socket: Int) -> Int {
+  count(socket_lines(lines: lines, socket: socket)) + count(socket_unstructured(lines: lines, socket: socket))
+}
+
+fn socket_is(name: String, expected: Int) -> Bool {
+  match socket_of(name: name) { Present { value: k } => k == expected Absent => false }
+}
+
+fn no_socket(name: String) -> Bool {
+  match socket_of(name: name) { Present { value: _ } => false Absent => true }
+}
+
+// ── the name prefix, and why it and not the entity ──────────────────────────────────────────
+
+test fn the_prefix_names_the_socket_and_nothing_else_does() -> Bool {
+  naming_bound() && socket_is(name: "CPU1_0V75_PCP", expected: 1) && socket_is(name: "CPU0_SOC_Temp", expected: 0)
+    && no_socket(name: "FAN0_0_Speed") && no_socket(name: "CPU") && no_socket(name: "CPUX_Temp")
+}
+
+// The premise the prefix rests on, read from the controller's bytes: the same rail on the two
+// sockets carries ONE entity id, so grouping by entity would put both sockets in one group.
+test fn the_entity_field_does_not_separate_the_sockets_on_this_controller() -> Bool {
+  let pcp = map(filter(table(), r => match r { SdrLineDecoded { line: l } => (l.name as String) == "CPU0_0V75_PCP" || (l.name as String) == "CPU1_0V75_PCP" _ => false }),
+    r => match r { SdrLineDecoded { line: l } => l.entity_id as String _ => "" })
+  table_read_whole() && count(pcp) == 2 && join(pcp, ",") == "19.0,19.0"
+}
+
+// ── the real table: both sockets present, nothing to report ──────────────────────────────────
+
+test fn each_socket_has_its_38_sensors() -> Bool {
+  let t = table()
+  table_read_whole() && socket_total(lines: t, socket: 0) == 38 && socket_total(lines: t, socket: 1) == 38
+}
+
+test fn the_discrete_status_sensors_are_kept_per_socket() -> Bool {
+  table_read_whole() && any(socket_unstructured(lines: table(), socket: 1), t => starts_with(s: t, prefix: "CPU1_CPU_Status"))
+}
+
+test fn a_two_socket_table_with_every_status_ok_has_no_anomaly() -> Bool {
+  table_read_whole() && count(anomalies(lines: table(), sockets: [0, 1], expected: Present { value: [0, 1] })) == 0
+}
+
+// ── discriminating reds over the same bytes ──────────────────────────────────────────────────
+
+fn table_with(from: String, to: String) -> List<SdrLineResult> {
+  sdr_decode_lines(stdout: join(split(s: table_text(), delimiter: from), to))
+}
+
+test fn a_socket_rail_with_no_reading_is_named() -> Bool {
+  let f = anomalies(lines: table_with(from: "CPU1_CPU_VCORE   | 58h | ok  | 19.51 | 1.03 Volts", to: "CPU1_CPU_VCORE   | 58h | ns  | 19.51 | No Reading"), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SensorNotNominal { line: l } => (l.name as String) == "CPU1_CPU_VCORE" && (l.status as String) == "ns" _ => false })
+}
+
+test fn a_discrete_socket_sensor_not_ok_is_named() -> Bool {
+  let f = anomalies(lines: table_with(from: "CPU1_CPU_Status  | DAh | ok ", to: "CPU1_CPU_Status  | DAh | ns "), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SensorLineWithoutReadingNotNominal { text: t } => string_contains(s: t as String, pattern: "CPU1_CPU_Status") _ => false })
+}
+
+test fn a_socket_with_no_sensor_at_all_is_an_anomaly() -> Bool {
+  let f = anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Present { value: [0, 1] })
+  table_read_whole() && count(f) == 1 && any(f, x => match x { SocketSensorsAbsent { socket: k } => k == 1 _ => false })
+}
+
+test fn the_rendering_groups_by_socket() -> Bool {
+  let t = table_text_of(lines: table(), sockets: [0, 1])
+  table_read_whole() && string_contains(s: t, pattern: "socket 1 (CPU1_ sensors:") && string_contains(s: t, pattern: "CPU1_CPU_VCORE | 58h | ok | 19.51 | 1.03 Volts")
+}
+
+// GAP 2: AN EMPTY SOCKET'S MISSING SENSORS ARE AN ANOMALY ONLY WHEN THE RECEIPT EXPECTS THE SOCKET.
+test fn a_socket_with_no_sensor_is_no_anomaly_when_only_socket_0_is_expected() -> Bool {
+  table_read_whole() && count(anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Present { value: [0] })) == 0
+    && count(anomalies(lines: table_with(from: "CPU1_", to: "GONE_"), sockets: [0, 1], expected: Absent)) == 0
+}

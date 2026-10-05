@@ -1,0 +1,27 @@
+module gunbc.recurring_failure_mode.witness_reads_a_probe_file_the_commit_does_not_contain
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data witness_reads_a_probe_file_the_commit_does_not_contain: RecurringFailureMode = RecurringFailureMode {
+  identity: "witness_reads_a_probe_file_the_commit_does_not_contain" as NonEmptyStr,
+  receipts: [
+    "**a witness reads its forged source from dag/test/probe/ by path, and the file was never committed** (INVALID STATE: the claim is in the tree and the source it filesystem_reads is not. HARM: it passes in the author's worktree, where the untracked file exists, and errors on the required floor only after the whole run -- 'filesystem_read: No such file or directory' -- so the author learns at the end of a ~45-minute floor what was decidable at commit time. The claim does refuse rather than pass, so this is a late refusal, not a silent pass.)",
+
+    "THE CAUSE IS OUTSIDE THE REPOSITORY, WHICH IS WHY IT IS SILENT. The shared clone's .git/info/exclude -- one file for every worktree on the host -- carries a `probe/` rule, so `git add dag` skips any new dag/test/probe/*.dag without a word, and `git status` shows nothing left to add. Nothing in the tree records the rule, and a reader of the tree cannot see it.",
+
+    "SPECIMEN, gunbc#13225 at d664bb32de6 (2026-10-04): test.claim.qualification_job_log_receipt_forged_probe_witness reads dag/test/probe/qualification_job_log_receipt_forged_probe.dag. Two claims errored claim_failed on the required floor; the file had passed `git add dag` but was ignored. Fixed by `git add -f` at 022f7ecb632. #13206's probe in the same directory was committed, so the rule bites per-file at add time, not per-directory forever.",
+
+    "RECOGNITION RULE: after adding a source a witness reads by path, `git ls-files <path>` it; `git check-ignore -v <path>` names the rule if it is missing.",
+
+    "RUNG FOUND AT: mitigatable -- the floor refuses the claim, late.",
+
+    "CEILING: mechanically preventable at commit time. The paths a witness passes to filesystem_read as literals are statically visible in its source, so a pre-commit or parse-phase join between literal read paths under the checkout and the committed tree is decidable.",
+
+    "NEXT-RUNG TRIGGER, A CAPABILITY: a check on the commit path (the generated pre-commit hook, or the required parse phase) that refuses a witness whose literal checkout read path is absent from the tree being committed or judged -- sufficient that an ignored probe file stops the commit, or fails parse in minutes, instead of erroring at the end of the floor.",
+  ],
+  evidence: [
+    DeclarationRef { module_path: "gunbc.recurring_failure_mode", decl_name: "RecurringFailureMode", field: WholeDeclaration },
+  ],
+}

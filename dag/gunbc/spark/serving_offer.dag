@@ -10,7 +10,7 @@ import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerSecond, Obser
 import product.fabric.provider_route { ProviderRoute }
 import std.measure { Second, second, MoneyRate, money_amount_micro, hardware_thread_count }
 import extdeps.currency.currency { Usd }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.spark.fabric_switch_observed { fabric_group_wire, FabricGroup, FabricGroupA, FabricGroupB }
 import gunbc.spark.managed_access_bootstrap { SparkManagedGrant, InspectServingContainer }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
@@ -40,7 +40,7 @@ import gunbc.spark.rendezvous_participation {
   RendezvousEpoch, serving_group_rendezvous_reach_line,
 }
 import std.content_hash { ContentHash, serialize_content_hash }
-import product.placement_supply { host_identity_eq }
+import product.host_identity { host_identity_eq }
 import gunbc.serving.serving_availability {
   ServingAvailability, ServingFrontDoorAvailabilityVerdict, ServingAvailable, ServingUnavailable, ServingAvailabilityUnread, serving_availability_text,
 }

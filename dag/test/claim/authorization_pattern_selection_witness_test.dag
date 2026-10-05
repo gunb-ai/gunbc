@@ -10,7 +10,7 @@ import gunbc.auth.authorization_pattern_selection {
   MintsNoCredential, MintsResourceScopedCredential, MintsAccountWideCredential,
   ReversibleByReapply, IrreversibleEffect,
   BillsExternally, NoBillingConsequence,
-  NoWitnessDischarge,
+  NoWitnessDischarge, StandingRulingUnderInterlock, WitnessDischarge,
   FederatedScopedGrant, OperatorApprovedCapability, HumanOnlyStep, OperatorOwnSession, PastedOperatorToken,
   PatternSelected, ManualStepRequired, NoAdmissiblePattern,
   PatternSelectionNeedsEvidence, PatternSelectionNeedsPolicy, PatternSelectionRefused,
@@ -24,7 +24,8 @@ import gunbc.auth.privileged_effect_census {
   site_verdict, Conforms, DivergesWithReason, Diverges, SiteNotDecidable,
   mtcollins1_boot_effect, privileged_effect_interlocks, interlocked_sites_missing_from_census, rulings_without_a_rostered_interlock,
   ruling_roots_missing_from_census, census_sites_outside_ruling_roots,
-  runner_lifecycle_ruling_scope_interpretation, runner_lifecycle_operator_ruling, RulingScopeInterpretation, ruling_discharge_for,
+  runner_lifecycle_scope_ruling, runner_lifecycle_operator_ruling, OperatorScopeRuling, ruling_discharge_for,
+  RealizedFederatedGrant, RealizedRunSelected, RealizedApprovalCapability, RealizedHumanStep, RealizedOperatorSession, RealizedUnauthorized,
 }
 import std.human_intervention {
   HumanIntervention, HumanInterventionIdentity, FleetOnce, DeviceOnce, EveryProvision, BreakGlassOnly,
@@ -392,7 +393,8 @@ test fn every_root_of_the_standing_ruling_is_a_conforming_census_row() -> Bool {
 
 // THE 2026-10-03 PRE-APPROVAL IS A SELECTION, NOT A NEW VOCABULARY. JIT registration,
 // deregistration, the qualification dispatch and its per-attempt branch pin are each a
-// recurring automated effect under the dispatching run's federated identity, so the selection must
+// recurring automated effect under the dispatching run's federated identity (the pin and its removal
+// on their own parameters, with no ruling discharge), so the selection must
 // answer the federated scoped grant and the row must conform; rowing it as an approval capability or
 // a per-registration ntfy approval turns this red.
 test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federated_grant_and_conform() -> Bool {
@@ -403,24 +405,44 @@ test fn the_jit_registration_deregistration_and_dispatch_sites_select_the_federa
         && match v.conformance { Conforms => true _ => false }))
 }
 
-// THE DISPATCH'S COVERAGE IS THE INTERPRETATION'S, NOT THE RULING TEXT'S. The census row's
-// discharge reads runner_lifecycle_ruling_scope_interpretation; narrowed to registration and
-// deregistration -- the ruling's own words -- the same irreversible dispatch effect is no longer
-// discharged and the selection stops answering the federated grant. The ruling text is unchanged
-// either way, and its interlock is the host-generic unit hold.
-test fn the_dispatch_is_federated_only_while_the_interpretation_names_it() -> Bool {
+// ONE ANSWER FOR WHICH SITES THE RUNNER-LIFECYCLE RULING DISCHARGES: the operator's scope ruling's covers list.
+// A census row carries that ruling's discharge exactly when covers names its site, so a row cannot
+// claim the ruling while covers omits it, and covers cannot name a row that never takes the discharge
+// (the branch-pin rows once did one without the other). The red is either drift: a row hard-coding the ruling,
+// or a covers entry whose row hard-codes NoWitnessDischarge.
+fn discharged_by_runner_lifecycle_ruling(d: WitnessDischarge) -> Bool {
+  match d {
+    NoWitnessDischarge => false
+    StandingRulingUnderInterlock { ruling: g } => (g.ruling_text as String) == (runner_lifecycle_operator_ruling.ruling_text as String)
+  }
+}
+
+test fn a_row_takes_the_runner_lifecycle_ruling_exactly_when_the_operator_scope_ruling_covers_it() -> Bool {
+  privileged_effect_census |> all(r =>
+    discharged_by_runner_lifecycle_ruling(d: r.effect.witness_discharge)
+      == any(runner_lifecycle_scope_ruling.covers, c => declaration_ref_eq(a: c, b: r.site)))
+    && runner_lifecycle_scope_ruling.covers |> all(c => any(privileged_effect_census, r => declaration_ref_eq(a: c, b: r.site)))
+}
+
+// THE DISPATCH'S COVERAGE IS THE OPERATOR'S 2026-10-05 SCOPE RULING, NOT THE 10-03 TEXT. The census
+// row's discharge reads runner_lifecycle_scope_ruling; narrowed to registration and deregistration --
+// the 10-03 ruling's own words -- the same irreversible dispatch effect is no longer discharged and
+// the selection stops answering the federated grant. The 10-03 text is unchanged either way, and its
+// interlock is the host-generic unit hold.
+test fn the_dispatch_is_federated_only_while_the_scope_ruling_names_it() -> Bool {
   let row = first(filter(privileged_effect_census, r => (r.site.decl_name as String) == "dispatch_qualification_floor"))
-  let narrowed = RulingScopeInterpretation {
+  let narrowed = OperatorScopeRuling {
     ruling: runner_lifecycle_operator_ruling,
+    scope_text: "narrowed to the 2026-10-03 ruling's own words" as NonEmptyStr,
+    decided_on: runner_lifecycle_scope_ruling.decided_on,
+    decided_through: runner_lifecycle_scope_ruling.decided_through,
     covers: [
       decl_ref(module_path: "gunbc.runner.runner_jit_perform", decl_name: "dispatch_jit_mint"),
       decl_ref(module_path: "gunbc.runner.runner_jit_deregistration", decl_name: "ensure_jit_runner_deregistered"),
     ],
-    interpreted_by: runner_lifecycle_ruling_scope_interpretation.interpreted_by,
-    interpreted_on: runner_lifecycle_ruling_scope_interpretation.interpreted_on,
-    standing: "narrowed to the ruling's own words" as NonEmptyStr,
   }
-  (runner_lifecycle_operator_ruling.interlock.decl_name as String) == "UnitHoldProof"
+  (runner_lifecycle_scope_ruling.decided_through as String) == "escalation msg_5756a200-fcb5-470a-87eb-40867bfe9cdb"
+    && (runner_lifecycle_operator_ruling.interlock.decl_name as String) == "UnitHoldProof"
     && (runner_lifecycle_operator_ruling.interlock.module_path as String) == "gunbc.managed_host_unit_hold"
     && match row {
       Present { value: r } =>
@@ -433,8 +455,27 @@ test fn the_dispatch_is_federated_only_while_the_interpretation_names_it() -> Bo
             workload_identity: r.effect.workload_identity,
             minted_reach: r.effect.minted_reach,
             billing: r.effect.billing,
-            witness_discharge: ruling_discharge_for(interpretation: narrowed, site_ref: r.site),
+            witness_discharge: ruling_discharge_for(scope: narrowed, site_ref: r.site),
           }))
       Absent => false
     }
+}
+
+// THE R2 MINT CUSTODY CELLS ARE REALIZED BY THE FEDERATED GCP IAM ROUTE, NOT AN OPERATOR SESSION:
+// no census site remains in gunbc.cloudflare.r2_mint_secret_access (its gcloud converges were
+// deleted), and the gcp-iam-converge apply site that now grants them is a federated grant naming the
+// R2 custody cells. The RED is the operator-session row restored.
+test fn the_r2_custody_cells_are_realized_by_the_federated_iam_route() -> Bool {
+  !any(privileged_effect_census, row => starts_with(s: declaration_ref_display_key(ref: row.site), prefix: "gunbc.cloudflare.r2_mint_secret_access::"))
+    && any(privileged_effect_census, row =>
+      declaration_ref_display_key(ref: row.site) == "gunbc.auth.gcp_iam_converge_run::gcp_iam_converge_apply_wet"
+        && string_contains(s: row.effect.subject as String, pattern: "R2 mint custody cells")
+        && match row.realized {
+          RealizedFederatedGrant => true
+          RealizedRunSelected => false
+          RealizedApprovalCapability => false
+          RealizedHumanStep => false
+          RealizedOperatorSession { arm: _ } => false
+          RealizedUnauthorized => false
+        })
 }

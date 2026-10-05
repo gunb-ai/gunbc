@@ -1,6 +1,6 @@
 module gunbc.fleet_host_identity
 
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // THE FLEET'S HOST IDENTITIES, as a leaf. These rows were authored in gunbc.fleet_intent_network,
 // beside the topology that ENROLLS hosts (its `endpoints`); they moved here so a module that only

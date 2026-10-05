@@ -75,6 +75,16 @@ fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
   map_lookup_primitive_delegate(m: m, key: key)
 }
 
+// KEY MEMBERSHIP, the one presence predicate over a map: whether `key` has an entry, without its value.
+// Callers that store a marker value (a map used as a set of paths) read membership here rather than
+// each matching map_lookup's Optional to a Bool.
+fn map_contains_key<K, V>(m: Map<K, V>, key: K) -> Bool {
+  match map_lookup(m: m, key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   outcome_accepted(value: map_lookup(m: m, key: key))
 }

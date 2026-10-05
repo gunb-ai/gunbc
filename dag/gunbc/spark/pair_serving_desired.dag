@@ -3,7 +3,7 @@ module gunbc.spark.pair_serving_desired
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { token_count, basis_point, Millisecond, millisecond }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.memory.types { UnifiedShared }
 import extdeps.network.ipv4 { Ipv4Address, render_ipv4_address }
 import v2.std.optional { Present, Absent }

@@ -18,7 +18,7 @@ import gunbc.host_resource {
   HostResourceIdentity, host_resource_identity_eq,
   HostResource, host_resource_same_occurrence,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
