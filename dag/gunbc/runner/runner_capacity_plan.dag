@@ -259,7 +259,8 @@ fn connectivity_replace_action(
             }
           }
         SlotConnectivityUnknown { slot: _, reason: _ } => none
-        _ => none
+        SlotConnectivityHealthy { slot: _, registration_id: _ } => none
+        SlotConnectivityUnexpectedRegistration { registration_id: _, registration_name: _, decoded: _ } => none
       }
   }
 }
@@ -684,12 +685,16 @@ fn count_matching_actions(actions: List<RunnerCapacityAction>, is_add: Bool) -> 
       if is_add {
         match a {
           RunnerSlotAdd { to: _ } => n + 1
-          _ => n
+          RunnerSlotChange { from: _, to: _ } => n
+          RunnerSlotRemove { from: _ } => n
+          RunnerIncarnationReplace { slot: _, cause: _ } => n
         }
       } else {
         match a {
           RunnerIncarnationReplace { slot: _, cause: _ } => n + 1
-          _ => n
+          RunnerSlotAdd { to: _ } => n
+          RunnerSlotChange { from: _, to: _ } => n
+          RunnerSlotRemove { from: _ } => n
         }
       }
   )

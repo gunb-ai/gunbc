@@ -148,13 +148,13 @@ fn workspace_observe_connection(identity: AttemptIdentity, launch: AttemptLaunch
 }
 
 fn workspace_connection_text(connection: WorkspaceConnection) -> String {
-  let alias = connection.host_key_alias as String
-  let known_host = join([alias, connection.host_key as String], " ")
+  let host_alias = connection.host_key_alias as String
+  let known_host = join([host_alias, connection.host_key as String], " ")
   let gateway = join([connection.host_account as String, "@", connection.host_tailnet as String], "")
   let target = join([connection.guest_user as String, "@", connection.guest_ip as String], "")
   join([
     "mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\\n' ", posix_single_quote(spelling: connection.gateway_known_host as String), " ", posix_single_quote(spelling: known_host),
-    " >> ~/.ssh/known_hosts && ssh -o StrictHostKeyChecking=yes -o ", posix_single_quote(spelling: concat("HostKeyAlias=", alias)),
+    " >> ~/.ssh/known_hosts && ssh -o StrictHostKeyChecking=yes -o ", posix_single_quote(spelling: concat("HostKeyAlias=", host_alias)),
     " -J ", posix_single_quote(spelling: gateway), " ", posix_single_quote(spelling: target),
     "\n\nVerify allocation: cat /etc/gunbc-allocation\nExpected identity: ", connection.identity.attempt.attempt_id.value as String,
     "\nRelease or expiry permanently deletes this workspace disk.",

@@ -245,7 +245,8 @@ data srv1_preserved_linked_worktrees: List<PreservedWorktreeIdentity> = [
 fn residue_disposition_is_delete(row: ResiduePathDisposition) -> Bool {
   match row.disposition {
     Delete { deletion_commit: _, reason: _ } => true
-    _ => false
+    Preserve { reason: _ } => false
+    Move { destination: _, reason: _ } => false
   }
 }
 

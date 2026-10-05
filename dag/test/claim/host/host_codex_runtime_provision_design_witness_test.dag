@@ -18,6 +18,7 @@ import gunbc.host_codex_runtime_provision_verdict {
   codex_runtime_transport_refused_refuses_fail_closed,
   codex_runtime_host_unsupported_refuses_fail_closed,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

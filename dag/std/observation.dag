@@ -1501,14 +1501,14 @@ fn occurrence_concluded_in(records: List<RecordedObservation>, target: Occurrenc
   fold_list(records, false, (acc, r) =>
     acc || (r.occurrence.id == target.id
       && r.occurrence.attempt == target.attempt
-      && match r.event.transition { Concluded { outcome: _ } => true, _ => false }))
+      && match r.event.transition { Concluded { outcome: _ } => true, Begin => false, Step { k: _, n: _ } => false }))
 }
 
 fn active_occurrences(
   records: List<RecordedObservation>,
   scope: LedgerReadScope,
 ) -> ActiveOccurrences {
-  let begun = filter(records, r => match r.event.transition { Begin => true, _ => false })
+  let begun = filter(records, r => match r.event.transition { Begin => true, Step { k: _, n: _ } => false, Concluded { outcome: _ } => false })
   let unfinished = filter(begun, r => !occurrence_concluded_in(records: records, target: r.occurrence))
   ActiveOccurrences { scope: scope, occurrences: map(unfinished, r => r.occurrence) }
 }
