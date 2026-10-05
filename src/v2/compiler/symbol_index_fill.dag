@@ -361,15 +361,6 @@ fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
   }
 }
 
-// THE FIXED POINT IS WHAT MAKES ORDER-INDEPENDENCE TRUE ONE LEVEL UP, and one level up is where the
-// first version of this was wrong (review 69735 on gunbc#12009). Splitting declarations from
-// bindings removes the order dependence only for a row whose target is a DECLARATION -- pass A
-// writes every one of those before any row is tried. It does not remove it for a RE-EXPORT CHAIN,
-// where a row's target is another row's binding: `v2.std.collection` imports `Absent` from
-// `v2.std.optional` and declares it nowhere, and `v2.compiler.normalize` imports `Absent` from
-// `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
-// the roots resolves that pair in one root order and silently not in the other, and the loser binds
-// NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
 fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
   fold(
     node_subtree_nodes(root: root),
