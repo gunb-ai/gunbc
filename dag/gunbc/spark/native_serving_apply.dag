@@ -72,6 +72,10 @@ import std.measure { Second, second, second_count }
 import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
 import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
+import gunbc.spark.awaited_incarnation {
+  AwaitedIncarnation, AwaitedVerdict, AwaitedObserved, AwaitedRefused, awaited_trace_of, awaited_verdict, awaited_of, awaited_for_host, awaited_binding_refusal,
+  awaited_header_word, awaited_poll_word, awaited_served_word, awaited_field_separator, awaited_probe_ok_word,
+}
 import gunbc.spark.host_occupancy_admission { spark_ctx_argv_run }
 import gunbc.spark.pair_serving_launch_receipt { serving_standing }
 import gunbc.spark.arm_convergence {
@@ -463,55 +467,65 @@ fn spark_native_preflight_script(unit_name: NonEmptyStr, unit_text: String, spec
 // incarnation -- its announcement and, on the head, its front door -- shares that one absolute deadline,
 // so the readiness window is counted once from the engine's start, as the step budget assumes.
 //
-// THE SAME RUNNING INCARNATION BEFORE AND AFTER EVERY PROBE, INCLUDING A SUCCESSFUL ONE (finding 2). The
-// container's id is captured once; every probe that can name a container names THAT id, so a replacement
-// under the same name is never read; and identity, running state and restart count are checked
-// immediately before and immediately after every probe -- a success is accepted only if the incarnation
-// is still the one captured. The observed id is printed on success, and the readback binds its typed
-// verdict to it (spark_native_rank_bound_to_waited_incarnation). The front door is an HTTP fact no
-// container id can name, so for it the before/after check on the head's incarnation is the binding.
+// THE SAME INCARNATION AND DEADLINE ACROSS BOTH WAITS (findings 2, and the ruling at 43cc61a0). The
+// transport wait captures the head's id and deadline once and prints them; the front door is handed that
+// value and refuses unless the name still resolves to exactly that id under that deadline -- it never
+// resolves or derives either again. Around every probe, the name's reading is taken before and after,
+// and the host clock after; whether that is an observation of the awaited incarnation within its deadline
+// (including a success that crossed it) is decided in .dag (gunbc.spark.awaited_incarnation
+// awaited_verdict). The readback binds every verified rank to its awaited id.
 //
-// PROBE and LAST are shell fragments evaluated with $incarnation set to the captured id.
-data spark_native_incarnation_observed_infix: String = "-observed-incarnation="
+// WHERE THE AWAITED INCARNATION COMES FROM: captured by the transport wait (its id read by name, its
+// deadline its own StartedAt plus the engine's ready timeout), or HANDED to the wait already minted (the
+// front door, which must not resolve or derive either again).
+type SparkNativeAwaitedSource
+  = AwaitedCapture { ready_within: Second }
+  | AwaitedGiven { awaited: AwaitedIncarnation }
 
-fn spark_native_incarnation_check(stage: String, waited_for: NonEmptyStr) -> String {
-  join([
-    "now=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' \"$incarnation\" 2>/dev/null || echo absent)\n",
-    "if [ \"$now\" != \"$incarnation true 0\" ]; then echo \"READBACK-REFUSED-incarnation-changed-", stage, "-", waited_for as String, ": was $incarnation running, now $now; last observation: $last\"; exit 1; fi\n",
-  ], "")
+fn spark_native_awaited_source_lines(container: NonEmptyStr, source: SparkNativeAwaitedSource, waited_for: NonEmptyStr) -> String {
+  match source {
+    AwaitedCapture { ready_within: r } => join([
+      "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
+      "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-container-absent-before-", waited_for as String, "; exit 1; fi\n",
+      "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\" 2>/dev/null || true)\n",
+      "started=$(date -d \"$started_at\" +%s 2>/dev/null || true)\n",
+      "if [ -z \"$started\" ]; then echo \"READBACK-REFUSED-incarnation-start-unread-before-", waited_for as String, ": StartedAt=$started_at\"; exit 1; fi\n",
+      "deadline=$(( started + ", to_string(second_count(s: r)), " ))\n",
+    ], "")
+    AwaitedGiven { awaited: a } => join([
+      "incarnation=", shell_quote(arg: a.id as String), "\n",
+      "deadline=", to_string(a.deadline_epoch), "\n",
+    ], "")
+  }
 }
 
-fn spark_native_incarnation_wait(container: NonEmptyStr, ready_within: Second, probe: String, last: String, waited_for: NonEmptyStr) -> String {
-  let ready_within_seconds = second_count(s: ready_within)
+// THE LOOP ONLY OBSERVES. It prints the awaited value, then per poll the incarnation the NAME resolves to
+// before the probe, the probe's result, the same reading after it, and the host clock after that; it
+// stops at the first success, the first change, or the deadline. Whether the trace is an observation of
+// the awaited incarnation within its deadline is decided in .dag (gunbc.spark.awaited_incarnation
+// awaited_verdict), never here. PROBE is evaluated with $incarnation set to the awaited id.
+fn spark_native_incarnation_wait(container: NonEmptyStr, source: SparkNativeAwaitedSource, probe: String, waited_for: NonEmptyStr) -> String {
+  let ctr = shell_quote(arg: container as String)
+  let sep = awaited_field_separator
   join([
-    "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
-    "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-container-absent-before-", waited_for as String, "; exit 1; fi\n",
-    "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\" 2>/dev/null || true)\n",
-    "started=$(date -d \"$started_at\" +%s 2>/dev/null || true)\n",
-    "if [ -z \"$started\" ]; then echo \"READBACK-REFUSED-incarnation-start-unread-before-", waited_for as String, ": StartedAt=$started_at\"; exit 1; fi\n",
-    "deadline=$(( started + ", to_string(ready_within_seconds), " ))\n",
-    "last=not-yet-probed\n",
+    spark_native_awaited_source_lines(container: container, source: source, waited_for: waited_for),
+    "echo \"", awaited_header_word, sep, "$incarnation", sep, "$deadline\"\n",
     "while :; do\n",
-    spark_native_incarnation_check(stage: "before", waited_for: waited_for),
-    "  if ", probe, "; then\n",
-    spark_native_incarnation_check(stage: "after", waited_for: waited_for),
-    "    break\n",
-    "  fi\n",
-    "  last=$(", last, ")\n",
-    "  if [ $(date +%s) -ge $deadline ]; then echo \"READBACK-REFUSED-", waited_for as String, "-unobserved-by-the-incarnation-deadline (StartedAt + ", to_string(ready_within_seconds), "s VLLM_ENGINE_READY_TIMEOUT_S): $(( $(date +%s) - started ))s since start; last observation: $last\"; exit 1; fi\n",
+    "  before=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", ctr, " 2>/dev/null || echo absent)\n",
+    "  if [ \"$before\" != \"$incarnation true 0\" ]; then echo \"", awaited_poll_word, sep, "$before", sep, "skipped", sep, "-", sep, "$(date +%s)\"; break; fi\n",
+    "  if ", probe, "; then ok=", awaited_probe_ok_word, "; else ok=fail; fi\n",
+    "  after=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", ctr, " 2>/dev/null || echo absent)\n",
+    "  at=$(date +%s)\n",
+    "  echo \"", awaited_poll_word, sep, "$before", sep, "$ok", sep, "$after", sep, "$at\"\n",
+    "  if [ \"$ok\" = ", awaited_probe_ok_word, " ] || [ \"$after\" != \"$incarnation true 0\" ] || [ $at -ge $deadline ]; then break; fi\n",
     "  sleep 15\n",
     "done\n",
-    "echo \"", waited_for as String, spark_native_incarnation_observed_infix, "$incarnation after $(( $(date +%s) - started ))s since start\"\n",
   ], "")
 }
 
-// THE TRANSPORT VERDICT IS READ ONLY AFTER ITS ANNOUNCEMENT EXISTS. A single read of the rank's log
-// refused a correctly launching NVFP4 head (run 37241423753: ranks 1-3 verified IB, the head's
-// `Using network` line appeared at 22:57:44, after the capture) and the refusal rolled the arm back.
-// Each rank therefore waits, through the one incarnation wait above, until ONE capture of its own
-// incarnation's log (by id, never by name) carries both the network announcement and at least one
-// channel `via NET/` line -- the two facts extdeps.nvidia.nccl nccl_transport_verdict folds -- so the
-// two facts can never come from two incarnations.
+// THE TRANSPORT WAIT CAPTURES THE AWAITED INCARNATION. One capture of its own log (by id, never by name)
+// must carry both the network announcement and a channel `via NET/` line -- the two facts
+// extdeps.nvidia.nccl nccl_transport_verdict folds -- so the two facts can never come from two incarnations.
 fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_within: Second) -> String {
   let cap = join([spark_native_readback_dir, "/transport-announcement.log"], "")
   join([
@@ -519,26 +533,28 @@ fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_with
     "mkdir -p ", spark_native_readback_dir, "\n",
     spark_native_incarnation_wait(
       container: container,
-      ready_within: ready_within,
+      source: AwaitedCapture { ready_within: ready_within },
       probe: join(["docker logs \"$incarnation\" > ", cap, " 2>&1 && grep -Fq ", shell_quote(arg: nccl_using_network_marker), " ", cap, " && grep -Fq ", shell_quote(arg: nccl_channel_via_marker), " ", cap], ""),
-      last: join(["tail -n 1 ", cap, " 2>/dev/null | tr -d '\\n' | cut -c1-200"], ""),
       waited_for: "nccl-transport-announcement" as NonEmptyStr),
   ], "")
 }
 
-fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, ready_within: Second, container: NonEmptyStr) -> String {
+// THE FRONT DOOR IS HANDED THE HEAD'S AWAITED INCARNATION and waits on exactly it: the name must still
+// resolve to that id, under that deadline. After a successful probe it reports whether the answer names
+// this arm's served model; the verdict requires both.
+fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, awaited: AwaitedIncarnation, container: NonEmptyStr) -> String {
   join([
     "set -e\n",
     "mkdir -p ", spark_native_readback_dir, "\n",
     spark_native_incarnation_wait(
       container: container,
-      ready_within: ready_within,
+      source: AwaitedGiven { awaited: awaited },
       probe: join(["curl -fsS --max-time 30 http://127.0.0.1:", port_text, "/v1/models > ", spark_native_readback_dir, "/models.json 2>", spark_native_readback_dir, "/models.err"], ""),
-      last: join(["tr '\\n' ' ' < ", spark_native_readback_dir, "/models.err | cut -c1-200"], ""),
       waited_for: "front-door" as NonEmptyStr),
-    "tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
-    "if ! grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo READBACK-REFUSED-front-door-serves-another-model; exit 1; fi\n",
-    "echo front-door-serves-", served_alias as String, "\n",
+    "if [ \"$ok\" = ", awaited_probe_ok_word, " ]; then\n",
+    "  tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
+    "  if grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo ", awaited_served_word, awaited_field_separator, "yes; else echo ", awaited_served_word, awaited_field_separator, "no; fi\n",
+    "fi\n",
   ], "")
 }
 
@@ -704,15 +720,15 @@ fn spark_native_transport_announcement_plans(steps: List<SparkNativeHostStep>) -
   }))
 }
 
-fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>) -> List<SparkPairHostApplyPlan> {
+fn spark_native_front_door_plans(steps: List<SparkNativeHostStep>, awaited: List<AwaitedIncarnation>) -> List<SparkPairHostApplyPlan> {
   flat_map(steps, st =>
     if spark_native_step_is_head(st: st) {
-      [spark_native_plan_of(step: st, script: match engine_ready_timeout_for(env: st.launch.container.env) {
-        EngineReadyTimeoutUnreadable { cause: c } => join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")
-        EngineReadyTimeoutResolved { timeout: t } => spark_native_front_door_script(
+      [spark_native_plan_of(step: st, script: match awaited_for_host(awaited: awaited, host: st.host) {
+        Absent => "echo FRONT-DOOR-REFUSED-no-awaited-incarnation-for-the-head; exit 1\n"
+        Present { value: a } => spark_native_front_door_script(
           port_text: to_string(st.serve_port),
           served_alias: st.served_alias,
-          ready_within: t,
+          awaited: a,
           container: st.launch.container.name)
       })]
     } else {
@@ -980,42 +996,58 @@ fn spark_native_rank_readback_line(r: SparkNativeRankReadback) -> String {
 // data). The rank readback inspects the container by name, so a replacement between the wait and the
 // readback would be verified as if it were the awaited one. Each verified rank is therefore bound to its
 // waited id: a different id, or no waited id for the host, refuses.
-type SparkNativeWaitedIncarnation {
-  host: HostIdentity
-  id: String
-}
-
-fn spark_native_waited_incarnations(legs: List<SparkNativeLegRun>) -> List<SparkNativeWaitedIncarnation> {
-  let marker = join(["nccl-transport-announcement", spark_native_incarnation_observed_infix], "")
-  flat_map(spark_native_leg_outcomes(legs: legs), o => match o {
-    SparkPairHostApplied { host: h, wire: _, stdout: out, standing: _ } =>
-      flat_map(split(s: out, delimiter: "\n"), l => {
-        let line = trim(s: l)
-        if starts_with(s: line, prefix: marker) {
-          let rest = substring(s: line, start: length(marker), end: length(line))
-          match split(s: rest, delimiter: " ").first() { Present { value: id } => [SparkNativeWaitedIncarnation { host: h, id: id }]  Absent => [] as List<SparkNativeWaitedIncarnation> }
-        } else { [] as List<SparkNativeWaitedIncarnation> }
-      })
-    SparkPairHostApplyFailed { host: _, cause: _ } => [] as List<SparkNativeWaitedIncarnation>
-    SparkPairHostUnreached { host: _, cause: _ } => [] as List<SparkNativeWaitedIncarnation>
-  })
-}
-
-// THE BINDING DECISION, PURE OVER THE TWO IDS so a witness supplies them at this boundary.
-fn spark_native_incarnation_binding_refusal(host: HostIdentity, verified_id: String, waited: List<SparkNativeWaitedIncarnation>) -> String? {
-  match first(filter(waited, w => (w.host as String) == (host as String))) {
-    Absent => Present { value: "no awaited incarnation was read for this host, so the verified container cannot be bound to the one whose announcement was observed" }
-    Present { value: w } =>
-      if verified_id == w.id { none }
-      else { Present { value: join(["the readback verified incarnation ", verified_id, " but the announcement was observed on ", w.id, "; the container was replaced between the wait and the readback"], "") } }
+// THE WAITS' VERDICTS, decided from their traces (gunbc.spark.awaited_incarnation). A leg that failed or
+// never reached its host is a refusal carrying its cause; an applied leg is only an observation if its
+// trace says so.
+fn spark_native_leg_awaited_verdict(o: SparkPairHostApplyOutcome, expected: AwaitedIncarnation?) -> AwaitedVerdict {
+  match o {
+    SparkPairHostApplied { host: h, wire: _, stdout: out, standing: _ } => awaited_verdict(host: h, trace: awaited_trace_of(stdout: out), expected: expected)
+    SparkPairHostApplyFailed { host: h, cause: c } => AwaitedRefused { host: h, cause: c }
+    SparkPairHostUnreached { host: h, cause: c } => AwaitedRefused { host: h, cause: join(["never reached: ", c], "") }
   }
 }
 
-fn spark_native_rank_bound_to_waited_incarnation(r: SparkNativeRankReadback, waited: List<SparkNativeWaitedIncarnation>) -> SparkNativeRankReadback {
+fn spark_native_transport_verdicts(legs: List<SparkNativeLegRun>) -> List<AwaitedVerdict> {
+  map(spark_native_leg_outcomes(legs: legs), o => spark_native_leg_awaited_verdict(o: o, expected: none))
+}
+
+fn spark_native_awaited_refusals(vs: List<AwaitedVerdict>) -> List<String> {
+  flat_map(vs, v => match v {
+    AwaitedObserved { awaited: _ } => [] as List<String>
+    AwaitedRefused { host: h, cause: c } => [join([h as String, ": ", c], "")]
+  })
+}
+
+// THE FRONT DOOR'S VERDICT: the head's leg must observe EXACTLY the awaited incarnation it was handed,
+// within its deadline, and report this arm's served model.
+fn spark_native_front_door_refusals(legs: List<SparkNativeLegRun>, awaited: List<AwaitedIncarnation>) -> List<String> {
+  flat_map(spark_native_leg_outcomes(legs: legs), o => {
+    let host = match o {
+      SparkPairHostApplied { host: h, wire: _, stdout: _, standing: _ } => h
+      SparkPairHostApplyFailed { host: h, cause: _ } => h
+      SparkPairHostUnreached { host: h, cause: _ } => h
+    }
+    match spark_native_leg_awaited_verdict(o: o, expected: awaited_for_host(awaited: awaited, host: host)) {
+      AwaitedRefused { host: h, cause: c } => [join([h as String, ": ", c], "")]
+      AwaitedObserved { awaited: _ } =>
+        match o {
+          SparkPairHostApplied { host: h, wire: _, stdout: out, standing: _ } =>
+            match awaited_trace_of(stdout: out).served {
+              Present { value: v } => if v == "yes" { [] as List<String> } else { [join([h as String, ": the front door serves another model"], "")] }
+              Absent => [join([h as String, ": the front door's model was not read"], "")]
+            }
+          SparkPairHostApplyFailed { host: _, cause: _ } => [] as List<String>
+          SparkPairHostUnreached { host: _, cause: _ } => [] as List<String>
+        }
+    }
+  })
+}
+
+fn spark_native_rank_bound_to_waited_incarnation(r: SparkNativeRankReadback, waited: List<AwaitedIncarnation>) -> SparkNativeRankReadback {
   match r {
     NativeRankRefused { host: h, cause: c } => NativeRankRefused { host: h, cause: c }
     NativeRankVerified { host: h, incarnation: i, verdict: v } =>
-      match spark_native_incarnation_binding_refusal(host: h, verified_id: i.container.id as String, waited: waited) {
+      match awaited_binding_refusal(host: h, verified_id: i.container.id as String, awaited: waited) {
         Absent => NativeRankVerified { host: h, incarnation: i, verdict: v }
         Present { value: why } => NativeRankRefused { host: h, cause: why }
       }
@@ -1283,6 +1315,9 @@ type SparkNativeVerify
   = NativeVerified { receipt: String }
   | NativeNotVerified { receipt: String, refusals: List<ArmRankReadbackRefusal> }
 
+// THE AWAITED INCARNATION (gunbc.spark.awaited_incarnation) is minted by each rank's transport wait and
+// carried through the readback and into the front door; a wait whose trace is not an observation of its
+// own incarnation within its deadline refuses that rank, and the front door waits on exactly the head's.
 fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret, steps: List<SparkNativeHostStep>, so_far: String) -> SparkNativeVerify {
   match spark_native_run_stage(trust: trust, path: path, administrator: administrator,
     credential_file_name: "gunbc-spark-native-transport-wait-admin-password" as NonEmptyStr, plans: spark_native_transport_announcement_plans(steps: steps)) {
@@ -1290,14 +1325,20 @@ fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, adm
       NativeNotVerified { receipt: join([so_far, "  readback CREDENTIAL REFUSED: ", c as String, "\n"], ""), refusals: spark_native_every_host_refused(steps: steps, cause: "the readback credential was refused, so nothing was read") }
     NativeStageRan { legs: wl } => {
       let after_wait = join([so_far, spark_native_stage_body(st: NativeStageReadback, legs: wl)], "")
-      if !spark_pair_apply_all_applied(outcomes: spark_native_leg_outcomes(legs: wl)) {
-        NativeNotVerified { receipt: after_wait, refusals: spark_native_leg_refusals(legs: wl) }
+      let verdicts = spark_native_transport_verdicts(legs: wl)
+      let wait_refusals = flat_map(verdicts, v => match v {
+        AwaitedObserved { awaited: _ } => [] as List<ArmRankReadbackRefusal>
+        AwaitedRefused { host: h, cause: c } => [ArmRankReadbackRefusal { host: h, cause: c }]
+      })
+      if count(wait_refusals) > 0 {
+        NativeNotVerified { receipt: after_wait, refusals: wait_refusals }
       } else {
+        let awaited = awaited_of(verdicts: verdicts)
         match spark_native_readback_arm(trust: trust, path: path, administrator: administrator, steps: steps) {
           NativeArmReadbackCredentialRefused { cause: c } =>
             NativeNotVerified { receipt: join([after_wait, "  readback CREDENTIAL REFUSED: ", c as String, "\n"], ""), refusals: spark_native_every_host_refused(steps: steps, cause: "the readback credential was refused, so nothing was read") }
           NativeArmReadbackRan { readbacks: unbound } => {
-            let rs = map(unbound, r => spark_native_rank_bound_to_waited_incarnation(r: r, waited: spark_native_waited_incarnations(legs: wl)))
+            let rs = map(unbound, r => spark_native_rank_bound_to_waited_incarnation(r: r, waited: awaited))
             let after_readback = join([after_wait, join(map(rs, r => spark_native_rank_readback_line(r: r)), "")], "")
             let refused = flat_map(rs, r => match r {
               NativeRankVerified { host: _, incarnation: _, verdict: _ } => [] as List<ArmRankReadbackRefusal>
@@ -1307,15 +1348,16 @@ fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, adm
               NativeNotVerified { receipt: after_readback, refusals: refused }
             } else {
               match spark_native_run_stage(trust: trust, path: path, administrator: administrator,
-                credential_file_name: "gunbc-spark-native-front-door-admin-password" as NonEmptyStr, plans: spark_native_front_door_plans(steps: steps)) {
+                credential_file_name: "gunbc-spark-native-front-door-admin-password" as NonEmptyStr, plans: spark_native_front_door_plans(steps: steps, awaited: awaited)) {
                 NativeStageCredentialRefused { cause: c } =>
                   NativeNotVerified { receipt: join([after_readback, "  front door CREDENTIAL REFUSED: ", c as String, "\n"], ""), refusals: spark_native_every_host_refused(steps: filter(steps, st => spark_native_step_is_head(st: st)), cause: "the front door's credential was refused, so it was not asked") }
                 NativeStageRan { legs: fl } => {
                   let after_front = join([after_readback, spark_native_stage_body(st: NativeStageReadback, legs: fl)], "")
-                  if spark_pair_apply_all_applied(outcomes: spark_native_leg_outcomes(legs: fl)) {
+                  let front_refusals = spark_native_front_door_refusals(legs: fl, awaited: awaited)
+                  if count(front_refusals) == 0 {
                     NativeVerified { receipt: after_front }
                   } else {
-                    NativeNotVerified { receipt: after_front, refusals: spark_native_leg_refusals(legs: fl) }
+                    NativeNotVerified { receipt: after_front, refusals: map(filter(steps, st => spark_native_step_is_head(st: st)), st => ArmRankReadbackRefusal { host: st.host, cause: join(front_refusals, "; ") }) }
                   }
                 }
               }

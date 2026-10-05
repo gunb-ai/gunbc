@@ -1,0 +1,174 @@
+module gunbc.spark.awaited_incarnation
+
+import std.types { String, Bool, List, NonEmptyStr, Int, EpochSecs }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
+import product.host_identity { HostIdentity }
+
+// ── ONE INCARNATION AND ONE DEADLINE, END TO END (side-chat ruling on #13319 at 43cc61a0) ─────────
+//
+// THE SEAM THE RULING FOUND. The transport wait captured the head's container id and derived an absolute
+// deadline from its StartedAt; the rank readback was bound to that id; and then the front-door wait was
+// handed only the container NAME, re-resolved it, captured whichever incarnation answered by then, and
+// derived a NEW deadline from that one's start. A head replaced between the readback and the front door
+// would have been given a fresh window, answered, and committed -- on transport and realization evidence
+// that belonged to the incarnation before it. And a probe that SUCCEEDED was accepted without the deadline
+// being consulted, so a success that crossed the deadline while it ran was accepted too.
+//
+// SO THE AWAITED INCARNATION IS ONE TYPED VALUE -- the exact container id and its absolute deadline, both
+// on the clock of the host that runs it -- minted once by the transport wait and CARRIED: the readback
+// binds to it, the front-door plan is rendered from it (it never resolves or derives either again), and
+// the front-door wait refuses unless the name still resolves to exactly that id. #13365's converge
+// readback carries the same value.
+//
+// AND THE ACCEPTANCE IS DECIDED HERE, NOT IN SHELL. The wait loop on the host only OBSERVES: it prints the
+// awaited value, then one line per poll -- the incarnation read by name before the probe, the probe's
+// result, the incarnation read after it, and the host clock after that -- and stops at the first success,
+// the first change, or the deadline. Whether that trace is an observation of the awaited incarnation
+// within its deadline is spark_native_wait_verdict below, a pure function, so the reds that pin it run
+// the decision the transaction actually consumes rather than matching the script's text.
+type AwaitedIncarnation {
+  host: HostIdentity
+  id: NonEmptyStr
+  deadline_epoch: EpochSecs
+}
+
+type AwaitedPoll {
+  before: String
+  probe_ok: Bool
+  after: String
+  at_epoch: EpochSecs
+}
+
+type AwaitedTrace {
+  awaited_id: String?
+  deadline_epoch: EpochSecs?
+  polls: List<AwaitedPoll>
+  served: String?
+}
+
+type AwaitedVerdict
+  = AwaitedObserved { awaited: AwaitedIncarnation }
+  | AwaitedRefused { host: HostIdentity, cause: String }
+
+// THE WORDS THE LOOP PRINTS, one datum each, read by the parser below and by the script renderer.
+data awaited_header_word: String = "awaited"
+data awaited_poll_word: String = "poll"
+data awaited_served_word: String = "served"
+data awaited_field_separator: String = "|"
+data awaited_probe_ok_word: String = "ok"
+
+fn awaited_running_reading(id: NonEmptyStr) -> String {
+  join([id as String, " true 0"], "")
+}
+
+fn awaited_fields(line: String) -> List<String> {
+  split(s: trim(s: line), delimiter: awaited_field_separator)
+}
+
+// HOST-CLOCK INSTANTS ARE EpochSecs (std.types; review 76436), never a bare Int. A parsed Int cannot be
+// cast to the refinement, so after the negative check the expected type of Present mints it (the shape
+// gunbc.instruments.fabric_capacity_standing epoch_secs_from_non_negative uses): a negative instant is a
+// broken clock and is refused as unread, never carried.
+fn awaited_int(text: String) -> EpochSecs? {
+  match parse_int(s: trim(s: text)) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+  }
+}
+
+fn awaited_trace_of(stdout: String) -> AwaitedTrace {
+  let lines = map(split(s: stdout, delimiter: "\n"), l => trim(s: l))
+  let header = first(filter(lines, l => starts_with(s: l, prefix: join([awaited_header_word, awaited_field_separator], ""))))
+  let polls = flat_map(lines, l => if starts_with(s: l, prefix: join([awaited_poll_word, awaited_field_separator], "")) {
+    let f = awaited_fields(line: l)
+    if count(f) != 5 { [] as List<AwaitedPoll> }
+    else {
+      match awaited_int(text: match f.get(4) { Present { value: v } => v, Absent => "" }) {
+        Absent => [] as List<AwaitedPoll>
+        Present { value: at } => [AwaitedPoll {
+          before: match f.get(1) { Present { value: v } => v, Absent => "" },
+          probe_ok: match f.get(2) { Present { value: v } => v == awaited_probe_ok_word, Absent => false },
+          after: match f.get(3) { Present { value: v } => v, Absent => "" },
+          at_epoch: at,
+        }]
+      }
+    }
+  } else { [] as List<AwaitedPoll> })
+  let served = first(flat_map(lines, l => if starts_with(s: l, prefix: join([awaited_served_word, awaited_field_separator], "")) { [substring(s: l, start: length(awaited_served_word) + 1, end: length(l))] } else { [] as List<String> }))
+  match header {
+    Absent => AwaitedTrace { awaited_id: none, deadline_epoch: none, polls: polls, served: served }
+    Present { value: h } => {
+      let f = awaited_fields(line: h)
+      AwaitedTrace {
+        awaited_id: match f.get(1) { Present { value: v } => if v == "" { none } else { Present { value: v } }, Absent => none },
+        deadline_epoch: match f.get(2) { Present { value: v } => awaited_int(text: v), Absent => none },
+        polls: polls,
+        served: served,
+      }
+    }
+  }
+}
+
+// THE DECISION. The loop stops at its first success, first change, or the deadline, so the LAST poll is the
+// one that decides; every earlier poll was a failed probe on the awaited incarnation within the deadline.
+// Accepted only if, on that poll: the name resolved to exactly the awaited id, running and never restarted,
+// BEFORE the probe; the probe succeeded; the same reading held AFTER it; and the host clock read after the
+// probe was still before the deadline -- a success that crossed the deadline while it ran is refused.
+// EXPECTED, when supplied, is the value the wait was handed (the front door): the trace's own header must
+// carry exactly it, so a wait that recaptured or re-derived anything is refused.
+fn awaited_verdict(host: HostIdentity, trace: AwaitedTrace, expected: AwaitedIncarnation?) -> AwaitedVerdict {
+  match trace.awaited_id {
+    Absent => AwaitedRefused { host: host, cause: "the wait printed no awaited incarnation" }
+    Present { value: id } =>
+      match trace.deadline_epoch {
+        Absent => AwaitedRefused { host: host, cause: "the wait printed no absolute deadline" }
+        Present { value: deadline } => {
+          let awaited = AwaitedIncarnation { host: host, id: id as NonEmptyStr, deadline_epoch: deadline }
+          let carried = match expected {
+            Absent => true
+            Present { value: e } => (e.id as String) == id && e.deadline_epoch == deadline
+          }
+          if !carried {
+            AwaitedRefused { host: host, cause: join(["the wait did not carry the awaited incarnation it was handed: it waited on ", id, " until ", to_string(deadline)], "") }
+          } else {
+            let expected_reading = awaited_running_reading(id: id as NonEmptyStr)
+            match trace.polls.last() {
+              Absent => AwaitedRefused { host: host, cause: "no probe ran" }
+              Present { value: p } =>
+                if p.before != expected_reading {
+                  AwaitedRefused { host: host, cause: join(["the container name no longer resolves to the awaited incarnation ", id, " (read: ", p.before, ")"], "") }
+                } else if !p.probe_ok {
+                  if p.at_epoch >= deadline { AwaitedRefused { host: host, cause: join(["unobserved by the incarnation deadline ", to_string(deadline)], "") } }
+                  else { AwaitedRefused { host: host, cause: "the wait ended without an observation and before its deadline" } }
+                } else if p.after != expected_reading {
+                  AwaitedRefused { host: host, cause: join(["the incarnation changed while the probe ran (after: ", p.after, ")"], "") }
+                } else if p.at_epoch >= deadline {
+                  AwaitedRefused { host: host, cause: join(["the probe succeeded at ", to_string(p.at_epoch), ", after the incarnation deadline ", to_string(deadline)], "") }
+                } else {
+                  AwaitedObserved { awaited: awaited }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn awaited_of(verdicts: List<AwaitedVerdict>) -> List<AwaitedIncarnation> {
+  flat_map(verdicts, v => match v { AwaitedObserved { awaited: a } => [a]  AwaitedRefused { host: _, cause: _ } => [] as List<AwaitedIncarnation> })
+}
+
+fn awaited_for_host(awaited: List<AwaitedIncarnation>, host: HostIdentity) -> AwaitedIncarnation? {
+  first(filter(awaited, a => (a.host as String) == (host as String)))
+}
+
+// THE READBACK BINDING: a verified rank whose container is not the awaited one refuses.
+fn awaited_binding_refusal(host: HostIdentity, verified_id: String, awaited: List<AwaitedIncarnation>) -> String? {
+  match awaited_for_host(awaited: awaited, host: host) {
+    Absent => Present { value: "no awaited incarnation was observed for this host, so the verified container cannot be bound to the one whose announcement was observed" }
+    Present { value: a } =>
+      if verified_id == (a.id as String) { none }
+      else { Present { value: join(["the readback verified incarnation ", verified_id, " but the announcement was observed on ", a.id as String, "; the container was replaced between the wait and the readback"], "") } }
+  }
+}
