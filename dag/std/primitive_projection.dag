@@ -127,7 +127,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_data_init_decl_facts_live, module_path: "v2.std.data_index", decl_name: "data_init_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_bytes_octets, module_path: "std.bytes", decl_name: "bytes_octets", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
-    primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.bytes", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "v2.std.algebra", decl_name: "length", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_map_insert, module_path: "v2.std.collection", decl_name: "map_insert", fidelity: ModeledProjection),
     primitive_projection_row(primitive: primitive_lookup, module_path: "v2.std.collection", decl_name: "map_lookup", fidelity: ModeledProjection),

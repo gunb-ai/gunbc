@@ -71,7 +71,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // `1 / 0` there breaks it (also measured). It was not taken, because std.bytes' own note records
 // that seam as ONE seam projected per result type and marks the pair as a deliberate duplication
 // to be dissolved -- adding a third copy to widen an alias family would trade a naming defect for
-// a worse one in a load-bearing file. Writing the type out costs nothing but characters.
+// a worse one in a load-bearing file. Writing the type out costs nothing but characters. The cycle
+// itself is gone since the seam moved to the leaf std.error_primitives (std.decimal no longer
+// imports std.bytes); the aliases stay withdrawn on review 56966's ruling, which never rested on it.
 //
 // THE CARRIER DECISION ITSELF IS UNCHANGED AND HAS A MEASUREMENT BEHIND IT.
 // std.measure's Percent and Celsius pin their magnitude to Nat and Int, and the deployed document
