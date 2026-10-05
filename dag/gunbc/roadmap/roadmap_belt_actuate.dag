@@ -2072,7 +2072,10 @@ fn belt_actuate_spawn_for_instance(
       }
     EnvironmentAdmitted { receipts, validation_summary } => {
       let selection = dispatch_actuator_selection_for_request(
+        instance: instance,
         request: executor,
+        node_id: node.node,
+        attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
         sizing_expectation: sizing_profile_expectation(d: node_sizing_derivation(rn: node)),
       )
       match selection {

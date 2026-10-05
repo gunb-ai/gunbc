@@ -63,7 +63,7 @@ import gunbc.dispatch_selection {
   DispatchSelectionRefused,
   NoDerivedSizingExpectation,
   claude_dispatch_credential,
-  inventory_with_claude_standing,
+  inventory_with_observed_standing,
   provider_inventory_for_instance,
   provider_selection_request_for_kind,
   resolve_dispatch_selection,
@@ -93,6 +93,7 @@ import gunbc.roadmap_dispatch_actuator {
   claude_inner_argv_for_credential,
   dispatch_provider_inner_argv_for_instance,
   dispatch_tmux_session_scope_for_recorded,
+  dispatch_credential_snapshot_path_for_instance,
   provider_kind_to_dispatch_cli,
 }
 
@@ -377,15 +378,19 @@ test fn an_unknown_executor_word_refuses_naming_the_accepted_set() -> Bool {
 
 data spawn_argv_tail: List<String> = ["env", "CLAUDE_CODE_NO_FLICKER=1", "claude", "--session-id", "u"]
 
+data witness_snapshot_path: NonEmptyStr = "/state/node-claude-a0123456789abcdef.claude-credential"
+
 test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() -> Bool {
-  match claude_inner_argv_for_credential(credential: claude_dispatch_credential(), argv: spawn_argv_tail) {
+  match claude_inner_argv_for_credential(credential: claude_dispatch_credential(), snapshot: witness_snapshot_path, argv: spawn_argv_tail) {
     DispatchProviderInnerArgvReady { argv } =>
       list_length(items: argv) == 4 + list_length(items: spawn_argv_tail)
         && match argv.first() {
              Present { value: w } => w == "sh"
              Absent => false
            }
-        && any(argv, a => a == claude_code_oauth_harness_host_path as String)
+        && any(argv, a => a == witness_snapshot_path as String)
+        && !any(argv, a => a == claude_code_oauth_harness_host_path as String)
+        && any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\""))
         && any(argv, a => string_contains(s: a, pattern: "'exec' \"$@\""))
         && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "\"$0\""))
     ClaudeProviderCredentialUnbound { reason: _ } => false
@@ -398,6 +403,7 @@ test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() ->
 test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
   match claude_inner_argv_for_credential(
     credential: ClaudeStateRootRef { root: "~/.claude" as FilePath },
+    snapshot: witness_snapshot_path,
     argv: spawn_argv_tail,
   ) {
     ClaudeProviderCredentialUnbound { reason: _ } => true
@@ -450,8 +456,9 @@ fn select_claude_over(inventory: ProviderInventory) -> Bool {
 fn observed(stdout: String) -> ProviderInventory {
   match standing_of(stdout: stdout) {
     ClaudeCodeStandingRead { bundle } =>
-      inventory_with_claude_standing(
+      inventory_with_observed_standing(
         inventory: srv1_declared(),
+        kind: ClaudeCliProvider,
         standing: provider_standing_from_observed_bundle(
           fact_id: "witness-claude-trip" as RecordedFactId,
           provider: claude_offer_for_instance(instance: srv1_live_dashboard_instance()).instance,
@@ -519,7 +526,7 @@ test fn a_recorded_fingerprint_scopes_the_session_over_the_default_selection() -
 // The route an explicit Claude dispatch takes, through every real producer except the CLI process
 // itself, whose stdout is the captured 2.1.289 receipt: the trip's lines become the standing
 // (claude_code_standing_from_trip), the standing replaces the declared srv1 row
-// (inventory_with_claude_standing over the PRODUCTION provider_inventory_for_instance), selection
+// (inventory_with_observed_standing over the PRODUCTION provider_inventory_for_instance), selection
 // resolves Claude (resolve_dispatch_selection), the receipt's kind becomes the dispatch provider
 // (provider_kind_to_dispatch_cli), and the PRODUCTION spawn fold for srv1
 // (dispatch_provider_inner_argv_for_instance) emits the custody-wrapped claude argv. It asserts the
@@ -550,7 +557,14 @@ test fn the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1() -> B
             Present { value: w } => w == "sh"
             Absent => false
           }
-            && any(argv, a => a == claude_code_oauth_harness_host_path as String)
+            && any(argv, a =>
+                 a == dispatch_credential_snapshot_path_for_instance(
+                   instance: instance,
+                   node_id: "node-claude" as NonEmptyStr as RoadmapNodeId,
+                   attempt_key: "0123456789abcdef",
+                   provider: ClaudeCodeProvider,
+                 ) as String)
+            && !any(argv, a => a == claude_code_oauth_harness_host_path as String)
             && any(argv, a => a == "claude")
         ClaudeProviderCredentialUnbound { reason: _ } => false
         CodexProviderExecutableAbsent { reason: _ } => false

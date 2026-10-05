@@ -9,6 +9,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
 import extdeps.posix.shell_command_language { PosixShellName }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build {
   bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
@@ -108,10 +109,25 @@ fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
 // by the caller -- gunbc.claude_code_credential owns all three for the Claude credential.
 data posix_sh_export_from_file_unreadable_exit: Int = 78
 
-fn posix_sh_export_from_file_then_exec_program(name: PosixShellName) -> Outcome<String> {
+// WHETHER THE FILE OUTLIVES THE READ. A one-shot snapshot (one credential, one child) is removed by
+// the shell right after it is read and before the exec, so the value exists afterwards only in that
+// child's environment; a file another reader still needs is kept.
+type PosixShFileDisposition
+  = PosixShKeepFile
+  | PosixShRemoveFileAfterRead
+
+fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> List<Node> {
+  match disposition {
+    PosixShKeepFile => []
+    PosixShRemoveFileAfterRead =>
+      [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")])]
+  }
+}
+
+fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
   let spelling = name.spelling as String
   bash_emit_stmts(
-    statements: [
+    statements: concat(concat([
       bash_build_or_else(
         left: bash_build_assign(
           name: spelling,
@@ -123,9 +139,10 @@ fn posix_sh_export_from_file_then_exec_program(name: PosixShellName) -> Outcome<
         ),
         right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unreadable_exit)),
       ),
+    ], posix_sh_export_remove_statements(disposition: disposition)), [
       bash_build_command_from_lits(lits: ["export", spelling]),
       bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
-    ],
+    ]),
     set_e: false,
   )
 }
@@ -134,8 +151,13 @@ type PosixShExportExecCommand
   = PosixShExportExecReady { command: ArgvCommand }
   | PosixShExportExecEmitRefused { name: NonEmptyStr }
 
-fn posix_sh_export_from_file_then_exec_command(name: PosixShellName, path: NonEmptyStr, command: List<String>) -> PosixShExportExecCommand {
-  match posix_sh_export_from_file_then_exec_program(name: name) {
+fn posix_sh_export_from_file_then_exec_command(
+  name: PosixShellName,
+  path: NonEmptyStr,
+  command: List<String>,
+  disposition: PosixShFileDisposition,
+) -> PosixShExportExecCommand {
+  match posix_sh_export_from_file_then_exec_program(name: name, disposition: disposition) {
     Accepted { value: program, diagnostics: _ } =>
       PosixShExportExecReady {
         command: argv_command(

@@ -439,8 +439,8 @@ data dispatch_claude_default_credential_root: FilePath = "~/.claude" as FilePath
 // inventory-unobserved standing. That standing admits no draw, so the automatic path still cannot
 // pick Claude; the only route that reaches it is the operator's explicit executor request
 // (gunbc.roadmap_dispatch_actuator DispatchExecutorRequest), which observes the credential first and
-// selects over inventory_with_claude_standing. The custody file the spawn reads exists on srv1 only,
-// so the row is offered on srv1's live instance only.
+// selects over inventory_with_observed_standing. The custody file the attempt snapshots exists on
+// srv1 only, so the row is offered on srv1's live instance only.
 
 data dispatch_selection_temporal_unobserved_reason: NonEmptyStr = "selection time; temporal bounds assigned at spawn observation" as NonEmptyStr
 data dispatch_selection_usage_unobserved_reason: NonEmptyStr = "selection time; usage observations assigned during provider runtime" as NonEmptyStr
@@ -684,27 +684,63 @@ fn claude_dispatch_credential() -> ClaudeCredentialRef {
   ClaudeOAuthTokenSecretRef { secret_ref: claude_code_oauth_harness_secret_ref }
 }
 
-// AN OBSERVED STANDING REPLACES THE DECLARED ROW'S, ON THE CLAUDE OFFER ONLY. The declared inventory
-// carries Claude at inventory-unobserved standing, which no draw admits; the explicit Claude
-// dispatch observes the credential (gunbc.claude_code_limit_standing) and substitutes that reading
-// here, so selection judges the same row with evidence rather than a second row being minted.
-fn inventory_with_claude_standing(inventory: ProviderInventory, standing: ProviderStanding) -> ProviderInventory {
+// AN OBSERVED STANDING REPLACES THE DECLARED ROW'S, ON THE NAMED PROVIDER'S OFFER ONLY. A declared
+// inventory row carries inventory-unobserved standing, which no draw admits; an explicit vendor draw
+// observes its credential (for Claude, gunbc.claude_code_limit_standing) and substitutes that reading
+// here, so selection judges the same row with evidence rather than a second row being minted. Every
+// other provider's offer passes through unchanged.
+fn inventory_with_observed_standing(inventory: ProviderInventory, kind: ProviderKind, standing: ProviderStanding) -> ProviderInventory {
   ProviderInventory {
     offers: map(inventory.offers, offer =>
       match offer {
         OfferClaude { offer: o } =>
-          OfferClaude {
-            offer: ClaudeOffer {
-              instance: o.instance,
-              credential: o.credential,
-              standing: standing,
-              default_effort: o.default_effort,
-              deep: o.deep,
-              process_fingerprint: o.process_fingerprint,
-            },
+          match kind {
+            ClaudeCliProvider =>
+              OfferClaude {
+                offer: ClaudeOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            CodexCliProvider => offer
+            CursorCliProvider => offer
           }
-        OfferCodex { offer: _ } => offer
-        OfferCursor { offer: _ } => offer
+        OfferCodex { offer: o } =>
+          match kind {
+            CodexCliProvider =>
+              OfferCodex {
+                offer: CodexOffer {
+                  instance: o.instance,
+                  account_state_root: o.account_state_root,
+                  account_binding: o.account_binding,
+                  standing: standing,
+                  default_effort: o.default_effort,
+                  deep: o.deep,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CursorCliProvider => offer
+          }
+        OfferCursor { offer: o } =>
+          match kind {
+            CursorCliProvider =>
+              OfferCursor {
+                offer: CursorOffer {
+                  instance: o.instance,
+                  credential: o.credential,
+                  standing: standing,
+                  default_model: o.default_model,
+                  process_fingerprint: o.process_fingerprint,
+                },
+              }
+            ClaudeCliProvider => offer
+            CodexCliProvider => offer
+          }
       }
     ),
   }
