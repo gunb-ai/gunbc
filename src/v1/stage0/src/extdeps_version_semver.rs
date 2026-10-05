@@ -9,7 +9,7 @@ pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionSche
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_nat::nat_compare;
+pub use crate::std_nat::{nat_compare, nat_to_decimal_string};
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -173,7 +173,9 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
 
 pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id.clone()).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
+        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => {
+            crate::std_nat::nat_to_decimal_string(v.clone())
+        }
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
