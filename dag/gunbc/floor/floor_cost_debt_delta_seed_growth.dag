@@ -1,0 +1,20 @@
+module gunbc.floor_cost_debt_delta_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the cost-debt ROSTER DELTA the required floor joins into its
+// changed-witness set. The modeled authority is v2.workflow.floor_cost_debt_delta
+// cost_debt_roster_delta_at_base; the declarations below are its seed-side reader at the diff
+// projection boundary, not a second policy.
+data floor_cost_debt_delta_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_roster_delta_for_diff", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "cost_debt_moved_identities", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the required floor derives its changed-witness set in the seed (v1_compiler.cli_run.required_floor_runner changed_and_enrolled_witness_identities_with_index), and a cost-debt roster row is declined at build, so it asserts no verdict. Admitting a row or deleting one changed what the floor runs while nothing ran the moved identity; that is how two failing v2.test.claim.body_lowering.single_arm_match claims sat under floor_cost_debt_censored_chunk_03 with every lane green. The .dag decides which identities moved (it shows the roster file at the base, tokenizes it and compares against floor_cost_debt_roster()). The seed does the two reads the fold cannot perform from that loop -- whether the diff names the roster file, and which base the floor resolved -- decodes the record, and keeps the moved identities that name a test fn the head tree declares, using the same scan test_migration_dag_test_fn_names performs; the restored side is every base string literal the head roster lacks, and planning a literal that names no test fn would mint a decline for no claim.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. The required floor guards that program, and this closes a fail-open in it: a cost row hiding a semantic red. It adds no language behavior, no compatibility route, no flag and no escape hatch.\n\nHAND-ITEM DELTA: +2, the two functions above, plus a one-line accessor on the pre-existing MultiEntryIndex and an arm inside the pre-existing changed_witness_projection_rows.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete the seed declarations when the self-emitted claim executor derives the required floor's changed-witness set and calls v2.workflow.floor_cost_debt_delta cost_debt_roster_delta_at_base directly, so no hand-written reader decodes the delta. NOT retired by the cost-debt roster reaching zero: deleting the last row is itself a restoration that must run.",
+  current_boundary: "v2.workflow.floor_cost_debt_delta cost_debt_roster_delta_at_base -> v1_compiler.cli_run.required_floor_runner cost_debt_roster_delta_for_diff -> v1_compiler.cli_run.required_floor_runner cost_debt_moved_identities -> v1_compiler.cli_run.required_floor_runner changed_and_enrolled_witness_identities_with_index"
+}

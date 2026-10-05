@@ -908,18 +908,18 @@ pub(crate) fn cost_debt_roster_delta_for_diff(
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_cost_debt_delta resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    let roster_path =
-        match v1_interpreter::run_in_context(&ctx, "floor_cost_debt_roster_path", false)
-            .map_err(|e| format!("floor_cost_debt_roster_path: {e}"))?
-        {
-            Value::Str(path) => path.to_string(),
-            other => {
-                return Err(format!(
-                    "floor_cost_debt_roster_path is not a String: {}",
-                    floor_value_shape(Some(&other))
-                ))
-            }
-        };
+    let roster_path_value =
+        v1_interpreter::run_in_context(&ctx, "floor_cost_debt_roster_path", false)
+            .map_err(|e| format!("floor_cost_debt_roster_path: {e}"))?;
+    let roster_path = match &roster_path_value {
+        Value::Str(path) => path.to_string(),
+        other => {
+            return Err(format!(
+                "floor_cost_debt_roster_path is not a String: {}",
+                floor_value_shape(Some(other))
+            ))
+        }
+    };
     if !diff_paths.iter().any(|p| p.as_str() == roster_path) {
         return Ok(None);
     }
