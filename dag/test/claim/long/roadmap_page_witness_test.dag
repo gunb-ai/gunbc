@@ -1650,7 +1650,7 @@ test fn witness_view_switch_and_filter_contracts() -> Bool {
 }
 
 // THE ISSUE DETAIL PAGE (owner ruling 2026-09-22: each issue has a detail page and a separate
-// Work tab). The page renders the decided row view and link panel: the head carries the issue id
+// Work tab). The page renders the decided row view and hierarchy view: the head carries the issue id
 // (the dense mono line) and the title; the field panel carries status / assignee / component /
 // blocking / blocked-by / standing; the assignee is the event-log standing's holder, not the
 // domain owner. Tabs ship as decided chips + panels — the stylesheet decides which panel shows.
@@ -1684,21 +1684,31 @@ fn issue_detail_fixture_view() -> gunbc.roadmap_presentation.WorkRowView {
   }
 }
 
-fn issue_detail_fixture_panel() -> gunbc.roadmap_presentation.IssueLinkPanel {
+// THE FIXTURE'S HIERARCHY: the specimen is a member of the parent issue and the child a member of
+// the specimen (membership); the parent blocks the specimen and the specimen blocks the child
+// (dependency). The parent declares no parent of its own, so the chain is the lineage walk's
+// refusal -- the content witnesses below are about the page body, not a rooted path. Statuses are
+// supplied: the row producer that derives them is another interface.
+fn issue_detail_fixture_member(identity: String, id: String, content: String, project: String) -> RoadmapNode {
+  gunbc.roadmap_authority.roadmap_node(identity: identity, id: id, owner: "", carriers: [], line: gunbc.roadmap_status.AuthoredLine { done: false, content: content },
+    parent: Present { value: gunbc.roadmap_model.MemberOf { project: project, contribution: "fixture contribution" as NonEmptyStr } })
+}
+
+fn issue_detail_fixture_hierarchy() -> gunbc.roadmap.roadmap_hierarchy_view.IssueHierarchyView {
   let nodes = [
-    fx_authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
+    issue_detail_fixture_member(identity: "rnfx_idspec", id: "issue-detail-specimen", content: "Specimen issue", project: "issue-detail-parent"),
     fx_authored(identity: "rnfx_idparent", id: "issue-detail-parent", done: false, content: "Parent issue"),
-    fx_authored(identity: "rnfx_idchild", id: "issue-detail-child", done: false, content: "Child issue"),
+    issue_detail_fixture_member(identity: "rnfx_idchild", id: "issue-detail-child", content: "Child issue", project: "issue-detail-specimen"),
   ]
   let edges = [
     gunbc.roadmap_authority.edge(child: "issue-detail-specimen", parent: "issue-detail-parent"),
     gunbc.roadmap_authority.edge(child: "issue-detail-child", parent: "issue-detail-specimen"),
   ]
-  gunbc.roadmap_presentation.issue_link_panel(
-    rn: fx_authored(identity: "rnfx_idspec", id: "issue-detail-specimen", done: false, content: "Specimen issue"),
+  gunbc.roadmap.roadmap_hierarchy_view.issue_hierarchy_view(
+    node: gunbc.roadmap_authority.nid(s: "issue-detail-specimen"),
     nodes: nodes,
     edges: edges,
-    memberships: [gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-specimen", project: "issue-detail-parent", contribution: "fixture contribution" }, gunbc.roadmap_nesting.RoadmapMembership { member: "issue-detail-child", project: "issue-detail-specimen", contribution: "fixture contribution" }])
+    status_of: fn(rn) { gunbc.roadmap.roadmap_hierarchy_view.NodeStatusDerived { status: gunbc.roadmap_presentation.DerivedStatusReady } })
 }
 
 fn fixture_human_ref() -> gunbc.principal_projection.PrincipalRef {
@@ -1718,17 +1728,17 @@ fn fixture_teammate_legacy() -> gunbc.roadmap.roadmap_event_log.EventPrincipal {
 }
 
 // Content witnesses use the real page body, header and client tag. Their synthetic issue is
-// absent from the live roadmap authority, so supply its typed undeclared alignment result at
-// the production render boundary instead of rebuilding the entire authority for every field.
-// The full stylesheet and authority-backed alignment are separate rendering inputs.
-fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, panel: gunbc.roadmap_presentation.IssueLinkPanel, observation: gunbc.roadmap_presentation.ObservationImpactView, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, events: List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope>, viewer: String, recents: List<gunbc.roadmap.roadmap_event_log.EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
+// absent from the live roadmap authority, so its hierarchy view is supplied at the production
+// render boundary instead of rebuilding the entire authority for every field. The full stylesheet
+// is a separate rendering input.
+fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, hierarchy: gunbc.roadmap.roadmap_hierarchy_view.IssueHierarchyView, observation: gunbc.roadmap_presentation.ObservationImpactView, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>, events: List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope>, viewer: String, recents: List<gunbc.roadmap.roadmap_event_log.EventPrincipal>, expected_revision: String, command_context: IssueFormContext = IssueFormContext { operation: "", csrf: "" }, profiles: List<PrincipalProfile>) -> Fragment {
   Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en" ) ],
     children: [
       Element { tag: "body", attributes: [], children: [
         gunbc.site.document.site_header(page: "issue"),
-        gunbc.roadmap_page.issue_detail_page_with_alignment(view: view, panel: panel, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context, alignment: gunbc.roadmap.roadmap_alignment.alignment_resolve_chain(chain: gunbc.roadmap.roadmap_alignment.AlignmentChainRowUndeclared { node_id: view.node_id }, turns_elapsed: 1, state: gunbc.roadmap.roadmap_alignment.alignment_base_cadence_state())),
+        gunbc.roadmap_page.issue_detail_page(view: view, hierarchy: hierarchy, observation: observation, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
         gunbc.roadmap_page.dispatch_client_script(),
       ] },
     ],
@@ -1738,7 +1748,7 @@ fn fx_issue_detail_body(view: gunbc.roadmap_presentation.WorkRowView, panel: gun
 fn issue_detail_fixture_html() -> HtmlEmitResult {
   try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: [],
@@ -1897,7 +1907,7 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
   ]
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: attempts,
     events: [],
@@ -2157,9 +2167,11 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
 }
 
 // PARENT AND BLOCKING RENDER SEPARATELY (owner ruling 2026-09-24): the detail field panel carries
-// the decomposition link in its own "parent" row, beside the dependency rows "blocking" and
-// "blocked by" — three distinct fields, never one merged list. The fixture: specimen's primary
-// parent is the parent issue; it blocks the child; the parent blocks it.
+// the membership link in its own "parent" row, beside the dependency rows "blocking" and
+// "blocked by" — three distinct fields, never one merged list. The fixture: the specimen is a
+// member of the parent issue and the child a member of the specimen; the parent blocks the
+// specimen and the specimen blocks the child. The membership rows print the one derived status
+// word, never a lifecycle key, and the sub-issue count reads closed over total.
 test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
@@ -2173,6 +2185,11 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
         && string_contains(s: h, pattern: "aria-current=\"true\" data-current=\"1\"")
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-parent\"") == 3
         && occurrence_count(s: h, pattern: "href=\"/issue/issue-detail-child\"") == 2
+        && occurrence_count(s: h, pattern: "<small class=\"issue-graph-state\">Ready</small>") == 2
+        && !string_contains(s: h, pattern: "<small class=\"issue-graph-state\">open</small>")
+        && string_contains(s: h, pattern: "<span class=\"issue-membership-count\" aria-hidden=\"true\">0/1</span>")
+        && string_contains(s: h, pattern: "aria-label=\"Parent: Parent issue\"")
+        && string_contains(s: h, pattern: "aria-label=\"Sub-issues: Child issue\"")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocked by</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
         && string_contains(s: h, pattern: "<span class=\"issue-field-label\">blocking</span><span class=\"issue-field-value\"><button class=\"issue-rail-link\" type=\"button\" data-tab-chip=\"dependencies\">1 issue</button></span>")
   }
@@ -2186,7 +2203,7 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
 test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bool {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ],
     events: [],
@@ -2243,7 +2260,7 @@ test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
   ]
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: events,
@@ -2290,7 +2307,7 @@ fn fx_comment_stream_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEve
 test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_and_deep_links() -> Bool {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: fx_comment_stream_events(),
@@ -2360,7 +2377,7 @@ fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvel
 test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() -> Bool {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: fx_handoff_events(),
@@ -2397,7 +2414,7 @@ test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff
   }
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: [claim, failed],
@@ -2463,7 +2480,7 @@ fn issue_detail_fixture_view_with_brief(lifecycle: gunbc.roadmap_presentation.Wo
 fn brief_fixture_html(lifecycle: gunbc.roadmap_presentation.WorkLifecycle, control_label: String = "red control") -> HtmlEmitResult {
   try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view_with_brief(lifecycle: lifecycle, control_label: control_label),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: [],
@@ -2687,7 +2704,7 @@ test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> 
   }
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_profiled_fixture_view(),
-    panel: issue_detail_fixture_panel(),
+    hierarchy: issue_detail_fixture_hierarchy(),
     observation: gunbc.roadmap_presentation.ObservationsNominal,
     attempts: [],
     events: concat(fx_comment_stream_events(), [claim, pub]),

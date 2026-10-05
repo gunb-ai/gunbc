@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
   readiness_is_dispatchable,
 }
-import gunbc.roadmap.roadmap_project { node_project_membership, node_project_membership_in, MembershipMember, project_member_ids, RoadmapMembershipIndex, membership_index, project_member_ids_in }
+import gunbc.roadmap.roadmap_project { node_project_membership_in, MembershipMember, RoadmapMembershipIndex, membership_index, project_member_ids_in }
 
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, IssueAssignmentProjection,
@@ -14,7 +14,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer,
-  roadmap_parent_ids, roadmap_primary_parent,
+  roadmap_primary_parent,
   RoadmapParent, TopLevel, UnderParent,
   WorkItemDispatch, NotDispatchable, Dispatchable,
   node_sizing_derivation,
@@ -30,7 +30,7 @@ import gunbc.roadmap_status {
 }
 import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
-  ReadinessGraph, readiness_graph, node_readiness_in_graph, node_unmet_parent_ids,
+  ReadinessGraph, readiness_graph, node_readiness_in_graph,
 }
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, LaunchIdentity, launch_cause_label,
@@ -311,10 +311,6 @@ type WorkScheduling
   | SchedulingDone
   | SchedulingSuperseded
 
-fn scheduling_blockers(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> List<String> {
-  node_unmet_parent_ids(nodes: nodes, edges: edges, id: rn.node) |> map(p => p as String)
-}
-
 // A page projects every row's readiness over one graph, so it indexes the graph once
 // (gunbc.roadmap_spawner readiness_graph) and each row's answer is lookups. The page's readiness
 // walks lineage over the rendered graph itself: the projected graph carries every open project, so
@@ -361,7 +357,7 @@ fn work_scheduling_key(s: WorkScheduling) -> String {
 // The dependency line's claim moved to the taskbar (2026-09-21 redesign): the bar's signal slot
 // carries "blocked on X, Y" for every upcoming row — the blocker is visible IN the bar, never
 // gated on a multi-blocker count, because the tree no longer tells it positionally once rows are
-// the page's structure. The seam's scheduling_blockers derivation is unchanged; only the old
+// the page's structure. The blockers are the readiness value's own GapDependencies; the old
 // title-adjacent line's presentation is deleted.
 type SupportingFact {
   label: String
@@ -2046,81 +2042,6 @@ fn workspace_flat_table(
           flat_map(superseded, e => band_entry_flat_rows(e: e))))))
 }
 
-// THE ISSUE DETAIL'S LINK PANEL (owner ruling 2026-09-22: blocking edges express dependencies).
-// Blocking lists the node's children — the dependents this issue structurally blocks; Blocked-by
-// lists only the UNMET parents — an edge whose parent has closed is satisfied, not an obstruction,
-// and naming it as one would contradict the bar's "blocked on" signal, which derives from this
-// same scheduling_blockers seam. A link carries node id + headline only: the panel is a pointer
-// to the one place each issue renders, never a second row view.
-type IssueLinkView {
-  node_id: String
-  headline: String
-  status: String
-}
-
-// Nesting and blocking are independent dimensions with one shared ownership authority.
-type IssueLinkPanel {
-  parent: IssueLinkView?
-  children: List<IssueLinkView>
-  blocking: List<IssueLinkView>
-  blocked_by: List<IssueLinkView>
-  prerequisites: List<IssueLinkView>
-  cycle: Bool
-}
-
-fn issue_link_view_of(rn: RoadmapNode, merged: List<Int> = []) -> IssueLinkView {
-  IssueLinkView { node_id: rn.node as String, headline: row_headline(line: rn.line), status: work_lifecycle_key(l: work_lifecycle(rn: rn, merged: merged)) }
-}
-
-// A child is a node that names this one among its parents — the same roadmap_parent_ids read the
-// scheduling seam consumes, so the panel cannot list a dependency the frontier would not.
-fn child_nodes_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
-  filter(xs: nodes, predicate: n =>
-    any(roadmap_parent_ids(edges: edges, node: n.node), p => p == parent))
-}
-
-// MEMBERSHIP IS THE FACT; A TITLE IS ONLY ITS SPELLING. The plan rows the page renders omit
-// authored program rows such as the project root, so a parent looked up only among them read
-// Absent and rendered "top-level" for an issue the breadcrumb (over every declared node) shows
-// under the root -- a membership erased by a missing title. The declared membership decides the
-// relation; the title is looked up among the plan rows, then among `member_titles` (the page passes
-// every declared node), and a target with no title anywhere shows its id -- never absence.
-fn issue_member_link_view(id: String, nodes: List<RoadmapNode>, member_titles: List<RoadmapNode>, merged: List<Int> = []) -> IssueLinkView {
-  match find_node(nodes: nodes, node_id: id) {
-    Present { value: p } => issue_link_view_of(rn: p, merged: merged)
-    Absent => match find_node(nodes: member_titles, node_id: id) {
-      Present { value: p } => issue_link_view_of(rn: p, merged: merged)
-      Absent => IssueLinkView { node_id: id, headline: id, status: "unknown" }
-    }
-  }
-}
-
-fn issue_link_panel(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, memberships: List<RoadmapMembership> = roadmap_memberships(), member_titles: List<RoadmapNode> = [], merged: List<Int> = []) -> IssueLinkPanel {
-  IssueLinkPanel {
-    parent: match node_project_membership(node_id: rn.node as String, memberships: memberships) {
-      MembershipMember { arc } => Present { value: issue_member_link_view(id: arc, nodes: nodes, member_titles: member_titles, merged: merged) }
-      MembershipStandalone => none
-      MembershipAmbiguous { arcs: _ } => none
-    },
-    children: map(project_member_ids(arc: rn.node as String, memberships: memberships), id => issue_member_link_view(id: id, nodes: nodes, member_titles: member_titles, merged: merged)),
-    blocking: map(child_nodes_of(nodes: nodes, edges: edges, parent: rn.node), n => issue_link_view_of(rn: n, merged: merged)),
-    prerequisites: map(roadmap_parent_ids(edges: edges, node: rn.node), id => issue_member_link_view(id: id as String, nodes: nodes, member_titles: member_titles, merged: merged)),
-    cycle: dependency_cycle_touches(node_id: rn.node as String, edges: edges),
-    blocked_by: flat_map(scheduling_blockers(rn: rn, nodes: nodes, edges: edges), pid =>
-      match find_node(nodes: nodes, node_id: pid) {
-        Present { value: p } => [ issue_link_view_of(rn: p, merged: merged) ]
-        Absent => []
-      }),
-  }
-}
-
-fn find_node(nodes: List<RoadmapNode>, node_id: String) -> RoadmapNode? {
-  fold(nodes, init: none, f: (acc, n) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent => if (n.node as String) == node_id { Present { value: n } } else { none }
-  })
-}
-
 // THE WORK TAB'S EXECUTION HISTORY, newest first: the attempt's clocked rounds reversed so the
 // freshest turn heads the list. The rounds are the harness ledger's own segments — nothing is
 // recomputed; the reversal is the only decision, and it is a presentation fact belonging to this
@@ -2134,7 +2055,25 @@ fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
 // ruling here. The primary word is a projection, never stored. The four facts remain
 // separate in IssueStatusDetails and the Work ledger; pending stages retain wait targets.
 type IssueStatusDetails { planning: String, obligation: String, outcome: String, evidence: List<ActivityEvidenceRow> }
-fn issue_status_label(view: WorkRowView) -> String {
+
+// THE DERIVED STATUS IS A CLOSED CHOICE, AND ITS WORD IS SPELLED ONCE. Every surface that shows a
+// node's status -- the issue's own badge, a table cell, a relation row naming the node from another
+// issue's page -- reads this value from derived_status_of over the node's decided row, and prints it
+// through derived_status_text. A surface that carried a status as a string could only carry some
+// other producer's spelling of it (the lifecycle key "open" beside the badge's "Blocked").
+type DerivedStatus
+  = DerivedStatusReady
+  | DerivedStatusActive
+  | DerivedStatusReview
+  | DerivedStatusAssigned
+  | DerivedStatusReturned
+  | DerivedStatusOpen
+  | DerivedStatusBlocked
+  | DerivedStatusUnknown
+  | DerivedStatusDone
+  | DerivedStatusSuperseded
+
+fn derived_status_of(view: WorkRowView) -> DerivedStatus {
   let standing = match view.standing {
     Absent => "unknown"
     Present { value: st } => match st {
@@ -2151,32 +2090,70 @@ fn issue_status_label(view: WorkRowView) -> String {
   let lifecycle = work_lifecycle_key(l: view.lifecycle)
   let scheduling = work_scheduling_key(s: view.scheduling)
   let activity = activity_arm_key(a: view.activity)
-  if standing == "unknown" || activity == "unobservable" { "Unknown" }
-  else if lifecycle == "superseded" { "Superseded" }
-  else if lifecycle == "done" { "Done" }
-  else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { "Blocked" }
-  else if standing == "in_progress" || activity == "active" { "Active" }
-  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { "Review" }
-  else if standing == "handed_back" { "Returned" }
-  else if standing == "claimed" { "Assigned" }
-  else if scheduling == "not-ready" { "Blocked" }
-  else if scheduling == "ready" { "Ready" }
-  else { "Open" }
+  if standing == "unknown" || activity == "unobservable" { DerivedStatusUnknown }
+  else if lifecycle == "superseded" { DerivedStatusSuperseded }
+  else if lifecycle == "done" { DerivedStatusDone }
+  else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DerivedStatusBlocked }
+  else if standing == "in_progress" || activity == "active" { DerivedStatusActive }
+  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DerivedStatusReview }
+  else if standing == "handed_back" { DerivedStatusReturned }
+  else if standing == "claimed" { DerivedStatusAssigned }
+  else if scheduling == "not-ready" { DerivedStatusBlocked }
+  else if scheduling == "ready" { DerivedStatusReady }
+  else { DerivedStatusOpen }
+}
+
+fn derived_status_text(status: DerivedStatus) -> String {
+  match status {
+    DerivedStatusReady => "Ready"
+    DerivedStatusActive => "Active"
+    DerivedStatusReview => "Review"
+    DerivedStatusAssigned => "Assigned"
+    DerivedStatusReturned => "Returned"
+    DerivedStatusOpen => "Open"
+    DerivedStatusBlocked => "Blocked"
+    DerivedStatusUnknown => "Unknown"
+    DerivedStatusDone => "Done"
+    DerivedStatusSuperseded => "Superseded"
+  }
+}
+
+// CLOSED DESCRIBES THE NODE, NOT ANY EDGE INTO IT: a done or superseded node is closed. Whether a
+// dependency on it is satisfied is the readiness predicate's question
+// (gunbc.roadmap.roadmap_readiness), never this one's.
+fn derived_status_is_closed(status: DerivedStatus) -> Bool {
+  match status {
+    DerivedStatusDone => true
+    DerivedStatusSuperseded => true
+    DerivedStatusReady => false
+    DerivedStatusActive => false
+    DerivedStatusReview => false
+    DerivedStatusAssigned => false
+    DerivedStatusReturned => false
+    DerivedStatusOpen => false
+    DerivedStatusBlocked => false
+    DerivedStatusUnknown => false
+  }
+}
+
+fn issue_status_label(view: WorkRowView) -> String {
+  derived_status_text(status: derived_status_of(view: view))
 }
 // Owner 2026-10-04: descending status means Ready first, not lexical order.
 // The same numeric value drives the initial server order and interactive column sorting.
 fn issue_status_sort_rank(view: WorkRowView) -> Int {
-  let label = issue_status_label(view: view)
-  if label == "Ready" { 10 }
-  else if label == "Active" { 9 }
-  else if label == "Review" { 8 }
-  else if label == "Assigned" { 7 }
-  else if label == "Returned" { 6 }
-  else if label == "Open" { 5 }
-  else if label == "Blocked" { 4 }
-  else if label == "Unknown" { 3 }
-  else if label == "Done" { 2 }
-  else { 1 }
+  match derived_status_of(view: view) {
+    DerivedStatusReady => 10
+    DerivedStatusActive => 9
+    DerivedStatusReview => 8
+    DerivedStatusAssigned => 7
+    DerivedStatusReturned => 6
+    DerivedStatusOpen => 5
+    DerivedStatusBlocked => 4
+    DerivedStatusUnknown => 3
+    DerivedStatusDone => 2
+    DerivedStatusSuperseded => 1
+  }
 }
 
 fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
