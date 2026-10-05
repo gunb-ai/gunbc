@@ -8,7 +8,7 @@ import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decisi
 import extdeps.http.server { RequestSecurityContext }
 import gunbc.principal_projection { PrincipalRef, principal_ref_eq, principal_ref_label }
 import std.list { distinct_by_key }
-import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_material_well_formed }
+import extdeps.ssh { SshPublicKey, Ed25519, ssh_ed25519_key_identity }
 import gunbc.roadmap_allocation_location { allocation_page_path }
 import gunbc.auth.request_authentication { RequestAccessPath,
   RequestAuthenticationEvidence, GoogleOidcSession, FabricServiceEvidence, SessionStandingInvalid, AuthAbsent, DeploymentAccessPolicy,
@@ -48,8 +48,8 @@ fn workspace_policy_admit(roster: WorkspaceEnrollmentRoster, catalog: List<Works
     WorkspacePolicyRefused { reason: "enrolled key references and catalog lines are not one-to-one" }
   } else if !all(catalog, r => r.key.algorithm == Ed25519) {
     WorkspacePolicyRefused { reason: "a workspace catalog key uses an unsupported algorithm" }
-  } else if !all(catalog, r => ssh_ed25519_material_well_formed(material: r.key.material as String)) {
-    WorkspacePolicyRefused { reason: "a workspace catalog key is not one well-formed ssh-ed25519 public key" }
+  } else if !all(catalog, r => match ssh_ed25519_key_identity(material: r.key.material) { Present { value: _ } => true Absent => false }) {
+    WorkspacePolicyRefused { reason: "a workspace catalog key is not one exactly parsed ssh-ed25519 public key" }
   } else if any(catalog, r => string_contains(s: r.key.comment, pattern: "\n") || string_contains(s: r.key.comment, pattern: "\r")) {
     WorkspacePolicyRefused { reason: "a workspace catalog key comment contains a record separator" }
   } else if count(distinct_by_key(catalog, r => r.key.material as String)) != count(catalog) {

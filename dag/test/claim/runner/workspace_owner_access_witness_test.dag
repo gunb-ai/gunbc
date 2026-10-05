@@ -102,8 +102,15 @@ test fn key_identity_ignores_presentation_and_refuses_malformed_material() -> Bo
   let not_base64 = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: "AAAAC3NzaC1lZDI1NTE5AAAAICIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIi!!", comment: "bob"))
   let rsa = !alice_and_bob_with(bob_key: WorkspacePublicKeyCatalogRow { reference: "bob-key", key: SshPublicKey { algorithm: Rsa, material: bob_material, comment: "bob" } })
   let record_split = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: bob_material, comment: "bob\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBERERERERERERERERERERERERERERERERERERERERER"))
+  // 51 octets with the ed25519 prefix but a declared key length of 33, 34 or 35, and a declared
+  // algorithm-name length of 10: only the exact RFC 8709 layout has an identity.
+  let key_length_33 = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: "AAAAC3NzaC1lZDI1NTE5AAAAIURERERERERERERERERERERERERERERERERERERERERE", comment: "bob"))
+  let key_length_34 = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: "AAAAC3NzaC1lZDI1NTE5AAAAIkRERERERERERERERERERERERERERERERERERERERERE", comment: "bob"))
+  let key_length_35 = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: "AAAAC3NzaC1lZDI1NTE5AAAAI0RERERERERERERERERERERERERERERERERERERERERE", comment: "bob"))
+  let name_length_10 = !alice_and_bob_with(bob_key: key_row(reference: "bob-key", material: "AAAACnNzaC1lZDI1NTE5AAAAIERERERERERERERERERERERERERERERERERERERERERE", comment: "bob"))
   same_material_other_comment && same_material_empty_comment && padded_material && two_keys_in_material
     && truncated && not_base64 && rsa && record_split
+    && key_length_33 && key_length_34 && key_length_35 && name_length_10
 }
 
 // Positive control: two owners with distinct keys admit, and each guest receives its own line.
