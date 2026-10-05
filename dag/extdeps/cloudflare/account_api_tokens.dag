@@ -12,11 +12,11 @@ import std.roster_frontier { FrontierRow, frontier_row_decl, frontier_row_path }
 import std.dissolution { unbound_dissolution }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 {
   cloudflare_client_v4_base,
   CloudflareApiError
 }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -418,14 +418,12 @@ fn admit_account_token_api_mint(
   }
 }
 
-// Create DECLARES outcome: RestOutcome BECAUSE ITS FAILURE ARMS ARE THE CALLER'S PROBLEM.
-// The response set already names 401, 403, 422 and 5xx, but without an outcome channel a caller
-// has nowhere to READ which of them happened: a refused status, a transport that never answered,
-// and an undecodable body would all have to be inferred from a value that was never produced.
-// The mutation is non-idempotent -- every accepted Create mints a new token, shown once -- so the
-// distinction between "the service refused" and "the outcome is unknown" decides whether a retry
-// is authorized at all. This mirrors gcp.SecretManager.CreateSecret, which declares it for the
-// same reason and whose callers are the model this repository already follows.
+// Create's FAILURE ARMS ARE THE CALLER'S PROBLEM, AND RestResult IS WHERE THE CALLER READS THEM.
+// The response set names 401, 403, 422 and 5xx; a refused status, a transport that never answered
+// and an undecodable body arrive as the three RestRefusal arms. The mutation is non-idempotent --
+// every accepted Create mints a new token, shown once -- so the distinction between "the service
+// refused" and "the outcome is unknown" decides whether a retry is authorized at all, the same
+// reason gcp.SecretManager.CreateSecret's callers classify its refusal.
 service cloudflare.AccountTokens {
   config {
     endpoint: cloudflare_client_v4_base
@@ -463,7 +461,6 @@ service cloudflare.AccountTokens {
     }
     output {
       groups: List<AccountPermissionGroupRow> from "result"
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -495,7 +492,6 @@ service cloudflare.AccountTokens {
       status: String from "result/status"
       expires_on: Timestamp? from "result/expires_on"
       not_before: Timestamp? from "result/not_before"
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -524,7 +520,6 @@ service cloudflare.AccountTokens {
     }
     output {
       tokens: List<AccountTokenListRow> from "result"
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -548,7 +543,6 @@ service cloudflare.AccountTokens {
     }
     output {
       success: Bool from "success"
-      outcome: RestOutcome
     }
     transport rest {
       method: DELETE,

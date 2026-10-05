@@ -1543,10 +1543,13 @@ fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> O
 // ITS REPLACEMENT IS BUILT IN SHADOW (§3's staged form for a gap-intolerant boundary; neat-boar-16,
 // 2026-09-29). Resolve records identity on Node.declaration (v1.compiler.infer_resolve
 // field_inferred_with_declaration), a separate slot from `inferred`, because consumers read
-// `inferred` as resolved structure. NOTHING HERE OR IN ANY PRODUCTION READER CONSUMES
-// Node.declaration YET, so a live consumer never has two sources for one fact. Its one consumer is
-// the recorded_declaration column of v1.tests.claim.carrier_realization_census, so it is a declared
-// frontier, not dangling (§3c).
+// `inferred` as resolved structure. NO READER IN THIS MODULE CONSUMES Node.declaration YET, so the
+// type-identity readings below never have two sources for one fact. Its production readers are in
+// the Rust emitter: v1.compiler.infer_emit_info resolve_type_decl_routed, which keys the
+// type-declaration index and the Clone-bound and map-key fixpoints of v1.compiler.trait_derive_emit
+// on it, and v1.compiler.emit_rust expr_realizes_as_refusing_int. The census
+// (v1.tests.claim.carrier_realization_census) reads it in the recorded_declaration column and
+// records, in emitter_decl_route, which emitter resolutions still fall past it.
 // THE TRANSITION TRIGGER IS MEASURED. On that census, over the self-host and dag closures, the
 // recorded_declaration column must name a declaration at every position this reading identifies,
 // at identity grain. Type-variable binders (cause 3) are excluded by type, not by count. Then ONE
