@@ -84,19 +84,14 @@ import v2.std.compilers.lexing {
   IdentContinueChar,
   IdentStartChar,
   KeywordPattern,
-  LexMode,
   LexPattern,
   LexRule,
   LexRuleSet,
   LexRules,
   LineCommentTextChar,
   LiteralPattern,
-  ModeTransitionTokenRule,
   ModeledLexRules,
-  NotFollowedByPattern,
   OneOrMorePattern,
-  PopLexMode,
-  PushLexMode,
   RepeatPattern,
   SequencePattern,
   StringTextChar,
@@ -544,9 +539,8 @@ fn dag_float_literal_lex_rule() -> LexRule {
 // Hex digits are extdeps.numeric.base16 base16_digit_rows, either case. A brace escape is a literal
 // brace and never interpolation (dag/test/claim string_brace_escape_witness_test). Any other
 // character after a backslash, a backslash with nothing after it, and a numeric form that is short,
-// non-hex, over-long or names a non-scalar are malformed. The v2 lexer admits any character after a
-// backslash (dag_string_escape_tail_pattern), so it is this decode, not the lexer, that refuses a
-// malformed escape.
+// non-hex, over-long or names a non-scalar are malformed. The v2 lexer admits a backslash as string
+// text (StringTextChar), so it is this decode, not the lexer, that refuses a malformed escape.
 type DagStringEscape {
   spelled: Int
   value: Int
@@ -580,176 +574,36 @@ fn dag_string_escape_char_pattern() -> LexPattern {
   )
 }
 
-// THE STRING BODY, DISJOINT BY INPUT. Every alternative below is guarded so that no two can match
-// the same input, so no alternative is chosen by its position (the zero-ambiguity ruling applies to
-// the lexer as it does to the grammar). An element is an escape (it starts with a backslash) or a
-// plain character (it does not), and an escape's tail is exactly one of:
-//   `u{`            -- the opener of a Unicode scalar escape, ONE unit, as v1.compiler.tokenize
-//                      scan_string_body consumes it, so its brace never opens a hole (`"\u{e9}"`);
-//                      the digits and closer that follow are ordinary body text, and
-//                      dag_string_decode_step decodes or refuses the whole form
-//   `u` not followed by `{`
-//   an escape row's character (dag_string_escapes; no row spells `u`)
-//   any other character -- admitted here and refused, located, by the decode, exactly as before.
-// The lexer still does not refuse a malformed escape; the decode does.
-fn dag_string_escape_tail_pattern() -> LexPattern {
-  ChoicePattern {
-    left: SequencePattern { left: CharPattern { char: 117 }, right: CharPattern { char: 123 } },
-    right: ChoicePattern {
-      left: SequencePattern {
-        left: CharPattern { char: 117 },
-        right: NotFollowedByPattern { element: CharPattern { char: 123 } }
-      },
-      right: ChoicePattern {
-        left: dag_string_escape_char_pattern(),
-        right: SequencePattern {
-          left: NotFollowedByPattern {
-            element: ChoicePattern { left: CharPattern { char: 117 }, right: dag_string_escape_char_pattern() }
-          },
-          right: dag_string_any_char_pattern()
-        }
-      }
-    }
-  }
-}
-
-// Every character: the three classes are disjoint (StringTextChar excludes quote and line feed).
-fn dag_string_any_char_pattern() -> LexPattern {
-  ChoicePattern {
-    left: CharPattern { char: 34 },
-    right: ChoicePattern { left: CharPattern { char: 10 }, right: CharClassPattern { class: StringTextChar } }
-  }
-}
-
 fn dag_string_escape_sequence_pattern() -> LexPattern {
   SequencePattern {
     left: CharPattern { char: 92 },
-    right: dag_string_escape_tail_pattern()
+    right: dag_string_escape_char_pattern()
   }
 }
 
-// STRING TEMPLATES. A hole opens where v1.compiler.tokenize should_start_interpolation opens one: a
-// `{` whose next character starts an identifier, or is `(`, `!` or `-`. Every other `{` is text, and
-// `\{` is the escape (dag_string_escapes). The split between a plain literal and a template is
-// DISJOINT BY INPUT, never by rule order: a string body element is refused at a hole opener
-// (dag_string_body_element_pattern), so dag_token_string_literal cannot contain one and ends at the
-// closing quote, while dag_token_string_template_head must end AT one. No input matches both, so the
-// grammar sees two distinct FIRST keys and has no choice row between them, and every hole-free
-// literal lexes to the same token, lexeme and node it did before templates existed.
-//
-// The hole's contents are the ORDINARY default-mode tokens (no hole mini-grammar), lexed in the
-// pushed dag_lex_mode_template_hole. There a `}` is the hole's closer: it is either a template
-// middle (text up to the next hole opener; the mode stays) or a template tail (text up to the
-// closing quote; pops). A `{` inside the hole's expression pushes dag_lex_mode_template_brace,
-// whose `}` is the ordinary rbrace and pops, so a record literal inside a hole closes before the
-// hole does and brace depth is the mode stack's depth.
-fn dag_string_hole_start_pattern() -> LexPattern {
-  ChoicePattern {
-    left: CharClassPattern { class: IdentStartChar },
-    right: ChoicePattern {
-      left: CharPattern { char: 40 },
-      right: ChoicePattern { left: CharPattern { char: 33 }, right: CharPattern { char: 45 } }
-    }
-  }
-}
-
-fn dag_string_hole_opener_pattern() -> LexPattern {
-  SequencePattern {
-    left: CharPattern { char: 123 },
-    // Positive lookahead, spelled as the double negative predicate (`&e` = `!!e`, Ford 2004): the
-    // start character is the hole expression's first token, so the opener does not consume it.
-    right: NotFollowedByPattern { element: NotFollowedByPattern { element: dag_string_hole_start_pattern() } }
-  }
-}
-
-// v1.compiler.tokenize scan_string_body never treats line feed as a closer: only quote, backslash,
-// and interpolation-start end the body walk, so a line feed is plain text here. StringTextChar still
-// excludes LF so other language models that reuse the class do not grow a second meaning. A plain
-// character is neither a backslash nor a hole opener, so it is disjoint from an escape, and no body
-// element can contain a hole: a plain literal ends at its quote, a template head at its opener.
+// v1.compiler.tokenize scan_string_body never treats line feed as a closer:
+// only quote, backslash, and interpolation-start end the body walk. This arm
+// is that admission on the grammar row — StringTextChar still excludes LF so
+// other language models that reuse the class do not grow a second meaning.
 fn dag_string_body_element_pattern() -> LexPattern {
   ChoicePattern {
     left: dag_string_escape_sequence_pattern(),
-    right: SequencePattern {
-      left: NotFollowedByPattern {
-        element: ChoicePattern { left: CharPattern { char: 92 }, right: dag_string_hole_opener_pattern() }
-      },
-      right: ChoicePattern {
-        left: CharPattern { char: 10 },
-        right: CharClassPattern { class: StringTextChar }
-      }
+    right: ChoicePattern {
+      left: CharPattern { char: 10 },
+      right: CharClassPattern { class: StringTextChar }
     }
   }
 }
 
-fn dag_string_template_head_lex_rule() -> LexRule {
-  ModeTransitionTokenRule {
-    token_class: ^dag_token_string_template_head,
-    pattern: SequencePattern {
-      left: CharPattern { char: 34 },
-      right: SequencePattern {
-        left: RepeatPattern { element: dag_string_body_element_pattern() },
-        right: dag_string_hole_opener_pattern()
-      }
-    },
-    transition: PushLexMode { mode: ^dag_lex_mode_template_hole }
-  }
-}
-
-fn dag_string_template_middle_lex_rule() -> LexRule {
+fn dag_string_literal_lex_rule() -> LexRule {
   TokenRule {
-    token_class: ^dag_token_string_template_middle,
-    pattern: SequencePattern {
-      left: CharPattern { char: 125 },
-      right: SequencePattern {
-        left: RepeatPattern { element: dag_string_body_element_pattern() },
-        right: dag_string_hole_opener_pattern()
-      }
+    token_class: ^dag_token_string_literal,
+    pattern: DelimitedPattern {
+      open: CharPattern { char: 34 },
+      body: RepeatPattern { element: dag_string_body_element_pattern() },
+      close: CharPattern { char: 34 }
     }
   }
-}
-
-fn dag_string_template_tail_lex_rule() -> LexRule {
-  ModeTransitionTokenRule {
-    token_class: ^dag_token_string_template_tail,
-    pattern: SequencePattern {
-      left: CharPattern { char: 125 },
-      right: SequencePattern {
-        left: RepeatPattern { element: dag_string_body_element_pattern() },
-        right: CharPattern { char: 34 }
-      }
-    },
-    transition: PopLexMode
-  }
-}
-
-fn dag_template_lbrace_push_lex_rule() -> LexRule {
-  ModeTransitionTokenRule {
-    token_class: ^dag_token_lbrace,
-    pattern: LiteralPattern { text: unicode_scalar_unfold(s: "{") },
-    transition: PushLexMode { mode: ^dag_lex_mode_template_brace }
-  }
-}
-
-fn dag_template_hole_mode_lex_rules() -> List<LexRule> {
-  list_append(left: dag_lex_rules_except_braces(), right: [
-    dag_template_lbrace_push_lex_rule(),
-    dag_string_template_middle_lex_rule(),
-    dag_string_template_tail_lex_rule(),
-    dag_string_template_head_lex_rule()
-  ])
-}
-
-fn dag_template_brace_mode_lex_rules() -> List<LexRule> {
-  list_append(left: dag_lex_rules_except_braces(), right: [
-    dag_template_lbrace_push_lex_rule(),
-    ModeTransitionTokenRule {
-      token_class: ^dag_token_rbrace,
-      pattern: LiteralPattern { text: unicode_scalar_unfold(s: "}") },
-      transition: PopLexMode
-    },
-    dag_string_template_head_lex_rule()
-  ])
 }
 
 fn dag_whitespace_trivia_rule() -> LexRule {
@@ -768,12 +622,10 @@ fn dag_line_comment_annotation_rule() -> LexRule {
   }
 }
 
-// Every default-mode rule except the two braces. The braces are the one place the modes differ:
-// inside a template hole a `}` closes the hole (template middle or tail), and a `{` opened inside
-// the hole's expression must be closed by an ordinary `}` before the hole can close, so each mode
-// lists its own brace rules over this shared rest (lexing.dag LEXICAL MODES: modes do not inherit).
-fn dag_lex_rules_except_braces() -> List<LexRule> {
-  [
+fn dag_lex_rules() -> LexRuleSet {
+
+  LexRuleSet {
+    rules: [
       dag_whitespace_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_line_comment_annotation_rule(),
@@ -821,6 +673,8 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_literal_lex_rule(token_class: ^dag_token_comma, text: ","),
       dag_literal_lex_rule(token_class: ^dag_token_dot, text: "."),
       dag_literal_lex_rule(token_class: ^dag_token_pipe, text: "|"),
+      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
+      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
       dag_literal_lex_rule(token_class: ^dag_token_lparen, text: "("),
       dag_literal_lex_rule(token_class: ^dag_token_rparen, text: ")"),
       dag_literal_lex_rule(token_class: ^dag_token_lbracket, text: "["),
@@ -829,20 +683,8 @@ fn dag_lex_rules_except_braces() -> List<LexRule> {
       dag_literal_lex_rule(token_class: ^dag_token_gt, text: ">"),
       dag_literal_lex_rule(token_class: ^dag_token_question, text: "?"),
       dag_literal_lex_rule(token_class: ^dag_token_match_scrutinee_nop, text: "")
-  ]
-}
-
-fn dag_lex_rules() -> LexRuleSet {
-  LexRuleSet {
-    rules: list_append(left: dag_lex_rules_except_braces(), right: [
-      dag_literal_lex_rule(token_class: ^dag_token_lbrace, text: "{"),
-      dag_literal_lex_rule(token_class: ^dag_token_rbrace, text: "}"),
-      dag_string_template_head_lex_rule()
-    ]),
-    modes: [
-      LexMode { mode: ^dag_lex_mode_template_hole, rules: dag_template_hole_mode_lex_rules() },
-      LexMode { mode: ^dag_lex_mode_template_brace, rules: dag_template_brace_mode_lex_rules() }
-    ]
+    ],
+    modes: []
   }
 }
 
@@ -1912,28 +1754,6 @@ fn dag_grammar_primary_name_expr() -> GrammarExpr {
   )
 }
 
-// A STRING TEMPLATE: a head, then each hole's ORDINARY expression, each separated by a middle and
-// closed by the tail (the token split is dag_string_template_head_lex_rule's). The holes are
-// dag_production_expr itself -- no hole grammar of its own -- so a transport-block template whose
-// holes must be bare names (XL-2 3b-ii's Template<OperationInputName>) reads this same node and
-// refuses any hole that is not a bare name, located at that hole. Its FIRST key is the template
-// head, a token class no other production begins with, so it adds no choice row.
-fn dag_grammar_string_template_expr() -> GrammarExpr {
-  dag_grammar_sequence(
-    left: dag_grammar_terminal(token_class: ^dag_token_string_template_head),
-    right: dag_grammar_sequence(
-      left: dag_grammar_nonterminal(production: ^dag_production_expr),
-      right: dag_grammar_sequence(
-        left: dag_grammar_repeat(element: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_string_template_middle),
-          right: dag_grammar_nonterminal(production: ^dag_production_expr)
-        )),
-        right: dag_grammar_terminal(token_class: ^dag_token_string_template_tail)
-      )
-    )
-  )
-}
-
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_sequence(
@@ -1947,8 +1767,6 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
         right: dag_grammar_choice(
           left: dag_grammar_terminal(token_class: ^dag_token_string_literal),
           right: dag_grammar_choice(
-            left: dag_grammar_nonterminal(production: ^dag_production_string_template),
-            right: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_kw_true),
             right: dag_grammar_choice(
               left: dag_grammar_terminal(token_class: ^dag_token_kw_false),
@@ -1990,7 +1808,6 @@ fn dag_grammar_primary_expr_core() -> GrammarExpr {
           )
         )
         )
-      )
     )
   )
 }
@@ -3844,11 +3661,6 @@ fn dag_grammar_root() -> GrammarRoot {
     expression: dag_grammar_if_expr_expr(),
     emitted: ^dag_surface_if_expr
   )
-  let string_template = dag_grammar_production(
-    name: ^dag_production_string_template,
-    expression: dag_grammar_string_template_expr(),
-    emitted: ^dag_string_template
-  )
   let loop_expr = dag_grammar_production(
     name: ^dag_production_loop_expr,
     expression: dag_grammar_loop_expr_expr(),
@@ -3940,7 +3752,6 @@ fn dag_grammar_root() -> GrammarRoot {
       stmt,
       let_expr,
       expr,
-      string_template,
       loop_expr,
       binary_expr,
       unary_expr,
@@ -5213,20 +5024,19 @@ fn dag_string_decode_step(state: DagStringDecode, c: Int) -> DagStringDecode {
   }
 }
 
-// The lexeme's scalars between its framing scalars: its first scalar must be `open`, its last
-// `close`, and there must be at least two. A string literal is framed by quotes; a template part by
-// the quote or the hole's brace on each side (dag_string_text_frame).
-fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Optional<List<Int>> {
+// The lexeme's scalars in order; a lexeme is framed when its first and last scalars are the quote
+// and there are at least two of them.
+fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
   let cs = unicode_scalar_unfold(s: lexeme)
   let n = length(xs: cs)
   if n < 2 {
     optional_absent()
   } else {
     match list_at_optional(xs: cs, index: 0) {
-      Present { value: first } =>
+      Present { value: open } =>
         match list_at_optional(xs: cs, index: n - 1) {
-          Present { value: last } =>
-            if (first == open) && (last == close) {
+          Present { value: close } =>
+            if (open == 34) && (close == 34) {
               optional_present(value: list_init(xs: skip(xs: cs, n: 1)))
             } else {
               optional_absent()
@@ -5238,21 +5048,13 @@ fn dag_string_framed_body_optional(lexeme: String, open: Int, close: Int) -> Opt
   }
 }
 
-fn dag_string_literal_body_optional(lexeme: String) -> Optional<List<Int>> {
-  dag_string_framed_body_optional(lexeme: lexeme, open: 34, close: 34)
-}
-
 fn dag_string_literal_refusal(reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
-  dag_string_text_refusal(token_class: ^dag_token_string_literal, reason: reason, occurrence_id: occurrence_id)
-}
-
-fn dag_string_text_refusal(token_class: Symbol, reason: Symbol, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
   outcome_rejected(
     d: Diagnostic {
       reason: reason,
       at: node_locus(
         node: Node {
-          kind: TypeNode { connective: Atom { identity: token_class } },
+          kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
           children: [],
           occurrence_id: occurrence_id
         }
@@ -5274,21 +5076,16 @@ fn dag_string_literal_escape_refusal(occurrence_id: NodeOccurrenceIdentity) -> O
 // answered as the value. Every reader of string-literal text decodes here, so the escape
 // vocabulary has one reader.
 fn dag_string_literal_decoded_text(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
-  dag_string_text_decoded(token_class: ^dag_token_string_literal, body: dag_string_literal_body_optional(lexeme: lexeme), occurrence_id: occurrence_id)
-}
-
-fn dag_string_text_decoded(token_class: Symbol, body: Optional<List<Int>>, occurrence_id: NodeOccurrenceIdentity) -> Outcome<String> {
-  let escape_refusal = dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_escape_malformed, occurrence_id: occurrence_id)
-  match body {
-    Absent => dag_string_text_refusal(token_class: token_class, reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
+  match dag_string_literal_body_optional(lexeme: lexeme) {
+    Absent => dag_string_literal_refusal(reason: ^dag_string_literal_lexeme_unframed, occurrence_id: occurrence_id)
     Present { value: body } =>
       match fold(body, init: DagStringDecodeText { text: "" }, f: fn(st, c) { dag_string_decode_step(state: st, c: c) }) {
         DagStringDecodeText { text: value } => outcome_accepted(value: value)
-        DagStringDecodeEscape { text: _ } => escape_refusal
-        DagStringDecodeHex { text: _, digits: _, value: _ } => escape_refusal
-        DagStringDecodeUnicodeOpen { text: _ } => escape_refusal
-        DagStringDecodeUnicode { text: _, digits: _, value: _ } => escape_refusal
-        DagStringDecodeMalformed { spelled: _ } => escape_refusal
+        DagStringDecodeEscape { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeHex { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeUnicodeOpen { text: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeUnicode { text: _, digits: _, value: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
+        DagStringDecodeMalformed { spelled: _ } => dag_string_literal_escape_refusal(occurrence_id: occurrence_id)
       }
   }
 }
@@ -5346,18 +5143,6 @@ fn dag_string_literal_encoded(value: String) -> String {
   )
 }
 
-// A template part's spelling: its frame around its encoded text. Every brace in the text is written
-// as its escape (dag_string_escapes), so the encoded text can never re-lex as a hole opener.
-fn dag_string_text_encoded(frame: DagStringTextFrame, value: String) -> String {
-  concat(
-    from_code_point(cp: frame.open),
-    concat(
-      fold(unicode_scalar_unfold(s: value), init: "", f: fn(acc, c) { concat(acc, dag_string_encode_scalar(c: c)) }),
-      from_code_point(cp: frame.close)
-    )
-  )
-}
-
 // The string-literal node for a lexeme: its decoded text as the value payload, or the decode's
 // located refusal.
 fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
@@ -5368,60 +5153,9 @@ fn dag_string_literal_node_from_lexeme(lexeme: String, occurrence_id: NodeOccurr
   }
 }
 
-// THE FRAME OF EACH STRING-TEXT TOKEN CLASS: the scalar before its text and the scalar after. A
-// template's head opens at the quote and closes at the hole's brace; a middle runs between the
-// brace that closed one hole and the brace that opens the next; the tail runs from that brace to
-// the closing quote. Absent for every other class.
-type DagStringTextFrame {
-  open: Int
-  close: Int
-}
-
-fn dag_string_text_frame_optional(token_class: Symbol) -> Optional<DagStringTextFrame> {
-  if token_class == ^dag_token_string_literal {
-    optional_present(value: DagStringTextFrame { open: 34, close: 34 })
-  } else if token_class == ^dag_token_string_template_head {
-    optional_present(value: DagStringTextFrame { open: 34, close: 123 })
-  } else if token_class == ^dag_token_string_template_middle {
-    optional_present(value: DagStringTextFrame { open: 125, close: 123 })
-  } else if token_class == ^dag_token_string_template_tail {
-    optional_present(value: DagStringTextFrame { open: 125, close: 34 })
-  } else {
-    optional_absent()
-  }
-}
-
-fn dag_string_template_part_class(token_class: Symbol) -> Bool {
-  (token_class == ^dag_token_string_template_head)
-    || (token_class == ^dag_token_string_template_middle)
-    || (token_class == ^dag_token_string_template_tail)
-}
-
-// The node a template part's lexeme spells: its decoded text under its class, or the decode's
-// located refusal. The string literal keeps its own entry (dag_string_literal_node_from_lexeme), so
-// a hole-free literal's node is built by exactly the path it was built by before templates existed.
-fn dag_string_template_part_node_from_lexeme(token_class: Symbol, lexeme: String, occurrence_id: NodeOccurrenceIdentity) -> Outcome<Node> {
-  let body = match dag_string_text_frame_optional(token_class: token_class) {
-    Present { value: frame } => dag_string_framed_body_optional(lexeme: lexeme, open: frame.open, close: frame.close)
-    Absent => optional_absent()
-  }
-  match dag_string_text_decoded(token_class: token_class, body: body, occurrence_id: occurrence_id) {
-    Accepted { value: value, diagnostics: _ } =>
-      outcome_accepted(value: dag_string_text_node(token_class: token_class, value: value, occurrence_id: occurrence_id))
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
-  }
-}
-
 fn dag_string_literal_node(value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
-  dag_string_text_node(token_class: ^dag_token_string_literal, value: value, occurrence_id: occurrence_id)
-}
-
-// A string-text node: an atom naming its token class, with its decoded text as the value payload.
-// A string literal is one; so is each text part of a string template, whose class says which part
-// (head, middle, tail) and so where its text sits relative to the holes.
-fn dag_string_text_node(token_class: Symbol, value: String, occurrence_id: NodeOccurrenceIdentity) -> Node {
   Node {
-    kind: TypeNode { connective: Atom { identity: token_class } },
+    kind: TypeNode { connective: Atom { identity: ^dag_token_string_literal } },
     children: [
       Edge {
         label: Authored { name: ^string_literal_value_field },
@@ -5473,70 +5207,6 @@ fn dag_string_literal_value_optional(node: Node) -> Optional<String> {
   match dag_string_literal_value_symbol_optional(node: node) {
     Present { value: v } => optional_present(value: symbol_lexeme(sym: v))
     Absent => optional_absent()
-  }
-}
-
-// A template part's decoded text: the payload of an atom whose class is a template head, middle or
-// tail. Absent for every other node, including a string literal (dag_string_literal_value_optional).
-fn dag_string_template_part_value_optional(node: Node) -> Optional<String> {
-  match node_atom_identity_optional(node: node) {
-    Present { value: id } =>
-      if dag_string_template_part_class(token_class: id) && (length(xs: node.children) == 1) {
-        match list_at_optional(xs: node.children, index: 0) {
-          Present { value: edge } =>
-            match dag_string_literal_value_edge_target_optional(edge: edge) {
-              Present { value: payload } =>
-                match node_atom_identity_optional(node: payload) {
-                  Present { value: v } => optional_present(value: symbol_lexeme(sym: v))
-                  Absent => optional_absent()
-                }
-              Absent => optional_absent()
-            }
-          Absent => optional_absent()
-        }
-      } else {
-        optional_absent()
-      }
-    Absent => optional_absent()
-  }
-}
-
-// THE ONE READER OF A STRING TEMPLATE (^dag_string_template, dag_grammar_string_template_expr). A
-// template is its parts in source order: text, then for each hole the hole's expression and the text
-// after it, so it always starts and ends with text and alternates between. A hole is an ORDINARY
-// expression node -- whatever dag_production_expr captured -- and the reader neither reads nor
-// restricts it. Each consumer decides what it admits there: body lowering rewrites the parts to a
-// concat chain (body_lowering_fold body_lower_string_template), and a transport-block template
-// (XL-2 3b-ii) admits only a bare-name hole and refuses any other, located at that hole's node.
-// Absent for every node that is not a string template.
-type StringTemplatePart
-  = StringTemplateText { value: String, at: Node }
-  | StringTemplateHole { expr: Node }
-
-fn string_template_parts_optional(node: Node) -> Optional<List<StringTemplatePart>> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: emitted } =>
-      if emitted == ^dag_string_template {
-        match parse_production_captured_child_optional(node: node) {
-          Present { value: captured } => optional_present(value: dag_string_template_parts_walk(acc: [], n: captured))
-          Absent => optional_absent()
-        }
-      } else {
-        optional_absent()
-      }
-    Absent => optional_absent()
-  }
-}
-
-fn dag_string_template_parts_walk(acc: List<StringTemplatePart>, n: Node) -> List<StringTemplatePart> {
-  match dag_string_template_part_value_optional(node: n) {
-    Present { value: text } => list_snoc_item(xs: acc, item: StringTemplateText { value: text, at: n })
-    Absent =>
-      if parse_production_emitted_identity_optional(node: n) == optional_present(value: ^dag_surface_expr) {
-        list_snoc_item(xs: acc, item: StringTemplateHole { expr: n })
-      } else {
-        fold(n.children, init: acc, f: fn(a, e) { dag_string_template_parts_walk(acc: a, n: e.target) })
-      }
   }
 }
 
@@ -8056,16 +7726,7 @@ fn dag_emit_class_terminal_spelling(lex: LexRules, token_class: Symbol, captured
       Present { value: value } => outcome_accepted(value: dag_string_literal_encoded(value: value))
       Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
     }
-  } else if dag_string_template_part_class(token_class: token_class) {
-    match dag_string_template_part_value_optional(node: captured) {
-      Present { value: value } =>
-        match dag_string_text_frame_optional(token_class: token_class) {
-          Present { value: frame } => outcome_accepted(value: dag_string_text_encoded(frame: frame, value: value))
-          Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
-        }
-      Absent => dag_emit_refusal(reason: ^dag_emit_string_literal_value_missing, captured: captured)
-    }
-} else if token_class == ^dag_token_float_literal {
+  } else if token_class == ^dag_token_float_literal {
     match dag_float_literal_lexeme_optional(node: captured) {
       Present { value: lexeme } => outcome_accepted(value: lexeme)
       Absent => dag_emit_refusal(reason: ^dag_emit_float_literal_lexeme_missing, captured: captured)
