@@ -1138,8 +1138,13 @@ fn all_algebra_template_names() -> List<String> {
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness), mirroring the bytes.dag float-seam pattern --
-// both arms are the same unreached literal, there to give the expression its type.
+// input reaches the result (wiring-liveness). The divergence is the condition's `1 / 0`, evaluated
+// before either arm, so both arms are the same unreached literal there only to type the expression
+// -- the shape of std.bytes pure_dag_seam_unreachable_string. That projection cannot be imported
+// here (std.bytes imports std.types, which imports std.algebra), so its divergence is spelled
+// in place; it was `from_code_point(1 / 0)`, which bound the total seed builtin to type a value that
+// is never produced (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin).
+// DISSOLVE-ON: the bottom type std.bytes names -- one divergent seam inhabits every result type.
 fn trim(s: String) -> String {
-  if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
+  if s == s && 1 / 0 == 0 { "" } else { "" }
 }
