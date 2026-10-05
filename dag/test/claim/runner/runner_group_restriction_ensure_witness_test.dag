@@ -9,7 +9,7 @@ import gunbc.runner_group_restriction_ensure {
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused,
   CreatedGroupRestricted, CreatedGroupNotRestricted,
   plan_runner_group_ensure, readback_after_create, microvm_runner_group_create_subject,
-  runner_group_create_subject_text, private_heal_publisher_runner_group_subject,
+  runner_group_create_request, runner_group_create_request_text, RunnerGroupCreateRequest, private_heal_publisher_runner_group_subject,
   private_heal_publisher_runner_group_name, restricted_runner_groups,
   qualification_runner_group_subject,
 }
@@ -102,11 +102,26 @@ test fn witness_readback_after_create_holds_the_restriction() -> Bool {
   }
 }
 
-// The text the operator reads names every member of the body, so an approval of it is an approval
-// of the exact group.
-test fn witness_create_subject_text_names_every_member() -> Bool {
-  let t = runner_group_create_subject_text(s: microvm_runner_group_create_subject())
-  string_contains(s: t, pattern: "visibility=selected")
+// THE REQUEST THE SENDER SENDS, EXACTLY. microvm_runner_group_create_under builds every
+// CreateRunnerGroupJson argument from runner_group_create_request, so this asserts on what is sent:
+// selected visibility, no public repositories, restricted to workflows, this repository, the one
+// workflow. The values are GitHub's wire spellings (POST /orgs/{org}/actions/runner-groups).
+fn request_is_closed(r: RunnerGroupCreateRequest, repository_id: Int, workflow: String) -> Bool {
+  (r.visibility as String) == "selected"
+    && !r.allows_public_repositories
+    && r.restricted_to_workflows
+    && r.selected_repository_id == repository_id
+    && (r.selected_workflow as String) == workflow
+}
+
+// The text the operator reads is rendered from the same request, so an approval of it is an
+// approval of the exact body sent.
+test fn witness_create_request_is_closed_and_its_text_names_every_member() -> Bool {
+  let r = runner_group_create_request(s: microvm_runner_group_create_subject())
+  let t = runner_group_create_request_text(r: r)
+  request_is_closed(r: r, repository_id: 1143718943, workflow: shakedown())
+    && (r.name as String) == "microvm-shakedown"
+    && string_contains(s: t, pattern: "visibility=selected")
     && string_contains(s: t, pattern: "allows_public_repositories=false")
     && string_contains(s: t, pattern: "restricted_to_workflows=true")
     && string_contains(s: t, pattern: shakedown())
@@ -181,8 +196,7 @@ test fn the_qualification_group_is_created_when_absent_and_left_alone_when_pinne
   (restricted_runner_groups() |> any(g => (g.name as String) == (qualification_runner_group_name as String)))
     && (match qualification_planned(groups: [default_group()]) {
       GroupCreateRequired { subject: g } =>
-        string_contains(s: runner_group_create_subject_text(s: g), pattern: "visibility=selected")
-          && string_contains(s: runner_group_create_subject_text(s: g), pattern: "allows_public_repositories=false restricted_to_workflows=true")
+        request_is_closed(r: runner_group_create_request(s: g), repository_id: 1143718943, workflow: g.selected_workflow as String)
           && string_contains(s: g.selected_workflow as String, pattern: "@refs/heads/qualification/.unpinned")
       _ => false
     })

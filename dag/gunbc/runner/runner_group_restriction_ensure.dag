@@ -123,15 +123,43 @@ fn observe_subject_restriction(subject: RunnerGroupCreateSubject, listed: Runner
   }
 }
 
-// The subject as one line, the text the operator reads and the intent a request digests.
-fn runner_group_create_subject_text(s: RunnerGroupCreateSubject) -> String {
+// THE CREATE REQUEST, ONE PROJECTION FOR BOTH ITS READERS. The sender builds every
+// CreateRunnerGroupJson argument from this value (gunbc.runner_group_restriction_ensure_run
+// microvm_runner_group_create_under), the approval intent the operator reads is rendered from it
+// (runner_group_create_request_text), and the witness asserts on it -- so the three walls have one
+// source, and a constant changed here changes what is sent, what is approved and what is checked
+// together. Sealed: only this function builds one, so an open request has no constructor.
+type RunnerGroupCreateRequest sole_constructor {
+  organization: NonEmptyStr
+  name: NonEmptyStr
+  visibility: NonEmptyStr
+  selected_repository_id: Int
+  allows_public_repositories: Bool
+  restricted_to_workflows: Bool
+  selected_workflow: NonEmptyStr
+}
+
+fn runner_group_create_request(s: RunnerGroupCreateSubject) -> RunnerGroupCreateRequest {
+  RunnerGroupCreateRequest {
+    organization: s.organization,
+    name: s.name,
+    visibility: runner_group_visibility_wire(v: SelectedRepositories),
+    selected_repository_id: s.selected_repository_id,
+    allows_public_repositories: false,
+    restricted_to_workflows: true,
+    selected_workflow: s.selected_workflow,
+  }
+}
+
+// The request as one line, the text the operator reads and the intent a request digests.
+fn runner_group_create_request_text(r: RunnerGroupCreateRequest) -> String {
   join([
-    "create runner group ", s.name as String, " in org ", s.organization as String,
-    ": visibility=", runner_group_visibility_wire(v: SelectedRepositories) as String,
-    " repository_id=", to_string(s.selected_repository_id),
-    " allows_public_repositories=false",
-    " restricted_to_workflows=true",
-    " selected_workflows=[", s.selected_workflow as String, "]",
+    "create runner group ", r.name as String, " in org ", r.organization as String,
+    ": visibility=", r.visibility as String,
+    " repository_id=", to_string(r.selected_repository_id),
+    " allows_public_repositories=", if r.allows_public_repositories { "true" } else { "false" },
+    " restricted_to_workflows=", if r.restricted_to_workflows { "true" } else { "false" },
+    " selected_workflows=[", r.selected_workflow as String, "]",
   ], "")
 }
 

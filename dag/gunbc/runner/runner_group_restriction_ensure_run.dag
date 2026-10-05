@@ -9,7 +9,6 @@ import std.scoped_authorization {
   AttemptIdentity, AuthorizationScope, AuthorizationRequest, AuthorizedAction,
   authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
 }
-import extdeps.github.org_actions { SelectedRepositories, runner_group_visibility_wire }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed, fleet_converge_expected_host_env_name }
@@ -24,7 +23,7 @@ import gunbc.auth.approval_gate {
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.runner_group_restriction_ensure {
-  RunnerGroupCreateSubject, restricted_runner_groups, runner_group_create_subject_text,
+  RunnerGroupCreateSubject, restricted_runner_groups, runner_group_create_request, runner_group_create_request_text,
   RunnerGroupEnsurePlan, GroupAlreadyRestricted, GroupCreateRequired, GroupEnsureRefused, plan_runner_group_ensure,
   CreatedGroupRestricted, CreatedGroupNotRestricted, readback_after_create,
 }
@@ -103,7 +102,7 @@ data microvm_runner_group_create_scope: AuthorizationScope = AuthorizationScope 
 }
 
 fn microvm_runner_group_create_intent_text(a: MicrovmRunnerGroupCreateApproval) -> String {
-  join([runner_group_create_subject_text(s: a.group), " execution_revision=", a.execution_revision as String], "")
+  join([runner_group_create_request_text(r: runner_group_create_request(s: a.group)), " execution_revision=", a.execution_revision as String], "")
 }
 
 fn microvm_runner_group_create_intent_hash(a: MicrovmRunnerGroupCreateApproval) -> ContentHash {
@@ -184,14 +183,15 @@ fn microvm_runner_group_after_gate(
 }
 
 fn microvm_runner_group_create_under(s: RunnerGroupCreateSubject, escalation: NonEmptyStr, decided_by: NonEmptyStr) -> GroupEnsureOutcome {
+  let request = runner_group_create_request(s: s)
   let created = github.CliOrgRunnerGroups.CreateRunnerGroupJson(
-    org: s.organization,
-    name: s.name,
-    visibility: runner_group_visibility_wire(v: SelectedRepositories),
-    selected_repository_id: s.selected_repository_id,
-    allows_public_repositories: false,
-    restricted_to_workflows: true,
-    selected_workflow: s.selected_workflow,
+    org: request.organization,
+    name: request.name,
+    visibility: request.visibility,
+    selected_repository_id: request.selected_repository_id,
+    allows_public_repositories: request.allows_public_repositories,
+    restricted_to_workflows: request.restricted_to_workflows,
+    selected_workflow: request.selected_workflow,
   )
   if !created.success {
     failed(reason: concat("microvm runner group: POST /orgs/\{org\}/actions/runner-groups refused: ", created.stderr))
