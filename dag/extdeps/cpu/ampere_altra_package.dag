@@ -410,6 +410,10 @@ fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr
   })
 }
 
+// The package's own doctrine is that a contact's function is stated rather than defaulted to
+// anything. Each non-member electrical function says here that it is irrelevant to pair standing,
+// by name -- an electrical function added later must state whether it joins a pair instead of
+// inheriting "all pairs complete".
 fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPairStanding {
   match first_incomplete_polarity_pair(contacts: contacts) {
     Present { value: pair } => IncompleteDifferentialPair { pair: pair, member_count: 1 }
@@ -430,10 +434,6 @@ fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPai
                 IncompleteDifferentialPair { pair: p, member_count: members }
               }
             }
-            // Named, not wildcarded: the package's own doctrine is that a contact's function is
-            // stated rather than defaulted to anything. Each non-member function says here that it
-            // is irrelevant to pair standing, so an electrical function added later must state
-            // whether it joins a pair instead of inheriting "all pairs complete".
             PowerSupplyContact => AllDifferentialPairsComplete
             PowerReturnContact => AllDifferentialPairsComplete
             SignalReferenceContact => AllDifferentialPairsComplete

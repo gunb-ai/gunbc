@@ -459,7 +459,9 @@ fn infer_match_int_scrutinee_bool_literal_scaffold_diagnostic(node: Node) -> Dia
 // std.kind; refusing every Atom here refused every roster member's grounding before coercion (bisected:
 // ingest_identity_coercion_accepts_source_present_in_authored_roster red from #12290). The atom is
 // recognised through std.kind's own reader of its mint, not by matching its spelling, so a kind is the
-// only atom this admits and any other bare atom still refuses.
+// only atom this admits and any other bare atom still refuses. The five structure connectives need no
+// authority at their own node and each says so by name -- a connective added later must state its
+// grounding at this gate instead of inheriting it.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
     TypeNode { connective: c } =>
@@ -469,9 +471,6 @@ fn algebra_ref_is_grounded(algebra: Node) -> Bool {
             Present { value: _ } => true
             Absent => false
           }
-        // Named, not wildcarded: only a bare atom answers to a minted authority. These five
-        // connectives are structures that need no authority at this node, and each says so here --
-        // a connective added later must state its grounding at this gate instead of inheriting it.
         Conj => true
         Disj => true
         Arrow => true
