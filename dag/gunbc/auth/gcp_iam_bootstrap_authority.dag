@@ -1,0 +1,123 @@
+module gunbc.auth.gcp_iam_bootstrap_authority
+
+import std.types { String, Timestamp, Bool, List, NonEmptyStr, Int, path_segment_is_safe }
+import extdeps.transports.rest { RestOutcome, RestStatusRefused, mutation_status_is_commit_ambiguous }
+import extdeps.auth.oidc { OidcStandardClaims }
+import std.decimal { decimal_digits_only }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
+import extdeps.cloud.gcp.iam { GcpIamBindingCell, IamCondition }
+import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_before, utc_instant_seconds_after }
+import gunbc.auth.gcp_iam_converge { cell_preimage }
+
+// The operator authorized this named human principal. No caller-controlled member, role, or
+// project is accepted. Ongoing iam-converge is never the beneficiary of bootstrap authority.
+// Observed from Resource Manager v3 on 2026-09-28. Publication revalidates ancestry;
+// cleanup uses this pinned subject even if the project subsequently moves.
+// Deny Admin is grantable only on an organization, per Google's role definition.
+data iam_bootstrap_authority_organization: NonEmptyStr = "organizations/266638272282"
+
+data iam_bootstrap_operator_subject: String = "116084671989231734979"
+data iam_bootstrap_operator_email: String = "brian@gunb.ai"
+data iam_bootstrap_operator_member: String = concat("user:", iam_bootstrap_operator_email)
+
+fn bootstrap_operator_matches(subject: String, claims: OidcStandardClaims) -> Bool {
+  subject == iam_bootstrap_operator_subject
+    && match claims.email_verified { Present { value: v } => v  Absent => false }
+    && match claims.email { Present { value: email } => (email as String) == iam_bootstrap_operator_email  Absent => false }
+}
+
+type BootstrapAuthorityIntent { operation: String, expires_at: Timestamp }
+
+type BootstrapAuthorityDependency = OrganizationPolicyRead | OrganizationPolicyWrite | TemporaryDenyAdministration | DenyPolicyReadback | TemporaryAuthorityRetired
+
+fn bootstrap_authority_requires(subject: BootstrapAuthorityDependency) -> List<BootstrapAuthorityDependency> {
+  match subject {
+    OrganizationPolicyRead => []
+    OrganizationPolicyWrite => [OrganizationPolicyRead]
+    TemporaryDenyAdministration => [OrganizationPolicyWrite]
+    DenyPolicyReadback => [TemporaryDenyAdministration]
+    TemporaryAuthorityRetired => [OrganizationPolicyRead, OrganizationPolicyWrite]
+  }
+}
+
+fn bootstrap_authority_intent_valid(intent: BootstrapAuthorityIntent) -> Bool {
+  path_segment_is_safe(raw: intent.operation) && string_length(s: intent.operation) <= 48 && utc_instant_is_canonical(t: intent.expires_at)
+}
+
+// The absolute deadline is immutable in the durable intent. Reading it on retry never renews it.
+fn bootstrap_authority_may_grant(intent: BootstrapAuthorityIntent, now: Timestamp) -> Bool {
+  bootstrap_authority_intent_valid(intent: intent) && utc_instant_is_canonical(t: now)
+    && utc_instant_before(a: now, b: intent.expires_at)
+    && utc_instant_seconds_after(later: intent.expires_at, earlier: now) <= 3600
+}
+
+fn bootstrap_authority_cell(intent: BootstrapAuthorityIntent) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: "roles/iam.denyAdmin", member: iam_bootstrap_operator_member,
+    condition: Present { value: IamCondition {
+      title: concat("gunbc-bootstrap-deny-", intent.operation),
+      description: Present { value: "Temporary dependency for gunbc IAM deny-policy installation; cleanup remains owed after expiry." },
+      expression: join(["request.time < timestamp('", intent.expires_at as String, "')"], ""),
+    } } }
+}
+
+fn bootstrap_authority_intent_wire(intent: BootstrapAuthorityIntent) -> String {
+  join(["target-project:", fleet_secrets_project_id as String, ";authority-resource:", iam_bootstrap_authority_organization as String, ";", cell_preimage(c: bootstrap_authority_cell(intent: intent))], "")
+}
+
+type BootstrapAuthorityObservation = AuthorityAbsent | AuthorityPresent | AuthorityUnreadable
+
+type BootstrapAuthorityAction = PublishAuthority | UseAuthority | RemoveAuthority | AuthoritySettled | AuthorityRefused
+
+// One durable publication election prevents a retired grant from being reissued. An absent
+// policy cell after an unresolved publication is NOT evidence that a queued write cannot land.
+fn bootstrap_authority_action(observed: BootstrapAuthorityObservation, publication_elected: Bool, publication_closed: Bool, retired: Bool, withdrawing: Bool, live: Bool) -> BootstrapAuthorityAction {
+  match observed {
+    AuthorityUnreadable => AuthorityRefused
+    AuthorityPresent => if !publication_elected { AuthorityRefused }
+      else if withdrawing || retired || !live { RemoveAuthority } else { UseAuthority }
+    AuthorityAbsent => if retired { AuthoritySettled }
+      else if publication_elected { if publication_closed && withdrawing { AuthoritySettled } else { AuthorityRefused } }
+      else if withdrawing { AuthoritySettled }
+      else if live { PublishAuthority } else { AuthorityRefused }
+  }
+}
+
+
+// Resource names are validated before interpolating a parent read; never follow arbitrary URLs.
+fn bootstrap_parent_name_valid(name: String, kind: String) -> Bool {
+  let prefix = concat(kind, "/")
+  starts_with(s: name, prefix: prefix) && string_length(s: name) > string_length(s: prefix)
+    && decimal_digits_only(s: substring(s: name, start: string_length(s: prefix), end: string_length(s: name)))
+}
+
+// Reuse the transport authority's distinction: a received 4xx rejects the mutation;
+// a transport fault, undecodable success, or server error does not establish non-commit.
+fn bootstrap_authority_publication_refused(outcome: RestOutcome) -> Bool {
+  match outcome {
+    RestStatusRefused { status, body: _ } => (status as Int) >= 400 && !mutation_status_is_commit_ambiguous(status: status)
+    RestOk => false
+    RestTransportRefused { cause: _ } => false
+    RestBodyUndecodable { status: _, cause: _ } => false
+  }
+}
+
+
+fn bootstrap_deny_retry_admitted(outcome: RestOutcome, remaining: Int, live: Bool) -> Bool {
+  remaining > 1 && live && match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestOk => false  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+}
+
+
+fn bootstrap_authority_dependency_name(subject: BootstrapAuthorityDependency) -> String {
+  match subject {
+    OrganizationPolicyRead => "organization-policy-read"
+    OrganizationPolicyWrite => "organization-policy-write"
+    TemporaryDenyAdministration => "temporary-deny-administration"
+    DenyPolicyReadback => "deny-policy-readback"
+    TemporaryAuthorityRetired => "temporary-authority-retired"
+  }
+}
+
+fn bootstrap_authority_dependency_plan() -> String {
+  join(map([OrganizationPolicyRead, OrganizationPolicyWrite, TemporaryDenyAdministration, DenyPolicyReadback, TemporaryAuthorityRetired], subject =>
+    concat(bootstrap_authority_dependency_name(subject: subject), " requires [", join(map(bootstrap_authority_requires(subject: subject), required => bootstrap_authority_dependency_name(subject: required)), ","), "]")), "\n")
+}
