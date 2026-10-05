@@ -530,9 +530,11 @@ test fn a_decoded_optional_bool_false_reads_through_its_present_arm() -> Bool {
   decoded_email_verified_reads(body: "{\"verified\":false}", expected: false)
 }
 
-// Controls: an absent field takes the Absent arm, and a constructed Present was never affected.
+// Controls: a null field takes the Absent arm, and a constructed Present was never affected.
+// The absent value is an explicit JSON null: a body MISSING the key refuses as RestBodyUndecodable
+// under the declared response type, which is a decode fact, not this match.
 test fn a_decoded_absent_optional_bool_takes_its_absent_arm() -> Bool {
-  match evaluate_in_witness_frame(frame: verified_flag_frame(body: "{}"), subject: fn(_scope) {
+  match evaluate_in_witness_frame(frame: verified_flag_frame(body: "{\"verified\":null}"), subject: fn(_scope) {
     match test.RestReplay.VerifiedFlag() {
       RestAnswered { answer } => {
         let claims = OidcStandardClaims { email: none, email_verified: answer.verified, name: none }
@@ -566,3 +568,4 @@ test fn the_text_true_under_a_declared_bool_refuses_at_decode() -> Bool {
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
+

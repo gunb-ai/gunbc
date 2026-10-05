@@ -22,7 +22,7 @@ data optional_bool_payload_read_as_a_native_arm: RecurringFailureMode = Recurrin
 
     "THE REPAIR: the Optional `Present` and Witness `Holds` raw unwraps run before the host-bool arm, so a raw Bool payload is unwrapped like every other kind. `Absent` against a raw Bool still falls to the host-bool arm and misses, as it should. The emitted Rust realization carries `Option<bool>` natively and never had the defect.",
 
-    "RUNG FOUND AT: below the ladder for the program's meaning -- an Accepted program, whose arms are exhaustive by construction, failed at runtime on a value its type admits. RUNG AFTER THIS CHANGE: 1, mitigatable at the interpreter, discriminated by `a_decoded_optional_bool_true_reads_through_its_present_arm` and `a_decoded_optional_bool_false_reads_through_its_present_arm`, both RED with the fix reverted. The positive controls are `a_decoded_absent_optional_bool_takes_its_absent_arm` and `a_constructed_present_bool_reads_through_its_present_arm`.",
+    "RUNG FOUND AT: below the ladder for the program's meaning -- an Accepted program, whose arms are exhaustive by construction, failed at runtime on a value its type admits. RUNG AFTER THIS CHANGE: 1, mitigatable at the interpreter, discriminated by `a_decoded_optional_bool_true_reads_through_its_present_arm` and `a_decoded_optional_bool_false_reads_through_its_present_arm`, both RED with the fix reverted. The positive controls are `a_decoded_absent_optional_bool_takes_its_absent_arm` (a JSON null) and `a_constructed_present_bool_reads_through_its_present_arm`.",
 
     "CEILING: 4. Two representations of one Optional value (a Variant and a raw value-or-Null) are the invalid state's precondition, and a single runtime representation would leave no pattern able to see the wrong one.",
 
