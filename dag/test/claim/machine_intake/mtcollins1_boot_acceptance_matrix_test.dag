@@ -742,13 +742,15 @@ test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bo
 // THE WALL CLOCK JUMPS TEN MINUTES FORWARD DURING THE READINESS WAIT. The window reads as closed at the
 // next look, and the attempt refuses without a handoff: a forward step shortens the wait, it never
 // buys an unbounded one. The look count follows the route's own schedule before the media wait -- it
-// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it -- so a later change to that
-// prefix moves it again; what the case holds is the refusal at the look after the jump.
+// moved from 2 to 3 when #12434 put the notice-watcher wait ahead of it, and from 3 to 2 when the
+// power-on account's pre-power hpm check read (one virtual second, after admission) joined the prefix
+// -- so a later change to that prefix moves it again; what the case holds is the refusal at the look
+// after the jump.
 test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
-        && string_contains(s: outcome_reason(a: value), pattern: "(3 looks,")
+        && string_contains(s: outcome_reason(a: value), pattern: "(2 looks,")
         && reached_no_power_action(route: route)
     _ => false
   }

@@ -1,0 +1,1037 @@
+module gunbc.spark.group_arm_launch
+
+import extdeps.huggingface.hub { hub_repo_cache_directory }
+import gunbc.spark.model_snapshot_acquisition { spark_hub_cache_root }
+import gunbc.fleet_wireless_link { observe_wireless_link, spark_wireless_link_desired, wireless_link_observation_line, kernel_disconnect_line_count, dgx_spark_wireless_interface }
+import extdeps.systemd.journalctl { journalctl_kernel_current_boot_argv }
+import gunbc.auth.standing_operator_grant { standing_grant_covers, StandingArmLaunch }
+import gunbc.spark.pair_serving_d0 { d0_standing_grants }
+import gunbc.spark.pair_serving_d0_door { StandingGrantRowStanding, StandingGrantRowOnMain, StandingGrantRowNotOnMain, fresh_grant_row_standing, executed_grant_row }
+import extdeps.git
+import gunbc.output_policy { ExpectSuccess }
+import std.types { String, Bool, List, NonEmptyStr, GitRef, Int }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { zip_map }
+import std.measure { Kibibyte, kibibyte, basis_point_count, BasisPoint }
+import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash, content_hash_atom }
+import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
+import product.host_identity { HostIdentity }
+import extdeps.docker.cli { DockerEnvAssignment, docker_ps_running_all_command }
+import gunbc.compute.host_occupancy { HostOccupant, ServingUnitActive, GpuComputeProcess, HostOccupancyAdmission, HostUnoccupied, HostOccupiedBy, HostMemoryShort, HostOccupancyNotRead, host_operation_leg, HostOperationLegRead, HostOperationLegUnread, read_host_occupancy, admit_host_occupancy, host_occupancy_refusal, host_occupant_wire }
+import gunbc.host_operation_exec { SystemctlStop, NvidiaSmiQueryComputeApps, ProcfsReadPidCgroup }
+import extdeps.nvidia.system_management_interface { parse_compute_apps, ComputeAppsParsed, ComputeAppsUnparsed }
+import extdeps.systemd.systemctl { systemctl_list_all_service_units_argv }
+import extdeps.exec.command { argv_words }
+import std.algebra { trim }
+import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
+import extdeps.systemd { Active }
+import gunbc.fabric_event_log_host { now_epoch_seconds, HostStoreResolved, HostStoreRefused, event_log_store_for_host }
+import gunbc.spark.fabric_reach { ExecutorReachKnown, ExecutorReachUnknown, observe_executor_reach, ReachFabricRail, spark_reach_endpoint }
+import gunbc.spark.fabric_switch_observed { FabricGroup, fabric_group_hosts, fabric_group_wire }
+import gunbc.spark.fabric_serving_assignment { FabricServingAssignment }
+import gunbc.spark.serving_subject { PairServingUnitOn }
+import gunbc.spark.host_commitment { admit_host_held_by_subject, admit_host_held_by_subject_among, spark_serving_admissible_hosts }
+import gunbc.spark.serving_promotion { no_promotion_receipts }
+import gunbc.spark.serving_arm { Glm53NativeFp8, Glm53FlashNvidiaNvfp4, serving_checkpoint_wire, ArmIntent, ServingLaunchProfile, gb10_unified_pool_gib, serving_runtime_row, runtime_artifact_wire, GunbcGlm53KvplanV2GroupAProduced, serving_checkpoint_row, runtime_artifact_key, serving_topology_wire, serving_launch_profile_key }
+import gunbc.spark.serving_arm_launch { glm53_staircase_head_log_path, ArmContainerIdentity, ArmNodeLaunch, ArmLaunchPlanned, ArmLaunchRefused, plan_arm_launch_under_memory_fit }
+import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
+import gunbc.spark.native_serving_realization { ArmUnitIdentity, GlmNativeUnitRender, arm_host_unit_file_for, glm_native_rendezvous_endpoint }
+import gunbc.spark.native_serving_apply { spark_native_unit_path, spark_native_fence_suffix, spark_native_unresolved_rollback_suffix, SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, SparkNativeHostStep, spark_native_arm_steps_of, spark_native_preflight_plans, spark_native_apply_stage_plans, spark_native_apply_transaction }
+import gunbc.spark.pair_serving_authority { PairServingGroupAuthority, PairServingActive, SuspensionPendingReconciliation, SuspendedForAuthorizedSuccessor, FencedRefusal, ReleasedToFleet, PairRealizationKeyed, PairRealizationUnestablished, pair_serving_successor_may_launch }
+import gunbc.spark.pair_serving_authority_log {
+  PreparationState, Prepared, AppendClaimed, Finalized, Aborted,
+  placement_read, PlacementReadAt, PlacementUnread, preparation_line, group_fenced_hosts, live_host_effects_on, host_effect_line_at, same_group, CurrentAuthorityRead, CurrentAuthorityUnread, current_pair_serving_authorities, current_authority_for, current_authority_wire }
+import gunbc.spark.host_occupancy_admission { spark_serving_units, spark_ctx_argv_run, restore_spark_serving_units }
+import gunbc.spark.vllm_runtime_image_build { vllm_image_target_ctx, SparkBuildHostWork, with_spark_build_host, SparkBuildHostRefused, SparkBuildHostRan }
+import gunbc.spark.model_snapshot_materialize { SparkMaterializeContext, spark_remote_run, RemoteRan, RemoteUnreachable }
+import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.clock_read { clock_now_probed_at, probed_at_word }
+import gunbc.fleet_multi_principal_probe { spark_converge_target_selection, SparkConvergeTargetSingle, SparkConvergeTargetAllObserveOnly, SparkConvergeTargetRefused }
+
+// ── ONE LAUNCH TRANSACTION FOR AN ARM ON A FABRIC GROUP, WHATEVER THE ARM IS (deforking cut 8a) ─────
+//
+// WHY THIS MODULE EXISTS. gunbc.spark.v41_group_a_launch planned, rendered, admitted and applied the
+// V4.1 arm on Group A, and every one of those steps was a fact about an ARM ON A GROUP rather than about
+// V4.1: the plan is plan_arm_launch_under_memory_fit over a serving assignment, the units are
+// arm_host_unit_file_for under the arm's own names, the apply is gunbc.spark.native_serving_apply's
+// transaction, and the admission is the group's authority, its subject's hold and its hosts' occupancy.
+// A second arm on Group A (GLM-5.3-Flash's staircase) would otherwise have been a copy of all of it. So
+// this module is the ONE path, parameterized by what actually differs -- the assignment, the profile,
+// the deployment env, the unit and container names, the successor key the authority must name, the
+// declared incumbent, and the arm's own pre-apply work -- and V4.1 is one caller of it. Its
+// V4.1-specific facts (the held production image, the Engram manifest and staging, the SM120 self-test)
+// are that caller's inputs, never this module's.
+//
+// WHAT IS NOT YET HERE, NAMED (DESIGN §3 replacement-migration standing rule): gunbc.spark.glm_group_b_launch
+// plans Group B's LIVE arm through its own route and stays a consumer of the old shape, FROZEN -- no new
+// investment -- until a named follow-up migrates it (its trigger: a Group B relaunch that runs through
+// this transaction, which changes what a Group B converge applies and so is a decision of its own, not a
+// side effect of this cut).
+
+// ── THE INPUTS: WHAT DIFFERS BETWEEN ONE ARM AND ANOTHER ────────────────────────────────────────
+//
+// THE ASSIGNMENT IS THE TUPLE'S ONE HOME (gunbc.spark.fabric_serving_assignment FabricServingAssignment),
+// not a second record of (group, checkpoint, runtime, topology). The purpose is the phrase every refusal
+// names the effect by, so a refusal says which launch it refused.
+type GroupArmLaunchInputs {
+  assignment: FabricServingAssignment
+  profile: ServingLaunchProfile
+  intent: ArmIntent
+  deployment_env: List<DockerEnvAssignment>
+  container: ArmContainerIdentity
+  units: ArmUnitIdentity
+  purpose: NonEmptyStr
+}
+
+type GroupArmLaunchPlan
+  = GroupArmLaunchPlanned { lines: List<ArmNodeLaunch>, profile: ServingLaunchProfile, master_endpoint: NonEmptyStr }
+  | GroupArmLaunchRefused { causes: List<String> }
+
+// THE PLAN IS THE MEMORY WALL'S. A FitUnestablished subject is admitted only under ArmBoundedExperiment,
+// and normal serving also passes the promotion step; this module adds no wall of its own and removes none.
+fn group_arm_launch_plan(inputs: GroupArmLaunchInputs) -> GroupArmLaunchPlan {
+  let a = inputs.assignment
+  match plan_arm_launch_under_memory_fit(
+    checkpoint: a.checkpoint,
+    runtime: a.runtime,
+    topology: a.topology,
+    group: a.group,
+    intent: inputs.intent,
+    profile: inputs.profile,
+    deployment_env: inputs.deployment_env,
+    container: inputs.container,
+    promotion_receipts: no_promotion_receipts,
+  ) {
+    ArmLaunchRefused { cause: c } => GroupArmLaunchRefused { causes: [c as String] }
+    ArmLaunchPlanned { lines: ls, master: m } =>
+      GroupArmLaunchPlanned { lines: ls, profile: inputs.profile, master_endpoint: glm_native_rendezvous_endpoint(master: m, port: inputs.container.master_port) }
+  }
+}
+
+fn group_arm_unit_renders(intent: ArmIntent, units: ArmUnitIdentity, p: GroupArmLaunchPlan) -> List<GlmNativeUnitRender> {
+  match p {
+    GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: _ } =>
+      map(ls, l => arm_host_unit_file_for(intent: intent, launch: l, units: units, served_alias: prof.served_alias))
+    GroupArmLaunchRefused { causes: _ } => [] as List<GlmNativeUnitRender>
+  }
+}
+
+fn group_arm_steps(intent: ArmIntent, units: ArmUnitIdentity, p: GroupArmLaunchPlan) -> SparkNativeArmSteps {
+  match p {
+    GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: e } =>
+      spark_native_arm_steps_of(launches: ls, renders: group_arm_unit_renders(intent: intent, units: units, p: p), master_endpoint: Present { value: e }, units: units, profile: prof)
+    GroupArmLaunchRefused { causes: c } => NativeArmStepsRefused { cause: join(c, "; ") as NonEmptyStr }
+  }
+}
+
+fn group_arm_plan_hosts(p: GroupArmLaunchPlan) -> List<HostIdentity> {
+  match p {
+    GroupArmLaunchPlanned { lines: ls, profile: _, master_endpoint: _ } => map(ls, l => l.node.host)
+    GroupArmLaunchRefused { causes: _ } => [] as List<HostIdentity>
+  }
+}
+
+// THE OCCUPANCY NEED IS THE ENGINE'S OWN REQUEST: the profile's gpu-memory-utilization share of a GB10's
+// unified pool (gunbc.spark.serving_arm gb10_unified_pool_gib), which vLLM asks the device for at startup.
+fn group_arm_memory_need(gpu_memory_utilization: BasisPoint) -> Kibibyte {
+  kibibyte(count: basis_point_count(bp: gpu_memory_utilization) * gb10_unified_pool_gib * 1048576 / 10000)
+}
+
+fn group_arm_plan_memory_need(p: GroupArmLaunchPlan) -> Kibibyte {
+  match p {
+    GroupArmLaunchPlanned { lines: _, profile: prof, master_endpoint: _ } => group_arm_memory_need(gpu_memory_utilization: prof.decided_gpu_memory_basis_points)
+    GroupArmLaunchRefused { causes: _ } => kibibyte(count: 0)
+  }
+}
+
+// ── THE DECLARED INCUMBENT (ruling of valiant-crab-775, 2026-10-02, cut 8 option A) ─────────────
+//
+// A SERVE THIS LAUNCH SUPERSEDES IS NAMED, NEVER DISCOVERED. Each row is a unit on a host, supplied by
+// whoever handed the hosts over (or, for staircase step N > 1, the arm's own units from step N - 1). No
+// pattern over `systemctl list-units` and no "whatever is running" may stand in for it: the bracket below
+// stops exactly these units and nothing else, so an undeclared occupant still refuses at admission and a
+// stray GPU process still refuses after the stop.
+//
+// THE THREE REQUIREMENTS THE RULING NAMES, AND WHERE EACH IS ENFORCED:
+//   - every other occupant still refuses -- group_arm_occupancy_causes: a host with no declared unit is
+//     judged exactly as before, and on a host with declared units any OTHER serving unit refuses;
+//   - the declared incumbent is read back running before it is stopped -- the same fold: each declared
+//     unit must appear in that host's reading as active, or the launch refuses;
+//   - on rollback the incumbent is restored and read back -- group_arm_restore_incumbent, which starts
+//     each declared unit and reads it back occupying (gunbc.spark.host_occupancy_admission
+//     restore_spark_serving_units, the same restore the pair vacate uses).
+// A GPU process cannot be attributed to a unit (gunbc.compute.host_occupancy's reader does not, by
+// ruling), so on a host with a declared incumbent the GPU processes are not judged before the stop: they
+// are judged AFTER it, by a fresh reading that must find the host vacant and its memory sufficient. A
+// process the stop did not end is therefore an undeclared occupant and refuses, with the incumbent
+// restored.
+type ArmIncumbentUnit {
+  host: HostIdentity
+  unit_name: NonEmptyStr
+}
+
+type ArmDeclaredIncumbent
+  = NoIncumbentDeclared
+  | IncumbentDeclared { units: List<ArmIncumbentUnit>, provenance: NonEmptyStr }
+
+fn incumbent_units(i: ArmDeclaredIncumbent) -> List<ArmIncumbentUnit> {
+  match i {
+    NoIncumbentDeclared => [] as List<ArmIncumbentUnit>
+    IncumbentDeclared { units: us, provenance: _ } => us
+  }
+}
+
+fn incumbent_units_on(i: ArmDeclaredIncumbent, host: HostIdentity) -> List<NonEmptyStr> {
+  map(filter(incumbent_units(i: i), u => (u.host as String) == (host as String)), u => u.unit_name)
+}
+
+fn incumbent_hosts(i: ArmDeclaredIncumbent, hosts: List<HostIdentity>) -> List<HostIdentity> {
+  filter(hosts, h => length(incumbent_units_on(i: i, host: h)) != 0)
+}
+
+// THE UNITS AN OCCUPANCY READING ASKS ABOUT: the Spark serving units every reading asks (the pair's and
+// the retired pair's), this arm's own two unit names, and every declared incumbent unit -- so a declared
+// unit is READ before it is trusted, and this arm's own units still running count as occupants.
+fn group_arm_read_units(units: ArmUnitIdentity, incumbent: ArmDeclaredIncumbent) -> List<NonEmptyStr> {
+  let base = concat(spark_serving_units(), [units.head_unit_name, units.rank_unit_name])
+  concat(base, filter(map(incumbent_units(i: incumbent), u => u.unit_name), n => !any(base, b => (b as String) == (n as String))))
+}
+
+// ── ADMISSION ─────────────────────────────────────────────────────────────────────────────────
+//
+// FOUR CONJUNCTS, EACH A REFUSAL WITH ITS OWN CAUSE.
+//   (1) THE AUTHORITY. The group's serving authority must be SuspendedForAuthorizedSuccessor with a live
+//       lease (gunbc.spark.pair_serving_authority pair_serving_successor_may_launch). Active, pending,
+//       fenced and released all refuse; an expired lease refuses to START (cleanup is another door).
+//   (2) THE SUCCESSOR IS THIS ONE. The authority's exact candidate realization must be keyed, and its key
+//       must be the launching arm's successor key. An arm with no keyed successor refuses by name: it has
+//       nothing a suspension could have been granted to.
+//   (3) EVERY HOST IS HELD BY THE SUBJECT (gunbc.spark.host_commitment admit_host_held_by_subject_among).
+//   (4) NO HOST IS OCCUPIED, except by its declared incumbent read back active (above). A host with no
+//       reading at all refuses: absence is not vacancy.
+// The arm may add its own causes (V4.1: the produced image's specification key must be its candidate's);
+// they are supplied, so this fold judges them without knowing what they are about.
+type ArmSuccessorStanding
+  = ArmSuccessorKeyed { key: ContentHash }
+  | ArmSuccessorUnkeyed { causes: List<String> }
+
+// ── THE SUCCESSOR KEY OF AN ARM WHOSE RUNTIME AND CHECKPOINT ARE ROWS ────────────────────────────
+//
+// WHAT A SUSPENSION IS GRANTED TO (ruling of valiant-crab-775, 2026-10-02): the arm's own identity --
+// the runtime artifact key (pin, source standing and patch set, gunbc.spark.serving_arm
+// runtime_artifact_key), the checkpoint's repository at its revision, the topology, the group, and the
+// launch profile's own key, which carries the staircase step's ceiling, its cold floor and its scheduler
+// gate. Composed by std.artifact_store artifact_realization_digest, the fold the V4.1 candidate is keyed
+// by (gunbc.spark.v41_runtime_candidate), so two arms differing in ANY of those are two successors and a
+// grant for one step never admits another. An arm whose runtime has no row, or whose artifact has no pin
+// (runtime_artifact_key renders an unpinned image as <unpinned:...>), has no key: an unpinned image is
+// not an identity a grant could name. V4.1's runtime is produced at run time and keys its candidate
+// through its own authority instead.
+fn realization_input(identity: String, value: String) -> ArtifactRealizationInput {
+  ArtifactRealizationInput { identity: identity as NonEmptyStr, content_digest: content_hash_atom(value: value as NonEmptyStr) }
+}
+
+fn group_arm_row_successor(inputs: GroupArmLaunchInputs) -> ArmSuccessorStanding {
+  let a = inputs.assignment
+  match serving_runtime_row(r: a.runtime) {
+    Absent => ArmSuccessorUnkeyed { causes: ["the runtime has no row, so it has no artifact identity to key a successor by"] }
+    Present { value: rt } => {
+      let rk = runtime_artifact_key(a: rt.artifact)
+      if starts_with(s: rk, prefix: "<unpinned:") {
+        ArmSuccessorUnkeyed { causes: [join(["the runtime artifact is unpinned (", rk, "), and an unpinned image is not an identity a grant could name"], "")] }
+      } else {
+        match serving_checkpoint_row(c: a.checkpoint) {
+          Absent => ArmSuccessorUnkeyed { causes: ["the checkpoint has no row, so it has no revision to key a successor by"] }
+          Present { value: ck } => ArmSuccessorKeyed { key: artifact_realization_digest(inputs: [
+            realization_input(identity: "runtime_artifact", value: rk),
+            realization_input(identity: "checkpoint", value: join([ck.repo.path as String, "@", ck.revision as String], "")),
+            realization_input(identity: "topology", value: serving_topology_wire(t: a.topology) as String),
+            realization_input(identity: "group", value: fabric_group_wire(g: a.group) as String),
+            realization_input(identity: "launch_profile", value: serving_launch_profile_key(p: inputs.profile)),
+          ]) }
+        }
+      }
+    }
+  }
+}
+
+fn arm_successor_wire(s: ArmSuccessorStanding) -> String {
+  match s {
+    ArmSuccessorKeyed { key: k } => join(["successor key: ", content_hash_text(h: k), "\n"], "")
+    ArmSuccessorUnkeyed { causes: c } => join(["successor key: NONE (", join(c, "; "), ")\n"], "")
+  }
+}
+
+type GroupArmHostOccupancy {
+  host: HostIdentity
+  admission: HostOccupancyAdmission
+  own_fence: ArmOwnFence
+}
+
+// WHETHER THIS ARM'S OWN TRANSACTION FENCE STANDS ON THE HOST (gunbc.spark.native_serving_apply
+// spark_native_fence_suffix on the arm's own unit paths) -- read, never inferred; unread is its own arm.
+type ArmOwnFence
+  = ArmOwnFenceHeld
+  | ArmOwnRollbackUnresolved
+  | ArmOwnFenceAbsent
+  | ArmOwnFenceUnread { cause: String }
+
+// ADMITTED FOR ADOPTION ONLY is its own verdict, not a loosened Admitted: a host whose only incumbent
+// problem is that a declared unit is INACTIVE UNDER THIS ARM'S OWN unresolved transaction fence (a launch
+// killed between apply and verdict, whose rank then died -- nvfp4-8, runs 37190290418 / 37198685584) is a
+// dangling transaction, and the only thing it licenses is the transaction's leftover-stage adoption:
+// resume at readback or roll back. It cannot reach a pre-apply, an incumbent stop or an apply leg; if the
+// leftover stage then finds nothing adoptable, the run refuses. A declared incumbent that is inactive with
+// no fence of this arm still refuses exactly as before.
+type GroupArmLaunchAdmission
+  = GroupArmLaunchAdmitted
+  | GroupArmLaunchAdmittedForAdoptionOnly { hosts: List<HostIdentity> }
+  | GroupArmLaunchAdmissionRefused { causes: List<String> }
+
+fn content_hash_text(h: ContentHash) -> String {
+  serialize_content_hash(hash: h) as String
+}
+
+// A RELEASED GROUP ADMITS A LAUNCH ONLY UNDER A STANDING GRANT THAT COVERS IT (operator ruling relayed
+// by valiant-crab-775, 2026-10-03). ReleasedToFleet means no pair-serving suspension exists to launch a
+// successor under, so the authority the launch acts under is the committed standing ruling
+// (gunbc.auth.standing_operator_grant), read from the one roster D0 already consumes
+// (gunbc.spark.pair_serving_d0 d0_standing_grants). It covers the launch only when a grant names
+// this group, the ArmLaunch effect and EVERY planned host; anything less refuses. The successor must
+// still be keyed, and every other wall (arm, hosts, incumbent, occupancy, memory) still applies.
+// THE GRANT COUNTS ONLY AS THE OPERATOR MERGED IT, exactly as D0's door honors it (gunbc.spark.
+// pair_serving_d0_door standing_grant_row_judged, review 74677): a grant row that is not byte-identical to
+// origin/main's covers nothing, and the launch refuses with the read's cause.
+// A LAUNCH IS ALWAYS A FRESH START: it has no frozen lifecycle to resume, so the row is judged against
+// origin/main at each launch's admission (gunbc.spark.pair_serving_d0_door fresh_grant_row_standing; D0
+// freezes the same judgement into its filing instead).
+
+fn group_arm_released_launch_causes(group: FabricGroup, hosts: List<HostIdentity>, grant_row: StandingGrantRowStanding) -> List<String> {
+  match grant_row {
+    StandingGrantRowNotOnMain { cause: c } => [join([group_label(g: group), " has been released to the fleet, and the standing grant is not honored: ", c], "")]
+    StandingGrantRowOnMain => group_arm_released_launch_coverage_causes(group: group, hosts: hosts)
+  }
+}
+
+fn group_arm_released_launch_coverage_causes(group: FabricGroup, hosts: List<HostIdentity>) -> List<String> {
+  if any(d0_standing_grants, g => standing_grant_covers(g: g, group: group, effect: StandingArmLaunch, hosts: hosts)) {
+    [] as List<String>
+  } else {
+    [join([group_label(g: group), " has been released to the fleet and no standing grant covers an arm launch on every planned host (", join(map(hosts, h => h as String), ", "), "); there is no suspension to launch a successor under either"], "")]
+  }
+}
+
+fn group_arm_authority_causes(group: FabricGroup, hosts: List<HostIdentity>, authority: PairServingGroupAuthority?, successor: ArmSuccessorStanding, grant_row: StandingGrantRowStanding) -> List<String> {
+  let label = group_label(g: group)
+  match successor {
+    ArmSuccessorUnkeyed { causes: c } => map(c, x => join(["the launching arm has no keyed successor realization: ", x], ""))
+    ArmSuccessorKeyed { key: candidate } =>
+      match authority {
+        Absent => [join([label, " has no serving authority row; absence is not permission"], "")]
+        Present { value: a } =>
+          match a {
+            PairServingActive { group: _, exact_realization: _ } =>
+              [join([label, "'s serving authority is Active for the incumbent; a successor may launch only under SuspendedForAuthorizedSuccessor"], "")]
+            SuspensionPendingReconciliation { group: _, hosts: _, transaction: _, authorization_binding: _, lease: _ } =>
+              [join([label, "'s suspension is still pending reconciliation; D0 has not settled it to an authorized successor"], "")]
+            FencedRefusal { group: _, hosts: _, cause: c, disposition_authority: _ } =>
+              [join([label, " is fenced (", c as String, "); only cleanup may proceed"], "")]
+            ReleasedToFleet { group: _, release_receipt: _ } => group_arm_released_launch_causes(group: group, hosts: hosts, grant_row: grant_row)
+            SuspendedForAuthorizedSuccessor { group: _, hosts: _, authorization: _, exact_candidate_realization: r, lease: _, cleanup: _ } =>
+              concat(
+                if pair_serving_successor_may_launch(a: a) { [] as List<String> } else { ["the successor authorization's lease is not running as expected, so it may not START a launch (cleanup still may)"] },
+                match r {
+                  PairRealizationUnestablished { obligation: o } => [join(["the authorized successor realization is not keyed: ", o as String], "")]
+                  PairRealizationKeyed { key: k } =>
+                    if content_hash_equal(left: k, right: candidate) { [] as List<String> } else {
+                      [join(["the suspension authorizes successor ", content_hash_text(h: k), ", not this candidate ", content_hash_text(h: candidate)], "")]
+                    }
+                })
+          }
+      }
+  }
+}
+
+fn group_arm_host_causes(group: FabricGroup, hosts: List<HostIdentity>, held: List<HostIdentity>) -> List<String> {
+  flat_map(hosts, h => match admit_host_held_by_subject_among(raw: h, subject: PairServingUnitOn { group: group }, held: held) {
+    Absent => [] as List<String>
+    Present { value: why } => [why]
+  })
+}
+
+fn active_unit_named(occupants: List<HostOccupant>, unit: NonEmptyStr) -> Bool {
+  any(occupants, o => match o {
+    ServingUnitActive { unit: u, state: Active } => (u as String) == (unit as String)
+    ServingUnitActive { unit: _, state: _ } => false
+    GpuComputeProcess { pid: _, process_name: _, used: _ } => false
+  })
+}
+
+fn group_arm_incumbent_host_judged(purpose: String, h: HostIdentity, declared: List<NonEmptyStr>, occupants: List<HostOccupant>) -> List<String> {
+  let not_running = flat_map(declared, u => if active_unit_named(occupants: occupants, unit: u) { [] as List<String> } else {
+    [join([h as String, ": the declared incumbent ", u as String, " is not read back active, so it is not the serve this launch was told it supersedes; ", purpose, " is not admitted"], "")]
+  })
+  let undeclared = flat_map(occupants, o => match o {
+    ServingUnitActive { unit: u, state: _ } =>
+      if any(declared, d => (d as String) == (u as String)) { [] as List<String> } else {
+        [join([h as String, " is occupied by an undeclared serving unit (", host_occupant_wire(o: o), "), so ", purpose, " is not admitted"], "")]
+      }
+    GpuComputeProcess { pid: _, process_name: _, used: _ } => [] as List<String>
+  })
+  concat(not_running, undeclared)
+}
+
+fn group_arm_incumbent_host_causes(purpose: String, h: HostIdentity, declared: List<NonEmptyStr>, a: HostOccupancyAdmission) -> List<String> {
+  match a {
+    HostOccupancyNotRead { cause: c } => [join([h as String, " could not be read for occupancy, so its declared incumbent was not read back and ", purpose, " is not admitted: ", c], "")]
+    HostOccupiedBy { occupant: o, others: rest, gpu_used: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: concat([o], rest))
+    HostUnoccupied { available: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: [] as List<HostOccupant>)
+    HostMemoryShort { available: _, need: _ } => group_arm_incumbent_host_judged(purpose: purpose, h: h, declared: declared, occupants: [] as List<HostOccupant>)
+  }
+}
+
+fn group_arm_host_dangling_under_own_fence(h: HostIdentity, declared: List<NonEmptyStr>, o: GroupArmHostOccupancy) -> Bool {
+  let occupants = match o.admission {
+    HostOccupiedBy { occupant: x, others: rest, gpu_used: _ } => concat([x], rest)
+    HostUnoccupied { available: _ } => [] as List<HostOccupant>
+    HostMemoryShort { available: _, need: _ } => [] as List<HostOccupant>
+    HostOccupancyNotRead { cause: _ } => [] as List<HostOccupant>
+  }
+  let read = match o.admission {
+    HostOccupancyNotRead { cause: _ } => false
+    HostOccupiedBy { occupant: _, others: _, gpu_used: _ } => true
+    HostUnoccupied { available: _ } => true
+    HostMemoryShort { available: _, need: _ } => true
+  }
+  let held = match o.own_fence {
+    ArmOwnFenceHeld => true
+    ArmOwnRollbackUnresolved => false
+    ArmOwnFenceAbsent => false
+    ArmOwnFenceUnread { cause: _ } => false
+  }
+  read && held && length(declared) > 0
+    && any(declared, u => !active_unit_named(occupants: occupants, unit: u))
+    && length(group_arm_incumbent_host_judged(purpose: "", h: h, declared: declared, occupants: occupants)) == count(filter(declared, u => !active_unit_named(occupants: occupants, unit: u)))
+}
+
+fn group_arm_adoption_hosts(hosts: List<HostIdentity>, occupancy: List<GroupArmHostOccupancy>, incumbent: ArmDeclaredIncumbent) -> List<HostIdentity> {
+  filter(hosts, h => match first(filter(occupancy, o => (o.host as String) == (h as String))) {
+    Absent => false
+    Present { value: o } =>
+      group_arm_host_dangling_under_own_fence(h: h, declared: incumbent_units_on(i: incumbent, host: h), o: o)
+        || (match o.own_fence {
+              ArmOwnRollbackUnresolved => true
+              ArmOwnFenceHeld => false
+              ArmOwnFenceAbsent => false
+              ArmOwnFenceUnread { cause: _ } => false
+            })
+  })
+}
+
+fn group_arm_occupancy_causes(purpose: String, hosts: List<HostIdentity>, occupancy: List<GroupArmHostOccupancy>, incumbent: ArmDeclaredIncumbent) -> List<String> {
+  flat_map(hosts, h => match first(filter(occupancy, o => (o.host as String) == (h as String))) {
+    Absent => [join(["no occupancy reading was supplied for ", h as String, ", so ", purpose, " is not admitted"], "")]
+    Present { value: o } => {
+      let declared = incumbent_units_on(i: incumbent, host: h)
+      if group_arm_host_dangling_under_own_fence(h: h, declared: declared, o: o) {
+        [] as List<String>
+      } else if length(declared) == 0 {
+        match host_occupancy_refusal(host: h as String, purpose: purpose, a: o.admission) {
+          Absent => [] as List<String>
+          Present { value: why } => [why]
+        }
+      } else {
+        group_arm_incumbent_host_causes(purpose: purpose, h: h, declared: declared, a: o.admission)
+      }
+    }
+  })
+}
+
+// A DECLARED INCUMBENT ON A HOST THE PLAN DOES NOT LAUNCH ON IS A DECLARATION THAT DOES NOT FIT THIS
+// LAUNCH: stopping it would be an effect nothing here owes, so it refuses rather than being ignored.
+fn group_arm_incumbent_roster_causes(hosts: List<HostIdentity>, incumbent: ArmDeclaredIncumbent) -> List<String> {
+  flat_map(incumbent_units(i: incumbent), u =>
+    if any(hosts, h => (h as String) == (u.host as String)) { [] as List<String> } else {
+      [join(["the declared incumbent ", u.unit_name as String, " is on ", u.host as String, ", which this launch does not run on"], "")]
+    })
+}
+
+fn group_arm_launch_admission(
+  group: FabricGroup,
+  purpose: NonEmptyStr,
+  plan: GroupArmLaunchPlan,
+  authority: PairServingGroupAuthority?,
+  successor: ArmSuccessorStanding,
+  arm_causes: List<String>,
+  held: List<HostIdentity>,
+  occupancy: List<GroupArmHostOccupancy>,
+  incumbent: ArmDeclaredIncumbent,
+  grant_row: StandingGrantRowStanding,
+) -> GroupArmLaunchAdmission {
+  match plan {
+    GroupArmLaunchRefused { causes: c } => GroupArmLaunchAdmissionRefused { causes: map(c, x => join(["the plan refused: ", x], "")) }
+    GroupArmLaunchPlanned { lines: ls, profile: _, master_endpoint: _ } => {
+      let hosts = map(ls, l => l.node.host)
+      let causes = concat(concat(concat(concat(
+        group_arm_authority_causes(group: group, hosts: hosts, authority: authority, successor: successor, grant_row: grant_row),
+        arm_causes),
+        group_arm_host_causes(group: group, hosts: hosts, held: held)),
+        group_arm_incumbent_roster_causes(hosts: hosts, incumbent: incumbent)),
+        group_arm_occupancy_causes(purpose: purpose as String, hosts: hosts, occupancy: occupancy, incumbent: incumbent))
+      let dangling = group_arm_adoption_hosts(hosts: hosts, occupancy: occupancy, incumbent: incumbent)
+      if length(causes) > 0 { GroupArmLaunchAdmissionRefused { causes: causes } }
+      else if length(dangling) > 0 { GroupArmLaunchAdmittedForAdoptionOnly { hosts: dangling } }
+      else { GroupArmLaunchAdmitted }
+    }
+  }
+}
+
+fn group_label(g: FabricGroup) -> String {
+  join(["fabric ", fabric_group_wire(g: g) as String], "")
+}
+
+// THE LIVE AUTHORITY IS THE LOG'S, exactly as gunbc.spark.pair_serving_apply spark_pair_apply_plan_current
+// reads it: an unread authority refuses with the read's cause, and never falls back to the source row.
+fn group_arm_launch_admission_live(
+  group: FabricGroup,
+  purpose: NonEmptyStr,
+  plan: GroupArmLaunchPlan,
+  successor: ArmSuccessorStanding,
+  arm_causes: List<String>,
+  occupancy: List<GroupArmHostOccupancy>,
+  incumbent: ArmDeclaredIncumbent,
+) -> GroupArmLaunchAdmission {
+  let held = spark_serving_admissible_hosts(subject: PairServingUnitOn { group: group })
+  let grant_row = fresh_grant_row_standing(executed: executed_grant_row())
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => GroupArmLaunchAdmissionRefused { causes: [join(["the executor could not be identified, so the group's authority log could not be read: ", c], "")] }
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => GroupArmLaunchAdmissionRefused { causes: ["the clock could not be read, so the authority's lease standing cannot be derived"] }
+        Present { value: at } =>
+          match current_authority_for(current: current_pair_serving_authorities(short_hostname: executor, at: at), group: group) {
+            Absent => group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: none, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent, grant_row: grant_row)
+            Present { value: c } =>
+              match c {
+                CurrentAuthorityUnread { group: _, step: _, reason: _ } =>
+                  GroupArmLaunchAdmissionRefused { causes: [join(["the group's serving authority could not be read: ", current_authority_wire(c: c)], "")] }
+                CurrentAuthorityRead { authority: a, head: _, generation: _, grant: _, entry_state: _, previous: _, admitted_by: _, transitions: _ } =>
+                  group_arm_launch_admission(group: group, purpose: purpose, plan: plan, authority: Present { value: a }, successor: successor, arm_causes: arm_causes, held: held, occupancy: occupancy, incumbent: incumbent, grant_row: grant_row)
+              }
+          }
+      }
+  }
+}
+
+// THE DRY RUN REACHES NO HOST, SO IT HAS NO OCCUPANCY READING, and says so per host rather than
+// assuming vacancy.
+fn group_arm_dry_run_occupancy(group: FabricGroup) -> List<GroupArmHostOccupancy> {
+  map(fabric_group_hosts(g: group), h => GroupArmHostOccupancy {
+    host: h,
+    admission: HostOccupancyNotRead { cause: "the dry run reaches no host; a launch reads occupancy on each host before it starts" },
+    own_fence: ArmOwnFenceUnread { cause: "the dry run reaches no host" },
+  })
+}
+
+// ── THE DRY-RUN REPORT ──────────────────────────────────────────────────────────────────────────
+//
+// EVERY HOST'S UNIT AND CONTAINER LINE, THE ARM'S OWN PRE-APPLY WORK FOR THAT HOST (V4.1: its Engram
+// staging), AND THE APPLY'S PREFLIGHT AND APPLY SCRIPTS -- what a wet runner would send, in the order it
+// would send it -- then the declared incumbent and the admission verdict.
+type ArmPreApplyWire {
+  label: NonEmptyStr
+  text: String
+}
+
+fn incumbent_wire(i: ArmDeclaredIncumbent) -> String {
+  match i {
+    NoIncumbentDeclared => "incumbent: none declared (every occupied host refuses)\n"
+    IncumbentDeclared { units: us, provenance: p } =>
+      join(["incumbent: declared by ", p as String, "\n", join(map(us, u => join(["  - ", u.unit_name as String, " on ", u.host as String, "\n"], "")), "")], "")
+  }
+}
+
+fn group_arm_dry_run_report(title: String, intent: ArmIntent, units: ArmUnitIdentity, plan: GroupArmLaunchPlan, pre_apply: List<ArmPreApplyWire>, incumbent: ArmDeclaredIncumbent, admission: GroupArmLaunchAdmission) -> String {
+  let verdict = match admission {
+    GroupArmLaunchAdmitted => "ADMITTED"
+    GroupArmLaunchAdmittedForAdoptionOnly { hosts: hs } => join(["ADMITTED FOR ADOPTION ONLY (a dangling transaction of this arm under its own fence on ", join(map(hs, h => h as String), ", "), "): the leftover stage may resume or roll it back; no apply leg is reachable"], "")
+    GroupArmLaunchAdmissionRefused { causes: c } => join(["REFUSED\n", join(map(c, x => join(["  - ", x], "")), "\n")], "")
+  }
+  let pre = join(map(pre_apply, w => join(["--- ", w.label as String, "\n", w.text, "\n"], "")), "")
+  let body = match plan {
+    GroupArmLaunchRefused { causes: c } => join(["plan: REFUSED\n", join(map(c, x => join(["  - ", x], "")), "\n")], "")
+    GroupArmLaunchPlanned { lines: ls, profile: prof, master_endpoint: e } =>
+      match group_arm_steps(intent: intent, units: units, p: plan) {
+        NativeArmStepsRefused { cause: c } => join(["plan: UNITS DID NOT RENDER: ", c as String], "")
+        NativeArmSteps { steps: steps, master_endpoint: _ } =>
+          join([
+            "plan: ", to_string(length(ls)), " ranks, rendezvous ", e as String,
+            ", max_num_seqs ", to_string(prof.max_num_seqs), " over ", to_string(prof.guaranteed_cold_seqs), " guaranteed cold seats\n",
+            join(zip_map(a: steps, b: zip_map(a: spark_native_preflight_plans(steps: steps), b: spark_native_apply_stage_plans(steps: steps), f: fn(pf, ap) { join([pre, "--- preflight\n", pf.script, "\n--- apply\n", ap.script], "") }), f: fn(st, scripts) {
+              join([
+                "=== host ", st.host as String, " rank ", to_string(st.launch.node.node_rank), " unit ", st.unit_name as String, "\n",
+                "--- create\n", join(concat([st.launch.create.program.invocation as String], st.launch.create.arguments), " "), "\n",
+                "--- unit\n", st.unit_text, "\n",
+                scripts, "\n",
+              ], "")
+            }), "\n"),
+          ], "")
+      }
+  }
+  join([title, " -- DRY RUN (no host is touched)\n", body, "\n", incumbent_wire(i: incumbent), "admission: ", verdict, "\n"], "")
+}
+
+// ── THE INCUMBENT BRACKET AROUND THE ARM TRANSACTION ──────────────────────────────────────────
+//
+// STOP, RE-READ, APPLY, AND RESTORE ON ANYTHING BUT A COMMIT. The declared units are stopped (never
+// disabled, never masked: the transaction must be able to put them back), each incumbent host is read
+// again and must be VACANT with its memory sufficient, and only then does the arm transaction run. A
+// failed stop or a host the stop did not vacate restores the declared units and refuses with no arm
+// unit touched. After the transaction: a commit leaves the incumbent stopped (it is superseded; the
+// receipt says it stays ENABLED, so a reboot would start it -- the follow-up that disables it needs a
+// SystemctlDisable operation gunbc.host_operation_exec does not model yet); a refusal before actuation
+// or an accepted rollback restores the declared units and reads each back; an UNESTABLISHED disposition
+// restores nothing, because nothing read whether the successor still holds the GPUs, and starting the
+// incumbent beside it is the one move that could make a split arm worse.
+type GroupArmIncumbentStop
+  = IncumbentVacated { receipt: String }
+  | IncumbentNotVacated { receipt: String }
+
+fn group_arm_host_run(ctx: SparkMaterializeContext, h: HostIdentity) -> fn(List<String>) -> ArgvRun {
+  spark_ctx_argv_run(ctx: vllm_image_target_ctx(source_ctx: ctx, host: h))
+}
+
+fn group_arm_restore_incumbent(ctx: SparkMaterializeContext, incumbent: ArmDeclaredIncumbent, hosts: List<HostIdentity>) -> String {
+  join(map(incumbent_hosts(i: incumbent, hosts: hosts), h => match restore_spark_serving_units(run: group_arm_host_run(ctx: ctx, h: h), units: incumbent_units_on(i: incumbent, host: h)) {
+    Absent => join(["incumbent restore host=", h as String, ": every declared unit started and read back occupying\n"], "")
+    Present { value: why } => join(["incumbent restore host=", h as String, " INCOMPLETE: ", why, "\n"], "")
+  }), "")
+}
+
+fn group_arm_stop_incumbent(ctx: SparkMaterializeContext, incumbent: ArmDeclaredIncumbent, hosts: List<HostIdentity>, units: ArmUnitIdentity, need: Kibibyte) -> GroupArmIncumbentStop {
+  let ih = incumbent_hosts(i: incumbent, hosts: hosts)
+  let stop_failures = flat_map(ih, h => flat_map(incumbent_units_on(i: incumbent, host: h), u =>
+    match host_operation_leg(run: group_arm_host_run(ctx: ctx, h: h), operation: SystemctlStop { unit: u }, accepted_exits: [0]) {
+      HostOperationLegRead { stdout: _ } => [] as List<String>
+      HostOperationLegUnread { cause: c } => [join([h as String, ": stopping ", u as String, " failed: ", c], "")]
+    }))
+  let stopped_line = join(map(ih, h => join(["incumbent stop host=", h as String, " units=", join(map(incumbent_units_on(i: incumbent, host: h), u => u as String), ","), "\n"], "")), "")
+  if length(stop_failures) != 0 {
+    IncumbentNotVacated { receipt: join([stopped_line, "incumbent stop FAILED: ", join(stop_failures, "; "), "\n", group_arm_restore_incumbent(ctx: ctx, incumbent: incumbent, hosts: hosts)], "") }
+  } else {
+    let after = flat_map(ih, h => match host_occupancy_refusal(
+      host: h as String,
+      purpose: "the launch after its declared incumbent stopped",
+      a: admit_host_occupancy(reading: read_host_occupancy(run: group_arm_host_run(ctx: ctx, h: h), units: group_arm_read_units(units: units, incumbent: incumbent)), need: need)) {
+        Absent => [] as List<String>
+        Present { value: why } => [why]
+      })
+    if length(after) != 0 {
+      IncumbentNotVacated { receipt: join([stopped_line, "the hosts were NOT vacant after the declared incumbent stopped, so an undeclared occupant remains:\n", join(map(after, x => join(["  - ", x, "\n"], "")), ""), group_arm_restore_incumbent(ctx: ctx, incumbent: incumbent, hosts: hosts)], "") }
+    } else {
+      IncumbentVacated { receipt: join([stopped_line, "every incumbent host read back vacant after the stop\n"], "") }
+    }
+  }
+}
+
+// THE ARM'S OWN PRE-APPLY WORK (V4.1: the SM120 self-test and the Engram staging). It runs after
+// admission and before the incumbent is touched, so a refusal here leaves every host exactly as it was.
+type ArmPreApply
+  = ArmPreApplyPassed { receipt: String }
+  | ArmPreApplyStopped { receipt: String }
+
+// THE SESSION'S ACTUATING HALF: everything after admission. The caller has read, planned and admitted;
+// this runs the arm's pre-apply, the incumbent bracket and the transaction, and is the only place either
+// arm reaches a serving unit.
+fn group_arm_apply_admitted(
+  intent: ArmIntent,
+  units: ArmUnitIdentity,
+  plan: GroupArmLaunchPlan,
+  incumbent: ArmDeclaredIncumbent,
+  context: FleetSshExecutionContext,
+  ctx: SparkMaterializeContext,
+  now_word: String,
+  pre_apply: fn(List<SparkNativeHostStep>) -> ArmPreApply,
+) -> SparkBuildHostWork {
+  match group_arm_steps(intent: intent, units: units, p: plan) {
+    NativeArmStepsRefused { cause: c } => SparkBuildHostWork { receipt: join(["NOT LAUNCHED: the units did not render: ", c as String, "\n"], ""), converged: false }
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match pre_apply(steps) {
+        ArmPreApplyStopped { receipt: r } => SparkBuildHostWork { receipt: join([r, "NOT LAUNCHED: the arm's pre-apply stopped; the incumbent was not touched and no serving unit was touched\n"], ""), converged: false }
+        ArmPreApplyPassed { receipt: r } => {
+          let hosts = map(steps, st => st.host)
+          match group_arm_stop_incumbent(ctx: ctx, incumbent: incumbent, hosts: hosts, units: units, need: group_arm_plan_memory_need(p: plan)) {
+            IncumbentNotVacated { receipt: s } => SparkBuildHostWork { receipt: join([r, s, "NOT LAUNCHED: the hosts were not vacated; no arm unit was touched\n"], ""), converged: false }
+            IncumbentVacated { receipt: s } => {
+              let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word, adoption_only: false)
+              let after = if run.committed {
+                match incumbent {
+                  NoIncumbentDeclared => ""
+                  IncumbentDeclared { units: _, provenance: _ } => "the declared incumbent stays STOPPED (superseded) and ENABLED: a reboot would start it\n"
+                }
+              } else if group_arm_transaction_left_unestablished(body: run.body) {
+                "the arm's disposition is UNESTABLISHED, so the declared incumbent was NOT restarted beside it; read the arm first\n"
+              } else {
+                group_arm_restore_incumbent(ctx: ctx, incumbent: incumbent, hosts: hosts)
+              }
+              SparkBuildHostWork { receipt: join([r, s, run.body, after], ""), converged: run.committed }
+            }
+          }
+        }
+      }
+  }
+}
+
+// THE ADOPTION-ONLY PATH: no pre-apply, no incumbent stop, no incumbent restore -- the transaction alone,
+// told it may only adopt. Its outcome is the adopted transaction's (resume or rollback) or a refusal.
+fn group_arm_adopt_dangling(intent: ArmIntent, units: ArmUnitIdentity, plan: GroupArmLaunchPlan, context: FleetSshExecutionContext, ctx: SparkMaterializeContext, now_word: String) -> SparkBuildHostWork {
+  match group_arm_steps(intent: intent, units: units, p: plan) {
+    NativeArmStepsRefused { cause: c } => SparkBuildHostWork { receipt: join(["NOT ADOPTED: the units did not render: ", c as String, "\n"], ""), converged: false }
+    NativeArmSteps { steps: steps, master_endpoint: _ } => {
+      let run = spark_native_apply_transaction(context: context, trust: ctx.trust, path: ctx.path, administrator: ctx.admin_credential, steps: steps, at_word: now_word, adoption_only: true)
+      SparkBuildHostWork { receipt: run.body, converged: run.committed }
+    }
+  }
+}
+
+// THE TRANSACTION'S HEADLINE IS ITS OUTCOME'S OWN WORDING (gunbc.spark.native_serving_apply
+// spark_native_transaction_headline), and the unestablished arm is the one whose headline says so.
+fn group_arm_transaction_left_unestablished(body: String) -> Bool {
+  starts_with(s: body, prefix: "spark native serving apply left the arm's DISPOSITION UNESTABLISHED")
+}
+
+// THE WET OCCUPANCY READ, ONE PER PLANNED HOST, over the units group_arm_read_units names and against the
+// plan's own memory need -- read through the session's privileged leg to each host.
+fn group_arm_read_occupancy(ctx: SparkMaterializeContext, hosts: List<HostIdentity>, units: ArmUnitIdentity, incumbent: ArmDeclaredIncumbent, need: Kibibyte) -> List<GroupArmHostOccupancy> {
+  map(hosts, h => GroupArmHostOccupancy {
+    host: h,
+    admission: admit_host_occupancy(reading: read_host_occupancy(run: group_arm_host_run(ctx: ctx, h: h), units: group_arm_read_units(units: units, incumbent: incumbent)), need: need),
+    own_fence: group_arm_read_own_fence(run: group_arm_host_run(ctx: ctx, h: h), units: units),
+  })
+}
+
+fn group_arm_read_own_fence(run: fn(List<String>) -> ArgvRun, units: ArmUnitIdentity) -> ArmOwnFence {
+  let paths = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_fence_suffix], ""))
+  let markers = map([units.head_unit_name, units.rank_unit_name], u => join([spark_native_unit_path(unit_name: u), spark_native_unresolved_rollback_suffix], ""))
+  match run(["sh", "-c", join(["for f in ", join(paths, " "), "; do if [ -e \"$f\" ]; then echo own-fence=held; exit 0; fi; done; for f in ", join(markers, " "), "; do if [ -e \"$f\" ]; then echo own-fence=rollback-unresolved; exit 0; fi; done; echo own-fence=absent"], "")]) {
+    ArgvLegDidNotRun { cause: c } => ArmOwnFenceUnread { cause: c }
+    ArgvLegMayHaveRun { cause: c } => ArmOwnFenceUnread { cause: join(["the fence read was sent and its result never arrived (unread, not absent): ", c], "") }
+    ArgvRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { ArmOwnFenceUnread { cause: join(["exit ", to_string(code), ": ", trim(s: err)], "") } }
+      else if string_contains(s: out, pattern: "own-fence=held") { ArmOwnFenceHeld }
+      else if string_contains(s: out, pattern: "own-fence=rollback-unresolved") { ArmOwnRollbackUnresolved }
+      else if string_contains(s: out, pattern: "own-fence=absent") { ArmOwnFenceAbsent }
+      else { ArmOwnFenceUnread { cause: "the fence read printed neither answer" } }
+  }
+}
+
+// ── THE ENTRIES: ONE DRY PLAN AND ONE WET LAUNCH, WHATEVER THE ARM ────────────────────────────
+//
+// AN ARM HANDS IN WHAT IT IS AND HOW TO RUN ITS SESSION; the entry selects the session host, opens the
+// privileged session, writes the receipt and decides the exit. The paths are the CALLER's (the workflow
+// mode's), so one mode's receipt is one file whichever arm it ran.
+type ArmDryPlan {
+  report: String
+  admission: GroupArmLaunchAdmission
+}
+
+fn group_arm_dry_plan_write(title: String, plan: ArmDryPlan, path: String) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: plan.report)
+  if !w.success {
+    exit_failure(reason: join([title, " dry plan: the report could not be written: ", w.error], ""))
+  } else {
+    match plan.admission {
+      GroupArmLaunchAdmitted => ExitSuccess
+      GroupArmLaunchAdmittedForAdoptionOnly { hosts: _ } => ExitSuccess
+      GroupArmLaunchAdmissionRefused { causes: c } => exit_failure(reason: join([title, " dry plan: not admitted (report at ", path, "): ", join(c, "; ")], ""))
+    }
+  }
+}
+
+type ArmWetSession {
+  title: NonEmptyStr
+  group: FabricGroup
+  attempt_raw: String
+  identity_file_name: NonEmptyStr
+  session: fn(String, FleetSshExecutionContext, SparkMaterializeContext) -> SparkBuildHostWork
+}
+
+// THE WET ENTRY. SPARK_CONVERGE_TARGET names only the SESSION host -- where host-local reads run and the
+// host the administrator credential step resolves for -- and it must be a host the group's serving
+// subject holds; unset refuses rather than choosing. Every other host is reached over the same
+// privileged edge. Exit zero means the arm COMMITTED: every rank read back and the head's front door
+// serving this arm's model.
+fn group_arm_launch_wet(arm: ArmWetSession, receipt_path: String) -> ProcessExit
+{
+  let now = clock_now_probed_at()
+  let now_word = probed_at_word(reading: now) as String
+  match spark_converge_target_selection(execute_apply: true) {
+    SparkConvergeTargetRefused { reason: why } => exit_failure(reason: why)
+    SparkConvergeTargetAllObserveOnly =>
+      exit_failure(reason: join(["SPARK_CONVERGE_TARGET is unset: ", arm.title as String, " needs one host of its group to open its session on, and it refuses rather than choosing one"], ""))
+    SparkConvergeTargetSingle { host: session_host } =>
+      match admit_host_held_by_subject(raw: session_host, subject: PairServingUnitOn { group: arm.group }) {
+        Present { value: why } => exit_failure(reason: why)
+        Absent =>
+          match with_spark_build_host(
+            host: session_host,
+            attempt_raw: arm.attempt_raw,
+            identity_file_name: arm.identity_file_name,
+            use: fn(target, context, ctx) { arm.session(now_word, context, ctx) },
+          ) {
+            SparkBuildHostRefused { cause: c } => exit_failure(reason: c)
+            SparkBuildHostRan { work: work, endpoint: endpoint, executor: executor, trust_receipt: trust_receipt } => {
+              let body = join([
+                join([arm.title as String, " probed_at=", now_word, " session_host=", session_host as String, " endpoint=", endpoint as String, " executor=", executor, "\n"], ""),
+                trust_receipt,
+                work.receipt,
+              ], "")
+              let w = Filesystem.Write(path: receipt_path, content: body)
+              if !w.success {
+                exit_failure(reason: join([arm.title as String, " receipt write failed (the launch's own outcome is below and is NOT changed by this): ", w.error, "\n", body], ""))
+              } else if work.converged {
+                ExitSuccess
+              } else {
+                exit_failure(reason: join([arm.title as String, " did not commit:\n", body], ""))
+              }
+            }
+          }
+      }
+  }
+}
+
+// ── THE READ-ONLY OBSERVATION OF A GROUP'S OCCUPANCY (ruling of valiant-crab-775, 2026-10-03) ──────
+//
+// WHY IT EXISTS. A declared incumbent is a typed input, never discovered at launch. When nobody can
+// hand the declaration over (the session that launched Group A's old serve was archived), the
+// declaration is RECORDED from an observation instead: this read lists, per host, every running
+// service unit, every running container, every GPU compute process and the cgroup that owns it -- so
+// a process is attributed to its unit or container by the kernel's own record -- and changes
+// nothing. A person reads the receipt and writes the incumbent row citing it; the launch never reads
+// this. Every leg that did not run says so: an unread host is reported, never listed as empty.
+fn observe_leg(ctx: SparkMaterializeContext, what: String, argv: List<String>) -> String {
+  match spark_remote_run(ctx: ctx, argv: argv) {
+    RemoteUnreachable { cause: c, reach: _ } => join(["  ", what, ": NOT READ (", c, ")\n"], "")
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { join(["  ", what, ": NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
+      else { join(["  ", what, ":\n", join(map(filter(split(out, "\n"), l => trim(s: l) != ""), l => join(["    ", l, "\n"], "")), "")], "") }
+  }
+}
+
+fn running_unit_lines(ctx: SparkMaterializeContext) -> String {
+  match spark_remote_run(ctx: ctx, argv: systemctl_list_all_service_units_argv()) {
+    RemoteUnreachable { cause: c, reach: _ } => join(["  running service units: NOT READ (", c, ")\n"], "")
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { join(["  running service units: NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
+      else { join(["  running service units:\n", join(map(filter(split(out, "\n"), l => string_contains(s: l, pattern: " running ")), l => join(["    ", trim(s: l), "\n"], "")), "")], "") }
+  }
+}
+
+fn gpu_process_lines(ctx: SparkMaterializeContext, h: HostIdentity) -> String {
+  let run = group_arm_host_run(ctx: ctx, h: h)
+  match host_operation_leg(run: run, operation: NvidiaSmiQueryComputeApps, accepted_exits: [0]) {
+    HostOperationLegUnread { cause: c } => join(["  gpu compute processes: NOT READ (", c, ")\n"], "")
+    HostOperationLegRead { stdout: text } =>
+      match parse_compute_apps(text: text) {
+        ComputeAppsUnparsed { line: l } => join(["  gpu compute processes: UNPARSED row `", l, "`\n"], "")
+        ComputeAppsParsed { apps: apps } =>
+          join(["  gpu compute processes: ", to_string(length(apps)), "\n", join(map(apps, a => join([
+            "    pid ", to_string(a.pid), " (", a.process_name, ") ", host_occupant_wire(o: GpuComputeProcess { pid: a.pid, process_name: a.process_name, used: a.used }), "\n",
+            match host_operation_leg(run: run, operation: ProcfsReadPidCgroup { pid: to_string(a.pid) as NonEmptyStr }, accepted_exits: [0]) {
+              HostOperationLegUnread { cause: c } => join(["      cgroup: NOT READ (", c, ")\n"], "")
+              HostOperationLegRead { stdout: cg } => join(["      cgroup: ", trim(s: cg), "\n"], "")
+            },
+          ], "")), "")], "")
+      }
+  }
+}
+
+fn group_arm_host_observation(ctx: SparkMaterializeContext, h: HostIdentity) -> String {
+  let c = vllm_image_target_ctx(source_ctx: ctx, host: h)
+  join([
+    "=== host ", h as String, "\n",
+    running_unit_lines(ctx: c),
+    observe_leg(ctx: c, what: "running containers", argv: argv_words(command: docker_ps_running_all_command())),
+    gpu_process_lines(ctx: ctx, h: h),
+    group_host_link_health(ctx: c, h: h),
+    checkpoint_cache_bytes_lines(ctx: c),
+    if host_identity_eq(a: h, b: ctx.host) { join([group_arm_engine_capacity_lines(ctx: c), group_arm_runtime_source_lines(ctx: c)], "") } else { "" },
+  ], "")
+}
+
+// THE RUNNING ENGINE'S OWN CAPACITY REPORT, read-only, on the session host: its /metrics cache_config_info
+// (num_gpu_blocks, block_size, kv_cache_size_tokens, kv_cache_max_concurrency) and the startup lines the
+// engine logged into the arm's declared head log (KV cache size, maximum concurrency, cudagraph capture
+// sizes, time to ready). One reading per incarnation; the ceiling sweep records one per launch.
+fn group_arm_engine_capacity_lines(ctx: SparkMaterializeContext) -> String {
+  join([
+    observe_leg(ctx: ctx, what: "engine cache_config_info (this incarnation)", argv: ["sh", "-c", join(["curl -fsS --max-time 20 http://127.0.0.1:", to_string(spark_pair_serve_port), "/metrics | grep -E '^vllm:cache_config_info|^vllm:num_requests_running|^vllm:kv_cache_usage_perc'"], "")]),
+    observe_leg(ctx: ctx, what: "host memory now (GB10 unified memory: free, available, page cache)", argv: ["sh", "-c", "grep -E '^(MemTotal|MemFree|MemAvailable|Cached|Buffers|SwapTotal|SwapFree):' /proc/meminfo"]),
+    observe_leg(ctx: ctx, what: "engine KV allocation plan, this incarnation's LAST startup record (head log)", argv: ["sh", "-c", join(["grep -a 'KV_ALLOCATION_PLAN_JSON ' ", glm53_staircase_head_log_path as String, " | tail -1"], "")]),
+    observe_leg(ctx: ctx, what: "engine startup capacity lines (head log)", argv: ["sh", "-c", join(["grep -aE 'GPU KV cache size|Maximum concurrency|Graph capturing finished|init engine|Available KV cache memory|Model loading took|Memory profiling takes|memory profiling|total_gpu_memory|free memory|torch peak memory|non-torch|cuda graph|requested memory|weights memory|KV cache memory' ", glm53_staircase_head_log_path as String, " | tail -40"], "")]),
+  ], "")
+}
+
+// THE PINNED RUNTIME'S OWN SOURCES, read-only, on the session host only. The admission read (scheduler,
+// KV cache manager/coordinator, metrics, warmup) was taken by run 37205174435; this set reads what a
+// high max_num_seqs costs in this image -- cudagraph capture sizes, persistent batch buffers, the
+// runner's per-sequence allocations and the worker's memory profile -- before any ceiling is proposed. `python3 -m inspect <module>` in a
+// throwaway container of the Group A runtime's pinned digest prints the module's source -- no GPU, no
+// running arm, no quoting. What the capacity plan cites is read from here, never from memory of
+// upstream (valiant-crab-775, 2026-10-04: "establish in the pinned runtime exactly what is reserved").
+data group_arm_runtime_source_modules: List<String> = [
+  "vllm.benchmarks.datasets",
+  "flashinfer.autotuner",
+  "flashinfer.fused_moe.core",
+  "vllm.utils.flashinfer",
+  "vllm.envs",
+  "vllm.model_executor.warmup.flashinfer_autotune_cache",
+  "vllm.model_executor.warmup.flashinfer_sparse_mla_warmup",
+  "vllm.distributed.parallel_state",
+]
+
+fn group_arm_runtime_source_lines(ctx: SparkMaterializeContext) -> String {
+  match serving_runtime_row(r: GunbcGlm53KvplanV2GroupAProduced) {
+    Absent => "  runtime sources: the Group A runtime has no row\n"
+    Present { value: row } =>
+      join(map(group_arm_runtime_source_modules, m =>
+        observe_leg(ctx: ctx, what: join(["pinned runtime source ", m], ""), argv: ["docker", "run", "--rm", "--network", "none", "--entrypoint", "python3", runtime_artifact_wire(a: row.artifact) as String, "-m", "inspect", m])), "")
+  }
+}
+
+// THE CHECKPOINTS' HOST-VISIBLE BYTES, read-only. This hf keeps completed files in a HUB-LEVEL store
+// (hub/blobs/<xx>/<sha256>) and the model directory holds only links to it plus the in-flight .incomplete
+// files (valiant-crab-775's reading on srv7, 2026-10-03), so the model directory alone SHRINKS as files
+// complete. The reading is the snapshot dereferenced (completed bytes) plus the .incomplete partials, on
+// the host, so a fetch in progress is seen growing on the HOST (not only inside a container), and a restarted
+// fetch is seen keeping what it had.
+fn checkpoint_cache_bytes_lines(ctx: SparkMaterializeContext) -> String {
+  join(map([Glm53NativeFp8, Glm53FlashNvidiaNvfp4], c => match serving_checkpoint_row(c: c) {
+    Absent => ""
+    Present { value: row } =>
+      join([
+        observe_leg(ctx: ctx, what: join(["completed bytes of ", serving_checkpoint_wire(c: c) as String, " (snapshot dereferenced)"], ""), argv: ["du", "-sbL", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/snapshots"], "")]),
+        observe_leg(ctx: ctx, what: join(["in-flight partials of ", serving_checkpoint_wire(c: c) as String, " (bytes per .incomplete file)"], ""), argv: ["find", join([hub_repo_cache_directory(cache_root: spark_hub_cache_root, repo: row.repo) as String, "/blobs"], ""), "-name", "*.incomplete", "-printf", "%s\n"]),
+      ], "")
+  }), "")
+}
+
+// ── LINK HEALTH, READ-ONLY (valiant-crab-775, 2026-10-03) ─────────────────────────────────────────
+//
+// Two Sparks went dark over SSH mid-transfer. The question is whether the HOST wedged or its WIRELESS
+// management link dropped while the host stayed up, and every reading here discriminates between the two:
+// the boot id and uptime (a reboot says host), the kernel ring of this boot counted for OOM kills, hung
+// tasks and wireless disconnects (gunbc.fleet_wireless_link's own disconnect count), the wireless link and
+// power save (observe_wireless_link), the boots journald knows (an earlier boot ending in the dark window
+// says host), and whether every group peer answers a ping on its RAIL address from this host -- a host dark
+// on the LAN but answering on the rail is up. Nothing here changes any host.
+data link_health_oom_markers: List<String> = ["Out of memory", "oom-kill", "invoked oom-killer"]
+data link_health_hung_markers: List<String> = ["blocked for more than", "hung_task"]
+
+fn kernel_marker_count(kernel_log: String, markers: List<String>) -> Int {
+  length(filter(split(s: kernel_log, delimiter: "\n"), l => any(markers, m => string_contains(s: l, pattern: m))))
+}
+
+fn ping_word(code: Int) -> String {
+  if code == 0 { "answers" } else { "NO ANSWER" }
+}
+
+fn rail_ping_line(ctx: SparkMaterializeContext, peer: HostIdentity) -> String {
+  match spark_reach_endpoint(host: peer, path: ReachFabricRail) {
+    Absent => join(["    rail ", peer as String, ": no rail address\n"], "")
+    Present { value: addr } =>
+      match spark_remote_run(ctx: ctx, argv: ["ping", "-c", "2", "-W", "1", addr as String]) {
+        RemoteUnreachable { cause: c, reach: _ } => join(["    rail ", peer as String, " (", addr as String, "): NOT READ (", c, ")\n"], "")
+        RemoteRan { exit_code: code, stdout: _, stderr: _ } => join(["    rail ", peer as String, " (", addr as String, "): ", ping_word(code: code), "\n"], "")
+      }
+  }
+}
+
+fn group_host_link_health(ctx: SparkMaterializeContext, h: HostIdentity) -> String {
+  let run = spark_ctx_argv_run(ctx: ctx)
+  let kernel = spark_remote_run(ctx: ctx, argv: journalctl_kernel_current_boot_argv())
+  let kernel_line = match kernel {
+    RemoteUnreachable { cause: c, reach: _ } => join(["  kernel ring: NOT READ (", c, ")\n"], "")
+    RemoteRan { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 { join(["  kernel ring: NOT READ (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") } else {
+        join(["  kernel ring this boot: oom=", to_string(kernel_marker_count(kernel_log: out, markers: link_health_oom_markers)),
+          " hung=", to_string(kernel_marker_count(kernel_log: out, markers: link_health_hung_markers)),
+          " wireless_disconnects=", to_string(kernel_disconnect_line_count(interface: dgx_spark_wireless_interface, kernel_log: out)), "\n"], "")
+      }
+  }
+  join([
+    observe_leg(ctx: ctx, what: "boot id and uptime", argv: ["sh", "-c", "cat /proc/sys/kernel/random/boot_id /proc/uptime"]),
+    observe_leg(ctx: ctx, what: "boots journald knows", argv: ["journalctl", "--list-boots", "--no-pager"]),
+    kernel_line,
+    observe_leg(ctx: ctx, what: "docker GPU devices the daemon discovers (the native apply preflight question)", argv: ["docker", "info", "--format", "\{\{.ServerVersion}} \{\{range .DiscoveredDevices}}\{\{.ID}} \{\{end}}"]),
+    wireless_link_observation_line(label: "  wireless", o: observe_wireless_link(desired: spark_wireless_link_desired(host: h), run: run)),
+    "  rail reachability of group peers from this host:\n",
+    join(map(filter(fabric_group_hosts(g: FabricGroupA), p => !host_identity_eq(a: p, b: h)), p => rail_ping_line(ctx: ctx, peer: p)), ""),
+  ], "")
+}
+
+// AS A WET SESSION OF THE ONE ENTRY, so it is admitted, credentialed and receipted exactly as a launch
+// is -- but it converges as soon as every host was asked, and it writes nothing to any host.
+fn group_arm_occupancy_observe_session(group: FabricGroup) -> ArmWetSession {
+  ArmWetSession {
+    title: join(["occupancy observe of fabric ", fabric_group_wire(g: group) as String, " (read-only)"], "") as NonEmptyStr,
+    group: group,
+    attempt_raw: join(["arm-group-observe-", fabric_group_wire(g: group) as String], ""),
+    identity_file_name: "gunbc-arm-group-observe-admin-password" as NonEmptyStr,
+    session: fn(now_word, context, ctx) {
+      SparkBuildHostWork {
+        receipt: join([group_authority_observation(group: group), join(map(fabric_group_hosts(g: group), h => group_arm_host_observation(ctx: ctx, h: h)), "")], ""),
+        converged: true,
+      }
+    },
+  }
+}
+
+// THE GROUP'S AUTHORITY AND ITS PLACEMENT FENCES, READ ONLY, for the same observation: the current
+// authority as the launch admission reads it, and every placement preparation of the group with its
+// operation, populations, preparer, state and record time -- the records that decide whether a host
+// effect on the group's hosts is admitted (gunbc.spark.pair_serving_authority_log host_effect_admit_at
+// groups_fencing). Nothing is written.
+fn preparation_state_word(st: PreparationState) -> String {
+  match st {
+    Prepared => "PREPARED (pending)"
+    AppendClaimed { claimant: c, expected_head: _, intent: i } => join(["APPEND-CLAIMED by ", c as String, " (pending; intent ", i.operation as String, " by ", i.actor as String, ")"], "")
+    Finalized { authority_event: e, finalized_by: f, intent: i } => join(["FINALIZED (authority event ", e as String, ", finalized by ", f as String, "; intent ", i.operation as String, " by ", i.actor as String, ")"], "")
+    Aborted => "ABORTED"
+  }
+}
+
+fn group_authority_observation(group: FabricGroup) -> String {
+  match observe_executor_reach() {
+    ExecutorReachUnknown { cause: c } => join(["authority: NOT READ (the executor could not be identified: ", c, ")\n"], "")
+    ExecutorReachKnown { short_hostname: executor, path: _ } =>
+      match now_epoch_seconds() {
+        Absent => "authority: NOT READ (the clock could not be read)\n"
+        Present { value: at } => {
+          let authority = match current_authority_for(current: current_pair_serving_authorities(short_hostname: executor, at: at), group: group) {
+            Absent => "authority: no row for this group\n"
+            Present { value: c } => join(["authority: ", current_authority_wire(c: c), "\n"], "")
+          }
+          let placement = match event_log_store_for_host(short_hostname: executor) {
+            HostStoreRefused { detail: d } => join(["placement: NOT READ (", d as String, ")\n"], "")
+            HostStoreResolved { store: store, executor: _ } =>
+              match placement_read(store: store) {
+                PlacementUnread { step: st, reason: why } => join(["placement: NOT READ at ", st, ": ", why, "\n"], "")
+                PlacementReadAt { head: _, effects: effs, preparations: preps } =>
+                  join([
+                    "placement preparations of this group (read at epoch ", to_string(at), "):\n",
+                    join(map(filter(preps, r => same_group(a: r.group, b: group)), r => join([
+                      "  - ", preparation_line(r: r), " prepared_by=", r.prepared_by as String, " recorded_at=", to_string(r.recorded_at), " state=", preparation_state_word(st: r.state), "\n",
+                    ], "")), ""),
+                    "hosts this group fences now: ", join(map(group_fenced_hosts(preps: preps, group: group), h => h as String), ", "), "\n",
+                    "live host effects on its hosts: ", join(map(live_host_effects_on(records: effs, hosts: fabric_group_hosts(g: group), at: at), r => host_effect_line_at(r: r, at: at)), "; "), "\n",
+                  ], "")
+              }
+          }
+          join([authority, placement], "")
+        }
+      }
+  }
+}

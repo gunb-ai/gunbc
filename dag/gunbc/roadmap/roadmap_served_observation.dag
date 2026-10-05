@@ -1,5 +1,6 @@
 module gunbc.roadmap_served_observation
 
+import gunbc.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapStandings }
@@ -71,6 +72,7 @@ type ServedObservationKind
   | AttemptsJson
   | WorkflowJson
   | SessionsJson
+  | IssueQueryRows
 
 type ServedObservationSurface {
   kind: ServedObservationKind
@@ -127,6 +129,7 @@ fn served_observation_kind_key(kind: ServedObservationKind) -> String {
     DailyPage => "daily_page"
     AttemptsJson => "attempts_json"
     WorkflowJson => "workflow_json"
+    IssueQueryRows => "issue_query_rows"
     SessionsJson => "sessions_json"
   }
 }
@@ -136,6 +139,7 @@ fn served_observation_kind_url_path(kind: ServedObservationKind) -> String {
     DailyPage => "/"
     AttemptsJson => "/attempts.json"
     WorkflowJson => "/workflow.json"
+    IssueQueryRows => "/issues/query"
     SessionsJson => "/sessions.json"
   }
 }
@@ -145,6 +149,7 @@ fn served_observation_kind_media_type(kind: ServedObservationKind, status: Int) 
     DailyPage => if status == 200 { text_html_utf8 } else { text_plain_utf8 }
     AttemptsJson => application_json_utf8
     WorkflowJson => application_json_utf8
+    IssueQueryRows => text_plain_utf8
     SessionsJson => application_json_utf8
   }
 }
@@ -157,6 +162,7 @@ fn served_observation_kind_of_key(key: String) -> ServedObservationKindDecode {
   if key == "daily_page" { ServedObservationKindDecoded { kind: DailyPage } }
   else if key == "attempts_json" { ServedObservationKindDecoded { kind: AttemptsJson } }
   else if key == "workflow_json" { ServedObservationKindDecoded { kind: WorkflowJson } }
+  else if key == "issue_query_rows" { ServedObservationKindDecoded { kind: IssueQueryRows } }
   else if key == "sessions_json" { ServedObservationKindDecoded { kind: SessionsJson } }
   else { ServedObservationKindUnknown { key: key } }
 }
@@ -304,6 +310,7 @@ fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, pla
     observed_at: observed_at,
     surfaces: [
       served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed),
+      served_observation_issue_query_surface(instance: instance, plan: plan, observed: observed),
       served_observation_attempts_surface_for_instance(instance: instance),
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed),
       served_observation_sessions_surface_for_instance(instance: instance),
@@ -716,5 +723,19 @@ fn served_observation_standing_response_for_instance(instance: HostDashboardInst
     status: served_observation_standing_http_status(read: read),
     content_type: application_json_utf8,
     body: serialize_json(v: served_observation_standing_json_value(read: read)),
+  }
+}
+
+fn served_observation_issue_query_surface(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
+  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+  let attempts = match observed { WorkflowAttemptsObserved { attempts } => attempts WorkflowAttemptsRefused { reason: _ } => [] }
+  let body = issue_query_snapshot_for_projection(proj: plan, attempts: attempts,
+    attempts_refused: match observed { WorkflowAttemptsObserved { attempts: _ } => none WorkflowAttemptsRefused { reason } => Present { value: reason } },
+    standings: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)), launch: launch,
+    stale_nodes: stale_attempt_nodes(observations: served_attempt_revision_observations(instance: instance, attempts: attempts), current_revision_hex: served_current_revision_hex(launch: launch)),
+    profiles: served_observation_profiles_for_instance(instance: instance))
+  match body {
+    Present { value } => ServedObservationSurface { kind: IssueQueryRows, status: 200, body: value }
+    Absent => ServedObservationSurface { kind: IssueQueryRows, status: 503, body: "Issue query observation unavailable." }
   }
 }

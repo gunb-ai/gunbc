@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.a_comparator_read_the_inspect_field_its_producer_never_writes
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_comparator_read_the_inspect_field_its_producer_never_writes: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_comparator_read_the_inspect_field_its_producer_never_writes" as NonEmptyStr,
+
+  receipts: [
+    "A READBACK COMPARED A PLANNED VALUE AGAINST AN INSPECT FIELD THE PLAN'S OWN RENDERER NEVER POPULATES. The invalid state is a comparator whose observed side is read from a field chosen by assumption rather than by the producer's documented behaviour: extdeps.docker.cli renders a spec's mounts as `--mount type=...`, which Docker records in HostConfig.Mounts, while extdeps.docker.container_inspect read HostConfig.Binds -- populated by `-v` alone -- with a note asserting the daemon reports a --mount bind there too. Every readback of a real container therefore found the mounts unread.",
+
+    "SPECIMEN, 2026-10-04, gunbc#13040, Group A fp8-8 launch run 37172948981: the arm launched on srv5-srv8 and the readback refused every host with 'mounts could not be read back: the inspect document does not report this field', and the transaction rolled back. It refused rather than agreeing, so the class was loud here -- but only because the comparator treats an unread field as a refusal; the same wrong-field read under an agree-on-absent comparator would have been silent.",
+
+    "WHY IT LIVED: the witness that was meant to exercise the readback (dag/test/claim/spark/native_serving_roce_transport_witness_test.dag t_inspect_text) DESIGNED its inspect document from the plan, and designed it with a Binds array the real daemon never writes for this renderer. The fixture agreed with the comparator's assumption instead of with the producer, so the claim stayed green while the route it existed to exercise was broken -- DESIGN section 3's pairing obligation, unmet: no claim ran the comparator over a document the real daemon produced.",
+
+    "THE TELL: a decoder field chosen with a sentence about what the producer 'also reports', and a witness fixture that is rendered from the plan rather than captured from the producer. The discriminator is a captured document: run the real create once, inspect it, and check that every field the comparator reads is present.",
+
+    "REPAIR (gunbc#13040): HostConfig carries mounts: List<DockerInspectMount>? decoded from HostConfig.Mounts (Type, Source, Target, ReadOnly, TmpfsOptions.SizeBytes), Binds dropped, the false note corrected; gunbc.spark.serving_relaunch_transaction observed_mounts_text renders it per type in planned_mount_bind_text's convention; the roce witness fixture emits Mounts and a control shows a Binds-only document leaves mounts unread. RUNG FOUND AT: mechanically preventable in intent, inert in fact (the witness ratified the wrong field). RUNG NOW: mechanically preventable over a designed document. CEILING: mechanically preventable, since the producer is external. NEXT-RUNG TRIGGER: a witness over an inspect document CAPTURED from a Group A container created by this renderer, replacing the designed fixture, so the comparator's field set is checked against what the daemon writes.",
+  ],
+
+  evidence: [],
+}
