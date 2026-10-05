@@ -232,6 +232,11 @@ data vfp_generic_src: String = "module p\n\ntype Diagnostics { head: Int }\n\nty
 // inner formal and this claim goes red.
 data vfp_generic_compound_src: String = "module p\n\ntype Box<T> = Wrapped { inner: T }\n\ntype Hold<T> = Keep { boxed: Box<T> } | Drop\n\nfn unkeep(k: Hold<Int>) -> Int {\n  match k {\n    Keep { boxed: b } => b.inner\n    Drop => 0\n  }\n}"
 
+// THE ARROW CONTROL (review 76656's named case): the payload field's type is an arrow whose RESULT
+// is the formal (`f: fn(Int) -> T`). The arm binder `g` must read as fn(Int) -> Int -- the arm body
+// `g(x)` types as Int only then; with the raw arrow it reads as the formal and this claim goes red.
+data vfp_generic_arrow_src: String = "module p\n\ntype Apply<T> = Mk { f: fn(Int) -> T }\n\nfn useit(a: Apply<Int>, x: Int) -> Int {\n  match a {\n    Mk { f: g } => g(x)\n  }\n}"
+
 fn vfp_reading(src: String) -> VfpReading {
   match vfp_assemble(src: src) {
     Rejected { diagnostics: r } => VfpReading {
@@ -321,6 +326,12 @@ test fn vfp_the_generic_arm_binder_types_at_the_scrutinees_argument_holds() -> B
 // the read holds the compound with the formal inside.
 test fn vfp_the_compound_arm_binder_instantiates_through_the_field_holds() -> Bool {
   vfp_reading(src: vfp_generic_compound_src).arm_body_fact == ^Int
+}
+
+// THE ARROW CONTROL: a non-atom connective (Arrow) carrying the formal must not preempt the facts
+// raw. `g` binds `f: fn(Int) -> T`; the body `g(x)` types as Int only when the binder instantiates.
+test fn vfp_the_arrow_arm_binder_instantiates_through_the_field_holds() -> Bool {
+  vfp_reading(src: vfp_generic_arrow_src).arm_body_fact == ^Int
 }
 // THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
 // want of coverage, resolve has already bound the construction's tag to its variant's declaring
