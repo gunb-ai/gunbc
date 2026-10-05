@@ -299,8 +299,13 @@ data compiler_gate_unit_test_step_id: String = "rust_unit_tests"
 // first, witnesses run 36676083674 on srv4, is the current maximum), plus the hosted population
 // silent-koi-310 tabulated, which sits below it; re-read them there and re-derive when a fleet wall
 // exceeds two thirds of the cap.
+// RAISED to 75 (operator decision 2026-10-05, escalation default A): fleet runs now hit the 40-minute
+// cap with about half the 1327 tests done (job 111960554646 on #13377: 643 done at 40m), because
+// about twenty cli_run tests evaluate the real corpus at 50-290s each, effectively serially. 75 is
+// that wall extrapolated (about 2x) and is the budget while those tests are cut to supplied inputs
+// (DESIGN §3 witness rule); the fix that brings the wall back under 2/3 of 40 restores 40.
 fn compiler_gate_unit_test_timeout() -> Minute {
-  minute(count: 40)
+  minute(count: 75)
 }
 
 // Checkout, toolchain-home isolation and the toolchain install run before the unit step; the step
