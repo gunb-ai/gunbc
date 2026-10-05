@@ -374,8 +374,8 @@ data fleet_host_key_enroll_receipt_path: String = "target/fleet-host-key-enroll-
 // a captured pwd (so the fragment path stays absolute, which is why the substitution existed -- ssh
 // resolves UserKnownHostsFile against the user's home, not the invoking directory), touch is the
 // put-if-absent create whose occupied arm says "read what is there", the marker check is a content
-// question over the read, the append is a modeled read-then-write of the SAME bytes `>>` would have
-// added, and the mode is a typed chmod. The fragment path is built once, from one capture, so the
+// question over the read, the append is a tee -a whose payload reaches tee on stdin -- the SAME
+// bytes `>>` would have added, and the mode is a typed chmod. The fragment path is built once, from one capture, so the
 // pinned line and the staged file cannot disagree about where the fragment lives.
 fn fleet_host_key_enroll_apply(home: String) -> String
 {
@@ -419,7 +419,7 @@ fn fleet_host_key_enroll_apply(home: String) -> String
         }
       }
     } else {
-      join(["enroll outcome=refused cause=ssh-config staging write: ", w.error, "\n"], "")
+      join(["enroll outcome=refused cause=fragment-staging: ", w.error, "\n"], "")
     }
   }
 }
@@ -565,17 +565,6 @@ fn fleet_automation_authorized_keys_line() -> String {
   ssh_public_key_line(k: fleet_automation_ssh_key)
 }
 
-// THE BOOTSTRAP APPLY, ONE DECLARED SEQUENCE OVER THE HOME THE CHECK ESTABLISHED. The deleted
-// script chained five steps with && and folded every failure into one string: mkdir -p the .ssh
-// directory, mode it 700, touch the key file into existence, mode it 600, append the key line.
-// Each step keeps its carrier and its own refusal: the directory steps are typed commands (the
-// builders the extdeps modules own), touch is the put-if-absent create whose occupied arm
-// PRESERVES keys already present (where the shell's touch did the same by being idempotent), the
-// mode is a typed chmod before any key byte lands, and the append is a modeled read-then-write of
-// exactly the bytes `>>` added -- existing content first, the key line last, newline-terminated.
-// The sequence runs only after the presence check refused to key an already-pinned home, so its
-// effect is the same idempotence the shell version had: enrolled stays enrolled, with the same
-// line, in the same place, under the same modes.
 // THE PRESENCE VERDICT, PURE OVER A SUPPLIED READ. The deleted script's
 // `grep -qxF ... 2>/dev/null && echo present || echo absent` answered absent for a missing key
 // file -- grep's exit 2 folded into the same `||` -- and its apply branch then created it: a
@@ -626,6 +615,18 @@ fn fleet_authorized_key_enroll_route(ph: String, line: String) -> String
   }
 }
 
+// THE BOOTSTRAP APPLY, ONE DECLARED SEQUENCE OVER THE HOME THE CHECK ESTABLISHED. The deleted
+// script chained five steps with && and folded every failure into one string: mkdir -p the .ssh
+// directory, mode it 700, touch the key file into existence, mode it 600, append the key line.
+// Each step keeps its carrier and its own refusal: the directory steps are typed commands (the
+// builders the extdeps modules own), touch is the put-if-absent create whose occupied arm
+// PRESERVES keys already present (where the shell's touch did the same by being idempotent), the
+// mode is a typed chmod before any key byte lands, and the append is a tee -a
+// whose key line reaches tee on stdin -- the same bytes `>>` added, existing content first, the
+// key line last, newline-terminated.
+// The sequence runs only after the presence check refused to key an already-pinned home, so its
+// effect is the same idempotence the shell version had: enrolled stays enrolled, with the same
+// line, in the same place, under the same modes.
 fn self_enroll_apply(home: String, line: String) -> String {
   let ssh_dir = concat(home, "/.ssh")
   let ak_path = concat(ssh_dir, "/authorized_keys")

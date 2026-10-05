@@ -43,8 +43,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // body is PARAMETERIZED by the auth-list ArgvCommand, production supplies it bare, and the
 // receipt supplies the SAME command with HOME env-prefixed to a mktemp scratch directory, so the
 // one leg that can write under the observer's real ~/.config/gcloud (gcloud's own logs) writes
-// under the scratch instead. Deleting or miswiring the production presence decision or the
-// auth-list join now breaks this claim -- the body is not reconstructed here. THE
+// under the scratch instead. Deleting or miswiring the production presence decision now breaks
+// this claim -- the body is not reconstructed here. On a runner without gcloud the auth-list join
+// never executes, so the join's pairing is UNPROVEN on CI; the declared route gap below says
+// exactly that. THE
 // ADMITTED EFFECTS, named rather than folded into a neighbour: a temp-directory write
 // (shell.Mktemp.Dir / shell.Remove.RecursiveForce, as excl_local_repo_wet_tempdir_write_reason);
 // mkdir -p and chmod 700/600 over LocalExec (shell.Exec.RunArgv); the owner-only create-exclusive
@@ -128,8 +130,9 @@ test fn fleet_authorized_key_enroll_route_twice_by_real_execution() -> Bool {
 // ArgvCommand -- production supplies gcloud_auth_list_accounts_command() bare; the receipt supplies
 // the same command with HOME env-prefixed to a mktemp scratch directory, so gcloud's own log
 // writes land under the scratch and the observer's real home is only read. The receipt publishes
-// through the same path and asserts the auth-list line in the readback, rejecting a refused
-// capture. THE TIGHTENED AUTH-LIST ASSERTION IS A DECLARED ROUTE GAP: the side chat's fix
+// through the same path and asserts the auth-list line in the readback. The rejection of
+// outcome=refused is kept but is VACUOUS on a runner without gcloud (that branch is unreachable)
+// and is not counted as evidence. THE TIGHTENED AUTH-LIST ASSERTION IS A DECLARED ROUTE GAP: the side chat's fix
 // (review 5411273763) requires "gcloud-binary present" and the auth-list line at
 // outcome=observed or outcome=observed-empty, but the floor runner carries no gcloud -- this
 // run's receipt check (command -v gcloud) exits 127, the body takes the gcloud-absent branch, and
