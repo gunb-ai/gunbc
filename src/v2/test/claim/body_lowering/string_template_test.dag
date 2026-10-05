@@ -63,9 +63,16 @@ test fn a_hole_lexes_as_head_expression_tail() -> Bool {
 }
 
 // TWO HOLES ARE SEPARATED BY A MIDDLE.   "{a}-{b}"
+// v1 fuses holes separated only by `-` or `/` into one binary-operator hole (the census row
+// v1_fused_adjacent_holes, gunbc#13405; e.g. "{s}-{e}" in cron render_cron_field). That is a seed
+// defect v2 does not carry (DESIGN section 7): the `-` is template text, and each hole is its own
+// operand, as the census lists them.
 test fn two_holes_lex_with_a_middle() -> Bool {
-  st_classes(source: "\"\{a\}-\{b\}\"")
-    == [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail]
+  let two = [^dag_token_string_template_head, ^dag_token_ident, ^dag_token_string_template_middle, ^dag_token_ident, ^dag_token_string_template_tail]
+  (st_classes(source: "\"\{a\}-\{b\}\"") == two)
+    && (st_classes(source: "\"\{a\}/\{b\}\"") == two)
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}-\{") == "-")
+    && (st_part_value(token_class: ^dag_token_string_template_middle, lexeme: "\}/\{") == "/")
 }
 
 // BRACE DEPTH IS THE MODE STACK. A record literal inside a hole opens a brace the hole's closer may
