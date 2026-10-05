@@ -11,6 +11,7 @@ import v2.compiler.compile {
   native_lane_file_refusal_index,
   native_test_context_from_ingest
 }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.std.algebra { fold_list }
 import v2.std.artifact { Artifact, SourceFile }
@@ -205,7 +206,7 @@ fn cav_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optional
     xs: context.file_refusals,
     empty: optional_absent(),
     cons: fn(acc, refusal) {
-      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
     }
   )
 }
