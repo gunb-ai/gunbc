@@ -4,7 +4,7 @@ import std.types { Bool, String, List, NonEmptyStr, Int, EpochSecs }
 import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.awaited_incarnation {
-  AwaitedIncarnation, AwaitedVerdict, AwaitedObserved, AwaitedRefused, AwaitedLegOutlivedBound,
+  AwaitedIncarnation, AwaitedQuestion, ReadinessFromStart, ObservedNow, awaited_readiness_from_start_word, awaited_observed_now_word, AwaitedVerdict, AwaitedObserved, AwaitedRefused, AwaitedLegOutlivedBound,
   awaited_trace_of, awaited_verdict,
   awaited_header_word, awaited_poll_word, awaited_served_word, awaited_field_separator, awaited_probe_ok_word,
 }
@@ -23,7 +23,11 @@ data w_b: String = "bbbbbbbbbbbb"
 data w_deadline: EpochSecs = 1000
 
 fn w_header(id: String, deadline: Int) -> String {
-  join([awaited_header_word, awaited_field_separator, id, awaited_field_separator, to_string(deadline), "\n"], "")
+  w_header_asking(id: id, deadline: deadline, question: awaited_readiness_from_start_word)
+}
+
+fn w_header_asking(id: String, deadline: Int, question: String) -> String {
+  join([awaited_header_word, awaited_field_separator, id, awaited_field_separator, to_string(deadline), awaited_field_separator, question, "\n"], "")
 }
 
 fn w_poll(before: String, ok: Bool, after: String, at: Int) -> String {
@@ -33,7 +37,7 @@ fn w_poll(before: String, ok: Bool, after: String, at: Int) -> String {
 fn w_running(id: String) -> String { join([id, " true 0"], "") }
 
 fn w_awaited(id: String, deadline: EpochSecs) -> AwaitedIncarnation {
-  AwaitedIncarnation { host: w_head, id: id as NonEmptyStr, deadline_epoch: deadline }
+  AwaitedIncarnation { host: w_head, id: id as NonEmptyStr, deadline_epoch: deadline, question: ReadinessFromStart }
 }
 
 fn w_decide(stdout: String, expected: AwaitedIncarnation?) -> AwaitedVerdict {
@@ -108,4 +112,17 @@ test fn w_a_change_during_the_probe_or_no_probe_refuses() -> Bool {
 // refused (review 76436: the carrier is EpochSecs, and the parse refuses rather than minting one).
 test fn w_a_negative_deadline_is_unread_and_refused() -> Bool {
   w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: 0 - 5), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 1)], ""), expected: none), fragment: "printed no absolute deadline")
+}
+
+// THE QUESTION IS CARRIED AND CHECKED (valiant-crab-775, after run 37328076674). A header with no question
+// refuses; and a front door handed a READINESS value refuses a trace that answered OBSERVED NOW (and the
+// reverse), so an observation window can never be cited as readiness evidence.
+test fn w_the_question_is_printed_carried_and_never_substituted() -> Bool {
+  let readiness = Present { value: w_awaited(id: w_a, deadline: w_deadline) }
+  let observing = Present { value: AwaitedIncarnation { host: w_head, id: w_a as NonEmptyStr, deadline_epoch: w_deadline, question: ObservedNow } }
+  let ok_poll = w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 990)
+  w_refused_with(v: w_decide(stdout: join([awaited_header_word, awaited_field_separator, w_a, awaited_field_separator, "1000\n", ok_poll], ""), expected: none), fragment: "printed no question")
+    && w_refused_with(v: w_decide(stdout: join([w_header_asking(id: w_a, deadline: w_deadline, question: awaited_observed_now_word), ok_poll], ""), expected: readiness), fragment: "did not carry")
+    && w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), ok_poll], ""), expected: observing), fragment: "did not carry")
+    && w_observed(v: w_decide(stdout: join([w_header_asking(id: w_a, deadline: w_deadline, question: awaited_observed_now_word), ok_poll], ""), expected: observing))
 }

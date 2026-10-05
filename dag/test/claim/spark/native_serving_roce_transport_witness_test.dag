@@ -31,7 +31,7 @@ import extdeps.docker.container_inspect {
   ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable,
   container_inspect_from_stdout,
 }
-import gunbc.spark.awaited_incarnation { AwaitedIncarnation }
+import gunbc.spark.awaited_incarnation { AwaitedIncarnation, ReadinessFromStart, ObservedNow }
 import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
 import std.measure { second, second_count }
 import gunbc.spark.serving_relaunch_transaction { RelaunchDelta, relaunch_delta, delta_comparisons, delta_unclaimed_env }
@@ -51,7 +51,7 @@ import gunbc.spark.serving_arm_launch { ArmNodeLaunch, arm_rail_gid_selection, g
 // interface and the verbs device from fabric_switch_observed, so a fixture here would assert
 // nothing about the fleet.
 
-data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv6" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+data w_awaited_fixture: AwaitedIncarnation = AwaitedIncarnation { host: "srv6" as HostIdentity, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321, question: ReadinessFromStart }
 
 fn srv9_lane() -> FabricLaneObserved {
   match fabric_lane_for_host(host: operator_host_srv9) {
@@ -461,7 +461,7 @@ test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation()
       match first(steps) {
         Absent => false
         Present { value: head } => {
-          let handed = AwaitedIncarnation { host: head.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }
+          let handed = AwaitedIncarnation { host: head.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321, question: ReadinessFromStart }
           let plans = spark_native_front_door_plans(steps: steps, awaited: [handed], now: Present { value: 7654000 })
           let none_handed = spark_native_front_door_plans(steps: steps, awaited: [] as List<AwaitedIncarnation>, now: Present { value: 7654000 })
           let unclocked = spark_native_front_door_plans(steps: steps, awaited: [handed], now: none)
@@ -489,7 +489,7 @@ test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_time
   match spark_native_arm_steps() {
     NativeArmStepsRefused { cause: _ } => false
     NativeArmSteps { steps: steps, master_endpoint: _ } => {
-      let plans = spark_native_transport_announcement_plans(steps: steps)
+      let plans = spark_native_transport_announcement_plans(steps: steps, question: ReadinessFromStart)
       let timeouts = flat_map(steps, st => match engine_ready_timeout_for(env: st.launch.container.env) {
         EngineReadyTimeoutResolved { timeout: t } => [to_string(second_count(s: t))]
         EngineReadyTimeoutUnreadable { cause: _ } => [] as List<String>
@@ -498,7 +498,7 @@ test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_time
         && length(timeouts) == length(steps)
         && all(plans, bp => any(timeouts, t => string_contains(s: bp.plan.script, pattern: join(["deadline=$(( started + ", t, " ))"], ""))
                && to_string(second_count(s: bp.bound) - second_count(s: spark_native_wait_leg_grace)) == t)
-             && string_contains(s: bp.plan.script, pattern: "echo \"awaited|$incarnation|$deadline\"")
+             && string_contains(s: bp.plan.script, pattern: "echo \"awaited|$incarnation|$deadline|$question\"")
              && string_contains(s: bp.plan.script, pattern: "'Using network '"))
     }
   }
@@ -684,8 +684,8 @@ test fn w_no_wait_or_preflight_script_echoes_shell_syntax() -> Bool {
   w_sweep_over(pick: fn(steps, st) {
     concat(concat(
       map(spark_native_preflight_plans(steps: steps), p => p.script),
-      map(spark_native_transport_announcement_plans(steps: steps), bp => bp.plan.script)),
-      map(spark_native_front_door_plans(steps: steps, awaited: [AwaitedIncarnation { host: st.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321 }], now: Present { value: 7654000 }), bp => bp.plan.script))
+      map(spark_native_transport_announcement_plans(steps: steps, question: ReadinessFromStart), bp => bp.plan.script)),
+      map(spark_native_front_door_plans(steps: steps, awaited: [AwaitedIncarnation { host: st.host, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 7654321, question: ReadinessFromStart }], now: Present { value: 7654000 }), bp => bp.plan.script))
   }, at_least: 9)
 }
 

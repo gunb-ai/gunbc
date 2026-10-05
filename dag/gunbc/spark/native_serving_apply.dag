@@ -77,7 +77,7 @@ import std.goal_assessment { GoalAssessment, GoalSatisfied, GoalDiverged, GoalIn
 import std.upsert_decision { Noop, Apply, Refuse }
 import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
 import gunbc.spark.awaited_incarnation {
-  AwaitedIncarnation, AwaitedVerdict, AwaitedObserved, AwaitedRefused, AwaitedLegOutlivedBound, awaited_trace_of, awaited_verdict, awaited_of, awaited_for_host, awaited_binding_refusal,
+  AwaitedIncarnation, AwaitedQuestion, ReadinessFromStart, ObservedNow, awaited_question_word, AwaitedVerdict, AwaitedObserved, AwaitedRefused, AwaitedLegOutlivedBound, awaited_trace_of, awaited_verdict, awaited_of, awaited_for_host, awaited_binding_refusal,
   awaited_header_word, awaited_poll_word, awaited_served_word, awaited_field_separator, awaited_probe_ok_word,
 }
 import gunbc.spark.host_occupancy_admission { spark_ctx_argv_run }
@@ -483,22 +483,29 @@ fn spark_native_preflight_script(unit_name: NonEmptyStr, unit_text: String, spec
 // deadline its own StartedAt plus the engine's ready timeout), or HANDED to the wait already minted (the
 // front door, which must not resolve or derive either again).
 type SparkNativeAwaitedSource
-  = AwaitedCapture { ready_within: Second }
+  = AwaitedCapture { question: AwaitedQuestion, window: Second }
   | AwaitedGiven { awaited: AwaitedIncarnation }
 
 fn spark_native_awaited_source_lines(container: NonEmptyStr, source: SparkNativeAwaitedSource, waited_for: NonEmptyStr) -> String {
   match source {
-    AwaitedCapture { ready_within: r } => join([
+    AwaitedCapture { question: q, window: r } => join([
       "incarnation=$(docker inspect --format '\{\{.Id}}' ", shell_quote(arg: container as String), " 2>/dev/null || true)\n",
       "if [ -z \"$incarnation\" ]; then echo READBACK-REFUSED-container-absent-before-", waited_for as String, "; exit 1; fi\n",
-      "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\" 2>/dev/null || true)\n",
-      "started=$(date -d \"$started_at\" +%s 2>/dev/null || true)\n",
-      "if [ -z \"$started\" ]; then echo \"READBACK-REFUSED-incarnation-start-unread-before-", waited_for as String, ": StartedAt=$started_at\"; exit 1; fi\n",
-      "deadline=$(( started + ", to_string(second_count(s: r)), " ))\n",
+      "question=", awaited_question_word(q: q), "\n",
+      match q {
+        ReadinessFromStart => join([
+          "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\" 2>/dev/null || true)\n",
+          "started=$(date -d \"$started_at\" +%s 2>/dev/null || true)\n",
+          "if [ -z \"$started\" ]; then echo \"READBACK-REFUSED-incarnation-start-unread-before-", waited_for as String, ": StartedAt=$started_at\"; exit 1; fi\n",
+          "deadline=$(( started + ", to_string(second_count(s: r)), " ))\n",
+        ], "")
+        ObservedNow => join(["deadline=$(( $(date +%s) + ", to_string(second_count(s: r)), " ))\n"], "")
+      },
     ], "")
     AwaitedGiven { awaited: a } => join([
       "incarnation=", shell_quote(arg: a.id as String), "\n",
       "deadline=", to_string(a.deadline_epoch), "\n",
+      "question=", awaited_question_word(q: a.question), "\n",
     ], "")
   }
 }
@@ -513,7 +520,7 @@ fn spark_native_incarnation_wait(container: NonEmptyStr, source: SparkNativeAwai
   let sep = awaited_field_separator
   join([
     spark_native_awaited_source_lines(container: container, source: source, waited_for: waited_for),
-    "echo \"", awaited_header_word, sep, "$incarnation", sep, "$deadline\"\n",
+    "echo \"", awaited_header_word, sep, "$incarnation", sep, "$deadline", sep, "$question\"\n",
     "while :; do\n",
     "  before=$(docker inspect --format '\{\{.Id}} \{\{.State.Running}} \{\{.RestartCount}}' ", ctr, " 2>/dev/null || echo absent)\n",
     "  if [ \"$before\" != \"$incarnation true 0\" ]; then echo \"", awaited_poll_word, sep, "$before", sep, "skipped", sep, "-", sep, "$(date +%s)\"; break; fi\n",
@@ -530,14 +537,14 @@ fn spark_native_incarnation_wait(container: NonEmptyStr, source: SparkNativeAwai
 // THE TRANSPORT WAIT CAPTURES THE AWAITED INCARNATION. One capture of its own log (by id, never by name)
 // must carry both the network announcement and a channel `via NET/` line -- the two facts
 // extdeps.nvidia.nccl nccl_transport_verdict folds -- so the two facts can never come from two incarnations.
-fn spark_native_transport_announcement_script(container: NonEmptyStr, ready_within: Second) -> String {
+fn spark_native_transport_announcement_script(container: NonEmptyStr, question: AwaitedQuestion, window: Second) -> String {
   let cap = join([spark_native_readback_dir, "/transport-announcement.log"], "")
   join([
     "set -e\n",
     "mkdir -p ", spark_native_readback_dir, "\n",
     spark_native_incarnation_wait(
       container: container,
-      source: AwaitedCapture { ready_within: ready_within },
+      source: AwaitedCapture { question: question, window: window },
       probe: join(["docker logs \"$incarnation\" > ", cap, " 2>&1 && grep -Fq ", shell_quote(arg: nccl_using_network_marker), " ", cap, " && grep -Fq ", shell_quote(arg: nccl_channel_via_marker), " ", cap], ""),
       waited_for: "nccl-transport-announcement" as NonEmptyStr),
   ], "")
@@ -717,15 +724,33 @@ fn spark_native_preflight_plans(steps: List<SparkNativeHostStep>) -> List<SparkP
 // refuse a healthy arm. The container-shaped half of the readback is the canonical observation pass
 // below and is not a script at all.
 // EVERY rank waits for its own announcement (the workers are headless but still join NCCL).
-fn spark_native_transport_announcement_plans(steps: List<SparkNativeHostStep>) -> List<SparkNativeBoundedPlan> {
-  map(steps, st => match engine_ready_timeout_for(env: st.launch.container.env) {
-    EngineReadyTimeoutUnreadable { cause: c } => SparkNativeBoundedPlan {
-      plan: spark_native_plan_of(step: st, script: join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")),
-      bound: spark_native_wait_leg_grace,
+// THE TRANSPORT WAIT ASKS ONE OF TWO QUESTIONS. After a start, READINESS FROM START: the window is the rank's
+// engine ready timeout from its own StartedAt. Of an arm already running, OBSERVED NOW: the window is the
+// observation grace from the moment the observation begins. Either way the leg bound is the window plus the
+// grace.
+data spark_native_observe_now_window: Second = second(count: 120)
+
+// WHICH QUESTION EACH VERIFY ASKS, one datum per site so the reds read the route the transaction takes:
+// the satisfied check of an arm already running observes it NOW; the readback after an apply or a return
+// asks READINESS FROM START of the incarnation that start produced.
+data spark_native_satisfied_check_question: AwaitedQuestion = ObservedNow
+data spark_native_after_start_question: AwaitedQuestion = ReadinessFromStart
+
+fn spark_native_transport_announcement_plans(steps: List<SparkNativeHostStep>, question: AwaitedQuestion) -> List<SparkNativeBoundedPlan> {
+  map(steps, st => match question {
+    ObservedNow => SparkNativeBoundedPlan {
+      plan: spark_native_plan_of(step: st, script: spark_native_transport_announcement_script(container: st.launch.container.name, question: ObservedNow, window: spark_native_observe_now_window)),
+      bound: second(count: second_count(s: spark_native_observe_now_window) + second_count(s: spark_native_wait_leg_grace)),
     }
-    EngineReadyTimeoutResolved { timeout: t } => SparkNativeBoundedPlan {
-      plan: spark_native_plan_of(step: st, script: spark_native_transport_announcement_script(container: st.launch.container.name, ready_within: t)),
-      bound: second(count: second_count(s: t) + second_count(s: spark_native_wait_leg_grace)),
+    ReadinessFromStart => match engine_ready_timeout_for(env: st.launch.container.env) {
+      EngineReadyTimeoutUnreadable { cause: c } => SparkNativeBoundedPlan {
+        plan: spark_native_plan_of(step: st, script: join(["echo ", shell_quote(arg: join(["READBACK-REFUSED-engine-ready-timeout-unreadable: ", c as String], "")), "; exit 1\n"], "")),
+        bound: spark_native_wait_leg_grace,
+      }
+      EngineReadyTimeoutResolved { timeout: t } => SparkNativeBoundedPlan {
+        plan: spark_native_plan_of(step: st, script: spark_native_transport_announcement_script(container: st.launch.container.name, question: ReadinessFromStart, window: t)),
+        bound: second(count: second_count(s: t) + second_count(s: spark_native_wait_leg_grace)),
+      }
     }
   })
 }
@@ -1432,9 +1457,9 @@ type SparkNativeVerify
 // THE AWAITED INCARNATION (gunbc.spark.awaited_incarnation) is minted by each rank's transport wait and
 // carried through the readback and into the front door; a wait whose trace is not an observation of its
 // own incarnation within its deadline refuses that rank, and the front door waits on exactly the head's.
-fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret, steps: List<SparkNativeHostStep>, so_far: String) -> SparkNativeVerify {
+fn spark_native_verify(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, administrator: Secret, steps: List<SparkNativeHostStep>, question: AwaitedQuestion, so_far: String) -> SparkNativeVerify {
   match spark_native_run_wait_stage(trust: trust, path: path, administrator: administrator,
-    credential_file_name: "gunbc-spark-native-transport-wait-admin-password" as NonEmptyStr, plans: spark_native_transport_announcement_plans(steps: steps)) {
+    credential_file_name: "gunbc-spark-native-transport-wait-admin-password" as NonEmptyStr, plans: spark_native_transport_announcement_plans(steps: steps, question: question)) {
     NativeWaitStageCredentialRefused { cause: c } =>
       NativeNotVerified { receipt: join([so_far, "  readback CREDENTIAL REFUSED: ", c as String, "\n"], ""), refusals: spark_native_every_host_refused(steps: steps, cause: "the readback credential was refused, so nothing was read") }
     NativeWaitStageRan { legs: wl } => {
@@ -1614,7 +1639,7 @@ fn spark_native_return_to_committed(
                   NativeActuationTouched { stage: _, receipt: r } =>
                     spark_native_stop_all(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage, so_far: join([r, "  the return failed, so every rank is stopped\n"], ""))
                   NativeActuated { receipt: r } =>
-                    match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: committed, so_far: r) {
+                    match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: committed, question: spark_native_after_start_question, so_far: r) {
                       NativeVerified { receipt: v } => NativeArmRolledBack { stage: stage, committed: label, receipt: v }
                       NativeNotVerified { receipt: v, refusals: _ } =>
                         spark_native_stop_all(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage, so_far: join([v, "  the returned arm did not read back, so every rank is stopped\n"], ""))
@@ -1650,7 +1675,7 @@ fn spark_native_apply_path(
     NativeActuationTouched { stage: st, receipt: r } =>
       spark_native_return_to_committed(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, stage: st, so_far: r)
     NativeActuated { receipt: r } =>
-      match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: steps, so_far: r) {
+      match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: steps, question: spark_native_after_start_question, so_far: r) {
         NativeVerified { receipt: v } => spark_native_commit(trust: trust, path: path, administrator: administrator, steps: steps, label: subject.label, so_far: v)
         NativeNotVerified { receipt: v, refusals: _ } =>
           spark_native_return_to_committed(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, stage: NativeStageReadback, so_far: v)
@@ -1717,7 +1742,7 @@ fn spark_native_converge_pass(
       let structural = arm_structural_assessment(desired: spark_native_desired_ranks(steps: steps), observed: before)
       match structural {
         GoalSatisfied { evidence: _ } =>
-          match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: steps, so_far: join([observed, "  every rank already carries this step's unit, active, with one running container; reading it back before treating it as satisfied\n"], "")) {
+          match spark_native_verify(trust: trust, path: path, administrator: administrator, steps: steps, question: spark_native_satisfied_check_question, so_far: join([observed, "  every rank already carries this step's unit, active, with one running container; reading it back as an OBSERVATION NOW (not readiness evidence) before treating it as satisfied\n"], "")) {
             NativeVerified { receipt: v } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: structural, after_removal: after_removal, so_far: v)
             NativeNotVerified { receipt: v, refusals: rs } => spark_native_decided(trust: trust, path: path, administrator: administrator, steps: steps, subject: subject, before: before, assessment: arm_assessment_after_readback(structural: structural, refusals: rs), after_removal: after_removal, so_far: v)
           }

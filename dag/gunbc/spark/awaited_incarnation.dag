@@ -32,6 +32,33 @@ type AwaitedIncarnation {
   host: HostIdentity
   id: NonEmptyStr
   deadline_epoch: EpochSecs
+  question: AwaitedQuestion
+}
+
+// WHICH QUESTION THE WAIT ANSWERS (valiant-crab-775, after run 37328076674): two different questions share
+// the wait, the front door and the verdict, and the carrier says which one it answers. READINESS FROM START
+// asks whether this incarnation became ready by its deadline (its own StartedAt plus the engine's ready
+// timeout) and follows a start. OBSERVED NOW asks whether a running incarnation is serving now, inside a
+// window that opens on the host clock when the observation begins. Run 37328076674 asked the first
+// question of an arm running for three hours, so a healthy arm could never read satisfied and the
+// converge restarted it. The question is printed in the wait's header and carried to the front door, and
+// the verdict refuses a trace whose question is not the one it was handed, so an observation window can
+// never be cited as readiness evidence.
+type AwaitedQuestion
+  = ReadinessFromStart
+  | ObservedNow
+
+data awaited_readiness_from_start_word: String = "readiness-from-start"
+data awaited_observed_now_word: String = "observed-now"
+
+fn awaited_question_word(q: AwaitedQuestion) -> String {
+  match q { ReadinessFromStart => awaited_readiness_from_start_word  ObservedNow => awaited_observed_now_word }
+}
+
+fn awaited_question_of(word: String) -> AwaitedQuestion? {
+  if word == awaited_readiness_from_start_word { Present { value: ReadinessFromStart } }
+  else if word == awaited_observed_now_word { Present { value: ObservedNow } }
+  else { none }
 }
 
 type AwaitedPoll {
@@ -44,6 +71,7 @@ type AwaitedPoll {
 type AwaitedTrace {
   awaited_id: String?
   deadline_epoch: EpochSecs?
+  question: AwaitedQuestion?
   polls: List<AwaitedPoll>
   served: String?
 }
@@ -102,12 +130,13 @@ fn awaited_trace_of(stdout: String) -> AwaitedTrace {
   } else { [] as List<AwaitedPoll> })
   let served = first(flat_map(lines, l => if starts_with(s: l, prefix: join([awaited_served_word, awaited_field_separator], "")) { [substring(s: l, start: length(awaited_served_word) + 1, end: length(l))] } else { [] as List<String> }))
   match header {
-    Absent => AwaitedTrace { awaited_id: none, deadline_epoch: none, polls: polls, served: served }
+    Absent => AwaitedTrace { awaited_id: none, deadline_epoch: none, question: none, polls: polls, served: served }
     Present { value: h } => {
       let f = awaited_fields(line: h)
       AwaitedTrace {
         awaited_id: match f.get(1) { Present { value: v } => if v == "" { none } else { Present { value: v } }, Absent => none },
         deadline_epoch: match f.get(2) { Present { value: v } => awaited_int(text: v), Absent => none },
+        question: match f.get(3) { Present { value: v } => awaited_question_of(word: v), Absent => none },
         polls: polls,
         served: served,
       }
@@ -128,14 +157,17 @@ fn awaited_verdict(host: HostIdentity, trace: AwaitedTrace, expected: AwaitedInc
     Present { value: id } =>
       match trace.deadline_epoch {
         Absent => AwaitedRefused { host: host, cause: "the wait printed no absolute deadline" }
-        Present { value: deadline } => {
-          let awaited = AwaitedIncarnation { host: host, id: id as NonEmptyStr, deadline_epoch: deadline }
+        Present { value: deadline } =>
+          match trace.question {
+            Absent => AwaitedRefused { host: host, cause: "the wait printed no question (readiness from start, or observed now)" }
+            Present { value: question } => {
+          let awaited = AwaitedIncarnation { host: host, id: id as NonEmptyStr, deadline_epoch: deadline, question: question }
           let carried = match expected {
             Absent => true
-            Present { value: e } => (e.id as String) == id && e.deadline_epoch == deadline
+            Present { value: e } => (e.id as String) == id && e.deadline_epoch == deadline && awaited_question_word(q: e.question) == awaited_question_word(q: question)
           }
           if !carried {
-            AwaitedRefused { host: host, cause: join(["the wait did not carry the awaited incarnation it was handed: it waited on ", id, " until ", to_string(deadline)], "") }
+            AwaitedRefused { host: host, cause: join(["the wait did not carry the awaited incarnation it was handed: it waited on ", id, " until ", to_string(deadline), " (", awaited_question_word(q: question), ")"], "") }
           } else {
             let expected_reading = awaited_running_reading(id: id as NonEmptyStr)
             match trace.polls.last() {
@@ -156,9 +188,12 @@ fn awaited_verdict(host: HostIdentity, trace: AwaitedTrace, expected: AwaitedInc
             }
           }
         }
+          }
+      }
       }
   }
 }
+
 
 fn awaited_of(verdicts: List<AwaitedVerdict>) -> List<AwaitedIncarnation> {
   flat_map(verdicts, v => match v { AwaitedObserved { awaited: a } => [a]  AwaitedRefused { host: _, cause: _ } => [] as List<AwaitedIncarnation>  AwaitedLegOutlivedBound { host: _, bound: _ } => [] as List<AwaitedIncarnation> })

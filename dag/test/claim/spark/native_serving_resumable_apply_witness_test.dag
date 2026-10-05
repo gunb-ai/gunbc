@@ -18,12 +18,12 @@ import gunbc.spark.native_serving_apply {
   spark_native_leg_with_retry, spark_native_leg_attempt_count,
   spark_native_unreached_leg_attempt_budget,
   spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
-  spark_native_transport_verdicts, spark_native_wait_leg_of, spark_native_front_door_refusals,
+  spark_native_transport_verdicts, spark_native_satisfied_check_question, spark_native_after_start_question, spark_native_wait_leg_of, spark_native_front_door_refusals,
   SparkNativeWaitLeg, WaitLegReturned, WaitLegOutlivedBound,
   spark_native_stop_script, spark_native_commit_record_script, spark_native_observation_of_leg, spark_native_remove_retired_script,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
-import gunbc.spark.awaited_incarnation { AwaitedIncarnation, awaited_of, awaited_binding_refusal, awaited_header_word, awaited_poll_word, awaited_field_separator, awaited_probe_ok_word }
+import gunbc.spark.awaited_incarnation { AwaitedIncarnation, ReadinessFromStart, awaited_readiness_from_start_word, awaited_observed_now_word, awaited_of, awaited_binding_refusal, awaited_header_word, awaited_poll_word, awaited_field_separator, awaited_probe_ok_word }
 import gunbc.spark.arm_convergence { arm_rank_observe_script, arm_rank_observation_of, arm_observe_complete_word, ArmRankObservation, ArmRankRead, ArmRankUnread, FactRead, FactAbsent, FactUnread }
 
 // THE INCIDENT THESE ARE THE REDS FOR: fleet-converge run 36918167575 (2026-10-01). One ssh leg to srv7
@@ -191,7 +191,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
     spark_native_stop_script(unit_name: unit, container_name: glm_native_container_name),
     spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr),
     spark_native_remove_retired_script(unit_name: unit),
-    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
+    spark_native_transport_announcement_script(container: glm_native_container_name, question: ReadinessFromStart, window: second(count: 1800)),
     spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name),
   ]
   all(others, t => !string_contains(s: t, pattern: "reset-failed"))
@@ -247,16 +247,42 @@ test fn w_the_retired_file_removal_touches_nothing_else() -> Bool {
 // two producers' halves of the seam: the transport wait CAPTURES (id by name, deadline from its own
 // StartedAt) and prints both, and the front door is RENDERED FROM the carried value -- it neither resolves
 // the id nor derives a deadline.
-data w_awaited_head: AwaitedIncarnation = AwaitedIncarnation { host: operator_host_srv9, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 1234567 }
+data w_awaited_head: AwaitedIncarnation = AwaitedIncarnation { host: operator_host_srv9, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 1234567, question: ReadinessFromStart }
 
 test fn w_the_transport_wait_captures_the_awaited_incarnation_and_prints_it() -> Bool {
-  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, question: ReadinessFromStart, window: second(count: 3600))
   string_contains(s: t, pattern: "'Using network '")
     && string_contains(s: t, pattern: "' via NET/'")
     && string_contains(s: t, pattern: "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\"")
     && string_contains(s: t, pattern: "deadline=$(( started + 3600 ))")
-    && string_contains(s: t, pattern: join(["echo \"", awaited_header_word, awaited_field_separator, "$incarnation", awaited_field_separator, "$deadline\""], ""))
+    && string_contains(s: t, pattern: join(["echo \"", awaited_header_word, awaited_field_separator, "$incarnation", awaited_field_separator, "$deadline", awaited_field_separator, "$question\""], ""))
+    && string_contains(s: t, pattern: join(["question=", awaited_readiness_from_start_word], ""))
     && !string_contains(s: t, pattern: "start=$(date +%s)")
+}
+
+// TWO QUESTIONS, TWO ROUTES (valiant-crab-775, after run 37328076674, where a three-hour-old healthy arm was
+// refused as "succeeded after the incarnation deadline" and restarted). RED 1: the satisfied check of a
+// running arm observes it NOW -- its window opens on the host clock and never reads StartedAt -- so an arm
+// past its StartedAt deadline that answers inside the window is observed. RED 2: the readback after a
+// start still asks READINESS FROM START, so a late-ready fresh start still refuses.
+test fn w_a_running_arm_is_observed_now_and_a_fresh_start_is_judged_from_its_start() -> Bool {
+  let observe = spark_native_transport_announcement_script(container: glm_native_container_name, question: spark_native_satisfied_check_question, window: second(count: 120))
+  let after_start = spark_native_transport_announcement_script(container: glm_native_container_name, question: spark_native_after_start_question, window: second(count: 3600))
+  let running_past_start_deadline = join([remote_leg_began_word, "\n",
+    awaited_header_word, awaited_field_separator, "aaaa1111", awaited_field_separator, "9120", awaited_field_separator, awaited_observed_now_word, "\n",
+    awaited_poll_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, awaited_probe_ok_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, "9001\n",
+    spark_pair_leg_exit_prefix, "0\n"], "")
+  let late_fresh_start = join([remote_leg_began_word, "\n",
+    awaited_header_word, awaited_field_separator, "aaaa1111", awaited_field_separator, "5000", awaited_field_separator, awaited_readiness_from_start_word, "\n",
+    awaited_poll_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, awaited_probe_ok_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, "9001\n",
+    spark_pair_leg_exit_prefix, "0\n"], "")
+  let leg = fn(out) { WaitLegReturned { leg: spark_native_leg_with_retry(budget: 0, attempt: fn(i) { spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" }) }) } }
+  string_contains(s: observe, pattern: join(["question=", awaited_observed_now_word], ""))
+    && string_contains(s: observe, pattern: "deadline=$(( $(date +%s) + 120 ))")
+    && !string_contains(s: observe, pattern: "StartedAt")
+    && string_contains(s: after_start, pattern: "deadline=$(( started + 3600 ))")
+    && count(awaited_of(verdicts: spark_native_transport_verdicts(legs: [leg(running_past_start_deadline)]))) == 1
+    && count(awaited_of(verdicts: spark_native_transport_verdicts(legs: [leg(late_fresh_start)]))) == 0
 }
 
 test fn w_the_front_door_is_rendered_from_the_carried_incarnation() -> Bool {
@@ -273,7 +299,7 @@ test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bo
   let leg = spark_native_leg_with_retry(budget: 0, attempt: fn(i) { spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
     exit_code: 0, success: true,
     stdout: join([remote_leg_began_word, "\n",
-      awaited_header_word, awaited_field_separator, "aaaa1111", awaited_field_separator, "5000\n",
+      awaited_header_word, awaited_field_separator, "aaaa1111", awaited_field_separator, "5000", awaited_field_separator, awaited_readiness_from_start_word, "\n",
       awaited_poll_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, awaited_probe_ok_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, "4000\n",
       spark_pair_leg_exit_prefix, "0\n"], ""),
     stderr: "" }) })
@@ -307,7 +333,7 @@ fn w_bounded_session(exit_code: Int, stdout: String) -> SshSessionExecResult {
 }
 
 test fn w_a_leg_the_bound_killed_is_its_own_outcome_and_the_front_door_refuses_it() -> Bool {
-  let began_only = join([remote_leg_began_word, "\n", awaited_header_word, awaited_field_separator, "0f3a9c1d2e4b", awaited_field_separator, "1234567\n"], "")
+  let began_only = join([remote_leg_began_word, "\n", awaited_header_word, awaited_field_separator, "0f3a9c1d2e4b", awaited_field_separator, "1234567", awaited_field_separator, awaited_readiness_from_start_word, "\n"], "")
   let killed = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 124, stdout: began_only))
   let killed_hard = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 137, stdout: began_only))
   (match killed { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
