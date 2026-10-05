@@ -14,21 +14,25 @@ import gunbc.spark.managed_access_bootstrap { InspectServingContainer, spark_ins
 import gunbc.spark.pair_serving_realization { spark_pair_container_name }
 import extdeps.cloud.gcp.secret_ref { secret_ref_version_resource }
 import gunbc.spark.managed_grant_install {
+  RetiredDropinAbsent,
+  RetiredDropinRemovalWithheldOnRun,
+  spark_retired_dropin_standing_wire,
+  spark_grant_install_administrator_standing,
+  SparkGrantInstallRun,
+  spark_grant_install_run_succeeded,
+  spark_grant_install_run_leaves_obligation_outstanding,
+  spark_grant_install_run_text,
+}
+import gunbc.spark.grant_privileged_operation {
   spark_grant_install_plan,
-  RetiredDropinAbsent, RetiredDropinRemovalWithheldOnRun, spark_retired_dropin_standing_wire,
   spark_grant_install_operation_labels,
   cleanup_grant_staging_argv,
   spark_grant_cleanup_standing,
-  spark_grant_install_administrator_standing,
   spark_grant_install_plan_wire,
   spark_grant_staging_path,
   SparkGrantInstallSteps,
   SparkGrantInstallRefused,
-  SparkGrantInstallRun,
   SparkGrantInstallNotAttempted,
-  spark_grant_install_run_succeeded,
-  spark_grant_install_run_leaves_obligation_outstanding,
-  spark_grant_install_run_text,
   spark_grant_install_outcome_wire,
   spark_grant_credential_requirement,
   spark_grant_install_from_privileged,
