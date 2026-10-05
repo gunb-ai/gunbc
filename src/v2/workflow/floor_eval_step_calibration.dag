@@ -6,7 +6,7 @@ import std.measure {
   EvalStepCount, eval_step_count, eval_step_count_value,
   EvalStepsPerMillisecond, eval_steps_per_millisecond, eval_steps_per_millisecond_count,
 }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 
 // THE CONTROLLED FIXTURE THAT GROUNDS THE REQUIRED FLOOR'S EVAL-STEP CEILINGS.
 //
@@ -437,6 +437,38 @@ fn host_speed_calibration_of(
       }
     }
   }
+}
+
+// THE REPLICATES THE RUN MEASURES. The first is the pinned specimen itself; the other two perform the
+// same work at the same depth with distinct accumulator seeds (see their module). One reading is not
+// enough: measured on one runner, the specimen's first reading was 1.74x its steady state (75ms
+// against 43-47ms), and a slow reading loosens the margin. The FASTEST replicate is the reading, so
+// a slow outlier errs strict, never lenient.
+fn host_speed_specimen_replicates(calibration: EvalStepCalibration) -> List<NonEmptyStr> {
+  [
+    calibration_specimen_identity(calibration: calibration),
+    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_two_performs_its_declared_work" as NonEmptyStr,
+    "test.claim.floor_eval_step_calibration_specimen_test.calibration_specimen_replicate_three_performs_its_declared_work" as NonEmptyStr,
+  ]
+}
+
+// COMBINE PER-REPLICATE CLASSIFICATIONS. Any refusing replicate refuses the run (the first such, in
+// replicate order); otherwise the replicate with the SMALLEST factor stands, which is the fastest
+// reading. An empty list is a refusal, never a default.
+fn host_speed_fastest_of(calibrations: List<HostSpeedCalibration>, specimen: NonEmptyStr) -> HostSpeedCalibration {
+  fold(calibrations, init: HostSpeedSpecimenNotMeasured { specimen: specimen, cause: "no_replicate_readings" }, f: fn(acc, c) {
+    match acc {
+      HostSpeedCalibrated { specimen_cpu_ms: _, factor: best } =>
+        match c {
+          HostSpeedCalibrated { specimen_cpu_ms: _, factor: f } =>
+            if f.factor_permille < best.factor_permille { c } else { acc }
+          _ => c
+        }
+      HostSpeedSpecimenNotMeasured { specimen: _, cause: k } =>
+        if k == "no_replicate_readings" { c } else { acc }
+      _ => acc
+    }
+  })
 }
 
 // ONLY THE CALIBRATED ARM ADMITS. Every other arm refuses the run; there is no default factor.

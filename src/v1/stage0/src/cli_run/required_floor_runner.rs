@@ -2246,6 +2246,8 @@ pub(crate) fn floor_enrolment_dead_band_envelope_floor_ms(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HostSpeedCalibrationPolicy {
     pub(crate) specimen: String,
+    /// `host_speed_specimen_replicates`, in order; the first is `specimen`.
+    pub(crate) replicates: Vec<String>,
     pub(crate) specimen_eval_steps: u64,
     pub(crate) rate: u64,
     pub(crate) lower_permille: u64,
@@ -2282,8 +2284,33 @@ pub(crate) fn floor_host_speed_calibration_policy(
         }
         Err(e) => return Err(format!("{specimen_q}: {e}")),
     };
+    let replicates_q = format!("{MODULE}.enrolment_host_speed_specimen_replicates");
+    let replicates_value = v1_interpreter::run_in_context(&ctx, &replicates_q, false)
+        .map_err(|e| format!("{replicates_q}: {e}"))?;
+    let mut replicates = Vec::new();
+    for item in floor_decode_list(&ctx, Some(&replicates_value))
+        .map_err(|e| format!("{replicates_q}: {e}"))?
+    {
+        match item {
+            v1_interpreter::Value::Str(r) if !r.is_empty() => replicates.push(r.to_string()),
+            other => {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded \
+                     {replicates_q}: expected qualified claim identities, got {}",
+                    floor_value_shape(Some(other))
+                ))
+            }
+        }
+    }
+    if replicates.first() != Some(&specimen) {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=HostSpeedCalibrationPolicyUngrounded {replicates_q} \
+             must begin with the pinned specimen {specimen}, got {replicates:?}"
+        ));
+    }
     let policy = HostSpeedCalibrationPolicy {
         specimen,
+        replicates,
         specimen_eval_steps: int("enrolment_host_speed_specimen_eval_steps_count")?,
         rate: int("enrolment_host_speed_rate_count")?,
         lower_permille: int("enrolment_host_speed_lower_permille_count")?,
@@ -2387,23 +2414,57 @@ pub(crate) fn host_speed_calibration_for(
     claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
     dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
 ) -> HostSpeedCalibration {
-    match enrolment_gate_execution_disposition(&policy.specimen, dispositions) {
+    // Mirror of `host_speed_fastest_of`: any refusing replicate refuses the run (the first, in
+    // replicate order); otherwise the smallest factor -- the fastest reading -- stands. No replicate
+    // at all is a refusal.
+    let mut best: Option<HostSpeedCalibration> = None;
+    for replicate in &policy.replicates {
+        let one = host_speed_calibration_of_replicate(policy, replicate, claim_cost, dispositions);
+        match (&one, &best) {
+            (HostSpeedCalibration::Calibrated { .. }, None) => best = Some(one),
+            (
+                HostSpeedCalibration::Calibrated {
+                    factor_permille: f, ..
+                },
+                Some(HostSpeedCalibration::Calibrated {
+                    factor_permille: b, ..
+                }),
+            ) => {
+                if f < b {
+                    best = Some(one);
+                }
+            }
+            _ => return one,
+        }
+    }
+    best.unwrap_or(HostSpeedCalibration::SpecimenNotMeasured {
+        cause: "no_replicate_readings".to_string(),
+    })
+}
+
+fn host_speed_calibration_of_replicate(
+    policy: &HostSpeedCalibrationPolicy,
+    replicate: &str,
+    claim_cost: &HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence>,
+    dispositions: &HashMap<&str, &crate::cli_run::RequiredFloorDisposition>,
+) -> HostSpeedCalibration {
+    match enrolment_gate_execution_disposition(replicate, dispositions) {
         Some(crate::cli_run::RequiredFloorDisposition::Planned)
         | Some(crate::cli_run::RequiredFloorDisposition::PlannedAsChangedWitness) => {}
         Some(other) => {
             return HostSpeedCalibration::SpecimenNotMeasured {
-                cause: required_floor_disposition_label(other).to_string(),
+                cause: format!("{replicate}: {}", required_floor_disposition_label(other)),
             }
         }
         None => {
             return HostSpeedCalibration::SpecimenNotMeasured {
-                cause: "no_disposition_row".to_string(),
+                cause: format!("{replicate}: no_disposition_row"),
             }
         }
     }
-    let Some(row) = claim_cost.get(policy.specimen.as_str()) else {
+    let Some(row) = claim_cost.get(replicate) else {
         return HostSpeedCalibration::SpecimenNotMeasured {
-            cause: "no_claim_cost_row_for_a_planned_identity".to_string(),
+            cause: format!("{replicate}: no_claim_cost_row_for_a_planned_identity"),
         };
     };
     match &row.reading {
@@ -13258,9 +13319,12 @@ mod scope_fragment_memo_equivalence {
 mod changed_witness_projection_tests {
     use super::*;
 
-    /// The enrolment thresholds these tests decide against: the 302 ms margin, its 182 ms dead-band
-    /// floor, the 500 ms per-subject line, and its 302 ms typed cost-debt floor -- the values the model
-    /// derives today, fixed here so each test pins a boundary rather than re-deriving one.
+    /// A FIXTURE, not the model's current derivation: the 302 ms margin, its 182 ms dead-band floor,
+    /// the 500 ms per-subject line and its 302 ms typed cost-debt floor, at the reference host speed.
+    /// These were the model's values before gunbc#13352 withdrew the cross-runner envelope from the
+    /// calibrated gate (the model now derives 391 / 306 / 500 / 391; the host reads those at run time
+    /// and never this constant). Each test pins a boundary RELATIVE to this fixture, so the fixture
+    /// is kept rather than re-derived; the calibration controls below state the current thresholds.
     const TEST_ENROLMENT_THRESHOLDS: EnrolmentThresholds = EnrolmentThresholds {
         budget_ms: 302,
         dead_band_envelope_floor_ms: 182,
@@ -15988,6 +16052,11 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
     fn test_calibration_policy() -> HostSpeedCalibrationPolicy {
         HostSpeedCalibrationPolicy {
             specimen: "m.specimen".to_string(),
+            replicates: vec![
+                "m.specimen".to_string(),
+                "m.replicate_two".to_string(),
+                "m.replicate_three".to_string(),
+            ],
             specimen_eval_steps: 55011,
             rate: 723,
             lower_permille: 400,
@@ -16037,9 +16106,13 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
             let mut cost: HashMap<&str, &crate::cli_run::WitnessExecutionOccurrence> =
                 HashMap::new();
             cost.insert(identity, &row);
+            // The model's current calibrated thresholds (v2.workflow.floor_enrolment_margin).
             let thresholds = EnrolmentThresholds {
+                budget_ms: 391,
+                dead_band_envelope_floor_ms: 306,
+                per_subject_line_ms: 500,
+                roster_envelope_floor_ms: 391,
                 host_speed_factor_permille: factor,
-                ..TEST_ENROLMENT_THRESHOLDS
             };
             enrolment_margin_standing_for(identity, &cost, &dispositions, &thresholds, None)
         };
@@ -16066,18 +16139,33 @@ fn local(x: Int) -> Int {\n  x\n}\n\nfn by_let() -> Int {\n  let convert = local
         let planned = RequiredFloorDisposition::Planned;
         let declined = RequiredFloorDisposition::DeclinedOutsideRequiredGate;
         let healthy = calibration_occurrence("m.specimen", 76, 55011);
+        // The other two replicates are healthy, so each case below is decided by the first alone:
+        // one bad replicate refuses the run however good the others are.
+        let two = calibration_occurrence("m.replicate_two", 80, 55011);
+        let three = calibration_occurrence("m.replicate_three", 90, 55011);
         let run = |dispo: Option<&RequiredFloorDisposition>,
                    row: Option<&crate::cli_run::WitnessExecutionOccurrence>| {
             let mut dispositions = HashMap::new();
             if let Some(d) = dispo {
                 dispositions.insert("m.specimen", d);
             }
+            dispositions.insert("m.replicate_two", &planned);
+            dispositions.insert("m.replicate_three", &planned);
             let mut cost = HashMap::new();
             if let Some(r) = row {
                 cost.insert("m.specimen", r);
             }
+            cost.insert("m.replicate_two", &two);
+            cost.insert("m.replicate_three", &three);
             host_speed_calibration_for(&policy, &cost, &dispositions)
         };
+        // THE FASTEST REPLICATE STANDS: a 1.75x-slow first touch on the pinned specimen does not
+        // loosen the factor, because replicate two read faster.
+        let slow_first = calibration_occurrence("m.specimen", 133, 55011);
+        assert_eq!(
+            run(Some(&planned), Some(&slow_first)).factor_or_refusal("m.specimen"),
+            Ok(80 * 723 * 1000 / 55011)
+        );
         assert_eq!(run(Some(&planned), Some(&healthy)).name(), "calibrated");
         assert_eq!(
             run(Some(&planned), Some(&healthy)).factor_or_refusal("m.specimen"),

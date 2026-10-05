@@ -11,7 +11,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // keep their names and are not netted (ExistingSeedItemModified): EnrolmentThresholds (the
 // host_speed_factor_permille field), enrolment_margin_standing_for (every CPU figure calibrated by
 // that factor before a threshold is consulted), run_required_floor (reads the calibration policy,
-// classifies the specimen's reading, refuses on a non-calibrated arm, and reports raw beside
+// classifies the specimen replicates' readings and takes the fastest, refuses on a non-calibrated arm, and reports raw beside
 // calibrated ms), and the unit-test constant TEST_ENROLMENT_THRESHOLDS (the reference factor 1000).
 //
 // WHY IT IS ADMITTED AGAINST THE v1 FREEZE, BY PURPOSE. gunbc.v1_maintenance_standing
@@ -32,6 +32,7 @@ data host_speed_calibration_seed_growth_justification: SeedGrowthJustification =
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "HostSpeedCalibration", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_for", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_of", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "host_speed_calibration_of_replicate", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "calibrated_cpu_ms", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "test_calibration_policy", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "calibration_occurrence", field: WholeDeclaration },
