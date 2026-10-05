@@ -36,7 +36,7 @@ fn console_carrying_version() -> ProcessObservation {
 // that reached multi-user but never printed the runner's version is the exact failure an image
 // missing its runner produces -- the guest boots beautifully and is useless -- so the negative arm
 // is a console that boots and lacks the version, not an empty one.
-test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
+test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool  {
   let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
   let booted_but_empty = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
@@ -54,7 +54,7 @@ test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
 // The first is a host or configuration fact and its remedy is on the host; the second is an image
 // fact. Collapsing them into one cause would send a reader to the wrong module, and the exit code
 // and stderr are carried because they are the only thing that distinguishes them in practice.
-test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_console() -> Bool {
+test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_console() -> Bool  {
   let failed = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(
@@ -80,7 +80,7 @@ test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_co
 // THE PROBE NEVER BOOTS THE BUILT ARTIFACT. A root drive is attached read-write, so booting the
 // image itself would mutate the bytes whose digest the build receipt recorded. The red is a probe
 // rootfs path equal to the image path.
-test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool {
+test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool  {
   runner_microvm_boot_probe_rootfs(root: "/r")
     != "/r/images/ubuntu-24.04-aarch64-runner-2.336.0.ext4"
 }
@@ -96,7 +96,7 @@ test fn the_probe_boots_a_copy_rather_than_the_built_image() -> Bool {
 // and the emptiness it was trying to catch is already covered structurally by
 // a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does, which counts the interfaces
 // rather than matching serialized bytes.
-test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
+test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool  {
   let doc = firecracker_vm_config_document(
     config: runner_microvm_vm_config(
       rootfs_path: "/r/probe/probe-rootfs.ext4",
@@ -116,7 +116,7 @@ test fn the_config_document_carries_upstreams_own_key_spelling() -> Bool {
 
 // `--no-api` IS PART OF THE OPERATION. Without it Firecracker binds its API socket and WAITS for an
 // InstanceStart nobody sends, so the step would report a hang rather than a boot.
-test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
+test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool  {
   let c = firecracker_run_config_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
   c.program.invocation as String == "/fc/firecracker"
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
@@ -135,7 +135,7 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
 // that DISCARDS stdout on a non-admitted exit and then labelled the surviving stderr "the console" --
 // a fabricated label over missing evidence. The red here is any regression back to that: the panic
 // text must reach the verdict.
-test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -> Bool {
+test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -> Bool  {
   let expired = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(
@@ -157,7 +157,7 @@ test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -
 // THE DEADLINE ESCALATES TO KILL. A bare `timeout` sends TERM and then waits, so a wedged VMM
 // outlives the bound it was supposed to be under -- a deadline the subject can decline is the escape
 // hatch DESIGN section 5 refuses. The red is a builder that drops --kill-after.
-test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
+test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool  {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
   c.program.invocation as String == "timeout"
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
@@ -169,7 +169,7 @@ test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
 // readback with and without the agent's GuestBooted marker: only the marked console is a boot of
 // this image's agent. The marker is produced by the emitter's own line builder, so an emitter edit
 // the reader does not follow reds here.
-test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool {
+test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool  {
   let marker = guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image)
   let marked = guest_agent_boot_verdict(
     runner: actions_runner_release_2_336_0,

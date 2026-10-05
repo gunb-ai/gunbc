@@ -254,7 +254,7 @@ data exittype_cgroup_lifecycle_intent: RunnerUnitLifecycleIntent = RunnerUnitLif
 // ExitType=main, with a listener that is a grandchild of MainPID -- a microVM does not close the
 // orphan class, it relocates the orphan to the VMM. The admission must refuse, and refuse with
 // THAT cause rather than a generic no.
-test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
+test fn orphanable_unit_refuses_the_microvm_migration() -> Bool  {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -270,7 +270,7 @@ test fn orphanable_unit_refuses_the_microvm_migration() -> Bool {
 
 // THE INCIDENT FIXTURE AS A RED: the configuration the previous revision admitted must now refuse,
 // with the orphan cause, or a revert to it would read green.
-test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
+test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool  {
   admission_is_orphan_refusal(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -286,7 +286,7 @@ test fn exittype_cgroup_unit_refuses_the_microvm_migration() -> Bool {
 
 // THE POSITIVE CONTROL. Same VM, same transport, the declared intent (ExitType=main, KillMode=control-group): admitted. Without this
 // arm the refusal above would be satisfied by an admission that refuses everything.
-test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
+test fn main_exit_teardown_admits_the_same_microvm() -> Bool  {
   admission_is_admitted(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -304,7 +304,7 @@ test fn main_exit_teardown_admits_the_same_microvm() -> Bool {
 // specimens on srv4 all have one shape: an orphaned listener from a previous incarnation deletes
 // .credentials from the slot directory a LIVE job is using. A microVM that reproduced that carrier
 // would reproduce the defect inside a nicer box.
-test fn shared_slot_directory_credential_is_refused() -> Bool {
+test fn shared_slot_directory_credential_is_refused() -> Bool  {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -330,7 +330,7 @@ fn two_root_config() -> FirecrackerVmConfig {
   }
 }
 
-test fn two_root_devices_is_a_malformed_vm() -> Bool {
+test fn two_root_devices_is_a_malformed_vm() -> Bool  {
   admission_is_malformed_refusal(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -346,13 +346,13 @@ test fn two_root_devices_is_a_malformed_vm() -> Bool {
 
 // THE DERIVED CONFIGURATION IS WELL FORMED BY CONSTRUCTION, WHICH IS WHAT MAKES THE ARM ABOVE A
 // PROPERTY OF HAND-AUTHORED CONFIGS RATHER THAN A HAZARD OF THIS MODULE'S OWN CONSTRUCTOR.
-test fn derived_config_names_exactly_one_root() -> Bool {
+test fn derived_config_names_exactly_one_root() -> Bool  {
   firecracker_config_has_single_root(config: mvp_sized_config())
 }
 
 // THE DELTA THE MIGRATION BUYS, STATED AS A COMPARISON RATHER THAN AS A CLAIM. The current slot
 // profile is empty by measurement, so it fails the same requirement the microVM satisfies.
-test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> Bool {
+test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> Bool  {
   runner_microvm_provides_dedicated_kernel()
     && !isolation_profile_satisfies(
       required: IsolationProfile { guarantees: [DedicatedKernel] },
@@ -366,7 +366,7 @@ test fn microvm_provides_a_dedicated_kernel_and_the_current_slot_does_not() -> B
 // directly, so Firecracker is MainPID. Killing MainPID destroys the guest, so no kill mode can
 // leave an orphan and the guarantee is not required. A model that refused this would be refusing a
 // correct design and calling it safety.
-test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
+test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool  {
   admission_is_admitted(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -383,7 +383,7 @@ test fn direct_exec_vmm_is_admitted_under_the_same_orphanable_intent() -> Bool {
 // AND THE PAIR THAT MAKES THE ARM ABOVE LOAD-BEARING RATHER THAN A BLANKET PASS: under the
 // controller topology the SAME intent refuses. The topology is what decides, and it decides both
 // ways -- so neither arm is the constant.
-test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
+test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool  {
   admission_is_admitted(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -409,7 +409,7 @@ test fn topology_is_what_decides_and_it_decides_both_ways() -> Bool {
 
 // A DIRECT-EXEC VMM DOES NOT EXCUSE THE SHARED-CREDENTIAL CARRIER. The two gates are independent
 // facts and the topology must not absorb the other one.
-test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
+test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool  {
   admission_is_credential_refusal(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -439,7 +439,7 @@ test fn direct_exec_still_refuses_the_shared_slot_credential() -> Bool {
 // model that disagrees with a RUNNING artifact -- that needs an observation, and
 // gunbc.runner_microvm_boot_probe's boot_probe_verdict is the comparator that performs it. The
 // Mt. Collins path never invoked it, which is the actual gap.
-test fn guest_image_runner_is_the_cited_release_row() -> Bool {
+test fn guest_image_runner_is_the_cited_release_row() -> Bool  {
   gunbc_runner_guest_image.runner.version == actions_runner_release_2_337_0.version
 }
 
@@ -489,7 +489,7 @@ data witness_unmodeled_reserve: RealizationReserve = ReserveUnmodeled {
 // returned true from its unresolved arm without reaching the admission at all, so it could not
 // fail. This one reaches the admission and fails if the cause stops naming where the quantity is
 // owed.
-test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool {
+test fn the_same_guest_is_refused_under_the_production_reserve() -> Bool  {
   admission_refuses_naming_the_missing_reserve(
     a: runner_microvm_admission(
       cell: witness_admitted_cell(),
@@ -534,19 +534,19 @@ fn admission_of_machine(vcpus: Int, mib: Int) -> RunnerMicroVmAdmission {
 
 // NEGATIVE MEMORY IS REFUSED. This is the authorable red: without the boundary validation this
 // exact config reached GuestFitsWithinCell and then RunnerMicroVmAdmitted.
-test fn a_negative_guest_memory_is_refused() -> Bool {
+test fn a_negative_guest_memory_is_refused() -> Bool  {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: -1))
 }
 
 // ZERO MEMORY IS REFUSED. Asserted separately from the negative case because zero is not caught by
 // a sign test alone and is the value an uninitialised field most plausibly carries.
-test fn a_zero_guest_memory_is_refused() -> Bool {
+test fn a_zero_guest_memory_is_refused() -> Bool  {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: 0))
 }
 
 // A NON-POSITIVE vCPU COUNT IS REFUSED. The admitted arm never validated it, so a guest that could
 // not start was previously admissible on the memory axis alone.
-test fn a_non_positive_vcpu_count_is_refused() -> Bool {
+test fn a_non_positive_vcpu_count_is_refused() -> Bool  {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 0, mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: -2, mib: 4096))
 }
@@ -555,7 +555,7 @@ test fn a_non_positive_vcpu_count_is_refused() -> Bool {
 // that bypasses the shape cannot carry a count Firecracker refuses before boot: 32 is admitted,
 // 33 is the boundary refusal, 64 refuses harder. The range is the pinned release's row
 // (extdeps.virtualization.firecracker firecracker_vcpu_range_v1_16_1), not a literal here.
-test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool {
+test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool  {
   admission_is_admitted(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum), mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: hardware_thread_count_value(t: firecracker_vcpu_range_v1_16_1.maximum) + 1, mib: 4096))
     && admission_is_malformed_refusal(a: admission_of_machine(vcpus: 64, mib: 4096))
@@ -567,7 +567,7 @@ test fn a_vcpu_count_the_pinned_firecracker_refuses_is_a_malformed_vm() -> Bool 
 // by 2^20, so beyond this bound the byte magnitude does not fit the realization's i64 and the
 // comparison would be performed on a wrapped value -- answering the wrong question silently, which
 // is worse than refusing.
-test fn an_unrepresentable_guest_memory_is_refused() -> Bool {
+test fn an_unrepresentable_guest_memory_is_refused() -> Bool  {
   admission_is_malformed_refusal(a: admission_of_machine(vcpus: 4, mib: 9007199254740992))
 }
 
@@ -575,13 +575,13 @@ test fn an_unrepresentable_guest_memory_is_refused() -> Bool {
 // satisfied by an admission that refuses everything. A small positive guest, well inside the cell
 // beside its reserve, is still ADMITTED -- so the wall rejects bad magnitudes rather than rejecting
 // magnitudes.
-test fn a_small_positive_guest_is_still_admitted() -> Bool {
+test fn a_small_positive_guest_is_still_admitted() -> Bool  {
   admission_is_admitted(a: admission_of_machine(vcpus: 2, mib: 1024))
 }
 
 // ARM ONE OF THE FIT PAIR -- SMALLER PASSES. The 4 GiB MVP guest plus a 256 MiB reserve against a
 // 16 GiB cell fits with room to spare. The withdrawn control REFUSED exactly this configuration.
-test fn a_guest_smaller_than_the_cell_envelope_fits() -> Bool {
+test fn a_guest_smaller_than_the_cell_envelope_fits() -> Bool  {
   match guest_memory_fits(
     guest: GuestMemoryRequest { bytes: byte_size(count: 4294967296) },
     reserve: witness_reserve,
@@ -597,7 +597,7 @@ test fn a_guest_smaller_than_the_cell_envelope_fits() -> Bool {
 // A guest equal to the cell's MemoryMax leaves nothing for the VMM process that lives in that cell,
 // so any nonzero reserve puts the pair over. This is the configuration the withdrawn derivation
 // produced and the withdrawn control ADMITTED.
-test fn a_guest_sized_at_the_whole_envelope_is_refused() -> Bool {
+test fn a_guest_sized_at_the_whole_envelope_is_refused() -> Bool  {
   match guest_memory_fits(
     guest: GuestMemoryRequest { bytes: byte_size(count: 17179869184) },
     reserve: witness_reserve,
@@ -611,7 +611,7 @@ test fn a_guest_sized_at_the_whole_envelope_is_refused() -> Bool {
 
 // THE BOUNDARY IS INCLUSIVE AND IT IS ASSERTED, because "fits" and "exactly fills" are one
 // comparison apart and an off-by-one here silently re-admits the defect above.
-test fn a_guest_exactly_filling_the_envelope_with_its_reserve_fits() -> Bool {
+test fn a_guest_exactly_filling_the_envelope_with_its_reserve_fits() -> Bool  {
   match guest_memory_fits(
     guest: GuestMemoryRequest { bytes: byte_size(count: 16911433728) },
     reserve: witness_reserve,
@@ -629,7 +629,7 @@ test fn a_guest_exactly_filling_the_envelope_with_its_reserve_fits() -> Bool {
 // runs below zero and the impossibility claim is false. This witness is the reason that branch may
 // not be refactored away as a redundant guard: delete it and the arm below stops being reachable,
 // and the structural guarantee quietly degrades into a wrapping comparison.
-test fn a_reserve_larger_than_the_whole_envelope_admits_no_guest() -> Bool {
+test fn a_reserve_larger_than_the_whole_envelope_admits_no_guest() -> Bool  {
   match guest_memory_fits(
     guest: GuestMemoryRequest { bytes: byte_size(count: 1048576) },
     reserve: ReserveDeclared { bytes: byte_size(count: 34359738368) },
@@ -650,7 +650,7 @@ test fn a_reserve_larger_than_the_whole_envelope_admits_no_guest() -> Bool {
 // so per DESIGN 4b(4) it flips rather than retires. It pins the VALUE, because an allowance that
 // silently became zero would still be ReserveDeclared and would admit a guest with nothing set
 // aside for the VMM -- the exact state the reserve exists to prevent.
-test fn the_production_reserve_is_the_declared_allowance() -> Bool {
+test fn the_production_reserve_is_the_declared_allowance() -> Bool  {
   match gunbc_runner_microvm_realization_reserve() {
     ReserveUnmodeled { cause: _ } => false
     ReserveDeclared { bytes: b } =>
@@ -686,7 +686,7 @@ test fn the_production_reserve_is_the_declared_allowance() -> Bool {
 // cell's remainder beside the reserve, and refuse with both figures otherwise. Both arms are
 // written so the witness is discriminating in whichever state production is in, rather than a
 // probe that has to be rewritten the day the receipt lands.
-test fn the_production_shape_answers_according_to_the_floor_demand_standing() -> Bool {
+test fn the_production_shape_answers_according_to_the_floor_demand_standing() -> Bool  {
   let remainder = byte_size_count(b: gunbc_runner_slot_desired().memory_max) - byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
   match floor_memory_requirement() {
     Absent =>
@@ -750,7 +750,7 @@ test fn the_production_shape_answers_according_to_the_floor_demand_standing() ->
 // THE REFUSAL'S EXECUTED RED IS NOT LOST BY THE FLIP. The either-state witness above keeps the
 // refusal arm's triple asserted whenever production is back over the line, and the supplied-input
 // controls in this module drive ShapeRefusedWorkMemoryExceedsCellRemainder directly.
-test fn the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt() -> Bool {
+test fn the_production_shape_resolves_on_the_memory_remainder_since_the_2026_09_23_receipt() -> Bool  {
   match floor_memory_requirement() {
     Absent => false
     Present { value: need } =>
@@ -781,7 +781,7 @@ fn allowance_is(bytes: ByteSize) -> Bool {
 // gunbc_runner_microvm_task_ceiling. The join is on the SERIALIZED unit, so a unit that dropped the
 // directive, or a shape that read a different row, reds here. What this does not establish is
 // pids.max as applied inside a booted guest -- that readback is the first guest attempt's.
-test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
+test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool  {
   let unit = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: "/dev/vdb" as NonEmptyStr))
   string_contains(s: unit, pattern: join(["TasksMax=", to_string(gunbc_runner_microvm_task_ceiling())], ""))
     && gunbc_runner_microvm_task_ceiling() == gunbc_runner_slot_desired().tasks_max
@@ -801,7 +801,7 @@ test fn the_task_ceiling_is_applied_as_the_guest_units_tasks_max() -> Bool {
 // RECEIPT, and underivable rather than zero while nothing is measured -- so a change to the receipt
 // moves the allowance without anyone editing a literal, and an absent receipt cannot read as "no
 // cache needed".
-test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat() -> Bool {
+test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat() -> Bool  {
   match gunbc_floor_held_set_standing() {
     HeldSetUnmeasured { instrument: _ } =>
       match gunbc_runner_microvm_guest_cache_allowance() {
@@ -829,7 +829,7 @@ test fn the_guest_cache_allowance_derives_from_the_receipts_last_unstalled_beat(
 // refused (as a torn beat with shmem = file + 1 would make it) refuses the shape on its own arm,
 // after the reserve is judged and before any remainder is compared -- a zero here would have
 // admitted a guest with no cache and reported it as a fit.
-test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shape() -> Bool {
+test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shape() -> Bool  {
   match runner_microvm_shape(
     work: floor_like_work(),
     storage: fixture_storage(),
@@ -851,7 +851,7 @@ test fn a_torn_beat_with_more_shmem_than_file_refuses_the_allowance_and_the_shap
 
 // THE FLEET VM CONFIG CARRIES THE SHAPE'S ANSWER AND NOT A DEFAULT: unresolved exactly when the
 // shape refuses, with the refusal's text, and resolved exactly when it resolves.
-test fn the_production_vm_config_mirrors_the_shape_resolution() -> Bool {
+test fn the_production_vm_config_mirrors_the_shape_resolution() -> Bool  {
   let config = gunbc_runner_microvm_vm_config(
     rootfs_path: "/var/lib/gunbc/cell/rootfs.ext4",
     jit_config_path: "/var/lib/gunbc/cell/jitcfg.ext4",
@@ -878,7 +878,7 @@ test fn the_production_vm_config_mirrors_the_shape_resolution() -> Bool {
 // rather than only when something goes wrong. It does not follow that such a guest is throttled
 // from its first instant -- reclaim responds to actual usage, and neither the guest nor the VMM
 // touches its whole allocation on arrival.
-test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool {
+test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool  {
   let guest = byte_size_count(b: mebibyte_to_byte_size(m: gunbc_runner_microvm_declared_size.memory))
   let allowance = byte_size_count(b: gibibyte_to_byte_size(gunbc_runner_microvm_declared_realization_allowance))
   guest + allowance <= byte_size_count(b: gunbc_runner_slot_desired().memory_high)
@@ -888,7 +888,7 @@ test fn the_declared_guest_plus_allowance_sits_under_the_cell_throttle() -> Bool
 // quota is an Absolute entitlement of the same thread count; the unbounded quota (the 2026-09-19
 // policy, and the production row) is RelativeOnly with a cause that names that policy. If either
 // arm ever maps to the other, the slice quota and the guest-sizing entitlement have forked.
-test fn the_cell_entitlement_is_the_slot_quota_arm_for_arm() -> Bool {
+test fn the_cell_entitlement_is_the_slot_quota_arm_for_arm() -> Bool  {
   match gunbc_runner_slot_desired().cpu_quota {
     CpuQuotaResolved { threads: want } =>
       match gunbc_runner_microvm_cell_cpu_entitlement() {
@@ -1004,7 +1004,7 @@ fn shape_of(
 
 // THE ACCEPT ARM: eight vCPUs from the Work's thread row, 27 GiB of guest
 // memory as the whole remainder in MiB, the workspace grant, and the cell's task row.
-test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool {
+test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool  {
   match shape_of(
     work: floor_like_work(),
     storage: fixture_storage(),
@@ -1023,7 +1023,7 @@ test fn the_floor_work_resolves_to_a_shape_inside_a_cell_that_holds_it() -> Bool
 
 // THE DERIVED GUEST FITS BY CONSTRUCTION: floor division to MiB never rounds the remainder up, so
 // the existing containment law admits it with the same reserve and envelope it was derived from.
-test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -> Bool {
+test fn the_derived_guest_satisfies_the_containment_law_it_was_derived_under() -> Bool  {
   match shape_of(
     work: floor_like_work(),
     storage: fixture_storage(),
@@ -1080,15 +1080,15 @@ fn relative_only_refuses_unsupported(threads: Int) -> Bool {
   }
 }
 
-test fn a_relative_only_entitlement_admits_the_works_threads_within_the_vmm_range() -> Bool {
+test fn a_relative_only_entitlement_admits_the_works_threads_within_the_vmm_range() -> Bool  {
   relative_only_resolves_with(threads: 8) && relative_only_resolves_with(threads: 32)
 }
 
-test fn a_thread_count_past_the_pinned_firecracker_range_refuses_the_shape() -> Bool {
+test fn a_thread_count_past_the_pinned_firecracker_range_refuses_the_shape() -> Bool  {
   relative_only_refuses_unsupported(threads: 33) && relative_only_refuses_unsupported(threads: 64)
 }
 
-test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_counts() -> Bool {
+test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_counts() -> Bool  {
   match shape_of(
     work: work_with(threads: 12, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 8)))),
     storage: fixture_storage(),
@@ -1110,7 +1110,7 @@ test fn a_work_wanting_more_threads_than_the_cell_entitles_is_refused_with_both_
 // LOAD-BEARING: the envelope field gunbc.fabric_witness_run filled on 2026-09-19 is the one this
 // arm reads, so removing it takes the production shape to this refusal rather than to a guest
 // sized against nothing.
-test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool {
+test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool  {
   match shape_of(
     work: work_with(threads: 8, envelope: unstated_envelope()),
     storage: fixture_storage(),
@@ -1127,7 +1127,7 @@ test fn a_work_with_an_unstated_memory_demand_cannot_be_given_a_shape() -> Bool 
   }
 }
 
-test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_figures() -> Bool {
+test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_figures() -> Bool  {
   match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 28)))),
     storage: fixture_storage(),
@@ -1151,7 +1151,7 @@ test fn a_work_demanding_more_than_the_cell_remainder_is_refused_with_all_three_
 // equals the 27 GiB remainder and is admitted; 27 GiB plus the allowance is one gibibyte over and
 // refuses. A fold that forgot the allowance would admit the second, and one that used a strict
 // comparison would refuse the first.
-test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitted_and_one_over_is_not() -> Bool {
+test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitted_and_one_over_is_not() -> Bool  {
   let exact = match shape_of(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: gibibyte_to_byte_size(gibibyte(count: 26)))),
     storage: fixture_storage(),
@@ -1180,7 +1180,7 @@ test fn a_work_whose_demand_plus_allowance_exactly_fills_the_remainder_is_admitt
 }
 
 
-test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool {
+test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() -> Bool  {
   match shape_of(
     work: floor_like_work(),
     storage: fixture_storage(),
@@ -1197,7 +1197,7 @@ test fn a_reserve_larger_than_the_cell_refuses_the_shape_before_any_remainder() 
   }
 }
 
-test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
+test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool  {
   match shape_of(
     work: floor_like_work(),
     storage: fixture_storage(),
@@ -1214,7 +1214,7 @@ test fn an_unmodeled_reserve_refuses_the_shape_naming_its_cause() -> Bool {
   }
 }
 
-test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool {
+test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool  {
   match shape_of(
     work: floor_like_work(),
     storage: StorageRequirement { min_bytes: gibibyte_to_byte_size(gibibyte(count: 5)), persistence: Ephemeral },
@@ -1235,7 +1235,7 @@ test fn a_storage_demand_the_workspace_grant_does_not_hold_is_refused() -> Bool 
 
 // THE FLOOR'S OWN STORAGE DEMAND FITS THE GRANT, stated as a control rather than assumed: the
 // measured components in gunbc.floor_demand round to 2 GiB against a 4 GiB workspace.
-test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool {
+test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool  {
   match floor_storage_demand() {
     StorageDemandUnrepresentable { cause: _ } => false
     StorageDemandStated { requirement: r } =>
@@ -1248,7 +1248,7 @@ test fn the_floor_storage_demand_fits_the_workspace_grant() -> Bool {
 // admit; the subtraction form refuses with the three figures. The cell is the bound plus the 1 GiB
 // fixture reserve less one... which is itself unrepresentable, so the control supplies the
 // remainder directly through a zero reserve: envelope = int_inclusive_max, reserve = 0.
-test fn a_demand_at_the_representable_bound_with_a_one_byte_allowance_refuses_rather_than_wrapping() -> Bool {
+test fn a_demand_at_the_representable_bound_with_a_one_byte_allowance_refuses_rather_than_wrapping() -> Bool  {
   match runner_microvm_shape(
     work: work_with(threads: 8, envelope: memory_envelope(min_bytes: byte_size(int_inclusive_max()))),
     storage: fixture_storage(),
@@ -1273,7 +1273,7 @@ test fn a_demand_at_the_representable_bound_with_a_one_byte_allowance_refuses_ra
 // has no tap because the per-slot network is a later slice; before this coproduct the only way to
 // express that guest was to name a device that does not exist. Both arms are driven so the empty
 // list is a MODELED absence rather than a builder that quietly dropped an interface.
-test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> Bool {
+test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> Bool  {
   let without = runner_microvm_vm_config(
     rootfs_path: "/var/tmp/fcmvp/rootfs.ext4",
     jit_config_path: "/var/tmp/fcmvp/jitcfg.ext4",
@@ -1289,7 +1289,7 @@ test fn a_guest_without_a_tap_carries_no_interface_and_one_with_a_tap_does() -> 
 // THE CORE COUNT IS A POLICY AND IT IS POSITIVE. cores_per_slot no longer resolves or refuses --
 // it is authored (gunbc_runner_cores_per_slot_policy) -- so the only thing left to keep true is
 // that the policy is not zero, which would admit every core against no slot at all.
-test fn the_cell_core_count_is_a_positive_policy() -> Bool {
+test fn the_cell_core_count_is_a_positive_policy() -> Bool  {
   hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) > 0
 }
 
@@ -1319,7 +1319,7 @@ fn witness_admitted_cell() -> CellIncarnationAdmission {
 // A QUARANTINED CELL REFUSES AN OTHERWISE ADMISSIBLE VM, AND REFUSES WITH THE CELL'S CAUSE. The
 // VM, intent and reserve are exactly those of the admitted controls, so the only thing this varies
 // is the readiness the admission consumes -- the frontier #11662 declared here, now closed.
-test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
+test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool  {
   let quarantined = runner_microvm_admission(
     cell: cell_incarnation_admission(store: witness_store(cell: "srv1-01", readiness_ready: false), cell: "srv1-01" as CellId, allocation_generation: 1),
     topology: VmmUnderLifecycleController,
@@ -1348,7 +1348,7 @@ test fn a_quarantined_cell_refuses_an_otherwise_admissible_microvm() -> Bool {
 // THE THREE NON-ADMITTING ARMS STAY DISTINCT THROUGH THE ADMISSION (review 68119): an unreadable
 // store is a HOST refusal, an in-flight record is RECOVERY REQUIRED, and neither is the quarantine arm
 // above. A collapse into one refusal would still pass the quarantine witness and fail this one.
-test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool {
+test fn host_withdrawal_and_recovery_required_are_not_a_cell_refusal() -> Bool  {
   let host = match runner_microvm_admission(
     cell: cell_incarnation_admission(store: StoreUnreadable { reason: "EACCES" as NonEmptyStr }, cell: "srv1-01" as CellId, allocation_generation: 1),
     topology: VmmUnderLifecycleController,

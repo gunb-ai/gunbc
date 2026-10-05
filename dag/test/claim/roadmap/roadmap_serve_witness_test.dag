@@ -117,7 +117,7 @@ fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool 
   }
 }
 
-test fn witness_serve_table_selection() -> Bool {
+test fn witness_serve_table_selection() -> Bool  {
   selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
     && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
     && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
@@ -142,7 +142,7 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
 }
 
-test fn witness_asset_route_serves_modeled_js() -> Bool {
+test fn witness_asset_route_serves_modeled_js() -> Bool  {
   let r = roadmap_serve_invoke(
     handler: DispatchAssetHandler,
     params: [],
@@ -175,12 +175,12 @@ fn lab_link_selects_something(path: String) -> Bool {
   }
 }
 
-test fn witness_every_lab_nav_link_resolves() -> Bool {
+test fn witness_every_lab_nav_link_resolves() -> Bool  {
   count(instrument_lab_links) == 4
     && all(instrument_lab_links, l => lab_link_selects_something(path: l.path))
 }
 
-test fn witness_dispatch_param_bound() -> Bool {
+test fn witness_dispatch_param_bound() -> Bool  {
   match serve_select_route(table: live_table_or_empty(), method: POST, path: "/dispatch/2-cd-transport") {
     SelectedDynamic { handler: _, params: ps } =>
       path_param_value(params: ps, name: "node_id") == "2-cd-transport"
@@ -190,7 +190,7 @@ test fn witness_dispatch_param_bound() -> Bool {
   }
 }
 
-test fn witness_dispatch_get_folds_405() -> Bool {
+test fn witness_dispatch_get_folds_405() -> Bool  {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
     MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == POST)
     SelectedStatic { route: _ } => false
@@ -208,12 +208,12 @@ fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest<Request
   }
 }
 
-test fn witness_unknown_path_folds_404_response() -> Bool {
+test fn witness_unknown_path_folds_404_response() -> Bool  {
   let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"), release_revision: deploy_witness_release_revision)
   r.status == 404
 }
 
-test fn witness_405_response_carries_allowed() -> Bool {
+test fn witness_405_response_carries_allowed() -> Bool  {
   let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
@@ -240,7 +240,7 @@ fn status_is_typed(s: Int) -> Bool {
   s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
 }
 
-test fn witness_dispatch_status_total() -> Bool {
+test fn witness_dispatch_status_total() -> Bool  {
   belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
     && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
     && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
@@ -259,7 +259,7 @@ test fn witness_dispatch_status_total() -> Bool {
     && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
-test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
+test fn witness_preview_dispatch_refuses_before_effects() -> Bool  {
   let r = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
@@ -274,7 +274,7 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
 
-test fn witness_instance_route_names_posture_and_paths() -> Bool {
+test fn witness_instance_route_names_posture_and_paths() -> Bool  {
   let r = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "GET",
@@ -309,7 +309,7 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
 // can, and never needs editing again.\n\nThe non-emptiness conjunct stays because equality
 // between two empty lists would hold vacuously.
 
-test fn witness_live_table_builds_ready_routes() -> Bool {
+test fn witness_live_table_builds_ready_routes() -> Bool  {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuilt { table: t } =>
       count(t.routes) > 0 && count(t.routes) == count(roadmap_serve_route_specs())
@@ -321,7 +321,7 @@ test fn witness_live_table_builds_ready_routes() -> Bool {
 // build fold must REFUSE the whole table (typed, carrying the broken raw), never fabricate an empty
 // template that would silently match '/'.
 
-test fn witness_malformed_route_literal_refuses_table() -> Bool {
+test fn witness_malformed_route_literal_refuses_table() -> Bool  {
   let specs = [
     ServedRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
     ServedRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
@@ -332,7 +332,7 @@ test fn witness_malformed_route_literal_refuses_table() -> Bool {
   }
 }
 
-test fn witness_unknown_method_refuses() -> Bool {
+test fn witness_unknown_method_refuses() -> Bool  {
   match parse_http_method_label(label: "BREW") {
     UnknownMethod { label: l } => l == "BREW"
     KnownMethod { method: _ } => false
@@ -344,12 +344,12 @@ test fn witness_unknown_method_refuses() -> Bool {
 // method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The
 // two arms must stay distinct statuses; collapsing them reds this row.
 
-test fn witness_unknown_method_folds_501_response() -> Bool {
+test fn witness_unknown_method_folds_501_response() -> Bool  {
   let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", tailscale_identity: "", release_revision: deploy_witness_release_revision)
   r.status == 501 && string_contains(s: r.body, pattern: "BREW")
 }
 
-test fn witness_known_methods_parse() -> Bool {
+test fn witness_known_methods_parse() -> Bool  {
   match parse_http_method_label(label: "GET") {
     KnownMethod { method: m } => m == GET
     UnknownMethod { label: _ } => false
@@ -366,7 +366,7 @@ test fn witness_known_methods_parse() -> Bool {
 // chat unfurlers, browser prefetch -- issues exactly that request, and if it decided, an approval
 // would be spent with an audit row naming the operator.
 
-test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
+test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "GET",
     path: "/approve/abc123",
@@ -388,7 +388,7 @@ test fn a_get_at_the_approval_url_renders_and_does_not_decide() -> Bool {
 // pins that the refusal is 400 BEFORE any of those reads -- the ordering that also protects the
 // live route from spending effects on the way to a refusal. Redemption of a real segment is
 // covered by the store witness (redeem_over_store) and the live probe.
-test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool {
+test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approve/abc123",
@@ -409,7 +409,7 @@ test fn a_post_at_the_approval_url_refuses_rather_than_reporting_a_decision() ->
 // (test.claim.approval_broker_serve_witness the_writer_reaches_the_submission_fold_rather_than_the_gate).
 // THE RED: drop the admission consult from approval_submit_response and this route parses the
 // body and answers 400 "submission unreadable".
-test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
+test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approvals",
@@ -429,7 +429,7 @@ test fn an_unreadable_submission_is_refused_before_any_host_read() -> Bool {
 // still pass. The positive half (a modeled proxy path carries the observation) is
 // test.claim.request_authentication_witness's subject; the wiring between them is one function
 // call, roadmap_serve_request_security.
-test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool {
+test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approve/abc123",
@@ -442,7 +442,7 @@ test fn a_tailnet_header_without_readback_reaches_the_approval_handler_as_absent
 }
 
 // AND A GENUINELY ABSENT HEADER IS THE SAME ANSWER: no observation, no identity, no default.
-test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
+test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approve/abc123",
@@ -454,7 +454,7 @@ test fn an_absent_header_arrives_at_the_handler_as_absent() -> Bool {
     && !string_contains(s: r.body, pattern: "briansrls")
 }
 
-test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool {
+test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> Bool  {
   let r = roadmap_serve_respond(
     method_label: "POST",
     path: "/approvals",
@@ -467,7 +467,7 @@ test fn a_garbage_approval_submission_is_400_and_names_the_unreadable_body() -> 
     && !string_contains(s: r.body, pattern: "http")
 }
 
-test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool {
+test fn an_unfiled_escalation_status_is_text_plain_standing() -> Bool  {
   let body = filed_approval_status_text(status: StatusNotFiled)
   string_contains(s: body, pattern: "standing=")
     && !string_contains(s: body, pattern: "{")
@@ -530,7 +530,7 @@ fn serve_over_plan_declaring(
   )
 }
 
-test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
+test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool  {
   let r = serve_over_plan(
     plan: caller_supplied_plan_fixture(),
     path: roadmap_site_roadmap_url_path as String,
@@ -540,7 +540,7 @@ test fn witness_roadmap_md_answers_from_the_supplied_plan() -> Bool {
     && !string_contains(s: r.body, pattern: public_plan_section_title())
 }
 
-test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
+test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool  {
   let r = serve_over_plan(
     plan: caller_supplied_plan_fixture(),
     path: roadmap_site_dispatch_url_path as String,
@@ -551,7 +551,7 @@ test fn witness_dispatch_json_answers_from_the_supplied_plan() -> Bool {
 
 // A plan that failed to project refuses in ITS OWN vocabulary rather than serving an empty
 // roadmap: the detail the caller handed over is what the reader sees.
-test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
+test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool  {
   let detail = "the caller's plan carrier could not be read"
   let md = serve_over_plan(
     plan: RoadmapAuthorityProjectionRefused { detail: detail },
@@ -572,7 +572,7 @@ test fn witness_supplied_plan_refusal_travels_to_the_wire() -> Bool {
 // would make every one of them vacuous while looking identical to a pass on the negative
 // assertions. This one asks an unrouted path and requires the 404, so "the responder answered from
 // the supplied plan" stays distinguishable from "the responder never reached a handler".
-test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool {
+test fn witness_an_unrouted_path_is_refused_not_answered() -> Bool  {
   let r = serve_over_plan(plan: caller_supplied_plan_fixture(), path: "/roadmap.md")
   r.status == 404
 }
@@ -630,7 +630,7 @@ fn daily_page_html_over_plan(plan: RoadmapAuthorityProjection) -> String {
 // refused on that ONE route (review 63390). This is the executing evidence for that arm, and for
 // its other half: refusing / must not cost the routes whose plan DOES reach them.
 
-test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
+test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool  {
   let r = serve_over_plan_declaring(
     plan: caller_supplied_plan_fixture(),
     daily_body: DailyBodyAuthorityUnknown,
@@ -645,7 +645,7 @@ test fn witness_undeclared_daily_body_refuses_rather_than_answering() -> Bool {
 // THE POSITIVE CONTROL, without which the refusal above is satisfiable by refusing everything: a
 // caller that cannot vouch for the daily body still gets every other route answered from its own
 // plan, and the refusal is located on / alone.
-test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
+test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool  {
   let md = serve_over_plan_declaring(
     plan: caller_supplied_plan_fixture(),
     daily_body: DailyBodyAuthorityUnknown,
@@ -659,7 +659,7 @@ test fn witness_undeclared_daily_body_costs_no_other_route() -> Bool {
 // THE ISSUE DETAIL ROUTES (owner ruling 2026-09-24): the issue's detail page is a real served
 // route — GET /issue/<node-id> selects the detail handler, POST /issue/<node-id>/assign selects
 // the durable-assign handler. Same table, same selection idiom as every other route.
-test fn witness_issue_detail_route_selects() -> Bool {
+test fn witness_issue_detail_route_selects() -> Bool  {
   selects(method: GET, path: "/issue/some-node", want: IssueDetailPageHandler)
     && selects(method: GET, path: "/issue/some-node/assignment", want: IssueAssignmentContextHandler)
     && selects(method: POST, path: "/issue/some-node/assign", want: IssueAssignHandler)
@@ -670,7 +670,7 @@ test fn witness_issue_detail_route_selects() -> Bool {
 // THE ASSIGN BODY'S WIRE SHAPE (the form ships enctype text/plain): a field reads as its own
 // name=value line, absent reads as empty; no percent-encoding exists to undo, and a value never
 // bleeds across lines.
-test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
+test fn witness_assign_form_field_reads_urlencoded_body() -> Bool  {
   let body = "expected_revision=abc123&return_to=&assignee=briansrls%40gunb.ai"
   issue_form_field(body: body, name: "assignee") == "briansrls@gunb.ai"
     && issue_form_field(body: body, name: "expected_revision") == "abc123"
@@ -683,7 +683,7 @@ test fn witness_assign_form_field_reads_urlencoded_body() -> Bool {
 // and a request WITHOUT a Google session is 403 at the write law's authentication axis —
 // whether or not a tailnet header is present (the 2026-09-25 ruling's no-fallback law: tailnet
 // transport alone authorizes no write), and the 403 precedes even selector validation.
-test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool {
+test fn witness_assign_route_refuses_404_and_403_before_any_host_read() -> Bool  {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
@@ -730,7 +730,7 @@ fn fixture_human_ref() -> PrincipalRef {
 
 // CONTROL 3, at the response seam: a HUMAN assignee NEVER dispatches — the follow-through records
 // the fact and stops, with no launch vocabulary anywhere in the body.
-test fn witness_human_assignment_never_dispatches() -> Bool {
+test fn witness_human_assignment_never_dispatches() -> Bool  {
   let r = serve_assignment_launch_follow_through_over(
     instance: srv2_preview_dashboard_instance(),
     plan: caller_supplied_plan_fixture(),
@@ -750,7 +750,7 @@ test fn witness_human_assignment_never_dispatches() -> Bool {
 // opens with the recorded fact, the issue STAYS with Fabric, and the waiting condition is located
 // in the launch's typed vocabulary (label + reason), never "assignment failed". The status is the
 // launch refusal's own mapping.
-test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool {
+test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> Bool  {
   let blocked = serve_fabric_assignment_response(
     node_id: "some-node",
     assignee_display: principal_ref_label(p: fabric_workflow_principal),
@@ -777,7 +777,7 @@ test fn witness_fabric_refusal_leaves_fabric_assigned_and_locates_the_wait() -> 
 
 // CONTROL 4's success arm: an admitted fabric request names the session and points at the Work tab
 // — the page reflects the attempt through the existing workflow machinery.
-test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
+test fn witness_fabric_assignment_admitted_names_the_session() -> Bool  {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
     assignee_display: principal_ref_label(p: fabric_workflow_principal),
@@ -793,7 +793,7 @@ test fn witness_fabric_assignment_admitted_names_the_session() -> Bool {
 // RE-ASSIGNING THE SAME REVISION JOINS THE EXISTING REQUEST: the admission's already-live arm
 // refuses the duplicate attempt, and the response says the assignment stands beside the refusal —
 // one work request, never a second attempt.
-test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
+test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool  {
   let r = serve_fabric_assignment_response(
     node_id: "some-node",
     assignee_display: principal_ref_label(p: fabric_workflow_principal),
@@ -810,7 +810,7 @@ test fn witness_reassign_same_revision_joins_the_existing_request() -> Bool {
 // THE COMMENT BODY'S WIRE SHAPE: the body rides LAST (markdown freely carries newlines) — the
 // parse cuts at the FIRST body= opener and keeps everything after it verbatim, including a
 // literal "body=" inside the text or trailing newlines; a wire with no body field reads "".
-test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_verbatim() -> Bool {
+test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_verbatim() -> Bool  {
   let with_key = "key=abc-123&expected_revision=&body=first+line%0Asecond+line%0Abody%3D+not+a+field"
   let keyless = "body=just the body"
   let trailing_newlines = "key=k&body=line%0A%0A"
@@ -825,7 +825,7 @@ test fn witness_comment_body_parse_cuts_at_the_first_field_and_keeps_markdown_ve
 // THE COMMENT ROUTE'S EARLY REFUSALS refuse before any host read (hermetic): an unknown issue is
 // 404, and a request WITHOUT a Google session is 403 at the write law's authentication axis —
 // tailnet header or not — with the 403 preceding even the empty-body validation.
-test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool {
+test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool  {
   let unknown = roadmap_serve_respond_for_instance(
     instance: srv2_preview_dashboard_instance(),
     method_label: "POST",
@@ -869,7 +869,7 @@ test fn witness_comment_route_refuses_404_and_403_before_any_host_read() -> Bool
 // THE RECORDED RESPONSE names the deep link — the FIRST WRITE and the RETRY share its spelling,
 // so the client re-anchors instead of re-posting (control 6's write-side half: a retry of either
 // shape reads back the same address).
-test fn witness_comment_recorded_response_names_the_deep_link() -> Bool {
+test fn witness_comment_recorded_response_names_the_deep_link() -> Bool  {
   let comments = [
     IssueComment { ordinal: 1, comment: "k1" as NonEmptyStr, author: EventPrincipalAuthenticated { ref: fixture_human_ref() }, body: "one", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "t1", edited_at: "", deleted: false },
     IssueComment { ordinal: 2, comment: "k2" as NonEmptyStr, author: EventPrincipalAuthenticated { ref: fixture_human_ref() }, body: "two", visibility: "public" as NonEmptyStr, parent_comment: none, created_at: "t2", edited_at: "", deleted: false },
@@ -936,7 +936,7 @@ fn witness_auth_session_without_picture() -> AuthenticatedSession {
 // logout routes land with the seed's response-header transport (cli_run serve_write_response
 // writes the handler's Location and Set-Cookie lines), so each path selects its handler rather
 // than no route. RED if a login path stops selecting, or selects another handler.
-test fn the_session_and_login_routes_select_their_handlers() -> Bool {
+test fn the_session_and_login_routes_select_their_handlers() -> Bool  {
   match roadmap_serve_route_table_build() {
     ServedRouteTableBuildRefused { raw: _, segment: _, reason: _ } => false
     ServedRouteTableBuilt { table: t } =>
@@ -962,7 +962,7 @@ test fn the_session_and_login_routes_select_their_handlers() -> Bool {
 // THE SESSION ROUTE RENDERS THE STANDING: anonymous for absence (the pre-login spelling), and
 // the authenticated principal's label and expiry for a live session — a read renders, it
 // never decides.
-test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Bool {
+test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Bool  {
   string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "\"authenticated\": false")
     && !string_contains(s: auth_session_body(evidence: AuthAbsent), pattern: "principal:")
     && string_contains(s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }), pattern: "\"authenticated\": true")
@@ -976,7 +976,7 @@ test fn the_session_route_renders_anonymous_and_authenticated_standings() -> Boo
 // and every non-authenticated standing — answers with NO such member at all: absence is the
 // member's ABSENCE, never an empty string standing in for none, and the client renders
 // initials on absence, never an identity claim from a hole in the wire.
-test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one() -> Bool {
+test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one() -> Bool  {
   string_contains(
     s: auth_session_body(evidence: GoogleOidcSession { session: witness_auth_session() }),
     pattern: "\"picture\": \"https://lh3.googleusercontent.com/a/avatar-sub-1\"",
@@ -995,7 +995,7 @@ test fn the_session_wire_carries_the_picture_only_when_the_profile_projects_one(
 
 // Anonymous context reads expose no token or history, and an authenticated request for
 // an unknown issue refuses before touching the event store.
-test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> Bool {
+test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> Bool  {
   let anonymous = serve_issue_assignment_context_over(
     instance: srv2_preview_dashboard_instance(), plan: caller_supplied_plan_fixture(), params: [],
     request: ServeHttpRequest { method: GET, path: "/issue/missing/assignment", body: "",
@@ -1029,7 +1029,7 @@ test fn witness_inline_assignment_context_refuses_without_session_or_issue() -> 
 // projection are deleted, and these two claims are replaced by the standing regression control that
 // this table answers NOTHING for the four approval (method, path) pairs.
 
-test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool {
+test fn roadmap_approval_rows_are_projected_from_the_broker() -> Bool  {
   let projected = roadmap_serve_approval_cutover_route_specs()
   count(projected) == count(approval_broker_route_specs())
     && count(roadmap_serve_route_specs())
@@ -1051,7 +1051,7 @@ fn roadmap_approval_request_lands_on_the_broker_arm(method: HttpMethod, path: St
   }
 }
 
-test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
+test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool  {
   roadmap_approval_request_lands_on_the_broker_arm(method: GET, path: "/approve/esc-1.approve.0badc0de")
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approve/esc-1.approve.0badc0de")
     && roadmap_approval_request_lands_on_the_broker_arm(method: POST, path: "/approvals")
@@ -1061,7 +1061,7 @@ test fn roadmap_approval_paths_are_owned_only_by_the_broker_arm() -> Bool {
 // PLANTED REQUEST HEADERS AT THE READING: a field is selected by its name and nothing else, and
 // the three answers stay apart -- absent, one value, repeated with its count. A field whose name
 // merely contains the one asked for is not it.
-test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool {
+test fn a_planted_header_list_reads_as_absent_single_or_repeated() -> Bool  {
   let headers = [
     ServeRequestHeader { name: "accept", value: "text/html" },
     ServeRequestHeader { name: "x-cookie", value: "gunbc_session=planted" },
@@ -1098,7 +1098,7 @@ fn witness_assignment_context_over_headers(headers: List<ServeRequestHeader>) ->
 // 401, so the field's VALUE reached the cookie decode; two Cookie fields answer 400 before any
 // route runs. Deleting the header reading from the entry, or handing it a field other than
 // Cookie, makes this fail.
-test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool {
+test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_headers() -> Bool  {
   let absent = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "accept", value: "application/json" }])
   let other = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "theme=dark" }])
   let malformed = witness_assignment_context_over_headers(headers: [ServeRequestHeader { name: "cookie", value: "gunbc_session=a; gunbc_session=b" }])
@@ -1117,7 +1117,7 @@ test fn the_served_entry_reads_the_cookie_field_from_its_declared_request_header
 }
 
 
-test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool {
+test fn preference_routes_are_account_scoped_and_require_csrf_before_store_access() -> Bool  {
   let anonymous = ServeHttpRequest { method: GET, path: "/preferences/issues", body: "", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
   let no_csrf = ServeHttpRequest { method: POST, path: "/preferences/issues", body: "preferences=invalid", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: GoogleOidcSession { session: witness_auth_session() } } }
   selects(method: GET, path: "/preferences/issues", want: IssueViewPreferencesReadHandler)
@@ -1130,7 +1130,7 @@ test fn preference_routes_are_account_scoped_and_require_csrf_before_store_acces
     }
 }
 
-test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool {
+test fn issue_query_selects_read_only_route_and_refuses_invalid_views() -> Bool  {
   let request = ServeHttpRequest { method: POST, path: "/issues/query", body: "preferences=invalid&offset=0", security: RequestSecurityContext { access_path: AccessPathLocalDev, authentication: AuthAbsent } }
   selects(method: POST, path: "/issues/query", want: IssueQueryHandler)
     && serve_issue_query(instance: srv2_preview_dashboard_instance(), request: request).status == 400

@@ -179,11 +179,11 @@ fn srv1_desired_population() -> RunnerHostFileDesiredPopulation {
 // moved, the witness has become a restatement, so the literal stays literal.
 data expected_teardown_dropin_text: String = "[Service]\nExitType=main\nKillMode=control-group\n"
 
-test fn the_teardown_dropin_carries_the_declared_pair_and_nothing_else() -> Bool {
+test fn the_teardown_dropin_carries_the_declared_pair_and_nothing_else() -> Bool  {
   gunbc_runner_unit_teardown_dropin_text() == expected_teardown_dropin_text
 }
 
-test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> Bool {
+test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> Bool  {
   (runner_unit_teardown_dropin_path() as String) == "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf"
 }
 
@@ -192,7 +192,7 @@ test fn the_teardown_dropin_lands_in_the_runner_template_dropin_directory() -> B
 // must produce different bytes, and the predicate must refuse it, or the drop-in is a decoration that
 // would read green whatever the fleet did. The ExitType=cgroup drop-in this one replaces is the second
 // red: it is what the fleet carries on 2026-09-18, and a revert to it must not read green.
-test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool {
+test fn the_live_teardown_pair_renders_differently_and_can_orphan() -> Bool  {
   let live = RunnerUnitLifecycleIntent { exit_type: ExitTypeMain, kill_mode: KillModeProcess }
   let exittype_cgroup_dropin = RunnerUnitLifecycleIntent { exit_type: ExitTypeCgroup, kill_mode: KillModeControlGroup }
   serialize_systemd_drop_in(drop_in: runner_unit_teardown_dropin(intent: live)) != expected_teardown_dropin_text
@@ -223,12 +223,12 @@ fn desired_path(subject: String) -> String {
   }
 }
 
-test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool {
+test fn the_needrestart_snippet_defers_runner_units_by_upstream_syntax() -> Bool  {
   desired_content(subject: "needrestart-runner-deferral") == expected_needrestart_text
     && desired_path(subject: "needrestart-runner-deferral") == "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf"
 }
 
-test fn production_desired_population_withholds_uncited_depriv_and_still_delivers_teardown() -> Bool {
+test fn production_desired_population_withholds_uncited_depriv_and_still_delivers_teardown() -> Bool  {
   match runner_host_file_desired_population(host: "srv1" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
@@ -243,7 +243,7 @@ test fn production_desired_population_withholds_uncited_depriv_and_still_deliver
   }
 }
 
-test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool {
+test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_one() -> Bool  {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: w } =>
@@ -257,12 +257,12 @@ test fn the_desired_population_is_the_two_files_and_the_dropin_is_the_rendered_o
 
 // The deferral key is derived from the SAME prefix every slot unit name is derived from, so a rename
 // of the unit family moves both or neither.
-test fn every_slot_unit_name_begins_with_the_deferred_prefix() -> Bool {
+test fn every_slot_unit_name_begins_with_the_deferred_prefix() -> Bool  {
   starts_with(s: runner_unit_name_of_registration(registration_name: "srv1-01" as NonEmptyStr) as String, prefix: runner_unit_prefix)
     && starts_with(s: runner_unit_name_of_registration(registration_name: "srv4-21" as NonEmptyStr) as String, prefix: runner_unit_prefix)
 }
 
-test fn quotemeta_escapes_every_non_word_character_of_the_prefix() -> Bool {
+test fn quotemeta_escapes_every_non_word_character_of_the_prefix() -> Bool  {
   match needrestart_unit_name_prefix(raw: "a.b-c:d_e@f") {
     NeedrestartUnitNamePrefixRefused { cause: _ } => false
     NeedrestartUnitNamePrefixAdmitted { prefix: p } =>
@@ -272,7 +272,7 @@ test fn quotemeta_escapes_every_non_word_character_of_the_prefix() -> Bool {
 
 // An empty prefix would match every service, and a character outside systemd's unit-name alphabet
 // could only come from a caller who meant something other than a unit name. Both refuse.
-test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
+test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool  {
   let empty = match needrestart_unit_name_prefix(raw: "") {
     NeedrestartUnitNamePrefixRefused { cause: _ } => true
     NeedrestartUnitNamePrefixAdmitted { prefix: _ } => false
@@ -290,7 +290,7 @@ test fn a_prefix_that_is_empty_or_outside_the_unit_alphabet_refuses() -> Bool {
 
 // Every desired path is inside the sealed /etc scope, so the write seal admits it; a path outside
 // would refuse at the seal rather than reaching a sudo leg.
-test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
+test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool  {
   match srv1_desired_population() {
     RunnerHostFilesDesiredRefused { cause: _ } => false
     RunnerHostFilesDesired { files: fs, withheld: _ } =>
@@ -304,7 +304,7 @@ test fn every_desired_file_is_admitted_by_the_etc_write_seal() -> Bool {
 // ── The subject ──────────────────────────────────────────────────────────────────────────────────
 
 // The subject carries EVERY desired slot unit, not a representative, and the declared administrator.
-test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_slot_unit() -> Bool {
+test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_slot_unit() -> Bool  {
   match runner_host_file_subject(host: "srv1" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => false
     RunnerHostFileSubjectAdmitted { subject: s } =>
@@ -316,14 +316,14 @@ test fn a_runner_host_admits_as_the_declared_administrator_with_every_desired_sl
   }
 }
 
-test fn a_host_with_no_runner_deploy_row_refuses() -> Bool {
+test fn a_host_with_no_runner_deploy_row_refuses() -> Bool  {
   match runner_host_file_subject(host: "srv9" as HostIdentity) {
     RunnerHostFileSubjectRefused { cause: _ } => true
     RunnerHostFileSubjectAdmitted { subject: _ } => false
   }
 }
 
-test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool {
+test fn an_unmodeled_host_has_no_fragment_to_deliver() -> Bool  {
   match runner_host_file_desired_population(host: "srv9" as HostIdentity) {
     RunnerHostFilesDesiredRefused { cause: _ } => true
     RunnerHostFilesDesired { files: _, withheld: _ } => false
@@ -369,7 +369,7 @@ fn path_is_unreadable(st: RunnerHostFilePathStanding) -> Bool {
 // an ancestor, ELOOP, ENOTDIR, EIO -- and it must reach unreadable. A classifier that collapsed the
 // failed read back to absence reds on that row alone; one that merely separated exit 0 from exit 1
 // would pass every row here, which is why the unread cause is held constant across all three.
-test fn a_metadata_read_that_failed_is_absent_only_when_the_parent_lacks_the_entry() -> Bool {
+test fn a_metadata_read_that_failed_is_absent_only_when_the_parent_lacks_the_entry() -> Bool  {
   let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
   path_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
     && path_is_unreadable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
@@ -405,7 +405,7 @@ fn settles_nothing(st: RunnerHostFilePathStanding) -> Bool {
 // both of these rows were exit 1 and both became HostFileAbsent, which is the arm that plans a
 // write into a file this module exists to keep root-owned; a classifier that collapses them again
 // reds here. The present arm settles nothing because it continues into the byte comparison.
-test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
+test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool  {
   let unread = HostFileMetadataUnread { cause: "stat could not read the path's metadata; exit=1 " }
   settled_is_unobservable(st: classify_host_file_path(reading: unread, parent: EntryPresent))
     && settled_is_absent(st: classify_host_file_path(reading: unread, parent: EntryAbsent))
@@ -417,7 +417,7 @@ test fn an_unread_path_reaches_unobservable_and_never_absent() -> Bool {
 
 // The read decides presence; the parent decides nothing when the read answered. An indeterminate
 // parent beside a successful read is still present, so the join cannot turn a read file unreadable.
-test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool {
+test fn a_metadata_read_that_answered_is_present_whatever_the_parent_said() -> Bool  {
   let read = HostFileMetadataRead { file_type: "regular file" }
   path_is_present(st: classify_host_file_path(reading: read, parent: EntryPresent))
     && path_is_present(st: classify_host_file_path(reading: read, parent: EntryAbsent))
@@ -434,7 +434,7 @@ fn reading_is_unread(r: RunnerHostFileMetadataReading) -> Bool {
   match r { HostFileMetadataUnread { cause: _ } => true HostFileMetadataRead { file_type: _ } => false }
 }
 
-test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
+test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool  {
   reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "  \n", stderr: ""))
     && reading_is_unread(r: classify_host_file_metadata(exit_code: 1, stdout: "", stderr: ""))
     && !reading_is_unread(r: classify_host_file_metadata(exit_code: 0, stdout: "regular file\n", stderr: ""))
@@ -450,7 +450,7 @@ test fn a_stat_that_exited_zero_and_printed_nothing_is_unread() -> Bool {
 // itself is not executed hermetically (gunbc.rung_drop runner_host_file_apply_route_hermetic), so
 // this is the deepest live route to the new probe: the same function the observer calls, over the
 // same path the population produces. It reds if the probe is respelled as any boolean test.
-test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
+test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool  {
   match teardown_desired() {
     Absent => false
     Present { value: f } => {
@@ -464,20 +464,20 @@ test fn the_production_probe_sends_the_cited_stat_metadata_words() -> Bool {
 }
 
 // Every directory from the write scope down to the file's own, in order, and nothing above /etc.
-test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool {
+test fn the_ancestors_of_a_file_are_every_directory_from_the_scope_down() -> Bool  {
   runner_host_path_ancestors(path: "/etc/needrestart/conf.d/50-gunbc-actions-runner.conf")
     == ["/etc", "/etc/needrestart", "/etc/needrestart/conf.d"]
     && runner_host_path_ancestors(path: "/etc/systemd/system/actions-runner@.service.d/70-fleet-teardown.conf")
     == ["/etc", "/etc/systemd", "/etc/systemd/system", "/etc/systemd/system/actions-runner@.service.d"]
 }
 
-test fn the_root_only_predicate_is_evaluated_far_side_by_find() -> Bool {
+test fn the_root_only_predicate_is_evaluated_far_side_by_find() -> Bool  {
   runner_host_root_only_find_argv(paths: ["/etc", "/etc/needrestart"], kind: "d")
     == ["find", "/etc", "/etc/needrestart", "-maxdepth", "0", "-type", "d", "-user", "root", "-group", "root", "-not", "-perm", "/022"]
 }
 
 // find prints the SAFE set; anything requested and not printed failed a clause.
-test fn a_path_find_did_not_print_is_not_root_only() -> Bool {
+test fn a_path_find_did_not_print_is_not_root_only() -> Bool  {
   let all_safe = match classify_root_only_paths(requested: ["/etc", "/etc/needrestart"], exit_code: 0, stdout: "/etc\n/etc/needrestart\n", stderr: "") {
     PathsRootOnly => true
     PathsNotRootOnly { paths: _, detail: _ } => false
@@ -511,7 +511,7 @@ data unsafe_file_metadata: RunnerHostPathMetadata = PathsNotRootOnly { paths: ["
 
 // THE METADATA RED. Byte-identical content that the CI user can rewrite is NOT left in place: root
 // evaluates it, so it is rewritten, which replaces its owner and mode with root's.
-test fn identical_bytes_with_unsafe_file_metadata_are_rewritten_not_left() -> Bool {
+test fn identical_bytes_with_unsafe_file_metadata_are_rewritten_not_left() -> Bool  {
   is_leave(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
     && is_write(a: action_of(content: HostFileIdentical, file_metadata: unsafe_file_metadata, ancestors: PathsRootOnly))
     && is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsUnobservable { reason: "find exit=2" }, ancestors: PathsRootOnly))
@@ -519,7 +519,7 @@ test fn identical_bytes_with_unsafe_file_metadata_are_rewritten_not_left() -> Bo
 
 // A writable ancestor cannot be repaired by writing the file, and writing into it would publish
 // root-evaluated bytes where a CI user can replace them, so it refuses whatever the content is.
-test fn an_ancestor_that_is_not_root_only_refuses_every_action() -> Bool {
+test fn an_ancestor_that_is_not_root_only_refuses_every_action() -> Bool  {
   let unsafe_dir = PathsNotRootOnly { paths: ["/etc/needrestart/conf.d"], detail: "mode 0777" }
   is_refused(a: action_of(content: HostFileIdentical, file_metadata: PathsRootOnly, ancestors: unsafe_dir))
     && is_refused(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: unsafe_dir))
@@ -528,7 +528,7 @@ test fn an_ancestor_that_is_not_root_only_refuses_every_action() -> Bool {
 
 // A failure to look plans no write: an unobservable file is refused, never overwritten on the strength
 // of not having been read.
-test fn only_a_seen_difference_or_absence_plans_a_write() -> Bool {
+test fn only_a_seen_difference_or_absence_plans_a_write() -> Bool  {
   is_write(a: action_of(content: HostFileDiffers, file_metadata: PathsRootOnly, ancestors: PathsRootOnly))
     && is_write(a: action_of(content: HostFileAbsent, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
     && is_refused(a: action_of(content: HostFileUnobservable { reason: "permission denied" }, file_metadata: PathsNotApplicable, ancestors: PathsRootOnly))
@@ -552,27 +552,27 @@ fn standing_wire_of(st: RunnerSlotUnitStanding) -> String {
   }
 }
 
-test fn the_declared_pair_on_a_loaded_current_unit_is_effective() -> Bool {
+test fn the_declared_pair_on_a_loaded_current_unit_is_effective() -> Bool  {
   standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "effective"
 }
 
 // THE FALSE-POSITIVE RED. systemctl shows a unit it has not loaded with the manager's DEFAULTS, and the
 // default KillMode is control-group; a check reading KillMode first would certify a slot that does not
 // exist. LoadState is read first.
-test fn a_not_loaded_unit_reporting_default_values_is_not_certified() -> Bool {
+test fn a_not_loaded_unit_reporting_default_values_is_not_certified() -> Bool  {
   standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "not-found", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-loaded:not-found"
 }
 
 // A loaded unit whose files changed on disk still reports the OLD values; it is reload-pending, not a
 // verdict on the teardown in either direction.
-test fn a_unit_needing_reload_is_pending_whatever_it_reports() -> Bool {
+test fn a_unit_needing_reload_is_pending_whatever_it_reports() -> Bool  {
   standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "yes", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
     && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "yes", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "reload-pending"
 }
 
 // srv1's and srv2's live reading before the teardown drop-in (2026-09-11), the ExitType=cgroup drop-in
 // that replaced it (2026-09-18), and a partial kill mode alone.
-test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
+test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool  {
   standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "process", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:process:main"
     && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "control-group", exit: "cgroup"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:control-group:cgroup"
     && standing_wire_of(st: classify_runner_slot_unit_against_retirement(retirements: [], reading: reading(load: "loaded", reload: "no", kill: "mixed", exit: "main"), intent: gunbc_runner_lifecycle_intent)) == "not-effective:mixed:main"
@@ -582,14 +582,14 @@ test fn the_live_reading_and_each_half_alone_are_not_effective() -> Bool {
 
 data list_units_fixture: String = "actions-runner@srv1-01.service loaded active running Ephemeral GitHub Actions Runner (srv1-01)\nactions-runner@srv1-02.service loaded active running Ephemeral GitHub Actions Runner (srv1-02)\nactions-runner@srv1-38.service loaded inactive dead Ephemeral GitHub Actions Runner (srv1-38)\nssh.service loaded active running OpenBSD Secure Shell server\nxactions-runner@srv1-01.service loaded active running decoy\n"
 
-test fn list_units_yields_only_runner_slot_unit_names() -> Bool {
+test fn list_units_yields_only_runner_slot_unit_names() -> Bool  {
   runner_slot_units_from_list_units(stdout: list_units_fixture)
     == ["actions-runner@srv1-01.service", "actions-runner@srv1-02.service", "actions-runner@srv1-38.service"]
 }
 
 // A loaded slot outside the desired roster is part of the population; a desired slot the manager does
 // not hold is kept, to be read as not-loaded rather than skipped.
-test fn the_population_is_desired_units_then_loaded_extras() -> Bool {
+test fn the_population_is_desired_units_then_loaded_extras() -> Bool  {
   map(
     runner_slot_population_units(
       desired: ["actions-runner@srv1-01.service" as NonEmptyStr, "actions-runner@srv1-03.service" as NonEmptyStr],
@@ -611,7 +611,7 @@ fn population_wires(units: List<String>) -> List<String> {
 
 // Each unit is joined to the block that NAMES it -- property order within a block is not relied on --
 // and a unit with no block of its own is unread, never borrowed from a neighbour.
-test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> Bool {
+test fn each_unit_is_judged_on_its_own_block_and_a_missing_block_is_unread() -> Bool  {
   population_wires(units: ["actions-runner@srv1-02.service", "actions-runner@srv1-01.service", "actions-runner@srv1-03.service", "actions-runner@srv1-09.service"])
     == ["not-effective:process:main", "effective", "not-loaded:not-found", "unread"]
 }
@@ -622,7 +622,7 @@ fn population_of(standings: List<RunnerSlotUnitStanding>) -> RunnerSlotPopulatio
 
 // THE HOST-WIDE VERDICT IS OVER EVERY UNIT. One not-effective, not-loaded, pending or unread unit among
 // effective ones is enough to deny it, and an empty population proves nothing.
-test fn the_host_is_effective_only_when_every_unit_is() -> Bool {
+test fn the_host_is_effective_only_when_every_unit_is() -> Bool  {
   runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotTeardownEffective]))
     && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }]))
     && !runner_slot_population_effective(population: population_of(standings: [SlotTeardownEffective, SlotUnitNotLoaded { load_state: "not-found" }]))
@@ -635,7 +635,7 @@ test fn the_host_is_effective_only_when_every_unit_is() -> Bool {
 // THE RETRY RED. A reload is owed whenever the manager says a unit is stale, whether or not this run
 // wrote anything -- which is exactly the state a run finds after an earlier run landed the file and its
 // reload failed.
-test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool {
+test fn a_reload_is_owed_by_a_stale_unit_even_when_nothing_was_written() -> Bool  {
   runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }, SlotReloadPending]))
     && !runner_slot_population_owes_reload(population: population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }]))
     && !runner_slot_population_owes_reload(population: SlotPopulationUnobservable { reason: "ssh refused" })
@@ -689,7 +689,7 @@ fn settled_run(mode: RunnerHostFileConvergeMode, reload: RunnerHostManagerReload
 // any unit it could not read. run_runner_host_files is not driven here: the floor classifies that
 // call as reaching shell.PosixCommandV.Check (no mock_response). Privilege, unread slots, and
 // ancestor refusal stay as the classifiers; re-enroll the integration when Check has a hermetic arm.
-test fn observe_reports_what_apply_refuses() -> Bool {
+test fn observe_reports_what_apply_refuses() -> Bool  {
   let old = population_of(standings: [SlotTeardownNotEffective { kill_mode: "process", exit_type: "main" }])
   let good = population_of(standings: [SlotTeardownEffective, SlotTeardownEffective])
   settled_run(mode: RunnerHostFilesObserveOnly, reload: ManagerReloadNotOwed, slots: old)
@@ -779,7 +779,7 @@ fn srv1_drained() -> List<RunnerRetirementStanding> {
 // POSITIVE CONTROL. The 21-unit reading that refused is effective once each masked unit is joined to
 // the retirement authority's COMPLETE verdict, and the route is the join: every masked unit reads
 // retired, and the same reading with no retirement standing refuses.
-test fn srv1_declared_live_and_retiring_masked_is_effective() -> Bool {
+test fn srv1_declared_live_and_retiring_masked_is_effective() -> Bool  {
   let units = srv1_unit_names(slot: 1, limit: 21)
   let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
   let pop = srv1_population(units: units, retirements: srv1_drained(), show: show)
@@ -790,7 +790,7 @@ test fn srv1_declared_live_and_retiring_masked_is_effective() -> Bool {
 
 // RED: masked is the inhibit, not the drain. A retiree masked while its worker still runs -- service
 // active, or its cgroup still populated -- is the orphan the retirement exists to prevent, and refuses.
-test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
+test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool  {
   let units = srv1_unit_names(slot: 1, limit: 21)
   let show = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 21))
   let running = srv1_population(units: units, retirements: srv1_retirements(active: "deactivating", occupancy: CgroupAbsent), show: show)
@@ -800,14 +800,14 @@ test fn a_masked_retiree_still_running_or_occupied_refuses() -> Bool {
 }
 
 // RED: a masked slot the authority does NOT retire is a slot masked by mistake, not a retirement.
-test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool {
+test fn a_masked_declared_live_slot_is_not_retired_and_refuses() -> Bool  {
   let pop = srv1_population(units: srv1_unit_names(slot: 1, limit: 21), retirements: srv1_drained(), show: srv1_show_reading(live: srv1_all_but_last_live_names(), masked: concat(srv1_last_live_names(), srv1_retiring_names(limit: 21))))
   !runner_slot_population_effective(population: pop)
     && every_unit_holds(pop: pop, units: srv1_last_live_names(), wire: "not-loaded:masked")
 }
 
 // RED: a declared-live slot missing from the host stays a refusal, retirement notwithstanding.
-test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool {
+test fn a_declared_live_slot_missing_from_the_host_refuses() -> Bool  {
   let missing = join(map(srv1_last_live_names(), u => show_block_of(unit: u, load: "not-found")), "\n\n")
   let show = join([srv1_show_reading(live: srv1_all_but_last_live_names(), masked: srv1_retiring_names(limit: 21)), missing], "\n\n")
   length(srv1_last_live_names()) > 0
@@ -845,7 +845,7 @@ fn population_holds(pop: RunnerSlotPopulation, unit: String, wire: String) -> Bo
   }
 }
 
-test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool {
+test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses() -> Bool  {
   let omitted = "actions-runner@srv1-21.service"
   let healthy = srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))
   let still_running = map(srv1_drained(), st => if retirement_unit(s: st) == omitted {
@@ -859,7 +859,7 @@ test fn a_required_retiree_omitted_from_list_units_is_still_observed_and_refuses
 // The other half of the same omission, split because the floor prices a claim as a whole and a
 // conjunction of independent cases forces every case through one budget (DESIGN 3): the omitted
 // retiree with NO reading of its own is unread, and refuses.
-test fn an_unread_omitted_retiree_refuses() -> Bool {
+test fn an_unread_omitted_retiree_refuses() -> Bool  {
   let unread_pop = srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: concat(srv1_retiring_names(limit: 20), srv1_unit_names(slot: 22, limit: 50))))
   length(srv1_live_names()) > 0
     && population_holds(pop: unread_pop, unit: "actions-runner@srv1-21.service", wire: "unread")
@@ -868,7 +868,7 @@ test fn an_unread_omitted_retiree_refuses() -> Bool {
 
 // THE POSITIVE CONTROL for the two REDs above, and what makes them discriminating: the SAME listing
 // that omits slot 21, with every retiree read and drained, IS effective.
-test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> Bool {
+test fn the_same_listing_with_every_retiree_read_and_drained_is_effective() -> Bool  {
   runner_slot_population_effective(population: srv1_population_over_listing(retirements: srv1_drained(), show: srv1_show_reading(live: srv1_live_names(), masked: srv1_retiring_names(limit: 50))))
 }
 
@@ -949,7 +949,7 @@ fn standings_of(sts: List<RunnerRetirementStanding>, unit: String) -> List<Runne
 // COST: the retiree read is ONE argv naming a DIRECTORY, so it does not grow with the retiree count.
 // The same argv serves three retirees and one, and a population whose retirees hold no cgroup owes
 // no read at all.
-test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool {
+test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool  {
   let show = blocks_for(units: three_retirees(), active: "active", live_cgroup: true)
   let many = argv_or_empty(o: events_read_of(retired: three_retirees(), show: show))
   many == ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]
@@ -966,7 +966,7 @@ test fn the_retiree_cgroup_read_is_one_exec_whatever_the_retiree_count() -> Bool
 // gunbc.typed_argv_exec typed_argv_exec_over_fleet_ssh, and must be ADMITTED -- an argv refused there
 // reads nothing, which would make SlotRetiredAsDeclared unreachable for every retiree that still
 // holds a cgroup while the observation still looked like three execs.
-test fn every_argv_the_population_observation_issues_is_admitted_by_the_transport() -> Bool {
+test fn every_argv_the_population_observation_issues_is_admitted_by_the_transport() -> Bool  {
   let events = argv_or_empty(o: events_read_of(retired: three_retirees(), show: blocks_for(units: three_retirees(), active: "active", live_cgroup: true)))
   let show = systemctl_show_properties_argv(units: three_retirees(), properties: runner_slot_show_properties)
   length(events) == 7
@@ -977,7 +977,7 @@ test fn every_argv_the_population_observation_issues_is_admitted_by_the_transpor
 // RED: the per-retiree form this replaced. A retiree's own cgroup path carries systemd's escaped
 // slice component, and the transport refuses a backslash rather than quoting it -- so an argv naming
 // those paths is NOT admitted, and a claim that supplied the batch output directly could not see it.
-test fn an_argv_naming_a_retirees_own_escaped_cgroup_path_is_refused_by_the_transport() -> Bool {
+test fn an_argv_naming_a_retirees_own_escaped_cgroup_path_is_refused_by_the_transport() -> Bool  {
   let path = "/sys/fs/cgroup/system.slice/system-actions\\x2drunner.slice/actions-runner@srv1-13.service/cgroup.events"
   (match portable_remote_words(raws: ["grep", "-H", "-F", "populated", path]) { Absent => true Present { value: _ } => false })
     && (match portable_remote_words(raws: ["grep", "-r", "-H", "-F", "populated", "--include=cgroup.events", "/sys/fs/cgroup/system.slice"]) { Absent => false Present { value: _ } => true })
@@ -986,7 +986,7 @@ test fn an_argv_naming_a_retirees_own_escaped_cgroup_path_is_refused_by_the_tran
 
 // POSITIVE ROUTE: stopped, masked retirees with no cgroup are complete from the show alone, and ones
 // that still hold a cgroup are complete only on their own `populated 0` line of the batched read.
-test fn batched_readings_reach_retirement_complete() -> Bool {
+test fn batched_readings_reach_retirement_complete() -> Bool  {
   let stopped = standings_for(units: three_retirees(), show: blocks_for(units: three_retirees(), active: "inactive", live_cgroup: false), batch: CgroupEventsBatchRead { stdout: "", stderr: "" })
   let drained = standings_for(units: three_retirees(), show: blocks_for(units: three_retirees(), active: "inactive", live_cgroup: true), batch: CgroupEventsBatchRead { stdout: events_for(units: three_retirees(), populated: "0"), stderr: "" })
   length(stopped) == 3 && all(stopped, st => retirement_is_complete(s: st))
@@ -996,7 +996,7 @@ test fn batched_readings_reach_retirement_complete() -> Bool {
 // RED: absence from a batched output is not retirement. A retiree whose show block is missing, or
 // whose events line is missing, reads unobserved; a populated line reads pending; a refused batch
 // leaves every live cgroup unobserved -- and the other retirees being complete changes none of it.
-test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> Bool {
+test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> Bool  {
   let omitted = "actions-runner@srv1-13.service"
   let others = filter(three_retirees(), r => (r as String) != omitted)
   let show_all = blocks_for(units: three_retirees(), active: "inactive", live_cgroup: true)
@@ -1016,7 +1016,7 @@ test fn a_retiree_missing_from_a_batched_read_is_unobserved_never_retired() -> B
 // the refusal NAMES the roots. The collapsed optional told exactly this population -- the only one
 // that ever read the cause -- that no read was owed, while the roots that identify the disagreement
 // were discarded. A population that owes no read says so in its own words.
-test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
+test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool  {
   let retired = ["actions-runner@srv1-13.service" as NonEmptyStr, "actions-runner@srv1-14.service" as NonEmptyStr]
   let split_show = join([
     retiree_block(unit: "actions-runner@srv1-13.service", active: "active", cg: retiree_cg(unit: "actions-runner@srv1-13.service")),
@@ -1048,7 +1048,7 @@ test fn disagreeing_cgroup_roots_refuse_and_name_the_roots() -> Bool {
 // edits one side of such a comparison flips it and proves nothing about production. Neither is
 // restored, and no assertion whose two sides originate from one production call belongs here: exact
 // manifest correctness is runner_slot_retirement_witness_test's proposition, not this readback claim's.
-test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
+test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool  {
   let retired = srv1_retired()
   let argv = argv_or_empty(o: events_read_of(retired: retired, show: blocks_for(units: retired, active: "active", live_cgroup: true)))
   length(retired) > 0
@@ -1074,7 +1074,7 @@ test fn the_real_srv1_retiree_roster_reaches_one_admitted_read() -> Bool {
 // absorbed any OTHER desired unit fails it the same way, which a single planted unit could not see. An
 // always-Disagrees fold fails it too, because the list must name the desired roster alone and not the
 // retirees beside it.
-test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool {
+test fn every_desired_srv1_unit_is_outside_the_retirement_manifest() -> Bool  {
   let retired = srv1_retired()
   let desired = srv1_desired()
   match transition_population_agreement(host: operator_host_srv1, observed_surplus: concat(retired, desired)) {

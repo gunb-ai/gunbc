@@ -126,7 +126,7 @@ fn rel_name() -> String { session_placement_release_basename(node_id: node_a, at
 
 // POSITIVE CONTROL AND INHABITANCE: the real encoder's record, released against the same grant and
 // fence, reads back as Observed with the grant identity, the amount, the properties and the release.
-test fn a_bound_placement_reads_back_its_slot_grant_and_release() -> Bool {
+test fn a_bound_placement_reads_back_its_slot_grant_and_release() -> Bool  {
   match observe_a(slot: held(rec: slot_a(opened: 1000)), record: planted(name: rec_name(), content: record_bytes(node_id: node_a, attempt_key: key_a)), released: planted(name: rel_name(), content: release_for(node_id: node_a, attempt_key: key_a, grant_identity: "evt-7", fence: "7"))) {
     SessionPlacementObserved { slot: _, grant, returned } =>
       (match grant {
@@ -161,7 +161,7 @@ fn release_unreadable_naming(r: SessionReleaseObservation, needle: String) -> Bo
 // DISCRIMINATING RED (finding 3): attempt B's placement record at attempt A's path is FOREIGN; a
 // release naming the right reference but a different fence is not this grant's release; no slot is
 // Absent.
-test fn a_record_or_release_from_another_attempt_or_fence_is_refused() -> Bool {
+test fn a_record_or_release_from_another_attempt_or_fence_is_refused() -> Bool  {
   let foreign = match observe_a(slot: held(rec: slot_a(opened: 1000)), record: planted(name: rec_name(), content: record_bytes(node_id: node_b, attempt_key: key_b)), released: missing(name: rel_name())) {
     SessionPlacementForeign { unit, detail } => unit == unit_a() && string_contains(s: detail, pattern: node_b)
     SessionPlacementObserved { slot: _, grant: _, returned: _ } => false
@@ -198,7 +198,7 @@ fn launching(rec: AttemptRecord) -> AttemptRecord {
 
 // THE DECISION: Reserved frees only after its declared window, Launching only when the unit has
 // ended; an unreadable slot, an unobservable unit, or a slot read under another unit's key is kept.
-test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
+test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool  {
   let k = unit_a() as NonEmptyStr
   let rec = slot_a(opened: 1000)
   releases(d: session_settle_decide(key: k, slot: held(rec: rec), lifecycle: UnitTerminatedCauseUnknown { detail: "absent" }, now: rec.launch_deadline + 1, release_settled: false))
@@ -213,7 +213,7 @@ test fn settlement_releases_only_a_closed_window_or_an_ended_unit() -> Bool {
 // THE UNIT CARRIES THE GRANT, THROUGH THE SHARED FOLD: MemoryMax is the granted amount (not the
 // instance ceiling), with the session's CPU and task bounds; the compute provider's unit, from the
 // same fold, carries no process bounds.
-test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool {
+test fn the_worker_unit_is_capped_at_its_grant_by_the_compute_fold() -> Bool  {
   let inst = srv2_deploy_dashboard_instance()
   let props = dispatch_worker_unit_properties(instance: inst, working_directory: "/wt", worker_log_path: "/wt/log", granted: kibibyte(count: 1024), process_bounds: session_process_bounds)
   let compute = compute_unit_properties(layout: compute_layout(instance: inst, identity_hex: "abc"), granted: kibibyte(count: 1024))
@@ -233,7 +233,7 @@ fn observe_record(content: String) -> SessionPlacementObservation {
 // AN INSTANT IS RE-ADMITTED, NOT CAST (review 74749): a record whose granted_at is negative is not a
 // placement with a pre-1970 grant, it is unreadable -- and the same bytes with the instant restored
 // read back (positive control on the same record).
-test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool {
+test fn a_negative_instant_in_a_placement_record_is_unreadable() -> Bool  {
   let good = record_bytes(node_id: node_a, attempt_key: key_a)
   let bad = join(good.split(delimiter: "\"granted_at\": 1000"), "\"granted_at\": -1")
   let refused = match observe_record(content: bad) {

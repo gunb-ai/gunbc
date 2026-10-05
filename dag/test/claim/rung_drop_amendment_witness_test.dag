@@ -30,7 +30,7 @@ fn contains_text(haystack: String, needle: String) -> Bool {
 
 // EVERY AMENDMENT JOINS TO A ROSTERED DROP, AND A DANGLING ONE DOES NOT. Both directions, because
 // a predicate stuck at true and one stuck at false are different defects.
-test fn every_amendment_names_a_drop_that_exists() -> Bool {
+test fn every_amendment_names_a_drop_that_exists() -> Bool  {
   every_amendment_names_a_rostered_drop(
     amendments: rung_drop_amendment_roster,
     drop_identities: rostered_drop_identities(),
@@ -42,7 +42,7 @@ test fn every_amendment_names_a_drop_that_exists() -> Bool {
 
 // THE JOIN THE PROJECTION FOLDS SELECTS BY IDENTITY AND NOT BY POSITION. The live drop has one
 // amendment; a drop that has none gets none.
-test fn amendments_are_selected_by_drop_identity() -> Bool {
+test fn amendments_are_selected_by_drop_identity() -> Bool  {
   length(xs: amendments_for_drop(identity: "namespace_wave_admission_wall_removed" as NonEmptyStr)) == 1
     && length(xs: amendments_for_drop(identity: "floor_cut_heal" as NonEmptyStr)) == 0
 }
@@ -52,7 +52,7 @@ test fn amendments_are_selected_by_drop_identity() -> Bool {
 // billing, and that restoration half (1) is therefore BUILT AND DELETED rather than unbuilt -- the
 // last being the one a reader of the projected restoration trigger alone would get wrong, and would
 // act on by re-landing gunbc#11704, which retires nothing.
-test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool {
+test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool  {
   let rendered = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing)
   contains_text(haystack: rendered, needle: "gunbc#11704")
     && contains_text(haystack: rendered, needle: "priced the gate itself")
@@ -63,7 +63,7 @@ test fn the_amendment_renders_the_reasoning_that_was_lost() -> Bool {
 // two standings, two sentences: a renderer that ignored the standing -- which is what an authored
 // trigger field would have let it do -- agrees with itself here and is caught. This is the
 // assertion that keeps the amendment from becoming a second authority for retirement.
-test fn the_closing_sentence_is_derived_from_the_rows_standing() -> Bool {
+test fn the_closing_sentence_is_derived_from_the_rows_standing() -> Bool  {
   let standing = rung_drop_amendment_message(a: namespace_wave_admission_carrier_redesign, standing: Standing)
   let retired = rung_drop_amendment_message(
     a: namespace_wave_admission_carrier_redesign,

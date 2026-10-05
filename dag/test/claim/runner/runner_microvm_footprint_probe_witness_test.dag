@@ -26,7 +26,7 @@ fn sampled(mib: Int, peak_kb: Int) -> FootprintSampleOutcome {
 // THE UNIT CONVERSION IS ASSERTED EXACTLY, not merely as "returns something". %M is kilobytes and a
 // consumer that forgot the conversion would be wrong by 1024x in the direction that UNDER-reserves,
 // which is the direction that kills a guest rather than wasting memory.
-test fn gnu_time_kibibytes_become_bytes() -> Bool {
+test fn gnu_time_kibibytes_become_bytes() -> Bool  {
   byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 1)) == 1024
     && byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 204800)) == 209715200
     && byte_size_count(b: gnu_time_max_rss_bytes(kibibytes: 0)) == 0
@@ -36,7 +36,7 @@ test fn gnu_time_kibibytes_become_bytes() -> Bool {
 // are distinct: a size that never ran, and a size that ran but could not be read. Both must answer
 // incomplete, because the reserve decision reads a RELATIONSHIP and three points do not establish
 // the one a reader would assume.
-test fn a_receipt_missing_any_size_is_not_complete() -> Bool {
+test fn a_receipt_missing_any_size_is_not_complete() -> Bool  {
   let full = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
               sampled(mib: 2048, peak_kb: 202000), sampled(mib: 4096, peak_kb: 203000)]
   let short = [sampled(mib: 512, peak_kb: 200000), sampled(mib: 1024, peak_kb: 201000),
@@ -75,7 +75,7 @@ test fn a_receipt_missing_any_size_is_not_complete() -> Bool {
 // The literals are the specification rather than a measurement copied out of the tree: these are the
 // sizes this probe declares it will sample, so the check is a controlled fixture in DESIGN section 5's
 // sense and not a change detector.
-test fn the_production_sample_sizes_are_the_magnitudes_they_claim() -> Bool {
+test fn the_production_sample_sizes_are_the_magnitudes_they_claim() -> Bool  {
   let counts = map(runner_microvm_footprint_sample_sizes, s => byte_size_count(b: s))
   count(counts) == 4
     && fold(counts, init: false, f: (found, c) => found || c == 536870912)
@@ -97,7 +97,7 @@ test fn the_production_sample_sizes_are_the_magnitudes_they_claim() -> Bool {
 // Found by applying merry-bear-25's finding on #10677 -- RuntimeSurfaceHeld deriving from
 // count(findings) == 0 over a caller-supplied list, so a caller who never looked gets Held -- to this
 // module rather than only agreeing with it. Same class, same direction, one file over.
-test fn an_empty_receipt_is_not_complete() -> Bool {
+test fn an_empty_receipt_is_not_complete() -> Bool  {
   !footprint_receipt_is_complete(outcomes: [])
 }
 
@@ -116,7 +116,7 @@ fn sizes_span_enough(sizes: List<ByteSize>) -> Bool {
   count(sizes) >= 3 && spans
 }
 
-test fn the_sample_sizes_span_enough_to_discriminate() -> Bool {
+test fn the_sample_sizes_span_enough_to_discriminate() -> Bool  {
   sizes_span_enough(sizes: runner_microvm_footprint_sample_sizes)
 }
 
@@ -128,7 +128,7 @@ test fn the_sample_sizes_span_enough_to_discriminate() -> Bool {
 // here over the two collapses that would actually happen -- a single size, and two adjacent sizes --
 // so the discriminating power is asserted on every run instead of on the day someone remembered to
 // test it.
-test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool {
+test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool  {
   !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 4096))])
     && !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 2048)), mebibyte_to_byte_size(m: mebibyte(count: 4096))])
     && !sizes_span_enough(sizes: [mebibyte_to_byte_size(m: mebibyte(count: 2048)), mebibyte_to_byte_size(m: mebibyte(count: 3072)), mebibyte_to_byte_size(m: mebibyte(count: 4096))])
@@ -137,7 +137,7 @@ test fn the_span_check_rejects_the_collapses_it_exists_to_catch() -> Bool {
 
 // THE FAILING ARMS MUST RENDER THEIR SIZE. A receipt whose failure rows do not say which size failed
 // leaves a reader unable to tell WHICH point of the relationship is missing.
-test fn every_outcome_renders_the_size_it_measured() -> Bool {
+test fn every_outcome_renders_the_size_it_measured() -> Bool  {
   string_contains(s: footprint_sample_text(o: sampled(mib: 2048, peak_kb: 202000)), pattern: "guest_bytes=2147483648")
     && string_contains(
          s: footprint_sample_text(o: FootprintBootRefused { guest_memory: mebibyte_to_byte_size(m: mebibyte(count: 1024)), detail: "vmm exited 1" }),

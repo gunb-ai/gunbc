@@ -36,7 +36,7 @@ import std.types { NonEmptyStr, String }
 import gunbc.fleet_intent { fleet_intent_execution_surface }
 import extdeps.toolchain.types { ToolchainCapability }
 
-test fn srv4_docker_prereq_cites_official_repo() -> Bool {
+test fn srv4_docker_prereq_cites_official_repo() -> Bool  {
   let s = runner_host_docker_provision_script()
   string_contains(s: s, pattern: "download.docker.com/linux/ubuntu/gpg")
     && string_contains(s: s, pattern: "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable")
@@ -51,19 +51,19 @@ test fn srv4_docker_prereq_cites_official_repo() -> Bool {
 // fact -- v0.15.0's musl tarball unpacks to sccache-v0.15.0-<arch>-unknown-linux-musl/sccache -- and
 // that the binary lands at the installed path; both are spelled here from the release layout and the
 // POSIX quoting rule, not copied from the rendered script.
-test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool {
+test fn srv4_sccache_prereq_pins_version_and_digest() -> Bool  {
   let s = runner_host_sccache_provision_script(arch: "aarch64", sha256: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8")
   string_contains(s: s, pattern: "github.com/mozilla/sccache/releases/download/v0.15.0/sccache-v0.15.0-aarch64-unknown-linux-musl.tar.gz")
     && string_contains(s: s, pattern: "3a6a3712b49da3d263bf2d30d702de4302793016019e800bfb81c0c69401d8f8  /tmp/sccache.tar.gz")
     && string_contains(s: s, pattern: "'mv' '/tmp/sccache-v0.15.0-aarch64-unknown-linux-musl/sccache' '/usr/local/bin/sccache'")
 }
 
-test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool {
+test fn fleet_surface_no_longer_lies_declares_sccache() -> Bool  {
   let surf = fleet_intent_execution_surface()
   fold(surf.toolchains, init: false, f: (acc, t) => acc || (t.name as String == "sccache"))
 }
 
-test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
+test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool  {
   let outcome = runner_host_installer_command(
     admission: admit_runner_host(deploy: wt_srv4_deploy()),
     installer_path: "/tmp/install-actions-runner.sh",
@@ -81,7 +81,7 @@ test fn srv4_runner_installer_command_cites_installer_with_env() -> Bool {
   }
 }
 
-test fn srv4_runner_app_from_secret_manager() -> Bool {
+test fn srv4_runner_app_from_secret_manager() -> Bool  {
   github_app_runner_org(config: gunbc_ci_github_app) as String == "gunb-ai"
     && gunbc_ci_github_app.app_pem_secret.secret as String == "ci-github-app-private-key"
     && gunbc_ci_github_app.app.app_id.value == 2653532
@@ -113,7 +113,7 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
 // reaches systemctl's enable --now. `enable` and `--now` stay literal because they are systemctl's
 // own operands, spelled inline by the builder rather than derived from any row -- so they remain
 // discriminating, and a command that listed the units without the verb still fails here.
-test fn srv4_enables_its_declared_runner_instances() -> Bool {
+test fn srv4_enables_its_declared_runner_instances() -> Bool  {
   let names = runner_instance_names(deploy: wt_srv4_deploy())
   match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: wt_srv4_deploy()), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandRefused { host_label: _, reason: _ } => false
@@ -158,7 +158,7 @@ data unenrolled_host_fixture: RunnerHostDeploy = RunnerHostDeploy {
 // which is exactly the shape the incident took: real hardware, real ssh target, no intent row, and
 // therefore no RAM figure for the conservation wall to check slot caps against.
 
-test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool {
+test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool  {
   match runner_host_installer_command(
     admission: admit_runner_host(deploy: unenrolled_host_fixture),
     installer_path: "/tmp/install-actions-runner.sh",
@@ -172,14 +172,14 @@ test fn unenrolled_host_cannot_produce_an_installer_command() -> Bool {
   }
 }
 
-test fn unenrolled_host_cannot_enable_runner_units() -> Bool {
+test fn unenrolled_host_cannot_enable_runner_units() -> Bool  {
   match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: unenrolled_host_fixture), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandRefused { host_label: _, reason: _ } => true
     RunnerCommandReady { command: _ } => false
   }
 }
 
-test fn enrolled_host_still_admits() -> Bool {
+test fn enrolled_host_still_admits() -> Bool  {
   fleet_intent_enrolls_host_label(label: "srv4")
     && !fleet_intent_enrolls_host_label(label: "srv9")
     && match admit_runner_host(deploy: wt_srv4_deploy()) {
@@ -193,7 +193,7 @@ test fn enrolled_host_still_admits() -> Bool {
 // rejects it, and the authority's refusal passes the same gate. The perturbation is independent of
 // the property checked, so the conjunct cannot pass tautologically.
 
-test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool {
+test fn red_control_admission_blind_builder_rejected_by_gate() -> Bool  {
   let adm = admit_runner_host(deploy: unenrolled_host_fixture)
   let widened = runner_command_admission_blind_widen_sketch(deploy: unenrolled_host_fixture, admission: adm)
   let authority = runner_activate_command(admission: admit_runner_activation(host_admission: adm, cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool()))

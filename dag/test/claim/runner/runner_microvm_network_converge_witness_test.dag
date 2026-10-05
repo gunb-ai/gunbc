@@ -115,7 +115,7 @@ fn receipt_slots(o: ConvergeOutcome) -> Int {
 // THE PROC VALUE IS THE FACT, AND EVERY OTHER READING IS UNREAD RATHER THAN A DEFAULT. "1" is
 // disabled, "0" is enabled, an unreadable probe and an unexpected value are both Unread -- never
 // silently one of the two real answers.
-test fn a_tap_ipv6_reading_is_the_value_or_it_is_unread() -> Bool {
+test fn a_tap_ipv6_reading_is_the_value_or_it_is_unread() -> Bool  {
   match parse_disable_ipv6(readable: true, text: "1\n") { TapIpv6Disabled => true, _ => false }
     && match parse_disable_ipv6(readable: true, text: "0\n") { TapIpv6Enabled => true, _ => false }
     && match parse_disable_ipv6(readable: false, text: "") { TapIpv6Unread { reason: _ } => true, _ => false }
@@ -128,7 +128,7 @@ test fn a_tap_ipv6_reading_is_the_value_or_it_is_unread() -> Bool {
 }
 
 // THE POSITIVE CONTROL: with every fact read and holding, the receipt carries one row per slot read.
-test fn a_receipt_is_produced_only_when_every_fact_was_read_and_holds() -> Bool {
+test fn a_receipt_is_produced_only_when_every_fact_was_read_and_holds() -> Bool  {
   let o = converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host())
   outcome_label(o: o) == "converged" && receipt_slots(o: o) == 2
 }
@@ -136,7 +136,7 @@ test fn a_receipt_is_produced_only_when_every_fact_was_read_and_holds() -> Bool 
 // EVERY UNREAD OR FAILING FACT REFUSES THE RECEIPT, AND NAMES ITSELF. The red is any arm that
 // defaults a missing reading -- a receipt built on an unread helper probe or an unlisted ruleset
 // would let the sanitation subject admit slots on a host nobody observed.
-test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool {
+test fn an_unread_or_failing_fact_refuses_the_receipt() -> Bool  {
   let net1 = runner_slot_network(slot: slot(i: 1))
   let ipv6_on = SlotReading { slot: slot(i: 1), tap_ipv6: TapIpv6Enabled, addr: SlotProbeRead { text: "" }, route: SlotProbeRead { text: "" } }
   let ipv6_unread = SlotReading {
@@ -197,7 +197,7 @@ fn host_with(fwd: IpForwardStanding, digest: Sha256Digest?, auto: HelperAutoAssi
 // THE HOST'S OWN FACTS REFUSE THE SAME WAY. Forwarding off, a ruleset that produced no digestible
 // listing, automatic helper assignment on, an unreadable sysctl, and an attached helper on any
 // surface are five different remedies and five different refusals.
-test fn each_host_fact_refuses_under_its_own_name() -> Bool {
+test fn each_host_fact_refuses_under_its_own_name() -> Bool  {
   outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOff, digest: Present { value: converged_digest }, auto: kernel_absent()))) == "no-forwarding"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: none, auto: kernel_absent()))) == "ruleset-unread"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_with(fwd: IpForwardOn, digest: Present { value: converged_digest }, auto: AutoAssignmentOn))) == "auto-helpers-on"
@@ -210,7 +210,7 @@ test fn each_host_fact_refuses_under_its_own_name() -> Bool {
 // table, left unread, refuses the receipt. The red is the previous converge, which hard-coded two of
 // them to zero and let helpers_excluded return true off those constants (review 68963): a host with
 // a legacy CT target or a userspace helper converged green.
-test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool {
+test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool  {
   let d = Present { value: converged_digest }
   outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: unread(why: "probe exited 1"), xtables: counted(n: 0), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
     && outcome_label(o: converge_outcome(slots: [clean_slot(i: 1)], h: host_reading(fwd: IpForwardOn, digest: d, auto: kernel_absent(), nft: counted(n: 0), xtables: unread(why: "iptables-legacy-save missing"), userspace: counted(n: 0), expectations: counted(n: 0)))) == "helpers-unread"
@@ -220,7 +220,7 @@ test fn an_unread_helper_surface_refuses_rather_than_counting_zero() -> Bool {
 
 // A HELPER ATTACHED BY ANY TABLE COUNTS, because an expectation is created by whichever helper is
 // attached, not only by one in our table. The red is a count taken over our own rendered ruleset.
-test fn ct_helper_statements_are_counted_over_the_whole_listing() -> Bool {
+test fn ct_helper_statements_are_counted_over_the_whole_listing() -> Bool  {
   ct_helper_statement_count(ruleset_listing: "table ip docker {\n  ct helper ftp-standard\n}\n") == 1
     && ct_helper_statement_count(ruleset_listing: "ct helper a\nct helper b\n") == 2
     && ct_helper_statement_count(ruleset_listing: "table inet gunbc_microvm {\n  chain forward {\n  }\n}\n") == 0
@@ -229,7 +229,7 @@ test fn ct_helper_statements_are_counted_over_the_whole_listing() -> Bool {
 // THE SLOTS' FILES LAND BEFORE THE HOST'S, AND THE HOST'S END IN AN ENABLE AND A RESTART. Installing
 // the ruleset before the taps exist leaves a window where a tap is up and unfiltered, and `start` on
 // an already-active oneshot would leave the OLD ruleset live while reporting success.
-test fn the_operations_install_slots_before_the_host_and_restart_the_loader() -> Bool {
+test fn the_operations_install_slots_before_the_host_and_restart_the_loader() -> Bool  {
   let ops = microvm_network_converge_operations(slots: [slot(i: 1)])
   map(ops, op => match op {
     InstallFile { source: _, destination: d, owner: _, group: _, mode: _ } => d as String
@@ -258,7 +258,7 @@ test fn the_operations_install_slots_before_the_host_and_restart_the_loader() ->
 // EVERY FILE THE OPERATIONS INSTALL IS A FILE THE CONVERGE STAGES. The red is a staged set that
 // misses one: the install then runs against whatever that path held from a previous converge, or
 // fails outright, and either way the bytes on the host are not the bytes the model rendered.
-test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool {
+test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool  {
   let staged = converge_staged_files(
     slots: [slot(i: 1)],
     host: runner_microvm_shared_host_grain,
@@ -279,7 +279,7 @@ test fn every_installed_file_is_staged_with_its_rendered_bytes() -> Bool {
 // show dev tap` prints the destination NETWORK with the host address as `src`; a readback matching
 // 172.30.1.1/30 never hits, so a perfectly configured tap would refuse. The reds: real kernel output
 // judged not-held, and a fixture carrying only the host-address form judged held.
-test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() -> Bool {
+test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() -> Bool  {
   let host_address_form = SlotReading {
     slot: slot(i: 1),
     tap_ipv6: TapIpv6Disabled,
@@ -294,7 +294,7 @@ test fn the_route_readback_accepts_the_network_and_refuses_the_host_address() ->
 // strongest helper reading -- there is no setting left to turn back on -- so asserting it with no
 // release named would be the strongest claim on the weakest evidence. The reds: a refused `uname -r`
 // reported as absent-from-kernel, and an empty release string accepted as one (review 69021).
-test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool {
+test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool  {
   match absent_from_kernel_or_unread(kernel_release: "6.8.0-138-generic", kernel_read: true) {
     AutoAssignmentAbsentFromKernel { kernel_release: k } => (k as String) == "6.8.0-138-generic"
     _ => false
@@ -317,7 +317,7 @@ test fn an_absent_helper_sysctl_names_its_kernel_or_is_unread() -> Bool {
 // only would leave the lifecycle controller with no modeled route from a completed converge to a
 // ConvergedSlotNetwork (side-chat hold on #11751), so the artifact carries a wire form and this
 // claim runs it both ways: render, parse, and read the parsed value's fields back.
-test fn the_receipt_round_trips_into_a_converged_slot_network() -> Bool {
+test fn the_receipt_round_trips_into_a_converged_slot_network() -> Bool  {
   match converge_outcome(slots: [clean_slot(i: 1), clean_slot(i: 2)], h: clean_host()) {
     ConvergeRefused { refusal: _ } => false
     ConvergedNetwork { receipt: c } =>
@@ -339,7 +339,7 @@ test fn the_receipt_round_trips_into_a_converged_slot_network() -> Bool {
 
 // A RECEIPT ABOUT ANOTHER FLEET, OR A TRUNCATED ONE, IS REFUSED RATHER THAN PARTIALLY READ. The reds:
 // a slot line this host does not own accepted, and a missing digest line yielding a receipt.
-test fn a_receipt_that_does_not_describe_this_host_is_refused() -> Bool {
+test fn a_receipt_that_does_not_describe_this_host_is_refused() -> Bool  {
   match converge_outcome(slots: [clean_slot(i: 1)], h: clean_host()) {
     ConvergeRefused { refusal: _ } => false
     ConvergedNetwork { receipt: c } => {
@@ -365,7 +365,7 @@ test fn a_receipt_that_does_not_describe_this_host_is_refused() -> Bool {
 // probe rather than being sent to turn on a setting that may already be on or to repair a tap that
 // may be perfect (review 69041). The reds are the previous shapes: a failed read folding into
 // "ip_forward reads 0", and a refused ip command reading as "the tap does not hold its address".
-test fn a_probe_that_did_not_answer_refuses_under_its_own_name() -> Bool {
+test fn a_probe_that_did_not_answer_refuses_under_its_own_name() -> Bool  {
   let unread_addr = SlotReading {
     slot: slot(i: 1),
     tap_ipv6: TapIpv6Disabled,

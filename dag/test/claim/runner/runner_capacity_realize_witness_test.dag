@@ -93,7 +93,7 @@ fn first_width_above_the_fabric_carve() -> Int {
 // two additions, 03 from the roster's hole and 08 from the widening, so the seam is exercised with
 // real work on both sides; the DISAGREEING pair the paragraph wanted is asserted by
 // apply_seam_preserves_sibling_host_receipt_when_one_refuses below, which still has one.
-test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool {
+test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() -> Bool  {
   let width = first_width_above_the_fabric_carve()
   let plan = runner_capacity_plan(
     srv3_width: width,
@@ -131,7 +131,7 @@ test fn apply_seam_plans_additions_at_the_committed_width_not_count_refusal() ->
 // the real requested width rather than silently reporting the retired srv4 five-slot disk row-pin.
 // The width it must name is now read from the same authority the request was built from, so the two
 // cannot drift apart the way a hand-written pair of numbers can.
-test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
+test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool  {
   let width = first_width_above_the_fabric_carve()
   let plan = runner_capacity_plan(
     srv3_width: width,
@@ -174,7 +174,7 @@ test fn apply_seam_refuses_unobservable_disk_per_host_not_width_five() -> Bool {
 //
 // SAME ROSTER MOVE AS apply_seam_plans_additions_at_the_committed_width_not_count_refusal: the
 // managed-pair slice, so the plan reaches apply instead of refusing on srv2 upstream of the seam.
-test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
+test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool  {
   let outcome = runner_capacity_apply_plan(
     plan: runner_capacity_plan(
       srv3_width: 6,
@@ -209,7 +209,7 @@ test fn apply_seam_preserves_sibling_host_receipt_when_one_refuses() -> Bool {
 // The claim is that re-applying a CONVERGED population plans nothing, and convergence is set
 // equality rather than a count reaching a number -- a host holding {01,02,04,05} has count four and
 // is not converged at width five. The fixture now hands whole populations.
-test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
+test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool  {
   runner_capacity_reapply_plans_zero_additions(
     srv3_width: 5,
     srv4_width: 5,
@@ -220,7 +220,7 @@ test fn replay_apply_is_a_no_op_on_a_converged_population() -> Bool {
 
 // THE NON-VACUITY CONTROL, without which the row above is satisfied by a planner that never plans
 // anything. One member removed from srv3's population must produce work.
-test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
+test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool  {
   !runner_capacity_reapply_plans_zero_additions(
     srv3_width: 5,
     srv4_width: 5,
@@ -247,7 +247,7 @@ test fn a_population_with_one_member_missing_is_not_a_no_op() -> Bool {
 // is exactly this: both managed hosts registered 01-05 and online, converged at the materialized
 // width. Minting converged_six_* beside it was a second name for one concept, which is the fork this
 // module's own authority note forbids -- caught by trying to make it green rather than by review.
-test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool {
+test fn converged_roster_plans_zero_additions_and_apply_succeeds() -> Bool  {
   let plan = runner_capacity_plan(
     srv3_width: 5,
     srv4_width: 5,

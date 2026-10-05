@@ -34,7 +34,7 @@ fn all_approved(plan: ReviewPlan) -> List<ReviewObservation> {
 // THE PARTS: identities are unique, the roster carries the conformance-extdeps domain grounded on the
 // conformance proposition (DESIGN section 3b), and the revision is the roster's content -- change a question
 // and the revision moves; the same roster gives the same revision.
-test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() -> Bool {
+test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() -> Bool  {
   review_criterion_identities_are_unique()
     && count(review_criteria) >= 6
     && (match review_criterion_by_key(key: "conformance-extdeps") {
@@ -52,7 +52,7 @@ test fn the_roster_is_derived_with_unique_identities_and_a_content_revision() ->
 
 // THE MAP: one call per criterion, each brief names only its own criterion and carries no verdict path
 // (that is the realization's), and the plan is bound to its subject and revision.
-test fn the_plan_hands_each_call_only_its_own_question() -> Bool {
+test fn the_plan_hands_each_call_only_its_own_question() -> Bool  {
   let p = plan()
   count(p.calls) == count(review_criteria)
     && p.revision == review_plan_revision()
@@ -68,7 +68,7 @@ test fn the_plan_hands_each_call_only_its_own_question() -> Bool {
 // THE JOIN IS EXACT (review 5125854144): a subset of approvals is NOT complete -- the missing calls
 // stay in the denominator as awaiting -- and an observation that names an unknown call, another
 // subject, another revision, or the same call twice refuses the whole review naming the call.
-test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_observations() -> Bool {
+test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_observations() -> Bool  {
   let p = plan()
   let two = [obs(plan: p, key: "fail-closed", text: approve_text()), obs(plan: p, key: "single-authority", text: approve_text())]
   let subset = review_aggregate(plan: p, observations: two)
@@ -107,7 +107,7 @@ test fn the_join_keeps_the_plan_as_denominator_and_refuses_foreign_or_duplicate_
 // five observations are terminal (the fifth is still running), so the incomplete set is the
 // roster minus those four, and that relation is what the fold actually owes. The rendering is
 // still covered: the phrase must appear and must name a criterion that had no observation.
-test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomplete_calls() -> Bool {
+test fn the_aggregate_regroups_by_file_counts_the_overlap_and_names_the_incomplete_calls() -> Bool  {
   let p = plan()
   let running = ReviewObservation { call_id: "how-to-work", subject_id: review_subject_id(s: p.subject), plan_revision: p.revision, source: ReviewReceiptAbsent, process: WorkerProcessRunning { command: "gunbc" as NonEmptyStr } }
   let evidence = [
@@ -150,7 +150,7 @@ fn stated_departure_text(reason: String) -> String {
   join(["{\"schema\":\"roadmap-review-verdict/v1\",\"verdict\":\"approve\",\"summary\":\"diverges, reason stated: ", reason, "\"}"], "")
 }
 
-test fn a_stated_departure_from_the_decision_home_is_admitted_while_the_selection_law_still_fails() -> Bool {
+test fn a_stated_departure_from_the_decision_home_is_admitted_while_the_selection_law_still_fails() -> Bool  {
   let p = plan()
   let departure = "a local Chosen/Undecided sum is used because the candidate field is a fixture pair with no funded axis; the module says so beside the type"
   let evidence = concat(

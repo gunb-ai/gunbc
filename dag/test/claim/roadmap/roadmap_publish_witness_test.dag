@@ -127,7 +127,7 @@ fn one_pull(sha: CommitSha, draft: Bool) -> PullRequestObservation {
   }
 }
 
-test fn a_pull_request_at_the_expected_head_is_bound() -> Bool {
+test fn a_pull_request_at_the_expected_head_is_bound() -> Bool  {
   match adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: true), remotes: remotes_deliberately_unreadable()) {
     PublicationBound { branch: _, pr_number, pr_head, url: _, draft } =>
       pr_number == 22 && (pr_head as String) == (fixture_expected as String) && draft
@@ -143,7 +143,7 @@ test fn a_pull_request_at_the_expected_head_is_bound() -> Bool {
 
 data divergence_is_the_point_note: String = "A pull request exists, its branch and base match, and its head is a DIFFERENT commit — the ordinary state after a worker pushes while a review is in flight. A branch lookup reports this as a successful publication and every later receipt binds to a commit nobody assessed. Both shas are asserted, because naming only one leaves the operator unable to tell which is stale."
 
-test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool {
+test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool  {
   match adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable()) {
     PublicationHeadDiverged { branch: _, pr_number, pr_head, expected_head, url: _ } =>
       pr_number == 22
@@ -161,7 +161,7 @@ test fn a_pull_request_at_another_head_diverges_and_names_both() -> Bool {
 
 data no_silent_pick_note: String = "THE CLAIM THAT KILLS first(). Two open pull requests carry the same head branch against the same base. An implementation selecting the first would report one of them as THE publication, and which one depends on list order — so this witness ALSO reverses nothing and asserts the ambiguous arm carries BOTH numbers. A silent pick passes every other claim in this file."
 
-test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
+test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead {
       pulls: [
@@ -188,7 +188,7 @@ test fn two_pull_requests_for_one_target_are_ambiguous_not_a_pick() -> Bool {
 }
 
 // A pull request on the right branch against a DIFFERENT base is not this publication. Without the base in the key, such a pull request would bind — and it is a real shape, since a stacked or retargeted change carries the same head branch. Here it must fall through to the remote-ref path rather than be adopted.
-test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
+test fn a_pull_request_against_another_base_does_not_bind() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead {
       pulls: [
@@ -214,7 +214,7 @@ test fn a_pull_request_against_another_base_does_not_bind() -> Bool {
 // one path where nothing else would reveal the mismatch; a stale branch from an earlier attempt
 // satisfied it. Both directions are asserted: at the expected head is its own arm, and diverged
 // names both shas.
-test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_arm() -> Bool {
+test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_arm() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesRead {
@@ -238,7 +238,7 @@ test fn a_remote_branch_at_the_expected_head_without_a_pull_request_is_its_own_a
   }
 }
 
-test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bool {
+test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesRead {
@@ -273,7 +273,7 @@ fn ambiguous_over_two_refs(outcome: PublicationOutcome) -> Bool {
   }
 }
 
-test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
+test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool  {
   let expected_first = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesRead {
@@ -297,7 +297,7 @@ test fn two_remote_refs_for_one_branch_are_ambiguous_not_a_pick() -> Bool {
     && !publication_offers_the_expected_head(outcome: expected_first)
 }
 
-test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool {
+test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesRead {
@@ -314,7 +314,7 @@ test fn one_remote_ref_still_binds_and_a_sibling_branch_does_not_count() -> Bool
   }
 }
 
-test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
+test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool  {
   let outcome = adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesRead {
@@ -338,7 +338,7 @@ test fn an_unpushed_branch_reports_how_many_refs_it_read() -> Bool {
 }
 
 // AN UNREADABLE OBSERVATION MUST NOT READ AS 'NOT PUBLISHED'. Both are negative, so a claim asserting only 'it did not conclude bound' passes against the collapse — and the collapse points the operator at the wrong action entirely: pushing a branch that may already be pushed, because the truth is that nothing was learned.
-test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool {
+test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool  {
   match adjudicate_with(
     pulls: PullRequestsUnreadable {
       cause: PullRequestStatusRefused {
@@ -363,7 +363,7 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
   }
 }
 
-test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool {
+test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool  {
   match adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
     remotes: RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
@@ -381,7 +381,7 @@ test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpubl
 }
 
 // Exactly one arm answers yes, and a remote ref at the expected head is deliberately NOT it: there is nothing to review, and the review lane's subject is a pull request. Asserting the true case alone would pass against a predicate that answered yes for everything, so every other arm is asserted false in the same claim.
-test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
+test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool  {
   let bound = adjudicate_with(pulls: one_pull(sha: fixture_expected, draft: false), remotes: remotes_deliberately_unreadable())
   let diverged = adjudicate_with(pulls: one_pull(sha: fixture_older, draft: false), remotes: remotes_deliberately_unreadable())
   let ref_only = adjudicate_with(
@@ -405,7 +405,7 @@ test fn only_a_bound_pull_request_offers_the_expected_head() -> Bool {
     && !publication_offers_the_expected_head(outcome: refused)
 }
 
-test fn the_diverged_detail_names_both_commits() -> Bool {
+test fn the_diverged_detail_names_both_commits() -> Bool  {
   let diverged = publication_detail(outcome: adjudicate_with(
     pulls: one_pull(sha: fixture_older, draft: false),
     remotes: remotes_deliberately_unreadable(),
@@ -415,7 +415,7 @@ test fn the_diverged_detail_names_both_commits() -> Bool {
     && string_contains(s: diverged, pattern: "branch moved")
 }
 
-test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
+test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool  {
   let as_draft = publication_detail(outcome: adjudicate_with(
     pulls: one_pull(sha: fixture_expected, draft: true),
     remotes: remotes_deliberately_unreadable(),
@@ -484,12 +484,12 @@ fn diverged_outcome() -> PublicationOutcome {
   )
 }
 
-test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool {
+test fn the_clone_url_names_the_repository_not_a_local_alias() -> Bool  {
   let url = github_https_clone_url(repo: fixture_repository) as String
   url == "https://github.com/gunb-ai/gunbc.git" && url != "origin"
 }
 
-test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
+test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool  {
   match publication_receipt_decode(
     receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
@@ -515,7 +515,7 @@ test fn a_receipt_round_trips_its_outcome_and_its_subject() -> Bool {
 //
 // So this asserts the FIELDS survive the round trip, not that a string mentions them.
 
-test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
+test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool  {
   match publication_receipt_decode(
     receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
@@ -538,7 +538,7 @@ test fn a_bound_receipt_preserves_the_pull_request_binding() -> Bool {
   }
 }
 
-test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
+test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool  {
   match publication_receipt_decode(
     receipt: receipt_for(outcome: diverged_outcome(), head: fixture_expected),
   ) {
@@ -560,7 +560,7 @@ test fn a_diverged_receipt_preserves_the_head_that_was_offered() -> Bool {
   }
 }
 
-test fn a_receipt_records_the_head_that_was_asked_about() -> Bool {
+test fn a_receipt_records_the_head_that_was_asked_about() -> Bool  {
   match publication_receipt_decode(
     receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
   ) {
@@ -608,7 +608,7 @@ fn doctored_bound_receipt_carrying_a_stray_head() -> String {
   ]))
 }
 
-test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
+test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool  {
   match publication_receipt_decode(receipt: doctored_bound_receipt_carrying_a_stray_head()) {
     ReceiptUndecodable { reason: _ } => false
     ReceiptDecoded { receipt } =>
@@ -618,7 +618,7 @@ test fn a_bound_receipt_binds_the_subject_head_and_no_other() -> Bool {
   }
 }
 
-test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool {
+test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> Bool  {
   match publication_evidence_for(
     expected: subject_for(head: fixture_older),
     source: ReceiptSourcePresent { text: doctored_bound_receipt_carrying_a_stray_head() },
@@ -631,7 +631,7 @@ test fn a_stray_head_cannot_make_a_receipt_evidence_for_the_head_it_names() -> B
   }
 }
 
-test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
+test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool  {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-validation-receipt/v1\", \"outcome\": \{\"kind\": \"publication-bound\"\}\}",
   ) {
@@ -649,7 +649,7 @@ test fn a_foreign_schema_refuses_rather_than_decoding() -> Bool {
 // The schema string in the fixture below is the real v1 spelling, so this goes red the moment the
 // decoder is loosened to accept it.
 
-test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool {
+test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool  {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v1\", \"outcome\": \"publication-bound\", \"detail\": \"d\", \"repository\": \"r\", \"branch\": \"b\", \"expected_head\": \"h\"\}",
   ) {
@@ -659,7 +659,7 @@ test fn a_v1_receipt_refuses_rather_than_decoding_without_its_binding() -> Bool 
   }
 }
 
-test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
+test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool  {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"published-ok\"\}\}",
   ) {
@@ -668,7 +668,7 @@ test fn an_outcome_kind_this_emitter_never_writes_refuses() -> Bool {
   }
 }
 
-test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
+test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool  {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"subject\": \{\"node_id\": \"n\", \"attempt_key\": \"a\", \"repository\": \{\"owner\": \"o\", \"name\": \"r\", \"full_name\": \"o/r\", \"private\": false, \"default_branch\": \"main\"\}, \"branch\": \"b\", \"expected_base\": \"main\", \"expected_head\": \"h\"\}, \"outcome\": \{\"kind\": \"publication-bound\", \"pr_head\": \"h\", \"url\": \"u\", \"draft\": false\}\}",
   ) {
@@ -684,7 +684,7 @@ test fn a_bound_outcome_missing_its_pull_request_number_refuses() -> Bool {
 // recording two matching pull requests decoded to one recording none, with the same outcome kind,
 // and every claim checking only the kind stayed green.
 
-test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
+test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool  {
   match publication_receipt_decode(
     receipt: publication_receipt_json(
       receipt: publication_receipt_of(
@@ -735,7 +735,7 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
 // default branch, so the round trip compared equal. This claim uses a subject whose base is NOT the
 // default branch — the case that would have produced a repository nobody recorded and a false
 // wrong-subject refusal in the one function whose job is to tell those apart.
-test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
+test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool  {
   let subject = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
@@ -765,7 +765,7 @@ test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() 
   }
 }
 
-test fn a_receipt_missing_its_subject_refuses() -> Bool {
+test fn a_receipt_missing_its_subject_refuses() -> Bool  {
   match publication_receipt_decode(
     receipt: "\{\"schema\": \"roadmap-publication-receipt/v2\", \"outcome\": \{\"kind\": \"branch-not-published\", \"remote_branches_seen\": 0\}\}",
   ) {
@@ -785,7 +785,7 @@ test fn a_receipt_missing_its_subject_refuses() -> Bool {
 // from a run: "not a receipt" is not a JSON value at its first byte, so a parser reporting where
 // the document stopped being readable must say offset 0. A substring claim would pass a decoder
 // that located everything at 0 by accident.
-test fn a_receipt_that_is_not_json_refuses() -> Bool {
+test fn a_receipt_that_is_not_json_refuses() -> Bool  {
   match publication_receipt_decode(receipt: "not a receipt") {
     ReceiptDecoded { receipt: _ } => false
     ReceiptUndecodable { reason: r } =>
@@ -798,7 +798,7 @@ test fn a_receipt_that_is_not_json_refuses() -> Bool {
 // predecessor it produced the identical sentence as the garbage above, so a reader could not tell
 // "these bytes are damaged" from "a writer appended, or two were concatenated". Those have opposite
 // remedies.
-test fn a_receipt_with_trailing_content_refuses_as_trailing_not_as_garbage() -> Bool {
+test fn a_receipt_with_trailing_content_refuses_as_trailing_not_as_garbage() -> Bool  {
   match publication_receipt_decode(receipt: "\{} tail") {
     ReceiptDecoded { receipt: _ } => false
     ReceiptUndecodable { reason: r } =>
@@ -841,7 +841,7 @@ fn differing_field(e: PublicationEvidence) -> String {
   }
 }
 
-test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
+test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool  {
   is_evidence(
     e: evidence_for_subject_of(
       expected: subject_for(head: fixture_expected),
@@ -850,7 +850,7 @@ test fn a_receipt_is_evidence_for_the_subject_it_was_written_for() -> Bool {
   )
 }
 
-test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
+test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool  {
   let e = evidence_for_subject_of(
     expected: subject_for(head: fixture_older),
     receipt: receipt_for(outcome: bound_outcome(), head: fixture_expected),
@@ -858,7 +858,7 @@ test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
   !is_evidence(e: e) && differing_field(e: e) == "expected_head"
 }
 
-test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
+test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool  {
   let expected = RoadmapPublicationSubject {
     node_id: "another-node",
     attempt_key: "a7",
@@ -874,7 +874,7 @@ test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
   !is_evidence(e: e) && differing_field(e: e) == "node_id"
 }
 
-test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
+test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool  {
   let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a8",
@@ -896,7 +896,7 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
 // diverge. full_name, private and default_branch are ATTRIBUTES the judgment was made against, not
 // identity, so they round trip and are not part of the match.
 
-test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
+test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool  {
   let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
@@ -912,7 +912,7 @@ test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
   !is_evidence(e: e) && differing_field(e: e) == "repository_name"
 }
 
-test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
+test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool  {
   let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
@@ -934,7 +934,7 @@ test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
   !is_evidence(e: e) && differing_field(e: e) == "repository_owner"
 }
 
-test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
+test fn a_receipt_against_another_base_is_not_evidence() -> Bool  {
   let expected = RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
@@ -957,7 +957,7 @@ test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
 // asserts the FIRST is absent and the other two are refusals — the discriminator for review 46148
 // at the pure layer; red if empty ever reads as absent again.
 
-test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bool {
+test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bool  {
   let absent = publication_evidence_for(
     expected: subject_for(head: fixture_expected),
     source: ReceiptSourceAbsent,
@@ -1047,7 +1047,7 @@ fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
 
 // The fifth cause is the one that happens BEFORE any request: the github core quota lease on the
 // fabric event log refused, so the listing was withheld rather than sent into a 429.
-test fn five_pull_request_read_failures_stay_five_distinct_causes() -> Bool {
+test fn five_pull_request_read_failures_stay_five_distinct_causes() -> Bool  {
   let keys = map(fixture_pull_request_failures(), c => pull_request_failure_key(cause: c))
   count(keys) == 5
     && count(filter(keys, k => k == "credential")) == 1
@@ -1068,7 +1068,7 @@ test fn five_pull_request_read_failures_stay_five_distinct_causes() -> Bool {
 // place the remote says why, and 401 alone does not distinguish a missing scope from a revoked
 // token. A transport refusal has no status, and asserting its absence is the point: a sentinel zero
 // would be a plausible value standing where the question does not apply.
-test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool {
+test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool  {
   let rendered = render_pull_request_read_failure(
     cause: PullRequestStatusRefused {
       repository: fixture_repository_name(),
@@ -1083,7 +1083,7 @@ test fn a_status_refusal_renders_operation_repository_status_and_body() -> Bool 
     && !string_contains(s: rendered, pattern: "/repos/")
 }
 
-test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
+test fn a_transport_refusal_carries_no_status_at_all() -> Bool  {
   let rendered = render_pull_request_read_failure(
     cause: PullRequestTransportRefused {
       repository: fixture_repository_name(),
@@ -1106,7 +1106,7 @@ test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
 // can produce a refusal. If a cause were handled by falling through to the remote branch reading,
 // this witness would see BranchNotPublished and go red.
 
-test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublished() -> Bool {
+test fn every_pull_request_read_failure_refuses_rather_than_reporting_unpublished() -> Bool  {
   all(
     fixture_pull_request_failures(),
     c => match adjudicate_with(

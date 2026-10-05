@@ -77,7 +77,7 @@ fn unpinned_artifact() -> GuestBaseArtifact {
 // This is the arm the whole integrity type exists for, and it is the one an absorbing implementation
 // would have widened into "accept whatever arrived" -- so it is driven from both sides, with the
 // matching digest admitted in the same test.
-test fn bytes_that_contradict_a_recorded_pin_refuse_the_build() -> Bool {
+test fn bytes_that_contradict_a_recorded_pin_refuse_the_build() -> Bool  {
   let contradicted = guest_artifact_verdict(
     artifact: pinned_artifact(),
     observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
@@ -99,7 +99,7 @@ test fn bytes_that_contradict_a_recorded_pin_refuse_the_build() -> Bool {
 // of the coproduct. An unpinned artifact reports the digest it observed so a row can be authored
 // from it; a measurement that could not be TAKEN refuses, because an unreadable file is not the
 // same event as a file whose bytes are new.
-test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses() -> Bool {
+test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses() -> Bool  {
   let first = guest_artifact_verdict(
     artifact: unpinned_artifact(),
     observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
@@ -127,7 +127,7 @@ test fn an_unpinned_artifact_reports_first_contact_and_an_unreadable_one_refuses
 // and this goes red on both halves, because that arm is the one carrying the pin advice. The two
 // halves are separate on purpose -- asserting only that the text differs would pass on any wording
 // change, so the first pins the arm and the second pins what the arm must NOT tell a reader to do.
-test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() -> Bool {
+test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() -> Bool  {
   let v = guest_artifact_verdict(
     artifact: runner_guest_built_image_artifact,
     observed: Sha256FileDigest { digest: sha256_digest(hex: b_digest) },
@@ -140,7 +140,7 @@ test fn the_built_image_reports_a_receipt_and_never_advises_authoring_a_pin() ->
 
 // THE IMAGE PATH CARRIES THE WHOLE IDENTITY, so a runner bump cannot land on the path the previous
 // release's image occupies. The red here is a second image differing ONLY in the runner release.
-test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() -> Bool {
+test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() -> Bool  {
   let a = gunbc_runner_guest_image
   let b = RunnerGuestImage {
     distribution: a.distribution,
@@ -161,7 +161,7 @@ test fn two_images_differing_only_in_the_runner_release_do_not_share_a_path() ->
 // FailureAction= are the manager's own reaction to the unit ending, so they cover the arm where no
 // command can be spawned at all. The red is either one missing, or the power-off regressing to a
 // command line (which cannot run on the start-failed arm).
-test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
+test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool  {
   let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "SuccessAction=poweroff-force")
     && string_contains(s: text, pattern: "FailureAction=poweroff-force")
@@ -173,7 +173,7 @@ test fn the_guest_agent_powers_the_machine_off_on_every_arm() -> Bool {
 // THE LISTENER IS THE PRINCIPAL WORKLOAD AND run.sh IS NOT, so a return code of 2 has no loop to
 // re-enter: the listener's exit is the unit's exit. The red is any revision that launches run.sh (or
 // run-helper.sh), or adds a restart policy, either of which keeps a spent one-job VM alive.
-test fn the_listener_runs_once_with_no_relaunch_loop() -> Bool {
+test fn the_listener_runs_once_with_no_relaunch_loop() -> Bool  {
   let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "ExecStart=/opt/actions-runner/bin/Runner.Listener run")
     && !string_contains(s: text, pattern: "run.sh")
@@ -184,7 +184,7 @@ test fn the_listener_runs_once_with_no_relaunch_loop() -> Bool {
 
 // THE CREDENTIAL IS READ FROM THE DEVICE BY systemd, NEVER PASSED ON A COMMAND LINE, and every program
 // the agent runs is named absolutely (the Mt. Collins PATH lesson). The job PATH is declared.
-test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute() -> Bool {
+test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute() -> Bool  {
   let text = serialize_systemd_unit_file(file: runner_guest_agent_unit(image: gunbc_runner_guest_image, credential_device: the_credential_device()))
   string_contains(s: text, pattern: "EnvironmentFile=-/dev/vdb")
     && !string_contains(s: text, pattern: "--jitconfig")
@@ -200,7 +200,7 @@ test fn the_credential_arrives_by_environment_file_and_every_program_is_absolute
 // pads to a whole number of extdeps.virtualization.firecracker firecracker_block_sector_size; the red is an unpadded content (a real 4,076-byte config would lose its
 // last 492 bytes). The padding must be newlines, which systemd's parser skips, and the assignment
 // must be upstream's own argument variable.
-test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool {
+test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool  {
   let c = jit_drive_content(encoded_jit_config: "eyJhIjoiYiJ9" as NonEmptyStr)
   let sector = byte_size_count(b: firecracker_block_sector_size)
   string_length(s: c) % sector == 0
@@ -214,7 +214,7 @@ test fn the_credential_drive_is_whole_sectors_of_one_assignment() -> Bool {
 // unit emits -- so an edit to the emitter that the reader does not follow reds here rather than on a
 // VM. RunnerListening is read from upstream's own line, and a line merely mentioning the marker
 // without a known kind is not an observation.
-test fn every_emitted_observation_is_read_back_as_its_own_kind() -> Bool {
+test fn every_emitted_observation_is_read_back_as_its_own_kind() -> Bool  {
   let img = gunbc_runner_guest_image
   let console = join([
     "[   3.1] ", guest_observation_line(event: GuestBooted, image: img), "\n",
@@ -242,7 +242,7 @@ test fn every_emitted_observation_is_read_back_as_its_own_kind() -> Bool {
 // service, which is merged into the target by the ordinary drop-in path and has no symlink
 // requirement. The red is a build that stops emitting that fragment, or emits one that does not name
 // the unit -- which is exactly the state the merged image was in.
-test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool {
+test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool  {
   let path = runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image)
   let body = serialize_systemd_drop_in(drop_in: runner_guest_agent_target_drop_in())
   string_contains(s: path, pattern: "/etc/systemd/system/multi-user.target.d/")
@@ -255,7 +255,7 @@ test fn the_agent_is_pulled_in_by_a_drop_in_systemd_will_actually_read() -> Bool
 // NOTHING IS WRITTEN INTO A .wants/ DIRECTORY ANY MORE, and this says so directly. A future author
 // restoring the "just copy the unit into .wants/" shortcut reds here even if the drop-in above still
 // stands, because the failure mode was an INERT file that looked like activation.
-test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool {
+test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool  {
   !string_contains(s: runner_guest_agent_drop_in_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
     && !string_contains(s: runner_guest_agent_unit_path(root: "/r", image: gunbc_runner_guest_image), pattern: ".wants/")
 }
@@ -263,7 +263,7 @@ test fn no_placement_relies_on_a_regular_file_in_a_wants_directory() -> Bool {
 // THE mke2fs OPERAND CARRIES ITS UNIT. An unsuffixed fs-size is a BLOCK count, so a builder that
 // rendered the bare number would size the image by a host-dependent heuristic. The `m` suffix is the
 // whole reason the size is carried as a Mebibyte rather than an Int.
-test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -> Bool {
+test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -> Bool  {
   let c = mke2fs_populate_command(
     fs: runner_guest_image_filesystem,
     image_path: "/r/i.ext4",
@@ -283,7 +283,7 @@ test fn the_filesystem_size_operand_is_denominated_rather_than_a_block_count() -
 // and to the rendered unit: prepending a drive moves the derived name, reds the hardware pin here,
 // and the rendered EnvironmentFile= follows the derivation rather than a literal. Controls: root is
 // /dev/vda, an unattached id has no name.
-test fn the_credential_device_is_where_the_vm_config_puts_the_credential_drive() -> Bool {
+test fn the_credential_device_is_where_the_vm_config_puts_the_credential_drive() -> Bool  {
   let cfg = runner_microvm_vm_config(
     rootfs_path: "/r/rootfs.ext4",
     jit_config_path: "/r/jit.img",
@@ -331,7 +331,7 @@ fn staging_order(commands: List<ArgvCommand>) -> StagingOrder {
 // -T IS PINNED WITH ITS DISCRIMINATOR: without it, a real directory at the extracted /etc/resolv.conf
 // makes `ln -sfn` succeed by creating the link INSIDE that directory, so the build reports the link
 // installed while the image has none; with -T that destination makes image construction refuse.
-test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_no_baked_address() -> Bool {
+test fn the_resolver_is_a_link_to_the_kernels_pnp_placed_after_extraction_with_no_baked_address() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: gunbc_runner_guest_image.runner, arch: Aarch64) {
     Absent => false
     Present { value: a } => {

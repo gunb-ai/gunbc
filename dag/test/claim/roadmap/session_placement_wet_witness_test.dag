@@ -256,7 +256,7 @@ fn release_text(dir: String) -> String {
 // CONTROL 1, ACQUIRE -> NO PLACEMENT RECORD: the slot opened before the reservation is all that
 // survives. Inside its declared window the seat is kept; past it, with no unit, the slot is closed and
 // the seat released by reference, with a durable release record that binds no grant.
-test fn a_slot_with_no_placement_record_is_kept_in_window_and_released_after() -> Bool {
+test fn a_slot_with_no_placement_record_is_kept_in_window_and_released_after() -> Bool  {
   let dir = fresh_dir(tag: "c1")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
@@ -270,7 +270,7 @@ test fn a_slot_with_no_placement_record_is_kept_in_window_and_released_after() -
 }
 
 // CONTROL 2, A MALFORMED SLOT: an unreadable slot keeps its seat and leaves a durable note naming why.
-test fn an_unreadable_slot_keeps_its_seat_and_writes_a_note() -> Bool {
+test fn an_unreadable_slot_keeps_its_seat_and_writes_a_note() -> Bool  {
   let dir = fresh_dir(tag: "c2")
   let stores = stores_at(dir: dir)
   let torn = Filesystem.Write(path: join([dir, "/", unit_a(), ".1"], ""), content: "{\"identity\":")
@@ -283,7 +283,7 @@ test fn an_unreadable_slot_keeps_its_seat_and_writes_a_note() -> Bool {
 // window release the seat, and the release record is read back through the real reader, which
 // accepts it only as bound to the recorded grant identity and fence (a release naming another grant
 // or fence reads Unreadable there, as the pure control above shows).
-test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_grant() -> Bool {
+test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_grant() -> Bool  {
   let dir = fresh_dir(tag: "c3")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
@@ -315,7 +315,7 @@ test fn a_recorded_placement_whose_unit_never_started_is_released_bound_to_its_g
 
 // CONTROL 4, UNIT START -> CONTROLLER TERMINATION: a Launching slot is kept while its unit runs and
 // released once the unit is gone.
-test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bool {
+test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bool  {
   let dir = fresh_dir(tag: "c4")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
@@ -328,7 +328,7 @@ test fn a_launched_session_is_kept_while_running_and_released_when_ended() -> Bo
 // FINDING 3, WET NEGATIVE: attempt B's placement record planted at attempt A's path, A's unit absent.
 // Settlement releases A's own reference (the slot's key) -- never B's -- and binds no grant, because
 // the record at that path is foreign to A.
-test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bool {
+test fn a_foreign_placement_record_cannot_release_another_attempts_grant() -> Bool  {
   let dir = fresh_dir(tag: "f3")
   let stores = stores_at(dir: dir)
   let charged = match reserve_real(dir: dir) { Present { value: _ } => true  Absent => false }
@@ -386,7 +386,7 @@ fn lifecycle_unreadable(u: NonEmptyStr) -> UnitLifecycle { UnitLifecycleUnknown 
 // DISCRIMINATING RED: with the unit ACTIVE, and again with it UNREADABLE, the stale-generation abandon
 // releases NOTHING -- the slot stays Launching and the ledger still holds the reference. (At c6d50f1
 // this released the seat: the G1 close lost and compute_release_on ran anyway.)
-test fn a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat() -> Bool {
+test fn a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat() -> Bool  {
   let dir_active = fresh_dir(tag: "pa")
   let active = match launched_with_real_seat(dir: dir_active) {
     Absent => false
@@ -409,7 +409,7 @@ test fn a_post_gate_failure_with_a_live_or_unreadable_unit_keeps_the_real_seat()
 // POSITIVE CONTROL ON THE SAME ROUTE: with the unit ENDED (absent, or finished), the stale-generation
 // abandon re-reads the slot, closes it from G2, and the ledger reports ComputeReleased -- not
 // NothingToRelease, not a refusal -- after which nothing is left to return.
-test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation() -> Bool {
+test fn a_post_gate_failure_with_an_ended_unit_returns_the_real_seat_from_the_current_generation() -> Bool  {
   let dir = fresh_dir(tag: "pe")
   match launched_with_real_seat(dir: dir) {
     Absent => false

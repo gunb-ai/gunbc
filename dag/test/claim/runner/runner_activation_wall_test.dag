@@ -50,7 +50,7 @@ fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
 // producer note and gunbc.runner_activation's pool-readiness note both say so -- previously
 // invisible here because the fixture read the production row without anyone noticing it had become
 // the subject.
-test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool {
+test fn witness_live_topology_refuses_activation_fleet_wide() -> Bool  {
   let d = srv1_deploy_fixture()
   let live = ci_cache_instance(host: d.host_label as HostIdentity)
   yields_command(
@@ -114,7 +114,7 @@ fn activation_for(cache_ready: BuildCacheInstanceReady, pool_ready: HostCompileP
   )
 }
 
-test fn witness_exact_desired_instance_with_managed_owner_activates() -> Bool {
+test fn witness_exact_desired_instance_with_managed_owner_activates() -> Bool  {
   let d = srv1_deploy_fixture()
   let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
   yields_command(
@@ -125,7 +125,7 @@ test fn witness_exact_desired_instance_with_managed_owner_activates() -> Bool {
   )
 }
 
-test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
+test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool  {
   let blind = runner_activation_readiness_blind_widen_sketch(
     host_admission: admit_runner_host(deploy: srv1_deploy_fixture()),
   )
@@ -143,13 +143,13 @@ test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
   yields_command(outcome: blind) && !runner_activation_gate_accepts(outcome: blind, admission: unready)
 }
 
-test fn witness_absent_endpoint_cannot_admit_activation() -> Bool {
+test fn witness_absent_endpoint_cannot_admit_activation() -> Bool  {
   observation_admits_activation(
     observed: EndpointAbsent { instance: ready_instance_fixture(host: "srv4") },
   ) == false
 }
 
-test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool {
+test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool  {
   let retired = placement_admits_activation(
     placement: ServerRunnerOwned {
       slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 },
@@ -165,7 +165,7 @@ test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool 
   (retired == false) && (desired == false)
 }
 
-test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> Bool {
+test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> Bool  {
   let unknown = placement_admits_activation(
     placement: ServerPlacementUnknown { detail: "unreadable" as NonEmptyStr },
   )
@@ -187,7 +187,7 @@ test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> 
   (unknown == false) && (unsupervised == false) && (ambiguous == false) && (unreachable == false)
 }
 
-test fn witness_receipt_from_another_host_is_refused() -> Bool {
+test fn witness_receipt_from_another_host_is_refused() -> Bool  {
   let d = srv1_deploy_fixture()
   let intended = ready_instance_fixture(host: "srv1").intended_unit
   yields_command(
@@ -198,7 +198,7 @@ test fn witness_receipt_from_another_host_is_refused() -> Bool {
   ) == ((d.host_label as String) == "srv1")
 }
 
-test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool {
+test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool  {
   let d = srv1_deploy_fixture()
   let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
   let declared_not_observed = activation_for(
@@ -218,7 +218,7 @@ test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool
 // installer command started demanding a readiness receipt, the split has collapsed the other way:
 // materialization cannot be performed first, and the ordering is unsatisfiable rather than enforced.
 
-test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
+test fn witness_materializing_a_slot_does_not_activate_it() -> Bool  {
   let d = srv1_deploy_fixture()
   let install = runner_host_installer_command(
     admission: admit_runner_host(deploy: d),
@@ -240,7 +240,7 @@ test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
 // and a wall catching only the first would still activate a runner whose compiles are charged
 // outside the intended pool.
 
-test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
+test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool  {
   let d = srv1_deploy_fixture()
   let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
   yields_command(
@@ -256,7 +256,7 @@ test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
   ) == false
 }
 
-test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool {
+test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool  {
   let d = srv1_deploy_fixture()
   let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
   yields_command(

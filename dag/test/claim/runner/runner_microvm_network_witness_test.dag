@@ -67,7 +67,7 @@ fn slot(i: Nat) -> RunnerSlotIdentity {
 // TWO SLOTS MUST NOT SHARE AN ADDRESS OR A DEVICE, which is the whole isolation claim reduced to
 // the one property a derivation can be wrong about. The red is a derivation that ignores the slot
 // index -- exactly what a hand-written constant would be.
-test fn two_slots_share_no_address_and_no_tap_device() -> Bool {
+test fn two_slots_share_no_address_and_no_tap_device() -> Bool  {
   let a = runner_slot_network(slot: slot(i: 1))
   let b = runner_slot_network(slot: slot(i: 2))
   (a.tap_device as String) != (b.tap_device as String)
@@ -79,7 +79,7 @@ test fn two_slots_share_no_address_and_no_tap_device() -> Bool {
 // A GUEST MAC MUST BE ONE NO VENDOR CAN BE ASSIGNED. The scope is DERIVED from the first octet by
 // extdeps.network.mac, so this asserts the property rather than the literal 0x02 that produces it --
 // a witness pinning the literal would pass on an address that happened to spell 2 and mean nothing.
-test fn a_guest_mac_is_locally_administered_and_never_a_vendor_address() -> Bool {
+test fn a_guest_mac_is_locally_administered_and_never_a_vendor_address() -> Bool  {
   match mac_address_scope(addr: runner_slot_guest_mac(slot: slot(i: 3))) {
     LocallyAdministered => true
     _ => false
@@ -90,7 +90,7 @@ test fn a_guest_mac_is_locally_administered_and_never_a_vendor_address() -> Bool
 // with too few colons is not rejected by the kernel -- it is parsed into DIFFERENT fields, so the
 // gateway silently becomes the hostname and the guest boots with no route. The count is therefore
 // the property under test, alongside the addresses actually appearing.
-test fn the_guest_ip_directive_carries_every_positional_separator() -> Bool {
+test fn the_guest_ip_directive_carries_every_positional_separator() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 4))
   let arg = runner_slot_guest_ip_boot_arg(net: net)
   string_contains(s: arg, pattern: render_ipv4_address(addr: net.guest_address) as String)
@@ -104,7 +104,7 @@ test fn the_guest_ip_directive_carries_every_positional_separator() -> Bool {
 // table ip filter / ip nat / ip mangle. In nftables every table hooking a point runs and ANY drop
 // wins, so `policy drop` in our forward chain would drop packets dockerd forwards. The red here is
 // that exact regression: flip the chain's policy and this goes red before it reaches a host.
-test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool {
+test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "hook forward")
     && string_contains(s: text, pattern: "policy accept")
@@ -115,7 +115,7 @@ test fn the_forward_chain_defaults_to_accept_and_drops_only_tap_to_tap() -> Bool
 // THE RULESET MUST BE REPLAYABLE, which is what the add-then-delete preamble buys. Applying twice
 // must converge rather than accumulate, and `delete table` on an absent table is an ERROR in
 // nftables rather than a no-op -- so the add must come FIRST. The red is either line missing.
-test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool {
+test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "add table inet gunbc_microvm")
     && string_contains(s: text, pattern: "delete table inet gunbc_microvm")
@@ -124,7 +124,7 @@ test fn the_ruleset_replaces_its_own_table_and_guards_the_delete() -> Bool {
 // THE NAT RULE MUST NOT NAME AN UPLINK. srv2's is enP3p3s0f1 and srv1's is not; a ruleset naming
 // one is host-specific and rots on a NIC rename. Source-matching the fleet supernet is exact and
 // identical everywhere, so the control asserts the masquerade is reached by source address.
-test fn the_masquerade_matches_the_supernet_and_names_no_interface() -> Bool {
+test fn the_masquerade_matches_the_supernet_and_names_no_interface() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "ip saddr 172.30.0.0/16 masquerade")
     && !string_contains(s: text, pattern: "enP3p3s0f1")
@@ -135,7 +135,7 @@ test fn the_masquerade_matches_the_supernet_and_names_no_interface() -> Bool {
 // with no sudo anywhere in the JOB path. The red is a .netdev without it: the tap still appears,
 // the host still routes, and only an unprivileged open fails -- at launch time, on a guest, far
 // from this file.
-test fn the_netdev_hands_the_tap_to_the_executor_rather_than_to_root() -> Bool {
+test fn the_netdev_hands_the_tap_to_the_executor_rather_than_to_root() -> Bool  {
   let text = runner_slot_netdev_text(net: runner_slot_network(slot: slot(i: 5)), owner: "ghrunner" as NonEmptyStr)
   string_contains(s: text, pattern: "Kind=tap")
     && string_contains(s: text, pattern: "User=ghrunner")
@@ -146,7 +146,7 @@ test fn the_netdev_hands_the_tap_to_the_executor_rather_than_to_root() -> Bool {
 // the address unassigned and the host has no route to a guest that has not booted -- which is EVERY
 // guest at the moment its VM is configured. The failure would present as a guest networking bug
 // rather than as a missing line in a unit file, which is why it is pinned here.
-test fn the_network_file_configures_the_tap_before_any_guest_provides_carrier() -> Bool {
+test fn the_network_file_configures_the_tap_before_any_guest_provides_carrier() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 6))
   let text = runner_slot_network_file_text(net: net)
   string_contains(s: text, pattern: "ConfigureWithoutCarrier=yes")
@@ -157,7 +157,7 @@ test fn the_network_file_configures_the_tap_before_any_guest_provides_carrier() 
 // TWO SLOTS MUST NOT WRITE THE SAME UNIT FILE, or the second install silently overwrites the first
 // and one slot loses its tap while both rows claim to have one. The device name carries the slot,
 // so the paths differ for the same reason the addresses do.
-test fn two_slots_install_to_different_unit_paths() -> Bool {
+test fn two_slots_install_to_different_unit_paths() -> Bool  {
   let a = runner_slot_network(slot: slot(i: 7))
   let b = runner_slot_network(slot: slot(i: 8))
   runner_slot_netdev_path(net: a) != runner_slot_netdev_path(net: b)
@@ -169,7 +169,7 @@ test fn two_slots_install_to_different_unit_paths() -> Bool {
 // passes for a function that ignores its argument and returns a constant -- which is exactly the row
 // this replaced (review 61223). A SECOND prefix is what discriminates: a constant cannot satisfy
 // both, so the red is any reversion to a spelled-out mask.
-test fn the_netmask_is_computed_from_the_prefix_and_not_a_constant() -> Bool {
+test fn the_netmask_is_computed_from_the_prefix_and_not_a_constant() -> Bool  {
   (render_ipv4_address(addr: netmask_of_prefix(prefix: 30)) as String) == "255.255.255.252"
     && (render_ipv4_address(addr: netmask_of_prefix(prefix: 24)) as String) == "255.255.255.0"
     && (render_ipv4_address(addr: netmask_of_prefix(prefix: 16)) as String) == "255.255.0.0"
@@ -180,7 +180,7 @@ test fn the_netmask_is_computed_from_the_prefix_and_not_a_constant() -> Bool {
 // The host writes Address=<ip>/<prefix> into the .network file and the guest receives a dotted quad
 // on its kernel command line; if those two ever describe different subnets the guest boots unable
 // to reach its own gateway, and every row still reads correctly on its own.
-test fn the_guest_mask_and_the_host_prefix_describe_one_subnet() -> Bool {
+test fn the_guest_mask_and_the_host_prefix_describe_one_subnet() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 9))
   string_contains(
     s: runner_slot_guest_ip_boot_arg(net: net),
@@ -191,7 +191,7 @@ test fn the_guest_mask_and_the_host_prefix_describe_one_subnet() -> Bool {
 // THE SUPERNET MUST FOLLOW THE OCTETS THE SLOTS USE. The red is the literal this replaced: move
 // runner_microvm_network_octet2 and a spelled supernet keeps matching the OLD range, so the NAT
 // rule silently stops masquerading traffic that every per-slot row still says is correct.
-test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
+test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 10))
   let supernet = runner_microvm_network_supernet() as String
   let host_octets = render_ipv4_address(addr: net.host_address) as String
@@ -206,7 +206,7 @@ test fn the_nat_supernet_contains_the_slot_addresses_it_claims_to() -> Bool {
 // contains just as well (review 61259). nftables permits NAT statements only in a chain of type
 // nat, so this pins the chain type that carries the masquerade AND the one that must stay filter --
 // the red is the previous renderer, which hardcoded filter for both.
-test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
+test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "type nat hook postrouting")
     && string_contains(s: text, pattern: "type filter hook forward")
@@ -220,7 +220,7 @@ test fn the_nat_chain_is_typed_nat_and_the_filter_chain_stays_filter() -> Bool {
 // drop. The reds are a 443 grant moved above the private denials -- a guest reaches its own BMC on
 // 443, the ordering the Mt. Collins receipt showed holding -- and a missing final drop, which turns
 // default-deny into default-accept for every port nobody named.
-test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool {
+test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop\n")
     && string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ip daddr 224.0.0.0/4 drop\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 udp dport 53 accept\n    iifname \"gunbc-tap*\" ip daddr 1.1.1.1/32 tcp dport 53 accept\n    iifname \"gunbc-tap*\" tcp dport 443 accept\n    iifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" drop\n  }")
@@ -232,7 +232,7 @@ test fn guest_egress_is_default_deny_at_tap_grain_in_the_receipted_order() -> Bo
 // where `iifname tap ct state established,related accept` came first: an established or related flow
 // toward a denied range (a related ICMP, a flow predating a ruleset change) was accepted before the
 // denial could see it. Only the reply-direction (oifname) established rule precedes the denials.
-test fn no_guest_side_accept_precedes_an_invariant_denial() -> Bool {
+test fn no_guest_side_accept_precedes_an_invariant_denial() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   !string_contains(s: text, pattern: "iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop")
     && string_contains(s: text, pattern: "oifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" ip daddr 10.0.0.0/8 drop")
@@ -242,7 +242,7 @@ test fn no_guest_side_accept_precedes_an_invariant_denial() -> Bool {
 // is in a prerouting chain at raw priority (-300, below conntrack's -200), which also covers v6 the
 // guest sends to the HOST, which forward never sees. The red is the v6 drop living in forward, after
 // conntrack has already created the entry.
-test fn tap_ipv6_is_refused_at_raw_before_conntrack_and_not_in_forward() -> Bool {
+test fn tap_ipv6_is_refused_at_raw_before_conntrack_and_not_in_forward() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "type filter hook prerouting priority -300; policy accept;\n    iifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
     && !string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    iifname \"gunbc-tap*\" meta nfproto ipv6")
@@ -308,7 +308,7 @@ fn admission(r: SanitationSubjectResult) -> String {
 // srv1 against srv2's self-consistent receipt refuses -- the cross-host RED of the ruling on #11675 --
 // as do a slot outside the converged population, a slot whose tap v6 is not established disabled, and
 // a host whose helper standing is not excluded. The positive control is the slot's own host.
-test fn the_sanitation_subject_is_only_the_slots_own_hosts_established_receipt() -> Bool {
+test fn the_sanitation_subject_is_only_the_slots_own_hosts_established_receipt() -> Bool  {
   let srv1_slot = RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
   admission(r: slot_network_sanitation_subject(slot: slot(i: 1), receipt: srv2_receipt())) == "admitted"
     && admission(r: slot_network_sanitation_subject(slot: srv1_slot, receipt: srv2_receipt())) == "other-host"
@@ -419,14 +419,14 @@ fn slot_residue(i: Nat, o: ResidueObservation) -> SlotResidueReading {
 }
 
 // THE POSITIVE CONTROL: every fact holds for the admitted subject, and only then is it confirmed.
-test fn a_clean_slot_network_is_confirmed_only_when_every_fact_holds() -> Bool {
+test fn a_clean_slot_network_is_confirmed_only_when_every_fact_holds() -> Bool  {
   verdict(r: readback_slot_1(r: clean_readings(i: 1))) == "confirmed"
 }
 
 // EACH FACT REFUTES ON ITS OWN AND NAMES ITSELF. A VMM fd on the tap, v6 re-enabled on it, a flow in
 // either original direction, a neighbour entry, an expectation, and an edited ruleset are different
 // remedies.
-test fn each_fact_refutes_alone_and_names_itself() -> Bool {
+test fn each_fact_refutes_alone_and_names_itself() -> Bool  {
   let c = clean_readings(i: 1)
   verdict(r: readback_slot_1(r: with_tap(r: c, t: TapReading { subject: subject(i: 1), observation: TapHeld { holders: 1 } }))) == "refuted:tap"
     && verdict(r: readback_slot_1(r: with_tap(r: c, t: TapReading { subject: subject(i: 1), observation: TapMissing }))) == "refuted:tap"
@@ -440,7 +440,7 @@ test fn each_fact_refutes_alone_and_names_itself() -> Bool {
 
 // "COULD NOT READ" IS NOT "REFUTED" -- for the neighbour table as for every fact -- and a refutation
 // elsewhere outranks it.
-test fn an_unreadable_fact_is_unobservable_and_a_refutation_elsewhere_outranks_it() -> Bool {
+test fn an_unreadable_fact_is_unobservable_and_a_refutation_elsewhere_outranks_it() -> Bool  {
   let c = clean_readings(i: 1)
   let unreadable_neighbour = with_neighbour(r: c, c: slot_residue(i: 1, o: ResidueUnreadable { reason: "ip neigh show refused" as NonEmptyStr }))
   verdict(r: readback_slot_1(r: unreadable_neighbour)) == "unobservable:neighbour"
@@ -451,7 +451,7 @@ test fn an_unreadable_fact_is_unobservable_and_a_refutation_elsewhere_outranks_i
 // SLOT A'S CLEAN READINGS CANNOT SANITIZE SLOT B. Each slot-scoped fact, read clean about slot 2 while
 // slot 1 is the subject, is Unobservable -- the neighbour fact included, the cross-slot RED of the
 // ruling. Host-scoped readings taken on another host or at another generation are too.
-test fn readings_about_another_subject_never_sanitize_this_one() -> Bool {
+test fn readings_about_another_subject_never_sanitize_this_one() -> Bool  {
   let c = clean_readings(i: 1)
   verdict(r: readback_slot_1(r: with_tap(r: c, t: TapReading { subject: subject(i: 2), observation: TapPresentUnheld }))) == "unobservable:tap"
     && verdict(r: readback_slot_1(r: with_tap_ipv6(r: c, t: TapIpv6Reading { subject: subject(i: 2), observation: TapIpv6Disabled }))) == "unobservable:tap-ipv6"
@@ -465,7 +465,7 @@ test fn readings_about_another_subject_never_sanitize_this_one() -> Bool {
 // TEARDOWN FLUSHES BOTH CONNTRACK DIRECTIONS AND THIS SLOT'S NEIGHBOUR ENTRY, ON THIS SLOT'S TAP; THE
 // LISTS READ THE SAME KEYS. The reds: a single-direction flush, a neighbour flush on another device,
 // or commands naming another slot's guest.
-test fn teardown_commands_cover_every_slot_keyed_state_for_this_slot() -> Bool {
+test fn teardown_commands_cover_every_slot_keyed_state_for_this_slot() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 6))
   let guest = render_ipv4_address(addr: net.guest_address) as String
   map(runner_slot_teardown_flush_commands(net: net), c => join(argv_words(command: c), " "))
@@ -484,7 +484,7 @@ test fn teardown_commands_cover_every_slot_keyed_state_for_this_slot() -> Bool {
 // v6 IS OFF ON BOTH ENDS OF THE LINK. The tap's sysctl.d key names this slot's device, its readback
 // path is the kernel's live value for the same device, and the guest boots with ipv6.disable=1. The
 // reds: a key naming another device (the setting lands nowhere), or a boot line without the refusal.
-test fn ipv6_is_disabled_on_the_tap_and_in_the_guest() -> Bool {
+test fn ipv6_is_disabled_on_the_tap_and_in_the_guest() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 4))
   runner_slot_ipv6_sysctl_text(net: net) == "net.ipv6.conf.gunbc-tap4.disable_ipv6 = 1\n"
     && runner_slot_ipv6_sysctl_path(net: net) == "/etc/sysctl.d/50-gunbc-tap4-ipv6.conf"
@@ -500,7 +500,7 @@ test fn ipv6_is_disabled_on_the_tap_and_in_the_guest() -> Bool {
 // THE READBACK READS THE LISTING OF OUR OWN TABLE, AND ITS CONSUMER IS STILL A FRONTIER. The red for
 // the first half is a listing of a different table (a digest of dockerd's rules would never match);
 // for the second, the frontier row bound before the controller executes teardown.
-test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() -> Bool {
+test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() -> Bool  {
   argv_words(command: runner_microvm_nft_list_command()) == ["nft", "list", "table", "inet", "gunbc_microvm"]
     && match slot_network_readback_consumer_frontier {
       UnboundDissolution { description: _ } => true
@@ -511,7 +511,7 @@ test fn the_ruleset_readback_lists_our_table_and_its_consumer_is_a_frontier() ->
 // THE DNS GRANT IS THE ONE RESOLVER THE GUEST IS TOLD ABOUT, AND NOTHING WIDER. The reds: a port-53
 // grant with no destination (every public host on 53, an exfiltration channel out of a default-deny
 // guest -- review 68173), and a boot directive naming a resolver the ruleset does not admit.
-test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool {
+test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool  {
   let resolver = render_ipv4_address(addr: runner_microvm_guest_resolver()) as String
   let text = runner_microvm_shared_host_nft_ruleset_text()
   let arg = runner_slot_guest_ip_boot_arg(net: runner_slot_network(slot: slot(i: 7)))
@@ -530,7 +530,7 @@ test fn the_dns_grant_is_the_booted_resolver_and_no_other_host() -> Bool {
 // tap-scoped final drop, it does not filter v6 (disabled on its data path), and the reply-direction
 // established rule is present. The red is the previous fold, where the only established rule matched
 // the tap as INPUT, so every reply to a guest's flow fell to the chain's drop policy (review 68199).
-test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() -> Bool {
+test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() -> Bool  {
   let text = runner_microvm_nft_ruleset_text_for(host: runner_host_egress_policy.host)
   string_contains(s: text, pattern: "hook forward priority 0; policy drop;")
     && string_contains(s: text, pattern: "oifname \"gunbc-tap*\" ct state established,related accept")
@@ -542,7 +542,7 @@ test fn a_chain_dropping_host_folds_its_own_grain_and_still_carries_replies() ->
 // THE RESULT NAMES THE SLOT IT WAS TAKEN FOR, WHICHEVER VERDICT IT CARRIES. The lifecycle controller
 // joins on this slot rather than re-deriving it. The red is a result bound to any slot but the
 // sanitation subject's -- slot 2's readback reporting slot 1, or the binding lost on a refutation.
-test fn the_readback_result_carries_the_slot_it_was_taken_for() -> Bool {
+test fn the_readback_result_carries_the_slot_it_was_taken_for() -> Bool  {
   match slot_network_sanitation_subject(slot: slot(i: 2), receipt: srv2_receipt()) {
     SanitationSubjectAdmitted { subject: s } => {
       let clean = slot_network_readback(s: s, readings: clean_readings(i: 2))
@@ -561,7 +561,7 @@ test fn the_readback_result_carries_the_slot_it_was_taken_for() -> Bool {
 // and the rest dropped. The shared hosts keep input's policy accept (their own services); the raw
 // host drops at the chain and admits loopback and its own replies. The red is the previous table,
 // with no input chain at all -- the guest reached every host-local listener (review 68590).
-test fn a_guest_reaches_nothing_on_the_host_on_either_grain() -> Bool {
+test fn a_guest_reaches_nothing_on_the_host_on_either_grain() -> Bool  {
   let shared = runner_microvm_shared_host_nft_ruleset_text()
   let raw = runner_microvm_nft_ruleset_text_for(host: runner_host_egress_policy.host)
   string_contains(s: shared, pattern: "type filter hook input priority 0; policy accept;\n    iifname \"gunbc-tap*\" ct state established,related accept\n    iifname \"gunbc-tap*\" drop\n  }")
@@ -573,7 +573,7 @@ test fn a_guest_reaches_nothing_on_the_host_on_either_grain() -> Bool {
 // `oifname "gunbc-tap*" meta nfproto ipv6` in each, the forward one directly after the tap-to-tap
 // drop and above every accept. The red is the previous table, where v6 was refused only as it arrived
 // FROM a tap and a tap-bound v6 packet met no rule (review 68618).
-test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool {
+test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "hook forward priority 0; policy accept;\n    iifname \"gunbc-tap*\" oifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n    oifname \"gunbc-tap*\" ct state established,related accept\n")
     && string_contains(s: text, pattern: "type filter hook output priority 0; policy accept;\n    oifname \"gunbc-tap*\" meta nfproto ipv6 drop\n  }")
@@ -584,7 +584,7 @@ test fn the_rendered_table_drops_ipv6_egress_toward_the_tap() -> Bool {
 // below the reply-direction established accept. The red is the previous chain, which ended at the
 // iifname drop and let a new flow routed to 172.30.x.2 from the uplink fall through to accept
 // (review 68643).
-test fn a_new_flow_toward_a_tap_is_dropped_on_the_shared_hosts() -> Bool {
+test fn a_new_flow_toward_a_tap_is_dropped_on_the_shared_hosts() -> Bool  {
   let text = runner_microvm_shared_host_nft_ruleset_text()
   string_contains(s: text, pattern: "    iifname \"gunbc-tap*\" drop\n    oifname \"gunbc-tap*\" drop\n  }\n  chain output")
 }
@@ -593,7 +593,7 @@ test fn a_new_flow_toward_a_tap_is_dropped_on_the_shared_hosts() -> Bool {
 // THREE. The red is the previous fold, which emitted two while the converge frontier's prose named
 // three -- the converge would have installed no disable_ipv6, and every slot would then refuse
 // sanitation subject construction (review 68660).
-test fn a_slots_install_set_carries_every_network_file_it_declares() -> Bool {
+test fn a_slots_install_set_carries_every_network_file_it_declares() -> Bool  {
   let net = runner_slot_network(slot: slot(i: 5))
   map(
     runner_slot_network_install_operations(
@@ -619,7 +619,7 @@ test fn a_slots_install_set_carries_every_network_file_it_declares() -> Bool {
 // requires helpers_excluded, and a surface that answered nothing cannot satisfy it -- otherwise a
 // host whose xtables or userspace probe never ran would admit slots as if no helper were attached
 // (review 68963).
-test fn a_subject_refuses_when_a_helper_surface_was_unread() -> Bool {
+test fn a_subject_refuses_when_a_helper_surface_was_unread() -> Bool  {
   let unread_xtables = HelperStanding {
     auto_assignment: AutoAssignmentAbsentFromKernel { kernel_release: "6.8.0-138-generic" as NonEmptyStr },
     nft_ct_helper_statements: HelperSurfaceCounted { count: 0 },
@@ -647,7 +647,7 @@ test fn a_subject_refuses_when_a_helper_surface_was_unread() -> Bool {
 // install would satisfy a membership check while refusing on the host exactly as before. The RED is
 // deleting the EnsureOwnedDirectory: the sequence then starts at install, which is the list that
 // refused.
-test fn the_ruleset_install_ensures_its_own_parent_directory_first() -> Bool {
+test fn the_ruleset_install_ensures_its_own_parent_directory_first() -> Bool  {
   map(runner_microvm_host_network_install_operations(
     staged_ruleset: "/stage/microvm.nft" as NonEmptyStr,
     staged_unit: "/stage/unit.service" as NonEmptyStr,
@@ -674,7 +674,7 @@ test fn the_ruleset_install_ensures_its_own_parent_directory_first() -> Bool {
 // AND THE LEAF IS DERIVED FROM THAT SAME DIRECTORY, so the path ensured and the path written to
 // cannot drift apart. The RED is respelling the ruleset path as an independent literal: change the
 // directory alone and this equality breaks, which is the drift the run above actually suffered.
-test fn the_ruleset_path_is_derived_from_the_directory_it_ensures() -> Bool {
+test fn the_ruleset_path_is_derived_from_the_directory_it_ensures() -> Bool  {
   runner_microvm_nft_ruleset_path as String
     == join([runner_microvm_nft_ruleset_dir as String, "/microvm.nft"], "")
 }

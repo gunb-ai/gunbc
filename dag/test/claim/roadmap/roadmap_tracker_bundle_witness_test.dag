@@ -25,19 +25,19 @@ fn tracker_session_fixture() -> AuthenticatedSession {
   }
 }
 
-test fn types_are_descriptive_and_not_table_structure() -> Bool {
+test fn types_are_descriptive_and_not_table_structure() -> Bool  {
   join(map(issue_type_vocabulary, t => issue_type_wire(kind: t)), ",") == "Bug,Task,Feature,Epic,Chore"
     && !any(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "type")
     && !any(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "actions")
 }
 
-test fn every_served_column_has_a_modeled_sort_key() -> Bool {
+test fn every_served_column_has_a_modeled_sort_key() -> Bool  {
   all(issue_results_columns, c => issue_results_sort_key_wire(key: c.sort_key) == issue_results_column_kind_wire(kind: c.kind))
     && issue_results_sort_numeric(key: IssueSortPriority)
     && !issue_results_sort_numeric(key: IssueSortTitle)
 }
 
-test fn inline_choices_pin_fabric_then_self_and_deduplicate_recents() -> Bool {
+test fn inline_choices_pin_fabric_then_self_and_deduplicate_recents() -> Bool  {
   let session = tracker_session_fixture()
   let other = EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc", namespace: "accounts", subject: "other" } }
   let choices = inline_assignment_choices(session: session, recents: [
@@ -51,7 +51,7 @@ test fn inline_choices_pin_fabric_then_self_and_deduplicate_recents() -> Bool {
     && (match choices.skip(n: 2).first() { Present { value: p } => event_principal_label(p: p) == event_principal_label(p: other), Absent => false })
 }
 
-test fn assignment_context_carries_session_proof_and_revision_without_email_identity_inference() -> Bool {
+test fn assignment_context_carries_session_proof_and_revision_without_email_identity_inference() -> Bool  {
   let body = inline_assignment_context_body(session: tracker_session_fixture(), events: [], recents: [LegacyEmailPrincipal { email: "unknown@example.test", authentication_unestablished: true }], profiles: [])
   string_contains(s: body, pattern: "tracker-fixture-csrf")
     && string_contains(s: body, pattern: "expected_revision")
@@ -62,7 +62,7 @@ test fn assignment_context_carries_session_proof_and_revision_without_email_iden
 }
 
 // The mounted editor carries the same principal-aware form and stable operation proof as detail.
-test fn assignment_context_mounts_the_shared_form_with_issue_scoped_ids_and_commit() -> Bool {
+test fn assignment_context_mounts_the_shared_form_with_issue_scoped_ids_and_commit() -> Bool  {
   let body = inline_assignment_context_body(session: tracker_session_fixture(), events: [], recents: [], profiles: [], operation: "fixture-operation", node_id: "fixture-issue")
   string_contains(s: body, pattern: "/issue/fixture-issue/assign")
     && string_contains(s: body, pattern: "issue-assign-input-fixture-issue")

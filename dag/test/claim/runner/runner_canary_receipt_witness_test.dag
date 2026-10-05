@@ -42,7 +42,7 @@ import std.roster_frontier { FrontierSubject, DeclSubject, frontier_subject_eq, 
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.runner.runner_canary_evidence_frontier { runner_canary_executed_evidence_frontier }
 
-test fn evidence_frontier_is_well_formed() -> Bool {
+test fn evidence_frontier_is_well_formed() -> Bool  {
   let expected: List<FrontierSubject> = [
     DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "MeteredVcpuMinutes") },
     DeclSubject { ref: decl_ref(module_path: "gunbc.runner.runner_usage_receipt", decl_name: "produce_runner_usage_receipt") },
@@ -108,7 +108,7 @@ fn fixture_meter(
   }
 }
 
-test fn fractional_minutes_preserve_meter_and_exclude_staging() -> Bool {
+test fn fractional_minutes_preserve_meter_and_exclude_staging() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   match produce_runner_usage_receipt(expected: subject,
     reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 4,
@@ -125,7 +125,7 @@ test fn fractional_minutes_preserve_meter_and_exclude_staging() -> Bool {
   }
 }
 
-test fn missing_meter_and_initiator_refuse() -> Bool {
+test fn missing_meter_and_initiator_refuse() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let meter = fixture_meter(subject: subject, vcpus: 4, reaped: fixture_at(ns: 50000000000), resolution: 1)
   let missing_meter = match produce_runner_usage_receipt(expected: subject,
@@ -142,7 +142,7 @@ test fn missing_meter_and_initiator_refuse() -> Bool {
   missing_meter && missing_initiator
 }
 
-test fn different_tenant_or_attempt_cannot_supply_usage_or_initiator() -> Bool {
+test fn different_tenant_or_attempt_cannot_supply_usage_or_initiator() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   [fixture_subject(principal: "tenant-b", attempt: "attempt-a"),
    fixture_subject(principal: "tenant-a", attempt: "attempt-b")]
@@ -163,7 +163,7 @@ test fn different_tenant_or_attempt_cannot_supply_usage_or_initiator() -> Bool {
     })
 }
 
-test fn invalid_interval_and_cross_clock_refuse() -> Bool {
+test fn invalid_interval_and_cross_clock_refuse() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   ["reversed_vm", "reversed_retirement", "origin", "basis"]
     |> all(axis => {
@@ -187,7 +187,7 @@ test fn invalid_interval_and_cross_clock_refuse() -> Bool {
 
 // All four instants use the same CPU clock, so interval comparability cannot carry this RED.
 // Removing the wall-basis refusal must not turn CPU consumption into elapsed VM allocation time.
-test fn cpu_clock_meter_refuses() -> Bool {
+test fn cpu_clock_meter_refuses() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let meter = RunnerMeterObservation {
     subject: subject,
@@ -206,7 +206,7 @@ test fn cpu_clock_meter_refuses() -> Bool {
   }
 }
 
-test fn zero_cpu_or_unrecorded_resolution_refuse() -> Bool {
+test fn zero_cpu_or_unrecorded_resolution_refuse() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let no_cpu = match produce_runner_usage_receipt(expected: subject,
     reading: RunnerMeterObserved { observation: fixture_meter(subject: subject, vcpus: 0, reaped: fixture_at(ns: 50000000000), resolution: 1) },
@@ -268,21 +268,21 @@ fn fixture_teardown(after: RunnerEnvironmentReadback, before: RunnerEnvironmentR
       inventory: inventory, at: fixture_at(ns: 30), readback: after) })
 }
 
-test fn independent_present_then_absent_is_accepted() -> Bool {
+test fn independent_present_then_absent_is_accepted() -> Bool  {
   match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourcePresent), observer: 30) {
     RunnerTeardownProduced { receipt: _ } => true
     _ => false
   }
 }
 
-test fn destroyer_cannot_attest_its_own_teardown() -> Bool {
+test fn destroyer_cannot_attest_its_own_teardown() -> Bool  {
   match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourcePresent), observer: 20) {
     RunnerTeardownRefused { cause: TeardownSelfObservation } => true
     _ => false
   }
 }
 
-test fn vmm_cannot_observe_its_own_teardown() -> Bool {
+test fn vmm_cannot_observe_its_own_teardown() -> Bool  {
   match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent),
     before: fixture_readback(value: RunnerResourcePresent), observer: 10) {
     RunnerTeardownRefused { cause: TeardownObserverInsideEnvironment } => true
@@ -290,7 +290,7 @@ test fn vmm_cannot_observe_its_own_teardown() -> Bool {
   }
 }
 
-test fn changing_observation_instrument_refuses() -> Bool {
+test fn changing_observation_instrument_refuses() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let inventory = fixture_inventory(tap: "tap-a")
   let source = fixture_source()
@@ -314,7 +314,7 @@ test fn changing_observation_instrument_refuses() -> Bool {
   }
 }
 
-test fn cross_boot_processes_refuse() -> Bool {
+test fn cross_boot_processes_refuse() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let original = fixture_microvm_inventory(tap: "tap-a")
   ["vmm", "destroyer", "observer"] |> all(axis => {
@@ -345,7 +345,7 @@ test fn cross_boot_processes_refuse() -> Bool {
   })
 }
 
-test fn an_always_absent_instrument_refuses() -> Bool {
+test fn an_always_absent_instrument_refuses() -> Bool  {
   match fixture_teardown(after: fixture_readback(value: RunnerResourceAbsent), before: fixture_readback(value: RunnerResourceAbsent), observer: 30) {
     RunnerTeardownRefused { cause: TeardownPositiveControlMissing { resource: _ } } => true
     _ => false
@@ -369,7 +369,7 @@ fn fixture_single_residue(resource: RunnerResourceClass, value: RunnerResourceRe
 
 // Independent controlled-fixture population: do not derive this from the production roster.
 // Omitting a production class must leave its fixture here and expose the surviving resource.
-test fn every_residue_and_unreadable_resource_refuses() -> Bool {
+test fn every_residue_and_unreadable_resource_refuses() -> Bool  {
   [RunnerVmm, RunnerCgroup, RunnerJail, RunnerJailMount, RunnerJitDrive,
    RunnerWorkspace, RunnerTap, RunnerFirewallTable]
     |> all(resource => {
@@ -416,7 +416,7 @@ fn fixture_host_unit_teardown(inventory: RunnerEnvironmentInventory, after: Runn
       inventory: inventory, at: fixture_at(ns: 30), readback: after) })
 }
 
-test fn a_host_unit_teardown_is_accepted_without_microvm_resources() -> Bool {
+test fn a_host_unit_teardown_is_accepted_without_microvm_resources() -> Bool  {
   match fixture_host_unit_teardown(
     inventory: fixture_host_unit_inventory(unit: "attempt.service"),
     after: fixture_host_unit_readback(unit: RunnerResourceAbsent, cgroup: RunnerResourceAbsent, workspace: RunnerResourceAbsent),
@@ -426,7 +426,7 @@ test fn a_host_unit_teardown_is_accepted_without_microvm_resources() -> Bool {
   }
 }
 
-test fn every_surviving_host_unit_resource_refuses() -> Bool {
+test fn every_surviving_host_unit_resource_refuses() -> Bool  {
   [RunnerTransientUnit, RunnerCgroup, RunnerWorkspace] |> all(resource =>
     match fixture_host_unit_teardown(
       inventory: fixture_host_unit_inventory(unit: "attempt.service"),
@@ -442,7 +442,7 @@ test fn every_surviving_host_unit_resource_refuses() -> Bool {
   )
 }
 
-test fn a_host_unit_observed_as_another_unit_or_a_microvm_refuses() -> Bool {
+test fn a_host_unit_observed_as_another_unit_or_a_microvm_refuses() -> Bool  {
   let clean = fixture_host_unit_readback(unit: RunnerResourceAbsent, cgroup: RunnerResourceAbsent, workspace: RunnerResourceAbsent)
   [fixture_host_unit_inventory(unit: "other.service"), fixture_inventory(tap: "tap-a")] |> all(inventory =>
     match fixture_host_unit_teardown(inventory: inventory, after: clean) {
@@ -452,7 +452,7 @@ test fn a_host_unit_observed_as_another_unit_or_a_microvm_refuses() -> Bool {
   )
 }
 
-test fn missing_observer_receipt_is_detectable() -> Bool {
+test fn missing_observer_receipt_is_detectable() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let inventory = fixture_inventory(tap: "tap-a")
   let present = RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),
@@ -470,7 +470,7 @@ test fn missing_observer_receipt_is_detectable() -> Bool {
   before_missing && after_missing
 }
 
-test fn stale_or_wrong_teardown_subjects_refuse() -> Bool {
+test fn stale_or_wrong_teardown_subjects_refuse() -> Bool  {
   let subject = fixture_subject(principal: "tenant-a", attempt: "attempt-a")
   let inventory = fixture_inventory(tap: "tap-a")
   let before = RunnerEnvironmentObserved { observation: fixture_environment(subject: subject, observer: fixture_process(pid: 30),

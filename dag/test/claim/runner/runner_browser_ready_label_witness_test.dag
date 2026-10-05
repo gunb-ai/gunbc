@@ -32,7 +32,7 @@ fn plan_script(p: BrowserReadyLabelsPlan) -> String {
 
 // GRANT writes the template drop-in carrying the label and reloads; REVOKE removes the same path.
 // Discriminating: a grant without the label, or a revoke that rewrote rather than removed, reds.
-test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
+test fn grant_writes_the_label_and_revoke_removes_it() -> Bool  {
   let grant = plan_script(p: browser_ready_labels_grant_plan(host: operator_host_srv3))
   let revoke = plan_script(p: browser_ready_labels_revoke_plan())
   string_contains(s: grant, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
@@ -46,7 +46,7 @@ test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
 
 // THE CONVERGE VERDICT: only a grant on a ready toolchain leaves the host floor-ready; a revoke is
 // the right label action and still a failed converge.
-test fn only_a_ready_grant_holds() -> Bool {
+test fn only_a_ready_grant_holds() -> Bool  {
   browser_ready_labels_outcome_holds(o: BrowserReadyLabelsGranted, ready: true)
     && !browser_ready_labels_outcome_holds(o: BrowserReadyLabelsGranted, ready: false)
     && browser_ready_labels_outcome_holds(o: BrowserReadyLabelsRevoked, ready: false)
@@ -76,7 +76,7 @@ fn host_set(host: HostIdentity) -> List<String> {
 // A SLOT CONFORMS WITH OR WITHOUT THE GRANTED LABEL, AND WITH NOTHING ELSE. Before its host's
 // converge a runner carries the host set and is healthy; after, the host set plus the label. A
 // stray extra label, or a missing host label, is a divergence.
-test fn a_slot_conforms_with_or_without_the_granted_label_and_nothing_else() -> Bool {
+test fn a_slot_conforms_with_or_without_the_granted_label_and_nothing_else() -> Bool  {
   let base = host_set(host: operator_host_srv3)
   conforms(slot: srv3_slot(index: 2), observed: base)
     && conforms(slot: srv3_slot(index: 2), observed: concat(base, [gunbc_browser_ready_label]))

@@ -42,7 +42,7 @@ import gunbc.runner_slot_allocation {
 }
 import gunbc.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 
-test fn witness_add_sequence_caps_before_start() -> Bool {
+test fn witness_add_sequence_caps_before_start() -> Bool  {
   runner_slot_caps_precede_start()
     && runner_slot_add_step_index(step: AddStepMemoryCaps) == 8
     && runner_slot_add_step_index(step: AddStepDaemonReload) == 9
@@ -50,7 +50,7 @@ test fn witness_add_sequence_caps_before_start() -> Bool {
     && list_length(items: runner_slot_add_steps_ordered()) == 12
 }
 
-test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
+test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool  {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) + 1)
   match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
@@ -61,7 +61,7 @@ test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
   }
 }
 
-test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
+test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool  {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) - 1)
   match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
@@ -72,7 +72,7 @@ test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
   }
 }
 
-test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
+test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool  {
   match runner_width_disk_preflight(
     requested_width: 6,
     disk: DiskUnobserved { reason: "df producer scaffold" },
@@ -111,12 +111,12 @@ fn standing_width_agrees(standing: HostRunnerSlotAllocationStanding, host: HostI
   }
 }
 
-test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool {
+test fn witness_srv3_srv4_committed_width_agrees_with_the_derivation() -> Bool  {
   standing_width_agrees(standing: gunbc_runner_slot_allocation_srv3, host: operator_host_srv3)
     && standing_width_agrees(standing: gunbc_runner_slot_allocation_srv4, host: operator_host_srv4)
 }
 
-test fn witness_host_capacity_receipt_converged_shape() -> Bool {
+test fn witness_host_capacity_receipt_converged_shape() -> Bool  {
   let w = 3
   let receipt = HostRunnerCapacityReceipt {
     host: operator_host_srv3,
@@ -130,7 +130,7 @@ test fn witness_host_capacity_receipt_converged_shape() -> Bool {
   host_runner_capacity_converged(receipt: receipt)
 }
 
-test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() -> Bool {
+test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() -> Bool  {
   let w = 3
   !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
     host: operator_host_srv3,
@@ -152,7 +152,7 @@ test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() ->
     })
 }
 
-test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
+test fn witness_slot_identity_formats_zero_padded_unit() -> Bool  {
   let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
   runner_slot_instance_name(slot: slot) == "srv3-06"
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
@@ -188,7 +188,7 @@ fn fabric_member_refuses_and_its_neighbour_registers(fabric: RunnerSlotIdentity)
     && sequence_registers_with_github(seq: runner_slot_add_sequence_for(host: fabric.host, slot_index: fabric.slot_index - 1))
 }
 
-test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bool {
+test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bool  {
   fabric_member_refuses_and_its_neighbour_registers(fabric: srv3_fabric_first_slot())
     && fabric_member_refuses_and_its_neighbour_registers(fabric: srv4_fabric_first_slot())
 }
@@ -199,7 +199,7 @@ test fn the_fabric_slot_cannot_be_registered_and_the_gate_is_not_vacuous() -> Bo
 // above 8 produced that same "00", meaning two distinct slots would contend for one registration in
 // the GitHub runner namespace. This row goes red against the enumerator and green against the
 // derived rule, and it is written at 9 because that is the first index where they differed.
-test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_range() -> Bool {
+test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_range() -> Bool  {
   let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 9 }
   (runner_slot_incarnation(host: operator_host_srv3, slot_index: 9, unit_active: true).registration_name as String)
     == runner_slot_instance_name(slot: slot)
@@ -210,7 +210,7 @@ test fn the_incarnation_name_agrees_with_the_slot_name_above_the_old_enumerated_
 // old enumerated range must not share a name. Under the enumerator both were "00"; under the derived
 // rule they differ. Without this row the one above is satisfied by any function that happens to
 // return "srv3-09" at 9, including another bucket with one more arm.
-test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bool {
+test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bool  {
   runner_slot_index_suffix(index: 9) != runner_slot_index_suffix(index: 10)
     && runner_slot_index_suffix(index: 10) != runner_slot_index_suffix(index: 11)
     && runner_slot_index_suffix(index: 9) == "09"
@@ -219,7 +219,7 @@ test fn two_indices_above_the_old_range_do_not_share_a_registration_name() -> Bo
 
 // THE UNCHANGED-BELOW-THE-RANGE CONTROL. The consolidation must not move any name the fleet actually
 // uses today, so the committed range keeps its existing spelling.
-test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool {
+test fn the_suffix_is_unchanged_across_the_committed_range() -> Bool  {
   runner_slot_index_suffix(index: 1) == "01"
     && runner_slot_index_suffix(index: 5) == "05"
     && runner_slot_index_suffix(index: 6) == "06"

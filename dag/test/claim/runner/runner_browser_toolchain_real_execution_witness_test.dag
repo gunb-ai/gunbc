@@ -65,7 +65,7 @@ fn install_fixture(dir: String, pin: ArchiveDigestPin) -> Bool {
 // over the source file, before any fetch), the fold installs, the install's product exists, and a
 // readback of the RETAINED archive verifies against the same pin -- the readback the converge's
 // standing is built from.
-test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution() -> Bool {
+test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
@@ -84,7 +84,7 @@ test fn a_verified_archive_installs_and_its_retained_bytes_read_back_verified_by
 
 // A DIGEST MISMATCH REFUSES AND INSTALLS NOTHING. The fetch succeeds -- the archive is on disk --
 // and the install command is never run: its product does not exist afterwards.
-test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
@@ -104,7 +104,7 @@ test fn a_sha256_mismatch_refuses_and_runs_no_install_by_real_execution() -> Boo
 // THE NPM ARM: a well-formed SRI of OTHER bytes (Playwright's published integrity) against the
 // fixture is a MISMATCH, not unverifiable -- the decoder accepted the wire and sha512sum read the
 // file, so the answer is about the bytes. Nothing is installed.
-test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool {
+test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
@@ -122,7 +122,7 @@ test fn an_npm_integrity_mismatch_refuses_and_runs_no_install_by_real_execution(
 
 // A RETAINED ARCHIVE WHOSE BYTES CHANGED AFTER IT VERIFIED READS BACK AS A MISMATCH -- the readback
 // hashes the bytes on disk now, it does not remember the check that passed.
-test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution() -> Bool {
+test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let wrote = Filesystem.Write(path: concat(d, "/source"), content: fixture_content)
@@ -143,7 +143,7 @@ test fn a_retained_archive_altered_after_install_reads_back_mismatched_by_real_e
 // THE LIBRARY READBACK'S ROUTE: real ldd over a real dynamically linked binary on the runner reads
 // back resolved. The refusal arm, with its location, is discriminated on measured ldd output in
 // test.claim.runner.runner_browser_toolchain_witness.
-test fn the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution() -> Bool {
+test fn the_library_readback_runs_ldd_and_reads_a_resolved_binary_by_real_execution() -> Bool  {
   match library_readback_wet(binary: "/bin/sh", run_as: ldd_command(binary: "/bin/sh")) {
     HostLibrariesResolved { binary: b } => (b as String) == "/bin/sh"
     _ => false
@@ -196,7 +196,7 @@ fn fixture_digest(dir: String) -> String {
 // reviewer's reproduction, now discriminated: the digest is a reading of the tree, so it moves with
 // the content and returns when the content is restored. A deleted file is the partial-extraction
 // shape: a tree missing any file cannot reproduce the pin.
-test fn altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution() -> Bool {
+test fn altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -220,7 +220,7 @@ test fn altering_or_deleting_extracted_code_changes_the_tree_digest_by_real_exec
 // reproduce refuses with the observed digest and the inert candidate's marker does not exist. The
 // positive control is the same fixture under its own digest: admission holds and the candidate DOES
 // run (the marker appears) -- without it the red is satisfied by a readback that never executes.
-test fn a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution() -> Bool {
+test fn a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -240,7 +240,7 @@ test fn a_tree_that_is_not_admitted_executes_no_candidate_by_real_execution() ->
 // its own digest the published fixture is already admitted and placement does nothing. Under a pin
 // it does not reproduce, placement stages (here: nothing to stage), the staged tree is not admitted,
 // placement refuses -- and the published tree is still there, byte for byte.
-test fn an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution() -> Bool {
+test fn an_admitted_tree_is_a_no_op_and_an_unadmitted_stage_never_replaces_it_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -275,7 +275,7 @@ fn env_record_is_declared(record: String) -> Bool {
     && list_length(lines) <= 6
 }
 
-test fn every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution() -> Bool {
+test fn every_candidate_invocation_starts_with_only_the_declared_environment_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -294,7 +294,7 @@ test fn every_candidate_invocation_starts_with_only_the_declared_environment_by_
 // fixture base holding the current tree, the archives, another converge's stage, a pre-recipe tree
 // and an older recipe reports exactly the last two as superseded -- and afterwards every entry is
 // still there and the current tree's content is unchanged.
-test fn superseded_trees_are_reported_and_retained_by_real_execution() -> Bool {
+test fn superseded_trees_are_reported_and_retained_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -316,7 +316,7 @@ test fn superseded_trees_are_reported_and_retained_by_real_execution() -> Bool {
 
 // A CONTESTED TREE IS NOT REPLACED: with a tree at the recipe path whose content is not the pin,
 // placement refuses as ContestedTreeNotReplaced before staging anything, and the tree is untouched.
-test fn a_contested_tree_is_refused_not_replaced_by_real_execution() -> Bool {
+test fn a_contested_tree_is_refused_not_replaced_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -341,7 +341,7 @@ fn run_ok_local(command: ArgvCommand) -> Bool {
 // post-execution admission reads TreeContentMismatch, so the standing is not ready. The positive
 // control is the same readback over a candidate that writes only outside the tree: the tree is
 // admitted before AND after.
-test fn a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution() -> Bool {
+test fn a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)
@@ -354,7 +354,7 @@ test fn a_candidate_writing_inside_the_tree_fails_the_post_execution_admission_b
   dir.success && planted && pin != "" && before_ok && after_refused && runner_browser_toolchain_ready(s: st) == false
 }
 
-test fn a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution() -> Bool {
+test fn a_tree_launched_from_outside_is_admitted_again_after_execution_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as String
   let loc = fixture_location(dir: d)

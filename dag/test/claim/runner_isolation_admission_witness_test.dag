@@ -40,42 +40,42 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // ── every untrusted provenance requires the kernel boundary ─────────────────────────────────────
 
-test fn a_general_ci_workload_requires_a_dedicated_kernel() -> Bool {
+test fn a_general_ci_workload_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: GeneralCiWorkload),
     wanted: DedicatedKernel,
   )
 }
 
-test fn a_fork_pull_request_requires_a_dedicated_kernel() -> Bool {
+test fn a_fork_pull_request_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: ForkPullRequest),
     wanted: DedicatedKernel,
   )
 }
 
-test fn an_unreviewed_branch_requires_a_dedicated_kernel() -> Bool {
+test fn an_unreviewed_branch_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: UnreviewedBranch),
     wanted: DedicatedKernel,
   )
 }
 
-test fn a_pr_controlled_workflow_requires_a_dedicated_kernel() -> Bool {
+test fn a_pr_controlled_workflow_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: PullRequestControlledWorkflow),
     wanted: DedicatedKernel,
   )
 }
 
-test fn a_third_party_action_requires_a_dedicated_kernel() -> Bool {
+test fn a_third_party_action_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: ThirdPartyAction),
     wanted: DedicatedKernel,
   )
 }
 
-test fn an_arbitrary_shell_step_requires_a_dedicated_kernel() -> Bool {
+test fn an_arbitrary_shell_step_requires_a_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: ArbitraryShellStep),
     wanted: DedicatedKernel,
@@ -86,7 +86,7 @@ test fn an_arbitrary_shell_step_requires_a_dedicated_kernel() -> Bool {
 
 // WITHOUT THIS THE TESTS ABOVE ARE SATISFIED BY A FUNCTION THAT DEMANDS A DEDICATED KERNEL FOR
 // EVERYTHING, which would make the qualified arm dead and the model useless while looking green.
-test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool {
+test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool  {
   isolation_profile_contains(
     profile: runner_work_isolation_requirement(p: QualifiedFixedOperation { qualification: "a pinned, reviewed operation with a bounded executable and syscall closure" }),
     wanted: DedicatedKernel,
@@ -105,7 +105,7 @@ test fn a_qualified_fixed_operation_may_omit_the_dedicated_kernel() -> Bool {
 // worth recording. It asserts only that SOMETHING is missing, so it survived the guarantee it was
 // named for being satisfied. A refusal test that does not name what it expects missing cannot tell
 // a boundary holding for the right reason from one holding by accident.
-test fn untrusted_work_is_refused_while_a_required_guarantee_is_unevidenced() -> Bool {
+test fn untrusted_work_is_refused_while_a_required_guarantee_is_unevidenced() -> Bool  {
   match provider_for_work(p: ForkPullRequest) {
     NoProviderSatisfies { missing: m } => (m |> count) > 0
     _ => false
@@ -124,7 +124,7 @@ test fn untrusted_work_is_refused_while_a_required_guarantee_is_unevidenced() ->
 // passes. A positive control asserting something the subject does not provide is not a control --
 // it is a second place saying what the offer contains, and it would have been "fixed" by making the
 // offer lie.
-test fn the_offer_admits_a_requirement_it_has_evidenced() -> Bool {
+test fn the_offer_admits_a_requirement_it_has_evidenced() -> Bool  {
   offer_admits(
     offer: mtcollins_dedicated_kernel_offer,
     required: IsolationProfile { guarantees: [DedicatedKernel, DefaultDenyEgress] },
@@ -134,7 +134,7 @@ test fn the_offer_admits_a_requirement_it_has_evidenced() -> Bool {
 // AND THE WITHDRAWN GUARANTEE GETS ITS OWN ARM, so the withdrawal is asserted rather than merely
 // implied by its absence from the list above. Work requiring a writable root must be REFUSED by this
 // offer, and refused for that reason.
-test fn the_offer_refuses_work_requiring_a_writable_root() -> Bool {
+test fn the_offer_refuses_work_requiring_a_writable_root() -> Bool  {
   offer_admits(
     offer: mtcollins_dedicated_kernel_offer,
     required: IsolationProfile { guarantees: [FreshWritableRoot] },
@@ -144,7 +144,7 @@ test fn the_offer_refuses_work_requiring_a_writable_root() -> Bool {
 // THE RED THAT MATTERS MOST. If a shared-kernel provider could ever admit work requiring a
 // dedicated kernel, every guarantee above is decorative -- the requirement would be stated and then
 // satisfied by a provider that cannot meet it.
-test fn the_offer_does_not_admit_untrusted_work() -> Bool {
+test fn the_offer_does_not_admit_untrusted_work() -> Bool  {
   offer_admits(
     offer: mtcollins_dedicated_kernel_offer,
     required: runner_work_isolation_requirement(p: GeneralCiWorkload),
@@ -160,7 +160,7 @@ test fn the_offer_does_not_admit_untrusted_work() -> Bool {
 // THE EXACT WIDENING THIS MODULE EXISTS TO PREVENT. Reusing the generic tenant profile for runner
 // work is a one-line change that reads as reuse and is a real weakening: that profile omits
 // DedicatedKernel, and this test is the wall that makes the omission visible.
-test fn the_generic_tenant_requirement_would_not_have_been_enough() -> Bool {
+test fn the_generic_tenant_requirement_would_not_have_been_enough() -> Bool  {
   isolation_profile_contains(
     profile: tenant_workload_isolation_requirement(),
     wanted: DedicatedKernel,
@@ -169,10 +169,10 @@ test fn the_generic_tenant_requirement_would_not_have_been_enough() -> Bool {
 
 // ── the control agent is not schedulable work ───────────────────────────────────────────────────
 
-test fn the_host_control_agent_is_not_schedulable_work() -> Bool {
+test fn the_host_control_agent_is_not_schedulable_work() -> Bool  {
   is_schedulable_work(p: HostControlAgent) == false
 }
 
-test fn ordinary_ci_work_is_schedulable() -> Bool {
+test fn ordinary_ci_work_is_schedulable() -> Bool  {
   is_schedulable_work(p: GeneralCiWorkload)
 }

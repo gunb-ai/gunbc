@@ -58,7 +58,7 @@ fn fixture_node() -> RoadmapNode {
 // Its IDENTITY is the node's minted identity rather than its slug, because roadmap_node_identity_law
 // forbids the slug as an identity input and sizing evidence derived later must join to something
 // that survives a rename.
-test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool {
+test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool  {
   let s = node_sizing_subject(rn: fixture_node())
   s.subject == ("rnfx_SIZING000000000000000001" as SizingSubjectId)
     && s.title == "Teach the belt to size its own work"
@@ -71,7 +71,7 @@ test fn witness_sizing_subject_is_the_task_and_not_the_lane() -> Bool {
 
 // A LINE KIND WITH NO STATEMENT OF DONE SAYS SO, rather than handing the deriver an empty string it
 // could not tell from an authored blank.
-test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool {
+test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool  {
   let n = RoadmapNode {
     identity: "rnfx_SIZING000000000000000002" as RoadmapNodeIdentity,
     node: "sizing-plain" as RoadmapNodeId,
@@ -94,7 +94,7 @@ test fn witness_subject_without_an_exit_criterion_is_absent_not_empty() -> Bool 
 // declared drop retiring. A function returning a constant cell reds this and still fails
 // gunbc.rung_drop.roadmap_sizing_authored_to_derived's trigger, which requires derivation from the
 // task, a discriminating control over materially different subjects, and end-to-end calibration.
-test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
+test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool  {
   match derive_task_sizing(subject: node_sizing_subject(rn: fixture_node())) {
     SizingDerived { subject: _, sizing: _ } => false
     SizingNotDerivable { subject, detail } =>
@@ -103,7 +103,7 @@ test fn witness_stub_deriver_refuses_rather_than_fabricating_a_cell() -> Bool {
   }
 }
 
-test fn witness_refused_derivation_yields_no_cell() -> Bool {
+test fn witness_refused_derivation_yields_no_cell() -> Bool  {
   match node_sizing_derivation(rn: fixture_node()) {
     SizingNotDerivable { subject: _, detail: _ } => true
     SizingDerived { subject: _, sizing: _ } => false
@@ -120,7 +120,7 @@ fn fixture_derived() -> NodeSizingDerivation {
   }
 }
 
-test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool {
+test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool  {
   match fixture_derived() {
     SizingDerived { subject: _, sizing: cell } =>
       cell.intricacy == IntricacyHigh
@@ -135,14 +135,14 @@ test fn witness_derived_arm_carries_the_cell_through_every_fold() -> Bool {
 // admission and inside profile expectation, so the thing dispatch_selection must never be able to
 // do is receive a stub answer that looks derived. These two assertions are that property: the
 // refusal maps to the absent arm and only a real cell maps to the present one.
-test fn witness_dispatch_selection_sees_absence_as_absence() -> Bool {
+test fn witness_dispatch_selection_sees_absence_as_absence() -> Bool  {
   match sizing_profile_expectation(d: node_sizing_derivation(rn: fixture_node())) {
     NoDerivedSizingExpectation => true
     DerivedSizingExpectation { sizing: _ } => false
   }
 }
 
-test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool {
+test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool  {
   match sizing_profile_expectation(d: fixture_derived()) {
     DerivedSizingExpectation { sizing } => sizing.volume == VolumeLarge
     NoDerivedSizingExpectation => false
@@ -152,7 +152,7 @@ test fn witness_dispatch_selection_sees_a_derived_cell_as_derived() -> Bool {
 // THE DISPATCH REQUEST OMITS THE SIZE KEYS RATHER THAN DEFAULTING THEM. The dashboard's argument
 // pair is both-or-neither, so absent is a valid request; a substituted cell would publish the
 // stub's silence as a measurement.
-test fn witness_spawn_request_omits_size_keys_while_no_size_is_derived() -> Bool {
+test fn witness_spawn_request_omits_size_keys_while_no_size_is_derived() -> Bool  {
   let json = node_json(
     n: fixture_node(),
     repo: "gunbc",
