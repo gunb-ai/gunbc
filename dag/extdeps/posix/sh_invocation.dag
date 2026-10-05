@@ -65,11 +65,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // authorized_keys_admits_line (whole-line semantics kept); the ssh-config pin and the
 // mkdir/chmod/touch/cat>> bootstrap became declared sequences over shell.Env.Get, a captured pwd
 // (extdeps.tools.gnu_coreutils pwd_command), the put-if-absent create, and typed chmod builders.
-// The remaining caller is exactly the eleventh: the manual receipt test above. When the fabric
-// compute reorganization (gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall
-// names the neighboring lane's version of this treadmill) or any future lane settles the manual
-// test's exit-nonzero-print-nothing contract, this builder loses its last caller and is deleted
-// with it. It is NOT an escape hatch for a new argv: a caller reaching for it to run a single
+// WHAT REMAINS is a measurement, not a count: `git grep -n "posix_sh_program_command("` is the
+// instrument (the ROADMAP DP-M2 row names it). The PRODUCTION sites are gone on this head; the
+// remaining callers are the manual receipt test above and the wet-lane test fixtures that still
+// build shell text as strings (the approval_ntfy, machine_intake, and spark witness tests among
+// them). When every remaining caller has moved -- the manual test's exit-nonzero-print-nothing
+// contract settled (the fabric compute reorganization that
+// gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall names for the
+// neighboring lane, or any future lane), and the fixture scripts rebuilt on typed carriers -- the
+// instrument returns zero and this builder is deleted with its last call. It is NOT an escape hatch for a new argv: a caller reaching for it to run a single
 // program with flags is spelling that program's argv inside a string, which review must refuse
 // exactly as it refuses the record literal.
 fn posix_sh_program_command(script: String) -> ArgvCommand {
