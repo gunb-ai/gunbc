@@ -397,12 +397,12 @@ fn rank_component_placement(rd: ArmRankDemand, c: ArmMemoryComponent) -> ArmComp
 // with no share in the row's tier reads Absent, meaning it holds nothing here, which is derived and
 // never authored.
 type ArmRowView {
-  demand: ArmRankDemand
+  rank_demand: ArmRankDemand
   tier: SystemMemoryComponent
 }
 
 fn row_bound(rv: ArmRowView, c: ArmMemoryComponent) -> ArmComponentBound? {
-  match first(filter(placement_shares(p: rank_component_placement(rd: rv.demand, c: c)), sh => system_memory_component_same(a: sh.tier, b: rv.tier))) {
+  match first(filter(placement_shares(p: rank_component_placement(rd: rv.rank_demand, c: c)), sh => system_memory_component_same(a: sh.tier, b: rv.tier))) {
     Present { value: sh } => Present { value: sh.bound }
     Absent => none
   }
@@ -415,6 +415,13 @@ fn row_bound_or_closed(rv: ArmRowView, c: ArmMemoryComponent) -> ArmComponentBou
   match row_bound(rv: rv, c: c) {
     Present { value: b } => b
     Absent => ComponentBoundExact { bytes: byte_size(count: 0), how: "derived: the component's placement names no share in this tier" as NonEmptyStr }
+  }
+}
+
+fn row_has_share(rv: ArmRowView, c: ArmMemoryComponent) -> Bool {
+  match row_bound(rv: rv, c: c) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -1037,39 +1044,44 @@ fn demand_term_upper(bound: ArmComponentBound) -> ByteSize? {
   bound_upper_opt(b: bound)
 }
 
-type ArmRowTerm {
-  component: ArmMemoryComponent
-  bound: ArmComponentBound
-}
-
 fn demand_term_lower(bound: ArmComponentBound) -> ByteSize {
   bound_lower(b: bound)
 }
 
 // A component with no share in the row's tier is not resident there, so it is not a term of this
-// row at all. It is filtered out of the population, never read as a zero.
+// row at all: row_bound answers Absent, and each fold skips it. It is never read as a zero term.
 fn demand_for_phase(rv: ArmRowView, phase: ArmMemoryFitPhase) -> ArmPhaseDemand {
-  let resident = flat_map(filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase)), c =>
+  let resident_components = filter(arm_memory_components, c => component_resident_in_phase(c: c, p: phase) && row_has_share(rv: rv, c: c))
+  let lower = fold(resident_components, init: byte_size(count: 0), f: (acc, c) =>
     match row_bound(rv: rv, c: c) {
-      Present { value: b } => [ArmRowTerm { component: c, bound: b }]
-      Absent => [] as List<ArmRowTerm>
+      Present { value: b } => measure_add(a: acc, b: demand_term_lower(bound: b))
+      Absent => acc
     })
-  let lower = fold(resident, init: byte_size(count: 0), f: (acc, t) =>
-    measure_add(a: acc, b: demand_term_lower(bound: t.bound)))
-  let lower_components = map(filter(resident, t => match t.bound {
-    ComponentBoundExact { bytes: _, how: _ } => true
-    ComponentBoundInterval { lower: _, upper: _, how: _ } => true
-    ComponentBoundCeiling { bytes: _, receipt: _ } => false
-    ComponentBoundOpen { obligation: _ } => false
-  }), t => t.component)
-  let open_components = map(filter(resident, t => bound_is_open(b: t.bound)), t => t.component)
-  let upper = fold(resident, init: Present { value: byte_size(count: 0) }, f: (acc, t) =>
+  let lower_components = filter(resident_components, c => match row_bound(rv: rv, c: c) {
+    Present { value: b } =>
+      match b {
+        ComponentBoundExact { bytes: _, how: _ } => true
+        ComponentBoundInterval { lower: _, upper: _, how: _ } => true
+        ComponentBoundCeiling { bytes: _, receipt: _ } => false
+        ComponentBoundOpen { obligation: _ } => false
+      }
+    Absent => false
+  })
+  let open_components = filter(resident_components, c => match row_bound(rv: rv, c: c) {
+    Present { value: b } => bound_is_open(b: b)
+    Absent => false
+  })
+  let upper = fold(resident_components, init: Present { value: byte_size(count: 0) }, f: (acc, c) =>
     match acc {
       Absent => none
       Present { value: n } =>
-        match demand_term_upper(bound: t.bound) {
-          Absent => none
-          Present { value: b } => Present { value: measure_add(a: n, b: b) }
+        match row_bound(rv: rv, c: c) {
+          Absent => acc
+          Present { value: b } =>
+            match demand_term_upper(bound: b) {
+              Absent => none
+              Present { value: u } => Present { value: measure_add(a: n, b: u) }
+            }
         }
     })
   ArmPhaseDemand { lower: lower, upper: upper, open_components: open_components, lower_components: lower_components }
@@ -1177,7 +1189,7 @@ type ArmMemoryFitVerdict
 // construct. It is carried as unknown supply, which refuses nothing and leaves the verdict
 // unestablished. It does not read as zero.
 fn subject_rows(subject: ArmMemoryFitSubject) -> List<ArmRowView> {
-  flat_map(subject.ranks, rd => map(subject.tiers, t => ArmRowView { demand: rd, tier: t.tier }))
+  flat_map(subject.ranks, rd => map(subject.tiers, t => ArmRowView { rank_demand: rd, tier: t.tier }))
 }
 
 fn tier_supply_for(subject: ArmMemoryFitSubject, tier: SystemMemoryComponent) -> ArmTierSupply? {
@@ -1338,13 +1350,13 @@ fn refusal_for_rank(
             match byte_size_count(b: demand.lower) > byte_size_count(b: s) {
               true =>
                 Present { value: ArmMemoryFitRefused {
-                  rank: rv.demand.rank,
+                  rank: rv.rank_demand.rank,
                   tiers: [rv.tier],
                   phase: phase,
                   demand_lower: demand.lower,
                   supply_upper: s,
                   cause: join([
-                    "memory fit REFUSED at rank ", to_string(rv.demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    "memory fit REFUSED at rank ", to_string(rv.rank_demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                     ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
                     " bytes (carried by ", join(map(demand.lower_components, c => arm_memory_component_wire(c: c)), ", "),
                     ") exceeds the most favorable supply of ", to_string(byte_size_count(b: s)),
@@ -1366,13 +1378,13 @@ fn refusal_for_rank(
                     match byte_size_count(b: demand.lower) > byte_size_count(b: e) {
                       true =>
                         Present { value: ArmMemoryFitRefused {
-                          rank: rv.demand.rank,
+                          rank: rv.rank_demand.rank,
                           tiers: [rv.tier],
                           phase: phase,
                           demand_lower: demand.lower,
                           supply_upper: e,
                           cause: join([
-                            "memory fit REFUSED at rank ", to_string(rv.demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                            "memory fit REFUSED at rank ", to_string(rv.rank_demand.rank), tier_label(subject: subject, tier: rv.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                             ": the mandatory demand lower bound of ", to_string(byte_size_count(b: demand.lower)),
                             " bytes exceeds the decided envelope's most generous reading of ", to_string(byte_size_count(b: e)),
                             " bytes (pool upper at ", to_string(decided_bp),
@@ -1458,7 +1470,7 @@ fn open_term_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> {
         match row_bound_or_closed(rv: rb, c: c) {
           ComponentBoundOpen { obligation: o } =>
             [join([
-              "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " ", arm_memory_component_wire(c: c),
+              "rank ", to_string(rb.rank_demand.rank), tier_label(subject: subject, tier: rb.tier), " ", arm_memory_component_wire(c: c),
               " has no defensible bound: ", o as String,
             ], "") as NonEmptyStr]
           ComponentBoundExact { bytes: _, how: _ } => [] as List<NonEmptyStr>
@@ -1513,7 +1525,7 @@ fn indeterminacy_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> 
               match byte_size_count(b: upper) > byte_size_count(b: low) {
                 true =>
                   [join([
-                    "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                    "rank ", to_string(rb.rank_demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                     " does not decide: demand upper ", to_string(byte_size_count(b: upper)),
                     " bytes exceeds the conservative supply lower ", to_string(byte_size_count(b: low)),
                     " bytes; tighten ", join(map(ceiling_terms_resident_in_phase(rv: rb, phase: phase), c => arm_memory_component_wire(c: c)), ", "),
@@ -1531,7 +1543,7 @@ fn indeterminacy_obligations(subject: ArmMemoryFitSubject) -> List<NonEmptyStr> 
                   match byte_size_count(b: upper) > byte_size_count(b: env.lower) {
                     true =>
                       [join([
-                        "rank ", to_string(rb.demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
+                        "rank ", to_string(rb.rank_demand.rank), tier_label(subject: subject, tier: rb.tier), " phase ", arm_memory_fit_phase_wire(p: phase),
                         " does not decide against the decided envelope: demand upper ", to_string(byte_size_count(b: upper)),
                         " bytes exceeds the envelope at the pool's lower reading (", to_string(byte_size_count(b: env.lower)),
                         " bytes at ", to_string(basis_point_count(bp: subject.profile.decided_gpu_memory_basis_points)),
@@ -1628,7 +1640,7 @@ fn proved_worst_corner(subject: ArmMemoryFitSubject) -> ArmMemoryFitVerdict? {
             Absent => acc2
             Present { value: upper } => {
               let headroom = subtract_saturating(minuend: phase_binding(supply_low: binding.supply_low, envelope_lower: binding.envelope_lower, phase: phase), subtrahend: upper)
-              let candidate = ArmMemoryFitProved { rank: rb.demand.rank, tier: rb.tier, phase: phase, headroom_bytes: headroom }
+              let candidate = ArmMemoryFitProved { rank: rb.rank_demand.rank, tier: rb.tier, phase: phase, headroom_bytes: headroom }
               match acc2 {
                 Absent => Present { value: candidate }
                 Present { value: prior } =>

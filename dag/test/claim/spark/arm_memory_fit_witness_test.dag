@@ -663,19 +663,19 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
 // ── WITNESS 9: PHASES KEEP TRANSIENTS IN THEIR PHASE ────────────────────────────────────────────
 test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
   let rd = fx_rank(rank: 0, checkpoint: fx_even_checkpoint())
-  let model_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseModelLoad).upper {
+  let model_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseModelLoad).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let idle_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseIdleServing).upper {
+  let idle_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseIdleServing).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let loader_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseLoaderTransform).upper {
+  let loader_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseLoaderTransform).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let overlap_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseRestartOverlap).upper {
+  let overlap_upper = match demand_for_phase(rv: ArmRowView { rank_demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseRestartOverlap).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
