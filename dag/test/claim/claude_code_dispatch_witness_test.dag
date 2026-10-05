@@ -386,8 +386,8 @@ test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() ->
              Absent => false
            }
         && any(argv, a => a == claude_code_oauth_harness_host_path as String)
-        && any(argv, a => string_contains(s: a, pattern: "exec \"$@\""))
-        && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "$(cat -- "))
+        && any(argv, a => string_contains(s: a, pattern: "'exec' \"$@\""))
+        && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "\"$0\""))
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
     CursorProviderSpawnUnwired { reason: _ } => false

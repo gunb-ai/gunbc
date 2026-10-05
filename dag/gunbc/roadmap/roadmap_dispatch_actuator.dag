@@ -104,7 +104,7 @@ import gunbc.harness.harness_backend {
 }
 import gunbc.claude_code_credential {
   claude_code_custody_path, claude_code_oauth_env_wrapped_command,
-  ClaudeCodeEnvWrapping, ClaudeCodeEnvWrapped, ClaudeCodeEnvNameRefused,
+  ClaudeCodeEnvWrapping, ClaudeCodeEnvWrapped, ClaudeCodeEnvWrapRefused,
   claude_code_harness_credential_label, claude_code_standing_trip_prompt,
 }
 import gunbc.claude_code_limit_standing { claude_code_standing_from_trip, ClaudeCodeStandingRead, ClaudeCodeStandingUnreadable }
@@ -511,10 +511,7 @@ fn claude_observed_standing_for_instance(instance: HostDashboardInstance) -> Pro
           }
         Present { value: path } =>
           match claude_standing_trip_command(path: path) {
-            ClaudeCodeEnvNameRefused { spelling } =>
-              ProviderStandingUnobserved {
-                reason: join(["the claude credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
-              }
+            ClaudeCodeEnvWrapRefused { reason } => ProviderStandingUnobserved { reason: reason }
             ClaudeCodeEnvWrapped { command } => {
           let run = run_shell_command_observe(command: command, transport: LocalExec)
               if run.exit_code == posix_sh_export_from_file_unreadable_exit {
@@ -2271,10 +2268,7 @@ fn claude_inner_argv_for_credential(credential: ClaudeCredentialRef, argv: List<
         Present { value: path } =>
           match claude_code_oauth_env_wrapped_command(token_path: path, argv: argv) {
             ClaudeCodeEnvWrapped { command } => DispatchProviderInnerArgvReady { argv: argv_words(command: command) }
-            ClaudeCodeEnvNameRefused { spelling } =>
-              ClaudeProviderCredentialUnbound {
-                reason: join(["the claude credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
-              }
+            ClaudeCodeEnvWrapRefused { reason } => ClaudeProviderCredentialUnbound { reason: reason }
           }
         Absent =>
           ClaudeProviderCredentialUnbound {
