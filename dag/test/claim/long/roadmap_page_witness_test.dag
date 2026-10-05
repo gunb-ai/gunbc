@@ -2250,6 +2250,53 @@ test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bo
   }
 }
 
+// THE RAIL'S BUILD METER, THROUGH THE REAL PROJECTION. The rail's own function is given a real
+// attempt projection (the belt witness's completed attempt, built by workflow_attempt_progress)
+// and an assignment held by the Fabric workflow. It renders the BuildMeter element inside the
+// rail's wrapper, as a link to this issue's Work tab carrying the tab chip, and the element's key
+// begins with the projection's own attempt key: the real attempt reached the real element by the
+// real derivation. The fixture attempt's agent completed and nothing verified it, so its current
+// stage is the first that has not completed.
+fn fx_rail_meter_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipal?, attempts: List<gunbc.roadmap_workflow_progress.WorkflowAttemptProgress>) -> String {
+  extdeps.languages.html.serialize_html_source(node: Element { tag: "div", attributes: [], children: gunbc.roadmap_page.issue_rail_build_meter_nodes(
+    view: issue_detail_fixture_view(),
+    attempts: attempts,
+    assignment: gunbc.roadmap.roadmap_event_log.IssueAssignmentProjection { holder: holder, return_to: none }) })
+}
+
+test fn witness_issue_rail_renders_the_build_meter_for_a_fabric_attempt() -> Bool {
+  let h = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ completed_attempt_progress(node_id: "issue-detail-specimen") ])
+  string_contains(s: h, pattern: "<div><div class=\"issue-rail-meter\"><a class=\"el-build-meter\" href=\"/issue/issue-detail-specimen#work\" data-build-meter=\"issue-detail-specimen\" data-tab-chip=\"work\"><span class=\"el-build-meter-body\" data-meter-key=\"feedfacefeedface|")
+    && string_contains(s: h, pattern: "<svg class=\"el-build-meter-art\" aria-hidden=\"true\"")
+    && string_contains(s: h, pattern: "<span class=\"el-build-meter-stage\">")
+    && !string_contains(s: h, pattern: "aria-valuenow")
+}
+
+// NOTHING IS RENDERED WHEN THERE IS NOTHING TO SHOW: held by Fabric with no attempt, held by a
+// person with an attempt, and unassigned with an attempt each yield no node at all, not an empty
+// meter. The red this pins: a rail that draws an empty meter or a placeholder row.
+test fn witness_issue_rail_renders_no_build_meter_without_fabric_or_an_attempt() -> Bool {
+  let attempt = completed_attempt_progress(node_id: "issue-detail-specimen")
+  fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: []) == "<div></div>"
+    && fx_rail_meter_html(holder: Present { value: fixture_human_principal() }, attempts: [ attempt ]) == "<div></div>"
+    && fx_rail_meter_html(holder: none, attempts: [ attempt ]) == "<div></div>"
+}
+
+// THE WORKFLOW WIRE NAMES THE SAME VIEW THE RAIL DREW. The belt's own attempt object, built for
+// the same real projection, carries the meter view's key, and it is the key the rail's rendering
+// of that projection carries. A page compares the two to learn that its meter is out of date, so
+// they must agree when nothing has changed; the wire carries no rendering.
+test fn witness_workflow_wire_carries_the_key_the_rail_meter_draws() -> Bool {
+  let attempt = completed_attempt_progress(node_id: "issue-detail-specimen")
+  let key = gunbc.roadmap.roadmap_build_meter.build_meter_wire_key(progress: attempt)
+  let wire = serialize_json(v: gunbc.roadmap_belt_actuate.belt_workflow_attempt_presentation_json(progress: attempt))
+  let rail = fx_rail_meter_html(holder: Present { value: fixture_fabric_principal() }, attempts: [ attempt ])
+  string_contains(s: key, pattern: "feedfacefeedface|")
+    && string_contains(s: wire, pattern: join(["\"meter_key\": ", serialize_json(v: extdeps.languages.json.emit.json_string(s: key))], ""))
+    && string_contains(s: rail, pattern: "data-meter-key=\"feedfacefeedface|")
+    && !string_contains(s: wire, pattern: "el-build-meter")
+}
+
 // THE HISTORY TAB'S EVENT LEDGER (owner ruling 2026-09-24, moved to the History tab by the
 // 2026-09-25 page architecture): the issue's durable event history renders one row per envelope,
 // NEWEST FIRST by recorded_at — the envelope written at 03:00 heads the 02:00 and the 01:00, each

@@ -1,0 +1,286 @@
+module test.claim.site_build_meter_witness_test
+
+import std.types { Bool, Int, List, String, NonEmptyStr }
+import std.markup { Fragment }
+import extdeps.languages.html { serialize_html_source }
+import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState, ProviderNotStarted, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderFailed,
+}
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentRefused,
+  EnvironmentWorkflowSegment, AgentWorkflowSegment, VerificationWorkflowSegment,
+}
+import gunbc.roadmap.roadmap_submission {
+  CandidateHandoffState, HandoffAwaitingWorker, HandoffBlockedOnPublication, HandoffPublished,
+}
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of }
+import gunbc.site.element.build_meter {
+  BuildMeter, BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterKind, BuildMeterRun, BuildMeterWrite, BuildMeterRead,
+  BuildMeterRounds, BuildMeterRoundsRecorded, BuildMeterRoundsUnobserved, BuildMeterHalt,
+  BuildMeterPose, BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle,
+  build_meter, build_meter_rules, build_meter_class, build_meter_kind_key, build_meter_pose_key, build_meter_view_key,
+  build_meter_visible_rounds, build_meter_blink_class,
+}
+import gunbc.site.element.styles { element_styles }
+import gunbc.roadmap_surface_style { roadmap_surface_rules }
+import gunbc.design.material { BuildRule, StaticRule, reduced_motion_block, decl }
+import gunbc.design.theme_transition { rule_selector }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { Color }
+
+// GUARDS FOR THE BUILD METER. Each claim reads one interface with supplied values: the view
+// derivation takes a planted ledger, stage list, provider state and handoff; the element takes a
+// planted view. None renders a page and none runs the progress projection. The claim that the
+// real rail renders the element over a real projection is with the page's witnesses
+// (test.claim.long.roadmap_page_witness_test).
+
+fn has(s: String, pattern: String) -> Bool {
+  string_contains(s: s, pattern: pattern)
+}
+
+fn occurrences(s: String, pattern: String) -> Int {
+  count(split(s: s, delimiter: pattern)) - 1
+}
+
+fn fx_round(step: Int, tool_calls: Int?, files_changed: Int?) -> RoundObservation {
+  RoundObservation { step: step, input_tokens: 1000, output_tokens: 300, epoch_ms: 1790694000000 + step * 1000, files_changed: files_changed, tool_calls: tool_calls }
+}
+
+fn fx_view(rounds: HarnessRoundLedger, provider: ProviderExecutionState, handoff: CandidateHandoffState, segments: List<WorkflowSegment>) -> BuildMeterView {
+  build_meter_view_of(attempt_key: "fixture-attempt", segments: segments, rounds: rounds, provider: provider, handoff: handoff)
+}
+
+fn fx_running() -> ProviderExecutionState {
+  ProviderRunning { activity: "Agent working" }
+}
+
+fn fx_agent_active() -> List<WorkflowSegment> {
+  [
+    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
+    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+  ]
+}
+
+fn mark_words(view: BuildMeterView) -> List<String> {
+  match view.rounds {
+    BuildMeterRoundsUnobserved { reason: _ } => ["unobserved"]
+    BuildMeterRoundsRecorded { rounds, last_recorded_at: _ } =>
+      map(rounds, r => join(map(r.marks, m => join([build_meter_kind_key(kind: m.kind), to_string(m.count)], "")), "+"))
+  }
+}
+
+// The view derivation.
+
+// A write mark is how far the changed-path count ROSE over the last measured value, not the
+// count itself. The ledger below reads 2, 2, 5, unread, 4, 6: round 1 rises from a fresh tree,
+// round 2 does not rise, round 3 rises by three, round 4 was not read, round 5 fell (a commit),
+// round 6 rises by two over round 5. A level test would mark every round after the first.
+test fn a_write_mark_is_the_rise_of_the_changed_path_count() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: none, files_changed: Present { value: 2 }),
+    fx_round(step: 2, tool_calls: none, files_changed: Present { value: 2 }),
+    fx_round(step: 3, tool_calls: none, files_changed: Present { value: 5 }),
+    fx_round(step: 4, tool_calls: none, files_changed: none),
+    fx_round(step: 5, tool_calls: none, files_changed: Present { value: 4 }),
+    fx_round(step: 6, tool_calls: none, files_changed: Present { value: 6 }),
+  ] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  mark_words(view: view) == ["write2", "", "write3", "", "", "write2"]
+}
+
+// A run mark is the round's recorded tool call count: absent and zero draw nothing. No kind is
+// produced that the ledger does not record.
+test fn a_run_mark_is_the_recorded_tool_calls_and_no_kind_is_invented() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: Present { value: 3 }, files_changed: Present { value: 0 }),
+    fx_round(step: 2, tool_calls: Present { value: 0 }, files_changed: Present { value: 0 }),
+    fx_round(step: 3, tool_calls: none, files_changed: Present { value: 1 }),
+    fx_round(step: 4, tool_calls: Present { value: 1 }, files_changed: Present { value: 4 }),
+  ] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  mark_words(view: view) == ["run3", "", "write1", "run1+write3"]
+}
+
+test fn unobserved_rounds_keep_their_reason() -> Bool {
+  let view = fx_view(rounds: RoundsUnobserved { reason: "round 7 could not be read" as NonEmptyStr }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  let h = fx_html(view: view)
+  mark_words(view: view) == ["unobserved"]
+    && has(s: h, pattern: "<span class=\"el-build-meter-line\">Rounds unobserved: round 7 could not be read</span>")
+    && occurrences(s: h, pattern: "data-round=") == 0
+    && !has(s: h, pattern: "rounds recorded")
+}
+
+// The last round's time is that round's own recorded clock, as an ISO time.
+test fn the_last_round_time_is_the_last_rounds_recorded_clock() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [
+    fx_round(step: 1, tool_calls: none, files_changed: none),
+    fx_round(step: 2, tool_calls: none, files_changed: none),
+  ] }, provider: fx_running(), handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  has(s: fx_html(view: view), pattern: "2 rounds recorded · last round <time datetime=\"2026-09-29T15:00:02Z\">2026-09-29T15:00:02Z</time>")
+}
+
+fn outcome_text(view: BuildMeterView) -> String {
+  match view.outcome { Present { value: o } => o  Absent => "(none)" }
+}
+
+// The outcome is the handoff's own statement about the candidate. Before a handoff there is none.
+test fn the_outcome_is_the_handoffs_own_statement() -> Bool {
+  let of = fn(handoff) { fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: handoff, segments: fx_agent_active()) }
+  outcome_text(view: of(HandoffAwaitingWorker)) == "(none)"
+    && outcome_text(view: of(HandoffPublished { head_sha: "abc", pr_number: 7, url: "https://example.invalid/7" })) == "Published for review, PR #7"
+    && outcome_text(view: of(HandoffBlockedOnPublication { head_sha: "abc", cause: "no token" })) == "Blocked on publication"
+    && !has(s: outcome_text(view: of(HandoffPublished { head_sha: "abc", pr_number: 7, url: "https://example.invalid/7" })), pattern: "one")
+}
+
+// The pose follows observed activity. The same recorded rounds stand under a running provider, a
+// provider waiting for a seat, one that has not started and one that failed; only the first
+// works. A provider waiting for a seat is also stated in words.
+test fn the_pose_follows_observed_activity_not_recorded_work() -> Bool {
+  let rounds = RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 2 }, files_changed: Present { value: 1 })] }
+  let pose = fn(provider) { build_meter_pose_key(pose: fx_view(rounds: rounds, provider: provider, handoff: HandoffAwaitingWorker, segments: fx_agent_active()).pose) }
+  let waiting = fx_view(rounds: rounds, provider: ProviderAwaitingSeat { detail: "group B is full" }, handoff: HandoffAwaitingWorker, segments: fx_agent_active())
+  pose(fx_running()) == "working"
+    && pose(ProviderAwaitingSeat { detail: "group B is full" }) == "waiting"
+    && pose(ProviderNotStarted) == "idle"
+    && pose(ProviderCompleted { activity: "Agent complete" }) == "idle"
+    && pose(ProviderFailed { activity: "Agent failed", detail: "exit 3" }) == "stopped"
+    && has(s: fx_html(view: waiting), pattern: "<span class=\"el-build-meter-line\">Agent waiting for a serving seat: group B is full</span>")
+}
+
+// The current stage is the first that has not completed, and a stage that was refused is a stop
+// stated with its recorded reason. A published candidate behind a refused stage is still a stop.
+test fn a_refused_stage_is_the_current_stage_and_a_stop_with_its_reason() -> Bool {
+  let view = fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderCompleted { activity: "Agent complete" },
+    handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "https://example.invalid/7" },
+    segments: [
+      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "events could not be decoded" },
+      WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    ])
+  view.stage_label == "Agent" && view.stage_state == "refused"
+    && build_meter_pose_key(pose: view.pose) == "stopped"
+    && map(view.halts, h => join([h.subject, h.reason], " / ")) == ["Agent refused / events could not be decoded"]
+}
+
+// The element.
+
+fn fx_html(view: BuildMeterView) -> String {
+  serialize_html_source(node: build_meter(input: BuildMeter { view: view, subject: "fixture-node", href: "/issue/fixture-node#work", link_attributes: [] }))
+}
+
+fn fx_drawn_round(step: Int, marks: List<BuildMeterMark>) -> BuildMeterRound {
+  BuildMeterRound { step: step, marks: marks, input_tokens: 100, output_tokens: 100 }
+}
+
+fn fx_drawn_view(rounds: BuildMeterRounds, pose: BuildMeterPose, halts: List<BuildMeterHalt>) -> BuildMeterView {
+  BuildMeterView { attempt_key: "fixture-attempt", stage_label: "Agent", stage_state: "active", seat_wait: none, rounds: rounds, pose: pose, halts: halts, outcome: none }
+}
+
+// One mark is drawn per recorded kind per round, and one base per round: three rounds carrying
+// two, none and one kind draw three marks on three bases. A kind today's producer never emits is
+// drawn like any other when a view supplies it.
+test fn the_marks_drawn_are_the_views_marks() -> Bool {
+  let h = fx_html(view: fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: [
+    fx_drawn_round(step: 1, marks: [BuildMeterMark { kind: BuildMeterRun, count: 2 }, BuildMeterMark { kind: BuildMeterWrite, count: 1 }]),
+    fx_drawn_round(step: 2, marks: []),
+    fx_drawn_round(step: 3, marks: [BuildMeterMark { kind: BuildMeterRead, count: 4 }]),
+  ], last_recorded_at: none }, pose: BuildMeterWorking, halts: []))
+  occurrences(s: h, pattern: "data-round=") == 3
+    && occurrences(s: h, pattern: "data-kind=") == 3
+    && occurrences(s: h, pattern: "data-kind=\"run\"") == 1
+    && occurrences(s: h, pattern: "data-kind=\"write\"") == 1
+    && occurrences(s: h, pattern: "data-kind=\"read\"") == 1
+    && occurrences(s: h, pattern: "data-paint=\"base\"") == 3
+    && has(s: h, pattern: "3 rounds recorded")
+}
+
+fn fx_many_rounds(tens: List<Int>) -> List<BuildMeterRound> {
+  flat_map(tens, t => map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], i => fx_drawn_round(step: t * 10 + i, marks: [BuildMeterMark { kind: BuildMeterRun, count: 1 }])))
+}
+
+// A long run draws the most recent rounds and states how many earlier ones it does not draw: of
+// 30 rounds the last 24 are drawn, rounds 7 to 30, and the text says "+6 earlier".
+test fn a_long_run_draws_recent_rounds_and_counts_the_earlier_ones() -> Bool {
+  let h = fx_html(view: fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: fx_many_rounds(tens: [0, 1, 2]), last_recorded_at: none }, pose: BuildMeterWorking, halts: []))
+  build_meter_visible_rounds == 24
+    && occurrences(s: h, pattern: "data-round=") == 24
+    && has(s: h, pattern: "data-round=\"7\"")
+    && !has(s: h, pattern: "data-round=\"6\"")
+    && has(s: h, pattern: "data-round=\"30\"")
+    && has(s: h, pattern: "<span class=\"el-build-meter-line\">30 rounds recorded · +6 earlier</span>")
+}
+
+// A stop is drawn as a stop and stated in words with its reason; further stops are counted.
+test fn a_stopped_state_shows_its_reason() -> Bool {
+  let h = fx_html(view: fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: [], last_recorded_at: none }, pose: BuildMeterStopped, halts: [
+    BuildMeterHalt { subject: "Verification failed", reason: "3 of 41 claims red" },
+    BuildMeterHalt { subject: "Publication refused", reason: "no verified head" },
+  ]))
+  let calm = fx_html(view: fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: [], last_recorded_at: none }, pose: BuildMeterIdle, halts: []))
+  let own = fx_html(view: BuildMeterView { attempt_key: "fixture-attempt", stage_label: "Verification", stage_state: "failed", seat_wait: none, rounds: BuildMeterRoundsRecorded { rounds: [], last_recorded_at: none }, pose: BuildMeterStopped, halts: [BuildMeterHalt { subject: "Verification failed", reason: "3 of 41 claims red" }], outcome: none })
+  has(s: h, pattern: "<span class=\"el-build-meter-halt\">Verification failed: 3 of 41 claims red</span>")
+    && has(s: own, pattern: "<span class=\"el-build-meter-stage\">Verification failed</span>")
+    && has(s: own, pattern: "<span class=\"el-build-meter-halt\">3 of 41 claims red</span>")
+    && has(s: h, pattern: "<span class=\"el-build-meter-line\">+1 more stopped</span>")
+    && has(s: h, pattern: "data-paint=\"stop\"")
+    && has(s: h, pattern: "data-meter-pose=\"stopped\"")
+    && !has(s: calm, pattern: "data-paint=\"stop\"")
+    && !has(s: calm, pattern: "el-build-meter-halt")
+}
+
+fn fx_every_pose_html() -> String {
+  let rounds = BuildMeterRoundsRecorded { rounds: fx_many_rounds(tens: [0]), last_recorded_at: Present { value: "2026-09-29T15:00:02Z" } }
+  join(map([BuildMeterWorking, BuildMeterWaitingForSeat, BuildMeterStopped, BuildMeterDone, BuildMeterIdle], p => fx_html(view: fx_drawn_view(rounds: rounds, pose: p, halts: []))), "")
+}
+
+// No pose and no round count yields a percentage, a progress value or a claim of stalling, and
+// the drawing is hidden from assistive technology: the text beside it carries the facts.
+test fn the_meter_states_no_percentage_and_invents_no_progress_value() -> Bool {
+  let h = fx_every_pose_html()
+  !has(s: h, pattern: "%")
+    && !has(s: h, pattern: "aria-valuenow")
+    && !has(s: h, pattern: "progressbar")
+    && !has(s: h, pattern: "stalled")
+    && occurrences(s: h, pattern: "<svg class=\"el-build-meter-art\" aria-hidden=\"true\"") == 5
+    && occurrences(s: h, pattern: "<a class=\"el-build-meter\" href=\"/issue/fixture-node#work\" data-build-meter=\"fixture-node\">") == 5
+}
+
+// Two views that differ in any shown fact have different keys, and the same view has the same
+// key, so a page can tell a newer view from the one it drew.
+test fn the_view_key_changes_with_what_is_shown() -> Bool {
+  let base = fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: fx_many_rounds(tens: [0]), last_recorded_at: Present { value: "2026-09-29T15:00:02Z" } }, pose: BuildMeterWorking, halts: [])
+  let more = fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: fx_many_rounds(tens: [0, 1]), last_recorded_at: Present { value: "2026-09-29T15:09:02Z" } }, pose: BuildMeterWorking, halts: [])
+  let posed = fx_drawn_view(rounds: BuildMeterRoundsRecorded { rounds: fx_many_rounds(tens: [0]), last_recorded_at: Present { value: "2026-09-29T15:00:02Z" } }, pose: BuildMeterIdle, halts: [])
+  build_meter_view_key(view: base) == build_meter_view_key(view: base)
+    && build_meter_view_key(view: base) != build_meter_view_key(view: more)
+    && build_meter_view_key(view: base) != build_meter_view_key(view: posed)
+    && has(s: fx_html(view: base), pattern: join(["data-meter-key=\"", build_meter_view_key(view: base), "\" data-meter-rounds=\"10\""], ""))
+}
+
+// Rules and ownership.
+
+fn selector_names_class(selector: String, class_name: String) -> Bool {
+  has(s: selector, pattern: join([".", class_name], ""))
+}
+
+fn page_reaches_into_the_meter(rules: List<BuildRule>) -> Bool {
+  any(rules, r => selector_names_class(selector: rule_selector(rule: r), class_name: build_meter_class))
+}
+
+// The meter is a registered element, every one of its rules names its own class, and the issue
+// page's surface rules style nothing inside it. A page rule that reached in is reported.
+test fn the_build_meter_is_registered_and_the_issue_page_styles_none_of_it() -> Bool {
+  let reach = StaticRule { selector: RawSelector { text: ".issue-rail .el-build-meter-stage" }, decls: [decl(prop: Color, value: "inherit")] }
+  any(element_styles(), s => s.class_name == build_meter_class)
+    && all(build_meter_rules(), r => selector_names_class(selector: rule_selector(rule: r), class_name: build_meter_class))
+    && !page_reaches_into_the_meter(rules: roadmap_surface_rules())
+    && page_reaches_into_the_meter(rules: concat(roadmap_surface_rules(), [reach]))
+}
+
+// Every ambient cycle of the meter is stilled under reduced motion by the shared rule.
+test fn the_meters_motion_is_removed_under_reduced_motion() -> Bool {
+  let block = reduced_motion_block(rules: build_meter_rules())
+  has(s: block, pattern: "@media (prefers-reduced-motion: reduce)")
+    && has(s: block, pattern: join([".", build_meter_class, " .", build_meter_blink_class, " { animation: none }"], ""))
+    && has(s: block, pattern: "transition: none")
+}
