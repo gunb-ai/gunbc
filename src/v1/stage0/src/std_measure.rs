@@ -2136,3 +2136,4 @@ pub struct Tebi;
 pub struct CpuClock;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct WallClock;
+// MUTATION CONTROL: hand edit, must be refused by generated-artifact stage0-mirrors
