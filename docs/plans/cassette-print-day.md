@@ -260,3 +260,17 @@ The preparation's independent G-code reader was corrected to include leading-dot
 numbers such as `E.0225`; previous P1–P4 and arms/beam slices were rechecked and
 remain inside bed bounds. Slicer `first_layer_time` XML values were malformed;
 time comparison uses total prediction and the readable G-code header instead.
+
+## Overnight plate started — 5 October 2026
+
+Printer-01 is running `overnight-batch`: replacement P1/P2, separate S1/S2,
+and K3/K4/K6/K7. These eight instances are now reserved by an active physical
+print; do not schedule duplicates. The operator confirmed both beds clear and
+approved the printer-01 ntfy request. Printer-02 was not started by this run.
+
+`artifacts/printing/socket-redesign-2026-10-04/start-receipt.json` binds the exact
+project to the observation. The publisher hit its 20-second acknowledgement bound;
+the automatic reconciliation's first read confirmed the matching filename and
+RUNNING. The workflow exited successfully without republishing. The temporary
+operator-token file was deleted after completion of the start workflow. Physical
+completion, removal and acceptance of individual parts remain pending.
