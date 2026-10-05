@@ -3,7 +3,7 @@ module gunbc.harness.harness_seat
 import product.host_identity { HostIdentity }
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat, nat_range_inclusive, nat_min }
-import std.measure { Measure, Count, One, money_amount_micro, second, measure_count }
+import std.measure { Measure, Count, One, money_amount_micro, second, measure_count, TokenCount }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA, FabricGroupB, fabric_group_wire, fabric_group_hosts }
 import gunbc.serving.serving_enrollment {
   ServingRoute, ServingRouteResolved, ServingRouteUnresolved, ServingRouteEndpoint,
@@ -1451,7 +1451,7 @@ fn harness_requirement_placement(requirement: ServingModelRequirement) -> Harnes
 // THE HOSTED BIND. A hosted unit takes no seat: the credential is materialized and its liveness read, the
 // level is selected, and the binding carries the two quota rows each request will lease. A fleet unit
 // handed here refuses by name rather than being placed on a seat behind the caller's back.
-fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: Int) -> HarnessSeatBinding {
+fn harness_bind_hosted(short_hostname: String, unit: HarnessServingUnit, actor: NonEmptyStr, max_tokens: TokenCount) -> HarnessSeatBinding {
   match harness_unit_placement(unit: unit) {
     PlacedOnFleetSeat => HarnessSeatRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat; bind it with harness_bind_seat"], "") }
     LeasedFromHostedQuota =>

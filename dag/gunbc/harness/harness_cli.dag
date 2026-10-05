@@ -153,7 +153,9 @@ data harness_default_wire_shape: HarnessWireShape = OpenAiChatCompletionsShape
 // One longer round would have ended the run through the truncation refusal, correctly. At the
 // declared floor 16,384 tokens is about eleven minutes of decode, and the deadline below follows
 // by derivation rather than being re-guessed beside it.
-data harness_default_max_tokens: Int = token_count_value(t: token_count(count: 16384))
+data harness_default_max_token_count: TokenCount = token_count(count: 16384)
+
+data harness_default_max_tokens: Int = token_count_value(t: harness_default_max_token_count)
 
 // THE SLOWEST DECODE THIS DEPLOYMENT IS EXPECTED TO SUSTAIN, in tokens per second. It is a declared
 // policy floor rather than a measurement of any one run: observed rates here span 2.4 tok/s under
@@ -1094,7 +1096,7 @@ fn harness_binding_answer(binding: HarnessSeatBinding) -> HarnessBindingAnswer {
 // operator's explicit act, not a placement default. It takes its tool environment as arguments, as the
 // worker does, so it runs on whatever host invokes it rather than assuming the MacBook's.
 fn harness_hosted_probe_cli(worktree: String, timeout_program: String, request_scratch_path: String, events_path: String) -> ProcessExit {
-  let binding = harness_bind_hosted(short_hostname: harness_executor_short_hostname(), unit: NemotronUltraFreeOnOpenRouter, actor: join(["hosted-probe:", worktree], "") as NonEmptyStr, max_tokens: harness_default_max_tokens)
+  let binding = harness_bind_hosted(short_hostname: harness_executor_short_hostname(), unit: NemotronUltraFreeOnOpenRouter, actor: join(["hosted-probe:", worktree], "") as NonEmptyStr, max_tokens: harness_default_max_token_count)
   match harness_binding_answer(binding: binding) {
     BindingRefused { detail } => harness_backend_refusal_exit(detail: detail)
     BindingPending { detail } => harness_placement_pending_exit(detail: detail)

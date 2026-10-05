@@ -3,7 +3,7 @@ module gunbc.harness.harness_hosted_route
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count_value, Second, second_count, MoneyAmountMicro, money_amount_micro_count }
+import std.measure { TokenCount, token_count_value, Second, second, second_count, MoneyAmountMicro, money_amount_micro_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -178,22 +178,22 @@ fn hosted_level_depth_rank(route: HarnessHostedRoute, level: HarnessReasoningLev
   }
 }
 
-fn hosted_level_admitted(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: Int) -> Bool {
-  max_tokens <= token_count_value(t: route.max_completion)
+fn hosted_level_admitted(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: TokenCount) -> Bool {
+  token_count_value(t: max_tokens) <= token_count_value(t: route.max_completion)
     && (match harness_reasoning_kwargs_for(unit: route.unit, level: level) {
       ReasoningKwargsAdmitted { kwargs: _ } => true
       ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
     })
 }
 
-fn hosted_level_entry(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: Int) -> ParetoEntry {
+fn hosted_level_entry(route: HarnessHostedRoute, level: HarnessReasoningLevel, max_tokens: TokenCount) -> ParetoEntry {
   let no_gaps: List<AxisGap> = []
   ParetoEntry {
     identity: hosted_level_identity(level: level),
     display_label: harness_reasoning_level_wire(level: level),
     readings: [
       AxisReading { axis: ax_hosted_reasoning_depth, interval_micro: degenerate_interval(point: hosted_level_depth_rank(route: route, level: level) * 1000000) },
-      AxisReading { axis: ax_hosted_money_per_request, interval_micro: degenerate_interval(point: (money_amount_micro_count(m: route.price_per_token) as Int) * max_tokens) },
+      AxisReading { axis: ax_hosted_money_per_request, interval_micro: degenerate_interval(point: (money_amount_micro_count(m: route.price_per_token) as Int) * token_count_value(t: max_tokens)) },
       AxisReading { axis: ax_hosted_quota_per_request, interval_micro: degenerate_interval(point: 1000000) },
       AxisReading { axis: ax_hosted_level_admitted, interval_micro: degenerate_interval(point: if hosted_level_admitted(route: route, level: level, max_tokens: max_tokens) { 1000000 } else { 0 }) },
     ],
@@ -203,7 +203,7 @@ fn hosted_level_entry(route: HarnessHostedRoute, level: HarnessReasoningLevel, m
 
 data harness_hosted_levels: List<HarnessReasoningLevel> = [ReasoningOff, ReasoningStandard, ReasoningMaximum]
 
-fn harness_hosted_level_field(route: HarnessHostedRoute, max_tokens: Int) -> List<ParetoEntry> {
+fn harness_hosted_level_field(route: HarnessHostedRoute, max_tokens: TokenCount) -> List<ParetoEntry> {
   map(harness_hosted_levels, l => hosted_level_entry(route: route, level: l, max_tokens: max_tokens))
 }
 
@@ -254,7 +254,7 @@ fn harness_hosted_level_assessment() -> DecisionAssessment {
   }
 }
 
-fn harness_hosted_level_selection(route: HarnessHostedRoute, max_tokens: Int) -> RealizationSelectionResult<ParetoEntry> {
+fn harness_hosted_level_selection(route: HarnessHostedRoute, max_tokens: TokenCount) -> RealizationSelectionResult<ParetoEntry> {
   select_realization(
     assessment: harness_hosted_level_assessment(),
     candidate_field_identity: hosted_ref(name: "harness_hosted_level_field"),
@@ -281,7 +281,7 @@ fn hosted_level_of_identity(identity: DeclarationRef) -> HarnessReasoningLevel? 
 // ANY ARM BUT A SELECTION IS A REFUSAL, carried with the arm's name. A turn does not run at a level the
 // selection did not choose: there is no fallback level, because a fallback is exactly the literal this
 // selection replaced.
-fn harness_hosted_level_choice(route: HarnessHostedRoute, max_tokens: Int) -> HostedLevelChoice {
+fn harness_hosted_level_choice(route: HarnessHostedRoute, max_tokens: TokenCount) -> HostedLevelChoice {
   match harness_hosted_level_selection(route: route, max_tokens: max_tokens) {
     SelectedWithin { candidate: c, receipt: _ } =>
       match hosted_level_of_identity(identity: c.identity) {
@@ -310,7 +310,7 @@ data openrouter_key_read_probe: ReadBackProbe = ReadBackProbe {
   effect_on_subject: ProbeInert,
 }
 
-data hosted_key_read_deadline_seconds: NonEmptyStr = "20" as NonEmptyStr
+data hosted_key_read_deadline: Second = second(count: 20)
 
 type HarnessHostedQuota {
   short_hostname: String
@@ -359,7 +359,7 @@ type HostedKeyObservation
 fn hosted_read_key(route: HarnessHostedRoute, header_file: NonEmptyStr) -> HostedKeyObservation {
   let read = http.Client.GetFollowRedirectsBoundedWithHeaderFile(
     url: route.key_url,
-    max_seconds: hosted_key_read_deadline_seconds,
+    max_seconds: to_string(second_count(s: hosted_key_read_deadline)) as NonEmptyStr,
     accept: "Accept: application/json" as NonEmptyStr,
     header_file: header_file,
   )
@@ -419,7 +419,7 @@ fn hosted_key_refusal(key: OpenRouterKeyRead) -> String {
   }
 }
 
-fn hosted_bind_with_header(route: HarnessHostedRoute, header_dir: NonEmptyStr, header_file: NonEmptyStr, short_hostname: String, actor: NonEmptyStr, max_tokens: Int) -> HostedBindOutcome {
+fn hosted_bind_with_header(route: HarnessHostedRoute, header_dir: NonEmptyStr, header_file: NonEmptyStr, short_hostname: String, actor: NonEmptyStr, max_tokens: TokenCount) -> HostedBindOutcome {
   let observation = hosted_read_key(route: route, header_file: header_file)
   match with_materialized_secret(
     ref: route.secret,
@@ -449,7 +449,7 @@ fn hosted_bind_with_header(route: HarnessHostedRoute, header_dir: NonEmptyStr, h
 // THE BIND. A fetched secret that could not be written leaves nothing behind; any refusal after the
 // header file exists removes its directory before answering, so a refused bind holds no credential on
 // disk.
-fn harness_hosted_bind(unit: HarnessServingUnit, short_hostname: String, actor: NonEmptyStr, max_tokens: Int) -> HostedBindOutcome {
+fn harness_hosted_bind(unit: HarnessServingUnit, short_hostname: String, actor: NonEmptyStr, max_tokens: TokenCount) -> HostedBindOutcome {
   match harness_hosted_route_for(unit: unit) {
     Absent => HostedBindRefused { detail: join(["the unit ", harness_serving_unit_wire(unit: unit) as String, " is served on a fleet seat and has no hosted route"], "") }
     Present { value: route } =>

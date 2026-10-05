@@ -28,8 +28,9 @@ import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageServed }
 import gunbc.harness.harness_turn { TurnHostedQuotaFull, harness_outcome_label }
-import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_tokens }
+import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count }
 import std.process { ExitSuccess, ExitFailure }
+import std.measure { token_count }
 
 // ── THE QUOTA REFUSAL: a full pool stops the request before it is sent ──────────────────────
 //
@@ -204,7 +205,7 @@ test fn the_hosted_nemotron_route_is_quota_leased_https_and_selects_effort_high(
       (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false })
         && (route.url as String).starts_with("https://")
         && (harness_unit_model_id(unit: NemotronUltraFreeOnOpenRouter) as String) == "nvidia/nemotron-3-ultra-550b-a55b:free"
-        && (match harness_hosted_level_choice(route: route, max_tokens: harness_default_max_tokens) {
+        && (match harness_hosted_level_choice(route: route, max_tokens: harness_default_max_token_count) {
           HostedLevelSelected { level: ReasoningMaximum } =>
             (match harness_reasoning_kwargs_for(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningMaximum) {
               ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k)).contains("\"effort\": \"high\"")
@@ -222,7 +223,7 @@ test fn a_request_above_the_completion_ceiling_selects_no_level() -> Bool {
   match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
     Absent => false
     Present { value: route } =>
-      match harness_hosted_level_choice(route: route, max_tokens: 70000) {
+      match harness_hosted_level_choice(route: route, max_tokens: token_count(count: 70000)) {
         HostedLevelUnselected { cause: _ } => true
         HostedLevelSelected { level: _ } => false
       }
