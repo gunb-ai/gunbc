@@ -1,5 +1,9 @@
 module test.claim.json_emit_witness
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.json.emit { escape_json_string, json_array, json_bool, json_int, json_int_list, json_kv, json_null, json_number_from_lexeme_string, json_object, json_str_list, json_unicode_escape_hex4, quote_json_string, serialize_json }
+import extdeps.languages.json.grammar { json_int_lexeme, json_number_lexeme, json_number_lexeme_valid, json_production_rows }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.unicode.scalar { char_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,5 +1,6 @@
 module test.claim.char_at_unicode_witness
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.unicode.scalar { char_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,5 +1,8 @@
 module test.claim.yaml_ingest_witness
 
+import extdeps.languages.yaml.ingest { IngestedYaml, ReadYamlScalar, YamlIngestRejected, YamlScalarRefused, ingest_yaml_source, yaml_flow_plain_entry, yaml_flow_plain_sequence }
+import extdeps.languages.yaml.types { YamlBool, YamlFloat, YamlInt, YamlKeyValue, YamlMapping, YamlNull, YamlSequence, YamlString, YamlValue }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.unicode.scalar { char_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

@@ -1,5 +1,8 @@
 module test.claim.json_parse_witness
 
+import extdeps.languages.json.emit { JsonString, serialize_json }
+import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, json_string_value_or_empty, parse_json_document }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.unicode.scalar { char_text }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
