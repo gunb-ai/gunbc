@@ -20,8 +20,8 @@ import gunbc.spark.native_serving_apply {
   SparkNativeLeftoverResolution, ResolveHadNoUnitAndNothingStands, ResolveIncumbentUnitUntouched, ResolveFenceOnly,
   spark_native_leftover_decision_of_leg,
   spark_native_leftover_resolve_script, spark_native_leftover_observe_script,
-  spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_script,
-  spark_native_host_apply_script, spark_native_transport_announcement_script, spark_native_front_door_script,
+  spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
   spark_native_incarnation_check, spark_native_waited_incarnations, spark_native_incarnation_binding_refusal,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
@@ -32,6 +32,13 @@ import gunbc.spark.serving_arm_launch { glm_native_container_name }
 // below is SUPPLIED at the interface it discriminates (DESIGN section 3: a witness discriminates at one
 // interface); the leg's session result, the attempt sequence, and the observation's stdout are the
 // boundaries, and none of them needs a host.
+
+
+// The rollback's script text: its prepare and finish legs, around the typed deliberate start.
+fn w_rollback_text(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
+  join([spark_native_rollback_prepare_script(unit_name: unit_name, transaction_id: transaction_id, container_name: container_name),
+        spark_native_rollback_finish_script(unit_name: unit_name, transaction_id: transaction_id)], "\n")
+}
 
 fn unreached() -> SparkPairHostApplyOutcome {
   SparkPairHostUnreached { host: operator_host_srv9, cause: "management-lan ssh exit=255 stderr=ssh: connect to host 192.168.1.232 port 22: Connection timed out" }
@@ -133,7 +140,7 @@ test fn w_preserve_commit_and_rollback_read_before_they_write() -> Bool {
   let unit = "gunbc-v41-tp4-rank.service" as NonEmptyStr
   let preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
   let commit = spark_native_commit_script(unit_name: unit, transaction_id: "T")
-  let rollback = spark_native_rollback_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
+  let rollback = w_rollback_text(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
   string_contains(s: preserve, pattern: "preserve-noop-already-preserved-by-this-transaction")
     && string_contains(s: commit, pattern: "commit-noop-no-transaction-artifact-remains")
     && string_contains(s: rollback, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started-already")

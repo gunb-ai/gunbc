@@ -3,9 +3,16 @@ module test.claim.spark.deliberate_unit_start_witness_test
 import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg, deliberate_unit_start_script }
+import gunbc.spark.deliberate_unit_start { deliberate_unit_start_leg }
 import gunbc.spark.host_occupancy_admission { restore_spark_serving_units }
-import gunbc.spark.native_serving_apply { spark_native_host_apply_script, spark_native_rollback_script, spark_native_preserve_script, spark_native_commit_script }
+import gunbc.spark.native_serving_apply {
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
+  spark_native_preserve_script, spark_native_commit_script, spark_native_apply_sequence, SparkNativeLegRunner, SparkNativeLegRun, spark_native_leg_with_retry,
+  spark_native_arm_steps, NativeArmSteps, NativeArmStepsRefused,
+}
+import gunbc.spark.pair_serving_apply { SparkPairHostApplied, SparkPairHostApplyFailed, SparkPairHostUnreached }
+import gunbc.spark.pair_serving_launch_receipt { serving_standing }
+import product.host_identity { HostIdentity }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 
 // ── A DELIBERATE START IS ONE OPERATION, AT EVERY SITE (side-chat ruling on #13319, finding 4) ───
@@ -62,14 +69,56 @@ test fn w_an_unloaded_unit_is_started_without_a_clear() -> Bool {
   }
 }
 
-// ONE AUTHORITY: the transaction's apply and its rollback restore render exactly this operation's
-// fragment, and no script that does not start the unit clears the counter.
-test fn w_every_deliberate_start_renders_the_one_operation() -> Bool {
-  let apply = spark_native_host_apply_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name)
-  let rollback = spark_native_rollback_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name)
-  string_contains(s: apply, pattern: deliberate_unit_start_script(unit_name: w_unit, indent: ""))
-    && string_contains(s: rollback, pattern: deliberate_unit_start_script(unit_name: w_unit, indent: "  "))
-    && string_contains(s: deliberate_unit_start_script(unit_name: w_unit, indent: ""), pattern: "'systemctl' 'reset-failed' 'gunbc-glm53-stair-rank.service'")
-    && !string_contains(s: spark_native_preserve_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name), pattern: "reset-failed")
-    && !string_contains(s: spark_native_commit_script(unit_name: w_unit, transaction_id: "T"), pattern: "reset-failed")
+// ONE REALIZATION (review 76352, ruled by valiant-crab-775): no stage script spells a start or a clear --
+// the transaction's apply and rollback split their scripts around the typed leg instead.
+test fn w_no_stage_script_spells_a_start() -> Bool {
+  let scripts = [
+    spark_native_host_apply_prepare_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name),
+    spark_native_host_apply_wait_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
+    spark_native_rollback_prepare_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_rollback_finish_script(unit_name: w_unit, transaction_id: "T"),
+    spark_native_preserve_script(unit_name: w_unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_commit_script(unit_name: w_unit, transaction_id: "T"),
+  ]
+  all(scripts, t => !string_contains(s: t, pattern: "systemctl restart") && !string_contains(s: t, pattern: "systemctl start") && !string_contains(s: t, pattern: "reset-failed"))
+}
+
+// THE APPLY'S ROUTE: write the unit, the typed deliberate start, then the rendezvous wait, in that order --
+// and a host whose unit was not written is never started (the RED: a prepare that refuses yields one leg).
+fn w_leg(host: HostIdentity, ok: Bool, word: String) -> SparkNativeLegRun {
+  spark_native_leg_with_retry(budget: 0, attempt: fn(i) {
+    if ok { SparkPairHostApplied { host: host, wire: "management-lan", stdout: word, standing: serving_standing(attempts: []) } }
+    else { SparkPairHostApplyFailed { host: host, cause: word } }
+  })
+}
+
+fn w_runner(host: HostIdentity, prepare_ok: Bool) -> SparkNativeLegRunner {
+  SparkNativeLegRunner {
+    script: fn(script) { w_leg(host: host, ok: prepare_ok || string_contains(s: script, pattern: "distributed_init_method"), word: if string_contains(s: script, pattern: "distributed_init_method") { "rendezvous-entered" } else { "unit-written" }) },
+    deliberate_start: fn() { w_leg(host: host, ok: true, word: "deliberate-start-accepted") },
+  }
+}
+
+fn w_words(legs: List<SparkNativeLegRun>) -> List<String> {
+  map(legs, l => match l.outcome {
+    SparkPairHostApplied { host: _, wire: _, stdout: out, standing: _ } => out
+    SparkPairHostApplyFailed { host: _, cause: c } => c
+    SparkPairHostUnreached { host: _, cause: c } => c
+  })
+}
+
+test fn w_the_apply_writes_then_starts_typed_then_waits() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } =>
+      match first(steps) {
+        Absent => false
+        Present { value: st } => {
+          let ok = w_words(legs: spark_native_apply_sequence(st: st, run: w_runner(host: st.host, prepare_ok: true)))
+          let refused = w_words(legs: spark_native_apply_sequence(st: st, run: w_runner(host: st.host, prepare_ok: false)))
+          join(ok, ",") == "unit-written,deliberate-start-accepted,rendezvous-entered"
+            && join(refused, ",") == "unit-written"
+        }
+      }
+  }
 }

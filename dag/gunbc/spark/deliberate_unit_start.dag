@@ -3,9 +3,7 @@ module gunbc.spark.deliberate_unit_start
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
-import extdeps.exec.command { shell_quote }
-import gunbc.host_operation_exec { HostOperation, SystemctlShowLoadState, SystemctlResetFailed, SystemctlRestart, host_operation_materialize_argv }
-import v2.std.operation_argv { ArgvMaterialization, ArgvMaterialized, ArgvMaterializationRefused }
+import gunbc.host_operation_exec { HostOperation, SystemctlShowLoadState, SystemctlResetFailed, SystemctlRestart }
 import gunbc.compute.host_occupancy { host_operation_leg, HostOperationLegRead, HostOperationLegUnread }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
 
@@ -18,10 +16,12 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 // an error (run 37254736596), so the clear runs iff the unit reads loaded. A deliberate start is
 // therefore three operations in one order: read the load state, clear the counter if loaded, restart.
 //
-// ONE AUTHORITY, TWO REALIZATIONS. The sequence is these HostOperation rows and nothing else. The
-// typed realization runs them as legs (gunbc.spark.host_occupancy_admission restore_spark_serving_units,
-// the incumbent restore); the shell realization renders the SAME rows' argv into the transaction's stage
-// scripts (gunbc.spark.native_serving_apply apply and rollback). A start anywhere else that is a
+// ONE AUTHORITY, ONE REALIZATION. The sequence is these HostOperation rows, run as typed legs, and
+// nothing else: the incumbent restore (gunbc.spark.host_occupancy_admission restore_spark_serving_units)
+// and the transaction's apply and rollback (gunbc.spark.native_serving_apply spark_native_apply_sequence,
+// spark_native_rollback_sequence, which split their scripts around this leg) all call
+// deliberate_unit_start_leg. An earlier revision also rendered the rows into the stage scripts as shell;
+// review 76352 (ruled by valiant-crab-775) removed that second spelling. A start anywhere else that is a
 // transaction's deliberate start and does not come from here is the fork the side-chat ruling on #13319
 // (finding 4) found: the outer incumbent restore started with a plain SystemctlStart.
 //
@@ -54,37 +54,5 @@ fn deliberate_unit_start_leg(run: fn(List<String>) -> ArgvRun, unit: NonEmptyStr
         }
       }
     }
-  }
-}
-
-// ── THE SHELL REALIZATION: the same rows' argv, rendered into a stage script ──────────────────
-//
-// feature:remote-shell-body-emission — covered by the marker and dissolve-on trigger stated once above
-// gunbc.spark.native_serving_apply spark_native_host_apply_script. The words are not spelled here: each is
-// the materialized argv of the operation row above, so the typed and the shell realization cannot
-// disagree on what a deliberate start runs. A row that does not materialize renders a refusal line, so a
-// script never runs a start that skipped its clear.
-fn deliberate_start_argv_text(op: HostOperation) -> String? {
-  match host_operation_materialize_argv(operation: op) {
-    ArgvMaterializationRefused { at: _, cause: _ } => none
-    ArgvMaterialized { argv: argv } => Present { value: join(map(argv, w => shell_quote(arg: w)), " ") }
-  }
-}
-
-fn deliberate_unit_start_script(unit: NonEmptyStr, indent: String) -> String {
-  match deliberate_start_argv_text(op: deliberate_start_load_state(unit: unit)) {
-    Absent => join([indent, "echo DELIBERATE-START-REFUSED-load-state-argv-unmaterialized; exit 1\n"], "")
-    Present { value: show } =>
-      match deliberate_start_argv_text(op: deliberate_start_reset(unit: unit)) {
-        Absent => join([indent, "echo DELIBERATE-START-REFUSED-reset-argv-unmaterialized; exit 1\n"], "")
-        Present { value: reset } =>
-          match deliberate_start_argv_text(op: deliberate_start_restart(unit: unit)) {
-            Absent => join([indent, "echo DELIBERATE-START-REFUSED-restart-argv-unmaterialized; exit 1\n"], "")
-            Present { value: restart } => join([
-              indent, "if [ \"$(", show, ")\" = ", deliberate_start_loaded_word, " ]; then ", reset, "; fi\n",
-              indent, restart, "\n",
-            ], "")
-          }
-      }
   }
 }
