@@ -89,11 +89,17 @@ data workspace_source_pack_host: NonEmptyStr = "srv1"
 // pasted into an agent transcript's CONTENT, is not caught by any path rule. The pack's guarantee is
 // that every file the receipt lists as excluded was excluded, never that the carried bytes hold no
 // secret.
-type WorkspaceExclusionRule
+// A SEGMENT RULE tests one path segment (and, for a pair, its parent); a PATH RULE is either a
+// segment rule applied to every segment, or a rule over the whole path. Two types, so the
+// per-segment matcher cannot be handed a path-level rule and has no arm to answer it with.
+type WorkspaceSegmentRule
   = SegmentEquals { text: NonEmptyStr }
   | SegmentPrefix { text: NonEmptyStr }
   | SegmentSuffix { text: NonEmptyStr }
   | SegmentPair { parent: NonEmptyStr, child: NonEmptyStr }
+
+type WorkspaceExclusionRule
+  = AnySegment { rule: WorkspaceSegmentRule }
   | SuffixUnder { ancestor: NonEmptyStr, suffix: NonEmptyStr }
 
 // WHY A PATH IS NOT CARRIED, as a class the receipt counts separately: a credential (never carried,
@@ -110,28 +116,28 @@ type WorkspaceExclusion {
 }
 
 data workspace_credential_exclusions: List<WorkspaceExclusion> = [
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.claude/.credentials.json", rule: SegmentEquals { text: ".credentials.json" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.codex/auth.json", rule: SegmentEquals { text: "auth.json" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".netrc", rule: SegmentEquals { text: ".netrc" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".git-credentials", rule: SegmentEquals { text: ".git-credentials" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".npmrc", rule: SegmentEquals { text: ".npmrc" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".pypirc", rule: SegmentEquals { text: ".pypirc" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.pem", rule: SegmentSuffix { text: ".pem" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.key", rule: SegmentSuffix { text: ".key" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_rsa", rule: SegmentEquals { text: "id_rsa" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa", rule: SegmentEquals { text: "id_ecdsa" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519", rule: SegmentEquals { text: "id_ed25519" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_dsa", rule: SegmentEquals { text: "id_dsa" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa_sk", rule: SegmentEquals { text: "id_ecdsa_sk" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519_sk", rule: SegmentEquals { text: "id_ed25519_sk" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".ssh", rule: SegmentEquals { text: ".ssh" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".gnupg", rule: SegmentEquals { text: ".gnupg" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".aws", rule: SegmentEquals { text: ".aws" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gh", rule: SegmentPair { parent: ".config", child: "gh" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gcloud", rule: SegmentPair { parent: ".config", child: "gcloud" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".docker/config.json", rule: SegmentPair { parent: ".docker", child: "config.json" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env", rule: SegmentEquals { text: ".env" } },
-  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env.*", rule: SegmentPrefix { text: ".env." } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.claude/.credentials.json", rule: AnySegment { rule: SegmentEquals { text: ".credentials.json" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "~/.codex/auth.json", rule: AnySegment { rule: SegmentEquals { text: "auth.json" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".netrc", rule: AnySegment { rule: SegmentEquals { text: ".netrc" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".git-credentials", rule: AnySegment { rule: SegmentEquals { text: ".git-credentials" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".npmrc", rule: AnySegment { rule: SegmentEquals { text: ".npmrc" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".pypirc", rule: AnySegment { rule: SegmentEquals { text: ".pypirc" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.pem", rule: AnySegment { rule: SegmentSuffix { text: ".pem" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "*.key", rule: AnySegment { rule: SegmentSuffix { text: ".key" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_rsa", rule: AnySegment { rule: SegmentEquals { text: "id_rsa" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa", rule: AnySegment { rule: SegmentEquals { text: "id_ecdsa" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519", rule: AnySegment { rule: SegmentEquals { text: "id_ed25519" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_dsa", rule: AnySegment { rule: SegmentEquals { text: "id_dsa" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ecdsa_sk", rule: AnySegment { rule: SegmentEquals { text: "id_ecdsa_sk" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: "id_ed25519_sk", rule: AnySegment { rule: SegmentEquals { text: "id_ed25519_sk" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".ssh", rule: AnySegment { rule: SegmentEquals { text: ".ssh" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".gnupg", rule: AnySegment { rule: SegmentEquals { text: ".gnupg" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".aws", rule: AnySegment { rule: SegmentEquals { text: ".aws" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gh", rule: AnySegment { rule: SegmentPair { parent: ".config", child: "gh" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".config/gcloud", rule: AnySegment { rule: SegmentPair { parent: ".config", child: "gcloud" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".docker/config.json", rule: AnySegment { rule: SegmentPair { parent: ".docker", child: "config.json" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env", rule: AnySegment { rule: SegmentEquals { text: ".env" } } },
+  WorkspaceExclusion { class: CredentialExclusion, spelling: ".env.*", rule: AnySegment { rule: SegmentPrefix { text: ".env." } } },
 ]
 
 // ── TRANSCRIPT CONTENT: NOT CARRIED, BY OPERATOR DECISION (2026-10-05) ───────────────────────────
@@ -145,8 +151,8 @@ data workspace_credential_exclusions: List<WorkspaceExclusion> = [
 // the receipt counts what each row excluded, in files and bytes.
 data workspace_transcript_exclusions: List<WorkspaceExclusion> = [
   WorkspaceExclusion { class: TranscriptExclusion, spelling: "projects/**/*.jsonl", rule: SuffixUnder { ancestor: "projects", suffix: ".jsonl" } },
-  WorkspaceExclusion { class: TranscriptExclusion, spelling: "history.jsonl", rule: SegmentEquals { text: "history.jsonl" } },
-  WorkspaceExclusion { class: TranscriptExclusion, spelling: ".codex/sessions", rule: SegmentPair { parent: ".codex", child: "sessions" } },
+  WorkspaceExclusion { class: TranscriptExclusion, spelling: "history.jsonl", rule: AnySegment { rule: SegmentEquals { text: "history.jsonl" } } },
+  WorkspaceExclusion { class: TranscriptExclusion, spelling: ".codex/sessions", rule: AnySegment { rule: SegmentPair { parent: ".codex", child: "sessions" } } },
 ]
 
 // EVERY EXCLUSION THE PACK APPLIES, credentials first: a credential that also looks like a transcript
@@ -159,7 +165,7 @@ fn workspace_exclusion_spellings(exclusions: List<WorkspaceExclusion>) -> String
   join(map(exclusions, x => x.spelling as String), " ")
 }
 
-fn workspace_rule_matches_segment(rule: WorkspaceExclusionRule, segment: String, parent: String?) -> Bool {
+fn workspace_rule_matches_segment(rule: WorkspaceSegmentRule, segment: String, parent: String?) -> Bool {
   match rule {
     SegmentEquals { text: t } => segment == (t as String)
     SegmentPrefix { text: t } => starts_with(s: segment, prefix: t as String)
@@ -169,7 +175,6 @@ fn workspace_rule_matches_segment(rule: WorkspaceExclusionRule, segment: String,
         Absent => false
         Present { value: up } => up == (p as String) && segment == (c as String)
       }
-    SuffixUnder { ancestor: _, suffix: _ } => false
   }
 }
 
@@ -184,7 +189,7 @@ fn workspace_suffix_under_matches(ancestor: String, suffix: String, segments: Li
   }
 }
 
-fn workspace_segments_match(rule: WorkspaceExclusionRule, segments: List<String>, parent: String?) -> Bool {
+fn workspace_segments_match(rule: WorkspaceSegmentRule, segments: List<String>, parent: String?) -> Bool {
   match segments {
     Empty => false
     Cons { head: s, tail: rest } =>
@@ -206,10 +211,7 @@ fn workspace_path_exclusion(exclusions: List<WorkspaceExclusion>, path: String) 
 fn workspace_rule_matches_path(rule: WorkspaceExclusionRule, segments: List<String>) -> Bool {
   match rule {
     SuffixUnder { ancestor: a, suffix: x } => workspace_suffix_under_matches(ancestor: a as String, suffix: x as String, segments: segments, seen_ancestor: false)
-    SegmentEquals { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
-    SegmentPrefix { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
-    SegmentSuffix { text: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
-    SegmentPair { parent: _, child: _ } => workspace_segments_match(rule: rule, segments: segments, parent: none)
+    AnySegment { rule: r } => workspace_segments_match(rule: r, segments: segments, parent: none)
   }
 }
 
