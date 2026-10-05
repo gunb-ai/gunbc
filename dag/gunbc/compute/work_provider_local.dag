@@ -396,13 +396,12 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
       ],
       command_argv: argv,
     ) {
-      SystemdRunCommandRefused { cause: why } =>
+      SystemdSummaryPrintingWaitRefused { cause: why } =>
         ComputeUnitRun {
           exec: ComputeExecRefused { reason: systemd_run_option_words_refused_cause_detail(cause: why) },
           summary: SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } },
         }
-      SystemdRunCommandReady { command: command } => {
-        let launcher = SystemdSummaryPrintingWait { command: command }
+      SystemdSummaryPrintingWaitReady { wait: launcher } => {
         let r = compute_exec(
           program: systemd_run,
           workdir: layout.checkout,

@@ -125,10 +125,10 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
     setenv_bindings: [SystemdSetenvBinding { name: "A" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { cause: _ } => false
-    SystemdRunCommandReady { command: command } =>
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
       argv_exact_token_equal(
-        left: argv_words(command: command),
+        left: argv_words(command: launcher.command),
         right: [
           "systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=fci1-user.service",
           "-p", "MemoryMax=17179869184", "--setenv=A=c", "--", "/bin/true",
@@ -175,9 +175,9 @@ test fn a_setenv_name_with_an_equals_is_refused() -> Bool {
     setenv_bindings: [SystemdSetenvBinding { name: "A=b" as NonEmptyStr, value: "c" as NonEmptyStr }],
     command_argv: ["/bin/true"],
   ) {
-    SystemdRunCommandRefused { cause: SetenvNameContainsEquals } => true
-    SystemdRunCommandRefused { cause: _ } => false
-    SystemdRunCommandReady { command: _ } => false
+    SystemdSummaryPrintingWaitRefused { cause: SetenvNameContainsEquals } => true
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: _ } => false
   }
 }
 

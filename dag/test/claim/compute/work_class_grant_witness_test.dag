@@ -50,10 +50,10 @@ import gunbc.compute.work_provider_local {
 // the fold is the only route from the reading to a summary.)
 fn fixture_summary(standing: SummaryFormatStanding, stderr: String) -> SystemdRunWaitSummary {
   match systemd_run_user_wait_command(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"]) {
-    SystemdRunCommandRefused { cause: _ } =>
+    SystemdSummaryPrintingWaitRefused { cause: _ } =>
       SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } }
-    SystemdRunCommandReady { command: command } =>
-      systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait { command: command }, standing: standing, stderr: stderr)
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      systemd_run_wait_summary(launcher: launcher, standing: standing, stderr: stderr)
   }
 }
 
@@ -62,9 +62,9 @@ fn fixture_summary(standing: SummaryFormatStanding, stderr: String) -> SystemdRu
 // user-manager start, then the command after --.
 test fn the_user_wait_builder_projects_the_words_the_string_form_rendered() -> Bool {
   match systemd_run_user_wait_command(unit: "gunbc-fixture", properties: [], setenv_bindings: [], command_argv: ["true"]) {
-    SystemdRunCommandRefused { cause: _ } => false
-    SystemdRunCommandReady { command: command } =>
-      argv_words(command: command) == ["systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=gunbc-fixture", "--", "true"]
+    SystemdSummaryPrintingWaitRefused { cause: _ } => false
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      argv_words(command: launcher.command) == ["systemd-run", "--wait", "--pipe", "--collect", "--user", "--unit=gunbc-fixture", "--", "true"]
   }
 }
 
@@ -299,8 +299,8 @@ fn quiet_summary(stderr: String) -> SystemdRunWaitSummary {
   match systemd_run_transient_wait_unit_command(unit: "gunbc-quiet", properties: [], command_argv: ["true"]) {
     SystemdRunCommandRefused { cause: _ } =>
       SystemdRunWaitSummary { result: ServiceResultNotReported { absence: SummaryNoInvocation }, memory_peak: MemoryPeakNotReported { absence: SummaryNoInvocation } }
-    SystemdRunCommandReady { command: command } =>
-      systemd_run_wait_summary(launcher: SystemdSummaryPrintingWait { command: command }, standing: grounded_standing, stderr: stderr)
+    SystemdSummaryPrintingWaitReady { wait: launcher } =>
+      systemd_run_wait_summary(launcher: launcher, standing: grounded_standing, stderr: stderr)
   }
 }
 

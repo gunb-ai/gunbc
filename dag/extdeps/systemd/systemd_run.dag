@@ -44,10 +44,16 @@ data systemd_run_authority: ExternalAuthority = extdeps_external_authority_ancho
 
 fn systemd_run_program() -> ProgramIdentity = uncataloged_program(invocation: "systemd-run")
 
-// THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: its ArgvCommand is minted only by the typed
-// builders below, so what a caller holds is the fact that a specific projection happened, not a
-// list it could have glued together itself.
+// THE WAITING LAUNCHER IS A TOKEN, NOT A WORD LIST: SystemdSummaryPrintingWait is minted in
+// exactly one place, the SystemdSummaryPrintingWaitReady arm of systemd_run_user_wait_command, so
+// what a caller holds is the builder's own fact that this projection is the waiting, non-quiet
+// one. No other site can construct it, and a launcher that cannot print a memory peak therefore
+// cannot be handed to the thing whose contract is to observe one.
 type SystemdSummaryPrintingWait { command: ArgvCommand }
+
+type SystemdSummaryPrintingWaitReading
+  = SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait }
+  | SystemdSummaryPrintingWaitRefused { cause: SystemdRunOptionWordsRefusedCause }
 
 // compute_exec receives the program separately, so these are the argument tail; the full
 // argv_words would double the program head on the compute side too.
@@ -267,11 +273,14 @@ fn systemd_run_user_transient_command(unit: NonEmptyStr, properties: List<System
 // `if (arg_wait && !arg_quiet)`, so the quiet form's stderr never carries the summary this type
 // exists to be read for. The wait flags lead because that is the word order the string-built form
 // this replaces emitted; the projection keeps it byte-identical for existing callers.
-fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdRunCommandReading {
-  systemd_run_command_of(
+fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, setenv_bindings: List<SystemdSetenvBinding>, command_argv: List<String>) -> SystemdSummaryPrintingWaitReading {
+  match systemd_run_command_of(
     options: list_append(left: [Wait, Pipe, Collect], right: list_append(left: [RunUserManager, RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_short(properties: properties), right: list_append(left: systemd_run_setenv_options(bindings: setenv_bindings), right: [EndOfOptions])))),
     command_argv: command_argv,
-  )
+  ) {
+    SystemdRunCommandRefused { cause: cause } => SystemdSummaryPrintingWaitRefused { cause: cause }
+    SystemdRunCommandReady { command: command } => SystemdSummaryPrintingWaitReady { wait: SystemdSummaryPrintingWait { command: command } }
+  }
 }
 
 // The pre-cutover system-scope builder led with --scope only (blob 71a9a1c5d3~1 line 158:
