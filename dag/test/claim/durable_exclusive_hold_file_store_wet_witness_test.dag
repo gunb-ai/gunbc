@@ -10,7 +10,7 @@ import std.durable_exclusive_hold {
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner,
   HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations, cas_file_slot_path }
+import gunbc.durable_cas_file_store { cas_file_slot_path }
 import gunbc.durable_exclusive_hold_file_store {
   FileHoldAcquireOutcome, FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost,
   FileHoldAcquireStoreUnavailable, FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
@@ -70,7 +70,7 @@ fn wh_acquire_store_unavailable(o: FileHoldAcquireOutcome) -> Bool {
 }
 
 fn wh_acquire_plan(root: NonEmptyStr, owner: String) -> FileHoldAcquirePlan? {
-  match file_hold_acquire_prepare(root: root, slot_key: "cell", requested_owner: wh_owner(text: owner), retention: KeepAllGenerations) {
+  match file_hold_acquire_prepare(root: root, slot_key: "cell", requested_owner: wh_owner(text: owner)) {
     FileHoldAcquirePlanned { plan: p } => Present { value: p }
     FileHoldAcquireNotEligible { slot_key: _, refusal: _ } => none
   }
@@ -116,7 +116,7 @@ fn wh_slot_generation_absent(root: NonEmptyStr, generation: Int) -> Bool {
 fn wh_assess(root: NonEmptyStr, owner: String, acquired: Int, reason: String) -> FileHoldReleaseAssessment {
   file_hold_release_assess(
     root: root, slot_key: "cell",
-    owner: wh_owner(text: owner), acquired_generation: acquired, released_by: wh_release(text: reason), retention: KeepAllGenerations
+    owner: wh_owner(text: owner), acquired_generation: acquired, released_by: wh_release(text: reason),
   )
 }
 
@@ -162,7 +162,7 @@ fn wh_commit(p: FileHoldReleasePlan?) -> FileHoldReleaseOutcome? {
 test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let bytes = wh_slot_bytes(root: root, generation: 1)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   wh_acquired_at(o: first, generation: 1) && bytes == "held|demand-7|offer-1" && removed.success
@@ -175,8 +175,8 @@ test fn an_absent_slot_acquires_at_generation_one_by_real_execution() -> Bool {
 test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
-  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"))
   let no_advance = wh_slot_generation_absent(root: root, generation: 2)
   let bytes = wh_slot_bytes(root: root, generation: 1)
   let removed = shell.Remove.RecursiveForce(path: root_path)
@@ -190,8 +190,8 @@ test fn a_held_slot_refuses_another_owner_without_writing_by_real_execution() ->
 test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
-  let again = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
+  let again = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let no_advance = wh_slot_generation_absent(root: root, generation: 2)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   wh_acquired_at(o: first, generation: 1)
@@ -207,10 +207,10 @@ test fn a_held_slot_refuses_its_own_owners_spelling_without_writing_by_real_exec
 test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "attempt abandoned")))
   let free_bytes = wh_slot_bytes(root: root, generation: 2)
-  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"), retention: KeepAllGenerations)
+  let second = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-9|offer-4"))
   let held_bytes = wh_slot_bytes(root: root, generation: 3)
   let removed = shell.Remove.RecursiveForce(path: root_path)
   wh_acquired_at(o: first, generation: 1)
@@ -230,7 +230,7 @@ test fn a_released_slot_is_free_at_n_plus_one_and_reacquires_at_n_plus_two_by_re
 test fn one_live_plan_committed_by_two_contenders_gives_one_commit_and_one_lost_race_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let released = wh_commit(p: wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done")))
   let plan = wh_acquire_plan(root: root, owner: "contender-a")
   let a = wh_acquire_commit(p: plan)
@@ -255,7 +255,7 @@ test fn a_store_refusal_is_reported_as_unavailable_not_as_a_lost_race_by_real_ex
   let root_path = wh_fresh_root()
   let blocker = concat(root_path, "/not-a-directory")
   let planted = Filesystem.Write(path: blocker, content: "not a store root")
-  let outcome = file_hold_acquire(root: blocker as NonEmptyStr, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let outcome = file_hold_acquire(root: blocker as NonEmptyStr, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   planted.success && wh_acquire_store_unavailable(o: outcome) && !wh_acquire_lost(o: outcome) && removed.success
 }
@@ -291,7 +291,7 @@ test fn a_write_time_store_refusal_is_reported_as_unavailable_not_as_a_lost_race
 test fn a_live_release_plan_carries_the_observed_generation_and_the_free_bytes_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let plan = wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "attempt abandoned before execution"))
   let removed = shell.Remove.RecursiveForce(path: root_path)
   let plan_ok = match plan {
@@ -314,7 +314,7 @@ test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool {
   let root = root_path as NonEmptyStr
   let absent = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "stale")
   let absent_untouched = wh_slot_generation_absent(root: root, generation: 1)
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let other = wh_assess(root: root, owner: "demand-9|offer-4", acquired: 1, reason: "not mine")
   let wrong_generation = wh_assess(root: root, owner: "demand-7|offer-1", acquired: 2, reason: "stale")
   let still_held = wh_slot_generation_absent(root: root, generation: 2) && wh_slot_bytes(root: root, generation: 1) == "held|demand-7|offer-1"
@@ -341,7 +341,7 @@ test fn refused_releases_do_not_free_the_slot_by_real_execution() -> Bool {
 test fn a_release_committed_after_the_slot_moved_is_lost_not_successful_by_real_execution() -> Bool {
   let root_path = wh_fresh_root()
   let root = root_path as NonEmptyStr
-  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"), retention: KeepAllGenerations)
+  let first = file_hold_acquire(root: root, slot_key: "cell", requested_owner: wh_owner(text: "demand-7|offer-1"))
   let plan = wh_plan(a: wh_assess(root: root, owner: "demand-7|offer-1", acquired: 1, reason: "done"))
   let committed = wh_commit(p: plan)
   let again = wh_commit(p: plan)

@@ -5,7 +5,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.process { ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   admit_cas_attempt_for_derived_payload, file_compare_and_set, DefaultAccessCreateOnly,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
 }
@@ -132,7 +132,7 @@ fn plant(root: NonEmptyStr, bytes: String) -> Bool {
   match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: bytes as NonEmptyStr) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => false
     DerivedPayloadAdmitted { verified } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: verified).outcome {
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified) {
         CasCommitted { committed: _ } => true
         CasPreconditionFailed { expected: _, observed: _ } => false
         CasStoreRefused { cause: _ } => false

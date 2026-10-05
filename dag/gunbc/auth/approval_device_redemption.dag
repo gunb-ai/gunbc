@@ -38,7 +38,7 @@ import gunbc.auth.approval_device_wire {
   MobilePlatform, MobileIos, MobileAndroid, platform_wire, enrolment_transcript, enrollment_id_for_code, RedemptionResponse, EnrolmentReadback, EnrolmentStandingActive, EnrolmentStandingRevoked, DeviceRedemptionSigningInput,
   device_redemption_signing_input, redemption_challenge_message, approval_device_audience,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   file_compare_and_set, observe_cas_slot_state,
 }
@@ -538,7 +538,7 @@ fn device_store_write(root: NonEmptyStr, key: NonEmptyStr, expected: CasExpectat
   match admit_cas_attempt_for_derived_payload(key: key, expected: expected, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => DeviceStoreRefused { detail: "enrolment code is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v) {
         CasCommitted { committed: _ } => DeviceStoreWritten
         CasPreconditionFailed { expected: _, observed: _ } => DeviceStoreSlotOccupied
         CasStoreRefused { cause: _ } => DeviceStoreRefused { detail: "device store refused the publication" }
@@ -722,7 +722,7 @@ fn enrolment_readback_of(standing: EnrolmentSlotStanding) -> EnrolmentReadback? 
 }
 
 fn observe_enrolment_slot(root: NonEmptyStr, code: NonEmptyStr) -> EnrolmentSlotStanding {
-  match observe_cas_slot_state(root: root, key: code, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: code) {
     CasObservedUnreadable { cause: c } => EnrolmentSlotUnreadable { detail: concat("enrolment slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => EnrolmentCodeUnknown

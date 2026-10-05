@@ -24,7 +24,7 @@ import std.durable_compare_and_set {
   CasObservedReadable, CasReadableAbsent, CasReadablePresent,
   CasCommitted, CasPreconditionFailed, CasStoreRefused, CasObservedUnreadable,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   observe_cas_slot_state, cas_file_slot_path, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted,
   file_compare_and_set, OwnerOnlyCreateOnly, DerivedPayloadKeyNotSlotAddressable,
 }
@@ -127,7 +127,7 @@ fn workspace_commissioning_record_provenance(value: NonEmptyStr, slot: RunnerSlo
 fn workspace_commissioning_store_observe(root: NonEmptyStr, provenance: WorkspaceCommissioningProvenance) -> WorkspaceCommissioningStoreObservation {
   let key = runner_slot_instance_name(slot: provenance.slot)
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key, retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_cas_slot_state(root: root, key: key) {
       CasObservedReadable { readable: CasReadableAbsent } => WorkspaceCommissioningStoreObserved {
         snapshot: WorkspaceCommissioningStoreSnapshot { root: root, key: key, provenance: provenance,
           expected: ExpectSlotAbsent, reading: WorkspaceCommissioningRecordAbsent },
@@ -183,7 +183,7 @@ fn workspace_commissioning_publish_phase(publication: WorkspaceCommissioningPhas
   match read_store_ownership(path: snapshot.root as String) {
     OwnershipRead { ownership: StoreRootOwned } => match admit_cas_attempt_for_derived_payload(key: snapshot.key,
       expected: snapshot.expected, proposed: workspace_commissioning_record_text(record: publication.record)) {
-      DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: snapshot.root, publication: OwnerOnlyCreateOnly, verified: verified, retention: KeepAllGenerations).outcome {
+      DerivedPayloadAdmitted { verified } => match file_compare_and_set(root: snapshot.root, publication: OwnerOnlyCreateOnly, verified: verified) {
         CasCommitted { committed: _ } => WorkspaceCommissioningStorePublished
         CasPreconditionFailed { expected: _, observed: _ } => WorkspaceCommissioningStoreConflict
         CasStoreRefused { cause: _ } => WorkspaceCommissioningStorePublicationRefused { reason: "commissioning CAS refused; reread before retrying" }

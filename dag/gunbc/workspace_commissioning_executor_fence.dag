@@ -1,6 +1,5 @@
 module gunbc.workspace_commissioning_executor_fence
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.workspace_commissioning_start_identity { workspace_commissioning_snapshotted_submitter }
 
 import std.types { NonEmptyStr, String, Bool }
@@ -33,7 +32,7 @@ type WorkspaceExecutorControllerAdmission
 
 fn workspace_executor_mutation_matches(record: WorkspaceExecutorRecord) -> Bool {
   match observe_file_hold(root: workspace_commissioning_store_location as NonEmptyStr,
-    key: workspace_slot_mutation_key(slot_key: record.subject.slot), retention: KeepAllGenerations) {
+    key: workspace_slot_mutation_key(slot_key: record.subject.slot)) {
     HoldSlotHeld { owner, generation } => owner == workspace_commissioning_mutation_owner(plan_hash: record.subject.plan_hash)
       && generation == record.subject.mutation_generation
     HoldSlotAbsent => false

@@ -26,7 +26,7 @@ import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, serialize_
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.fleet_posix_accounts { fleet_operator_email }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   OwnerOnlyCreateOnly,
   admit_cas_attempt_for_derived_payload,
   DerivedPayloadAdmitted,
@@ -414,7 +414,7 @@ type EscalationSlot
   | EscalationUnreadable { detail: NonEmptyStr }
 
 fn observe_escalation(root: NonEmptyStr, escalation_id: NonEmptyStr) -> EscalationSlot {
-  match observe_cas_slot_state(root: root, key: escalation_id, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: escalation_id) {
     CasObservedUnreadable { cause: c } => EscalationUnreadable { detail: concat("approval store slot unreadable: ", cas_unreadable_slot_detail(cause: c)) as NonEmptyStr }
     CasObservedReadable { readable: r } => match r {
       CasReadableAbsent => EscalationNotFiled
@@ -453,7 +453,7 @@ fn file_approval_request(root: NonEmptyStr, request: StoredApprovalRequest) -> S
   match admit_cas_attempt_for_derived_payload(key: request.escalation_id, expected: ExpectSlotAbsent, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome)
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
   }
 }
 
@@ -468,7 +468,7 @@ fn commit_broker_decision(root: NonEmptyStr, decision: BrokerDecision) -> StoreW
   match admit_cas_attempt_for_derived_payload(key: escalation_id, expected: ExpectSlotGeneration { generation: cas_generation_first() }, proposed: payload) {
     DerivedPayloadKeyNotSlotAddressable { key: _ } => StoreRefused { detail: "escalation id is not slot-addressable" }
     DerivedPayloadAdmitted { verified: v } =>
-      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, retention: KeepAllGenerations, verified: v).outcome)
+      store_write_from_cas(outcome: file_compare_and_set(root: root, publication: OwnerOnlyCreateOnly, verified: v))
   }
 }
 

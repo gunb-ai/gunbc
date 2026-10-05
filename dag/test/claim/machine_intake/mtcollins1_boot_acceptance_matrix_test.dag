@@ -1,6 +1,5 @@
 module test.claim.machine_intake.mtcollins1_boot_acceptance_matrix_test
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.measure { Second, second }
@@ -386,7 +385,7 @@ test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool 
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
     frame: matrix_frame(world: other_running),
-    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr), retention: KeepAllGenerations) }
+    subject: fn(_scope) { file_hold_acquire(root: unit_hold_store_root, slot_key: operator_host_mtcollins1 as NonEmptyStr, requested_owner: boot_run_owner(run_id: "4141" as NonEmptyStr, process: ProcessIdentity { boot_id: worker_boot_id as NonEmptyStr, pid: 2900, start_time: "100" as NonEmptyStr }, pid_namespace: worker_pid_namespace as NonEmptyStr)) }
   )
   match prior {
     WitnessReturned { state } => match state {

@@ -1,6 +1,5 @@
 module gunbc.workspace_allocation_plan
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.workspace_reservation_record { WorkspaceReservationPlan, workspace_reservation_plan_seal }
 import std.decl_ref { decl_ref }
 import std.durable_exclusive_hold { DurableHoldOwnerRef }
@@ -65,7 +64,7 @@ fn workspace_reservation_prepare(
             Present { value: member } => {
               let reference = fabric_money_reservation_ref(demand: demand.id, offer: offer.id)
               match reserve_money(a: account, request: MoneyReservationRequest { reference: reference, generation: 0, maximum_liability: money_amount_micro(count: 0), currency: offer_quote_currency(q: offer.quote) }) {
-                AccountAdvanced { account: advanced } => match file_hold_acquire_prepare(root: root, slot_key: fabric_cell_allocation_key(slot: member.slot), requested_owner: fabric_hold_owner(reservation: reference), retention: KeepAllGenerations) {
+                AccountAdvanced { account: advanced } => match file_hold_acquire_prepare(root: root, slot_key: fabric_cell_allocation_key(slot: member.slot), requested_owner: fabric_hold_owner(reservation: reference)) {
                   FileHoldAcquirePlanned { plan: hold } => {
                     let next = match hold.expected {
                       ExpectSlotAbsent => Present { value: 1 }
@@ -131,7 +130,7 @@ fn workspace_reservation_apply_under_exclusion(root: NonEmptyStr, plan: Workspac
   let reservation = plan.reservation
   let key = fabric_cell_allocation_key(slot: reservation.slot)
   let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer))
-  match observe_file_hold(root: root, key: key, retention: KeepAllGenerations) {
+  match observe_file_hold(root: root, key: key) {
     HoldSlotHeld { generation, owner: observed_owner } =>
       if observed_owner == owner && cas_generation_count(g: generation) == reservation.generation {
         WorkspaceReservationObserved { reservation: reservation }
@@ -147,7 +146,7 @@ fn workspace_reservation_apply_under_exclusion(root: NonEmptyStr, plan: Workspac
 // A slot that is not already held by this incarnation is acquired only at the exact prepared
 // generation; the plan is retained on every refusal so the same target is reread.
 fn workspace_reservation_acquire(root: NonEmptyStr, key: NonEmptyStr, owner: DurableHoldOwnerRef, reservation: WorkspaceReservation) -> WorkspaceReservationApply {
-  match file_hold_acquire_prepare(root: root, slot_key: key, requested_owner: owner, retention: KeepAllGenerations) {
+  match file_hold_acquire_prepare(root: root, slot_key: key, requested_owner: owner) {
     FileHoldAcquirePlanned { plan: hold } => {
       let expected_matches = match hold.expected {
         ExpectSlotAbsent => reservation.generation == 1
@@ -211,7 +210,7 @@ fn workspace_actor_takeover_unheld(prior: WorkspacePriorActorStanding, intent: W
 
 // The fresh hold observation of this plan's exact slot, taken after the prior actor's standing.
 fn workspace_reservation_hold_observation(root: NonEmptyStr, plan: WorkspaceReservationPlan) -> DurableHoldObservation {
-  observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: plan.reservation.slot), retention: KeepAllGenerations)
+  observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: plan.reservation.slot))
 }
 
 // Retired intent observes a possible prior acquisition and never creates a new hold.
@@ -220,7 +219,7 @@ fn workspace_reservation_recover(root: NonEmptyStr, plan: WorkspaceReservationPl
   if root != plan.root { WorkspaceReservationApplyRefused { reason: "prepared plan names another allocation store" } }
   else {
     let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer))
-    match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: reservation.slot), retention: KeepAllGenerations) {
+    match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: reservation.slot)) {
       HoldSlotHeld { generation, owner: observed_owner } =>
         if observed_owner == owner && cas_generation_count(g: generation) == reservation.generation {
           WorkspaceReservationObserved { reservation: reservation }

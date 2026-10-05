@@ -1,6 +1,5 @@
 module gunbc.workspace_slot_mutation
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.durable_compare_and_set { CasGeneration, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted }
@@ -49,7 +48,7 @@ fn workspace_slot_mutation_acquire(slot_key: NonEmptyStr, owner: DurableHoldOwne
     match read_store_ownership(path: root as String) {
       OwnershipRead { ownership: StoreRootOwned } => {
         let key = workspace_slot_mutation_key(slot_key: slot_key)
-        match file_hold_acquire(root: root, slot_key: key, requested_owner: owner, retention: KeepAllGenerations) {
+        match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
           FileHoldAcquired { slot_key: _, owner: holder, generation } => WorkspaceSlotMutationAdmitted {
             lease: WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld {
               key: key, owner: holder, generation: generation,
@@ -93,9 +92,9 @@ fn workspace_slot_mutation_release_fenced(lease: WorkspaceSlotMutationLease) -> 
       let reason = concat("mutation-completed:", held.owner as String) as DurableHoldReleaseRef
       match read_store_ownership(path: root as String) {
         OwnershipRead { ownership: StoreRootOwned } => match file_hold_release_assess(root: root,
-          slot_key: held.key, owner: held.owner, acquired_generation: held.generation, released_by: reason, retention: KeepAllGenerations) {
+          slot_key: held.key, owner: held.owner, acquired_generation: held.generation, released_by: reason) {
           FileHoldReleasePlanned { plan } => match file_hold_release_commit(plan: plan) {
-            FileHoldReleased { slot_key: _, generation } => match observe_file_hold(root: root, key: held.key, retention: KeepAllGenerations) {
+            FileHoldReleased { slot_key: _, generation } => match observe_file_hold(root: root, key: held.key) {
               HoldSlotFree { generation: observed, released_by } => observed == generation && released_by == reason
               HoldSlotAbsent => false
               HoldSlotHeld { generation: _, owner: _ } => false
@@ -122,7 +121,7 @@ fn workspace_commissioning_mutation_owner(plan_hash: NonEmptyStr) -> DurableHold
 fn workspace_commissioning_mutation_held(slot_key: NonEmptyStr, plan_hash: NonEmptyStr) -> Bool {
   let root = workspace_commissioning_store_location as NonEmptyStr
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key), retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
       HoldSlotHeld { generation: _, owner } => owner == workspace_commissioning_mutation_owner(plan_hash: plan_hash)
       HoldSlotAbsent => false
       HoldSlotFree { generation: _, released_by: _ } => false
@@ -139,7 +138,7 @@ fn workspace_commissioning_mutation_held(slot_key: NonEmptyStr, plan_hash: NonEm
 fn workspace_slot_mutation_supply_open(slot_key: NonEmptyStr) -> Bool {
   let root = workspace_commissioning_store_location as NonEmptyStr
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key), retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: workspace_slot_mutation_key(slot_key: slot_key)) {
       HoldSlotFree { generation: _, released_by: _ } => true
       HoldSlotAbsent => false
       HoldSlotHeld { generation: _, owner: _ } => false
@@ -154,7 +153,7 @@ fn workspace_slot_mutation_supply_open(slot_key: NonEmptyStr) -> Bool {
 fn workspace_slot_mutation_still_owned(held: WorkspaceSlotMutationHeld) -> Bool {
   let root = workspace_commissioning_store_location as NonEmptyStr
   match read_store_ownership(path: root as String) {
-    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: held.key, retention: KeepAllGenerations) {
+    OwnershipRead { ownership: StoreRootOwned } => match observe_file_hold(root: root, key: held.key) {
       HoldSlotHeld { generation, owner } => generation == held.generation && owner == held.owner
       HoldSlotAbsent => false
       HoldSlotFree { generation: _, released_by: _ } => false
@@ -208,7 +207,7 @@ fn workspace_commissioning_mutation_recover(slot_key: NonEmptyStr, plan_hash: No
   let owner = workspace_commissioning_mutation_owner(plan_hash: plan_hash)
   match read_store_ownership(path: root as String) {
     OwnershipRead { ownership: StoreRootOwned } => match workspace_mutation_recovery_standing(
-      observed: observe_file_hold(root: root, key: key, retention: KeepAllGenerations), owner: owner, acquired: acquired) {
+      observed: observe_file_hold(root: root, key: key), owner: owner, acquired: acquired) {
       WorkspaceMutationRecoveryHeld => WorkspaceCommissioningMutationRetained {
         lease: WorkspaceSlotMutationLeaseHeld { held: WorkspaceSlotMutationHeld {
           key: key, owner: owner, generation: acquired,

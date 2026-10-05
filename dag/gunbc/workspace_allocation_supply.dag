@@ -1,6 +1,5 @@
 module gunbc.workspace_allocation_supply
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.types { NonEmptyStr, String, List, Int, Timestamp, EpochSecs }
 import std.algebra { trim }
 import extdeps.exec.command { LocalExec }
@@ -94,7 +93,7 @@ fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentit
         if (fabric_cell_observed_population_host(population: population) as String) != (slot.host as String) { Present { value: "cell observation belongs to another host" } }
         else { match fabric_cell_shape(members: members_for_slot(members: fabric_cell_observed_population_members(population: population), slot: slot)) {
           FabricCellShaped { shape: _ } => {
-            let next = match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot), retention: KeepAllGenerations) {
+            let next = match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot)) {
               HoldSlotAbsent => Present { value: 1 }
               HoldSlotFree { generation, released_by: _ } => match cas_generation_successor(g: generation) {
                 CasSuccessorGeneration { generation: successor } => Present { value: cas_generation_count(g: successor) }

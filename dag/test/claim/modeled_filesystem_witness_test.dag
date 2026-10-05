@@ -1,6 +1,5 @@
 module test.claim.modeled_filesystem_witness_test
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.build_cache_instance { ProcessIdentity }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.materialization_ladder { Frame, SharedStateFrame }
@@ -104,8 +103,8 @@ test fn two_contenders_for_one_unit_get_one_hold() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: filesystem_frame(initial: empty_hold_store()),
     subject: fn(_scope) {
-      let first = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: first_owner, retention: KeepAllGenerations)
-      let second = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: second_owner, retention: KeepAllGenerations)
+      let first = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: first_owner)
+      let second = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: second_owner)
       acquired(o: first) && occupied_by(o: second, owner: first_owner as String)
     }
   )

@@ -11,7 +11,7 @@ import std.durable_compare_and_set {
   CasGeneration, cas_generation_count, cas_unreadable_slot_detail,
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   CasAttemptAdmission, CasAttemptAdmitted, CasAttemptDigestMismatch, CasAttemptDigestIncomparable,
   CasAttemptKeyNotSlotAddressable, admit_cas_attempt, file_compare_and_set, DefaultAccessCreateOnly,
   observe_cas_slot_state,
@@ -294,7 +294,7 @@ fn attempt_state_decode(word: String, detail: String) -> AttemptState? {
 }
 
 fn attempt_slot_read(root: NonEmptyStr, reference: NonEmptyStr) -> AttemptSlotReading {
-  match observe_cas_slot_state(root: root, key: reference, retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: reference) {
     CasObservedUnreadable { cause: c } => AttemptSlotUnreadable { detail: join(["the attempt slot could not be read: ", cas_unreadable_slot_detail(cause: c)], "") }
     CasObservedReadable { readable: r } =>
       match r {
@@ -333,7 +333,7 @@ fn attempt_commit(root: NonEmptyStr, record: AttemptRecord, expected: CasExpecta
     CasAttemptDigestMismatch { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest did not match its bytes" }
     CasAttemptDigestIncomparable { claimed: _, actual: _ } => AttemptTransitionRefused { detail: "the attempt record's digest was incomparable" }
     CasAttemptAdmitted { verified: v } =>
-      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+      match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
         CasCommitted { committed: c } => AttemptAdvanced { state: record.state, generation: c.generation }
         CasPreconditionFailed { expected: e, observed: o } =>
           AttemptLostRace {

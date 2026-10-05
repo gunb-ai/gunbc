@@ -1798,9 +1798,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "a_keep_all_slot_keeps_every_generation_by_real_execution" },
+      identity: WitnessIdentity { module_path: "test.claim.durable_cas_file_store_wet_witness", function: "the_unwindowed_compare_and_set_keeps_every_generation_by_real_execution" },
       entry: "dag/test/claim/durable_cas_file_store_wet_witness_test.dag",
-      function: "a_keep_all_slot_keeps_every_generation_by_real_execution",
+      function: "the_unwindowed_compare_and_set_keeps_every_generation_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {

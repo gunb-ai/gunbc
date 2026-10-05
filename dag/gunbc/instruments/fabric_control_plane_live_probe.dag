@@ -79,7 +79,7 @@ import std.durable_exclusive_hold { DurableHoldHeld, DurableHoldFree }
 import gunbc.durable_exclusive_hold_file_store {
   HoldPayloadDecoded, HoldPayloadUndecodable, decode_hold_slot_payload, hold_slot_payload,
 }
-import gunbc.durable_cas_file_store { KeepAllGenerations,
+import gunbc.durable_cas_file_store {
   observe_cas_slot_state, DefaultAccessCreateOnly,
   DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable,
   admit_cas_attempt_for_derived_payload, file_compare_and_set,
@@ -506,7 +506,7 @@ fn fci1_live_replace_held(root: NonEmptyStr) -> Fci1HeldGenerationMutation {
         DerivedPayloadKeyNotSlotAddressable { key: _ } =>
           Fci1HeldGenerationMutationRefused { detail: "allocation key is not slot-addressable" }
         DerivedPayloadAdmitted { verified: v } =>
-          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: v).outcome {
+          match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: v) {
             CasCommitted { committed: c } => Fci1HeldGenerationReplaced { slot_key: slot_key, generation: c.generation }
             CasPreconditionFailed { expected: _, observed: _ } =>
               Fci1HeldGenerationMutationRefused { detail: "the held slot moved between observation and mutation" }
@@ -783,7 +783,7 @@ fn fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit
 }
 
 fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationSlotPrestate {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot()), retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: root }
     CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
@@ -817,7 +817,7 @@ type Fci1AllocationSlotObservation
   | Fci1SlotUndecodable { path: NonEmptyStr, generation: Int, payload: NonEmptyStr, content: NonEmptyStr }
 
 fn fci1_allocation_slot_observation(root: NonEmptyStr) -> Fci1AllocationSlotObservation {
-  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot()), retention: KeepAllGenerations) {
+  match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
     CasObservedUnreadable { cause: _ } => Fci1SlotUnreadable { path: root }
     CasObservedReadable { readable: CasReadableAbsent } => Fci1SlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } => {

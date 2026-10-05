@@ -1,6 +1,5 @@
 module gunbc.workspace_commissioning_observe
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import std.types { NonEmptyStr, String }
 import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_instance_name }
 import gunbc.workspace_commissioning { WorkspaceObligationCensus, WorkspaceNoPriorObligations, WorkspacePriorObligationsRemain, WorkspaceObligationHistoryUnreadable }
@@ -16,7 +15,7 @@ fn workspace_observe_commissioning_obligations(root: NonEmptyStr, slot: RunnerSl
   match read_cell_readiness_store() {
     StoreRead { ownership: StoreRootOwned, records: records } => if count(filter(records, r => (record_cell(record: r) as String) == (runner_slot_instance_name(slot: slot) as String))) != 0 {
       WorkspacePriorObligationsRemain { reason: "slot has readiness or in-flight history; initial commissioning cannot overwrite it" }
-    } else { match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot), retention: KeepAllGenerations) {
+    } else { match observe_file_hold(root: root, key: fabric_cell_allocation_key(slot: slot)) {
       HoldSlotAbsent => WorkspaceNoPriorObligations { settled_generation: 0 }
       HoldSlotHeld { generation: _, owner: _ } => WorkspacePriorObligationsRemain { reason: "slot has an outstanding durable reservation" }
       HoldSlotFree { generation: _, released_by: _ } => WorkspaceObligationHistoryUnreadable { reason: "hold history exists without readiness history; recover it instead of creating initial generation zero" }

@@ -1,6 +1,5 @@
 module gunbc.workspace_allocation_lifecycle
 
-import gunbc.durable_cas_file_store { KeepAllGenerations }
 import gunbc.workspace_allocation_lease { workspace_lease_standing, WorkspaceLeaseLive, WorkspaceLeaseExpired, WorkspaceLeaseUnreadable }
 
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -154,7 +153,7 @@ fn workspace_publish_released_record(store: FabricStorageBinding, plan: Workspac
 fn workspace_recover_release(store: FabricStorageBinding, fabric_root: NonEmptyStr, reservation: WorkspaceReservation, observed_at: Timestamp) -> WorkspaceStoreWrite {
   match workspace_release_read(store: store, reservation: reservation) {
     WorkspaceReleaseRefused { reason: detail } => WorkspaceStoreWriteRefused { reason: detail }
-    WorkspaceReleasePrepared { plan: recorded } => match observe_file_hold(root: fabric_root, key: fabric_cell_allocation_key(slot: reservation.slot), retention: KeepAllGenerations) {
+    WorkspaceReleasePrepared { plan: recorded } => match observe_file_hold(root: fabric_root, key: fabric_cell_allocation_key(slot: reservation.slot)) {
       HoldSlotFree { generation: freed, released_by: reference } => if freed != reservation.generation + 1 || reference != fabric_hold_release_ref(reason: workspace_release_reason) {
         WorkspaceStoreWriteRefused { reason: "free slot does not match this release incarnation" }
       } else { match workspace_advance_released_readiness(reservation: reservation, freed_generation: freed) {
