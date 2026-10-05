@@ -12,8 +12,8 @@ import gunbc.machine_intake_host_capture_envelope { BoundHostCaptureEnvelope, Ho
 import gunbc.machine_intake_mtcollins1_socket1_investigation_observation { MtCollins1Socket1InvestigationBoot, mtcollins1_socket1_investigation_boots }
 import gunbc.host_memory_observation {
   HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured,
-  CensusUsableRamUnread, CensusMeminfoSectionAbsent, CensusMeminfoSectionPending, CensusMeminfoSectionMalformed,
-  CensusMeminfoExitNonzero, CensusMeminfoUnparsed, host_usable_ram_from_capture, HostFixedOverhead, HostFixedOverheadAllowance,
+  CensusMeminfoUnread, CensusMeminfoSectionAbsent, CensusMeminfoSectionPending, CensusMeminfoSectionMalformed,
+  CensusMeminfoExitNonzero, CensusMeminfoUnparsed, host_usable_ram_from_capture, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadUnmeasured, host_fixed_overhead_from_capture,
 }
 import gunbc.session_residency { SessionResidency, NoInteractiveSessions, HostsInteractiveSessions, host_session_residency }
 import gunbc.session_reservation_policy { HostSessionReservationOutcome, SessionReservationNotApplicable, host_session_reservation_outcome }
@@ -42,7 +42,7 @@ fn census_envelope(meminfo_body: String) -> BoundHostCaptureEnvelope {
 
 data meminfo_argv: String = "----ARGV meminfo: grep -E 'MemTotal|MemAvailable' /proc/meminfo\n"
 
-fn measured_bytes(a: ObservationAttempt<HostUsableRam, CensusUsableRamUnread>) -> Int {
+fn measured_bytes(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>) -> Int {
   match a {
     ObservationRefused { cause: _ } => 0 - 1
     ObservationEstablished { observed: r } =>
@@ -54,7 +54,7 @@ fn measured_bytes(a: ObservationAttempt<HostUsableRam, CensusUsableRamUnread>) -
   }
 }
 
-fn measured_provenance_names(a: ObservationAttempt<HostUsableRam, CensusUsableRamUnread>, pattern: String) -> Bool {
+fn measured_provenance_names(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, pattern: String) -> Bool {
   match a {
     ObservationRefused { cause: _ } => false
     ObservationEstablished { observed: r } =>
@@ -77,7 +77,7 @@ test fn census_meminfo_receipt_reads_as_measured_usable_ram() -> Bool {
     && measured_provenance_names(a: a, pattern: "designed-fixture-boot")
 }
 
-fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusUsableRamUnread>, expected: String) -> Bool {
+fn refusal_is(a: ObservationAttempt<HostUsableRam, CensusMeminfoUnread>, expected: String) -> Bool {
   match a {
     ObservationEstablished { observed: _ } => false
     ObservationRefused { cause: c } =>
@@ -177,8 +177,8 @@ test fn mtcollins1_carries_no_sessions_and_owes_no_reservation() -> Bool {
 //                 CpuWidthOfferAbsent, because the offer is not enrolled.
 //   usable_ram -- the census reader applied to a DESIGNED meminfo receipt. That is the same route
 //                 the wet receipt will take, and the figure waits on that receipt.
-//   overhead   -- a designed allowance. mtcollins1 has no fixed-overhead row yet, and that row is
-//                 the third enrolment trigger named on the offer.
+//   overhead   -- host_fixed_overhead_from_capture over the SAME designed receipt, so one census
+//                 boot supplies both memory rows.
 fn supplied_ram(meminfo_body: String) -> HostUsableRam {
   match host_usable_ram_from_capture(envelope: census_envelope(meminfo_body: meminfo_body)) {
     ObservationEstablished { observed: r } => r
@@ -186,13 +186,20 @@ fn supplied_ram(meminfo_body: String) -> HostUsableRam {
   }
 }
 
-fn mtcollins1_supplied_facts(ram: HostUsableRam) -> HostWidthFacts {
+fn supplied_overhead(meminfo_body: String) -> HostFixedOverhead {
+  match host_fixed_overhead_from_capture(envelope: census_envelope(meminfo_body: meminfo_body)) {
+    ObservationEstablished { observed: o } => o
+    ObservationRefused { cause: _ } => HostFixedOverheadUnmeasured
+  }
+}
+
+fn mtcollins1_supplied_facts(ram: HostUsableRam, overhead: HostFixedOverhead) -> HostWidthFacts {
   let real = host_width_facts(host: operator_host_mtcollins1)
   HostWidthFacts {
     host: real.host,
     cpu: CpuWidthDerived { slots: compute_host_cpu_admitted_width(host: mtcollins1_offer.supply.physical) },
     usable_ram: ram,
-    fixed_overhead: HostFixedOverheadAllowance { bytes: byte_size(8589934592), reason: "designed fixture: mtcollins1 has no fixed-overhead row yet" },
+    fixed_overhead: overhead,
     session: real.session,
     control_plane: real.control_plane,
     served_deployment: real.served_deployment,
@@ -207,7 +214,7 @@ data designed_one_socket_meminfo: String = "----ARGV meminfo: grep -E 'MemTotal|
 test fn mtcollins1_placement_accepts_the_offer_over_supplied_one_socket_facts() -> Bool {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo)),
+    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: d } =>
@@ -221,7 +228,7 @@ test fn mtcollins1_placement_accepts_the_offer_over_supplied_one_socket_facts() 
 test fn mtcollins1_RED_placement_refuses_until_usable_ram_is_measured() -> Bool {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: HostUsableRamUnmeasured),
+    facts: mtcollins1_supplied_facts(ram: HostUsableRamUnmeasured, overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: _ } => false
@@ -237,10 +244,20 @@ test fn mtcollins1_RED_placement_refuses_until_usable_ram_is_measured() -> Bool 
 fn mtcollins1_supplied_standing_text() -> String {
   match host_deployment_standing_given(
     offer: mtcollins1_offer,
-    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo)),
+    facts: mtcollins1_supplied_facts(ram: supplied_ram(meminfo_body: designed_one_socket_meminfo), overhead: supplied_overhead(meminfo_body: designed_one_socket_meminfo)),
     control_plane_placement: fabric_control_plane_placement,
   ) {
     HostRunnerDeploymentDerived { deployment: d } => concat("derived runner_count=", to_string(d.runner_count))
     HostRunnerDeploymentRefused { refusal: r } => host_deployment_refusal_text(c: r.cause)
+  }
+}
+
+// THE OVERHEAD ROW READS FROM THE RECEIPT: MemTotal minus MemAvailable, in bytes, as
+// HostFixedOverheadMeasured. Here that is (131000000 - 127000000) kB x 1024.
+test fn census_meminfo_receipt_reads_as_measured_fixed_overhead() -> Bool {
+  match supplied_overhead(meminfo_body: designed_one_socket_meminfo) {
+    HostFixedOverheadMeasured { bytes: b, provenance: p } =>
+      (byte_size_count(b: b) as Int) == 4000000 * 1024 && string_contains(s: p as String, pattern: "quiescent census boot")
+    _ => false
   }
 }

@@ -132,10 +132,15 @@ data srv4_offer: ComputeOffer = ComputeOffer {
 // the census boot's meminfo receipt.
 //
 // NOT ENROLLED in fleet_intent_offers, and that is a declared frontier, not an omission. Enrolment
-// waits on three triggers: (1) the census receipt's MemTotal row, (2) a fixed-overhead row for this
-// host, and (3) the width chain reading supplied facts, which would let the RAM-backed tmpfs
-// workspace (gunbc.runner_throughput_qualification_route mtcollins1_qualification_workspace_backing)
-// be charged inside slot memory. Until all three hold, an enrolled mtcollins1 would only refuse.
+// waits on ONE trigger: the one-socket census boot's meminfo receipt. From that single receipt,
+// gunbc.host_memory_observation host_usable_ram_from_capture and host_fixed_overhead_from_capture
+// produce this host's usable-RAM and fixed-overhead rows. The width chain already reads a facts
+// record (gunbc.runner_slot_allocation host_width_facts), and placement accepts this offer over
+// supplied facts of that shape (test.claim.mtcollins1_runner_offer_witness). Charging the RAM-backed
+// tmpfs workspace inside slot memory (gunbc.runner_throughput_qualification_route
+// mtcollins1_qualification_workspace_backing) is NOT yet charged anywhere. It is an open obligation
+// of this lane, and it must land before enrolment, because the tmpfs workspace spends the same RAM
+// the slots are sized from.
 data mtcollins1_socket0_cpu: CpuFacts = CpuFacts {
   catalog: altra_q8030_catalog,
   deployment: CpuDeploymentFacts { sustained_per_thread_hz: altra_q8030_catalog.nominal_sustained_per_thread_hz },
