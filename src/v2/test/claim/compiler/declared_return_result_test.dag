@@ -25,7 +25,7 @@ import v2.std.algebra { length, list_map }
 import std.algebra { Cons, list_snoc_item }
 import std.types { List, String }
 import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_mark_declared_type_params }
-import v2.std.type_binder { type_params_edge }
+import v2.std.type_binder { type_binder_set_children, type_params_edge }
 import std.types { Bool }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -57,12 +57,17 @@ fn drr_arrow(params: List<Symbol>, ret: Node) -> Node {
   if length(xs: params) == 0 {
     node_synthetic(kind: TypeNode { connective: Arrow }, children: positional)
   } else {
-    let binders = node_synthetic(
-      kind: TypeNode { connective: Conj },
-      children: list_map(xs: params, f: fn(p) { Edge { label: Authored { name: p }, target: drr_atom(sym: p) } })
-    )
+    let binders = drr_binder_set(params: params)
     node_synthetic(kind: TypeNode { connective: Arrow }, children: list_snoc_item(xs: positional, item: type_params_edge(conj: binders)))
   }
+}
+
+// A binder set built through the one mint (v2.std.type_binder type_binder_set_children), so it carries
+// its declared-order edge and conforms, as a lowered signature's does.
+fn drr_binder_set(params: List<Symbol>) -> Node {
+  let edges = list_map(xs: params, f: fn(p) { Edge { label: Authored { name: p }, target: drr_atom(sym: p) } })
+  let source = drr_atom(sym: ^drr_binder_source)
+  node_synthetic(kind: TypeNode { connective: Conj }, children: type_binder_set_children(binders: edges, source: source))
 }
 
 fn drr_box_of(arg: Node) -> Node {
@@ -133,7 +138,7 @@ fn drr_box_index() -> SymbolIndex {
   symbol_index_mark_declared_type_params(
     index: symbol_index_insert(index: empty_symbol_index(), qualified_path: drr_box_path(), resolved: payload),
     qualified_path: drr_box_path(),
-    params: [^drr_t]
+    params: drr_binder_set(params: [^drr_t])
   )
 }
 
