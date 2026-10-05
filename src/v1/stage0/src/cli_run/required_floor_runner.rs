@@ -7487,6 +7487,9 @@ pub fn run_required_floor(
     floor_cgroup_stat_beat("floor-entry", None);
     spawn_floor_heartbeat();
     floor_seam("strict-preparation");
+    // The fixture-closure union is per run: whatever an earlier run in this process recorded is
+    // not this run's population (`crate::cli_run::fixture_closure_union_emit_receipt`).
+    drop(crate::cli_run::take_fixture_closure_union());
     eprintln!("[floor-phase] phase=strict-preparation state=started");
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
@@ -7973,6 +7976,12 @@ pub fn run_required_floor(
     let prepared_module_paths: HashSet<String> = prepared_sources
         .iter()
         .map(|view| view.module_path.clone())
+        .collect();
+    // The prepared closure's source paths, kept (strings only) so the fixture-closure union phase
+    // can state how many of its members lie outside this closure.
+    let prepared_source_paths: HashSet<String> = prepared_sources
+        .iter()
+        .map(|view| view.source.path.clone())
         .collect();
     // BOUNDED RETENTION, NOT A CORPUS COPY HELD FOR THE CLAIM RUN. The full-index views are
     // taken OUT of `prepared` here and consumed, by value, inside the discovery-authority phase
@@ -12904,6 +12913,44 @@ pub fn run_required_floor(
     // The prepared subject's last reader has returned; it is freed here either way, so its bytes
     // are attributed by class as it goes (`typed_graph_byte_attribution`).
     crate::cli_run::typed_graph_byte_attribution("prepared-teardown", prepared.graph);
+    // THE FIXTURE-CLOSURE UNION RENDER (retires `gunbc.rung_drop`
+    // `fixture_closure_corpus_emit_refusals_lost_as_passenger`). Every corpus module a fixture
+    // instrument resolved on this run is rendered once through the rust emitter, and a per-module
+    // emit refusal refuses the floor, typed and located. It runs here, after the claims (which
+    // produce the population) and after the prepared graph is freed (so the union compile never
+    // sits beside it). The population's size and digest are printed so the log names what was
+    // rendered; `outside_prepared` shows whether the union is the prepared closure, rather than
+    // assuming either way.
+    floor_seam("fixture-closure-union-emit");
+    let union = crate::cli_run::take_fixture_closure_union();
+    let outside_prepared = union
+        .members
+        .keys()
+        .filter(|path| !prepared_source_paths.contains(*path))
+        .count();
+    // The enrolled red and positive control run first, on every required run, so a disabled
+    // refusal arm or a broken clean render is a required red rather than a unit test nobody runs.
+    let (control_red_ms, control_clean_ms) = crate::cli_run::fixture_closure_union_controls()?;
+    eprintln!(
+        "[floor-receipt] receipt=fixture-closure-union-controls state=held red_wall_ms={control_red_ms} \
+         clean_wall_ms={control_clean_ms}"
+    );
+    let union_started = std::time::Instant::now();
+    let union_cpu_started = v1_interpreter::thread_cpu_nanos();
+    let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
+    eprintln!(
+        "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
+         memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         cpu_ms={} wall_ms={}",
+        union.fixture_compiles,
+        union.memo_hits,
+        union_observed.members,
+        union_observed.digest,
+        union_observed.files,
+        union_observed.emit_diagnostics,
+        v1_interpreter::thread_cpu_nanos().saturating_sub(union_cpu_started) / 1_000_000,
+        union_started.elapsed().as_millis(),
+    );
     Ok(outcome)
 }
 
