@@ -17,7 +17,8 @@ import gunbc.fabric_storage_binding { fabric_state_storage_binding }
 
 import gunbc.workspace_allocation_convergence { workspace_convergence_observe, WorkspaceConvergenceObserved, WorkspaceConvergenceUnobserved }
 import gunbc.workspace_allocation_launch_directive { workspace_launch_directive_from_text, WorkspaceLaunchDirectiveReady, WorkspaceLaunchDirectiveRefused }
-import gunbc.workspace_allocation_store { workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
+import gunbc.workspace_reconcile_once { workspace_reconcile_prepare }
+import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocation_json, workspace_record_preparation_wait, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
 import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
 import gunbc.workspace_allocation_policy { workspace_installed_policy }
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
@@ -1616,18 +1617,31 @@ fn observe_workspace_allocation_plan_request_wet(host: NonEmptyStr) -> FleetConv
       WorkspaceConsumerRetry => FleetConvergeRequestUnobserved { reason: "workspace owner changed concurrently; reconcile again" }
       WorkspaceConsumerRetire { allocation: _ } => FleetConvergeRequestUnobserved { reason: "workspace retirement remains outstanding" }
       WorkspaceConsumerSettled { allocation: _ } => FleetConvergeRequestUnobserved { reason: "unplanned workspace retirement settled; no host apply required" }
-      WorkspaceConsumerPrepare { allocation: allocation } => {
-        let reason = "Request discovered; awaiting commissioned supply and authoritative preparation policy"
-        match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
-          WorkspaceStoreWritten { allocation: _ } => FleetConvergeRequestUnobserved { reason: reason }
-          WorkspaceStoreConflict => FleetConvergeRequestUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
-          WorkspaceStoreWriteRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
-        }
+      WorkspaceConsumerPrepare { allocation: allocation } => match shell.Env.Get(name: "GUNBC_WORKSPACE_CONTROLLER_RELEASE" as NonEmptyStr).value {
+        Absent => workspace_publish_preparation_wait(allocation: allocation, reason: "workspace preparation requires the installed controller release identity")
+        Present { value: installed } => if trim(s: installed) == "" {
+          workspace_publish_preparation_wait(allocation: allocation, reason: "workspace installed controller release identity is empty")
+        } else { match workspace_reconcile_prepare(store: fabric_state_storage_binding(), allocation: allocation,
+          local_host: host as HostIdentity, release_dir: trim(s: installed) as NonEmptyStr) {
+          WorkspaceConvergenceUnobserved { reason: detail } => workspace_publish_preparation_wait(allocation: allocation, reason: detail)
+          WorkspaceConvergenceObserved { basis: planned } => if (planned.host as String) != (host as String) {
+            FleetConvergeRequestUnobserved { reason: concat("workspace plan selected host ", concat(planned.host as String, "; dispatch fleet-converge allocation plan there")) }
+          } else { observe_workspace_prepared_plan_request_wet(owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host) }
+        } }
       }
       WorkspaceConsumerRoute { allocation: allocation } => observe_workspace_prepared_plan_request_wet(
         owner: allocation.request.owner, request_key: allocation.request.idempotency_key, host: host)
     }
     }
+  }
+}
+
+// A preparation that could not select publishes its located reason for the owner's view and stops.
+fn workspace_publish_preparation_wait(allocation: WorkspaceAllocation, reason: String) -> FleetConvergeRequestObservation {
+  match workspace_record_preparation_wait(store: fabric_state_storage_binding(), request: allocation.request, reason: reason) {
+    WorkspaceStoreWritten { allocation: _ } => FleetConvergeRequestUnobserved { reason: reason }
+    WorkspaceStoreConflict => FleetConvergeRequestUnobserved { reason: "workspace changed while publishing preparation wait; reconcile again" }
+    WorkspaceStoreWriteRefused { reason: detail } => FleetConvergeRequestUnobserved { reason: detail }
   }
 }
 
