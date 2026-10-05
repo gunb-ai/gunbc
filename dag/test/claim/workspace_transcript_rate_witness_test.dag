@@ -45,9 +45,8 @@ test fn the_walk_runs_no_other_program_while_the_sha256_walk_does() -> Bool {
 test fn a_shrinking_file_is_a_truncation_and_not_a_negative_append() -> Bool {
   let row = workspace_transcript_rate_interval(
     before: [stat(member: "r/.claude/projects/p/a.jsonl", size: 100, mtime: 1), stat(member: "r/.claude/projects/p/b.jsonl", size: 50, mtime: 1)],
-    before_at: nanosecond(count: 0),
     after: [stat(member: "r/.claude/projects/p/a.jsonl", size: 40, mtime: 2), stat(member: "r/.claude/projects/p/b.jsonl", size: 60, mtime: 2)],
-    after_at: nanosecond(count: 10000000000),
+    span: nanosecond(count: 10000000000),
   )
   measure_count(m: row.bytes_appended) == 10
     && row.files_grown == 1
@@ -62,9 +61,8 @@ test fn a_shrinking_file_is_a_truncation_and_not_a_negative_append() -> Bool {
 test fn growth_creation_removal_and_a_same_size_rewrite_are_counted_apart() -> Bool {
   let row = workspace_transcript_rate_interval(
     before: [stat(member: "a", size: 10, mtime: 1), stat(member: "b", size: 10, mtime: 1), stat(member: "c", size: 10, mtime: 1), stat(member: "d", size: 10, mtime: 1)],
-    before_at: nanosecond(count: 5),
     after: [stat(member: "a", size: 15, mtime: 2), stat(member: "b", size: 10, mtime: 2), stat(member: "c", size: 10, mtime: 1), stat(member: "e", size: 7, mtime: 2)],
-    after_at: nanosecond(count: 105),
+    span: nanosecond(count: 100),
   )
   measure_count(m: row.bytes_appended) == 12
     && row.files_grown == 1 && row.files_created == 1 && row.files_removed == 1 && row.files_rewritten_same_size == 1
@@ -159,4 +157,15 @@ test fn the_observed_roots_are_the_admitted_slot_and_the_codex_row_and_an_unknow
       TranscriptRateRootsSelected { roots: _ } => false
       TranscriptRateSlotRefused { slot: _ } => false
     })
+}
+
+fn earlier_sample(k: Int) -> TranscriptRateSample {
+  TranscriptRateSampled { at: nanosecond(count: 5), files: [] }
+}
+
+test fn a_clock_reading_that_goes_backwards_refuses_the_window_rather_than_reading_as_a_quiet_interval() -> Bool {
+  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: nanosecond(count: 10), files: [] }, remaining: 1, next: earlier_sample, pause: k => true, rows: []) {
+    TranscriptRateRefused { reason: why, rows: rows } => length(rows) == 0 && contains(why, "no derivable span")
+    TranscriptRateObserved { rate: _ } => false
+  }
 }

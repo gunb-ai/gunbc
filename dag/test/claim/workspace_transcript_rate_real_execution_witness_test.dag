@@ -3,11 +3,12 @@ module test.claim.workspace_transcript_rate_real_execution
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure { measure_count }
 import std.algebra { Cons, Empty }
+import v2.std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.fabric.workspace_source { WorkspaceSourceRoot }
 import gunbc.fabric.workspace_transcript_rate {
-  workspace_transcript_rate_sample_wet, workspace_transcript_rate_interval, TranscriptAppendInterval,
+  workspace_transcript_rate_sample_wet, workspace_transcript_rate_interval, workspace_transcript_rate_span, TranscriptAppendInterval,
   TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -40,7 +41,11 @@ fn interval_of(before: TranscriptRateSample, after: TranscriptRateSample) -> Lis
     TranscriptRateSampled { at: a, files: fa } =>
       match after {
         TranscriptRateSampleRefused { refusals: _ } => []
-        TranscriptRateSampled { at: b, files: fb } => [workspace_transcript_rate_interval(before: fa, before_at: a, after: fb, after_at: b)]
+        TranscriptRateSampled { at: b, files: fb } =>
+          match workspace_transcript_rate_span(before_at: a, after_at: b) {
+            Absent => []
+            Present { value: span } => [workspace_transcript_rate_interval(before: fa, after: fb, span: span)]
+          }
       }
   }
 }

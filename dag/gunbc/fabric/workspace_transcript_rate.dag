@@ -297,9 +297,18 @@ fn workspace_transcript_rate_index(files: List<TranscriptFileStat>) -> Map<Strin
   fold(files, init: empty_map(), f: (m, s) => map_insert(m: m, key: s.member as String, value: s))
 }
 
+// THE SPAN BETWEEN TWO SAMPLE INSTANTS, OR NONE WHEN THE LATER INSTANT DOES NOT FOLLOW THE EARLIER.
+// Both are read on one monotonic clock, so a reversal is not expected -- but it is not substituted:
+// a span that cannot be derived is absent, and the window refuses on it (DESIGN 5), rather than
+// standing in a zero that the receipt would print as a quiet interval.
+fn workspace_transcript_rate_span(before_at: Nanosecond, after_at: Nanosecond) -> Nanosecond? {
+  let d = nanosecond_count(n: after_at) - nanosecond_count(n: before_at)
+  if d < 0 { none } else { Present { value: nanosecond(count: d) } }
+}
+
 // Every file of the later sample is looked up once in the earlier one, so an interval costs one
 // pass over each sample; a removed file is counted as the earlier files the later one did not keep.
-fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, before_at: Nanosecond, after: List<TranscriptFileStat>, after_at: Nanosecond) -> TranscriptAppendInterval {
+fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, after: List<TranscriptFileStat>, span: Nanosecond) -> TranscriptAppendInterval {
   let index = workspace_transcript_rate_index(files: before)
   let changes = map(after, s => workspace_transcript_file_change(before: map_lookup(m: index, key: s.member as String), after: s))
   let created = length(filter(changes, c => match c {
@@ -337,9 +346,8 @@ fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, before_a
     TranscriptFileRewritten => acc
     TranscriptFileUnchanged => acc
   })
-  let span = nanosecond_count(n: after_at) - nanosecond_count(n: before_at)
   TranscriptAppendInterval {
-    span: nanosecond(count: if span < 0 { 0 } else { span }),
+    span: span,
     files_grown: grown,
     files_created: created,
     files_removed: length(before) - (length(after) - created),
@@ -395,13 +403,17 @@ fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining
         match next(remaining) {
           TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root became unreadable mid-window: ", join(rs, "; ")), rows: reverse(rows) }
           TranscriptRateSampled { at: at2, files: files2 } =>
-            workspace_transcript_rate_window_of(
-              baseline: TranscriptRateSampled { at: at2, files: files2 },
-              remaining: remaining - 1,
-              next: next,
-              pause: pause,
-              rows: Cons { head: workspace_transcript_rate_interval(before: files, before_at: at, after: files2, after_at: at2), tail: rows },
-            )
+            match workspace_transcript_rate_span(before_at: at, after_at: at2) {
+              Absent => TranscriptRateRefused { reason: join(["the monotonic clock read ", to_string(nanosecond_count(n: at2)), "ns after ", to_string(nanosecond_count(n: at)), "ns; an interval with no derivable span is not measured"], ""), rows: reverse(rows) }
+              Present { value: span } =>
+                workspace_transcript_rate_window_of(
+                  baseline: TranscriptRateSampled { at: at2, files: files2 },
+                  remaining: remaining - 1,
+                  next: next,
+                  pause: pause,
+                  rows: Cons { head: workspace_transcript_rate_interval(before: files, after: files2, span: span), tail: rows },
+                )
+            }
         }
       }
   }
