@@ -4,7 +4,7 @@ import std.types { Bool, Int, List }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { any, filter }
-import extdeps.bmc.ipmi_channel { IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -490,8 +490,8 @@ fn bmc_ipmi_set_user_access(world: BmcWorld, access: IpmiUserChannelAccess) -> B
 
 // Get User Access for one (channel, user): the readback a channel-access write is judged by,
 // independent of the write's completion. Absent when the controller holds no row for the pair.
-fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: Int) -> IpmiChannelPrivilegeLimit? {
+fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChannelNumber) -> IpmiChannelPrivilegeLimit? {
   let wanted: IpmiChannelPrivilegeLimit? = none
-  filter(world.ipmi_user_access, r => (r.user as Int) == (user as Int) && (r.channel as Int) == channel)
+  filter(world.ipmi_user_access, r => (r.user as Int) == (user as Int) && (r.channel as Int) == (channel as Int))
     |> fold(init: wanted, f: (acc, r) => match acc { Absent => Present { value: r.privilege }  Present { value: _ } => acc })
 }

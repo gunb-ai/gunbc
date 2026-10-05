@@ -541,7 +541,7 @@ fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
   ) {
     RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
     RotationApplyWouldLeaveNoAdministrator { channel: ch, cause: c } =>
-      if ch != 2 { "wrong-channel" } else {
+      if (ch as Int) != 2 { "wrong-channel" } else {
         match c {
           ManagedReadbackAbsent => "readback-absent"
           ManagedReadbackFromAnotherController { readback: _, route: _ } => "another-controller"

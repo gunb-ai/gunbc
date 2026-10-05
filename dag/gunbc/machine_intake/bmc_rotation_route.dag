@@ -12,7 +12,7 @@ import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFami
 import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.access_profile { BmcAccessSurface }
 import extdeps.bmc.ipmi_channel {
-  IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit,
+  IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit, IpmiChannelNumber,
   IpmiPrivilegeCallback, IpmiPrivilegeUser, IpmiPrivilegeOperator, IpmiPrivilegeAdministrator, IpmiPrivilegeOem, IpmiPrivilegeNoAccess,
 }
 import gunbc.machine_intake_receipt { EvidenceRef }
@@ -216,7 +216,7 @@ fn account_write_request_eq(a: BmcAccountWriteRequest, b: BmcAccountWriteRequest
         IpmiSetUserPrivilegeLimit { access: xb } =>
           (xa.user as Int) == (xb.user as Int)
             && (xa.channel as Int) == (xb.channel as Int)
-            && ipmi_privilege_eq(a: xa.privilege, b: xb.privilege)
+            && xa.privilege == xb.privilege
         RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
       }
     RedfishAccountPasswordWrite { transport_operation: oa, action_shape: sa } =>
@@ -269,9 +269,6 @@ fn canonical_ipmi_privilege(privilege: IpmiChannelPrivilegeLimit) -> String {
   }
 }
 
-fn ipmi_privilege_eq(a: IpmiChannelPrivilegeLimit, b: IpmiChannelPrivilegeLimit) -> Bool {
-  canonical_ipmi_privilege(privilege: a) == canonical_ipmi_privilege(privilege: b)
-}
 
 fn canonical_component(text: String) -> String {
   join([to_string(length(text)), ":", text], "")
@@ -400,13 +397,13 @@ fn dry_route_qualification_request(world: BmcWorld, subject: RouteQualificationS
   match subject.request {
     RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => DryRouteQualificationStep { world: world, response: none }
     IpmiSetUserPrivilegeLimit { access: x } => {
-      let before = match bmc_ipmi_get_user_access(world: world, user: x.user, channel: x.channel as Int) {
-        Present { value: p } => ipmi_privilege_eq(a: p, b: x.privilege)
+      let before = match bmc_ipmi_get_user_access(world: world, user: x.user, channel: x.channel) {
+        Present { value: p } => p == x.privilege
         Absent => false
       }
       let step = bmc_ipmi_set_user_access(world: world, access: x)
-      let accepted = match bmc_ipmi_get_user_access(world: step.world, user: x.user, channel: x.channel as Int) {
-        Present { value: p } => ipmi_privilege_eq(a: p, b: x.privilege)
+      let accepted = match bmc_ipmi_get_user_access(world: step.world, user: x.user, channel: x.channel) {
+        Present { value: p } => p == x.privilege
         Absent => false
       }
       let request_text = join(["modeled ", account_write_request_text(request: subject.request) as String, " at ", subject.endpoint.host as String, " firmware ", subject.firmware.raw_version as String], "") as NonEmptyStr
@@ -743,7 +740,7 @@ type RotationApplyAdmission
   | RotationApplyApprovalDenied
   | RotationApplyApprovalForAnotherAuthority { authority: NonEmptyStr }
   | RotationApplyApprovalForAnotherRequest { approved: NonEmptyStr, requested: NonEmptyStr }
-  | RotationApplyWouldLeaveNoAdministrator { channel: Int, cause: AdministratorRetentionRefusal }
+  | RotationApplyWouldLeaveNoAdministrator { channel: IpmiChannelNumber, cause: AdministratorRetentionRefusal }
 
 // THE LOCKOUT HAZARD IS A REFUSAL, NOT A NOTE. A Set User Access write that lowers a user's privilege
 // on a channel (anything other than ADMINISTRATOR) could remove the last administrator-capable account
@@ -862,13 +859,6 @@ fn administrator_retention_refusal(standing: BmcRotationRouteStanding, request: 
   }
 }
 
-fn request_channel(request: BmcAccountWriteRequest) -> Int {
-  match request {
-    IpmiSetUserPrivilegeLimit { access: x } => x.channel as Int
-    IpmiSetUserPassword { user: _ } => 0
-    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => 0
-  }
-}
 
 fn lowering_request(request: BmcAccountWriteRequest) -> Bool {
   match request {
@@ -952,9 +942,14 @@ fn admit_rotation_apply(
                 } else if cl.request_revision != rotation_route_request_identity(standing: standing, request: request) {
                   RotationApplyApprovalForAnotherRequest { approved: cl.request_revision, requested: rotation_route_request_identity(standing: standing, request: request) }
                 } else {
-                  match administrator_retention_refusal(standing: standing, request: request, readback: managed_readback, approved_attempt: cl.attempt) {
-                    Present { value: c } => RotationApplyWouldLeaveNoAdministrator { channel: request_channel(request: request), cause: c }
-                    Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                  match request {
+                    IpmiSetUserPrivilegeLimit { access: x } =>
+                      match administrator_retention_refusal(standing: standing, request: request, readback: managed_readback, approved_attempt: cl.attempt) {
+                        Present { value: c } => RotationApplyWouldLeaveNoAdministrator { channel: x.channel, cause: c }
+                        Absent => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                      }
+                    IpmiSetUserPassword { user: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
+                    RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => RotationApplyAdmitted { standing: standing, request: request, decided_by: by }
                   }
                 }
             }
