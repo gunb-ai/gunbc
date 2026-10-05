@@ -9929,7 +9929,7 @@ pub fn run_required_floor(
     let declared_value = v1_interpreter::list_value(
         cost_debt_disposition_index
             .keys()
-            .map(|k| v1_interpreter::str_value(k))
+            .map(v1_interpreter::str_value)
             .collect::<Vec<_>>(),
     );
     let route_gap_decided = v1_interpreter::run_in_context_with_args(
