@@ -17,14 +17,14 @@ import gunbc.workspace_allocation_http { workspace_http_reason }
 import extdeps.tailscale.serve { tailscale_serve_route_key_eq, TailscaleServeEndpoint }
 import gunbc.auth.request_authentication {
   AccessPathTailnetUnobserved, TailnetRouteGap, RequestIngress, IngressUnattested, IngressAttestedPeer,
-  TailnetIngressUnattested, TailnetIngressNotTheProxy, TailnetRouteBackendNotASocket, TailnetReadbackNotDemanded, TailnetReadbackCommandFailed, TailnetReadbackNotSpawned,
+  TailnetIngressUnattested, TailnetIngressNotTheProxy, TailnetReadbackNotDemanded, TailnetReadbackCommandFailed, TailnetReadbackNotSpawned,
   TailnetRouteUndeclared, TailnetReadbackUntaken, TailnetReadbackStale, TailnetStatusUnreadable, TailnetRouteNotProxied, TailnetRouteProxiesElsewhere,
 }
 import gunbc.auth.request_authentication { AccessPathTailnetProxy, AccessPathDirectHttps, TailnetRouteReadbackObserved, TailnetRouteReadbackUnobserved, SessionStandingInvalid }
 import gunbc.auth.session { SessionCookieMalformed }
 import gunbc.auth.tailnet_serve_readback { TailnetServeReadback, TailnetServeReadbackTaken, TailnetServeReadbackUntaken }
 import gunbc.roadmap_serve { roadmap_serve_access_path, roadmap_serve_access_path_over, roadmap_serve_route_table_build, RoadmapServeHandler, AllocationCreateHandler, AllocationReleaseHandler }
-import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+import gunbc.roadmap_dashboard_instance { srv1_live_dashboard_instance, dashboard_instance_tailnet_door_socket }
 import gunbc.workspace_allocation_routes { workspace_route_create_over, workspace_route_release_over, workspace_create_terms }
 import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageBindingUnplaced }
 import extdeps.http.server { RouteSelection, ServedRouteTableBuilt, ServedRouteTableBuildRefused, serve_select_route, SelectedDynamic, SelectedStatic, MethodNotAllowed, NoRouteMatched }
@@ -107,9 +107,8 @@ fn seam_status_json(host_port: String, proxy: String) -> String {
 }
 
 // The declared route of a socket-backed deployment, and the ingress tailscale serve produces on
-// it. No rostered instance declares a socket backend today (see
-// seam_production_instance_declares_a_tcp_route_and_mints_no_tailnet_path), so the declared route
-// is supplied to the seam's own fold, roadmap_serve_access_path_over.
+// it, supplied to the seam's own fold (roadmap_serve_access_path_over). The same fold over the
+// real roster row is seam_production_instance_mints_the_tailnet_path_only_through_its_door.
 data seam_socket_backend: String = "unix:/run/gunbc-fixture/roadmap.sock"
 
 fn seam_declared() -> TailscaleServeEndpoint? {
@@ -241,16 +240,30 @@ test fn seam_forged_header_on_direct_local_ingress_mints_no_tailnet_path() -> Bo
     }
 }
 
-// THE PRODUCTION INSTANCE AS DECLARED TODAY mints no tailnet path. Its roster row declares a
-// route to a TCP port and its entry is launched on a TCP listener, so through the seam on the
-// real instance: the entry's own ingress is unattested, and even the proxy's ingress with a fresh
-// reading showing that TCP route is refused because the port is reachable without the proxy.
-test fn seam_production_instance_declares_a_tcp_route_and_mints_no_tailnet_path() -> Bool {
-  let tcp_reading = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: "http://127.0.0.1:8080"), observed_at: seam_observed_at }
-  let as_launched = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: IngressUnattested, readback: tcp_reading, decided_at: seam_decided_at)
-  let even_proxied = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: tcp_reading, decided_at: seam_decided_at)
-  as_launched == AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
-    && even_proxied == AccessPathTailnetUnobserved { gap: TailnetRouteBackendNotASocket }
+// THE REAL ROSTER ROW, THROUGH THE SEAM. roadmap_serve_access_path reads the production instance's
+// declared route from the desired-deployment roster, which targets the instance's door socket. A
+// fresh reading showing that socket at the declared route, on the proxy's attested connection,
+// mints the tailnet path with the declared route key. The loopback entry's own ingress attests no
+// peer and mints nothing, and neither does the proxy's ingress against a reading that still shows
+// the loopback port -- the node's state before the route is retargeted.
+test fn seam_production_instance_mints_the_tailnet_path_only_through_its_door() -> Bool {
+  let door = dashboard_instance_tailnet_door_socket(instance: srv1_live_dashboard_instance()) as String
+  let door_reading = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: concat("unix:", door)), observed_at: seam_observed_at }
+  let port_reading = TailnetServeReadbackTaken { status_json: seam_status_json(host_port: "srv1.example.ts.net:443", proxy: "http://127.0.0.1:8080"), observed_at: seam_observed_at }
+  let through_door = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: door_reading, decided_at: seam_decided_at)
+  let loopback_entry = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: IngressUnattested, readback: door_reading, decided_at: seam_decided_at)
+  let not_retargeted = roadmap_serve_access_path(instance: srv1_live_dashboard_instance(), tailscale_identity: seam_tailnet_login, ingress: seam_proxy_ingress(), readback: port_reading, decided_at: seam_decided_at)
+  loopback_entry == AccessPathTailnetUnobserved { gap: TailnetIngressUnattested }
+    && not_retargeted == AccessPathTailnetUnobserved { gap: TailnetRouteProxiesElsewhere { targets: ["http://127.0.0.1:8080"] } }
+    && match through_door {
+      AccessPathTailnetProxy { transport_observation: _, route_readback: rb } => match rb {
+        TailnetRouteReadbackObserved { acl_revision: _, serve_route: r } => tailscale_serve_route_key_eq(a: r, b: TailscaleServeRouteKey { https_port: 443, mount: ServeRootMount })
+        TailnetRouteReadbackUnobserved { reason: _ } => false
+      }
+      AccessPathTailnetUnobserved { gap: _ } => false
+      AccessPathDirectHttps => false
+      AccessPathLocalDev => false
+    }
 }
 
 // NO READABLE READING: the status command failed, or printed an unreadable document. The header
