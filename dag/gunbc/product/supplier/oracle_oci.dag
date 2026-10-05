@@ -88,9 +88,9 @@ type OciPlannedInstance {
 // the obligation. It must never be read as "Oracle charges for this".
 type OciAllowanceBreach
   = A1OcpusOverAllowance { planned: Nat, allowed: Nat }
-  | A1MemoryOverAllowance { planned: Nat, allowed: Nat }
+  | A1MemoryOverAllowance { planned: Gigabyte, allowed: Gigabyte }
   | E2MicroCountOverAllowance { planned: Nat, allowed: Nat }
-  | BlockVolumeOverAllowance { planned: Nat, allowed: Nat }
+  | BlockVolumeOverAllowance { planned: Gigabyte, allowed: Gigabyte }
   | NotInHomeRegion { instance: NonEmptyStr }
   | MicroOutsideEligibleDomain { instance: NonEmptyStr }
   | CapacityTypeFreeEligibilityUnread { instance: NonEmptyStr, obligation: DeclarationRef }
@@ -185,9 +185,9 @@ fn oci_aggregate_breaches(plan: List<OciPlannedInstance>, other: OciOtherUsage) 
   let micro_cap = oci_e2_micro_allowance.max_instances
   let block_cap = gigabyte_count(g: oci_block_volume_allowance.total)
   let b1 = if oci_over(planned: ocpus, allowed: ocpu_cap) { [A1OcpusOverAllowance { planned: ocpus, allowed: ocpu_cap }] } else { [] }
-  let b2 = if oci_over(planned: memory, allowed: memory_cap) { [A1MemoryOverAllowance { planned: memory, allowed: memory_cap }] } else { [] }
+  let b2 = if oci_over(planned: memory, allowed: memory_cap) { [A1MemoryOverAllowance { planned: gigabyte(count: memory), allowed: oci_a1_flex_allowance.always_free_memory }] } else { [] }
   let b3 = if oci_over(planned: micros, allowed: micro_cap) { [E2MicroCountOverAllowance { planned: micros, allowed: micro_cap }] } else { [] }
-  let b4 = if oci_over(planned: block, allowed: block_cap) { [BlockVolumeOverAllowance { planned: block, allowed: block_cap }] } else { [] }
+  let b4 = if oci_over(planned: block, allowed: block_cap) { [BlockVolumeOverAllowance { planned: gigabyte(count: block), allowed: oci_block_volume_allowance.total }] } else { [] }
   concat(concat(b1, b2), concat(b3, b4))
 }
 

@@ -3,6 +3,7 @@ module gunbc.oracle_oci.api
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.resources { Network }
+import std.measure { Second, second }
 import std.encoding { base64_encode, Standard }
 import std.integer { uint8_octets_of_ints, QualifiedOctetsReady, QualifiedOctetsRefused }
 import extdeps.clock { Clock }
@@ -58,6 +59,10 @@ data oci_identity_host: NonEmptyStr = "identity.us-ashburn-1.oci.oraclecloud.com
 
 data oci_iaas_host: NonEmptyStr = "iaas.us-ashburn-1.oraclecloud.com"
 
+// How long one OCI request may take before curl gives up. It is this tenancy's policy, not a fact
+// about curl or Oracle. A request that runs out of time ends as a curl exit and refuses.
+data oci_request_timeout: Second = second(count: 60)
+
 // ── ONE SIGNED EXCHANGE ───────────────────────────────────────────────────────────────────────
 //
 // The request shape decides both what is signed and what is sent: OciGetRequest goes out through
@@ -93,8 +98,8 @@ fn oci_retry_token(path_and_query: String, body: String) -> NonEmptyStr {
 
 fn oci_send(shape: OciRequestShape, url: NonEmptyStr, path_and_query: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String) -> OciExchange uses net: Network {
   let run = match shape {
-    OciGetRequest => curl_http_signature_get(url: url, date: date, authorization: authorization)
-    OciPostJson { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, retry_token: oci_retry_token(path_and_query: path_and_query as String, body: text), body: text)
+    OciGetRequest => curl_http_signature_get(url: url, date: date, authorization: authorization, max_time: oci_request_timeout)
+    OciPostJson { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, max_time: oci_request_timeout, content_sha256: content_sha256 as NonEmptyStr, retry_token: oci_retry_token(path_and_query: path_and_query as String, body: text), body: text)
   }
   if run.exit_code != 0 {
     oci_refused(cause: join(["curl exit ", to_string(run.exit_code), ": ", trim(s: run.stderr)], ""))
