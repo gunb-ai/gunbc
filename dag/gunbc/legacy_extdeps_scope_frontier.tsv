@@ -89,9 +89,12 @@ dag/extdeps/ctrl/gunbc_pin.dag
 dag/extdeps/currency/currency.dag
 dag/extdeps/dhcp/v4.dag
 dag/extdeps/dns/domain_name.dag
+dag/extdeps/docker/container_inspect.dag
+dag/extdeps/docker/container_stats.dag
 dag/extdeps/docker/docker.dag
 dag/extdeps/ebay/ebay_contracts.dag
 dag/extdeps/ebay/ebay.dag
+dag/extdeps/ebay/errors.dag
 dag/extdeps/ebay/inventory.dag
 dag/extdeps/ebay/oauth.dag
 dag/extdeps/entropy/entropy.dag
@@ -269,6 +272,8 @@ dag/extdeps/rust/cargo.dag
 dag/extdeps/rust/rustup.dag
 dag/extdeps/rust/std_process.dag
 dag/extdeps/rust/version.dag
+dag/extdeps/sec/edgar.dag
+dag/extdeps/sec/edgar_rest.dag
 dag/extdeps/sec/facts.dag
 dag/extdeps/sec/issuer/atlassian.dag
 dag/extdeps/sec/issuer/atlassian_facts.dag
@@ -349,8 +354,3 @@ dag/extdeps/version/pep440.dag
 dag/extdeps/version/semver.dag
 dag/extdeps/web_audio/web_audio.dag
 dag/extdeps/project_schedule/cpm_pert.dag
-dag/extdeps/docker/container_stats.dag
-dag/extdeps/docker/container_inspect.dag
-dag/extdeps/sec/edgar_rest.dag
-dag/extdeps/sec/edgar.dag
-dag/extdeps/ebay/errors.dag
