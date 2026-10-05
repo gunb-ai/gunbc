@@ -2094,16 +2094,26 @@ pub fn environment_agreement(
 ) -> Result<EnvironmentAgreement, EnvironmentLoadRefusal> {
     let closure = closure_paths_of(ENVIRONMENT_MODULE_PATH, live)?;
     let mut differing = Vec::new();
+    // THE CLOSURE IS THE HEAD'S, SO A MEMBER MAY NOT EXIST AT THE BASE. A file the base does not
+    // carry cannot be part of the base's environment, so it is not handed to the base's archive,
+    // which refuses a missing pathspec and turned every module newly imported into the environment
+    // into a refused reconstruction. It still counts as a difference. A base module the head's
+    // closure no longer names is not recovered here: the base load then refuses, located.
+    let mut base_closure = BTreeSet::new();
     for path in &closure {
-        if blob_id_at(repo, base, path)? != blob_id_at(repo, head, path)? {
+        let base_blob = blob_id_at(repo, base, path)?;
+        if base_blob != blob_id_at(repo, head, path)? {
             differing.push(path.clone());
+        }
+        if base_blob.is_some() {
+            base_closure.insert(path.clone());
         }
     }
     if differing.is_empty() {
         return Ok(EnvironmentAgreement::Identical);
     }
     Ok(EnvironmentAgreement::Differs {
-        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
+        base_environment: load_parse_environment_with_closure(repo, base, &base_closure)?,
         differing_paths: differing,
     })
 }
