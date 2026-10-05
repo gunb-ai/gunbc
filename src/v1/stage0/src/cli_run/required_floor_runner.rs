@@ -1329,21 +1329,78 @@ struct DeclarationTextAttribution {
     changed: HashSet<usize>,
 }
 
-/// A declaration's OWN text: from its first line up to the next declaration, without the
-/// trailing blank and `//` lines. Those trailing lines are the NEXT declaration's leading
-/// annotation (DESIGN §4c: an annotation is not program data), so deleting a neighbour and its
-/// comment never changes this declaration's text.
+/// A declaration's OWN text, ANNOTATION-ERASED: from its first line up to the next declaration,
+/// with every `//` annotation line removed and the trailing blank lines dropped. DESIGN §4c:
+/// semantic passes receive only the annotation-erased projection, so adding, deleting, editing or
+/// moving a `//` block never changes this text and never charges the declaration. Whitespace is
+/// otherwise compared as is.
+///
+/// A `.dag` string literal may span lines (`scan_string_body` does not stop at a newline), so a
+/// line that begins with `//` INSIDE a string is program data, not an annotation, and is kept:
+/// `annotation_line_mask` reads the lexical state at each line start.
 fn declaration_own_text(lines: &[String], start: usize, next: usize) -> String {
-    let mut end = next.min(lines.len());
-    while end > start {
-        let t = lines[end - 1].trim();
-        if t.is_empty() || t.starts_with("//") {
-            end -= 1;
-        } else {
-            break;
+    let span = &lines[start..next.min(lines.len()).max(start)];
+    let mut kept: Vec<&str> = span
+        .iter()
+        .zip(annotation_line_mask(span))
+        .filter(|(_, annotation)| !annotation)
+        .map(|(l, _)| l.as_str())
+        .collect();
+    while kept.last().is_some_and(|l| l.trim().is_empty()) {
+        kept.pop();
+    }
+    kept.join("\n")
+}
+
+/// For each line, whether it is a `//` annotation line: it starts (after indentation) with `//`
+/// while the lexer is in code, not inside a string literal. Strings carry `\` escapes and `${ }`
+/// interpolation whose code may itself open strings, so the state is a stack: `Str` inside a
+/// literal, `Code(depth)` inside an interpolation's braces.
+fn annotation_line_mask(lines: &[String]) -> Vec<bool> {
+    enum Frame {
+        Str,
+        Code(usize),
+    }
+    let mut stack: Vec<Frame> = Vec::new();
+    let mut mask = Vec::with_capacity(lines.len());
+    for line in lines {
+        let in_string = matches!(stack.last(), Some(Frame::Str));
+        mask.push(!in_string && line.trim_start().starts_with("//"));
+        let chars: Vec<char> = line.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let c = chars[i];
+            match stack.last_mut() {
+                Some(Frame::Str) => match c {
+                    '\\' => i += 1,
+                    '"' => {
+                        stack.pop();
+                    }
+                    '$' if chars.get(i + 1) == Some(&'{') => {
+                        stack.push(Frame::Code(0));
+                        i += 1;
+                    }
+                    _ => {}
+                },
+                code => {
+                    if c == '/' && chars.get(i + 1) == Some(&'/') {
+                        break;
+                    }
+                    match (c, code) {
+                        ('"', _) => stack.push(Frame::Str),
+                        ('{', Some(Frame::Code(d))) => *d += 1,
+                        ('}', Some(Frame::Code(0))) => {
+                            stack.pop();
+                        }
+                        ('}', Some(Frame::Code(d))) => *d -= 1,
+                        _ => {}
+                    }
+                }
+            }
+            i += 1;
         }
     }
-    lines[start..end].join("\n")
+    mask
 }
 
 /// Whether a line REMOVED by the diff opens a declaration at the base. Removed lines are not
@@ -1413,8 +1470,8 @@ fn declaration_text_attribution(
     base_opens.dedup_by_key(|(b, _)| *b);
     let first_head = (decls[0].0 - 1).max(0) as usize;
     let first_base = base_opens.first().map(|(b, _)| *b).unwrap_or(base.len());
-    let pre_declaration_changed =
-        head_owned[..first_head.min(head_owned.len())] != base[..first_base.min(base.len())];
+    let pre_declaration_changed = declaration_own_text(&head_owned, 0, first_head)
+        != declaration_own_text(&base, 0, first_base);
     let module_line_changed = head_owned.first() != base.first();
     let mut changed = HashSet::new();
     for (i, (line, name)) in decls.iter().enumerate() {
