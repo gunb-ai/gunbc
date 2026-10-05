@@ -233,7 +233,7 @@ test fn the_infix_right_operand_is_conserved_holds() -> Bool {
 // with its occurrence as its payload: both are conserved. RED if a lowering drops a payload (a
 // DroppedReference row on that spelling) or if the name stops being a member (the check then
 // passes vacuously, which the non-zero-population half of the grammar claim
-// v2.test.parse.type_decl_modifier_g0_parse_probe caret_referenced_ident_publishes_the_lexeme_holds guards).
+// test.claim.parse_test_type_decl_modifier_g0_parse_probe caret_referenced_ident_publishes_the_lexeme_holds guards).
 data caret_symbol_payload_source: String = "module v2.test.reference_conservation_caret\n\nimport std.types { Bool }\n\nfn rc_caret(id: Symbol) -> Bool { if id == ^rc_sym_less { true } else { id == ^rc_sym_less_or_equal } }\n"
 
 fn caret_symbol_payload_subject() -> ReferenceConservationSubject {
