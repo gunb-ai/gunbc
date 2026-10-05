@@ -22,6 +22,11 @@ type WirePageShape {
 // wire_contract: the undeclared-spelling control for the type-directed response decode.
 type UncontractedArm = Alpha | Beta
 
+// The shape of extdeps.google.userinfo GoogleUserInfoWire's email_verified: an optional Bool.
+type WireVerifiedFlag {
+  verified: Bool?
+}
+
 type WireUncontractedShape {
   arm: UncontractedArm
 }
@@ -124,6 +129,13 @@ service test.RestReplay {
     readonly
     transport rest { method: GET, path: "/answer" }
     response { 200 => WorkflowRunList }
+  }
+
+  operation VerifiedFlag {
+    output { verified: Bool?, observed: RestOutcome }
+    readonly
+    transport rest { method: GET, path: "/answer" }
+    response { 200 => WireVerifiedFlag }
   }
 
   operation RootUncontracted {

@@ -1,0 +1,39 @@
+module gunbc.recurring_failure_mode.optional_bool_payload_read_as_a_native_arm
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data optional_bool_payload_read_as_a_native_arm: RecurringFailureMode = RecurringFailureMode {
+  identity: "optional_bool_payload_read_as_a_native_arm" as NonEmptyStr,
+
+  receipts: [
+    "**Optional Bool payload read as a native arm** (INVALID STATE: an interpreted program matches `Present { value: v }` / `Absent` over a `Bool?` whose value is carried in the interpreter's raw optional representation (value-or-Null) -- every optional REST output field, e.g. `extdeps.google.userinfo` `google.OidcUserInfo.Get` `email_verified` -- and NEITHER arm matches a present value.",
+
+    "The match fails non-exhaustive: `PatternMatchFailure \{ value: \"true\" \}`.",
+
+    "The mechanism was the v1 interpreter's `match_pattern` (`v1_interpreter.rs`). Its host-bool arm (`if let Value::Bool(held) = value`) returned before the Optional/Witness raw-payload unwrap, so `Present` and `Absent` were asked as native True/False arms, read as Structural, and missed. The raw unwrap had already been hoisted above the kind-specific arms for Record/List/Str/Int payloads, for this same failure; Bool was missed because its arm sat above the hoist.",
+
+    "HARM: a crash on the real path, at a privileged boundary. THE SPECIMEN: `gunbc.auth.gcp_iam_bootstrap` `iam_bootstrap_apply`, run on srv1 at main 632b725 under operator authorization. Its first userinfo readback was the probe-authority stage: the deny policy pre-existed, so the deny stage did not elect authority, and the cleanup stages withdraw without readback. The stages services through capabilities passed. `bootstrap_operator_matches` then matched `claims.email_verified` and the run crashed, with no probe journal and no grant written.",
+
+    "THE HYPOTHESIS THIS FALSIFIED, stated because it was the brief: a Bool arriving as the TEXT \"true\". `test.claim.rest_exchange_replay_test` replays a JSON BOOLEAN true through the same route, and it crashed identically. The wire form was never the cause, and the PatternMatchFailure rendering cannot tell `Bool(true)` from `Str(\"true\")`. A JSON string under the declared Bool already refuses at decode, typed and located.",
+
+    "THE WITNESS THAT DID NOT SEE IT: `test.claim.auth.gcp_iam_bootstrap_witness_test` handed `bootstrap_operator_matches` CONSTRUCTED `Present \{ value: true \}` claims, a Variant value that never reaches the host-bool arm. Same lesson as `rest_response_coproduct_decoded_type_blind`, one representation over: the decode-to-consumer route must be replayed, not constructed.",
+
+    "THE REPAIR: the Optional `Present` and Witness `Holds` raw unwraps run before the host-bool arm, so a raw Bool payload is unwrapped like every other kind. `Absent` against a raw Bool still falls to the host-bool arm and misses, as it should. The emitted Rust realization carries `Option<bool>` natively and never had the defect.",
+
+    "RUNG FOUND AT: below the ladder for the program's meaning -- an Accepted program, whose arms are exhaustive by construction, failed at runtime on a value its type admits. RUNG AFTER THIS CHANGE: 1, mitigatable at the interpreter, discriminated by `a_decoded_optional_bool_true_reads_through_its_present_arm` and `a_decoded_optional_bool_false_reads_through_its_present_arm`, both RED with the fix reverted. The positive controls are `a_decoded_absent_optional_bool_takes_its_absent_arm` and `a_constructed_present_bool_reads_through_its_present_arm`.",
+
+    "CEILING: 4. Two representations of one Optional value (a Variant and a raw value-or-Null) are the invalid state's precondition, and a single runtime representation would leave no pattern able to see the wrong one.",
+
+    "NEXT-RUNG TRIGGER, phrased as the capability: the interpreter carries one runtime representation of `Optional<T>` for every payload kind and every producer (REST decode, kernel optional, constructed), SUFFICIENT FOR `match_pattern` to need no raw-unwrap arm at all, so no arm order can reintroduce this class.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.auth.gcp_iam_bootstrap_authority", decl_name: "bootstrap_operator_matches", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.google.userinfo", decl_name: "GoogleUserInfoWire", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_optional_bool_true_reads_through_its_present_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_optional_bool_false_reads_through_its_present_arm", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.rest_exchange_replay_test", decl_name: "a_decoded_absent_optional_bool_takes_its_absent_arm", field: WholeDeclaration },
+  ],
+}
