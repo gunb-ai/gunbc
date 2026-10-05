@@ -1,0 +1,31 @@
+module tools.gate_closure_decline_census_instrument
+
+import extdeps.filesystem.filesystem_io
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { String }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.gate_closure_decline_census { gate_closure_decline_census_lines }
+
+// THE CENSUS OF WITNESSES THE REQUIRED FLOOR NEVER ASKS, re-derived from one floor run's own
+// admission roster. The recipe:
+//   gh run download <run-id> -n required-floor-disposition -D <root>/<run-id>
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/gate_closure_decline_census_instrument.dag \
+//     --function gate_closure_decline_census --arg root=<root> --arg run=<run-id>
+// The counts are the run's, never this file's: a citation names the run, and this entry re-derives.
+data gate_closure_decline_census_file: String = "required_floor_disposition.tsv"
+
+// AN UNREADABLE ROSTER REFUSES rather than printing an empty census: an empty declined set and a
+// missing roster are different facts, and only the first is good news.
+fn gate_closure_decline_census(root: String, run: String) -> CliWireResponse {
+  let path = root + "/" + run + "/" + gate_closure_decline_census_file
+  let read = Filesystem.Read(path: path)
+  if !read.success {
+    CliWirePrintable { bytes: "", exit: exit_failure(reason: "gate closure decline census: unreadable " + path) }
+  } else {
+    CliWirePrintable {
+      bytes: join(gate_closure_decline_census_lines(lines: split(s: read.content, delimiter: "\n")), "\n") + "\n",
+      exit: ExitSuccess,
+    }
+  }
+}
