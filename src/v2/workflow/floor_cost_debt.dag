@@ -1017,8 +1017,18 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
   Cons { head: "v2.test.parse.expression_bodied_fn_decl_parse.braced_fn_decl_survives_normalize_holds", tail: Empty {} }
 }
 
+// PROVEN, ADMITTED AS THE ONE REAL-PATH INHABITANCE CLAIM OF ITS MODULE (DESIGN section 3, the
+// pairing obligation). v2.test.long.cwc_resolution_probe takes every other input at the interface
+// under test as a supplied value; this claim runs the real tokenize -> parse -> normalize -> resolve
+// route and checks that each supplied fixture is what its producer emits, so it cannot itself be
+// cheap. Measure it with claim_batch --entry src/v2/test/claim/long/cwc_resolution_probe_test.dag
+// --functions cwc_cwc_module_resolve_accepts and read the [witness] eval_steps line.
+fn floor_cost_debt_proven_chunk_22() -> List<String> {
+  Cons { head: "v2.test.long.cwc_resolution_probe.cwc_cwc_module_resolve_accepts", tail: Empty {} }
+}
+
 fn floor_cost_debt_proven_chunks() -> List<List<String>> {
-  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Empty {} } } } } } } } } } } }}}}}}}}}}}}
+  Cons { head: floor_cost_debt_proven_chunk_00(), tail: Cons { head: floor_cost_debt_proven_chunk_01(), tail: Cons { head: floor_cost_debt_proven_chunk_02(), tail: Cons { head: floor_cost_debt_proven_chunk_03(), tail: Cons { head: floor_cost_debt_proven_chunk_04(), tail: Cons { head: floor_cost_debt_proven_chunk_05(), tail: Cons { head: floor_cost_debt_proven_chunk_06(), tail: Cons { head: floor_cost_debt_proven_chunk_07(), tail: Cons { head: floor_cost_debt_proven_chunk_08(), tail: Cons { head: floor_cost_debt_proven_chunk_09(), tail: Cons { head: floor_cost_debt_proven_chunk_10(), tail: Cons { head: floor_cost_debt_proven_chunk_11(), tail: Cons { head: floor_cost_debt_proven_chunk_12(), tail: Cons { head: floor_cost_debt_proven_chunk_13(), tail: Cons { head: floor_cost_debt_proven_chunk_14(), tail: Cons { head: floor_cost_debt_proven_chunk_15(), tail: Cons { head: floor_cost_debt_proven_chunk_16(), tail: Cons { head: floor_cost_debt_proven_chunk_17(), tail: Cons { head: floor_cost_debt_proven_chunk_18(), tail: Cons { head: floor_cost_debt_proven_chunk_19(), tail: Cons { head: floor_cost_debt_proven_chunk_20(), tail: Cons { head: floor_cost_debt_proven_chunk_21(), tail: Cons { head: floor_cost_debt_proven_chunk_22(), tail: Empty {} } } } } } } } } } } } }}}}}}}}}}}}
 }
 
 fn floor_cost_debt_censored_chunks() -> List<List<String>> {
