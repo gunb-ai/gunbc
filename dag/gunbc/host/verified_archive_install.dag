@@ -125,7 +125,7 @@ fn verified_archive_install_text(outcome: VerifiedArchiveInstallOutcome) -> Stri
 // ---------------------------------------------------------------------------------------------
 
 // ONE PROCEDURE FOR EVERY CONVERGE THAT BUILDS A TREE FROM PINNED ARCHIVES (gunbc.runner_browser_toolchain
-// and gunbc.machine_intake_mtcollins1_census_qemu_toolchain). What differs between them is DATA -- which
+// and gunbc.runner_qemu_toolchain). What differs between them is DATA -- which
 // archives, how each unpacks -- so it is carried on the record, never forked into a second fold: an
 // archive is kept at <archives dir>/<file_name> (a relative path, so a Debian pool path keeps its
 // directories), and its extraction is one of the arms below. What each caller ADMITS before publishing
