@@ -112,7 +112,8 @@ fn dbg_red_reason() -> ProcessExit {
     Accepted { value: rt, diagnostics: _ } =>
       match infer(tree: rt) {
         Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_list(prefix: "INFER-BOTH", d: d))
-        Accepted { value: _, diagnostics: _ } => exit_failure(reason: "ACCEPTED-NO-DIAGS")
+        Accepted { value: rt2, diagnostics: _ } =>
+          exit_failure(reason: concat("ACCEPTED-NO-DIAGS ROOT ", dbg_anat_deep(n: rt2.root, depth: 30)))
       }
   }
 }
