@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mtcollins1_census_image
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { Bandwidth, bandwidth, bandwidth_count }
 import extdeps.kmod.libkmod { libkmod_log_priority_env_name, libkmod_log_priority_info }
 import extdeps.systemd.udevd { udevd_log_level_cmdline_key, systemd_log_level_debug, systemd_log_target_env_name, systemd_log_target_kmsg }
@@ -16,7 +16,7 @@ import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallLiveCommands }
 import gunbc.os_install_emit { autoinstall_live_commands_user_data, AutoinstallUserData, AutoinstallUserDataRendered, AutoinstallUserDataRefused }
 import gunbc.seeded_install_media_policy { seeded_install_media_pinned_dates, seeded_install_media_builder_revision }
 import v2.std.optional { Present }
-import gunbc.boot_medium { BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export, stock_installer_boot_medium }
+import gunbc.boot_medium { BootImageExport, BootMedium, BootMediumNoTerminal, BootMediumVolumeLabel, BootMediumRunnerHostUp, bmc_boot_image_export, boot_image_export_eq, stock_installer_boot_medium }
 import gunbc.machine_intake_boot_image_fetch { boot_image_published_path }
 import gunbc.machine_intake_host_capture_envelope {
   HostCaptureStage,
@@ -237,21 +237,38 @@ fn mtcollins1_census_boot_medium(output_digest: NonEmptyStr) -> BootMedium {
   }
 }
 
-// WHETHER A MEDIUM IS THE CENSUS MEDIUM: exactly when it is the census medium for its own digest. The
-// census readbacks read only such a medium, and a stock installer (or any other row) is refused by them
-// as not the census rather than measured against the census record.
-fn mtcollins1_census_medium_digest(medium: BootMedium) -> NonEmptyStr? {
+// WHETHER A MEDIUM IS THE CENSUS MEDIUM THESE READERS CAN READ: exactly when it is the census medium
+// for its own digest AND names the one export the census is published to and read back from
+// (gunbc.boot_medium bmc_boot_image_export), SSH target included. The census readbacks read only a
+// qualified medium, from the export the qualification returns; a stock installer (or any other row) is
+// refused as not the census, and a census medium naming another exporter -- another endpoint, or
+// another principal at the same endpoint -- is refused as an unsupported exporter rather than read
+// back from the supported one, whose bytes it never named. DECLARED FRONTIER: honoring an arbitrary
+// exporter throughout the readers (and binding the controller share to it) is the generalization; until
+// then the limitation is held here, at admission, and never by substituting the supported export.
+type CensusMediumQualification
+  = CensusMediumQualified { digest: NonEmptyStr, export: BootImageExport }
+  | CensusMediumNotCensus
+  | CensusMediumExporterUnsupported { supported: BootImageExport, named: BootImageExport }
+
+fn mtcollins1_census_medium_qualification(medium: BootMedium) -> CensusMediumQualification {
   let census = mtcollins1_census_boot_medium(output_digest: medium.digest)
   let labelled = match medium.terminal {
     BootMediumVolumeLabel { label: l } => (l as String) == (mtcollins1_census_volume_id as String)
     BootMediumNoTerminal { reason: _ } => false
     BootMediumRunnerHostUp { label: _ } => false
   }
-  if labelled && (medium.image_name as String) == (census.image_name as String) && (medium.export.dir as String) == (census.export.dir as String) {
-    Present { value: medium.digest }
+  if !(labelled && (medium.image_name as String) == (census.image_name as String)) {
+    CensusMediumNotCensus
+  } else if boot_image_export_eq(a: medium.export, b: census.export) {
+    CensusMediumQualified { digest: medium.digest, export: medium.export }
   } else {
-    none
+    CensusMediumExporterUnsupported { supported: census.export, named: medium.export }
   }
+}
+
+fn boot_image_export_text(export: BootImageExport) -> String {
+  concat(export.target.principal as String, "@", export.target.endpoint as String, ":", export.dir as String)
 }
 
 // CENSUS STAGE 0D: THE MEDIUM MT. COLLINS UNIT 1 BOOTS. The digest is the publish receipt of the gated

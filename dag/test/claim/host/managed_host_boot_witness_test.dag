@@ -14,7 +14,6 @@ import gunbc.boot_medium {
   BootMediumReadbackHeld,
   BootMediumReadbackDigestDiffers,
   boot_medium_readback,
-  boot_medium_readback_refusal,
   stock_installer_boot_medium,
 }
 import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
@@ -137,7 +136,6 @@ test fn w_a_medium_read_back_with_another_digest_is_refused() -> Bool {
         && (o as String) == (stock_installer_boot_medium.digest as String)
   }
   held && refused
-    && (match boot_medium_readback_refusal(readback: differs) { Present { value: _ } => true  Absent => false })
 }
 
 // THE TWO ARMS DECIDE THEIR OWN SELECTIONS. Neither admission takes a selection as a parameter, so the

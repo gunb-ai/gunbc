@@ -55,7 +55,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, KernelMintShapeMismatch, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, TextCrossingHasNoImplicitRoute, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, TypeMismatch, UnresolvedType, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse, TextCrossingHasNoImplicitRoute, KernelMintShapeMismatch,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -124,7 +124,7 @@ import v1.compiler.infer_method {
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.coercion { provenance_realizes_natively }
 import v1.compiler.infer_env {
-  text_representation_by_identity, text_crossing_by_identity, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
+  text_representation_by_identity, text_crossing_by_identity, host_text_into_structural_sequence, text_representations_cross, text_representation_is_text_arm, text_representation_is_unidentified,
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
@@ -171,7 +171,7 @@ import std.termination {
 import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows, kernel_carrier_admits_numeral }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_node_bounded, resolve_item_types, reference_with_declaration, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-  resolve_generic_use_decl,
+  resolve_generic_use_decl, generic_declaration_application,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
 }
@@ -191,7 +191,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -209,7 +209,7 @@ import v1.compiler.infer_service {
   ResolvedCalleeRegistryRowAbsent, FunctionValueEffectsUnresolved, LocalBindingEffectsUnresolved,
   ServiceEffectAnalysis, EffectsComplete, EffectsIncomplete,
   check_service_field_access_node, check_service_method_call_node,
-  service_op_entry
+  service_op_entry, service_operation_is_rest
 }
 import v1.compiler.infer_patterns {
   NodeLookupResult, PatternSubject,
@@ -429,7 +429,7 @@ fn merge_scope_from_imports(remaining: List<ResolvedImport>, parent_index: Map<S
           }, f: (acc, titem) =>
             if titem.transport != none && titem.children |> count > 0 {
               let entries = titem.children |> map(c =>
-                OpEntry { name: authored_name_at(source_indices: env.source_indices, node: c), outputs: inferred_to_outputs(inferred: c.inferred, span: c.span, source_indices: env.source_indices), params: c.params }
+                service_op_entry(child: c, service: titem, source_indices: env.source_indices)
               )
               let root = namespace_root_from_properties(properties: titem.properties, name: authored_name_at(source_indices: env.source_indices, node: titem), source_indices: env.source_indices)
               InferScopeComponents {
@@ -5637,7 +5637,15 @@ fn direct_call_structured_application_mismatch_diags(
         Present { value: arg_index } => match typed_args |> skip(arg_index) |> first {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
+          let host_into_sequence = !type_node_is_callable(n: formal)
+            && host_text_into_structural_sequence(
+              formal: formal,
+              actual: peel_nominal_alias_identity(n: resolved_type(n: actual_expr), env: type_env, module_name: module_name),
+              unpeeled_actual: resolved_type(n: actual_expr),
+              env: type_env)
+          if host_into_sequence {
+            [text_crossing_route_error(expected: formal, got: resolved_type(n: actual_expr), route: "unicode_scalar_unfold", si: source_indices, span: actual_expr.span, module_name: module_name)]
+          } else if !direct_call_formal_has_unbound_type_variable(n: app.formal.substitution_basis)
             && (literal_introduction_type_mismatch(formal: formal, actual_expr: actual_expr, scope: scope)
             || structured_application_site_type_mismatch_with_peeled(
               formal: formal_subst,
@@ -7236,6 +7244,42 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   }
 }
 
+// A REST OPERATION CALL YIELDS THE DECLARED RESULT COPRODUCT OVER ITS OUTPUT. The operation's
+// output block describes only the decoded 2xx body; the call's type is extdeps.transports.rest
+// RestResult applied to that body, resolved through the declaration exactly as an authored
+// `RestResult<Body>` annotation would be -- the arms are read from the model, never restated here.
+// A caller therefore reaches a body field only by eliminating the refusal arm. Every other method
+// resolution passes through unchanged.
+type RestOperationResultType {
+  resolved_result: Node?
+  diagnostics: List<ErrorNode>
+}
+
+fn rest_operation_result_type(resolution: KnownMethodResolution, site: SourceSpan, scope: InferScope) -> RestOperationResultType {
+  match resolution.result_type {
+    Present { value: body } =>
+      if resolution.rest_operation {
+        let carrier = Node { occurrence_identity: OccurrenceSynthetic, name: "RestResult", span: kernel_span(name: "RestResult"), ident_span: Present { value: kernel_span(name: "RestResult") }, children: [body], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+        let decl = resolve_generic_use_decl(env: scope.type_env, n: carrier)
+        match decl.params |> first {
+          Present { value: body_slot } =>
+            RestOperationResultType {
+              resolved_result: Present { value: generic_declaration_application(n: carrier, decl: decl, type_name: "RestResult", resolved_args: [body], slot_bindings: map_insert(empty_map(), authored_name_at(source_indices: scope.type_env.source_indices, node: body_slot), body), env: scope.type_env) },
+              diagnostics: []
+            }
+          Absent =>
+            RestOperationResultType {
+              resolved_result: none,
+              diagnostics: [make_error_node(diagnostic: UnresolvedType { name: "extdeps.transports.rest RestResult (import it where a rest operation is called)", span: site }, module_name: scope.module_name)]
+            }
+        }
+      } else {
+        RestOperationResultType { resolved_result: Present { value: body }, diagnostics: [] }
+      }
+    Absent => RestOperationResultType { resolved_result: none, diagnostics: [] }
+  }
+}
+
 // A let annotation is the same nominal application resolve_param already
 // keeps for a declared parameter. Binding the inferred value instead substitutes
 // an expansion whose children are members, not type arguments, so later algebra
@@ -8674,7 +8718,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           }
         } else { call_fold_acc_type }
         let method_resolution = if listed_import_required_bare_call_blocked(env: scope.type_env, name: func_name) {
-          KnownMethodResolution { semantics: none, result_type: none, diagnostics: [] }
+          KnownMethodResolution { semantics: none, result_type: none, diagnostics: [], rest_operation: false }
         } else {
           resolve_known_method_node(
             receiver: method_receiver,
@@ -8690,7 +8734,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
-          let base_result_type = match method_resolution.result_type {
+          let rest_result = rest_operation_result_type(resolution: method_resolution, site: texpr.span, scope: scope)
+          let base_result_type = match rest_result.resolved_result {
             Present { value: mt } => mt
             Absent => error_type
           }
@@ -8710,7 +8755,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     }
                   Absent => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
                 }
-              _ => KernelTypeBuild { ty: base_result_type, diagnostics: [] }
+              _ => KernelTypeBuild { ty: base_result_type, diagnostics: rest_result.diagnostics }
             }
           }
           let bridge_result_type = method_tv.ty
@@ -9059,8 +9104,9 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         service_registry: scope.service_registry,
         source_indices: scope.type_env.source_indices
       )
-      let pipe_fb = match method_resolution.result_type {
-        Present { value: rt } => MethodPipeFallback { result_ty: rt, kernel_diags: [] }
+      let rest_result = rest_operation_result_type(resolution: method_resolution, site: texpr.span, scope: scope)
+      let pipe_fb = match rest_result.resolved_result {
+        Present { value: rt } => MethodPipeFallback { result_ty: rt, kernel_diags: rest_result.diagnostics }
         Absent =>
           method_pipe_map_keys_values_fallback(recv_rt: recv_rt, method_name: method_name, scope: scope, span: span)
       }
@@ -15514,7 +15560,7 @@ fn analyze_item(item: Node, env: TypeEnv, module_name: String) -> ItemContributi
     none
   }
   let svc_entries = if ritem.transport != none && ritem.children |> count > 0 {
-    ritem.children |> map(c => service_op_entry(child: c, source_indices: env.source_indices))
+    ritem.children |> map(c => service_op_entry(child: c, service: ritem, source_indices: env.source_indices))
   } else {
     []
   }
@@ -15983,7 +16029,8 @@ fn build_module_context(contributions: List<ItemContribution>,
               span: c.span,
               source_indices: env.source_indices
             ),
-            params: c.params
+            params: c.params,
+            rest: service_operation_is_rest(op: c, service: sitem, source_indices: env.source_indices)
           }
         )
         let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
@@ -17129,10 +17176,17 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
   }
 }
 
+// The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
+// is built once over every module (build_symbol_index_census) and every module's type environment
+// carries the same one, so the first module's is the closure's.
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
+  let qualified_names = match modules |> first {
+    Present { value: m } => m.type_env.symbol_index
+    Absent => empty_symbol_index()
+  }
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
-    type_decl_items: empty_map(),
+    type_decl_items: type_decl_index_with_qualified_names(index: empty_type_decl_index(), qualified_names: qualified_names),
     fn_decl_items: empty_map(),
     structural_alias_fn_surface_names: empty_map(),
     structural_alias_direct_fn_names: empty_set()
@@ -17143,7 +17197,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       if item_declares_kernel_grounded_carrier(item: item, module_name: module_name, source_indices: typed_module.type_env.source_indices) {
         inner_state
       } else {
-        add_emit_item_summary(state: inner_state, item: item, source_indices: typed_module.type_env.source_indices)
+        add_emit_item_summary(state: inner_state, module_name: module_name, item: item, source_indices: typed_module.type_env.source_indices)
       }
     )
   )

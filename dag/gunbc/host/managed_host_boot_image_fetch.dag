@@ -1,6 +1,7 @@
 module gunbc.managed_host_boot_image_fetch
 
 import std.types { List, NonEmptyStr, String }
+import std.decl_ref { decl_ref }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.provisioning.ubuntu_install_media { CdimageUbuntuCom, OldReleasesUbuntuCom, ReleasesUbuntuCom, noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_mirror_rows, ubuntu_install_media_mirror_url }
 import gunbc.boot_medium { BootMedium, BootImageExport, stock_installer_boot_medium }
@@ -46,7 +47,18 @@ fn boot_medium_fetch_render(medium: BootMedium, outcome: BootImageFetchOutcome) 
   }
 }
 
-fn fetch_boot_medium(medium: BootMedium, url: NonEmptyStr) -> ProcessExit {
+// SEALED TO THIS MODULE'S ENTRIES: the fetch publishes into medium.export.dir on the host it runs on, and
+// it does not reach medium.export.target, so it is correct only where the caller runs it on that
+// exporter. Each admitted entry fetches the stock installer row (or a control naming a path no
+// controller reads) and is run on its exporter; any other caller is refused at compile time rather
+// than trusted to pair a medium with the host it runs on.
+fn fetch_boot_medium(medium: BootMedium, url: NonEmptyStr) -> ProcessExit
+  admit_callers: [
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_boot_medium"),
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_wrong_pin_control"),
+    decl_ref(module_path: "gunbc.managed_host_boot_image_fetch", decl_name: "fetch_stock_installer_unowned_export_control"),
+  ]
+{
   boot_medium_fetch_render(
     medium: medium,
     outcome: fetch_verified_boot_image(url: url, export_dir: medium.export.dir, image_name: medium.image_name, expected_sha256: medium.digest),

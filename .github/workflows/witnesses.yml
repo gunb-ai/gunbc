@@ -22,14 +22,17 @@ env:
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   emit-build:
-    runs-on: ubuntu-24.04-arm
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
     steps:
-      - name: Checkout
+      - name: Checkout the commit this lane judges
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Isolate toolchain homes
         run: |-
@@ -75,6 +78,10 @@ jobs:
           if (! '[' '-f' "$GUNBC_FLOOR_RECEIPT" ']') || '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']' || ('[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT"))) || ('[' "$GUNBC_FLOOR_CLASS" '=' 'none' ']' && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=structural' "$GUNBC_FLOOR_RECEIPT")) && (! ('[' '-f' "$GUNBC_FLOOR_RECEIPT" ']' && 'grep' '-q' 'class=infra' "$GUNBC_FLOOR_RECEIPT"))); then 'printf' 'class=%s\nsignature=%s\nexit=%s\n' "$GUNBC_FLOOR_CLASS" "$GUNBC_FLOOR_SIGNATURE" "$GUNBC_FLOOR_EXIT" > "$GUNBC_FLOOR_RECEIPT"; if '[' "$GUNBC_FLOOR_CLASS" '=' 'infra' ']'; then 'echo' '::error title=environment::floor_class='"$GUNBC_FLOOR_CLASS"' signature='"$GUNBC_FLOOR_SIGNATURE"' exit='"$GUNBC_FLOOR_EXIT"'; this is not a verdict about the diff. Attempt receipt: '"$GUNBC_FLOOR_RECEIPT"; fi; if '[' "$GUNBC_FLOOR_CLASS" '=' 'structural' ']'; then 'echo' '::error title=subject::floor_class='"$GUNBC_FLOOR_CLASS"' exit='"$GUNBC_FLOOR_EXIT"'; read the step log for the subject defect'; fi; fi
           'exit' "$GUNBC_FLOOR_EXIT"
 
+      - name: Require isolated toolchain homes
+        run: |
+          if [ -z "${CARGO_HOME:-}" ] || [ -z "${RUSTUP_HOME:-}" ]; then echo "::error::ToolchainHomesNotIsolated CARGO_HOME=${CARGO_HOME:-unset} RUSTUP_HOME=${RUSTUP_HOME:-unset} -- the isolation step did not run, so this job shares a toolchain with every other runner slot on this host and a concurrent install can replace a binary mid-run" >&2; exit 1; fi
+        if: "!cancelled()"
       - name: emit and build //gunbc/instruments:self-host
         id: emit_build_self_host
         run: |+
@@ -125,10 +132,11 @@ jobs:
 
       - name: Why this lane is red, and what would be a real finding
         run: |-
-          printf '%s\n' 'emit-build is a NON-REQUIRED detector lane. A red here does NOT block your merge:'
-          printf '%s\n' 'the required context is `witnesses`, and this job is not an input to it.'
+          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `witnesses`.'
           printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
         if: failure()
+    env:
+      MALLOC_ARENA_MAX: "2"
   floor:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 90
@@ -495,7 +503,7 @@ jobs:
           'exit' "$GUNBC_FLOOR_EXIT"
 
         if: "!cancelled()"
-      - name: "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+      - name: "Stage0 mirrors match one emission by this seed: required CI build lane"
         id: stage0_regen
         run: |+
           GUNBC_FLOOR_LOG='gunbc-floor-cmd.log'
@@ -565,7 +573,7 @@ jobs:
       MALLOC_ARENA_MAX: "2"
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [floor, generated]
+    needs: [emit-build, floor, generated]
     timeout-minutes: 5
     if: always()
     permissions:
@@ -573,11 +581,13 @@ jobs:
     steps:
       - name: Every required lane must have succeeded
         run: |-
-          echo "required lanes: floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
-          if [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
-          if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
-          if [ "$GENERATED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$GENERATED" = skipped ]; then echo "::notice::the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head"; else echo "::error::the generated-artifact lane produced no success (generated=$GENERATED), so this head carries no witnesses fold and no generated-artifact verdict"; exit 1; fi; fi
+          echo "required lanes: emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED (same_repo=$SAME_REPO)"
+          if [ "$EMIT_BUILD" = failure ] || [ "$FLOOR" = failure ] || [ "$GENERATED" = failure ]; then echo "::error::a required lane concluded failure (emit-build=$EMIT_BUILD floor=$FLOOR generated=$GENERATED) - open that job's log" >&2; exit 1; fi
+          if [ "$EMIT_BUILD" != success ]; then if [ "$SAME_REPO" = false ] && [ "$EMIT_BUILD" = skipped ]; then echo "::notice::the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head"; else echo "::error::the emit-build lane produced no success (emit-build=$EMIT_BUILD), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$FLOOR" != success ]; then if [ "$SAME_REPO" = false ] && [ "$FLOOR" = skipped ]; then echo "::notice::the fleet lane is skipped for a fork pull request: no witnesses fold and no generated-artifact verdict for this head"; else echo "::error::the fleet lane produced no success (floor=$FLOOR), so this head carries no verdict from that lane"; exit 1; fi; fi
+          if [ "$GENERATED" != success ]; then if [ "$SAME_REPO" = false ] && [ "$GENERATED" = skipped ]; then echo "::notice::the generated-artifact lane is skipped for a fork pull request: no generated-artifact verdict for this head"; else echo "::error::the generated-artifact lane produced no success (generated=$GENERATED), so this head carries no verdict from that lane"; exit 1; fi; fi
         env:
+          EMIT_BUILD: ${{ needs['emit-build'].result }}
           FLOOR: ${{ needs.floor.result }}
           GENERATED: ${{ needs.generated.result }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}

@@ -905,8 +905,26 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_generic_param_expr()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
+    )
+  )
+}
+
+// ONE TYPE PARAMETER: a name, optionally bounded by a KIND (`type MachineWidth<bits: WidthResolution>`),
+// as v1 02_parse parse_optional_type_param_kind reads it. Left-factored as seq(name, optional(suffix)),
+// the shape the other optional-suffix rules share (dag_grammar_typed_param_expr): an absent kind
+// captures as (name, <empty conj>), so no ordered choice re-reads the name. The kind lowers onto the
+// binder (v2.compiler.body_lowering_fold body_lower_generic_param_edge_of) and is enforced at each
+// application (v2.std.type_binder type_application_conformance).
+fn dag_grammar_generic_param_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_colon),
+        right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+      )
     )
   )
 }
@@ -3859,7 +3877,7 @@ fn dag_language_model_binding_canonical_map(m: Map<Symbol, Bool>) -> Map<Symbol,
 }
 
 // Portable share point for the dag canonical set (v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm). dag_canonical_symbols wraps this Map in a
+// derive_cross_claim_share). dag_canonical_symbols wraps this Map in a
 // PointwisePower closure at the consumer; that closure is not the stored value.
 //
 // WHAT THE SET HOLDS: the names the language model mints as atoms a resolved body may carry --

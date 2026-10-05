@@ -1,7 +1,6 @@
 module gunbc.boot_medium
 
-import std.types { NonEmptyStr, String }
-import v2.std.optional { Present }
+import std.types { Bool, NonEmptyStr, String }
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64, ubuntu_install_media_filename }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
@@ -63,6 +62,14 @@ type BootMedium {
   terminal: BootMediumTerminal
 }
 
+// TWO EXPORTS ARE ONE EXPORT ONLY WHEN THE DIRECTORY AND THE WHOLE SSH TARGET AGREE: the same
+// directory served by another host, or reached as another principal, is a different set of bytes.
+fn boot_image_export_eq(a: BootImageExport, b: BootImageExport) -> Bool {
+  (a.dir as String) == (b.dir as String)
+    && (a.target.endpoint as String) == (b.target.endpoint as String)
+    && (a.target.principal as String) == (b.target.principal as String)
+}
+
 // THE STOCK INSTALLER, read off its upstream row: the filename and the digest cdimage's SHA256SUMS
 // cites (extdeps.provisioning.ubuntu_install_media noble_numbat_2404_3_live_server_arm64), so neither
 // is re-spelled here.
@@ -88,10 +95,3 @@ fn boot_medium_readback(medium: BootMedium, observed: NonEmptyStr) -> BootMedium
   }
 }
 
-fn boot_medium_readback_refusal(readback: BootMediumReadback) -> NonEmptyStr? {
-  match readback {
-    BootMediumReadbackHeld => none
-    BootMediumReadbackDigestDiffers { image_name: n, expected: e, observed: o } =>
-      Present { value: join(["boot medium ", n as String, " read back sha256 ", o as String, " but the boot was admitted with ", e as String], "") as NonEmptyStr }
-  }
-}

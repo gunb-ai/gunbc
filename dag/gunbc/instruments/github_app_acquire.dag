@@ -8,6 +8,7 @@ import std.algebra { trim }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -335,7 +336,10 @@ fn census_app_observe_classified(record: GitHubAppAcquisitionRecord) -> ProcessE
 // authenticates it, which is why this half of the flow runs in-process at all.
 fn exchange_census_app_code(code: GitHubAppManifestCode) -> CensusAppExchangeOutcome {
   let result = github.AppManifests.ConvertManifestCode(code: code as String)
-  classify_census_app_exchange(conversion: result.result, outcome: result.outcome)
+  classify_census_app_exchange(outcome: match result {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
 }
 
 fn issued_slug(issuance: GitHubAppCredentialIssuance) -> NonEmptyStr {
