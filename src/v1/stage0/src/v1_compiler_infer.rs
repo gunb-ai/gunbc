@@ -6279,6 +6279,7 @@ pub fn declared_type_carries_optional(declared: Rc<Node>, scope: Rc<InferScope>)
 pub fn position_is_declared_return(position: DeclaredTypePosition) -> bool {
     match position.clone() {
         DeclaredTypePosition::PositionDeclaredReturn => true,
+        DeclaredTypePosition::PositionDataInitializer => true,
         _ => false,
     }
 }
