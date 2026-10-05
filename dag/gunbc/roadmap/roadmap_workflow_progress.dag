@@ -185,6 +185,7 @@ import gunbc.roadmap.roadmap_fanin {
 import gunbc.roadmap_workflow_command {
   legacy_attempt_supersedable_label,
   legacy_attempt_supersedable_detail,
+  WorkflowModeledStateStanding, WorkflowModeledStateObserved, WorkflowModeledStateAbsent, WorkflowModeledStateUnreadable,
 }
 
 // THE ATTEMPT'S WORKTREE, OBSERVED RATHER THAN INFERRED. The Workspace segment read complete from the
@@ -207,11 +208,14 @@ fn attempt_worktree_observation_of(path: String, marker: FilesystemFileObservati
   }
 }
 
+// The modeled-state pointer's standing, carried as a typed fact: an attempt whose pointer is
+// established absent is a legacy attempt; an attempt whose pointer could not be read has
+// UNKNOWN standing, and no downstream route may mint legacy standing from that unknown.
 type WorkflowAttemptEvidence {
   node_id: String
   attempt_key: String
   branch: String
-  modeled_state_present: Bool
+  modeled_state: WorkflowModeledStateStanding
   worktree: AttemptWorktreeObservation
   admission_receipt_readable: Bool
   admission_receipt: String
@@ -245,6 +249,7 @@ type WorkflowAttemptProgress {
   segments: List<WorkflowSegment>
   reconciliation: WorkflowReconcileReport
   rounds: HarnessRoundLedger
+  handoff: CandidateHandoffState
 }
 
 // The row progress bar is a pure projection over independent evidence, never a stored workflow
@@ -391,12 +396,25 @@ fn provider_execution_reconcile_process(
 fn workflow_provider_from_evidence(
   evidence: WorkflowAttemptEvidence,
 ) -> ProviderExecutionState {
-  if !evidence.modeled_state_present {
-    ProviderEventsRefused {
-      activity: legacy_attempt_supersedable_label,
-      detail: legacy_attempt_supersedable_detail,
-    }
-  } else if !evidence.admission_receipt_readable {
+  match evidence.modeled_state {
+    WorkflowModeledStateUnreadable { cause } =>
+      ProviderEventsRefused {
+        activity: "attempt standing unknown",
+        detail: join(["this attempt's current-attempt-key pointer could not be read, so whether it predates modeled admission is unknown and supersession is refused: ", cause], ""),
+      }
+    WorkflowModeledStateAbsent =>
+      ProviderEventsRefused {
+        activity: legacy_attempt_supersedable_label,
+        detail: legacy_attempt_supersedable_detail,
+      }
+    WorkflowModeledStateObserved => workflow_provider_from_observed(evidence: evidence)
+  }
+}
+
+fn workflow_provider_from_observed(
+  evidence: WorkflowAttemptEvidence,
+) -> ProviderExecutionState {
+  if !evidence.admission_receipt_readable {
     ProviderEventsRefused {
       activity: "attempt state refused",
       detail: "current attempt pointer exists but its admission receipt is unreadable",
@@ -768,13 +786,15 @@ fn submission_segment(
   }
 }
 
-// The submission standing once the integration receipt is readable (absent or for this head):
-// hoisted out of submission_segment so its integration match can name every arm.
-fn submission_segment_from_handoff(
+// THE ATTEMPT'S HANDOFF STATE, DERIVED ONCE from the evidence the progress fold already holds. The
+// submission segment paints it and the progress row carries it, so the consumer that returns an
+// attempt's result to its requester (gunbc.roadmap.roadmap_result_returned) reads the same state
+// the row shows and cannot classify an attempt the row classifies otherwise.
+fn workflow_attempt_handoff_state(
   provider: ProviderExecutionState,
   evidence: WorkflowAttemptEvidence,
-) -> WorkflowSegment {
-  let state = candidate_handoff_state(
+) -> CandidateHandoffState {
+  candidate_handoff_state(
     provider: provider,
     capture: evidence.submission_capture,
     verification: handoff_verification_standing(
@@ -795,6 +815,15 @@ fn submission_segment_from_handoff(
       publication_source: evidence.publication_source,
     ),
   )
+}
+
+// The submission standing once the integration receipt is readable (absent or for this head):
+// hoisted out of submission_segment so its integration match can name every arm.
+fn submission_segment_from_handoff(
+  provider: ProviderExecutionState,
+  evidence: WorkflowAttemptEvidence,
+) -> WorkflowSegment {
+  let state = workflow_attempt_handoff_state(provider: provider, evidence: evidence)
   match state {
     HandoffAwaitingWorker =>
       WorkflowSegment {
@@ -1057,6 +1086,26 @@ fn workflow_segment_from_evidence(
   provider: ProviderExecutionState,
   admitted: Bool,
 ) -> WorkflowSegment {
+  match evidence.modeled_state {
+    WorkflowModeledStateUnreadable { cause } =>
+      WorkflowSegment {
+        kind: kind,
+        state: WorkflowSegmentRefused,
+        detail: join(["this attempt's standing is unknown because its current-attempt-key pointer could not be read: ", cause], ""),
+      }
+    WorkflowModeledStateObserved =>
+      workflow_segment_from_standing_evidence(kind: kind, evidence: evidence, provider: provider, admitted: admitted)
+    WorkflowModeledStateAbsent =>
+      workflow_segment_from_standing_evidence(kind: kind, evidence: evidence, provider: provider, admitted: admitted)
+  }
+}
+
+fn workflow_segment_from_standing_evidence(
+  kind: WorkflowSegmentKind,
+  evidence: WorkflowAttemptEvidence,
+  provider: ProviderExecutionState,
+  admitted: Bool,
+) -> WorkflowSegment {
   match kind {
     EnvironmentWorkflowSegment =>
       WorkflowSegment {
@@ -1075,9 +1124,12 @@ fn workflow_segment_from_evidence(
         },
       }
     WorkspaceWorkflowSegment =>
-      if !evidence.modeled_state_present {
-        WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: "legacy branch has no modeled workspace publication receipt" }
-      } else {
+      match evidence.modeled_state {
+        WorkflowModeledStateUnreadable { cause } =>
+          WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: join(["the attempt's standing is unknown because its current-attempt-key pointer could not be read: ", cause], "") }
+        WorkflowModeledStateAbsent =>
+          WorkflowSegment { kind: kind, state: WorkflowSegmentRefused, detail: "legacy branch has no modeled workspace publication receipt" }
+        WorkflowModeledStateObserved =>
         match evidence.worktree {
           AttemptWorktreePresent { path: _ } =>
             WorkflowSegment { kind: kind, state: WorkflowSegmentComplete, detail: "attempt branch and worktree preceded state publication, and the worktree is present" }
@@ -1314,7 +1366,7 @@ fn workflow_attempt_progress(
   evidence: WorkflowAttemptEvidence,
 ) -> WorkflowAttemptProgress {
   let provider = workflow_provider_from_evidence(evidence: evidence)
-  let admitted = evidence.modeled_state_present
+  let admitted = evidence.modeled_state == WorkflowModeledStateObserved
     && evidence.admission_receipt_readable
     && receipt_records_admission(receipt: evidence.admission_receipt)
   let segments = map(
@@ -1340,6 +1392,7 @@ fn workflow_attempt_progress(
       segments: segments,
     ),
     rounds: harness_round_ledger_from_events(body: evidence.provider_events),
+    handoff: workflow_attempt_handoff_state(provider: provider, evidence: evidence),
   }
 }
 

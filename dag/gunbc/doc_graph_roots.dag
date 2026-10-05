@@ -467,14 +467,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "cross-worker-typecheck-share-design",
-    primary_work: DeclarationRef { module_path: "v2.workflow.module_resolution_plan", decl_name: "module_resolution_store_value_note", field: WholeDeclaration },
-    additional_works: [
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject module_resolution_store_value_note describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "dag-scm-design",
     primary_work: DeclarationRef { module_path: "gunbc.roster_registry", decl_name: "GroupMembership", field: WholeDeclaration },
     additional_works: [
@@ -1090,7 +1082,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "srv4-bmc-onboarding-gap",
     primary_work: DeclarationRef { module_path: "gunbc.host_standup", decl_name: "host_standup_spine", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "product.placement_supply", decl_name: "HostIdentity", field: WholeDeclaration },
+      DeclarationRef { module_path: "product.host_identity", decl_name: "HostIdentity", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject host_standup_spine describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -1386,17 +1378,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       DeclarationRef { module_path: "std.realize_pack", decl_name: "realize_pack_width", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "dissolves into a registered gunbc.plan.Plan row when its P1 lands. REBOUND 2026-08-21: this row named v2.workflow.ci_floor_plan gunbc_ci_floor_plan — the floor plan that would have SCHEDULED the realized witnesses, deleted with its module by the floor cut. The plan itself is live (six documents cite it as their parent authority), and its landed subjects are the two carriers named here: the family build-grain ruling that answers its FLAG B, and the packing law its P4 derives. Scheduling re-enters as a consumer when a floor plan exists again; it was never the subject of this document.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
-    slug: "width-2-crossover-receipt",
-    primary_work: DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_note", field: WholeDeclaration },
-    additional_works: [
-      DeclarationRef { module_path: "gunbc.floor_materialization", decl_name: "floor_typecheck_store_share_provider_id", field: WholeDeclaration },
-      DeclarationRef { module_path: "gunbc.p1_retention_cohort_receipt", decl_name: "p1_retention_cohort_receipt_reproduction_steps", field: WholeDeclaration },
-      DeclarationRef { module_path: "test.claim.floor_materialization_witness", decl_name: "floor_materialization_witness_note", field: WholeDeclaration },
-    ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the width-2 crossover decision is banked on its carriers (ControlledWidthTwo harness + process_shared_typecheck_store) or superseded by shared immutable indexes / pre-index artifact reuse — then surviving facts migrate to DESIGN open-thread or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,

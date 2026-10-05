@@ -1,0 +1,162 @@
+module gunbc.workspace_microvm_access
+
+import extdeps.systemd.journalctl
+import gunbc.workspace_gateway { WorkspaceGateway }
+
+import std.types { String, NonEmptyStr, Bool, List, Int }
+import std.algebra { trim }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import extdeps.posix.shell_command_language { posix_single_quote }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.ssh.openssh_client_commands { ssh_keyscan_command }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.command_runner { run_shell_command_capture }
+import gunbc.build_cache_instance { RunnerSlotIdentity, runner_slot_identity_equal }
+import gunbc.runner_microvm_network { runner_slot_network }
+import gunbc.runner_microvm_lifecycle { AttemptIdentity, in_flight_attempt_of_identity }
+import gunbc.runner_microvm_cell_readiness_store { encode_attempt }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.runner_microvm_cell_readiness { WorkspaceWorkload, GitHubRunnerWorkload }
+import gunbc.runner_microvm_lifecycle_realize {
+  AttemptLaunch, VmmStarted, bind_attempt_console, AttemptConsoleBound, AttemptConsoleUnbound, AttemptConsoleNotStarted,
+}
+
+type WorkspaceConnection sole_constructor {
+  identity: AttemptIdentity
+  systemd_invocation: NonEmptyStr
+  host_account: NonEmptyStr
+  host_tailnet: NonEmptyStr
+  gateway_known_host: NonEmptyStr
+  guest_ip: NonEmptyStr
+  guest_user: NonEmptyStr
+  host_key: NonEmptyStr
+  host_key_alias: NonEmptyStr
+}
+
+type WorkspaceConnectionReading
+  = WorkspaceConnectionReady { connection: WorkspaceConnection }
+  | WorkspaceConnectionUnavailable { reason: String }
+
+fn workspace_console_value(console: String, marker: String) -> String? {
+  let lines = filter(split(s: console, delimiter: "\n"), line => string_contains(s: line, pattern: marker))
+  if length(lines) != 1 { none } else {
+    match lines.first() {
+      Absent => none
+      Present { value: line } => match split(s: line, delimiter: marker).get(index: 1) {
+        Absent => none
+        Present { value: value } => Present { value: trim(s: value) }
+      }
+    }
+  }
+}
+
+fn workspace_ed25519_key(line: String, offset: Int) -> String? {
+  let words = filter(split(s: trim(s: line), delimiter: " "), word => word != "")
+  match words.get(index: offset) {
+    Present { value: kind } => if kind != "ssh-ed25519" { none } else {
+      match words.get(index: offset + 1) {
+        Present { value: material } => if material == "" { none } else { Present { value: join([kind, material], " ") } }
+        Absent => none
+      }
+    }
+    Absent => none
+  }
+}
+
+// This pure join consumes an invocation-bound console and an actual SSH key exchange.
+// A live TCP port or an address inherited from a previous incarnation cannot satisfy it.
+fn workspace_connection_from_observations(
+  identity: AttemptIdentity, gateway: WorkspaceGateway, systemd_invocation: NonEmptyStr,
+  console: String, scanned_keys: String, gateway_known_host: NonEmptyStr,
+) -> WorkspaceConnectionReading {
+  if !starts_with(s: gateway_known_host as String, prefix: concat(gateway.tailnet_name as String, " "))
+    || string_contains(s: gateway_known_host as String, pattern: "\n") || string_contains(s: gateway_known_host as String, pattern: "\r") {
+    WorkspaceConnectionUnavailable { reason: "enrolled gateway key does not name this selected host" }
+  } else if !runner_slot_identity_equal(a: identity.attempt.slot, b: gateway.slot) {
+    WorkspaceConnectionUnavailable { reason: "gateway does not name this allocation's selected host and slot" }
+  } else { match identity.workload {
+    WorkspaceWorkload { bootstrap_identity: bootstrap, image_identity: _, lease_expires_unix: _ } =>
+      match workspace_console_value(console: console, marker: "gunbc-workspace-identity=") {
+        Absent => WorkspaceConnectionUnavailable { reason: "no unique invocation-bound workspace bootstrap identity" }
+        Present { value: observed } => if observed != (bootstrap as String) {
+          WorkspaceConnectionUnavailable { reason: "guest bootstrap identity belongs to another allocation" }
+        } else { workspace_connection_after_boot(identity: identity, gateway: gateway, systemd_invocation: systemd_invocation, console: console, scanned_keys: scanned_keys, gateway_known_host: gateway_known_host) }
+      }
+    GitHubRunnerWorkload { registration_id: _ } => WorkspaceConnectionUnavailable { reason: "attempt is not a workspace workload" }
+  } }
+}
+
+fn workspace_connection_after_boot(
+  identity: AttemptIdentity, gateway: WorkspaceGateway, systemd_invocation: NonEmptyStr,
+  console: String, scanned_keys: String, gateway_known_host: NonEmptyStr,
+) -> WorkspaceConnectionReading {
+  match workspace_console_value(console: console, marker: "gunbc-workspace-host-key=") {
+    Absent => WorkspaceConnectionUnavailable { reason: "workspace host key has not been observed for this invocation" }
+    Present { value: key_line } => match workspace_ed25519_key(line: key_line, offset: 0) {
+      Absent => WorkspaceConnectionUnavailable { reason: "workspace console host key is malformed" }
+      Present { value: key } => {
+        let guest_ip = render_ipv4_address(addr: runner_slot_network(slot: identity.attempt.slot).guest_address)
+        let matches = filter(split(s: scanned_keys, delimiter: "\n"), line =>
+          starts_with(s: line, prefix: concat(guest_ip, " ")) && match workspace_ed25519_key(line: line, offset: 1) {
+            Present { value: scanned } => scanned == key
+            Absent => false
+          }
+        )
+        if length(matches) != 1 {
+          WorkspaceConnectionUnavailable { reason: "SSH service key does not match the invocation-bound guest key" }
+        } else {
+          WorkspaceConnectionReady { connection: WorkspaceConnection {
+            identity: identity, systemd_invocation: systemd_invocation,
+            host_account: gateway.host_account, host_tailnet: gateway.tailnet_name, gateway_known_host: gateway_known_host,
+            guest_ip: guest_ip as NonEmptyStr, guest_user: "root", host_key: key as NonEmptyStr,
+            host_key_alias: concat("workspace-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: encode_attempt(a: in_flight_attempt_of_identity(identity: identity))) as NonEmptyStr)) as String) as NonEmptyStr,
+          } }
+        }
+      }
+    }
+  }
+}
+
+// Called while the shared controller is running. No frontend request performs these reads.
+fn workspace_observe_connection(identity: AttemptIdentity, launch: AttemptLaunch, gateway: WorkspaceGateway, gateway_known_host: NonEmptyStr) -> WorkspaceConnectionReading {
+  match bind_attempt_console(identity: identity, launch: launch) {
+    AttemptConsoleBound { unit: unit, systemd_invocation: invocation } => {
+      let log = systemd.Journalctl.UnitInvocationLog(unit: unit, invocation_id: invocation)
+      if !log.success { WorkspaceConnectionUnavailable { reason: "workspace invocation journal is unreadable" } }
+      else {
+        let ip = render_ipv4_address(addr: runner_slot_network(slot: identity.attempt.slot).guest_address)
+        match run_shell_command_capture(command: ssh_keyscan_command(host: ip, key_type: "ed25519", timeout_seconds: 2), transport: LocalExec) {
+          ProcessOutputPresent { text: scanned } =>
+            match bind_attempt_console(identity: identity, launch: launch) {
+              AttemptConsoleBound { unit: unit_after, systemd_invocation: after } => if unit_after != unit || after != invocation || !systemd.Systemctl.IsActive(unit: unit).active {
+                WorkspaceConnectionUnavailable { reason: "workspace incarnation stopped or changed during SSH observation" }
+              } else {
+                workspace_connection_from_observations(identity: identity, gateway: gateway, systemd_invocation: invocation, console: log.stdout, scanned_keys: scanned, gateway_known_host: gateway_known_host)
+              }
+              AttemptConsoleUnbound { reason: _ } => WorkspaceConnectionUnavailable { reason: "workspace incarnation is no longer observable" }
+              AttemptConsoleNotStarted => WorkspaceConnectionUnavailable { reason: "workspace incarnation is no longer observable" }
+            }
+          ProcessOutputAbsent => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
+          ProcessRefused { exit_code: _, stderr: _ } => WorkspaceConnectionUnavailable { reason: "workspace SSH service is not answering through the selected host" }
+        }
+      }
+    }
+    AttemptConsoleUnbound { reason: _ } => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }
+    AttemptConsoleNotStarted => WorkspaceConnectionUnavailable { reason: "workspace VMM has no attributable running invocation" }
+  }
+}
+
+fn workspace_connection_text(connection: WorkspaceConnection) -> String {
+  let alias = connection.host_key_alias as String
+  let known_host = join([alias, connection.host_key as String], " ")
+  let gateway = join([connection.host_account as String, "@", connection.host_tailnet as String], "")
+  let target = join([connection.guest_user as String, "@", connection.guest_ip as String], "")
+  join([
+    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && printf '%s\\n' ", posix_single_quote(spelling: connection.gateway_known_host as String), " ", posix_single_quote(spelling: known_host),
+    " >> ~/.ssh/known_hosts && ssh -o StrictHostKeyChecking=yes -o ", posix_single_quote(spelling: concat("HostKeyAlias=", alias)),
+    " -J ", posix_single_quote(spelling: gateway), " ", posix_single_quote(spelling: target),
+    "\n\nVerify allocation: cat /etc/gunbc-allocation\nExpected identity: ", connection.identity.attempt.attempt_id.value as String,
+    "\nRelease or expiry permanently deletes this workspace disk.",
+  ], "")
+}

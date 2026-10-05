@@ -1,0 +1,119 @@
+module test.claim.spark.spark_inspect_dropin_shape_witness_test
+
+import std.types { String, Bool, List, NonEmptyStr, Int }
+import v2.std.algebra { filter, length, any }
+import gunbc.spark.managed_grant_reconcile {
+  SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_inspect_dropin_shape_of_listing,
+  spark_sudoers_dropin_listing_argv,
+}
+import gunbc.fleet_multi_principal_probe { spark_standing_hosts }
+import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
+import gunbc.fleet_converge_workflow {
+  SparkGrantsObserve, FleetSshKeyConsumed, FleetSshKeyNotConsumed,
+  fleet_converge_mode_options, fleet_converge_mode_fleet_ssh_key_demand,
+  fleet_converge_spark_grants_observe_step_if, fleet_converge_fleet_ssh_key_step_if,
+}
+import gunbc.ci_spec { gunbc_run_step_targets, gunbc_ci_spark_grants_observe_invoke }
+
+// THE SHAPE READING, over supplied listings. Group B's listing (2026-10-04 22:53Z) is the shared file
+// alone; a host converged by the #13040 installer carries per-container files and no shared one.
+
+fn is_shared_alone(s: SparkInspectDropinShape) -> Bool {
+  match s {
+    SharedInspectDropinShape { per_container: pc } => length(pc) == 0
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_shared_file_alone_reads_shared_shape() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+test fn w_shared_file_beside_per_container_files_is_residue_not_alone() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-docker-inspect-glm53-staircase\nREADME\n", stderr: "") {
+    SharedInspectDropinShape { per_container: pc } => pc == ["gunbc-docker-inspect-glm53-staircase"]
+    PerContainerInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+test fn w_per_container_only_reads_per_container_shape() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect-a\ngunbc-docker-inspect-b\ngunbc-reboot\n", stderr: "") {
+    PerContainerInspectDropinShape { per_container: pc } => length(pc) == 2
+    SharedInspectDropinShape { per_container: _ } => false
+    InspectDropinShapeUnobserved { cause: _ } => false
+  }
+}
+
+// An unreadable directory is not an absent shared file.
+test fn w_unlistable_directory_is_unobserved_not_per_container() -> Bool {
+  match spark_inspect_dropin_shape_of_listing(exit_code: 2, stdout: "", stderr: "ls: cannot open directory '/etc/sudoers.d': Permission denied") {
+    InspectDropinShapeUnobserved { cause: _ } => true
+    SharedInspectDropinShape { per_container: _ } => false
+    PerContainerInspectDropinShape { per_container: _ } => false
+  }
+}
+
+test fn w_listing_argv_is_read_only() -> Bool {
+  spark_sudoers_dropin_listing_argv() == ["ls", "-1", "/etc/sudoers.d"]
+}
+
+// ── the probe roster IS the procured roster ───────────────────────────────────────────────────
+
+// Every procured Spark, Group A and Group B alike, is probed by every run: an IDENTITY JOIN of the
+// probe roster against the procured roster (gunbc.spark.dgx_procurement), each procured identity
+// present exactly once and nothing else present -- no count or name list copied from today's tree
+// (DESIGN §5). A hand list that dropped one (the srv5/srv6-only roster this replaced) or added a
+// non-Spark reds it; procuring a ninth Spark does not.
+fn occurrences(xs: List<String>, x: String) -> Int {
+  length(filter(xs, y => y == x))
+}
+
+test fn w_probe_roster_is_every_procured_spark() -> Bool {
+  let procured = map(dgx_spark_procurement_intent.reserved_identities, h => h as String)
+  !any(procured, h => occurrences(xs: spark_standing_hosts, x: h) != 1)
+    && !any(spark_standing_hosts, h => occurrences(xs: procured, x: h) != 1)
+}
+
+// RED CONTROL for the join, over a supplied roster: the srv5/srv6 hand list this PR replaced does not
+// cover a procured roster that has more members.
+test fn red_control_a_two_host_hand_list_does_not_cover_a_larger_roster() -> Bool {
+  let procured = ["srv5", "srv6", "srv7"]
+  let hand = ["srv5", "srv6"]
+  any(procured, h => occurrences(xs: hand, x: h) != 1)
+}
+
+// Group B's 2026-10-04 listing shape (shared file alone, no per-container file) reads as the
+// shared shape the probe will report until an operator-approved converge replaces it.
+test fn w_group_b_listing_shape_reads_shared_alone() -> Bool {
+  is_shared_alone(s: spark_inspect_dropin_shape_of_listing(exit_code: 0, stdout: "gunbc-docker-inspect\ngunbc-enable-linger\ngunbc-ethtool-module-info\ngunbc-reboot\nREADME\n", stderr: ""))
+}
+
+// ── the convergence route ─────────────────────────────────────────────────────────────────────
+//
+// The operator's condition (2026-10-05): every Spark's grant listing is read by convergence. These
+// pin the route: the mode is a dispatch option, its step runs exactly the probe entry over the
+// registered run target, the step is gated on that mode alone, and the mode consumes the fleet key
+// (it reads over ssh) while declaring no host scope (it reads every procured Spark).
+
+test fn w_grants_observe_is_a_dispatch_mode() -> Bool {
+  any(fleet_converge_mode_options, m => m == "spark_grants_observe")
+}
+
+test fn w_grants_observe_runs_the_probe_entry() -> Bool {
+  length(filter(gunbc_run_step_targets(), t =>
+    t.entry == "dag/gunbc/fleet/fleet_multi_principal_probe.dag" && t.function == "spark_exact_grant_probe_ci_wet")) == 1
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "spark_exact_grant_probe_ci_wet")
+    && contains(gunbc_ci_spark_grants_observe_invoke(), "target/spark-exact-grant-probe-receipt.txt")
+}
+
+test fn w_grants_observe_step_is_gated_on_its_mode_and_reads_over_the_fleet_key() -> Bool {
+  contains(fleet_converge_spark_grants_observe_step_if, "'spark_grants_observe'")
+    && contains(fleet_converge_fleet_ssh_key_step_if, "'spark_grants_observe'")
+    && match fleet_converge_mode_fleet_ssh_key_demand(mode: SparkGrantsObserve) {
+      FleetSshKeyConsumed => true
+      FleetSshKeyNotConsumed => false
+    }
+}

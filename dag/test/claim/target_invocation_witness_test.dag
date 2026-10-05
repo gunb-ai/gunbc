@@ -35,6 +35,7 @@ import gunbc.target_binding {
   BareReferenceChannelOutcomeProducer,
   SelfHostBehavioralEquivalenceProducer,
   DependencyDemandCensusProducer,
+  GenericIdentityCensusProducer,
   BareChannelEligibility, BareChannelRuns, BareChannelDisabledByImportLine,
   BareReferenceChannelEntryReading,
   BareReferenceChannelStanding, BareReferenceChannelRead,
@@ -83,6 +84,7 @@ import gunbc.instrument_targets {
   required_lane_resolution_census_label,
   self_host_behavioral_equivalence_label,
   dependency_demand_census_label,
+  generic_identity_census_label,
   compile_clean_diagnostic_census_termination,
   compile_clean_diagnostic_census_standing_rendered,
   instrument_targets, instrument_bindings,
@@ -904,6 +906,17 @@ test fn the_dependency_demand_census_operand_routes_to_its_own_producer() -> Boo
       label_eq(a: b.target, b: dependency_demand_census_label())
         && (b.producer == DependencyDemandCensusProducer {})
         && !(b.producer == SelfHostBehavioralEquivalenceProducer {})
+    TargetInvocationRouteRefused { cause: _ } => false
+  }
+}
+
+// The generic-identity census is a label bound to its own producer, never a mode of another census.
+test fn the_generic_identity_census_operand_routes_to_its_own_producer() -> Bool {
+  match invoke_target(operand: "//gunbc/instruments:generic-identity-census") {
+    TargetInvocationRouted { binding: b } =>
+      label_eq(a: b.target, b: generic_identity_census_label())
+        && (b.producer == GenericIdentityCensusProducer {})
+        && !(b.producer == DependencyDemandCensusProducer {})
     TargetInvocationRouteRefused { cause: _ } => false
   }
 }

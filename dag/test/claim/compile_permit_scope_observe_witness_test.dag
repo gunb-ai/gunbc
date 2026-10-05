@@ -2,7 +2,7 @@ module test.claim.compile_permit_scope_observe_witness
 
 import std.types { Bool, String, NonEmptyStr, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.measure { hardware_thread_count, hardware_thread_count_value }
 import extdeps.jobserver { jobserver_makeflags_fifo_auth, jobserver_fifo_path_from_makeflags }
 import gunbc.compile_permit_scope {
@@ -23,7 +23,7 @@ import gunbc.compile_permit_scope_observe {
 }
 import gunbc.host_converge { gunbc_runner_jobserver_service, gunbc_runner_jobserver_default_fifo }
 import gunbc.fleet_show_effective_read { fleet_host_ssh_transport }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.host_effect { SshShell }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

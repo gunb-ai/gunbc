@@ -8,7 +8,7 @@ import extdeps.github.org_admin_auth { github_app_jwt_claims_json }
 import extdeps.tools.openssl { openssl_signature_of, OpensslSigned, OpensslSignRefused }
 import extdeps.github.actions_jit_runner { JitConfigCreatedBody, JitConfigCreatedRunner }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestExchangeCommitAmbiguous,
+  RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestExchangeCommitAmbiguous,
 }
 import gunbc.runner.runner_jit_perform {
   JitCredentialBoundToAttempt, JitCredentialMintNotCreated, JitCredentialNotDispatched,
@@ -101,23 +101,21 @@ data created_body: JitConfigCreatedBody = JitConfigCreatedBody {
 // because GitHub may have created the registration.
 test fn witness_generate_step_delivers_refuses_or_reports_ambiguity_by_what_github_answered() -> Bool {
   let d = dispatched(owned: true, perms: runner_grant)
-  let delivered = match jit_mint_performance_of_generate(dispatch: d, outcome: RestOk, created: created_body) {
-    JitMintReceived { delivery: JitCredentialBoundToAttempt { attempt: _, credential: c, runner_id: id } } =>
+  let delivered = match jit_mint_performance_of_generate(dispatch: d, outcome: RestAnswered { answer: created_body }) {
+    JitMintReceived { delivery: JitCredentialBoundToAttempt { slot: _, credential: c, runner_id: id } } =>
       (c.encoded as String) == "ZmFrZS1qaXQtY29uZmln" && id == 4242
     _ => false
   }
   let conflicted = match jit_mint_performance_of_generate(
     dispatch: d,
-    outcome: RestStatusRefused { status: 409, body: "Already exists" },
-    created: created_body,
+    outcome: RestRefused { refusal: RestStatusRefused { status: 409, body: "Already exists" } },
   ) {
     JitMintReceived { delivery: JitCredentialMintNotCreated { outcome: _ } } => true
     _ => false
   }
   let ambiguous = match jit_mint_performance_of_generate(
     dispatch: d,
-    outcome: RestTransportRefused { cause: "connection reset" },
-    created: created_body,
+    outcome: RestRefused { refusal: RestTransportRefused { cause: "connection reset" } },
   ) {
     JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: RestExchangeCommitAmbiguous { detail: _ } } => true
     _ => false

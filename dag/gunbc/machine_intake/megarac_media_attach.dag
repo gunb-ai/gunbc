@@ -639,9 +639,9 @@ fn megarac_attach_remote_image(
   task: MegaRacSessionTask,
 ) -> MegaRacAttachResult
   admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_attach_diskless_image"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_observe_presentation"),
-    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_media_attach", decl_name: "mtcollins1_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_observe_boot_presentation"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
   ]
 {
   session = megarac.Media.OpenSession(
@@ -1916,9 +1916,18 @@ fn stopped_with_reason(look: ReadinessLook, cd: CdErrorReading) -> StopReasonRea
     ReadinessNotPresented { configurations: _ } =>
       match cd {
         CdErrorRead { code: CdErrorStopReason { status: st, class: k } } => Present { value: StopReasonReading { status: st, class: k } }
-        _ => none
+        CdErrorRead { code: CdErrorNone } => none
+        CdErrorRead { code: CdErrorUncatalogued { wire: _ } } => none
+        CdErrorUnread { detail: _ } => none
       }
-    _ => none
+    ReadinessStarted { row: _ } => none
+    ReadinessConnecting { row: _ } => none
+    ReadinessStartedUnbound { row: _ } => none
+    ReadinessUnanswered { detail: _ } => none
+    ReadinessUncatalogued { image_name: _, wire: _, configurations: _ } => none
+    ReadinessMalformed { detail: _ } => none
+    ReadinessDuplicate { configurations: _ } => none
+    ReadinessWrongPresentation { image_name: _, configurations: _ } => none
   }
 }
 

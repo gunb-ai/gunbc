@@ -1,0 +1,32 @@
+module gunbc.instruments.native_emission_catch_all_rc_specimen
+
+import std.types { Bool, String }
+
+// AN EXPECTING-RED SPECIMEN for gunbc.recurring_failure_mode
+// emitter_catch_all_match_binding_drops_the_rc_carrier. It is NOT enrolled in
+// gunbc.instruments.native_emission_controls: that label requires every carrier to emit as
+// compilable Rust, and this one does not until the emitter rule lands. Enrolling it there, as a case
+// over specimen_card_is_dark, is the row's next-rung step.
+//
+// The shape: a match whose scrutinee is a coproduct, one named arm, and a catch-all arm that binds
+// the scrutinee and stores it in a record field. The emitter matches on the dereferenced carrier, so
+// the binding is a borrow of the enum; `.clone()` of it is the enum, and the field is the Rc carrier.
+type SpecimenShade = SpecimenLit { name: String } | SpecimenDark
+
+type SpecimenCard {
+  shade: SpecimenShade
+}
+
+fn specimen_card_of(shade: SpecimenShade) -> SpecimenCard {
+  match shade {
+    SpecimenDark => SpecimenCard { shade: SpecimenDark }
+    other => SpecimenCard { shade: other }
+  }
+}
+
+fn specimen_card_is_dark(shade: SpecimenShade) -> Bool {
+  match specimen_card_of(shade: shade).shade {
+    SpecimenDark => true
+    SpecimenLit { name: _ } => false
+  }
+}

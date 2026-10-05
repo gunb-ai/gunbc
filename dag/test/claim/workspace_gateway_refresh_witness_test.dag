@@ -1,0 +1,61 @@
+module test.claim.workspace_gateway_refresh_witness_test
+
+import std.types { Bool, String, NonEmptyStr }
+import extdeps.shell
+import extdeps.shell.exec { process_observation }
+import gunbc.runner_slot_allocation { srv1_microvm_shakedown_slot }
+import gunbc.workspace_gateway { workspace_fleet_gateway }
+import gunbc.workspace_gateway_admission { workspace_gateway_subject, workspace_gateway_evidence }
+import gunbc.workspace_gateway_store { workspace_publish_gateway_evidence, workspace_publish_gateway_refusal, workspace_current_gateway_connection, WorkspaceGatewayReady, WorkspaceGatewayUnavailable }
+import gunbc.fabric_storage_client { FabricStorageBinding, FabricStorageLocalFiles }
+import gunbc.fabric_storage_file_store { fabric_storage_file_root, fabric_storage_file_root_ensure, FabricStorageRootReady }
+
+// Synthetic SSH observations exercise the actual durable publication/read path, not live access.
+fn gateway_refresh_cycle(store: FabricStorageBinding) -> Bool {
+  let slot = srv1_microvm_shakedown_slot()
+  match workspace_gateway_subject(slot: slot) {
+    Absent => false
+    Present { value: subject } => match workspace_fleet_gateway(slot: slot) {
+      Absent => false
+      Present { value: gateway } => {
+        let key = concat(gateway.tailnet_name as String, " ssh-ed25519 AAAAFIXTURE") as NonEmptyStr
+        let positive = workspace_gateway_evidence(subject: subject, known_host: key,
+          observation: process_observation(exit_code: 124, stdout: "SSH-2.0-fixture", stderr: ""), observed_at: "2026-09-28T00:00:00Z")
+        let first = workspace_publish_gateway_evidence(store: store, slot: slot, evidence: positive)
+        let ready = match workspace_current_gateway_connection(store: store, slot: slot, now: "2026-09-28T00:00:01Z") {
+          WorkspaceGatewayReady { known_host: _ } => true
+          _ => false
+        }
+        let denied = workspace_publish_gateway_refusal(store: store, slot: slot, reason: "operator agent unavailable", observed_at: "2026-09-28T00:00:00Z")
+        let late = workspace_publish_gateway_evidence(store: store, slot: slot, evidence: positive)
+        let withdrawn = match workspace_current_gateway_connection(store: store, slot: slot, now: "2026-09-28T00:00:01Z") {
+          WorkspaceGatewayUnavailable { reason: detail } => detail == "operator agent unavailable"
+          _ => false
+        }
+        let refreshed = workspace_publish_gateway_evidence(store: store, slot: slot,
+          evidence: workspace_gateway_evidence(subject: subject, known_host: key,
+            observation: process_observation(exit_code: 124, stdout: "SSH-2.0-fixture", stderr: ""), observed_at: "2026-09-28T00:00:20Z"))
+        let current = match workspace_current_gateway_connection(store: store, slot: slot, now: "2026-09-28T00:01:20Z") {
+          WorkspaceGatewayReady { known_host: _ } => true
+          _ => false
+        }
+        let expired = match workspace_current_gateway_connection(store: store, slot: slot, now: "2026-09-28T00:01:21Z") {
+          WorkspaceGatewayUnavailable { reason: _ } => true
+          _ => false
+        }
+        ready && withdrawn && current && expired
+      }
+    }
+  }
+}
+
+test fn refresh_failure_withdraws_success_delayed_success_cannot_revive_and_new_refresh_recovers() -> Bool {
+  let directory = shell.Mktemp.Dir()
+  let root = fabric_storage_file_root(root: directory.path)
+  let passed = if !directory.success { false } else { match fabric_storage_file_root_ensure(root: root) {
+    FabricStorageRootReady => gateway_refresh_cycle(store: FabricStorageLocalFiles { root: root })
+    _ => false
+  } }
+  let cleaned = shell.Remove.RecursiveForce(path: directory.path)
+  passed && cleaned.success
+}
