@@ -7,7 +7,6 @@ import extdeps.languages.typescript.program {
   ts_prefix, ts_binop, ts_cond, ts_object, ts_field, ts_quoted_field, ts_spread, ts_for_of,
 }
 
-import gunbc.roadmap_component { account_swap_statements, theme_toggle_bind_statements, sound_preamble_statements, sound_toggle_bind_statements }
 import gunbc.roadmap_allocation_location { allocation_page_path, allocation_list_path, allocation_item_prefix, allocation_release_suffix }
 import gunbc.workspace_allocation_wire { workspace_write_unavailable_wire }
 
@@ -324,12 +323,11 @@ fn allocation_live_source() -> String {
   serialize_typescript_program(p: TsProgram { ts_nocheck: false, header_lines: [], statements: allocation_live_statements() })
 }
 
-// Shared header behavior plus the allocation client over the server's allocation routes.
+// The shared shell owns account, theme and sound controls; this asset owns allocations.
+fn allocation_client_program() -> TsProgram {
+  TsProgram { ts_nocheck: false, header_lines: ["Allocation client over the server's allocation routes."], statements: allocation_live_statements() }
+}
+
 fn allocation_client_source() -> String {
-  serialize_typescript_program(p: TsProgram {
-    ts_nocheck: false,
-    header_lines: ["Allocation client over the server's allocation routes, plus shared account/theme controls."],
-    statements: concat(sound_preamble_statements(), concat(sound_toggle_bind_statements(),
-      concat(theme_toggle_bind_statements(), concat(account_swap_statements(), allocation_live_statements())))),
-  })
+  serialize_typescript_program(p: allocation_client_program())
 }

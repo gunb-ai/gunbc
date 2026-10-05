@@ -289,8 +289,29 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // for DirWithTemplate'); a changed witness ending in a route gap is admitted only with a wet terminal
 // joined. The file's exclusion row is gunbc.ci.ci_layer_roots excl_local_repo_wet_tempdir_write_reason.
 // Measured wet over this tree before enrollment: 5/5 held (BuildBuddy, gunbc built from the head).
+//
+// ONE PUBLISH-REALIZER MEMBER (2026-10-04, ruling on #13111). test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test
+// builds a throwaway git repository with shell.Mktemp.Dir, commits a base tree into it, runs
+// gunbc.roadmap_belt_actuate belt_publish_realize over the plan belt_publish_plan derives, and checks
+// the staged path population and bytes equal the head's -- directory -> file, file -> directory, and
+// a tracked file literally named ':(glob)src*' that an unquoted pathspec would read as magic. Same
+// effects as the contract-epoch members (temp repository, local git plumbing, recursive removal) and
+// the same negative half: no network, no cargo, no remote host. Measured wet before enrollment: held,
+// and a mutation dropping git_pathspec_literal turned it false.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test", function: "the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_publish_realization_wet_witness_test.dag",
+      function: "the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.workspace_network_real_reader_witness_test", function: "real_reader_takes_the_route_the_reader_identity_dictates" },
+      entry: "dag/test/claim/workspace_network_real_reader_witness_test.dag",
+      function: "real_reader_takes_the_route_the_reader_identity_dictates",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.scm_repository_save_real_execution_witness", function: "scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes" },
       entry: "dag/test/claim/scm_repository_save_real_execution_witness_test.dag",

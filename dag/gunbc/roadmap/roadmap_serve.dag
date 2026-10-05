@@ -1,4 +1,18 @@
 module gunbc.roadmap_serve
+import gunbc.roadmap_issue_query { issue_query_rows_of, issue_query_response_body }
+import gunbc.roadmap_served_observation { IssueQueryRows, served_observation_body_digest }
+import gunbc.roadmap_view_preferences { issue_view_preferences_of, issue_view_preferences_json }
+import gunbc.roadmap_view_preference_store { issue_view_store_key, issue_view_store_root, issue_view_store_read, issue_view_store_save, IssueViewAbsent, IssueViewFound, IssueViewUnread, IssueViewSaveOk, IssueViewSaveConflict, IssueViewSaveRefused }
+import gunbc.auth.request_authentication { ServeActionSaveOwnView }
+import extdeps.http.server { ServeResponseHeaderNoStore }
+import extdeps.languages.json.emit { JsonNull }
+
+import gunbc.site.document { site_document }
+import gunbc.site.markup { el, txt }
+import gunbc.site.brand { site_favicon_path, site_favicon_type, site_favicon_source }
+import gunbc.site.controls { site_client_path, site_client_source }
+import gunbc.roadmap_style { roadmap_styles }
+import gunbc.site.document { SiteStyles }
 
 import gunbc.roadmap.roadmap_attempt_request_binding { AttemptLaunchRequest, LaunchForClaim, LaunchAutonomous }
 import gunbc.roadmap.roadmap_event_log { StandingsObserved, NodeStandingRow }
@@ -106,7 +120,7 @@ import gunbc.roadmap_launch_admission {
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated, LaunchNoPlacementGrant,
   launch_refusal_label, launch_refusal_reason,
 }
-import gunbc.roadmap_page {
+import gunbc.roadmap_page { issue_detail_not_found_page,
   roadmap_page_for_projection_launch, roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
   project_suite_headline, project_suite_not_found_page, project_suite_page_launch, project_suite_rows,
@@ -281,6 +295,8 @@ type RoadmapServeHandler
   = RoadmapDailyPageHandler
   | RoadmapFullPageHandler
   | AllocationPageHandler
+  | SiteFaviconHandler
+  | SiteClientHandler
   | AllocationCreateHandler
   | AllocationListHandler
   | AllocationGetHandler
@@ -313,6 +329,9 @@ type RoadmapServeHandler
   | IssueDetailPageHandler
   | IssueAssignHandler
   | IssueAssignmentContextHandler
+  | IssueQueryHandler
+  | IssueViewPreferencesReadHandler
+  | IssueViewPreferencesSaveHandler
   | IssueCommentHandler
   | ProjectSuitePageHandler
   | AuthSessionHandler
@@ -370,6 +389,8 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: GET, raw: allocation_item_route(), handler: AllocationGetHandler },
     ServedRouteSpec { method: POST, raw: allocation_release_route(), handler: AllocationReleaseHandler },
     ServedRouteSpec { method: GET, raw: allocation_page_path, handler: AllocationPageHandler },
+    ServedRouteSpec { method: GET, raw: site_favicon_path, handler: SiteFaviconHandler },
+    ServedRouteSpec { method: GET, raw: site_client_path, handler: SiteClientHandler },
     ServedRouteSpec { method: GET, raw: allocation_client_path, handler: AllocationClientHandler },
     ServedRouteSpec { method: GET, raw: "/fleet", handler: FleetStandingPageHandler },
     ServedRouteSpec { method: GET, raw: roadmap_site_roadmap_url_path as String, handler: RoadmapMdHandler },
@@ -398,6 +419,9 @@ fn roadmap_serve_own_route_specs() -> List<ServedRouteSpec<RoadmapServeHandler>>
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/assign", handler: IssueAssignHandler },
     ServedRouteSpec { method: POST, raw: "/issue/\{node_id\}/comment", handler: IssueCommentHandler },
     ServedRouteSpec { method: GET, raw: "/auth/session", handler: AuthSessionHandler },
+    ServedRouteSpec { method: POST, raw: "/issues/query", handler: IssueQueryHandler },
+    ServedRouteSpec { method: GET, raw: "/preferences/issues", handler: IssueViewPreferencesReadHandler },
+    ServedRouteSpec { method: POST, raw: "/preferences/issues", handler: IssueViewPreferencesSaveHandler },
     ServedRouteSpec { method: GET, raw: auth_login_route_path, handler: AuthLoginHandler },
     ServedRouteSpec { method: GET, raw: "/auth/google/callback", handler: AuthGoogleCallbackHandler },
     ServedRouteSpec { method: POST, raw: auth_logout_route_path, handler: AuthLogoutHandler },
@@ -633,6 +657,7 @@ fn serve_publish_handler_response_for_instance(
 // check -- the widening becomes unwritable instead of merely reviewable.
 fn roadmap_mounts_during_cutover(h: ApprovalBrokerHandler) -> Bool {
   match h {
+    ApprovalSiteFaviconHandler => false
     ApprovalConfirmPageHandler => true
     ApprovalDecideHandler => true
     ApprovalSubmitHandler => true
@@ -688,7 +713,7 @@ fn serve_issue_detail_response_over(
 ) -> ServeHttpResponse {
   let node_id = path_param_value(params: params, name: "node_id")
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_text_response(status: 404, content_type: text_plain_utf8, body: "issue not found") }
+  if !issue_detail_node_exists(proj: plan, node_id: node_id) { serve_page_response_with_status(page: issue_detail_not_found_page(node_id: node_id, viewer: ""), status: 404) }
   else { match serve_history_after_snapshot_close(read: roadmap_events_read(layout: layout, node: node_id as NonEmptyStr as RoadmapNodeId)) {
     EventsReadRefused { node: _, step, reason } => serve_text_response(status: 503, content_type: text_plain_utf8,
       body: join(["Issue history unavailable at ", step, ": ", reason, ". No revision-pinned mutations are available."], ""))
@@ -816,7 +841,7 @@ fn serve_issue_assignment_context_over(
               Absent => serve_text_response(status: 503, content_type: text_plain_utf8, body: "Cannot prepare a stable assignment operation. Try again before submitting.")
               Present { value: nonce } => serve_text_response(
                 status: 200, content_type: application_json_utf8,
-                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce))
+                body: inline_assignment_context_body(session: session, events: envelopes, recents: recents, profiles: serve_profiles_for_instance(instance: instance), operation: nonce, node_id: node_id))
             }
         }
       }
@@ -1313,6 +1338,8 @@ fn roadmap_serve_invoke_over(
       ))
     }
     AllocationPageHandler => allocation_page_response(request: request)
+    SiteFaviconHandler => serve_text_response(status: 200, content_type: site_favicon_type, body: site_favicon_source())
+    SiteClientHandler => serve_text_response(status: 200, content_type: text_javascript_utf8, body: site_client_source())
     AllocationCreateHandler => workspace_route_create(request: request)
     AllocationListHandler => workspace_route_list(request: request)
     AllocationReleaseHandler => workspace_route_release(request: request, allocation_id: path_param_value(params: params, name: "allocation_id") as NonEmptyStr)
@@ -1351,6 +1378,9 @@ fn roadmap_serve_invoke_over(
     IssueAssignmentContextHandler => serve_issue_assignment_context_over(instance: instance, plan: plan(), request: request, params: params)
     IssueAssignHandler => serve_issue_assign_response_over(instance: instance, plan: plan(), request: request, params: params)
     IssueCommentHandler => serve_issue_comment_response_over(instance: instance, request: request, params: params)
+    IssueQueryHandler => serve_issue_query(instance: instance, request: request)
+    IssueViewPreferencesReadHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: false)
+    IssueViewPreferencesSaveHandler => serve_issue_view_preferences_over(instance: instance, request: request, saving: true)
     AuthSessionHandler => auth_session_response_over(instance: instance, request: request)
     SessionsJsonHandler => serve_sessions_response_for_instance(instance: instance)
     AttemptsJsonHandler => serve_attempts_response_for_instance(instance: instance)
@@ -1549,7 +1579,7 @@ fn roadmap_serve_selection_response_over(
         body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
       )
     NoRouteMatched =>
-      serve_text_response(status: 404, content_type: text_plain_utf8, body: "not found\n")
+      serve_page_response_with_status(page: site_document(title: "Page not found · gunbc", heading: "page not found", styles: roadmap_styles(), content: [el("main", [el("h1", [txt("Page not found")]), el("p", [txt("Use the workspace navigation to find an issue or project.")])])]), status: 404)
   }
 }
 
@@ -2190,13 +2220,13 @@ fn auth_session_body(evidence: RequestAuthenticationEvidence) -> String {
 
 // Session-dependent HTML; its no-store header moved to the OAuth follow-up with the response-header channel.
 fn allocation_page_response(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
-  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_css())
+  allocation_page_response_over(request: request, roadmap_stylesheet: roadmap_styles())
 }
 
 // The response over a supplied roadmap stylesheet: the session and header decisions do not read the
 // stylesheet, so a claim about them supplies it (gunbc.roadmap_allocation_page
 // allocation_page_with_stylesheet).
-fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: String) -> ServeHttpResponse {
+fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, roadmap_stylesheet: SiteStyles) -> ServeHttpResponse {
   let viewer = match request.security.authentication {
     GoogleOidcSession { session } => AllocationViewerSignedIn { csrf: session.csrf.token as String }
     AuthAbsent => AllocationViewerSignedOut
@@ -2206,6 +2236,73 @@ fn allocation_page_response_over(request: ServeHttpRequest<RequestAccessPath, Re
   match try_serialize_html_source(node: allocation_page_with_stylesheet(viewer: viewer, roadmap_stylesheet: roadmap_stylesheet)) {
     EmitOk { html } => serve_text_response(status: 200, content_type: text_html_utf8, body: html)
     EmitRejected { reason } => serve_text_response(status: 500, content_type: text_plain_utf8, body: page_render_refusal_body(reason: reason))
+  }
+}
+
+// Preferences are owned by the seated account, independent of the session id. Neither route
+// accepts a principal selector. No-store prevents account/CSRF context entering shared caches.
+fn issue_view_response(status: HttpStatus, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: application_json_utf8, body: body, headers: [ServeResponseHeaderNoStore] }
+}
+fn serve_issue_view_preferences_over(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>, saving: Bool) -> ServeHttpResponse {
+  match request.security.authentication {
+    GoogleOidcSession { session } => {
+      if saving {
+        match human_write_admission(route_path: "/preferences/issues", action: ServeActionSaveOwnView, security: request.security, authorization_policy: tracker_write_authorization_policy, deployment_policy: roadmap_deployment_access_policy, csrf_presented: issue_form_field(body: request.body, name: "csrf"), observed_at: human_write_observed_at(security: request.security)) {
+          Deny { refusal: _ } => issue_view_response(status: 403, body: "Preference save requires a valid session and CSRF proof.")
+          Permit => match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+            Absent => issue_view_response(status: 400, body: "Invalid issue view preferences.")
+            Present { value: prefs } => match issue_view_store_key(principal: session.principal) {
+              Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+              Present { value: key } => match issue_view_store_save(root: issue_view_store_root(instance: instance), key: key, prefs: prefs, revision: issue_form_field(body: request.body, name: "revision")) {
+                IssueViewSaveOk { revision } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [json_kv(key: "revision", value: json_int(n: revision))])))
+                IssueViewSaveConflict => issue_view_response(status: 409, body: "Preferences changed in another tab or browser. Reload to sync.")
+                IssueViewSaveRefused => issue_view_response(status: 503, body: "Account preferences could not be saved.")
+              }
+            }
+          }
+        }
+      } else {
+        match issue_view_store_key(principal: session.principal) {
+          Absent => issue_view_response(status: 503, body: "Account preferences unavailable.")
+          Present { value: key } => match issue_view_store_read(root: issue_view_store_root(instance: instance), key: key) {
+            IssueViewUnread => issue_view_response(status: 503, body: "Account preferences could not be read.")
+            IssueViewAbsent => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: 0)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: JsonNull),
+            ])))
+            IssueViewFound { prefs, revision, expected: _ } => issue_view_response(status: 200, body: serialize_json(v: json_object(members: [
+              json_kv(key: "revision", value: json_int(n: revision)), json_kv(key: "csrf", value: json_string(s: session.csrf.token as String)), json_kv(key: "preferences", value: issue_view_preferences_json(prefs: prefs)),
+            ])))
+          }
+        }
+      }
+    }
+    AuthAbsent => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    SessionStandingInvalid { standing: _ } => issue_view_response(status: 401, body: "Sign in for account preferences.")
+    FabricServiceEvidence { kind: _, authenticated_at: _ } => issue_view_response(status: 403, body: "Human account preferences required.")
+  }
+}
+
+// Read-only query: validated view terms select from the complete, digest-checked observation.
+// Filtering and stable multi-column ordering happen before the fixed-size page is selected.
+fn serve_issue_query(instance: HostDashboardInstance, request: ServeHttpRequest<RequestAccessPath, RequestAuthenticationEvidence>) -> ServeHttpResponse {
+  match issue_view_preferences_of(text: issue_form_field(body: request.body, name: "preferences")) {
+    Absent => issue_view_response(status: 400, body: "Invalid issue query.")
+    Present { value: prefs } => match parse_int(s: issue_form_field(body: request.body, name: "offset")) {
+      Absent => issue_view_response(status: 400, body: "Invalid issue offset.")
+      Present { value: offset } => if offset < 0 || offset > 100000 { issue_view_response(status: 400, body: "Invalid issue offset.") } else {
+        let stored = served_observation_surface_response_for_instance(instance: instance, kind: IssueQueryRows)
+        if stored.status != 200 { stored } else {
+          let identity = served_observation_body_digest(body: stored.body)
+          let expected = issue_form_field(body: request.body, name: "snapshot")
+          if offset > 0 && expected != identity { issue_view_response(status: 409, body: "Issues changed; refresh the results before loading more.") }
+          else { match issue_query_rows_of(body: stored.body) {
+            Absent => issue_view_response(status: 503, body: "Issue query observation unreadable.")
+            Present { value: rows } => issue_view_response(status: 200, body: issue_query_response_body(rows: rows, prefs: prefs, offset: offset, snapshot: identity))
+          } }
+        }
+      }
+    }
   }
 }
 

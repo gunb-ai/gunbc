@@ -8,8 +8,8 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base, max_per_page }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome, RestOk }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -193,7 +193,6 @@ data hermetic_code_search_name: String = "premerge.yaml"
 data hermetic_code_search_blob_sha: String = "9ba6fbbf627a0afdec053411e3382271588b372f"
 data hermetic_code_search_total_count: Int = 250
 data hermetic_code_search_incomplete: Bool = false
-data hermetic_code_search_outcome: RestOutcome = RestOk
 
 // THE QUERY IS AN INPUT AND NEVER A LITERAL HERE: which strings this repository searches for is a
 // fact about the scan being run, not about GitHub's API, and baking one in would be the
@@ -216,7 +215,6 @@ service github.CodeSearch {
     }
     output {
       page: CodeSearchPage
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -244,8 +242,7 @@ service github.CodeSearch {
               repository: hermetic_code_search_repository
             }
           ]
-        },
-        outcome: hermetic_code_search_outcome
+        }
       } "hermetic decoded-200 shape for GET /search/code, carrying the first real hit of the 2026-09-10 depot-arm query and that query's real total_count of 250. One item beside a total of 250 is ordinary pagination and demonstrates nothing about the cross-page anomaly, which no single page can show"
     }
   }
