@@ -41,7 +41,7 @@ import std.citation {
 import extdeps.version { VersionIdentity }
 import std.types { Bool, NonEmptyStr, List, String }
 import gunbc.citation.pdf_safe_profile { PdfOpenParameterPercentEncodeRefusedFromSafe }
-import extdeps.uri { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
+import extdeps.uri.percent_encoding { UriPercentEncodeUnicodeScalarOutOfRangeRefused }
 import extdeps.standards.rfc_8118 { OpenNamedDest, rfc_8118_external_authority_anchor }
 
 data witness_unencodable_scalar_code_points: List<Int> = [1114112]

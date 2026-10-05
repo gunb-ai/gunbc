@@ -14,15 +14,8 @@ import std.citation {
   fragment_selector,
 }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri {
-  Uri,
-  Https,
-  uri_percent_encode_component,
-  uri_percent_encode_code_points,
-  UriPercentComponentEncoded,
-  UriPercentComponentRefused,
-  UriPercentEncodeRefusalCause,
-}
+import extdeps.uri { Uri, Https }
+import extdeps.uri.percent_encoding { uri_percent_encode_component, uri_percent_encode_code_points, UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentEncodeRefusalCause }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 
 data rfc_8118_external_authority_anchor: ExternalAuthority = ExternalAuthority {

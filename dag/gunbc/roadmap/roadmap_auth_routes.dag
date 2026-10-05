@@ -10,7 +10,7 @@ import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_t
 import gunbc.auth.oidc_id_token_verification { oidc_id_token_signature_verify, oidc_id_token_wire_decode, OidcIdTokenWireDecoded, OidcIdTokenWireRefused }
 import extdeps.auth.oidc { OidcLoginPrompt, OidcLoginPromptSelectAccount, oidc_login_prompt_label, OidcIdTokenClaims, OidcIdTokenVerdict, OidcIdTokenVerified, OidcIdTokenRefused, OidcHostedDomain, oidc_id_token_refusal_reason, OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath, admit_login_return_path, ReturnPathAdmitted, ReturnPathRefused, OidcIdTokenVerdictPolicy, login_transaction_expired, OidcScopeOpenId, OidcScopeEmail, OidcScopeProfile, oidc_login_scope_label }
 import extdeps.auth.jwt { JwtBareString, JwtUriString, NumericDateWholeSeconds }
-import extdeps.uri { uri_hex_digit_value, uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentComponentDecoded, UriPercentComponentDecodeRefused }
+import extdeps.uri.percent_encoding { uri_hex_digit_value, uri_percent_encode_component, uri_percent_decode_component, UriPercentComponentEncoded, UriPercentComponentRefused, UriPercentComponentDecoded, UriPercentComponentDecodeRefused }
 import extdeps.entropy { Urandom }
 import extdeps.clock { Clock }
 import extdeps.http.client
