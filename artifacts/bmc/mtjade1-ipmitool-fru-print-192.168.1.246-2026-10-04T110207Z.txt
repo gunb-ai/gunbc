@@ -1,0 +1,18 @@
+FRU Device Description : Builtin FRU Device (ID 0)
+ Chassis Type          : Rack Mount Chassis
+ Chassis Part Number   : B60.0300E.0001
+ Chassis Serial        : 21000012N0A1
+ Board Mfg Date        : Sat 26 Feb 2022 07:19:00 PM UTC UTC
+ Board Mfg             : WIWYNN
+ Board Product         : Mt.Jade Motherboard
+ Board Serial          : B810301000412080005AJ0C1
+ Board Part Number     : B81.03010.0041
+ Board Extra           : 70:E2:84:95:33:6B
+ Product Manufacturer  : WIWYNN
+ Product Name          : Mt.Jade Server System
+ Product Part Number   : B81.030Z1.0010
+ Product Version       : PVT
+ Product Serial        : B81030Z1001021000012N0A1
+ Product Asset Tag     : NULL
+ Product Extra         : NULL
+

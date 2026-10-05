@@ -777,8 +777,6 @@ data non_fold_residue_frontier: List<FrontierRow> = [
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_converge_cli.dag::converge_cli_run_host_knobs" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_allocation_store_plan_artifact" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_observed_baseline_matches" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_plan_apply_shell_structural_hash" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
-  FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_converge_plan.dag::fleet_converge_plan_body_structural_hash" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_convergence_verdict.dag::fleet_unobserved_cell_count" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_convergence_verdict.dag::host_knob_standing" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },
   FrontierRow { subject: PathSubject { path: "dag/gunbc/fleet/fleet_health_observe.dag::is_fan" }, reason: nfr_reason_typed_census_ca5ed1724b, dissolution: nfr_dissolve_owning_fold },

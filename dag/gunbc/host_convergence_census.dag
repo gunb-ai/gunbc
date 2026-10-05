@@ -571,7 +571,7 @@ data host_convergence_census_rows: List<HostConvergenceCensusRow> = [
     phases: protocol_phases(false, false, false, false, false, false, false),
     current_authority: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "FleetConvergeWorkflowMode"),
     persistent_host_effect: ReachesPersistentHostMutation,
-    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_plan", decl_name: "FleetConvergeScope") },
+    disposition: BindToAuthority { target: cite(module_path: "gunbc.fleet_converge_scope", decl_name: "FleetConvergeScope") },
     first_consumer: cite(module_path: "gunbc.fleet_converge_workflow", decl_name: "fleet_converge_workflow_modes"),
   ),
   census_row(
