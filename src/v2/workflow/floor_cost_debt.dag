@@ -1023,6 +1023,9 @@ fn floor_cost_debt_proven_chunk_21() -> List<String> {
 // route and checks that each supplied fixture is what its producer emits, so it cannot itself be
 // cheap. Measure it with claim_batch --entry src/v2/test/claim/long/cwc_resolution_probe_test.dag
 // --functions cwc_cwc_module_resolve_accepts and read the [witness] eval_steps line.
+// ADMISSION AUTHORITY: operator decision B, default-approved, escalation msg_e427bf73 (2026-10-05,
+// relayed by clever-crane-847). It is admitted through v2.workflow.floor_cost_debt_verdict, which
+// runs a newly added row unbudgeted for its verdict and refuses it if the claim does not pass.
 fn floor_cost_debt_proven_chunk_22() -> List<String> {
   Cons { head: "v2.test.long.cwc_resolution_probe.cwc_cwc_module_resolve_accepts", tail: Empty {} }
 }
