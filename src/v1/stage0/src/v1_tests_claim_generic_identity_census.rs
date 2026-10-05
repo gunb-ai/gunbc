@@ -866,7 +866,7 @@ pub fn generic_identity_census_tsv(rows: Rc<Vec<Rc<GenericIdentityRow>>>) -> Str
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|l: String| l.clone())(a.clone());
                     let __kb = (|l: String| l.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
                 });
                 __sorted
             }),
@@ -1142,7 +1142,7 @@ pub fn gi_tally_lines(prefix: String, tally: Rc<HashMap<String, i64>>) -> Rc<Vec
             __sorted.sort_by(|a: &String, b: &String| {
                 let __ka = (|k: String| k.clone())(a.clone());
                 let __kb = (|k: String| k.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
         })

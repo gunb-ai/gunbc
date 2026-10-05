@@ -329,7 +329,7 @@ pub fn type_arg_name_is_bound_generic_parameter(name: String, env: Rc<TypeEnv>) 
 pub fn is_width_nat_type_literal(n: Rc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
         {
             let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                 unreachable!()

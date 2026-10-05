@@ -791,7 +791,7 @@ pub fn render_stage0_layered_core_lib(
                 __sorted.sort_by(|a: &String, b: &String| {
                     let __ka = (|ident: String| ident.clone())(a.clone());
                     let __kb = (|ident: String| ident.clone())(b.clone());
-                    v1_rt::canonical_key_cmp(&__ka, &__kb)
+                    __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
                 });
                 __sorted
             })
