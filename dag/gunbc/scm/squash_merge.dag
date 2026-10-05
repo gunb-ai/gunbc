@@ -242,29 +242,27 @@ fn squash_merge(
   }
 }
 
-// THE CORRECTIVE SQUASH: the same merge, recorded as superseding one stale integration on the target's
-// line. Its one extra question is the supersession admission (gunbc.scm.repository_envelope
-// admit_supersession), asked of the very anchors the merge then uses; every merge refusal is the
-// plain squash's, carried one-to-one.
+// THE CORRECTIVE SQUASH (the NO-LAND ruling on gunbc#13402): a recapture S' of the stale work that
+// integration X consumed, merged into X's PARENT -- the line as it stood before the stale integration
+// -- and recorded as X's child superseding X. There is no target argument: the correction's target is
+// fixed by X, so a caller cannot merge into the stale tree and call it corrected. Its one extra
+// question is the supersession admission (gunbc.scm.repository_envelope admit_supersession), which
+// also derives the correction's merge anchors; every merge refusal is the plain squash's, carried
+// one-to-one.
 type SupersedingSquashOutcome
   = SupersedingSquashMerged(SquashMergeOutcome)
   | SupersedingSquashRefused { cause: SupersessionRefusal }
 
 fn squash_merge_superseding(
   repository: RepositoryEnvelope,
-  target: RepositoryCommitRef,
-  source: RepositoryCommitRef,
   supersedes: RepositoryCommitRef,
+  source: RepositoryCommitRef,
   message: String,
 ) -> SupersedingSquashOutcome {
-  match merge_base(repository: repository, target: target, source: source) {
-    MergeBaseNotDerived { refusal: refusal } => SupersedingSquashMerged(SquashMergeBaseRefused { refusal: refusal })
-    MergeBaseDerived { anchors: anchors } =>
-      match admit_supersession(anchors: anchors, supersedes: supersedes) {
-        SupersessionRefused { cause } => SupersedingSquashRefused { cause: cause }
-        SupersessionAdmitted(admitted) =>
-          SupersedingSquashMerged(squash_merge_subject(admission: admit_merge_subject_for(intent: SupersedingSquash(admitted)), message: message))
-      }
+  match admit_supersession(repository: repository, supersedes: supersedes, source: source) {
+    SupersessionRefused { cause } => SupersedingSquashRefused { cause: cause }
+    SupersessionAdmitted(admitted) =>
+      SupersedingSquashMerged(squash_merge_subject(admission: admit_merge_subject_for(intent: SupersedingSquash(admitted)), message: message))
   }
 }
 

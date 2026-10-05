@@ -28,7 +28,7 @@ module gunbc.scm.intake
 // (gunbc.scm.repository_envelope record_legacy_intakes) writes it -- a fresh capture cannot be stale,
 // because it descends from the intake commit of the revision it was computed against.
 
-import std.types { String, List, Bool }
+import std.types { String, List, Bool, NonEmptyStr }
 import extdeps.git.object_store { GitObjectId, git_object_id_eq }
 import gunbc.merge_admission_subject { render_git_object_id_wire, parse_git_object_id_wire }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_string, json_object, json_kv }
@@ -196,5 +196,88 @@ fn decode_intake_revision_member(value: JsonValue, key: String) -> IntakeRevisio
         Absent => IntakeRevisionMemberRefused { cause: MemberReadWrongShape { key: key } }
         Present { value: revision } => IntakeRevisionMemberRead { revision: revision }
       }
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The work a commit captured (format v9 commit member `work`)
+// ------------------------------------------------------------------------------------------------
+//
+// WHICH UNIT OF WORK A CAPTURE FROZE, AS A TYPED MEMBER, so a correction can be bound to the exact
+// work it recaptures (the NO-LAND ruling on gunbc#13402, blocker 1). Before this, the only record of
+// a candidate's work was its message, so a corrective supersession could name ANY fresh commit as
+// the "recapture" of a stale one and the stale integration would leave standing with its work never
+// reconstructed. The subject is opaque here: the producer that captures work owns its spelling
+// (gunbc.roadmap_belt_actuate belt_capture_work), and this module asserts only that two captures
+// carrying one subject are captures of one unit of work. `WorkUnrecordedByFormat` is what a document
+// older than the member says (v8 and older), never `NoWork`, for the reason `IntakeUnrecordedByFormat`
+// is never `IntakeNone`.
+type CaptureWork {
+  subject: NonEmptyStr
+}
+
+type CommitWork
+  = NoWork
+  | WorkCapture { work: CaptureWork }
+  | WorkUnrecordedByFormat
+
+fn capture_work_eq(left: CaptureWork, right: CaptureWork) -> Bool {
+  (left.subject as String) == (right.subject as String)
+}
+
+fn encode_commit_work(work: CommitWork) -> JsonValue {
+  match work {
+    WorkUnrecordedByFormat => JsonNull
+    NoWork => json_object(members: [json_kv(key: "kind", value: json_string(s: "none"))])
+    WorkCapture { work: w } =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "capture")),
+        json_kv(key: "subject", value: json_string(s: w.subject as String)),
+      ])
+  }
+}
+
+type CommitWorkDecode
+  = CommitWorkDecoded { work: CommitWork }
+  | CommitWorkRefused { cause: MemberReadRefusal }
+
+fn decode_commit_work(value: JsonValue) -> CommitWorkDecode {
+  match value {
+    JsonNull => CommitWorkDecoded { work: WorkUnrecordedByFormat }
+    JsonObject { members: _ } =>
+      match read_string_member(v: value, key: "kind") {
+        MemberFailed { cause } => CommitWorkRefused { cause: cause }
+        MemberArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+        MemberObject { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+        MemberString { value: kind } =>
+          if kind == "none" {
+            match unexpected_member_key(v: value, allowed: ["kind"]) {
+              Present { value: key } => CommitWorkRefused { cause: MemberReadWrongShape { key: join(["work.", key], "") } }
+              Absent => CommitWorkDecoded { work: NoWork }
+            }
+          } else if kind == "capture" {
+            match unexpected_member_key(v: value, allowed: ["kind", "subject"]) {
+              Present { value: key } => CommitWorkRefused { cause: MemberReadWrongShape { key: join(["work.", key], "") } }
+              Absent =>
+                match read_string_member(v: value, key: "subject") {
+                  MemberString { value: subject } =>
+                    if subject == "" {
+                      CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
+                    } else {
+                      CommitWorkDecoded { work: WorkCapture { work: CaptureWork { subject: subject as NonEmptyStr } } }
+                    }
+                  MemberFailed { cause } => CommitWorkRefused { cause: cause }
+                  MemberArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
+                  MemberObject { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
+                }
+            }
+          } else {
+            CommitWorkRefused { cause: MemberReadWrongShape { key: "work.kind" } }
+          }
+      }
+    JsonBool { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonNumber { lexeme: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonString { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+    JsonArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
   }
 }

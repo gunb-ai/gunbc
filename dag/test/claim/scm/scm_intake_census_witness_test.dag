@@ -1,0 +1,421 @@
+module test.claim.scm.scm_intake_census_witness_test
+
+// THE v9 DECODER RE-ESTABLISHES WHAT THE MINTS ENFORCE (the NO-LAND ruling on gunbc#13402, blockers 2
+// and 5). Each claim builds a repository through the production verbs, encodes it with the production
+// v9 writer, edits the serialized bytes the way a damaged or hand-edited document would differ, and
+// requires the decoder to refuse by the law the edit breaks (the edit is one member of one commit
+// record, made on the encoded JSON value):
+//   * two advances leaving one revision (a forked intake line);
+//   * an advance whose parent's line does not stand at its `from`;
+//   * one revision placed twice;
+//   * a corrective commit carrying the stale integration's UNCHANGED root;
+//   * a corrective commit naming a fresh but UNRELATED source;
+//   * a second supersession of one integration.
+// The unedited documents decode -- the positive control that the reds are the edits and not the
+// scenes. The decode is the whole-store route, so the corrected-root equality is answered outright.
+
+import std.types { Bool, String, List, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_int }
+import gunbc.scm.json_member { read_member_value, MemberValue, MemberLookupFailed }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.scm.ancestry { RepositoryCommitRef }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
+import gunbc.scm.object_store { ObjectStore }
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope,
+  encode_repository_v9,
+  decode_repository_v9_index,
+  decode_repository_v7_finish,
+  ShardedIndexDecoded,
+  ShardedIndexRefused,
+  RepositoryDecoded,
+  RepositoryDecodeRefused,
+  RepositoryDecodeRefusal,
+  RepositoryIntakeCensusRefused,
+  RepositorySupersessionCensusRefused,
+  IntakeCensusRefusal,
+  IntakeCensusSecondBase,
+  IntakeCensusBaseNotRoot,
+  IntakeCensusAdvanceDoesNotMove,
+  IntakeCensusAdvanceDiscontinuous,
+  IntakeCensusRevisionPlacedTwice,
+  IntakeCensusLineForks,
+  IntakeCensusHalfConverted,
+  IntakeCensusStaleCaptureOnItsBase,
+  IntakeCensusStaleCaptureOffLine,
+  IntakeCensusStaleCaptureWithoutWork,
+  SupersessionCensusRefusal,
+  SupersessionCensusDuplicate,
+  SupersessionCensusNotOnStaleIntegration,
+  SupersessionCensusRelationRefused,
+  SupersessionCensusRootNotAuthorized,
+  SupersessionCensusRootUnverifiable,
+  RepositoryCheckoutReferenceUnresolved,
+  RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
+  RepositoryCommitParentNotPreviouslyAdmitted,
+  RepositoryCommitReferenceDuplicatedOnWire,
+  RepositoryCommitRootIsAuthoredSource,
+  RepositoryCommitRootIsSemanticNode,
+  RepositoryCommitRootNotInObjectTable,
+  RepositoryCommitRootReferenceUnresolved,
+  RepositoryDecodeObjectTableRefused,
+  RepositoryDecodedCommitReferenceOutsideAllocator,
+  RepositoryDecodedManifestSourceIsCorpusManifest,
+  RepositoryDecodedManifestSourceIsSemanticNode,
+  RepositoryDecodedTargetIsAuthoredSource,
+  RepositoryDecodedTargetIsCorpusManifest,
+  RepositoryFormatRetired,
+  RepositoryFormatUnrecognized,
+  RepositoryIdentityRuleUnrecognized,
+  RepositoryIndexHasNoObjectRoster,
+  RepositoryMemberReadRefused,
+  RepositoryObjectRosterMalformed,
+  RepositoryShardNotDecodable,
+  RepositoryShardedIndexIsNotWhole,
+  RepositoryStagedIsAuthoredSource,
+  RepositoryStagedIsSemanticNode,
+  RepositoryStagedNotInObjectTable,
+  RepositoryStagedReferenceUnresolved,
+  RepositorySupersessionRootsUnverifiable,
+  RepositoryTargetReferenceRefused,
+  RepositoryUnexpectedMember,
+  SupersessionAlreadySuperseded,
+  SupersessionMergeBaseRefused,
+  SupersessionNotAnIntegration,
+  SupersessionNotStale,
+  SupersessionSourceNotFresh,
+  SupersessionStaleIntegrationIsARoot,
+  SupersessionWorkMismatch,
+}
+import gunbc.scm.squash_merge {
+  SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable,
+  squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused,
+}
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_at, mb_intake_base, mb_intake_advance }
+import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_ref }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data census_r0: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
+data census_r1: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"
+data census_r2: String = "d7005ab1c2d3e4f5061728394a5b6c7d8e9f0a1b"
+data census_r3: String = "0123456789abcdef0123456789abcdef01234567"
+
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+// THE ONE EDIT A CLAIM MAKES: one member of one commit record, located by the record's own id, in the
+// document the production v9 writer produced. The edit is made on the decoded JSON value rather than
+// on its text, so a claim pays for the writer and the decoder it is about, not for a parse of its own
+// fixture. An edit that finds no record of that id yields no document, so the claim fails rather than
+// passing on an unedited one.
+fn commit_record_is(v: JsonValue, ordinal: Int) -> Bool {
+  match read_member_value(v: v, key: "id") {
+    MemberLookupFailed { cause: _ } => false
+    MemberValue { value } =>
+      match value {
+        JsonNumber { lexeme } => (lexeme as String) == to_string(ordinal)
+        JsonNull => false
+        JsonBool { value: _ } => false
+        JsonString { value: _ } => false
+        JsonArray { elements: _ } => false
+        JsonObject { members: _ } => false
+      }
+  }
+}
+
+fn with_member(record: JsonValue, key: String, value: JsonValue) -> JsonValue {
+  match record {
+    JsonObject { members } => JsonObject { members: map(members, kv => if kv.key == key { JsonKeyValue { key: key, value: value } } else { kv }) }
+    JsonNull => record
+    JsonBool { value: _ } => record
+    JsonNumber { lexeme: _ } => record
+    JsonString { value: _ } => record
+    JsonArray { elements: _ } => record
+  }
+}
+
+fn commit_records(doc: JsonValue) -> List<JsonValue> {
+  match read_member_value(v: doc, key: "commits") {
+    MemberLookupFailed { cause: _ } => []
+    MemberValue { value } =>
+      match value {
+        JsonArray { elements } => elements
+        JsonNull => []
+        JsonBool { value: _ } => []
+        JsonNumber { lexeme: _ } => []
+        JsonString { value: _ } => []
+        JsonObject { members: _ } => []
+      }
+  }
+}
+
+fn commit_member(doc: JsonValue, ordinal: Int, key: String) -> JsonValue? {
+  match (commit_records(doc: doc) |> filter(r => commit_record_is(v: r, ordinal: ordinal))).first() {
+    Absent => none
+    Present { value: record } =>
+      match read_member_value(v: record, key: key) {
+        MemberLookupFailed { cause: _ } => none
+        MemberValue { value } => Present { value: value }
+      }
+  }
+}
+
+fn edited_commit(doc: JsonValue, ordinal: Int, key: String, value: JsonValue) -> JsonValue? {
+  if count(commit_records(doc: doc) |> filter(r => commit_record_is(v: r, ordinal: ordinal))) != 1 {
+    none
+  } else {
+    Present { value: with_member(record: doc, key: "commits", value: JsonArray {
+      elements: map(commit_records(doc: doc), r => if commit_record_is(v: r, ordinal: ordinal) { with_member(record: r, key: key, value: value) } else { r }),
+    }) }
+  }
+}
+
+type CensusDecode
+  = CensusDecoded
+  | CensusRefused { cause: RepositoryDecodeRefusal }
+
+fn decode_v9(doc: JsonValue, store: ObjectStore) -> CensusDecode {
+  match decode_repository_v9_index(v: doc) {
+    ShardedIndexRefused { cause } => CensusRefused { cause: cause }
+    ShardedIndexDecoded { index } =>
+      match decode_repository_v7_finish(v: index.document, store: store, commit_policy: index.commit_policy) {
+        RepositoryDecoded { envelope: _ } => CensusDecoded
+        RepositoryDecodeRefused { cause } => CensusRefused { cause: cause }
+      }
+  }
+}
+
+fn intake_law(outcome: CensusDecode) -> String {
+  match outcome {
+    CensusDecoded => "decoded"
+    CensusRefused { cause } =>
+      match cause {
+        RepositoryIntakeCensusRefused { cause: law } =>
+          match law {
+            IntakeCensusSecondBase { first: _, second: _ } => "second_base"
+            IntakeCensusBaseNotRoot { commit: _ } => "base_not_root"
+            IntakeCensusAdvanceDoesNotMove { commit: _ } => "does_not_move"
+            IntakeCensusAdvanceDiscontinuous { commit: _ } => "discontinuous"
+            IntakeCensusRevisionPlacedTwice { commits: _ } => "placed_twice"
+            IntakeCensusLineForks { advances: _ } => "line_forks"
+            IntakeCensusHalfConverted { recorded: _, unrecorded: _ } => "half_converted"
+            IntakeCensusStaleCaptureOnItsBase { commit: _ } => "stale_on_base"
+            IntakeCensusStaleCaptureOffLine { commit: _ } => "stale_off_line"
+            IntakeCensusStaleCaptureWithoutWork { commit: _ } => "stale_without_work"
+          }
+        RepositorySupersessionCensusRefused { cause: law } =>
+          match law {
+            SupersessionCensusDuplicate { supersedes: _, by: _ } => "supersession_duplicate"
+            SupersessionCensusNotOnStaleIntegration { commit: _ } => "supersession_not_on_stale"
+            SupersessionCensusRelationRefused { commit: _, cause: relation } =>
+              match relation {
+                SupersessionNotAnIntegration { named: _ } => "supersession_relation"
+                SupersessionStaleIntegrationIsARoot { named: _ } => "supersession_relation"
+                SupersessionNotStale { named: _ } => "supersession_relation"
+                SupersessionAlreadySuperseded { named: _, by: _ } => "supersession_relation"
+                SupersessionSourceNotFresh { source: _ } => "supersession_relation"
+                SupersessionWorkMismatch { stale: _, source: _ } => "supersession_work_mismatch"
+                SupersessionMergeBaseRefused { refusal: _ } => "supersession_relation"
+              }
+            SupersessionCensusRootNotAuthorized { commit: _ } => "supersession_root_not_authorized"
+            SupersessionCensusRootUnverifiable { commit: _, missing: _ } => "supersession_root_unverifiable"
+          }
+        RepositoryDecodeObjectTableRefused { cause: _ } => "other_refusal"
+        RepositoryMemberReadRefused { cause: _ } => "other_refusal"
+        RepositoryFormatUnrecognized { found: _ } => "other_refusal"
+        RepositoryFormatRetired { found: _ } => "other_refusal"
+        RepositoryShardedIndexIsNotWhole { found: _ } => "other_refusal"
+        RepositorySupersessionRootsUnverifiable { missing: _ } => "other_refusal"
+        RepositoryShardNotDecodable { detail: _ } => "other_refusal"
+        RepositoryIndexHasNoObjectRoster { found: _ } => "other_refusal"
+        RepositoryObjectRosterMalformed { detail: _ } => "other_refusal"
+        RepositoryIdentityRuleUnrecognized { found: _ } => "other_refusal"
+        RepositoryCommitRootReferenceUnresolved { reference: _ } => "other_refusal"
+        RepositoryCommitRootNotInObjectTable { root: _ } => "other_refusal"
+        RepositoryCommitRootIsAuthoredSource { root: _ } => "other_refusal"
+        RepositoryCommitRootIsSemanticNode { root: _ } => "other_refusal"
+        RepositoryDecodedManifestSourceIsSemanticNode { source: _ } => "other_refusal"
+        RepositoryDecodedManifestSourceIsCorpusManifest { source: _ } => "other_refusal"
+        RepositoryDecodedTargetIsAuthoredSource { target: _ } => "other_refusal"
+        RepositoryDecodedTargetIsCorpusManifest { target: _ } => "other_refusal"
+        RepositoryStagedReferenceUnresolved { reference: _ } => "other_refusal"
+        RepositoryStagedNotInObjectTable { staged: _ } => "other_refusal"
+        RepositoryStagedIsAuthoredSource { staged: _ } => "other_refusal"
+        RepositoryStagedIsSemanticNode { staged: _ } => "other_refusal"
+        RepositoryCheckoutReferenceUnresolved { reference: _ } => "other_refusal"
+        RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "other_refusal"
+        RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "other_refusal"
+        RepositoryCommitIntegrationSourceNotPreviouslyAdmitted { source: _ } => "other_refusal"
+        RepositoryDecodedCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "other_refusal"
+        RepositoryUnexpectedMember { context: _, key: _ } => "other_refusal"
+        RepositoryTargetReferenceRefused { cause: _ } => "other_refusal"
+      }
+  }
+}
+
+// c0 base R0, c1 advance R0..R1, c2 advance R1..R2, c3 an ordinary commit on c0.
+fn line_scene() -> RepositoryEnvelope? {
+  match rev(hex: census_r0) {
+    Absent => none
+    Present { value: r0 } =>
+      match rev(hex: census_r1) {
+        Absent => none
+        Present { value: r1 } =>
+          match rev(hex: census_r2) {
+            Absent => none
+            Present { value: r2 } => {
+              let base = mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A"), message: "base", revision: r0)
+              let a1 = mb_intake_advance(build: mb_stage(build: base, path: "src/b.dag", text: "B"), message: "advance 1", from: r0, to: r1)
+              let a2 = mb_intake_advance(build: mb_stage(build: a1, path: "src/c.dag", text: "C"), message: "advance 2", from: r1, to: r2)
+              match a2 {
+                MbSetupFailed => none
+                MbBuilt { repository, at: _ } =>
+                  match mb_commit(build: mb_stage(build: mb_at(build: MbBuilt { repository: repository, at: none }, target: legacy_ref(ordinal: 0)), path: "src/d.dag", text: "D"), message: "ordinary") {
+                    MbSetupFailed => none
+                    MbBuilt { repository: scene, at: _ } => Present { value: scene }
+                  }
+              }
+            }
+          }
+      }
+  }
+}
+
+fn line_law(ordinal: Int, intake: JsonValue) -> String {
+  match line_scene() {
+    Absent => "no_scene"
+    Present { value: scene } =>
+      match edited_commit(doc: encode_repository_v9(repo: scene), ordinal: ordinal, key: "intake", value: intake) {
+        Absent => "edit_missed"
+        Present { value: forged } => intake_law(outcome: decode_v9(doc: forged, store: scene.store))
+      }
+  }
+}
+
+fn advance_intake(from: String, to: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "advance")),
+    json_kv(key: "from", value: json_string(s: join(["sha1:", from], ""))),
+    json_kv(key: "to", value: json_string(s: join(["sha1:", to], ""))),
+  ])
+}
+
+test fn the_unedited_intake_line_decodes() -> Bool {
+  match line_scene() {
+    Absent => false
+    Present { value: scene } => intake_law(outcome: decode_v9(doc: encode_repository_v9(repo: scene), store: scene.store)) == "decoded"
+  }
+}
+
+// c3, an ordinary commit on c0, forged into a second advance leaving R0 (c1 already leaves it).
+test fn a_forged_second_advance_from_one_revision_is_a_forked_line() -> Bool {
+  line_law(ordinal: 3, intake: advance_intake(from: census_r0, to: census_r3)) == "line_forks"
+}
+
+// c2 (on c1's line, at R1) forged to advance from R3.
+test fn a_forged_advance_off_its_parents_line_is_discontinuous() -> Bool {
+  line_law(ordinal: 2, intake: advance_intake(from: census_r3, to: census_r2)) == "discontinuous"
+}
+
+// c2 forged to place R0, which the base c0 already places.
+test fn a_forged_second_placement_of_one_revision_refuses() -> Bool {
+  line_law(ordinal: 2, intake: advance_intake(from: census_r1, to: census_r0)) == "placed_twice"
+}
+
+// THE CORRECTIVE SCENE: c7 supersedes head 2 with the recapture c5; c8 plainly integrates the
+// unrelated capture c6 on top of c7.
+fn superseding_integration(source: Int, supersedes: Int) -> JsonValue {
+  json_object(members: [json_kv(key: "source", value: json_int(n: source)), json_kv(key: "supersedes", value: json_int(n: supersedes))])
+}
+
+fn corrected_scene(with_later_integration: Bool) -> RepositoryEnvelope? {
+  match legacy_corrective_scene() {
+    Absent => none
+    Present { value: scene } =>
+      match squash_merge_superseding(repository: scene, supersedes: legacy_ref(ordinal: 2), source: legacy_ref(ordinal: 5), message: "correct 2") {
+        SupersedingSquashRefused { cause: _ } => none
+        SupersedingSquashMerged(outcome) =>
+          match outcome {
+            SquashMerged { repository: corrected, reference: c7 } =>
+              if !with_later_integration {
+                Present { value: corrected }
+              } else {
+                match squash_merge(repository: corrected, target: c7, source: legacy_ref(ordinal: 6), message: "integrate 6") {
+                  SquashMerged { repository: with_c8, reference: _ } => Present { value: with_c8 }
+                  SquashMergeBaseRefused { refusal: _ } => none
+                  SquashMergeConflicted { conflicts: _ } => none
+                  SquashMergeRootMissing { side: _, root: _ } => none
+                  SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+                  SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+                  SquashMergeResultLocatorCollision { identity: _ } => none
+                  SquashMergeAllocatorInvalid => none
+                  SquashMergeSourceUnrecoverable { cause: _ } => none
+                }
+              }
+            SquashMergeBaseRefused { refusal: _ } => none
+            SquashMergeConflicted { conflicts: _ } => none
+            SquashMergeRootMissing { side: _, root: _ } => none
+            SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+            SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+            SquashMergeResultLocatorCollision { identity: _ } => none
+            SquashMergeAllocatorInvalid => none
+            SquashMergeSourceUnrecoverable { cause: _ } => none
+          }
+      }
+  }
+}
+
+fn corrected_law(with_later_integration: Bool, ordinal: Int, key: String, value: JsonValue?) -> String {
+  match corrected_scene(with_later_integration: with_later_integration) {
+    Absent => "no_scene"
+    Present { value: scene } => {
+      let doc = encode_repository_v9(repo: scene)
+      match value {
+        Absent => intake_law(outcome: decode_v9(doc: doc, store: scene.store))
+        Present { value: v } =>
+          match edited_commit(doc: doc, ordinal: ordinal, key: key, value: v) {
+            Absent => "edit_missed"
+            Present { value: forged } => intake_law(outcome: decode_v9(doc: forged, store: scene.store))
+          }
+      }
+    }
+  }
+}
+
+test fn the_unedited_corrected_line_decodes() -> Bool {
+  corrected_law(with_later_integration: true, ordinal: 7, key: "root", value: none) == "decoded"
+}
+
+// FORGED METADATA ON AN UNCHANGED STALE TREE: c7 claims the correction but carries c2's root, which
+// lacks R1's src/up.dag change -- the tree the correction exists to replace.
+test fn a_forged_correction_on_the_unchanged_stale_root_refuses() -> Bool {
+  match corrected_scene(with_later_integration: false) {
+    Absent => false
+    Present { value: scene } => {
+      let doc = encode_repository_v9(repo: scene)
+      match commit_member(doc: doc, ordinal: 2, key: "root") {
+        Absent => false
+        Present { value: stale_root } =>
+          match edited_commit(doc: doc, ordinal: 7, key: "root", value: stale_root) {
+            Absent => false
+            Present { value: forged } => intake_law(outcome: decode_v9(doc: forged, store: scene.store)) == "supersession_root_not_authorized"
+          }
+      }
+    }
+  }
+}
+
+test fn a_forged_correction_naming_an_unrelated_source_refuses() -> Bool {
+  corrected_law(with_later_integration: false, ordinal: 7, key: "integration", value: Present { value: superseding_integration(source: 6, supersedes: 2) }) == "supersession_work_mismatch"
+}
+
+test fn a_forged_second_supersession_of_one_integration_refuses() -> Bool {
+  corrected_law(with_later_integration: true, ordinal: 8, key: "integration", value: Present { value: superseding_integration(source: 6, supersedes: 2) }) == "supersession_duplicate"
+}

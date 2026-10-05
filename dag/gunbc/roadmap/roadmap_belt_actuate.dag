@@ -433,19 +433,20 @@ import gunbc.scm.object_store {
   find_object, store_rostered_lookup, scm_object_identity, authored_source_object, path_unique_manifest_identity,
   CorpusManifestRecord, authored_source_target_locator, object_id_eq, CorpusManifestTarget,
 }
-import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat, intake_revision_eq, encode_commit_intake }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, IntakeNone, IntakeBase, IntakeAdvance, IntakeStaleCapture, IntakeUnrecordedByFormat, intake_revision_eq, encode_commit_intake, CaptureWork, CommitWork, NoWork, WorkCapture, WorkUnrecordedByFormat, encode_commit_work }
 import gunbc.scm.repository_envelope {
   LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
-  intake_commit_at_revision, intake_tip, IntakeTip,
-  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseRevisionAlreadyPlaced,
+  intake_commit_at_revision, IntakeAtRevisionFound, IntakeAtRevisionAbsent, IntakeAtRevisionAmbiguous,
+  intake_tip, IntakeTip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
   mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
   IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
   line_integration_of, LineIntegration,
-  SupersessionRefusal, SupersessionNotOnLine, SupersessionNotAnIntegration, SupersessionNotStale,
-  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionLineUnreadable,
+  SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
   LegacyIntakeRecord, record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
   LegacyIntakeRefusal, LegacyIntakeUnknownCommit, LegacyIntakeAlreadyRecorded, LegacyIntakeDuplicated, LegacyIntakeUncovered,
-  LegacyIntakeRootNotBase, LegacyIntakeBaseNotRoot, LegacyIntakeNotRecordable, LegacyStaleCaptureOnItsOwnBase, LegacyIntakeLineUnreadable,
+  LegacyIntakeRootNotBase, LegacyIntakeBaseNotRoot, LegacyIntakeNotRecordable, LegacyIntakeCensusRefused,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
   repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
@@ -454,7 +455,7 @@ import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.write_spine {
-  commit_staged,
+  commit_staged, commit_staged_capture,
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
@@ -6599,8 +6600,8 @@ fn belt_scm_envelope_seeded(
                 ) {
                   IntakeBaseRootRefused { cause: _ } =>
                     SeedPoisoned { detail: "the base manifest the seed just stored does not resolve as a complete manifest in its own store, which is store damage" }
-                  IntakeBaseRevisionAlreadyPlaced { commit: _ } =>
-                    SeedPoisoned { detail: "an empty envelope already places the intake base, which is envelope damage" }
+                  IntakeBaseLineExists { base: _ } =>
+                    SeedPoisoned { detail: "an envelope with no commits already holds an intake base, which is envelope damage" }
                   IntakeBaseAllocatorInvalid { next_ordinal } =>
                     SeedPoisoned {
                       detail: join(["the envelope's commit allocator is invalid (next ordinal ", to_string(next_ordinal), ")"], ""),
@@ -6632,6 +6633,15 @@ fn belt_scm_envelope_seeded(
         }
     }
   }
+}
+
+// THE UNIT OF WORK A CANDIDATE CAPTURES, as the SCM's typed capture subject (gunbc.scm.intake
+// CaptureWork): one roadmap node's one attempt. Every capture of that attempt -- the original and a
+// recapture after a base advance -- carries this subject, which is what binds a corrective
+// supersession to the exact stale work it replaces. The one producer; the legacy conversion reads the
+// same pair back from a pre-intake candidate's message and spells it through here.
+fn belt_capture_work(node_id: String, attempt_key: String) -> CaptureWork {
+  CaptureWork { subject: join([node_id, " a", attempt_key], "") as NonEmptyStr }
 }
 
 // THE ATTEMPT'S BASE AS A TYPED REVISION. The spawn origin records the sha as git printed it
@@ -6673,14 +6683,18 @@ fn belt_scm_intake_base_for(
   revision: IntakeRevision,
 ) -> BeltIntakeBase {
   match intake_commit_at_revision(commits: envelope.commits, revision: revision) {
-    Present { value: placed } => BeltIntakeBaseReady { envelope: envelope, base_ref: placed.reference }
-    Absent =>
+    IntakeAtRevisionFound { commit: placed } => BeltIntakeBaseReady { envelope: envelope, base_ref: placed.reference }
+    IntakeAtRevisionAmbiguous { commits } =>
+      BeltIntakeBasePoisoned { detail: join(["the project repository places the attempt's base on ", to_string(count(commits)), " intake commits, which the one-line census forbids: envelope damage"], "") }
+    IntakeAtRevisionAbsent =>
       match intake_tip(commits: envelope.commits) {
-        Absent =>
+        IntakeTipAmbiguous { tips } =>
+          BeltIntakeBasePoisoned { detail: join(["the project repository's intake line has ", to_string(count(tips)), " tips, which the one-line census forbids: envelope damage"], "") }
+        IntakeTipNoLine =>
           BeltIntakeBasePoisoned {
             detail: "the project repository predates typed base records: no commit carries an intake, so which base a candidate would descend from is underivable until it is converted in place (belt_scm_intake_convert_cli), which types its base and records its stale captures",
           }
-        Present { value: tip } =>
+        IntakeTipFound(tip) =>
           match tip {
             IntakeTip { commit: tip_commit, revision: tip_revision } =>
               match belt_scm_base_advance(git_program: git_program, worktree: worktree, path: path, envelope: envelope, tip_commit: tip_commit, from: tip_revision, to: revision) {
@@ -6878,7 +6892,7 @@ fn belt_scm_base_advance_mint(
                   BaseAdvancePoisoned { detail: "the advance's two revisions are one revision, which the intake tip search cannot produce: envelope damage" }
                 IntakeAdvanceDiscontinuous { parent: _, line: _ } =>
                   BaseAdvancePoisoned { detail: "the intake tip's line does not stand at the tip's own revision, which is envelope damage" }
-                IntakeAdvanceRevisionAlreadyPlaced { commit: _ } =>
+                IntakeAdvanceRevisionAlreadyPlaced { commits: _ } =>
                   BaseAdvancePoisoned { detail: "the advance's target revision is already placed, which the intake search had just ruled out: envelope damage" }
                 IntakeAdvanceLineAlreadyAdvanced { commit: _ } =>
                   BaseAdvancePoisoned { detail: "an advance already leaves the intake tip's revision, so the tip search returned a commit that is not the tip: envelope damage" }
@@ -6999,6 +7013,7 @@ fn belt_scm_capture_candidate_tree(
                         belt_scm_delta_capture(
                           instance: instance,
                           worktree: worktree,
+                          work: belt_capture_work(node_id: node_id as String, attempt_key: attempt_key),
                           seeded: based,
                           generation: seeded_generation,
                           base_ref: base_ref,
@@ -7147,6 +7162,7 @@ fn belt_scm_delta_bind_text(path_of_envelope: String, acc: BeltDeltaFold, path: 
 fn belt_scm_delta_capture(
   instance: HostDashboardInstance,
   worktree: String,
+  work: CaptureWork,
   seeded: RepositoryEnvelope,
   generation: RepositoryGenerationExpectation,
   base_ref: RepositoryCommitRef,
@@ -7166,6 +7182,7 @@ fn belt_scm_delta_capture(
           belt_scm_delta_capture_over(
             instance: instance,
             worktree: worktree,
+            work: work,
             seeded: RepositoryEnvelope {
               store: with_base,
               commits: seeded.commits,
@@ -7190,6 +7207,7 @@ fn belt_scm_delta_capture(
 fn belt_scm_delta_capture_over(
   instance: HostDashboardInstance,
   worktree: String,
+  work: CaptureWork,
   seeded: RepositoryEnvelope,
   generation: RepositoryGenerationExpectation,
   base_ref: RepositoryCommitRef,
@@ -7263,7 +7281,7 @@ fn belt_scm_delta_capture_over(
                             detail: "the object store refuses the candidate manifest: a different manifest already holds its identity, which is store damage, not a capture",
                           }
                         UniqueManifestStored { store: with_manifest, manifest } =>
-                          match commit_staged(
+                          match commit_staged_capture(
                             repository: RepositoryEnvelope {
                               store: with_manifest,
                               commits: seeded.commits,
@@ -7272,6 +7290,7 @@ fn belt_scm_delta_capture_over(
                               staged: Present { value: manifest },
                             },
                             message: message,
+                            work: work,
                           ) {
                             StagedCommitCandidateRefused { cause: _ } =>
                               ScmCapturePoisoned {
@@ -11362,11 +11381,11 @@ fn belt_legacy_intake_plan(commits: List<RepositoryCommit>, observed: List<BeltL
                     Present { value: _ } => acc
                     Absent =>
                       match c.ancestry {
-                        RootCommit => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeBase { revision: base_revision } }], acc.records), refused: none }
+                        RootCommit => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeBase { revision: base_revision }, work: NoWork }], acc.records), refused: none }
                         DescendsFrom { parent: _ } =>
                           match belt_candidate_commit_subject(message: c.message) {
-                            Absent => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeNone }], acc.records), refused: none }
-                            Present { value: _ } =>
+                            Absent => BeltLegacyPlanAcc { records: concat([LegacyIntakeRecord { commit: c.reference, intake: IntakeNone, work: NoWork }], acc.records), refused: none }
+                            Present { value: subject } =>
                               match (observed |> filter(o => o.commit == minted_id_ordinal(id: c.reference.identity))).first() {
                                 Absent => BeltLegacyPlanAcc { records: acc.records, refused: Present { value: join(["candidate ", to_string(minted_id_ordinal(id: c.reference.identity)), "'s capture base was not observed"], "") } }
                                 Present { value: o } =>
@@ -11380,6 +11399,7 @@ fn belt_legacy_intake_plan(commits: List<RepositoryCommit>, observed: List<BeltL
                                             records: concat([LegacyIntakeRecord {
                                               commit: c.reference,
                                               intake: if intake_revision_eq(left: captured_revision, right: base_revision) { IntakeNone } else { IntakeStaleCapture { captured_against: captured_revision } },
+                                              work: WorkCapture { work: belt_capture_work(node_id: subject.node_id, attempt_key: subject.attempt_key) },
                                             }], acc.records),
                                             refused: none,
                                           }
@@ -11469,8 +11489,7 @@ fn belt_legacy_intake_refusal_detail(cause: LegacyIntakeRefusal) -> String {
     LegacyIntakeRootNotBase { commit } => join(["root commit ", to_string(minted_id_ordinal(id: commit.identity)), " must record a base"], "")
     LegacyIntakeBaseNotRoot { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is not a root and cannot record a base"], "")
     LegacyIntakeNotRecordable { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is planned an intake a conversion cannot record"], "")
-    LegacyStaleCaptureOnItsOwnBase { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), " is planned stale against its own line's base"], "")
-    LegacyIntakeLineUnreadable { commit } => join(["commit ", to_string(minted_id_ordinal(id: commit.identity)), "'s line cannot be read after recording"], "")
+    LegacyIntakeCensusRefused { cause: _ } => "the recorded population fails the intake census (a stale capture on its own base, a capture naming no work, or a broken line)"
   }
 }
 
@@ -11559,12 +11578,13 @@ type BeltCorrectiveIntegration
 
 fn belt_supersession_refusal_detail(cause: SupersessionRefusal) -> String {
   match cause {
-    SupersessionNotOnLine { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is not on the integration head's line"], "")
     SupersessionNotAnIntegration { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " integrated nothing, so there is nothing to supersede"], "")
+    SupersessionStaleIntegrationIsARoot { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is a root, so there is no line before it to correct onto"], "")
     SupersessionNotStale { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " integrated a capture that is not stale"], "")
     SupersessionAlreadySuperseded { named, by } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is already superseded by commit ", to_string(minted_id_ordinal(id: by.identity))], "")
     SupersessionSourceNotFresh { source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " is not a fresh capture against its own intake"], "")
-    SupersessionLineUnreadable { at } => join(["the integration head's line cannot be read at commit ", to_string(minted_id_ordinal(id: at.identity))], "")
+    SupersessionWorkMismatch { stale, source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " does not capture the work stale capture ", to_string(minted_id_ordinal(id: stale.identity)), " captured, so it is not its recapture"], "")
+    SupersessionMergeBaseRefused { refusal: _ } => "the recapture and the line before the stale integration share no derivable merge base"
   }
 }
 
@@ -11576,14 +11596,23 @@ fn belt_scm_corrective_integrate(path: String, source: Int, supersedes: Int, mes
         Absent => CorrectiveIntegrationRefused { detail: "the project envelope selects no integration head" }
         Present { value: head } => {
           let candidate = RepositoryCommitRef { identity: MintedId { ordinal: source } }
-          match belt_integrate_materialize_sides(path: path, envelope: envelope, head: head, candidate: candidate) {
+          let stale = RepositoryCommitRef { identity: MintedId { ordinal: supersedes } }
+          if !repository_commit_ref_eq(left: head, right: stale) {
+            CorrectiveIntegrationRefused { detail: join(["the integration head is commit ", to_string(minted_id_ordinal(id: head.identity)), ", not the stale integration ", to_string(supersedes), "; a correction is admitted only while the stale integration is the head"], "") }
+          } else {
+            match commit_at_reference(commits: envelope.commits, reference: stale) {
+              Absent => CorrectiveIntegrationRefused { detail: "the stale integration is not a commit of its own envelope" }
+              Present { value: stale_commit } =>
+                match stale_commit.ancestry {
+                  RootCommit => CorrectiveIntegrationRefused { detail: "the stale integration is a root, so there is no line before it to correct onto" }
+                  DescendsFrom { parent: stale_parent } =>
+          match belt_integrate_materialize_sides(path: path, envelope: envelope, head: stale_parent, candidate: candidate) {
             DeltaResidentRefused { detail } => CorrectiveIntegrationRefused { detail: join(["a merge side's manifest could not be read from its shard: ", detail], "") }
             DeltaResident { store: sides } =>
               match fanin_correct_integration(
                 repository: RepositoryEnvelope { store: sides, commits: envelope.commits, commit_allocator: envelope.commit_allocator, checked_out: envelope.checked_out, staged: envelope.staged },
-                integration_head: head,
+                supersedes: stale,
                 candidate: candidate,
-                supersedes: RepositoryCommitRef { identity: MintedId { ordinal: supersedes } },
                 message: message,
               ) {
                 FaninSupersessionRefused { cause } => CorrectiveIntegrationRefused { detail: join(["the supersession is refused: ", belt_supersession_refusal_detail(cause: cause)], "") }
@@ -11606,6 +11635,9 @@ fn belt_scm_corrective_integrate(path: String, source: Int, supersedes: Int, mes
                     }
                   }
               }
+          }
+                }
+            }
           }
         }
       }

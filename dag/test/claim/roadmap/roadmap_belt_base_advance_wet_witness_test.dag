@@ -25,7 +25,7 @@ import gunbc.scm.object_store {
   scm_object_identity, authored_source_object,
 }
 import gunbc.scm.object_table_json { object_id_key }
-import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, intake_tip }
+import gunbc.scm.repository_envelope { RepositoryEnvelope, commit_at_reference, intake_tip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous }
 import gunbc.roadmap_dispatch_actuator { host_exec_argv }
 import gunbc.roadmap_belt_actuate {
   belt_scm_base_advance, BaseAdvanced, BaseAdvanceRefused, BaseAdvancePoisoned,
@@ -155,8 +155,9 @@ fn advance_over(dir: FilePath) -> Bool {
                 Absent => false
                 Present { value: base_ref } =>
                   match intake_tip(commits: repository.commits) {
-                    Absent => false
-                    Present { value: tip } => {
+                    IntakeTipNoLine => false
+                    IntakeTipAmbiguous { tips: _ } => false
+                    IntakeTipFound(tip) => {
                       let reached = match belt_scm_base_advance(git_program: "git", worktree: dir as String, path: envelope_path, envelope: repository, tip_commit: tip.commit, from: tip.revision, to: r1) {
                         BaseAdvanced { envelope: advanced, reference } => advanced_reaches_s1(advanced: advanced, reference: reference, base_ref: base_ref, r0: r0, r1: r1)
                         BaseAdvanceRefused { detail: _ } => false

@@ -1,19 +1,22 @@
 module test.fixture.legacy_intake_scene
 
 // SRV2'S shell-typed-invocation, BUILT BY THE PRODUCTION VERBS AND AGED THROUGH THE FORMAT IT WAS
-// WRITTEN IN, then converted in place and corrected -- the scene the BaseAdvance follow-up's
-// supersession claims are about (parent ruling on gunbc#13402).
+// WRITTEN IN, then converted in place -- with the NO-LAND ruling's upstream-added, worker-deleted path
+// planted in it (gunbc#13402, blocker 1).
 //
-//   c0  root, message 'project base: R0'             (v8 seed)
-//   c1  candidate on c0, its attempt branched from R1 (stale)
-//   c2  squash of c1 into c0                          (the false integration)
-//   c3  candidate on c0, its attempt branched from R1 (stale, never integrated)
-//   --- aged through a real v8 document: every commit reads IntakeUnrecordedByFormat ---
-//   --- converted (belt_legacy_intake_plan + record_legacy_intakes) ---
-//   c4  IntakeAdvance R0..R1, child of c0
-//   c5  fresh recapture on c4, touching a path c2 did not (an overlap is a merge conflict an owner
-//       resolves, which the supersession admission neither causes nor hides)
-//   c6  a second fresh capture on c4
+//   R0: src/a.dag, src/other.dag, src/up.dag           R1 = R0 + src/new.dag (added upstream), with
+//                                                      src/up.dag changed upstream
+//   c0  root, message 'project base: R0'              (v8 seed)
+//   c1  candidate 'n a1'; its attempt branched from R1, DELETED src/new.dag and modified
+//       src/other.dag -- applied onto R0 the deletion is a no-op, so the recorded tree is R0 + other':
+//       it lacks R1's src/up.dag change, which is what makes it wrong
+//   c2  squash of c1 into c0                           (the false integration)
+//   c3  candidate 'n a3'; its attempt also branched from R1 (stale, never integrated)
+//   --- aged through a real v8 document: every commit reads unrecorded ---
+//   --- converted (belt_legacy_intake_plan + record_legacy_intakes): c1, c3 IntakeStaleCapture ---
+//   c4  IntakeAdvance R0..R1, child of c0: src/new.dag appears
+//   c5  the RECAPTURE of 'n a1' on c4: other' and src/new.dag deleted, as the worker left it
+//   c6  an UNRELATED fresh capture 'n a6' on c4: src/c.dag, src/new.dag left present
 //
 // Every row is produced by the production verbs; a setup step that fails yields no scene.
 
@@ -28,13 +31,19 @@ import gunbc.scm.repository_envelope {
   ShardedIndexDecoded, ShardedIndexRefused, RepositoryDecoded, RepositoryDecodeRefused,
   record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
 }
-import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
+import gunbc.scm.squash_merge {
+  SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource,
+  SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable,
+  squash_merge, SquashMerged,
+}
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message }
 import gunbc.roadmap_belt_actuate {
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
-  BaseShaObserved, BeltBaseSha,
+  BaseShaObserved, BeltBaseSha, belt_capture_work,
 }
-import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_at, mb_intake_advance }
+import test.fixture.scm_repository_builder {
+  MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_at, mb_intake_advance, mb_capture, mb_remove,
+}
 
 data legacy_r0_hex: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
 data legacy_r1_hex: String = "b7f9070ca82026ba63fbf55960a9e3a0266b3285"
@@ -63,8 +72,11 @@ fn aged_through_v8(repository: RepositoryEnvelope) -> RepositoryEnvelope? {
 
 // c0..c3, as the v8 belt left them.
 fn legacy_unconverted() -> RepositoryEnvelope? {
-  let base = mb_commit(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at R0"), message: join(["project base: ", legacy_r0_hex], ""))
-  let c1 = mb_commit(build: mb_stage(build: base, path: "src/a.dag", text: "A as worker 1 left it"), message: belt_candidate_commit_message(node_id: "n", attempt_key: "1") as String)
+  let base = mb_commit(
+    build: mb_stage(build: mb_stage(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at R0"), path: "src/other.dag", text: "O at R0"), path: "src/up.dag", text: "U at R0"),
+    message: join(["project base: ", legacy_r0_hex], ""),
+  )
+  let c1 = mb_commit(build: mb_stage(build: base, path: "src/other.dag", text: "O as worker 1 left it"), message: belt_candidate_commit_message(node_id: "n", attempt_key: "1") as String)
   match c1 {
     MbSetupFailed => none
     MbBuilt { repository, at: _ } =>
@@ -113,7 +125,7 @@ fn legacy_converted(observed: List<BeltLegacyCaptureBase>) -> RepositoryEnvelope
   }
 }
 
-// c0..c6: the converted line, an advance R0..R1, and two fresh captures on it.
+// c0..c6: the converted line, the advance R0..R1, the recapture of 'n a1', an unrelated capture.
 fn legacy_corrective_scene() -> RepositoryEnvelope? {
   match legacy_converted(observed: legacy_observed(c1: legacy_r1_hex, c3: legacy_r1_hex)) {
     Absent => none
@@ -125,16 +137,21 @@ fn legacy_corrective_scene() -> RepositoryEnvelope? {
             Absent => none
             Present { value: r1 } => {
               let advanced = mb_intake_advance(
-                build: mb_stage(build: mb_at(build: MbBuilt { repository: converted, at: none }, target: legacy_ref(ordinal: 0)), path: "src/up.dag", text: "upstream at R1"),
+                build: mb_stage(build: mb_stage(build: mb_at(build: MbBuilt { repository: converted, at: none }, target: legacy_ref(ordinal: 0)), path: "src/new.dag", text: "N added upstream at R1"), path: "src/up.dag", text: "U at R1"),
                 message: "advance R0..R1", from: r0, to: r1,
               )
-              let c5 = mb_commit(build: mb_stage(build: advanced, path: "src/d.dag", text: "D as the recapture left it"), message: belt_candidate_commit_message(node_id: "n", attempt_key: "5") as String)
-              match c5 {
+              let recapture = mb_capture(
+                build: mb_remove(build: mb_stage(build: advanced, path: "src/other.dag", text: "O as worker 1 left it"), path: "src/new.dag"),
+                message: belt_candidate_commit_message(node_id: "n", attempt_key: "1") as String,
+                work: belt_capture_work(node_id: "n", attempt_key: "1"),
+              )
+              match recapture {
                 MbSetupFailed => none
                 MbBuilt { repository, at: _ } =>
-                  match mb_commit(
+                  match mb_capture(
                     build: mb_stage(build: mb_at(build: MbBuilt { repository: repository, at: none }, target: legacy_ref(ordinal: 4)), path: "src/c.dag", text: "C"),
                     message: belt_candidate_commit_message(node_id: "n", attempt_key: "6") as String,
+                    work: belt_capture_work(node_id: "n", attempt_key: "6"),
                   ) {
                     MbSetupFailed => none
                     MbBuilt { repository: scene, at: _ } => Present { value: scene }

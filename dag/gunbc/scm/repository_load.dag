@@ -74,6 +74,8 @@ import gunbc.scm.repository_envelope {
   decode_repository_v7_index, decode_repository_v7_finish,
   ShardedIndexDecoded, ShardedIndexRefused,
   RepositoryShardNotDecodable,
+  supersession_census, SupersessionsAdmitted, SupersessionsAwaitManifests, SupersessionCensusRefused,
+  RepositorySupersessionCensusRefused, RepositorySupersessionRootsUnverifiable,
   RepositoryEnvelope,
   decode_repository,
   RepositoryDecodeOutcome,
@@ -496,6 +498,34 @@ fn repository_index_has_no_roster(path: String, found: String) -> RepositoryLoad
   RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryIndexHasNoObjectRoster { found: found } } }
 }
 
+// THE CORRECTED-ROOT EQUALITY, ANSWERED FOR AN INDEXED LOAD (the NO-LAND ruling on gunbc#13402,
+// blocker 5). The index-grain decode ran every supersession law it can answer from the commit table
+// and named the manifests the root equality needs; this reads exactly those shards -- one corrective
+// commit's three merge sides, nothing else -- and asks the census again. Anything still outstanding
+// after the read refuses: no load hands a caller a corrective record whose tree was not checked.
+fn indexed_supersession_roots(path: String, envelope: RepositoryEnvelope, generation: Fnv1a64Structural) -> RepositoryLoad {
+  match supersession_census(repository: envelope) {
+    SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+    SupersessionCensusRefused { cause } =>
+      RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+    SupersessionsAwaitManifests { demand } =>
+      match materialize_objects(envelope_path: path, store: envelope.store, identities: demand) {
+        ObjectMaterializationRefused { detail } =>
+          RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositoryShardNotDecodable { detail: detail } } }
+        ObjectsMaterialized { store: with_sides, read_shards: _ } => {
+          let read = RepositoryEnvelope { store: with_sides, commits: envelope.commits, commit_allocator: envelope.commit_allocator, checked_out: envelope.checked_out, staged: envelope.staged }
+          match supersession_census(repository: read) {
+            SupersessionsAdmitted => RepositoryLoaded { path: path, envelope: read, generation: generation }
+            SupersessionCensusRefused { cause } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionCensusRefused { cause: cause } } }
+            SupersessionsAwaitManifests { demand: still } =>
+              RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: RepositorySupersessionRootsUnverifiable { missing: still } } }
+          }
+        }
+      }
+  }
+}
+
 fn load_repository_indexed_rostered(path: String, index_decode: RepositoryShardedIndexDecode, found: String, generation: Fnv1a64Structural) -> RepositoryLoad {
   match index_decode {
     ShardedIndexRefused { cause } => RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
@@ -508,7 +538,7 @@ fn load_repository_indexed_rostered(path: String, index_decode: RepositorySharde
             store: rostered_store(rostered: rows_by_digest(rows: rows), shards: index.shard_digests),
             commit_policy: index.commit_policy,
           ) {
-            RepositoryDecoded { envelope } => RepositoryLoaded { path: path, envelope: envelope, generation: generation }
+            RepositoryDecoded { envelope } => indexed_supersession_roots(path: path, envelope: envelope, generation: generation)
             RepositoryDecodeRefused { cause } =>
               RepositoryLoadRefused { cause: RepositoryDocumentRefused { path: path, cause: cause } }
           }

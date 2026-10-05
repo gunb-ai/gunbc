@@ -80,6 +80,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeAppendCarriesSemanticNode,
   RepositoryEncodeAppendShadowsRosteredIdentity,
   RepositoryIndexHasNoObjectRoster,
+  RepositoryIntakeCensusRefused, RepositorySupersessionCensusRefused, RepositorySupersessionRootsUnverifiable,
   RepositoryObjectRosterMalformed,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
@@ -1135,6 +1136,9 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryFormatRetired { found: _ } => "format_retired"
         RepositoryShardedIndexIsNotWhole { found: _ } => "format_sharded_index"
         RepositoryShardNotDecodable { detail: _ } => "shard_not_decodable"
+        RepositoryIntakeCensusRefused { cause: _ } => "shard_not_decodable"
+        RepositorySupersessionCensusRefused { cause: _ } => "shard_not_decodable"
+        RepositorySupersessionRootsUnverifiable { missing: _ } => "shard_not_decodable"
         RepositoryIndexHasNoObjectRoster { found: _ } => "index_has_no_object_roster"
         RepositoryObjectRosterMalformed { detail: _ } => "object_roster_malformed"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"

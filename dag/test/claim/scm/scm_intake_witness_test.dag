@@ -25,8 +25,9 @@ import gunbc.scm.intake {
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit, commit_at_reference,
   LineIntake, LineIntakeAt, LineIntakeAbsent, LineIntakeUnrecorded, LineIntakeUnreadable, line_intake,
-  intake_commit_at_revision, intake_tip,
-  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseRevisionAlreadyPlaced,
+  intake_commit_at_revision, IntakeAtRevisionFound, IntakeAtRevisionAbsent, IntakeAtRevisionAmbiguous,
+  intake_tip, IntakeTipFound, IntakeTipNoLine, IntakeTipAmbiguous,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
   mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
   IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
   encode_repository_v8, encode_repository_v9, decode_repository_v8_index, decode_repository_v9_index, decode_repository_v7_finish,
@@ -121,12 +122,14 @@ test fn an_advance_continues_the_line_and_becomes_the_intake_tip() -> Bool {
                 Present { value: advance_ref } =>
                   line_at(repository: repository, head: advance_ref, revision: rs.r1, intake_commit: advance_ref)
                     && match intake_tip(commits: repository.commits) {
-                      Absent => false
-                      Present { value: tip } => repository_commit_ref_eq(left: tip.commit.reference, right: advance_ref) && intake_revision_eq(left: tip.revision, right: rs.r1)
+                      IntakeTipFound(tip) => repository_commit_ref_eq(left: tip.commit.reference, right: advance_ref) && intake_revision_eq(left: tip.revision, right: rs.r1)
+                      IntakeTipNoLine => false
+                      IntakeTipAmbiguous { tips: _ } => false
                     }
                     && match intake_commit_at_revision(commits: repository.commits, revision: rs.r0) {
-                      Absent => false
-                      Present { value: c } => repository_commit_ref_eq(left: c.reference, right: base_ref)
+                      IntakeAtRevisionFound { commit: c } => repository_commit_ref_eq(left: c.reference, right: base_ref)
+                      IntakeAtRevisionAbsent => false
+                      IntakeAtRevisionAmbiguous { commits: _ } => false
                     }
               }
           }
@@ -169,7 +172,7 @@ fn advance_from(repository: RepositoryEnvelope, parent: RepositoryCommitRef, fro
             LineIntakeUnrecorded { commit: _ } => "discontinuous_unrecorded"
             LineIntakeUnreadable { at: _ } => "discontinuous_unreadable"
           }
-        IntakeAdvanceRevisionAlreadyPlaced { commit: _ } => "already_placed"
+        IntakeAdvanceRevisionAlreadyPlaced { commits: _ } => "already_placed"
         IntakeAdvanceLineAlreadyAdvanced { commit: _ } => "already_advanced"
       }
   }
@@ -211,8 +214,10 @@ test fn an_advance_refuses_every_way_to_misplace_a_line() -> Bool {
   }
 }
 
-// A REVISION IS PLACED ONCE: a second base for a revision the repository holds refuses, naming it.
-test fn a_base_revision_is_placed_once() -> Bool {
+// ONE INTAKE LINE PER REPOSITORY (the NO-LAND ruling on gunbc#13402, blocker 3): a second base
+// refuses whatever revision it names -- the same revision, and a different one -- naming the base the
+// repository already holds. Two bases would be two tips, and every "the tip" reader would choose.
+test fn a_repository_holds_one_intake_line() -> Bool {
   match revisions() {
     Absent => false
     Present { value: rs } =>
@@ -226,14 +231,14 @@ test fn a_base_revision_is_placed_once() -> Bool {
                 Absent => false
                 Present { value: staged } =>
                   match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: staged.locator }, message: "again", revision: rs.r0) {
-                    IntakeBaseRevisionAlreadyPlaced { commit } => repository_commit_ref_eq(left: commit, right: base_ref)
+                    IntakeBaseLineExists { base } => repository_commit_ref_eq(left: base, right: base_ref)
                     IntakeBaseMinted { repository: _, reference: _ } => false
                     IntakeBaseAllocatorInvalid { next_ordinal: _ } => false
                     IntakeBaseRootRefused { cause: _ } => false
                   }
                   && match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: staged.locator }, message: "r1", revision: rs.r1) {
-                    IntakeBaseMinted { repository: _, reference: _ } => true
-                    IntakeBaseRevisionAlreadyPlaced { commit: _ } => false
+                    IntakeBaseLineExists { base } => repository_commit_ref_eq(left: base, right: base_ref)
+                    IntakeBaseMinted { repository: _, reference: _ } => false
                     IntakeBaseAllocatorInvalid { next_ordinal: _ } => false
                     IntakeBaseRootRefused { cause: _ } => false
                   }

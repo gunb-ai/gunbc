@@ -70,24 +70,23 @@ fn fanin_integrate_candidate(
   )
 }
 
-// THE CORRECTIVE INTEGRATION (parent ruling on gunbc#13402): the fresh recapture squashed into the
-// integration head, recording the stale integration it supersedes. The supersession's admission is
-// the SCM's (gunbc.scm.repository_envelope admit_supersession); its refusal is carried by name, and
-// every merge outcome is the ordinary fanin's.
+// THE CORRECTIVE INTEGRATION (rulings on gunbc#13402): a recapture of the stale work merged into the
+// stale integration's parent and recorded as its child superseding it. Its admission is the SCM's
+// (gunbc.scm.repository_envelope admit_supersession: exact stale integration, same work, fresh
+// source, once); its refusal is carried by name, and every merge outcome is the ordinary fanin's.
 type FaninCorrection
   = FaninCorrected(FaninOutcome)
   | FaninSupersessionRefused { cause: SupersessionRefusal }
 
 fn fanin_correct_integration(
   repository: RepositoryEnvelope,
-  integration_head: RepositoryCommitRef,
-  candidate: RepositoryCommitRef,
   supersedes: RepositoryCommitRef,
+  candidate: RepositoryCommitRef,
   message: String,
 ) -> FaninCorrection {
-  match squash_merge_superseding(repository: repository, target: integration_head, source: candidate, supersedes: supersedes, message: message) {
+  match squash_merge_superseding(repository: repository, supersedes: supersedes, source: candidate, message: message) {
     SupersedingSquashRefused { cause } => FaninSupersessionRefused { cause: cause }
-    SupersedingSquashMerged(outcome) => FaninCorrected(fanin_outcome_of(outcome: outcome, integration_head: integration_head))
+    SupersedingSquashMerged(outcome) => FaninCorrected(fanin_outcome_of(outcome: outcome, integration_head: supersedes))
   }
 }
 
