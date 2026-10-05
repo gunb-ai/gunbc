@@ -1,6 +1,6 @@
 # Converging a selected cassette design to an accepted physical assembly
 
-Status: migration in progress; inventory assessment, fenced inventory transitions and
+Status: migration in progress; preparation-bound inventory assessment, fenced inventory transitions and
 inspection readback are implemented in shadow mode. See
 [cassette-inventory-convergence-implementation.md](cassette-inventory-convergence-implementation.md)
 for the implemented operations and remaining cutover work. This is not yet the

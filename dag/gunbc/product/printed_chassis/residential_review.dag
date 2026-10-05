@@ -1,6 +1,7 @@
 module product.printed_chassis.residential_review
 import product.printed_chassis.assembly_inventory { required_slots_json }
-import std.measure {micrometer_count}
+import std.measure {micrometer_count,millimeter}
+import product.printed_chassis.harness_census {selected_fan_harness_json}
 import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,board_w,board_d,rear_socket_bolt_clearances}
 import product.printed_chassis.rack_assembly {hardware}
 import product.printed_chassis.cooler_configuration {noctua_envelope,residential_cooler}
@@ -42,7 +43,7 @@ fn main() -> CliWireResponse {
   ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
   ResidentialAssemblyReady {parts:parts,joints:joints,pitch:pitch,cooling:cooling}=>match realize_review_parts(parts:parts) {
    ReviewCadQueryRefused {reason:_}=>CliWirePrintable {bytes:"Review CAD refused",exit:exit_failure(reason:"Review CAD refused")}
-   ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"program",value:json_string(s:review_program_source(p:p))),json_kv(key:"desired_inventory",value:required_slots_json(parts:parts)), json_kv(key:"parts",value:json_array(elements:map(parts,p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:map(joints,j=>interface_json(i:j)))),json_kv(key:"pitch_um",value:json_int(n:pitch)),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"cooling",value:rear_cooling_json(reading:cooling))])),exit:ExitSuccess}
+   ReviewCadQueryEmitted {program:p}=>CliWirePrintable {bytes:serialize_json(v:json_object(members:[json_kv(key:"program",value:json_string(s:review_program_source(p:p))),json_kv(key:"desired_inventory",value:required_slots_json(parts:parts)), json_kv(key:"parts",value:json_array(elements:map(parts,p=>part_json(p:p)))),json_kv(key:"interfaces",value:json_array(elements:map(joints,j=>interface_json(i:j)))),json_kv(key:"pitch_um",value:json_int(n:pitch)),json_kv(key:"tray_um",value:json_array(elements:[json_int(n:tray_w),json_int(n:tray_d)])),json_kv(key:"board_um",value:json_array(elements:[json_int(n:board_w),json_int(n:board_d)])),json_kv(key:"cooling",value:rear_cooling_json(reading:cooling)),json_kv(key:"fan_harness",value:selected_fan_harness_json(reading:cooling,service_allowance:millimeter(count:100)))])),exit:ExitSuccess}
   }
  }
 }

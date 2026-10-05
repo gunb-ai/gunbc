@@ -1,8 +1,8 @@
 module product.printed_chassis.assembly_inventory_store
 import std.types { String, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.goal_assessment { GoalAssessmentRefused, ObservationAttempt, ObservationEstablished, ObservationRefused }
-import product.printed_chassis.assembly_inventory { InventoryMutation, InventoryObservation, InventoryCaptured, InventoryReadRefusal, InventoryUnread, decode_inventory, inventory_json, assess_inventory, transition_inventory, InventoryTransitionPrepared, InventoryTransitionRefused }
+import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
+import product.printed_chassis.assembly_inventory { InventoryMutation, InventoryObservation, InventoryCaptured, InventoryReadRefusal, InventoryUnread, decode_inventory, inventory_json, capture_validity, transition_inventory, InventoryTransitionPrepared, InventoryTransitionRefused }
 import gunbc.durable_cas_file_store { observe_cas_slot_state, admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable, file_compare_and_set, DefaultAccessCreateOnly }
 import std.durable_compare_and_set { CasExpectation, CasGeneration, cas_generation_count, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable, CasReadablePresent, CasReadableAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
 import gunbc.fleet.printer_workflow_artifact { printer_start_claim_directory }
@@ -24,7 +24,7 @@ fn publish_inventory(expected:CasExpectation, next:InventoryObservation) -> Proc
 }
 fn initialize_inventory(capture:String) -> ProcessExit {
  let decoded=match decode_inventory(text:capture) {Present {value:c}=>c Absent=>return exit_failure(reason:"Malformed initial inventory capture")}
- match assess_inventory(desired:[],observed:decoded) {GoalAssessmentRefused {cause:_}=>exit_failure(reason:"Initial inventory contains ambiguous identities or invalid evidence") _=>publish_inventory(expected:ExpectSlotAbsent,next:decoded)}
+ match capture_validity(observed:decoded) {Present {value:_}=>exit_failure(reason:"Initial inventory contains ambiguous identities or invalid evidence") Absent=>publish_inventory(expected:ExpectSlotAbsent,next:decoded)}
 }
 fn mutate_inventory(mutation:InventoryMutation) -> ProcessExit {
  match observe_cas_slot_state(root:printer_start_claim_directory,key:inventory_slot) {
@@ -52,5 +52,5 @@ fn observe_stored_inventory() -> ObservationAttempt<InventoryObservation,Invento
 // Fence with the store generation, not a caller-authored receipt name. Reusing a receipt
 // label can never resurrect an old baseline after intervening publications (ABA).
 fn capture_at_generation(capture:InventoryObservation,generation:CasGeneration) -> InventoryObservation {
- match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e}=>InventoryCaptured {snapshot:concat("generation:",cas_generation_count(g:generation) as String),covered_slots:c,entries:e}}
+ match capture {InventoryCaptured {snapshot:_,covered_slots:c,entries:e,retired_rejections:r}=>InventoryCaptured {snapshot:concat("generation:",cas_generation_count(g:generation) as String),covered_slots:c,entries:e,retired_rejections:r}}
 }

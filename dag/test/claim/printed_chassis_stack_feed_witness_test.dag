@@ -1,4 +1,8 @@
 module test.claim.printed_chassis_stack_feed_witness
+import product.printed_chassis.cassette {tray_d,rear_plate_z}
+import product.printed_chassis.residential_review {residential_assembly,ResidentialAssemblyReady}
+import product.printed_chassis.rear_cooling {RearFanGeometry,RearFanBank,RearFanCandidate}
+import product.printed_chassis.harness_census {selected_fan_harness,SelectedFanHarnessReady,SelectedFanHarnessOpen,fan_cables,fan_plan_needs_extension}
 import extdeps.fans.arctic { arctic_p8_cable_length, arctic_p8_pwm_sharing, arctic_p8_rated_current, arctic_p14_rated_current, arctic_p14_pwm_sharing }
 import std.types { Bool, List }
 import std.nat { Nat }
@@ -13,7 +17,7 @@ import product.printed_chassis.power_cassette {
   PowerCassette, TopOfColumn, BottomOfColumn, BesideColumn, station_adequacy, units_lifted_to_pop, station_wall_draw,
 }
 import product.node_power_envelope { Gold, PsuAdequacy, PsuAdequate, PsuUndersized, PsuUndecidable }
-import product.printed_chassis.harness_census { HarnessCensus, HarnessPlan, InletAtRear, InletAtFront, harness_census, disconnect_sets_to_pop, CableRole, DcBranch, Atx12vPigtail, FanHeaderCable, FanPstLink, EthernetPatch }
+import product.printed_chassis.harness_census { HarnessCensus, HarnessPlan, FanHarnessPlan, InletAtRear, InletAtFront, harness_census, disconnect_sets_to_pop, CableRole, DcBranch, Atx12vPigtail, FanHeaderCable, FanPstLink, EthernetPatch }
 import extdeps.connector.molex_mini_fit_jr { mini_fit_jr_standard_terminal_rating }
 import extdeps.standards.atx12v_psdg { atx12v_twelve_volt_regulation }
 
@@ -92,7 +96,7 @@ test fn station_placement_decides_what_a_pop_lifts() -> Bool {
 }
 
 fn plan(top: Bool, front: Bool, allowance: Nat) -> HarnessPlan {
-  HarnessPlan { node_count: 4, station: station(placement_top: top), inlet: if front { InletAtFront } else { InletAtRear }, inputs_populated: 2, fans_per_node: 3, fan_cable_length: arctic_p8_cable_length, fan_pwm_sharing: arctic_p8_pwm_sharing, ethernet_per_node: 2, switch_level_from_bottom: 4, service_allowance: millimeter(count: allowance) }
+  HarnessPlan { node_count: 4, station: station(placement_top: top), inlet: if front { InletAtFront } else { InletAtRear }, inputs_populated: 2, fan:FanHarnessPlan {fans:3,cable_length:arctic_p8_cable_length,sharing:arctic_p8_pwm_sharing,rated_current:arctic_p8_rated_current,header_run:millimeter(count:(tray_d/2-rear_plate_z)/1000+allowance),pst_link_run:millimeter(count:100)}, ethernet_per_node: 2, switch_level_from_bottom: 4, service_allowance: millimeter(count: allowance) }
 }
 
 // Four nodes: per node one branch, two pigtails, two patch leads, one fan header cable and two
@@ -128,6 +132,29 @@ test fn zero_connector_derating_cannot_admit_a_feed() -> Bool {
 test fn header_load_follows_selected_fan_current() -> Bool {
  match fan_bank_header_load(fans:2,rated_current:arctic_p14_rated_current,sharing:arctic_p14_pwm_sharing) {
  FanHeaderLoadAgainstUnreadLimit {header_current:i,fans:n}=>n==2 && milliampere_count(i:i)==240
+ _=>false
+ }
+}
+
+test fn residential_review_consumes_selected_fan_in_harness_fold() -> Bool {
+ match residential_assembly() {
+ ResidentialAssemblyReady {parts:_,joints:_,pitch:_,cooling:c}=>match c {
+ RearFanGeometry {bank:b}=>match selected_fan_harness(bank:b,service_allowance:millimeter(count:100)) {
+ SelectedFanHarnessReady {plan:p,load:FanHeaderLoadAgainstUnreadLimit {header_current:i,fans:n}}=>n==1 && milliampere_count(i:i)==120 && millimeter_count(m:p.cable_length)==400 && count(fan_cables(plan:p,node:0))==1 && fan_plan_needs_extension(plan:p)
+ _=>false
+ }
+ _=>false
+ }
+ _=>false
+ }
+}
+test fn missing_selected_fan_facts_do_not_borrow_p8() -> Bool {
+ match residential_assembly() {
+ ResidentialAssemblyReady {parts:_,joints:_,pitch:_,cooling:RearFanGeometry {bank:b}}=>{
+ let f=b.fan
+ let unknown=RearFanBank {fan:RearFanCandidate {id:f.id,pattern:f.pattern,depth_um:f.depth_um,cable_length:none,rated_current:f.rated_current,sharing:f.sharing},count:b.count,plate_edge_um:b.plate_edge_um,centres_x_um:b.centres_x_um}
+ match selected_fan_harness(bank:unknown,service_allowance:millimeter(count:100)) {SelectedFanHarnessOpen {reason:_}=>true _=>false}
+ }
  _=>false
  }
 }

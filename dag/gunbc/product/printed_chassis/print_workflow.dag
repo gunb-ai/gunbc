@@ -1,4 +1,6 @@
 module product.printed_chassis.print_workflow
+import product.printed_chassis.preparation_identity {PreparedSlot,read_prepared_slots}
+
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
@@ -99,12 +101,20 @@ fn provision_and_run(plan_file:String,output:String,appimage:String,machine:Stri
 }
 
 
-// Shadow reconciliation consumes an independent inventory capture. It intentionally cannot
-// start printers: candidate work still needs placement, process admission and reservation.
-fn plan_remaining(inventory_file:String,revision:String) -> CliWireResponse {
+// Preparation is the revision authority. No operator-authored revision labels are admitted.
+fn selected_prepared_slots(prepared_output:String) -> List<PreparedSlot>? {
+ let bindings=match read_prepared_slots(output:prepared_output) {Present {value:b}=>b Absent=>return none}
+ let desired=match residential_assembly() {ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>required_printed_parts(parts:p,bindings:bindings) ResidentialAssemblyRefused {reason:_}=>return none}
+ if any(bindings,b=>!any(desired,d=>d.slot==b.slot)) {none} else {Present {value:bindings}}
+}
+fn preparation_refused() -> CliWireResponse {CliWirePrintable {bytes:"Prepared projects, CAD binding or assembly membership refused",exit:exit_failure(reason:"Preparation identity refused")}}
+
+// Shadow reconciliation consumes an independent inventory capture and verified preparation.
+fn plan_remaining(inventory_file:String,prepared_output:String) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
  match residential_assembly() {
   ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
-  ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>inventory_report(parts:p,revision:revision,path:inventory_file)
+  ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>inventory_report(parts:p,bindings:bindings,path:inventory_file)
  }
 }
 
@@ -113,29 +123,27 @@ fn inventory_initialize(capture_file:String) -> ProcessExit {
  let read=Filesystem.Read(path:capture_file)
  if !read.success {exit_failure(reason:"Inventory capture unreadable")} else {initialize_inventory(capture:read.content)}
 }
-fn record_inspection(baseline:String,receipt:String,slot:String,revision:String,attempt:String,physical_item:String,observed_at:String,accepted:Bool) -> CliWireResponse {
- match mutate_inventory(mutation:InspectPart {baseline:baseline,next_snapshot:receipt,part:RequiredPart {slot:slot,revision:revision},attempt:attempt,physical_item:physical_item,evidence:InspectionEvidence {reference:receipt,observed_at:observed_at},accepted:accepted}) {
- ExitSuccess=>plan_remaining_stored(revision:revision)
+fn record_inspection(prepared_output:String,baseline:String,receipt:String,slot:String,attempt:String,physical_item:String,observed_at:String,accepted:Bool) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
+ let binding=match filter(bindings,b=>b.slot==slot && b.attempt==attempt).first() {Present {value:b}=>b Absent=>return preparation_refused()}
+ match mutate_inventory(mutation:InspectPart {baseline:baseline,next_snapshot:receipt,part:RequiredPart {slot:slot,revision:Present {value:binding.revision}},attempt:binding.attempt,physical_item:physical_item,evidence:InspectionEvidence {reference:receipt,observed_at:observed_at},accepted:accepted}) {
+ ExitSuccess=>plan_remaining_stored(prepared_output:prepared_output)
  ExitFailure {code:_,reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
  }
 }
 
-// Explicit shadow-to-reservation boundary. This records work ownership only; the existing
-// printer start gates remain mandatory, and this verb sends no approval/start command.
-fn reserve_plan(plan_file:String,revision:String,baseline:String,receipt:String) -> ProcessExit {
- let read=Filesystem.Read(path:plan_file)
- if !read.success {return exit_failure(reason:"Reservation plan unreadable")}
- let specs=match parse_plan(text:read.content) {Present {value:p}=>p Absent=>return exit_failure(reason:"Invalid reservation plan")}
- let desired=match residential_assembly() {ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>required_printed_parts(parts:p,revision:revision) ResidentialAssemblyRefused {reason:r}=>return exit_failure(reason:r)}
- let requests=flat_map(specs,s=>flat_map(s.plates,plate=>map(plate.plan.placements,p=>PartReservation {part:RequiredPart {slot:p.id,revision:revision},attempt:plate.attempt})))
- if any(requests,r=>!any(desired,d=>d.slot==r.part.slot)) {return exit_failure(reason:"Reservation names a part outside the selected assembly")}
+// Reservations consume generated, byte-verified queues. This verb sends no start command.
+fn reserve_plan(prepared_output:String,baseline:String,receipt:String) -> ProcessExit {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return exit_failure(reason:"Preparation identity refused")}
+ let requests=map(bindings,b=>PartReservation {part:RequiredPart {slot:b.slot,revision:Present {value:b.revision}},attempt:b.attempt})
  mutate_inventory(mutation:ReserveParts {baseline:baseline,next_snapshot:receipt,reservations:requests})
 }
 
-fn plan_remaining_stored(revision:String) -> CliWireResponse {
+fn plan_remaining_stored(prepared_output:String) -> CliWireResponse {
+ let bindings=match selected_prepared_slots(prepared_output:prepared_output) {Present {value:b}=>b Absent=>return preparation_refused()}
  let captured=match observe_stored_inventory() {ObservationEstablished {observed:c}=>c ObservationRefused {cause:InventoryUnread {reason:r}}=>return CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}}
  match residential_assembly() {
  ResidentialAssemblyRefused {reason:r}=>CliWirePrintable {bytes:r,exit:exit_failure(reason:r)}
- ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>captured_inventory_report(parts:p,revision:revision,capture:captured)
+ ResidentialAssemblyReady {parts:p,joints:_,pitch:_,cooling:_}=>captured_inventory_report(parts:p,bindings:bindings,capture:captured)
  }
 }
