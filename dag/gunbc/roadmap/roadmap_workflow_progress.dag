@@ -416,11 +416,6 @@ fn workflow_provider_from_observed(
 ) -> ProviderExecutionState {
   if !evidence.admission_receipt_readable {
     ProviderEventsRefused {
-      activity: legacy_attempt_supersedable_label,
-      detail: legacy_attempt_supersedable_detail,
-    }
-  } else if !evidence.admission_receipt_readable {
-    ProviderEventsRefused {
       activity: "attempt state refused",
       detail: "current attempt pointer exists but its admission receipt is unreadable",
     }

@@ -313,7 +313,7 @@ test fn an_unreadable_pointer_refuses_with_unknown_standing_and_never_legacy_sta
         && match absent {
           ProviderEventsRefused { activity: absent_activity, detail: absent_detail } =>
             absent_activity != "attempt standing unknown"
-              && string_contains(s: absent_detail, pattern: "legacy")
+              && string_contains(s: absent_detail, pattern: "predates modeled admission")
           _ => false
         }
     _ => false
