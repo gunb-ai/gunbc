@@ -1,6 +1,7 @@
 module v2.std.compilers.semantic_decl_emission
 
 import std.types { List }
+import std.unicode.scalar { char_text }
 import v2.std.optional { Present, Absent }
 import v2.std.qualified_name { declaration_reference_path_optional }
 import std.occurrence_identity { OccurrenceSynthetic }
@@ -139,7 +140,7 @@ fn semantic_decl_emission_bundle_malformed_diagnostic(bundle: Node) -> Diagnosti
 //
 // The parameter is an ordinary string and its callers are right to pass one -- `semantic_decl_emit`
 // hands it a `text` and a `spelling`. What the BODY needs is the char-list view, because it folds
-// each element through `from_code_point`. `chars` is the conversion between the two, and it is the
+// each element through `std.unicode.scalar` `char_text`. `chars` is the conversion between the two, and it is the
 // same one `v2.std.compilers.lexing` already uses when it builds a `LiteralPattern`.
 //
 // WITHOUT IT THE FOLD HAS NO ELEMENT TYPE TO INFER: `String` renders as the target's native string,
@@ -155,7 +156,7 @@ fn semantic_decl_string_to_bundle_node(s: String) -> Node {
         children: [
           target_model_named_edge(
             name: ^free_monoid_field_head,
-            target: target_model_type_atom_node(identity: from_code_point(cp: c))
+            target: target_model_type_atom_node(identity: char_text(c: c))
           ),
           target_model_named_edge(
             name: ^free_monoid_field_tail,

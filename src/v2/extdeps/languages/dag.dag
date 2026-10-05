@@ -1,6 +1,6 @@
 module v2.extdeps.languages.dag
 import std.coercion { unicode_scalar_unfold }
-import std.types { List }
+import std.types { Char, List }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic }
 import v2.std.model_core { AlgebraInhabitanceDecl, bool_model_core }
 import v2.std.algebra_structure_signature { boolean_algebra_node, ordered_ring_node }
@@ -231,7 +231,8 @@ import v2.std.integer {
 }
 import v2.std.text { String }
 import extdeps.numeric.base16 { base16_digit_rows }
-import std.unicode.types { unicode_scalar }
+import std.unicode.scalar { char_text, from_code_point }
+import std.error_primitives { Ok, Err }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, qualified_name_from_dotted_string, qualified_name_from_node, qualified_name_snoc }
 import v2.std.namespace_alias { AliasBindingRow }
 import v2.extdeps.languages.fidelity {
@@ -4945,17 +4946,29 @@ fn dag_string_escape_value_optional(spelled: Int) -> Optional<Int> {
   )
 }
 
+// A code point that is not a Unicode scalar is not a hex digit: from_code_point's refusal is Absent
+// here, and every caller already reads Absent as DagStringDecodeMalformed.
 fn dag_string_hex_digit_optional(c: Int) -> Optional<Int> {
-  let spelled = from_code_point(cp: c)
-  fold_list(
-    xs: base16_digit_rows,
-    empty: optional_absent(),
-    cons: fn(found, row) { if (row.lower == spelled) || (row.upper == spelled) { optional_present(value: row.value) } else { found } }
-  )
+  match from_code_point(cp: c) {
+    Ok { value: spelled } =>
+      fold_list(
+        xs: base16_digit_rows,
+        empty: optional_absent(),
+        cons: fn(found, row) { if (row.lower == spelled) || (row.upper == spelled) { optional_present(value: row.value) } else { found } }
+      )
+    Err { value: _ } => optional_absent()
+  }
 }
 
+// THE ONE PLACE A DECODED CODE POINT BECOMES TEXT, and its scalar-ness is decided by
+// std.unicode.scalar from_code_point rather than by a guard at each caller: a \u{D800} or a
+// \u{110000} refuses here as DagStringDecodeMalformed, which dag_string_literal_escape_refusal
+// reports located.
 fn dag_string_decode_append(text: String, code_point: Int) -> DagStringDecode {
-  DagStringDecodeText { text: concat(text, from_code_point(cp: code_point)) }
+  match from_code_point(cp: code_point) {
+    Ok { value: spelled } => DagStringDecodeText { text: concat(text, spelled) }
+    Err { value: _ } => DagStringDecodeMalformed { spelled: code_point }
+  }
 }
 
 fn dag_string_decode_escape_step(t: String, c: Int) -> DagStringDecode {
@@ -4985,7 +4998,7 @@ fn dag_string_decode_hex_step(t: String, digits: Int, value: Int, c: Int) -> Dag
 
 fn dag_string_decode_unicode_step(t: String, digits: Int, value: Int, c: Int) -> DagStringDecode {
   if c == 125 {
-    if (digits > 0) && unicode_scalar(code_point: value) {
+    if digits > 0 {
       dag_string_decode_append(text: t, code_point: value)
     } else {
       DagStringDecodeMalformed { spelled: c }
@@ -5121,14 +5134,14 @@ fn dag_string_hex_text(value: Int) -> String {
   }
 }
 
-fn dag_string_encode_scalar(c: Int) -> String {
+fn dag_string_encode_scalar(c: Char) -> String {
   match dag_string_escape_spelled_optional(value: c) {
-    Present { value: spelled } => concat("\\", from_code_point(cp: spelled))
+    Present { value: spelled } => concat("\\", char_text(c: spelled))
     Absent =>
       if (c < 32) || (c == 127) {
         concat("\\u\{", concat(dag_string_hex_text(value: c), "\}"))
       } else {
-        from_code_point(cp: c)
+        char_text(c: c)
       }
   }
 }
