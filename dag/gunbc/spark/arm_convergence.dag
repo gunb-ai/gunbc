@@ -16,7 +16,7 @@ import extdeps.docker.cli { docker_container_inspect_command, docker_container_i
 import extdeps.docker.container_inspect { container_inspect_from_stdout, ContainerInspectDecoded, ContainerInspectUnreadable }
 import gunbc.host_operation_exec { Sha256SumFile, SystemctlShowProperty }
 import gunbc.compute.host_occupancy { host_operation_ran, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
-import gunbc.host.path_observation { host_path_kind, HostPathPresent, HostPathAbsent, HostPathUnread, small_file_read, SmallFileText, SmallFileAbsent, SmallFileUnread }
+import gunbc.host.path_observation { host_path_kind, HostPathPresent, HostPathAbsent, HostPathUnread, small_file_read, SmallFileText, SmallFileAbsent, SmallFileTooLarge, SmallFileUnread }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun, ArgvLegMayHaveRun }
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
@@ -195,6 +195,7 @@ fn arm_committed_fact(run: fn(List<String>) -> ArgvRun, unit_name: NonEmptyStr) 
   match small_file_read(run: run, path: arm_committed_record_path(unit_name: unit_name) as NonEmptyStr, limit: arm_committed_record_read_limit) {
     SmallFileAbsent => FactAbsent
     SmallFileUnread { cause: c } => FactUnread { cause: c }
+    SmallFileTooLarge { limit: _ } => FactUnread { cause: "the committed record is longer than its bound, so the whole record was not read" }
     SmallFileText { text: t } =>
       if trim(s: t) == "" { FactUnread { cause: "the committed record is empty" } }
       else { FactRead { value: trim(s: join(split(s: t, delimiter: "\n"), " ")) } }

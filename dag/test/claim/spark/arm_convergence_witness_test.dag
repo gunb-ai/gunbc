@@ -270,7 +270,7 @@ fn w_host_answers(unit_file: ArgvRun, record: ArgvRun) -> fn(List<String>) -> Ar
     else if a == "systemctl show gunbc-glm53-stair-head.service --property=ActiveState --value" { ArgvRan { exit_code: 0, stdout: "active\n", stderr: "" } }
     else if a == "/usr/bin/docker container inspect glm53-stair" { ArgvRan { exit_code: 0, stdout: w_inspect_json, stderr: "" } }
     else if a == join(["/usr/bin/stat -c %F -- ", w_record_path], "") { record }
-    else if a == join(["head -c 300 -- ", w_record_path], "") { ArgvRan { exit_code: 0, stdout: "fp8-16 abcd\n", stderr: "" } }
+    else if a == join(["head -c 301 -- ", w_record_path], "") { ArgvRan { exit_code: 0, stdout: "fp8-16 abcd\n", stderr: "" } }
     else if starts_with(s: a, prefix: join(["/usr/bin/stat -c %F -- ", w_unit_path, ".gunbc-"], "")) { ArgvRan { exit_code: 1, stdout: "", stderr: "stat: cannot statx: No such file or directory\n" } }
     else { ArgvLegDidNotRun { cause: join(["unexpected argv: ", a], "") } }
   }
