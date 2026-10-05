@@ -21,6 +21,7 @@ import std.integer { UInt8, NonNegativeInt, PositiveInt, qualified_octet_members
 import std.render_repeat_string_bootstrap { repeat_string }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
+import std.encoding { ascii_decode_octets, AsciiDecoded, AsciiNonAscii }
 import std.cache_interface { ContentAddressedByValue, WriteOnce }
 import extdeps.git { GitAuthor, ObjectType, BlobObj, TreeObj, CommitObj, TagObj }
 import extdeps.object_storage { ObjectContainer }
@@ -1970,16 +1971,16 @@ type GitLsTreeZDecodeOutcome
   = GitLsTreeZDecoded { entries: List<GitTreeWireEntry> }
   | GitLsTreeZRefused { cause: GitLsTreeZRefusal }
 
+// A git NUL-framed header field is ASCII text through the declared std.encoding ascii_decode_octets
+// route; NUL is ASCII but is the field DELIMITER here, so it is refused by this field's own policy.
 fn git_ascii_field_text(octets: List<UInt8>) -> NonEmptyStr? {
-  if all(octets, octet => octet > 0 && octet < 128) {
-    Present {
-      value: join(
-        octets |> map(octet => from_code_point(octet)),
-        "",
-      ) as NonEmptyStr,
-    }
-  } else {
+  if !all(octets, octet => octet != 0) {
     none
+  } else {
+    match ascii_decode_octets(octets: octets) {
+      AsciiDecoded { text } => Present { value: text as NonEmptyStr }
+      AsciiNonAscii { at: _, octet: _ } => none
+    }
   }
 }
 

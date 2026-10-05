@@ -132,6 +132,7 @@ import std.content_hash {
 import std.types { Bytes }
 import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
 import std.algebra { Cons, Empty }
+import std.unicode.scalar { char_text }
 
 // Witness-corpus Git object ids are constructed only through git_sha1_object_id /
 // git_sha256_object_id (review 45376). The Absent arm below is unreachable for pinned corpus
