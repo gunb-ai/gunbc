@@ -187,9 +187,8 @@ fn awaited_verdict(host: HostIdentity, trace: AwaitedTrace, expected: AwaitedInc
                 }
             }
           }
-        }
+            }
           }
-      }
       }
   }
 }
