@@ -750,6 +750,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.coproduct_payload_soundness_witness_test",
     "test.claim.action_use_admission_witness",
     "test.claim.host_budget_source_witness",
+    "test.claim.text_boundary_identity_wall_witness_test",
   ]
 }
 
