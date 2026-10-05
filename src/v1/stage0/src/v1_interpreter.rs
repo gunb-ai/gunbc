@@ -1089,7 +1089,7 @@ fn value_eq_calls() -> u64 {
 /// `VALUE_DROP_INLINE_DEPTH` nested drops the carrier is released by its own drop, which frees
 /// shared nodes by reference count and runs each member's `Value::drop` (itself iterative over
 /// Variant / Record depth); at or beyond it the carrier is detached as before, so a list nested
-/// to any depth still drops in bounded host stack (`deep_value_walker_tests::a_deep_list_drops`).
+/// to any depth still drops in bounded host stack (`value_depth_walker_tests::a_deep_list_drops`).
 impl Drop for Value {
     fn drop(&mut self) {
         let depth = VALUE_DROP_DEPTH
