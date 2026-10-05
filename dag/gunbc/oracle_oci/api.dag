@@ -21,6 +21,7 @@ import extdeps.cloud.oracle_oci_request_signing {
 }
 import gunbc.jws_signer_realize { jws_rs256_sign }
 import gunbc.fleet_secrets_config { fleet_secrets_gcp_project }
+import product.supplier.oracle_oci { oci_tenancy_home_region }
 
 // THE OPERATOR'S OCI TENANCY AS AN API: credential, identity, one signed exchange, and the two reads
 // every converge over it is built from, a complete list and an admitted row.
@@ -52,12 +53,12 @@ data oci_api_key_id: OciApiKeyId = OciApiKeyId {
   fingerprint: "00:46:05:c5:42:80:08:ec:48:3a:e1:7c:34:bc:e1:03",
 }
 
-// Hosts in the home region (us-ashburn-1, product.supplier.oracle_oci), from the endpoint templates
+// Hosts in the tenancy's home region (product.supplier.oracle_oci oci_tenancy_home_region), from the endpoint templates
 // in Oracle's SDK clients: identity.{region}.oci.{secondLevelDomain} and iaas.{region}.{secondLevelDomain}.
 // Identity calls must go to the home region.
-data oci_identity_host: NonEmptyStr = "identity.us-ashburn-1.oci.oraclecloud.com"
+data oci_identity_host: NonEmptyStr = join(["identity.", oci_tenancy_home_region.identifier as String, ".oci.oraclecloud.com"], "") as NonEmptyStr
 
-data oci_iaas_host: NonEmptyStr = "iaas.us-ashburn-1.oraclecloud.com"
+data oci_iaas_host: NonEmptyStr = join(["iaas.", oci_tenancy_home_region.identifier as String, ".oraclecloud.com"], "") as NonEmptyStr
 
 // How long one OCI request may take before curl gives up. It is this tenancy's policy, not a fact
 // about curl or Oracle. A request that runs out of time ends as a curl exit and refuses.
