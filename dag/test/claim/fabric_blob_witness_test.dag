@@ -17,7 +17,7 @@ import gunbc.fabric.fabric_blob_r2 {
 import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
 import extdeps.cloudflare.r2_lifecycle {
   R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
-  r2_lifecycle_read_body, r2_lifecycle_rules_canonical,
+  r2_lifecycle_read_body, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire, r2_default_multipart_abort_rule,
 }
 import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
 import std.upsert_decision { Noop, Apply, Refuse }
@@ -99,12 +99,15 @@ test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
     && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
     && bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {}).length() == 0
     && r2_lifecycle_rules_canonical(rules: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}))
-      == "fabric-cache-blobs-release enabled prefix=blobs/ max_age=604800"
+      == "Default Multipart Abort Rule enabled bucket-wide abortMultipartUploadsTransition max_age=604800\nfabric-cache-blobs-release enabled prefix=blobs/ deleteObjectsTransition max_age=604800"
 }
 
-data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+data lifecycle_converged_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"fabric-cache-blobs-release\",\"enabled\":true,\"conditions\":{\"prefix\":\"blobs/\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}},{\"id\":\"Default Multipart Abort Rule\",\"enabled\":true,\"conditions\":{},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":604800}}}]}}"
+// THE BODY A NEW BUCKET ANSWERS: Cloudflare's own default rule and nothing else, read verbatim from
+// gunbai-fabric-cache by fleet-converge r2_bucket_ensure run 37361093408 (2026-10-05).
+data lifecycle_new_bucket_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\": \"Default Multipart Abort Rule\", \"enabled\": true, \"conditions\": {}, \"abortMultipartUploadsTransition\": {\"condition\": {\"type\": \"Age\", \"maxAge\": 604800}}}]}}"
 data lifecycle_empty_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[]}}"
-data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"abortMultipartUploadsTransition\":{\"condition\":{\"type\":\"Age\",\"maxAge\":86400}}}]}}"
+data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":[{\"id\":\"abort\",\"enabled\":true,\"conditions\":{\"prefix\":\"\"},\"deleteObjectsTransition\":{\"condition\":{\"type\":\"Date\",\"date\":\"2027-01-01T00:00:00Z\"}}}]}}"
 
 // THE WORKSPACE NEVER INHERITS THE CACHE'S RELEASE. Its declared set is empty while the cache's is
 // not, and the classifier treats a bucket carrying the cache's seven-day rule as NOT converged on the
@@ -153,4 +156,32 @@ test fn a_rule_this_model_cannot_describe_refuses_rather_than_being_replaced() -
     _ => false
   }
   unmodeled && refused && unreadable
+}
+
+// A NEW BUCKET'S DEFAULT RULE IS MODELED AND KEPT. The live body reads as one bucket-wide abort rule,
+// equal to r2_default_multipart_abort_rule; the cache's desired set is therefore NOT converged on it
+// (its release rule is missing), and the plan that applies carries the default beside the release
+// rule, so the PUT that replaces the whole set does not delete Cloudflare's default.
+test fn a_new_buckets_default_rule_is_read_and_kept_by_the_cache_plan() -> Bool {
+  let read = r2_lifecycle_read_body(body: lifecycle_new_bucket_body)
+  let reads_the_default = match read {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs) == r2_lifecycle_rules_canonical(rules: [r2_default_multipart_abort_rule()])
+    _ => false
+  }
+  let plan_keeps_default = match classify_r2_lifecycle(desired: bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {}), read: read).decision {
+    Apply { plan: p } => string_contains(s: r2_lifecycle_rules_canonical(rules: p.rules), pattern: "Default Multipart Abort Rule enabled bucket-wide abortMultipartUploadsTransition max_age=604800")
+      && string_contains(s: r2_lifecycle_rules_canonical(rules: p.rules), pattern: "fabric-cache-blobs-release")
+    _ => false
+  }
+  reads_the_default && plan_keeps_default
+}
+
+// THE WIRE ROUND-TRIPS: the PUT body the cache's desired set renders reads back as the same set.
+test fn the_desired_rule_set_round_trips_through_its_wire_form() -> Bool {
+  let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
+  let body = concat(concat("{\"success\":true,\"errors\":[],\"messages\":[],\"result\":{\"rules\":", r2_lifecycle_rules_wire(rules: desired)), "}}")
+  match r2_lifecycle_read_body(body: body) {
+    R2LifecycleRulesRead { rules: rs } => r2_lifecycle_rules_canonical(rules: rs) == r2_lifecycle_rules_canonical(rules: desired)
+    _ => false
+  }
 }

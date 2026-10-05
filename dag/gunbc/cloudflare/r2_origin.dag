@@ -7,7 +7,8 @@ import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault, R2BucketLocation, r2_location_enam }
-import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule }
+import v2.std.optional { Present }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule, R2DeleteObjectsAfterAge, r2_default_multipart_abort_rule }
 import std.measure { second_count }
 import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditional }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
@@ -495,8 +496,9 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
 }
 
 // WHICH OBJECTS A PURPOSE'S BUCKET RELEASES BY AGE, DERIVED FROM THE PLACEMENT THAT OWNS THE
-// INTERVAL rather than restated: the cache's one rule is gunbc.fabric.fabric_blob_placement's
-// release over its blob prefix. The durable origin, the boot origin and the workspace declare no
+// INTERVAL rather than restated: the cache's release rule is gunbc.fabric.fabric_blob_placement's
+// release over its blob prefix, and it keeps Cloudflare's default multipart-abort rule beside it,
+// because a PUT replaces the whole set and leaving the default out would delete it. The durable origin, the boot origin and the workspace declare no
 // lifecycle rule, and an empty list here is that declaration -- their objects are released never.
 // The workspace's empty list is load-bearing: its history must never inherit the cache's rule.
 fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRule> {
@@ -508,9 +510,10 @@ fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRul
       R2LifecycleRule {
         id: "fabric-cache-blobs-release",
         enabled: true,
-        prefix: fabric_cache_blob_prefix as String,
-        delete_after_age_seconds: second_count(s: fabric_cache_release()),
+        prefix: Present { value: fabric_cache_blob_prefix as String },
+        transition: R2DeleteObjectsAfterAge { max_age_seconds: second_count(s: fabric_cache_release()) },
       },
+      r2_default_multipart_abort_rule(),
     ]
   }
 }
