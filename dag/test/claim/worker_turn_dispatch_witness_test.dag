@@ -10,6 +10,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchProviderInnerArgvReady,
   CodexProviderExecutableAbsent,
   CursorProviderOffCustodyHost,
+  CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   ClaudeProviderCredentialUnbound,
   GunbcHarnessSpawnNeedsInstance,
@@ -49,6 +50,7 @@ fn ready_argv(inner: DispatchProviderInnerArgv) -> List<String>? {
     DispatchProviderInnerArgvReady { argv } => Present { value: argv }
     CodexProviderExecutableAbsent { reason: _ } => none
     CursorProviderOffCustodyHost { reason: _ } => none
+    CursorProviderCredentialUnbound { reason: _ } => none
     CodexProviderOffCustodyHost { reason: _ } => none
     ClaudeProviderCredentialUnbound { reason: _ } => none
     GunbcHarnessSpawnNeedsInstance { reason: _ } => none
@@ -88,6 +90,7 @@ test fn a_cursor_turn_on_srv2_binds_the_custody_key_through_the_env_wrapper() ->
 test fn a_cursor_turn_off_its_custody_host_refuses() -> Bool {
   match inner_for(instance: srv1_live_dashboard_instance(), provider: CursorDispatchProvider) {
     CursorProviderOffCustodyHost { reason } => string_contains(s: reason as String, pattern: "srv2")
+    CursorProviderCredentialUnbound { reason: _ } => false
     DispatchProviderInnerArgvReady { argv: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
     CodexProviderOffCustodyHost { reason: _ } => false
@@ -111,6 +114,7 @@ test fn a_codex_turn_on_srv2_runs_under_the_flock_on_the_custody_codex_home() ->
         && !any(argv, a => a == concat("CODEX_HOME=", srv2_roadmap_codex_home as String))
     CodexProviderExecutableAbsent { reason: _ } => false
     CursorProviderOffCustodyHost { reason: _ } => false
+    CursorProviderCredentialUnbound { reason: _ } => false
     CodexProviderOffCustodyHost { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
@@ -123,6 +127,7 @@ test fn a_codex_turn_off_its_custody_host_refuses() -> Bool {
     DispatchProviderInnerArgvReady { argv: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
     CursorProviderOffCustodyHost { reason: _ } => false
+    CursorProviderCredentialUnbound { reason: _ } => false
     ClaudeProviderCredentialUnbound { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }

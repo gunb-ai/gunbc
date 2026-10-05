@@ -67,6 +67,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchProviderInnerArgv,
   DispatchProviderInnerArgvReady,
   CursorProviderOffCustodyHost,
+  CursorProviderCredentialUnbound,
   CodexProviderOffCustodyHost,
   CodexProviderExecutableAbsent,
   GunbcHarnessSpawnNeedsInstance,
@@ -1104,6 +1105,7 @@ fn witness_inner_argv_wire(inner: DispatchProviderInnerArgv) -> String {
   match inner {
     DispatchProviderInnerArgvReady { argv } => join(argv, separator: "\0")
     CursorProviderOffCustodyHost { reason: r } => r as String
+    CursorProviderCredentialUnbound { reason: r } => r as String
     CodexProviderOffCustodyHost { reason: r } => r as String
     CodexProviderExecutableAbsent { reason: r } => r as String
     GunbcHarnessSpawnNeedsInstance { reason: r } => r as String

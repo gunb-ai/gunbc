@@ -200,7 +200,7 @@ import gunbc.roadmap_provider_events {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
-import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv }
+import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnEnvNameRefused }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -2136,6 +2136,7 @@ type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
   | CodexProviderExecutableAbsent { reason: NonEmptyStr }
   | CursorProviderOffCustodyHost { reason: NonEmptyStr }
+  | CursorProviderCredentialUnbound { reason: NonEmptyStr }
   | CodexProviderOffCustodyHost { reason: NonEmptyStr }
   | GunbcHarnessSpawnNeedsInstance { reason: NonEmptyStr }
   | ClaudeProviderCredentialUnbound { reason: NonEmptyStr }
@@ -2370,8 +2371,12 @@ fn dispatch_provider_inner_argv_for_instance(
           reason: provider_off_custody_host_reason(provider_label: "cursor", custody_host: cursor_worker_turn_custody_host, instance_host: instance.host_identity),
         }
       } else {
-        DispatchProviderInnerArgvReady {
-          argv: cursor_worker_turn_argv(worktree_path: worktree_path, prompt: brief as NonEmptyStr),
+        match cursor_worker_turn_argv(worktree_path: worktree_path, prompt: brief as NonEmptyStr) {
+          CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
+          CursorWorkerTurnEnvNameRefused { spelling } =>
+            CursorProviderCredentialUnbound {
+              reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
+            }
         }
       }
     GunbcHarnessProvider =>
@@ -3171,6 +3176,11 @@ fn dispatch_spawn_commands_for_resolved_instance(
     CodexProviderOffCustodyHost { reason } =>
       DispatchSpawnRefused {
         step: "codex-credential-custody-host" as NonEmptyStr,
+        detail: reason as String,
+      }
+    CursorProviderCredentialUnbound { reason } =>
+      DispatchSpawnRefused {
+        step: "cursor-credential-binding" as NonEmptyStr,
         detail: reason as String,
       }
     CodexProviderExecutableAbsent { reason } =>
