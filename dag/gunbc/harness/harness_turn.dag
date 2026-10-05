@@ -1,5 +1,6 @@
 module gunbc.harness.harness_turn
 
+import std.unicode.scalar { char_text }
 import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -394,7 +395,7 @@ fn harness_worktree_files_changed(environment: HarnessToolEnvironment) -> Int? {
   if !status.success {
     none
   } else {
-    Present { value: list_length(items: split(s: status.entries_nul, delimiter: from_code_point(0)) |> filter(e => e != "")) }
+    Present { value: list_length(items: split(s: status.entries_nul, delimiter: char_text(c: 0)) |> filter(e => e != "")) }
   }
 }
 

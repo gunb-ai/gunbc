@@ -6,7 +6,7 @@ import std.types { Bytes, Char }
 import std.integer { UInt8Result, UInt8Ready, UInt8OutOfRange, uint8_of_int, QualifiedOctets, QualifiedOctetsResult, QualifiedOctetsReady, QualifiedOctetsRefused, uint8_octets_of_ints, qualified_octet_members }
 import std.machine_word { Word, Width8, Width32, WordResult, WordReady, WordRefused, WordValueOutOfRange, OctetsResult, OctetsReady, OctetsRefused, word_of_int, word_from_octets, word_to_octets, word_shift_left, word_shift_right, word_and, word_or }
 import extdeps.toolchain.architecture_profile { BigEndian }
-import std.bytes { pure_dag_seam_unreachable, pure_dag_seam_unreachable_string }
+import std.bytes { pure_dag_seam_unreachable_string }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.unicode.types { unicode_scalar, unicode_scalar_utf8_octet_count }
@@ -127,7 +127,7 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
 }
 
 fn utf8_decode_bytes(payload: Bytes) -> String {
-  from_code_point(pure_dag_seam_unreachable())
+  pure_dag_seam_unreachable_string()
 }
 
 type Base64Variant = Standard | UrlSafe
@@ -585,10 +585,10 @@ fn utf8_two_remaining_length(l: Utf8TwoRemainingLength) -> Utf8SequenceLength {
 }
 
 type Utf8DecodeState
-  = Utf8Ready { out: List<Int> }
-  | Utf8NeedOne { out: List<Int>, length: Utf8SequenceLength, acc: Int }
-  | Utf8NeedTwo { out: List<Int>, length: Utf8TwoRemainingLength, acc: Int }
-  | Utf8NeedThree { out: List<Int>, acc: Int }
+  = Utf8Ready { out: List<Char> }
+  | Utf8NeedOne { out: List<Char>, length: Utf8SequenceLength, acc: Int }
+  | Utf8NeedTwo { out: List<Char>, length: Utf8TwoRemainingLength, acc: Int }
+  | Utf8NeedThree { out: List<Char>, acc: Int }
   | Utf8Refused
 
 fn utf8_sequence_octet_count(length: Utf8SequenceLength) -> Int {
@@ -653,7 +653,15 @@ fn utf8_admit_octet(d: Utf8DecodeState, b: Int) -> Utf8DecodeState {
   }
 }
 
-fn utf8_decode_octets(octets: List<Int>) -> List<Int>? {
+// THE DECODER YIELDS SCALARS, AND SAYS SO IN ITS TYPE. Every member it appends has passed this
+// fold's own admission (an octet below 128, or a completed sequence that passes
+// utf8_scalar_admissible), so it is a Unicode scalar, and the result is declared List<Char> rather
+// than List<Int>. Returning List<Int> threw that proof away and made every caller spell the
+// scalars through a partial Int route whose refusal could not fire. A caller now spells the text
+// through the total std.coercion unicode_scalar_fold. THE TYPE STATES THE SHAPE, AND THE ADMISSION
+// ABOVE IS THE GUARANTEE: the seed does not enforce Char's `where unicode_scalar` refinement at an
+// argument or field, so the Char annotation is not itself a proof.
+fn utf8_decode_octets(octets: List<Int>) -> List<Char>? {
   match fold(octets, init: Utf8Ready { out: [] }, f: (d, octet) => utf8_admit_octet(d: d, b: octet)) {
     Utf8Ready { out: out } => Present { value: out }
     Utf8NeedOne { out: _, length: _, acc: _ } => none

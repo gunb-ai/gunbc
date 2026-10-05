@@ -415,6 +415,16 @@ fn collection_all_shape() -> AlgebraFieldTemplate {
   { name: "all", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: NamedTemplate { name: "Bool" } }], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: Present { value: 0 } }
 }
 
+// THE FREE-MONOID CONCATENATION, NAMED so a v2 call head binds to it: v2.compiler.fold_lowering
+// collection_roster_rows carries it as a RosterFreeMonoidPrimitiveCall row, and v2.compiler.infer types the call by
+// this row's param_types/return_type with ReceiverSelf instantiated at the free monoid. The realization is
+// the declared primitive (std.primitives concat_contract), whose persistent-carrier cost log(n + m) is the
+// cost authority; this row's ShapeLinearScan disagrees with it, and that is
+// gunbc.recurring_failure_mode primitive_operation_carries_two_cost_authorities, not resolved here.
+fn collection_concat_shape() -> AlgebraFieldTemplate {
+  { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
+}
+
 fn collection_sort_by_shape() -> AlgebraFieldTemplate {
   { name: "sort_by", param_types: [ReceiverSelf, CallableOf { params: [ReceiverElement], return_type: AlgebraTypeVariable { id: "SortKey" } }], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeSortBody }, callback_element_position: Present { value: 0 } }
 }
@@ -1036,7 +1046,7 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "enumerate", param_types: [ReceiverSelf], return_type: ContainerOf { source: SameAsReceiver, element: TupleOf { first: NamedTemplate { name: "Int" }, second: ReceiverElement } }, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeIterateBody }, callback_element_position: none },
     { name: "reverse", param_types: [ReceiverSelf], return_type: ReceiverSelf, size_effect: Present { value: IdentityEffect }, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
-    { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
+    collection_concat_shape(),
     { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "std.nat.Nat" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none },
     { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Present { value: ShapeLinearScan }, callback_element_position: none }
@@ -1138,8 +1148,16 @@ fn all_algebra_template_names() -> List<String> {
 // already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // The seam diverges before producing anything; `s` is read in the condition so the declared
-// input reaches the result (wiring-liveness), mirroring the bytes.dag float-seam pattern --
-// both arms are the same unreached literal, there to give the expression its type.
+// input reaches the result (wiring-liveness). The divergence is the condition's `1 / 0`, evaluated
+// before either arm, so both arms are the same unreached literal there only to type the expression
+// -- the shape of std.bytes pure_dag_seam_unreachable_string, but NOT its refusal: this `1 / 0`
+// refuses as an unnamed division by zero, where that seam refuses by name. The named seam cannot be
+// imported here (std.bytes imports std.types, which imports std.algebra), and that cycle says the
+// seam sits at the wrong layer -- bottom is not a bytes fact. Moving it to a leaf module is the
+// repair, and it is out of this change's scope because the std.bytes path is mirrored into stage0
+// (std.primitive_projection row, v1_rt panic text). It was `from_code_point(1 / 0)`, which bound the total seed builtin to type a value that
+// is never produced (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin).
+// DISSOLVE-ON: the bottom type std.bytes names -- one divergent seam inhabits every result type.
 fn trim(s: String) -> String {
-  if s == s { from_code_point(1 / 0) } else { from_code_point(1 / 0) }
+  if s == s && 1 / 0 == 0 { "" } else { "" }
 }

@@ -1,5 +1,6 @@
 module std.content_hash
 
+import std.unicode.scalar { char_text }
 import std.types { NonEmptyStr, String, Bool }
 
 // CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store
@@ -169,7 +170,7 @@ fn content_hash_atom(value: NonEmptyStr) -> Fnv1a64Structural {
 // preimage is the family kernel `content_hash_atom`, a target-kernel realization until the
 // fixed-width word and UTF-8 byte substrates let the kernel itself be modeled (gunbc#11637).
 fn content_hash_combine_preimage(left: Fnv1a64Structural, right: Fnv1a64Structural) -> NonEmptyStr {
-  concat(concat(left.digest as String, from_code_point(0)), right.digest as String) as NonEmptyStr
+  concat(concat(left.digest as String, char_text(c: 0)), right.digest as String) as NonEmptyStr
 }
 
 fn content_hash_combine_structural(left: Fnv1a64Structural, right: Fnv1a64Structural) -> Fnv1a64Structural {

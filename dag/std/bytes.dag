@@ -53,7 +53,10 @@ fn pure_dag_seam_unreachable_float() -> Float {
 // String, which is exactly what makes it a fabricated plausible output. The condition forces the
 // Int seam to evaluate, so divergence happens before any String is produced; both arms are the same
 // literal because neither is ever reached. DISSOLVE-ON: the same bottom type the Float projection
-// names -- one divergent seam inhabits every result type and both projections delete.
+// names -- one divergent seam inhabits every result type and both projections delete. One in-place
+// copy of this shape is recorded against the same trigger: std.algebra trim, which cannot import
+// this module (cycle through std.types) and so diverges on an unnamed `1 / 0`. It dissolves with
+// these projections, or sooner if the seam moves to a leaf module std.algebra can import.
 fn pure_dag_seam_unreachable_string() -> String {
   if pure_dag_seam_unreachable() == 0 { "" } else { "" }
 }

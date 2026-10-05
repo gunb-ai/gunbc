@@ -1,5 +1,6 @@
 module gunbc.namespace_step0_subject_collector
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, GitRef, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural }
@@ -243,14 +244,14 @@ fn step0_record_field_step(acc: Step0RecordFields, part: String) -> Step0RecordF
 
 fn step0_decode_tree_entry(record: String) -> Step0TreeEntryDecode {
   let fields = fold(
-    split(s: record, delimiter: from_code_point(9)),
+    split(s: record, delimiter: char_text(c: 9)),
     init: Step0RecordFields { seen: 0, meta: "", path_parts: [] },
     f: fn(acc, part) { step0_record_field_step(acc: acc, part: part) }
   )
   if fields.seen < 2 {
     Step0TreeEntryUndecodable { record: record }
   } else {
-    let path = join(fields.path_parts, from_code_point(9))
+    let path = join(fields.path_parts, char_text(c: 9))
     let meta_fields = split(s: fields.meta, delimiter: " ")
     match get(xs: meta_fields, index: 0) {
       Absent => Step0TreeEntryUndecodable { record: record }
@@ -288,11 +289,11 @@ fn step0_entry_is_regular_blob(entry: Step0TreeEntry) -> Bool {
 // arrive as the text this collector hands a parser. Selecting on the .dag suffix should mean this
 // never fires; it is the arm that keeps "never" from being an assumption.
 fn step0_content_is_text(content: String) -> Bool {
-  !contains(s: content, substring: from_code_point(0))
+  !contains(s: content, substring: char_text(c: 0))
 }
 
 fn step0_subject_entries_at(entries_nul: String) -> List<String> {
-  fold(split(s: entries_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, record) {
+  fold(split(s: entries_nul, delimiter: char_text(c: 0)), init: [], f: fn(acc, record) {
     if record == "" { acc } else { acc |> list_push(record) }
   })
 }
@@ -315,7 +316,7 @@ fn step0_absent_declared_roots(paths: List<String>) -> List<String> {
 }
 
 fn step0_subject_paths_at(paths_nul: String) -> List<String> {
-  fold(split(s: paths_nul, delimiter: from_code_point(0)), init: [], f: fn(acc, path) {
+  fold(split(s: paths_nul, delimiter: char_text(c: 0)), init: [], f: fn(acc, path) {
     if step0_path_in_subject(path: path) { acc |> list_push(path) } else { acc }
   })
 }

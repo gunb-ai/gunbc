@@ -1,5 +1,6 @@
 module extdeps.git.object_store
 
+import std.unicode.scalar { char_text }
 import std.algebra { Cons, trim }
 
 import std.types { NonEmptyStr, Bytes, Map, brand, range, Bool, Int, List }
@@ -929,7 +930,7 @@ fn git_store_object_canonical_hash_input(
           ),
           " ",
           to_string(count(payload_octets)),
-          from_code_point(0),
+          char_text(c: 0),
         ],
         "",
       )

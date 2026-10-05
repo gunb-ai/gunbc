@@ -155,6 +155,9 @@ fn ls_files_stage_z_refusal_text(cause: GitLsFilesStageZRefusal) -> String {
   }
 }
 
+// The fixture's non-ASCII name is valid UTF-8 (U+00FF reaches disk as C3 BF), because
+// extdeps.filesystem carries paths as String; non-UTF-8 octets are witnessed at the decode
+// interface instead (gunbc.recurring_failure_mode non_utf8_path_fixture_spelled_through_a_string_path_carrier).
 fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
   let fixture = shell.Mktemp.Dir()
   if !fixture.success {
@@ -171,12 +174,6 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         GitR0LiveFixtureExecutionRefused { diagnostic: "cleanup-refused" }
       }
     } else {
-      // A NON-ASCII, VALID UTF-8 name, and only that: U+00FF reaches the disk as the octets C3 BF
-      // because extdeps.filesystem's path carrier is String. This fixture never exercised a
-      // non-UTF-8 path (it used to be spelled as if it did); real non-UTF-8 octets are held by
-      // test.claim.git_upstream_model_witness witness_git_ls_tree_z_preserves_non_utf8_path_octets,
-      // and the missing filesystem round-trip is gunbc.recurring_failure_mode
-      // non_utf8_path_fixture_spelled_through_a_string_path_carrier.
       let non_ascii_name = concat(char_text(c: 255), ".dag")
       let readme_path = concat(fixture.path, "/readme")
       let run_path = concat(fixture.path, "/run")

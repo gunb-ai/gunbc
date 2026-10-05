@@ -314,7 +314,6 @@ data builtin_function_registry: Map<String, BuiltinSignature> = {
   "char_at": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }, BuiltinParam { name: "pos", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "substring": derived_signature(names: ["s", "start", "end"], method: "substring", returns: string_type),
   "json_unescape_checked": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: with_optional_cardinality(n: string_type) },
-  "from_code_point": BuiltinSignature { params: [BuiltinParam { name: "cp", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "chars_to_string": BuiltinSignature { params: [BuiltinParam { name: "chars", ty: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } } }, BuiltinParam { name: "start", ty: NamedTemplate { name: "Int" } }, BuiltinParam { name: "end", ty: NamedTemplate { name: "Int" } }], returns: string_type },
   "record_source_chars_index_lookup": BuiltinSignature { params: [], returns: unit_type },
   "resolution_silent_pick_is_enabled": BuiltinSignature { params: [], returns: bool_type },

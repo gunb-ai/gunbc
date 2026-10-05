@@ -1,0 +1,29 @@
+module test.claim.fabric_ci_evidence_wire_decode_witness
+
+import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange }
+import tools.fabric_ci_evidence {
+  FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable, FabricCiWordNotScalar,
+  decode_fabric_ci_evidence_wire, fabric_ci_evidence_wire,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE WIRE IS ONE SIX-HEX-DIGIT WORD PER UNICODE SCALAR AFTER THE FCIE0X PREFIX. A word that names a
+// surrogate or a value past U+10FFFF refuses. The refusal is typed (std.unicode.scalar
+// NotUnicodeScalar, carried as is) and located at the word's offset in the wire, and it never
+// decodes to fabricated text. The positive control round-trips through the real encoder, so the
+// accepted path is the producer's own and not a designed fixture.
+
+test fn a_wire_the_encoder_wrote_decodes_back() -> Bool {
+  decode_fabric_ci_evidence_wire(wire: fabric_ci_evidence_wire(value: "a\u{10FFFF}" as NonEmptyStr))
+    == FabricCiEvidenceDecoded { value: "a\u{10FFFF}" as NonEmptyStr }
+}
+
+test fn red_a_non_scalar_word_refuses_typed_at_its_offset() -> Bool {
+  (decode_fabric_ci_evidence_wire(wire: "FCIE0X00004100D800")
+    == FabricCiEvidenceUndecodable { cause: FabricCiWordNotScalar { at: 12, cause: SurrogateCodePoint { code_point: 55296 } } })
+  && (decode_fabric_ci_evidence_wire(wire: "FCIE0X110000")
+    == FabricCiEvidenceUndecodable { cause: FabricCiWordNotScalar { at: 6, cause: CodePointOutOfRange { code_point: 1114112 } } })
+}

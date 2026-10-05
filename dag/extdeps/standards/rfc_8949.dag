@@ -4,6 +4,7 @@ import std.types { Int, String, List }
 import std.logic { Bool }
 import std.measure { ByteSize, byte_size, byte_size_count }
 import std.encoding { utf8_decode_octets }
+import std.coercion { unicode_scalar_fold }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -148,7 +149,7 @@ fn cbor_slice(octets: List<Int>, at: Int, n: Int) -> List<Int> {
 fn cbor_text_of_octets(octets: List<Int>) -> String? {
   match utf8_decode_octets(octets: octets) {
     Absent => none
-    Present { value: cps } => Present { value: fold(cps, init: "", f: (acc, cp) => acc + from_code_point(cp: cp)) }
+    Present { value: cps } => Present { value: unicode_scalar_fold(xs: cps) }
   }
 }
 

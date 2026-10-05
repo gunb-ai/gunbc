@@ -83,8 +83,7 @@ import std.judgment_contract {
   output_typed_module_interface,
   output_universe_module_import_closures,
   output_universe_test_identity_population,
-  persisted_output,
-  string_from_code_points
+  persisted_output
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

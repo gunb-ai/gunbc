@@ -13,6 +13,7 @@ import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, Propos
 import std.logic { Bool }
 import std.integer { QualifiedOctetsReady, QualifiedOctetsRefused, UInt8 }
 import std.encoding { base64_encode, base64_octets, base64_decode, UrlSafe, utf8_decode_octets }
+import std.coercion { unicode_scalar_fold }
 import std.bytes { utf8_encode_bytes, bytes_octets, pure_dag_seam_unreachable_string }
 import extdeps.languages.json.emit { JsonValue, JsonObject, JsonString, JsonKeyValue, serialize_json, json_object, json_kv, json_string, json_array }
 import extdeps.languages.json.parse {
@@ -964,7 +965,7 @@ fn decode_path_segment(presented: String) -> PathSegmentDecode {
           Present { value: cps } =>
             if cps == [] { PathSegmentMalformed { cause: "segment names an empty identity" } }
             else {
-              let identity = join(map(cps, cp => from_code_point(cp: cp)), "") as NonEmptyStr
+              let identity = unicode_scalar_fold(xs: cps) as NonEmptyStr
               let canonical = path_segment(s: identity)
               if (canonical as String) == presented { PathSegmentDecoded { identity: identity } }
               else { PathSegmentNonCanonical { presented: presented as NonEmptyStr, canonical: canonical } }

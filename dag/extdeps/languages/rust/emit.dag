@@ -287,7 +287,6 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "scan_to_eol",        bridge_name: "scan_to_eol",      passes_by_ref: true,  wraps_result: false },
   { name: "scan_string_end",    bridge_name: "scan_string_end",  passes_by_ref: true,  wraps_result: false },
   { name: "code_point",         bridge_name: "code_point",       passes_by_ref: false, wraps_result: false },
-  { name: "from_code_point",    bridge_name: "from_code_point",  passes_by_ref: false, wraps_result: false },
   { name: "lookup",             bridge_name: "lookup",           passes_by_ref: true,  wraps_result: false },
   { name: "get",                bridge_name: "list_get_optional", passes_by_ref: true, wraps_result: false },
   { name: "index_by",           bridge_name: "rc_index_by",      passes_by_ref: false, wraps_result: false },
