@@ -38,6 +38,12 @@ import gunbc.roadmap_session_placement {
   SessionGrantReading, SessionGrantRecorded, SessionGrantNotRecorded, SessionGrantUnreadable, SessionGrantForeign,
   SessionReleaseObservation, SessionReleaseNotRecorded, SessionReleased, SessionReleaseNothingHeld, SessionReleaseRefused, SessionReleaseUnreadable,
 }
+import gunbc.roadmap_service_evidence {
+  ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
+  service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode_bound,
+  ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
+  service_evidence_observe_for_attempt, service_evidence_binding_for_attempt, service_evidence_snapshot_binding_defect,
+}
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
   belt_workflow_attempt_history_evidences_observe_for_instance,
@@ -459,7 +465,7 @@ fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRout
 // valid receipt is in the slot the scan stops and the slot is never rewritten (create-only CAS).
 data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmptyStr
 
-data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v2"
+data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v3"
 
 // THE SLOT LIVES IN A ROOT THE DEPLOYMENT ALREADY CONVERGES. The file CAS store does not create its
 // root (gunbc.durable_cas_file_store), so the slot is placed in the instance's attempt-state root --
@@ -475,6 +481,11 @@ fn dogfood_start_store_root(instance: HostDashboardInstance) -> NonEmptyStr {
 // which check every join; the wire encoder re-checks them, so correctness does not rest on
 // sole_constructor (enforced by the seed, not yet by the native route -- gunbc.rung_drop
 // g0_type_decl_modifier_parse_without_sealing_property), which is defence in depth here.
+// THE JOINED SERVICE EVIDENCE THE START PINS (gunbc.roadmap_service_evidence, #13109/#13157) is one
+// ServiceEvidenceSnapshot: the canonical evidence wire, persisted whole, from which the decoder of that
+// module derives the digest, the binding and every field's standing. The start receipt carries no
+// digest or standing list of its own, so the two can never describe different evidence, and the field
+// population is that module's, not a list kept here.
 type DogfoodStartReceipt sole_constructor {
   node_id: String
   attempt_key: String
@@ -488,6 +499,7 @@ type DogfoodStartReceipt sole_constructor {
   grant_identity: String
   fence_generation: Nat
   cleanup_outcome: String
+  service_evidence: ServiceEvidenceSnapshot
   established_at: Rfc3339Timestamp
 }
 
@@ -506,6 +518,7 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
   else if r.grant_identity == "" { Present { value: "grant_identity is empty" } }
   else if r.fence_generation == 0 { Present { value: "fence_generation is not a granted fence" } }
   else if r.cleanup_outcome != "released" && r.cleanup_outcome != "nothing-to-release" { Present { value: "cleanup_outcome is not a settled release" } }
+  else if r.service_evidence.node_id != r.node_id || r.service_evidence.attempt_key != r.attempt_key { Present { value: "the pinned service evidence names another node or attempt" } }
   else if !rfc3339_is_canonically_spelled(value: r.established_at) { Present { value: "established_at is not a canonical RFC 3339 UTC instant" } }
   else { none }
 }
@@ -513,13 +526,17 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
 // THE ONE MINT FROM EVIDENCE. It reads every stage from the single WorkflowAttemptEvidence it is
 // given and checks that the three established pieces speak of that one attempt and head. While any
 // stage is owed or refused there is no candidate.
-fn dogfood_start_candidate(e: WorkflowAttemptEvidence, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
+fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceReceipt, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
   match dogfood_route_receipt_for_evidence(e: e) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
     DogfoodRouteComplete { node_id: _, attempt_key: _, placement, submission, review, publication, cleanup } =>
-      if submission.attempt_key != e.attempt_key || publication.head_sha != submission.head_sha {
+      if submission.attempt_key != e.attempt_key || publication.head_sha != submission.head_sha
+        || (service.binding.node_id as String) != e.node_id || (service.binding.attempt_key as String) != e.attempt_key {
         none
       } else {
+        match service_evidence_snapshot_of_receipt(r: service) {
+          SnapshotInvalid { reason: _ } => none
+          SnapshotDecoded { snapshot } => {
         let r = DogfoodStartReceipt {
           node_id: e.node_id,
           attempt_key: e.attempt_key,
@@ -533,11 +550,14 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, established_at: Rfc3339Ti
           grant_identity: placement.grant_identity,
           fence_generation: placement.fence_generation,
           cleanup_outcome: cleanup.outcome,
+          service_evidence: snapshot,
           established_at: established_at,
         }
         match dogfood_start_receipt_defect(r: r) {
           Absent => Present { value: r }
           Present { value: _ } => none
+        }
+          }
         }
       }
   }
@@ -598,6 +618,8 @@ fn dogfood_start_receipt_wire(r: DogfoodStartReceipt) -> String? {
         json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
         json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
         json_kv(key: "cleanup_outcome", value: json_string(s: r.cleanup_outcome)),
+        json_kv(key: "service_evidence_digest", value: json_string(s: r.service_evidence.digest)),
+        json_kv(key: "service_evidence_wire", value: json_string(s: r.service_evidence.wire)),
         json_kv(key: "established_at", value: json_string(s: r.established_at as String)),
       ])) }
   }
@@ -623,12 +645,19 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
     JsonDocumentUnreadable { gap: _ } => StartReceiptInvalid { reason: "the start receipt is not a JSON document" }
     JsonDocumentParsed { value: v } =>
       if dogfood_decode_field(v: v, key: "schema") != dogfood_start_receipt_schema {
-        StartReceiptInvalid { reason: "the schema is missing or not dogfood-start-receipt/v2" }
+        StartReceiptInvalid { reason: "the schema is missing or not dogfood-start-receipt/v3" }
       } else {
         let when = dogfood_decode_field(v: v, key: "established_at")
         if when == "" {
           StartReceiptInvalid { reason: "established_at is missing" }
         } else {
+          let ev_wire = dogfood_decode_field(v: v, key: "service_evidence_wire")
+          if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
+            StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
+          } else {
+          match service_evidence_snapshot_decode_bound(wire: ev_wire, node_id: Present { value: dogfood_decode_field(v: v, key: "node_id") }, attempt_key: Present { value: dogfood_decode_field(v: v, key: "attempt_key") }) {
+            SnapshotInvalid { reason } => StartReceiptInvalid { reason: join(["the pinned service evidence does not decode: ", reason], "") }
+            SnapshotDecoded { snapshot } => {
           let r = DogfoodStartReceipt {
             node_id: dogfood_decode_field(v: v, key: "node_id"),
             attempt_key: dogfood_decode_field(v: v, key: "attempt_key"),
@@ -642,11 +671,15 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
             grant_identity: dogfood_decode_field(v: v, key: "grant_identity"),
             fence_generation: match json_field_nat(obj: v, key: "fence_generation") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
             cleanup_outcome: dogfood_decode_field(v: v, key: "cleanup_outcome"),
+            service_evidence: snapshot,
             established_at: when as Rfc3339Timestamp,
           }
           match dogfood_start_receipt_defect(r: r) {
             Absent => StartReceiptDecoded { receipt: r }
             Present { value: why } => StartReceiptInvalid { reason: why }
+          }
+              }
+          }
           }
         }
       }
@@ -660,6 +693,27 @@ type DogfoodStartRecord
   | DogfoodStartNoCompleteAttempt
   | DogfoodStartRefused { reason: String }
 
+// THE ONE INSTANCE-BOUND JUDGMENT OF AN OCCUPIED SLOT, used by the recorder's first read, by its
+// lost-race read and by the acceptance read: the decoded receipt's pinned evidence must name exactly
+// the attempt's durable binding -- instance, node, attempt and launch revision, read from the
+// attempt's launch record in THIS instance (gunbc.roadmap_service_evidence
+// service_evidence_snapshot_binding_defect).
+fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt: DogfoodStartReceipt) -> String? {
+  service_evidence_snapshot_binding_defect(
+    snapshot: receipt.service_evidence,
+    binding: service_evidence_binding_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key),
+  )
+}
+
+// What an occupied slot means for the recorder, pure over the judgment: a receipt bound here is
+// already recorded; one that is not refuses, so it is never reported as this instance's start.
+fn dogfood_occupied_slot_record(defect: String?) -> DogfoodStartRecord {
+  match defect {
+    Absent => DogfoodStartAlreadyRecorded
+    Present { value: why } => DogfoodStartRefused { reason: join(["the recorded start receipt is not this instance's start: ", why], "") }
+  }
+}
+
 fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> DogfoodStartRecord {
   let root = dogfood_start_store_root(instance: instance)
   match observe_cas_slot_state(root: root, key: dogfood_start_receipt_key, retention: KeepAllGenerations) {
@@ -668,7 +722,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
       match readable {
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
+            StartReceiptDecoded { receipt } => dogfood_occupied_slot_record(defect: dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt))
             StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["the recorded start receipt is invalid and cannot be rewritten: ", reason], "") }
           }
         CasReadableAbsent =>
@@ -681,31 +735,36 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
                 match dogfood_first_complete_evidence(evidences: evidences) {
                   Absent => DogfoodStartNoCompleteAttempt
                   Present { value: found } =>
-                    match dogfood_start_step(candidate: Present { value: found }, clock: clock_now_probed_at()) {
-                      StartNoCandidate => DogfoodStartNoCompleteAttempt
-                      StartClockRefused { reason } => DogfoodStartRefused { reason: reason }
-                      StartTimestamp { candidate, at } =>
-                        match dogfood_start_candidate(e: candidate, established_at: at) {
-                          Absent => DogfoodStartRefused { reason: "the complete attempt failed its own join validation" }
-                          Present { value: first } =>
-                            match dogfood_start_receipt_wire(r: first) {
-                              Absent => DogfoodStartRefused { reason: "the start candidate failed its own join validation" }
-                              Present { value: wire } =>
-                                match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
-                                  DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
-                                  DerivedPayloadAdmitted { verified } =>
-                                    match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, retention: KeepAllGenerations, verified: verified).outcome {
-                                      CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
-                                      CasPreconditionFailed { expected: _, observed } =>
-                                        match observed {
-                                          CasReadableAbsent => DogfoodStartRefused { reason: "the create-only write was refused yet the slot reads absent" }
-                                          CasReadablePresent { version } =>
-                                            match dogfood_start_receipt_decode(payload: version.value as String) {
-                                              StartReceiptDecoded { receipt: _ } => DogfoodStartAlreadyRecorded
-                                              StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["a concurrent writer left an invalid start receipt: ", reason], "") }
+                    match service_evidence_observe_for_attempt(instance: instance, node_id: found.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: found.attempt_key) {
+                      ServiceEvidenceAttemptUnlaunched => DogfoodStartRefused { reason: "the complete attempt has no launch record, so it has no joined service evidence" }
+                      ServiceEvidenceRefused { reason } => DogfoodStartRefused { reason: join(["the complete attempt's service evidence is refused: ", reason], "") }
+                      ServiceEvidenceJoined { receipt } =>
+                        match dogfood_start_step(candidate: Present { value: found }, clock: clock_now_probed_at()) {
+                          StartNoCandidate => DogfoodStartNoCompleteAttempt
+                          StartClockRefused { reason } => DogfoodStartRefused { reason: reason }
+                          StartTimestamp { candidate, at } =>
+                            match dogfood_start_candidate(e: candidate, service: receipt, established_at: at) {
+                              Absent => DogfoodStartRefused { reason: "the complete attempt failed its own join validation" }
+                              Present { value: first } =>
+                                match dogfood_start_receipt_wire(r: first) {
+                                  Absent => DogfoodStartRefused { reason: "the start candidate failed its own join validation" }
+                                  Present { value: wire } =>
+                                    match admit_cas_attempt_for_derived_payload(key: dogfood_start_receipt_key, expected: ExpectSlotAbsent, proposed: wire as NonEmptyStr) {
+                                      DerivedPayloadKeyNotSlotAddressable { key: _ } => DogfoodStartRefused { reason: "the start receipt key is not slot-addressable" }
+                                      DerivedPayloadAdmitted { verified } =>
+                                        match file_compare_and_set(root: root, publication: DefaultAccessCreateOnly, verified: verified, retention: KeepAllGenerations).outcome {
+                                          CasCommitted { committed: _ } => DogfoodStartRecorded { receipt: wire }
+                                          CasPreconditionFailed { expected: _, observed } =>
+                                            match observed {
+                                              CasReadableAbsent => DogfoodStartRefused { reason: "the create-only write was refused yet the slot reads absent" }
+                                              CasReadablePresent { version } =>
+                                                match dogfood_start_receipt_decode(payload: version.value as String) {
+                                                  StartReceiptDecoded { receipt } => dogfood_occupied_slot_record(defect: dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt))
+                                                  StartReceiptInvalid { reason } => DogfoodStartRefused { reason: join(["a concurrent writer left an invalid start receipt: ", reason], "") }
+                                                }
                                             }
+                                          CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
                                         }
-                                      CasStoreRefused { cause: _ } => DogfoodStartRefused { reason: "the start receipt store refused the create-only write" }
                                     }
                                 }
                             }
@@ -731,7 +790,7 @@ fn dogfood_route_acceptance_holds_on(instance: HostDashboardInstance) -> Bool {
         CasReadableAbsent => false
         CasReadablePresent { version } =>
           match dogfood_start_receipt_decode(payload: version.value as String) {
-            StartReceiptDecoded { receipt: _ } => true
+            StartReceiptDecoded { receipt } => match dogfood_receipt_binding_defect_here(instance: instance, receipt: receipt) { Absent => true  Present { value: _ } => false }
             StartReceiptInvalid { reason: _ } => false
           }
       }

@@ -1,0 +1,20 @@
+{
+  "source_revision": "85bdb4e19",
+  "binary_sha256": "179882133a4c03958a1bed8a8b444ea06e48c63a6c42263ff83694508825b415",
+  "focused_controls_passed": 18,
+  "closure_modules": 844,
+  "memory_max": "6G",
+  "memory_swap_max": 0,
+  "cloud_status": "all ten bootstrap stages completed; exit 0",
+  "probe_operation": "probe-20260929-3",
+  "probe_deadline": "2026-09-29T01:20:00Z",
+  "full_landing_suite": "not run",
+  "temporary_grants": "probe grants and prior deny grant absent on final independent readback",
+  "credential_file": "removed",
+  "newly_enabled_api": "cloudresourcemanager.googleapis.com",
+  "workflow_acceptance": {
+    "run_id": 36505895733,
+    "source_revision": "15b977d417c1a7de52eae96f48bcd3955fb1f94c",
+    "status": "dispatched; no success claimed"
+  }
+}
