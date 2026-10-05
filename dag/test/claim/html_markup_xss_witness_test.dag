@@ -1,5 +1,6 @@
 module test.claim.html_markup_xss_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr, escape_url }
 import extdeps.uri_validation {
   validate_href,
@@ -11,6 +12,7 @@ import extdeps.uri_validation {
   SchemeNotAllowlisted,
 }
 import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

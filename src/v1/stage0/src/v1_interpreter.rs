@@ -927,6 +927,16 @@ pub(crate) fn value_depth_guarded<R>(walk: impl FnOnce() -> R) -> R {
     stacker::maybe_grow(64 * 1024, 2 * 1024 * 1024, walk)
 }
 
+struct DebugEntries<'a>(Vec<(&'a Value, &'a Value)>);
+
+impl fmt::Debug for DebugEntries<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_map()
+            .entries(self.0.iter().map(|(k, v)| (*k, *v)))
+            .finish()
+    }
+}
+
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         value_depth_guarded(|| match self {
@@ -936,7 +946,13 @@ impl fmt::Debug for Value {
             Value::Float(n) => f.debug_tuple("Float").field(n).finish(),
             Value::Str(s) => f.debug_tuple("Str").field(s).finish(),
             Value::List(items) => f.debug_tuple("List").field(items).finish(),
-            Value::Map(entries) => f.debug_tuple("Map").field(entries).finish(),
+            Value::Map(entries) => {
+                // Debug renders in the same canonical order as Display: a debug dump that
+                // differs per process is a host-order path too.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
+                f.debug_tuple("Map").field(&DebugEntries(ordered)).finish()
+            }
             Value::Set(members) => f.debug_tuple("Set").field(members).finish(),
             Value::Record { type_name, fields } => f
                 .debug_struct("Record")
@@ -984,12 +1000,17 @@ impl fmt::Display for Value {
                 write!(f, "]")
             }
             Value::Map(entries) => {
+                // Canonical content order, never `HamtMap` iteration order (which is
+                // per-process RandomState). Keys are reflexive, so no key holds a closure and
+                // the order is total over every renderable map.
+                let ordered = canonical_entries(entries.iter().map(|(k, v)| (&k.key, v)).collect())
+                    .map_err(|_| fmt::Error)?;
                 write!(f, "{{")?;
-                for (i, (k, v)) in entries.iter().enumerate() {
+                for (i, (k, v)) in ordered.into_iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", k.key, v)?;
+                    write!(f, "{}: {}", k, v)?;
                 }
                 write!(f, "}}")
             }
@@ -1086,6 +1107,37 @@ impl Drop for Value {
         while let Some(mut child) = pending.pop() {
             detach_owned_children(&mut child, &mut pending);
         }
+    }
+}
+
+/// The portable form is a plain tree with no sharing, so it is as deep as the value it was taken
+/// from and needs the same iterative drop (`impl Drop for Value`): a recursive drop of a deep
+/// portable chain aborted the process (stack overflow) in
+/// `value_depth_walker_tests::a_deep_value_round_trips_through_the_portable_form`.
+/// Class: gunbc.recurring_failure_mode recursion_over_value_depth_uncounted_by_the_call_limit.
+impl Drop for PortableValue {
+    fn drop(&mut self) {
+        let mut pending: Vec<PortableValue> = Vec::new();
+        detach_portable_children(self, &mut pending);
+        while let Some(mut child) = pending.pop() {
+            detach_portable_children(&mut child, &mut pending);
+        }
+    }
+}
+
+fn detach_portable_children(value: &mut PortableValue, pending: &mut Vec<PortableValue>) {
+    match value {
+        PortableValue::List(items) => pending.append(items),
+        PortableValue::Map(entries) => {
+            for (k, v) in entries.drain(..) {
+                pending.push(k);
+                pending.push(v);
+            }
+        }
+        PortableValue::Record { fields, .. } | PortableValue::Variant { fields, .. } => {
+            pending.extend(fields.drain(..).map(|(_, v)| v));
+        }
+        _ => {}
     }
 }
 
@@ -1430,6 +1482,32 @@ pub enum InterpError {
         operation: String,
         ground: HermeticEffectGround,
     },
+    /// A HOST FILESYSTEM EFFECT FAILED: the realization asked the host to create or write a path
+    /// and the host refused. Its own variant, never a `TypeError`: nothing about the program's
+    /// values was ill-typed, the WORLD said no, and the remedy (permissions, an occupied path, a
+    /// full disk) lives outside the corpus. Reported as `type-error`, a permission-denied cache
+    /// write sent every reader looking for a type defect that did not exist (the
+    /// `emit_host_identity_cast_native` floor rows). `operation` names the effect site, `path` the
+    /// path the host refused, `kind` the host's own classification, `detail` its text.
+    HostIoFailed {
+        operation: &'static str,
+        path: String,
+        kind: std::io::ErrorKind,
+        detail: String,
+    },
+}
+
+impl InterpError {
+    /// The one constructor for `HostIoFailed`, so every effect site maps the host error the same
+    /// way.
+    pub fn host_io(operation: &'static str, path: &std::path::Path, e: &std::io::Error) -> Self {
+        InterpError::HostIoFailed {
+            operation,
+            path: path.display().to_string(),
+            kind: e.kind(),
+            detail: e.to_string(),
+        }
+    }
 }
 
 /// WHY THE HERMETIC ROUTE HAS NO ARM FOR ONE OPERATION. Closed, and each arm names a
@@ -1451,6 +1529,15 @@ pub enum HermeticEffectGround {
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            InterpError::HostIoFailed {
+                operation,
+                path,
+                kind,
+                detail,
+            } => write!(
+                f,
+                "host filesystem effect failed: {operation} {path} ({kind:?}): {detail}"
+            ),
             InterpError::NoSuchFunction { name } => write!(
                 f,
                 "no declaration named '{}' in this execution's loaded index \
@@ -1700,82 +1787,304 @@ enum PortableValue {
     },
 }
 
-/// A TOTAL ORDER over portable values that depends only on their content: variant rank, then
-/// payload; symbols by spelling, floats by IEEE 754-2019 §5.10 totalOrder (`f64::total_cmp`),
-/// sequences lexicographically. Used to put map
-/// entries in one order in every process.
-fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
-    fn rank(v: &PortableValue) -> u8 {
-        match v {
-            PortableValue::Null => 0,
-            PortableValue::Unit => 1,
-            PortableValue::Bool(_) => 2,
-            PortableValue::Int(_) => 3,
-            PortableValue::Float(_) => 4,
-            PortableValue::Str(_) => 5,
-            PortableValue::List(_) => 6,
-            PortableValue::Map(_) => 7,
-            PortableValue::Set(_) => 8,
-            PortableValue::Record { .. } => 9,
-            PortableValue::Variant { .. } => 10,
+/// THE CANONICAL CONTENT ORDER -- the interpreter's realization of `std.algebra`
+/// `TotalOrder` over value content (docs/plans/canonical-content-order-draft.md). ONE
+/// comparator serves every caller: map rendering (`Display`/`Debug` of `Value::Map`), the
+/// portable encoding's map-entry order (`portable_value_from_ctx_at`), and the emitted-agreeing
+/// sorts (`sorted_map_keys`, `sort_by`, through `admit_emitted_ord_keys`). A
+/// second comparator beside it would be a second order (DESIGN section 3), so both carriers
+/// (`Value`, `PortableValue`) expose a borrowed `ContentView` and nothing else.
+///
+/// * Kind rank is `ContentKind`'s DECLARATION order (derived `Ord`), which is
+///   `PortableValue`'s variant order -- never a hand list beside it.
+/// * Within a kind: Bool false<true; Int numeric; Float by IEEE 754-2019 section 5.10
+///   totalOrder (`f64::total_cmp`); Str byte-lexicographic; List lexicographic then length;
+///   Map lexicographic over its entries in canonical key order, comparing (key, value); Set
+///   lexicographic over its (already ordered) member strings; Record by type spelling then
+///   fields in spelling order as (name, value); Variant by type spelling, arm spelling, then
+///   full payload as a record. A function value ranks last, by name.
+/// * SPELLING IS AN ORDERING STAND-IN, NEVER IDENTITY: `Value::Variant` carries no owner
+///   identity (gunbc.guarantee_stall.variant_owner_identity_stall, NS-0B). Because the
+///   payload is compared after the spelling, two keys tie only when they render to identical
+///   bytes, so tie order is unobservable in output. Declared drop:
+///   gunbc.rung_drop canonical_order_variant_spelling_stand_in.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub(crate) enum ContentKind {
+    Null,
+    Unit,
+    Bool,
+    Int,
+    Float,
+    Str,
+    List,
+    Map,
+    Set,
+    Record,
+    Variant,
+    Function,
+}
+
+pub(crate) enum ContentView<'a, T> {
+    Null,
+    Unit,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(&'a str),
+    List(Vec<&'a T>),
+    Map(Vec<(&'a T, &'a T)>),
+    Set(Vec<&'a str>),
+    Record {
+        type_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Variant {
+        type_name: &'static str,
+        variant_name: &'static str,
+        fields: Vec<(&'static str, &'a T)>,
+    },
+    Function(&'a str),
+}
+
+impl<T> ContentView<'_, T> {
+    fn kind(&self) -> ContentKind {
+        match self {
+            ContentView::Null => ContentKind::Null,
+            ContentView::Unit => ContentKind::Unit,
+            ContentView::Bool(_) => ContentKind::Bool,
+            ContentView::Int(_) => ContentKind::Int,
+            ContentView::Float(_) => ContentKind::Float,
+            ContentView::Str(_) => ContentKind::Str,
+            ContentView::List(_) => ContentKind::List,
+            ContentView::Map(_) => ContentKind::Map,
+            ContentView::Set(_) => ContentKind::Set,
+            ContentView::Record { .. } => ContentKind::Record,
+            ContentView::Variant { .. } => ContentKind::Variant,
+            ContentView::Function(_) => ContentKind::Function,
         }
     }
-    fn seq<T>(
-        xs: &[T],
-        ys: &[T],
-        cmp: impl Fn(&T, &T) -> std::cmp::Ordering,
-    ) -> std::cmp::Ordering {
-        for (x, y) in xs.iter().zip(ys) {
-            let o = cmp(x, y);
-            if o != std::cmp::Ordering::Equal {
-                return o;
+}
+
+/// A carrier whose content the canonical order reads. `None` = the value has no content
+/// order (a closure), which every caller REFUSES rather than placing.
+pub(crate) trait CanonicalContent: Sized {
+    fn content_view(&self) -> Option<ContentView<'_, Self>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NoContentOrder {
+    pub(crate) kind_label: &'static str,
+}
+
+fn seq_cmp<T>(
+    xs: &[T],
+    ys: &[T],
+    cmp: impl Fn(&T, &T) -> Result<std::cmp::Ordering, NoContentOrder>,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    for (x, y) in xs.iter().zip(ys) {
+        let o = cmp(x, y)?;
+        if o != std::cmp::Ordering::Equal {
+            return Ok(o);
+        }
+    }
+    Ok(xs.len().cmp(&ys.len()))
+}
+
+/// Map entries in canonical key order (then value): the one entry order rendering and
+/// encoding both use.
+pub(crate) fn canonical_entries<'a, T: CanonicalContent>(
+    mut entries: Vec<(&'a T, &'a T)>,
+) -> Result<Vec<(&'a T, &'a T)>, NoContentOrder> {
+    let mut err = None;
+    entries.sort_by(|(k, v), (l, w)| {
+        match canonical_content_cmp(*k, *l).and_then(|o| {
+            if o == std::cmp::Ordering::Equal {
+                canonical_content_cmp(*v, *w)
+            } else {
+                Ok(o)
+            }
+        }) {
+            Ok(o) => o,
+            Err(e) => {
+                err.get_or_insert(e);
+                std::cmp::Ordering::Equal
             }
         }
-        xs.len().cmp(&ys.len())
+    });
+    match err {
+        Some(e) => Err(e),
+        None => Ok(entries),
     }
-    let fields = |x: &[(Symbol, PortableValue)], y: &[(Symbol, PortableValue)]| {
-        seq(x, y, |(n, v), (m, w)| {
-            n.0.cmp(m.0).then_with(|| portable_value_cmp(v, w))
-        })
-    };
-    match (a, b) {
-        (PortableValue::Bool(x), PortableValue::Bool(y)) => x.cmp(y),
-        (PortableValue::Int(x), PortableValue::Int(y)) => x.cmp(y),
-        (PortableValue::Float(x), PortableValue::Float(y)) => x.total_cmp(y),
-        (PortableValue::Str(x), PortableValue::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (PortableValue::List(x), PortableValue::List(y)) => seq(x, y, portable_value_cmp),
-        (PortableValue::Map(x), PortableValue::Map(y)) => seq(x, y, |(k, v), (l, w)| {
-            portable_value_cmp(k, l).then_with(|| portable_value_cmp(v, w))
-        }),
-        (PortableValue::Set(x), PortableValue::Set(y)) => x.iter().cmp(y.iter()),
-        (
-            PortableValue::Record {
-                type_name: t,
-                fields: f,
-            },
-            PortableValue::Record {
-                type_name: u,
-                fields: g,
-            },
-        ) => t.0.cmp(u.0).then_with(|| fields(f, g)),
-        (
-            PortableValue::Variant {
-                type_name: t,
-                variant_name: v,
-                fields: f,
-            },
-            PortableValue::Variant {
-                type_name: u,
-                variant_name: w,
-                fields: g,
-            },
-        ) => {
-            t.0.cmp(u.0)
-                .then_with(|| v.0.cmp(w.0))
-                .then_with(|| fields(f, g))
+}
+
+fn canonical_field_order<'a, T>(
+    mut fields: Vec<(&'static str, &'a T)>,
+) -> Vec<(&'static str, &'a T)> {
+    fields.sort_by(|a, b| a.0.cmp(b.0));
+    fields
+}
+
+pub(crate) fn canonical_content_cmp<T: CanonicalContent>(
+    a: &T,
+    b: &T,
+) -> Result<std::cmp::Ordering, NoContentOrder> {
+    use std::cmp::Ordering;
+    value_depth_guarded(|| {
+        let (x, y) = match (a.content_view(), b.content_view()) {
+            (Some(x), Some(y)) => (x, y),
+            _ => {
+                return Err(NoContentOrder {
+                    kind_label: "closure",
+                })
+            }
+        };
+        let fields = |f: Vec<(&'static str, &T)>, g: Vec<(&'static str, &T)>| {
+            seq_cmp(
+                &canonical_field_order(f),
+                &canonical_field_order(g),
+                |(n, v), (m, w)| {
+                    Ok(n.cmp(m)).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                },
+            )
+        };
+        let kx = x.kind();
+        let ky = y.kind();
+        if kx != ky {
+            return Ok(kx.cmp(&ky));
         }
-        _ => rank(a).cmp(&rank(b)),
+        match (x, y) {
+            (ContentView::Null, ContentView::Null) | (ContentView::Unit, ContentView::Unit) => {
+                Ok(Ordering::Equal)
+            }
+            (ContentView::Bool(p), ContentView::Bool(q)) => Ok(p.cmp(&q)),
+            (ContentView::Int(p), ContentView::Int(q)) => Ok(p.cmp(&q)),
+            (ContentView::Float(p), ContentView::Float(q)) => Ok(p.total_cmp(&q)),
+            (ContentView::Str(p), ContentView::Str(q)) => Ok(p.cmp(q)),
+            (ContentView::List(p), ContentView::List(q)) => {
+                seq_cmp(&p, &q, |v, w| canonical_content_cmp(*v, *w))
+            }
+            (ContentView::Map(p), ContentView::Map(q)) => {
+                let p = canonical_entries(p)?;
+                let q = canonical_entries(q)?;
+                seq_cmp(&p, &q, |(k, v), (l, w)| {
+                    canonical_content_cmp(*k, *l).and_then(|o| {
+                        if o == Ordering::Equal {
+                            canonical_content_cmp(*v, *w)
+                        } else {
+                            Ok(o)
+                        }
+                    })
+                })
+            }
+            (ContentView::Set(p), ContentView::Set(q)) => Ok(p.cmp(&q)),
+            (
+                ContentView::Record {
+                    type_name: t,
+                    fields: f,
+                },
+                ContentView::Record {
+                    type_name: u,
+                    fields: g,
+                },
+            ) => match t.cmp(u) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (
+                ContentView::Variant {
+                    type_name: t,
+                    variant_name: v,
+                    fields: f,
+                },
+                ContentView::Variant {
+                    type_name: u,
+                    variant_name: w,
+                    fields: g,
+                },
+            ) => match t.cmp(u).then_with(|| v.cmp(w)) {
+                Ordering::Equal => fields(f, g),
+                o => Ok(o),
+            },
+            (ContentView::Function(p), ContentView::Function(q)) => Ok(p.cmp(q)),
+            _ => unreachable!("kinds were compared equal above"),
+        }
+    })
+}
+
+impl CanonicalContent for PortableValue {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            PortableValue::Null => ContentView::Null,
+            PortableValue::Unit => ContentView::Unit,
+            PortableValue::Bool(b) => ContentView::Bool(*b),
+            PortableValue::Int(n) => ContentView::Int(*n),
+            PortableValue::Float(f) => ContentView::Float(*f),
+            PortableValue::Str(s) => ContentView::Str(s),
+            PortableValue::List(items) => ContentView::List(items.iter().collect()),
+            PortableValue::Map(entries) => {
+                ContentView::Map(entries.iter().map(|(k, v)| (k, v)).collect())
+            }
+            PortableValue::Set(members) => {
+                ContentView::Set(members.iter().map(|m| m.as_str()).collect())
+            }
+            PortableValue::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            PortableValue::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+        })
     }
+}
+
+impl CanonicalContent for Value {
+    fn content_view(&self) -> Option<ContentView<'_, Self>> {
+        Some(match self {
+            Value::Null => ContentView::Null,
+            Value::Unit => ContentView::Unit,
+            Value::Bool(b) => ContentView::Bool(*b),
+            Value::Int(n) => ContentView::Int(*n),
+            Value::Float(f) => ContentView::Float(*f),
+            Value::Str(s) => ContentView::Str(s.as_ref()),
+            Value::List(items) => ContentView::List(items.iter().collect()),
+            Value::Map(m) => ContentView::Map(m.iter().map(|(k, v)| (&k.key, v)).collect()),
+            Value::Set(members) => ContentView::Set(members.iter().map(|m| m.as_str()).collect()),
+            Value::Record { type_name, fields } => ContentView::Record {
+                type_name: type_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => ContentView::Variant {
+                type_name: type_name.0,
+                variant_name: variant_name.0,
+                fields: fields.iter().map(|(n, v)| (n.0, v)).collect(),
+            },
+            Value::Fn { node } => ContentView::Function(node.name.as_str()),
+            Value::Closure { .. } => return None,
+        })
+    }
+}
+
+/// The portable encoding's order: the canonical content order. Total over `PortableValue`
+/// (it has no closure inhabitant), so the refusal arm is unreachable here by construction.
+fn portable_value_cmp(a: &PortableValue, b: &PortableValue) -> std::cmp::Ordering {
+    canonical_content_cmp(a, b).expect("PortableValue has no inhabitant without a content order")
 }
 
 /// Structural equality over portable values — the cross-claim tier's verification relation.
@@ -2381,6 +2690,7 @@ impl CrossClaimSiteSet {
 /// under it.
 pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_PURE_MEMO.with(|m| *m.borrow_mut() = CrossClaimPureMemo::default());
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow_mut().clear());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SITE_GATED.with(|g| g.borrow_mut().clear());
@@ -2999,6 +3309,8 @@ fn store_cross_claim_pure_memo(
         // The portable form has done its two jobs by here — it proved total portability and it
         // measured the entry — and nothing downstream needs it again.
         let served = value_from_portable_ctx(ctx, &portable);
+        // Its content hash, once, for every fresh context that will key a call on it.
+        carry_cross_claim_served_hash(ctx, &served);
         // The served value's root is registered under its digest, so a later call that passes
         // this value as an argument is verified without walking it; and each composite argument
         // of THIS entry carries its digest for the same comparison from the other side.
@@ -4248,6 +4560,88 @@ mod cross_claim_memo_tests {
             "a different argument is not served another call's value"
         );
         super::clear_cross_claim_pure_memos();
+    }
+
+    // A FRESH CONTEXT KEYS A SERVED VALUE WITHOUT RE-HASHING IT. Producer A's value (a list of
+    // lists) is published; a fresh context then keys a call on the served value AND on one list
+    // INSIDE it (the `prepared_exprs` shape: a field of a served grammar). Neither walk lands in
+    // the fresh context's own memo, because both hashes are read from the run-scoped served memo,
+    // and each key equals the one a cold walk computes with that memo emptied. The control is an
+    // EQUAL value that is not the served instance: it is walked in the context (its memo grows)
+    // and keys the same, so the carried hash changes cost only, never the key.
+    #[test]
+    fn a_fresh_context_keys_a_served_value_and_its_parts_without_rehashing() {
+        use super::{
+            cross_claim_served_hash_count, eval_recompute_key,
+            install_cross_claim_pure_share_roster, list_value, store_cross_claim_pure_memo,
+            try_cross_claim_pure_memo, CrossClaimStoreOutcome, CROSS_CLAIM_SERVED_HASH_MEMO,
+        };
+        super::clear_cross_claim_pure_memos();
+        let node = || {
+            make_expr_node(
+                Rc::new(
+                    crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+                ),
+                Rc::new(ExprData::NoExprData),
+                Rc::new(im_vec![]),
+                None,
+                no_span(),
+            )
+        };
+        let (a, consumer) = (node(), node());
+        install_cross_claim_pure_share_roster([a.clone()]);
+        let built = || {
+            list_value(vec![
+                list_value(vec![Value::Int(1), Value::Int(2)]),
+                list_value(vec![Value::Int(3), Value::Int(4)]),
+            ])
+        };
+        let publisher = fresh_ctx();
+        assert_eq!(
+            store_cross_claim_pure_memo(&publisher, &a, "tm_a", &[], &built(), None),
+            CrossClaimStoreOutcome::Stored
+        );
+        assert_eq!(
+            cross_claim_served_hash_count(),
+            3,
+            "the root and both inner lists"
+        );
+        let claim = fresh_ctx();
+        let served = try_cross_claim_pure_memo(&claim, &a, "tm_a", &[]).expect("A is served");
+        let Value::List(items) = &served else {
+            panic!("A serves a list")
+        };
+        let part = items[1].clone();
+        let key_of = |ctx: &InterpContext, v: &Value| {
+            eval_recompute_key(ctx, &consumer, &[(Some("x".to_string()), v.clone())])
+                .expect("a list of ints is keyable")
+        };
+        let warm_whole = key_of(&claim, &served);
+        let warm_part = key_of(&claim, &part);
+        assert_eq!(
+            claim.eval_recompute_hash_memo.borrow().len(),
+            0,
+            "a served value and its parts are keyed from the carried hashes, with no walk"
+        );
+        let carried = CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| std::mem::take(&mut *m.borrow_mut()));
+        let cold = fresh_ctx();
+        assert!(
+            key_of(&cold, &served) == warm_whole,
+            "the carried hash is the walked hash"
+        );
+        assert!(
+            key_of(&cold, &part) == warm_part,
+            "and so is an inner part's"
+        );
+        CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| *m.borrow_mut() = carried);
+        let other = fresh_ctx();
+        assert!(key_of(&other, &built()) == warm_whole);
+        assert!(
+            !other.eval_recompute_hash_memo.borrow().is_empty(),
+            "an equal value that is not the served instance is walked in its own context"
+        );
+        super::clear_cross_claim_pure_memos();
+        assert_eq!(cross_claim_served_hash_count(), 0, "cleared with the tier");
     }
 
     // A DIGEST IS NOT AN IDENTITY. `portable_value_digest` is a 64-bit FNV hash, so two distinct
@@ -7113,6 +7507,97 @@ thread_local! {
     static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
+/// One `.dag` declaration frame an error unwound through: the declaration's name and the span
+/// of its node. `file` + `start` is the declaration's own position, not the raise site's.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RaiseFrame {
+    pub decl: String,
+    pub file: String,
+    pub start: i64,
+}
+
+/// WHERE A RUNTIME ERROR WAS RAISED, as declarations rather than prose. Most `InterpError` arms
+/// carry no source position at their raise site (only field-access `TypeError`s were ever
+/// located, and only those got a call chain appended), so the location every arm CAN carry is the
+/// innermost `.dag` declaration being evaluated when the error was raised, plus the call path
+/// that reached it. `frames[0]` is that innermost declaration; the last frame is the outermost
+/// one recorded (for a claim, the claim function itself, unless `elided` > 0).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RaisePath {
+    pub frames: Vec<RaiseFrame>,
+    pub elided: usize,
+}
+
+/// Frames kept per error. The innermost frames locate the raise; beyond this a deep chain only
+/// grows the line.
+const RAISE_PATH_FRAME_LIMIT: usize = 12;
+
+thread_local! {
+    /// The unwind path of the error currently propagating, each entry tagged with its call depth.
+    /// Written only by `call_function`; read and cleared by `take_raise_path`.
+    static RAISE_PATH: std::cell::RefCell<(Vec<(u32, RaiseFrame)>, usize)> =
+        const { std::cell::RefCell::new((Vec::new(), 0)) };
+}
+
+/// Record `fn_node` as a frame of the propagating error, or forget a path that is no longer
+/// propagating.
+///
+/// The interpreter DOES recover from some errors (an `Err(_)` arm that retries another access
+/// style, for one), so a recorded path can outlive its error. Two rules keep a stale path from
+/// being attributed to a later error: any frame that returns `Ok` clears it (the error it held
+/// was absorbed below that frame), and a frame is appended only when it is the direct caller of
+/// the last recorded one (depth exactly one less); otherwise the new error starts a fresh path.
+fn record_raise_frame(result: &InterpResult<Value>, fn_node: &Rc<Node>, depth: u32) {
+    match result {
+        Ok(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            if !p.0.is_empty() || p.1 != 0 {
+                p.0.clear();
+                p.1 = 0;
+            }
+        }),
+        // Control flow, not a failure: `return` unwinds to its own function frame.
+        Err(InterpError::EarlyReturn { .. }) => {}
+        Err(_) => RAISE_PATH.with(|p| {
+            let mut p = p.borrow_mut();
+            let continues = p.0.last().map(|(d, _)| *d == depth + 1).unwrap_or(false);
+            if !continues {
+                p.0.clear();
+                p.1 = 0;
+            }
+            if p.0.len() < RAISE_PATH_FRAME_LIMIT {
+                p.0.push((
+                    depth,
+                    RaiseFrame {
+                        decl: fn_node.name.to_string(),
+                        file: fn_node.span.file.to_string(),
+                        start: fn_node.span.start,
+                    },
+                ));
+            } else {
+                // Keep tagging the depth so the contiguity check still sees the unwind
+                // continuing; only the frame itself is dropped.
+                if let Some(last) = p.0.last_mut() {
+                    last.0 = depth;
+                }
+                p.1 += 1;
+            }
+        }),
+    }
+}
+
+/// Take the raise path of the error that just escaped `run_in_context`, leaving none behind.
+/// Call it immediately after the evaluation returns `Err`, on the same thread.
+pub fn take_raise_path() -> RaisePath {
+    RAISE_PATH.with(|p| {
+        let (frames, elided) = std::mem::take(&mut *p.borrow_mut());
+        RaisePath {
+            frames: frames.into_iter().map(|(_, f)| f).collect(),
+            elided,
+        }
+    })
+}
+
 /// Bounded execution (§4): a call chain deeper than this is a typed, located refusal naming
 /// the frontier function — never a host stack overflow, which aborts the process and every
 /// later witness's measurement (measured: a cycle in live_deploy script assembly under
@@ -7133,6 +7618,7 @@ fn call_function(
     });
     let result = call_function_guarded(ctx, fn_node, args, env, depth);
     CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    record_raise_frame(&result, fn_node, depth);
     // A located TypeError carries its raise site but no route back up the call chain, which made
     // a production-path defect (harness_probe_cli, 2026-09-18) expensive to attribute. Append each
     // frame as the error unwinds, bounded so a deep chain cannot grow the message without limit.
@@ -11316,6 +11802,60 @@ enum EvalRecomputeStep {
     Bail,
 }
 
+thread_local! {
+    /// THE CONTENT HASHES OF EVERY VALUE THE CROSS-CLAIM TIER SERVES, computed once, at
+    /// publication, over the served instance and each composite inside it. A served value is
+    /// handed to every claim by `Rc` clone, but each claim runs in a FRESH `InterpContext`, whose
+    /// own memo is empty, so the first call in each claim that took a served value (or any part of
+    /// it, such as a prepared grammar's `prepared_exprs`) as an argument re-hashed the whole thing
+    /// natively: a per-claim cost proportional to the served value's size, outside the step budget.
+    /// The hash is a fact about the instance, not the context: it reads only content and
+    /// process-canonical symbol spellings. So it is computed once and carried with the tier.
+    ///
+    /// THE JOIN IS INSTANCE IDENTITY, NEVER A DIGEST. An entry is consulted by `Rc` pointer and
+    /// used only while its allocation is alive, and the tier retains every served value for its
+    /// lifetime, so the pointer cannot be reused while the entry stands: the hash read is exactly
+    /// the one a fresh walk of that instance would compute. Serving a memoized call still verifies
+    /// its arguments, so this memo decides only the cost of a key, never what a key admits.
+    /// Cleared with the tier (`clear_cross_claim_pure_memos`).
+    static CROSS_CLAIM_SERVED_HASH_MEMO: RefCell<EvalRecomputeHashMemo> =
+        RefCell::new(EvalRecomputeHashMemo::default());
+}
+
+/// A composite's memoized content hash: the context's own memo first, then the hashes carried
+/// for tier-served instances. Both are joined by the live allocation the pointer names. While the
+/// served memo is itself being filled (`memo` IS that memo, mutably borrowed), the second read is
+/// skipped.
+fn eval_recompute_memo_get(memo: &EvalRecomputeHashMemo, ptr: usize) -> Option<u64> {
+    if let Some((w, h)) = memo.get(&ptr) {
+        if w.alive() {
+            return Some(*h);
+        }
+    }
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|served| {
+        let served = served.try_borrow().ok()?;
+        match served.get(&ptr) {
+            Some((w, h)) if w.alive() => Some(*h),
+            _ => None,
+        }
+    })
+}
+
+/// Hash a value the tier is about to serve, once, into the served-instance memo. A value carrying
+/// a closure has no content hash and is simply not carried; every later key derivation then
+/// refuses it exactly as before.
+fn carry_cross_claim_served_hash(ctx: &InterpContext, served: &Value) {
+    let interner = ctx.symbols.borrow();
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|memo| {
+        let _ = eval_recompute_value_hash(&mut memo.borrow_mut(), &interner, served);
+    });
+}
+
+/// Composite hashes carried for tier-served instances (the served-instance memo's population).
+pub fn cross_claim_served_hash_count() -> usize {
+    CROSS_CLAIM_SERVED_HASH_MEMO.with(|m| m.borrow().len())
+}
+
 fn eval_recompute_value_hash(
     memo: &mut EvalRecomputeHashMemo,
     interner: &SymbolInterner,
@@ -11346,8 +11886,8 @@ fn eval_recompute_value_hash(
                 Value::Closure { .. } => EvalRecomputeStep::Bail,
                 Value::Set(s) => {
                     let ptr = Rc::as_ptr(s) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut h: u64 = 0xA5A5_00A0;
                             for item in s.iter() {
@@ -11360,8 +11900,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::List(xs) => {
                     let ptr = Rc::as_ptr(xs) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             frames.push(EvalRecomputeFrame {
                                 kind: EvalRecomputeFrameKind::List { rc: xs.clone() },
@@ -11375,10 +11915,10 @@ fn eval_recompute_value_hash(
                 Value::Record { type_name, fields } => {
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(0xA5A5_0070, type_sym_hash),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -11408,13 +11948,13 @@ fn eval_recompute_value_hash(
                     let ptr = Rc::as_ptr(fields) as usize;
                     let type_sym_hash = eval_recompute_str_hash(interner.resolve(*type_name));
                     let variant_sym_hash = eval_recompute_str_hash(interner.resolve(*variant_name));
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(eval_recompute_mix(
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(eval_recompute_mix(
                             eval_recompute_mix(
                                 eval_recompute_mix(0xA5A5_0080, type_sym_hash),
                                 variant_sym_hash,
                             ),
-                            *h,
+                            h,
                         )),
                         _ => {
                             let field_name_hashes = fields
@@ -11438,8 +11978,8 @@ fn eval_recompute_value_hash(
                 }
                 Value::Map(m) => {
                     let ptr = Rc::as_ptr(m) as usize;
-                    match memo.get(&ptr) {
-                        Some((w, h)) if w.alive() => EvalRecomputeStep::Have(*h),
+                    match eval_recompute_memo_get(memo, ptr) {
+                        Some(h) => EvalRecomputeStep::Have(h),
                         _ => {
                             let mut key_hashes = Vec::with_capacity(m.len());
                             let mut values = Vec::with_capacity(m.len());
@@ -11523,9 +12063,8 @@ fn eval_recompute_extend_push_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let Some(item_h) = eval_recompute_value_hash(&mut memo, &interner, item) else {
@@ -11567,9 +12106,8 @@ fn eval_recompute_extend_insert_hash(
     let Ok(mut memo) = ctx.eval_recompute_hash_memo.try_borrow_mut() else {
         return;
     };
-    let parent_h = match memo.get(&(Rc::as_ptr(parent) as usize)) {
-        Some((w, h)) if w.alive() => *h,
-        _ => return,
+    let Some(parent_h) = eval_recompute_memo_get(&memo, Rc::as_ptr(parent) as usize) else {
+        return;
     };
     let interner = ctx.symbols.borrow();
     let key_h = eval_recompute_canon_key_hash(key);
@@ -13664,7 +14202,10 @@ macro_rules! v1_algebra_method_arms {
                             Ok((key, item.clone()))
                         })
                         .collect::<InterpResult<_>>()?;
-                    keyed.sort_by(|(ka, _), (kb, _)| cmp_values(ka, kb));
+                    admit_emitted_ord_keys(keyed.iter().map(|(k, _)| k), "sort_by")?;
+                    keyed.sort_by(|(ka, _), (kb, _)| {
+                        canonical_content_cmp(ka, kb).expect("admitted scalar keys are ordered")
+                    });
                     Ok(list_value(
                         keyed.into_iter().map(|(_, v)| v).collect::<Vec<_>>(),
                     ))
@@ -21886,8 +22427,8 @@ fn eval_emit_host_run_transport_builtin(
         std::process::id(),
         EMIT_HOST_WORKSPACE_COUNTER.fetch_add(1, Ordering::Relaxed)
     ));
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io("emit_host_run_transport: workspace create", &workspace, &e)
     })?;
 
     let result = emit_host_run_transport_in_workspace(
@@ -22078,9 +22619,11 @@ fn eval_emit_host_native_cache_evict_builtin(
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
-        Err(e) => Err(InterpError::TypeError {
-            msg: format!("emit_host_native_cache_evict: {workspace_dir}: {e}"),
-        }),
+        Err(e) => Err(InterpError::host_io(
+            "emit_host_native_cache_evict: remove",
+            std::path::Path::new(&workspace_dir),
+            &e,
+        )),
     }
 }
 
@@ -22271,8 +22814,12 @@ fn run_cached_process_spec(
 ) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir)?;
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
-    std::fs::create_dir_all(&realization_workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&realization_workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &realization_workspace,
+            &e,
+        )
     })?;
     // ONE WRITER PER CONTENT-KEYED WORKSPACE. Two runs that share a cache root (two same-user runs
     // outside CI share ~/.cache) would otherwise materialize, build and mark one directory at once:
@@ -22301,8 +22848,12 @@ fn run_cached_process_spec(
         &build_environment,
     )?;
     let workspace = realization_workspace.join(resolved_build_context_identity);
-    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    std::fs::create_dir_all(&workspace).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: workspace create",
+            &workspace,
+            &e,
+        )
     })?;
 
     emit_host_run_transport_cached_in_workspace(
@@ -22514,12 +23065,11 @@ fn emit_host_cargo_configuration_digest(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
-                return Err(InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: read Cargo configuration {} failed: {e}",
-                        path.display()
-                    ),
-                })
+                return Err(InterpError::host_io(
+                    "emit_host_run_transport_cached: read Cargo configuration",
+                    &path,
+                    &e,
+                ))
             }
         }
     }
@@ -22548,23 +23098,25 @@ fn observe_tool_identity(
     environment: &EmitHostBuildEnvironment,
 ) -> InterpResult<ObservedToolIdentity> {
     let resolved = resolve_host_tool_program(requested)?;
-    let canonical = std::fs::canonicalize(&resolved).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: resolve build tool {requested:?} \
-                 ({resolved:?}) failed: {e}"
-        ),
+    let canonical = std::fs::canonicalize(&resolved).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: canonicalize build tool",
+            std::path::Path::new(&resolved),
+            &e,
+        )
     })?;
-    let executable = std::fs::read(&canonical).map_err(|e| InterpError::TypeError {
-        msg: format!(
-            "emit_host_run_transport_cached: read resolved build tool {} failed: {e}",
-            canonical.display()
-        ),
+    let executable = std::fs::read(&canonical).map_err(|e| {
+        InterpError::host_io(
+            "emit_host_run_transport_cached: read resolved build tool",
+            &canonical,
+            &e,
+        )
     })?;
     let mut command = std::process::Command::new(&resolved);
     command.args(version_args).current_dir(probe_workspace);
     emit_host_apply_build_environment(&mut command, environment);
-    let output = command.output().map_err(|e| InterpError::TypeError {
-        msg: format!("emit_host_run_transport_cached: version probe for {requested:?} failed: {e}"),
+    let output = command.output().map_err(|e| {
+        host_tool_spawn_failure("emit_host_run_transport_cached", requested, &resolved, &e)
     })?;
     if !output.status.success() {
         return Err(InterpError::TypeError {
@@ -22652,6 +23204,25 @@ fn emit_host_resolved_build_context_identity(
     ]))
 }
 
+#[cfg(test)]
+pub(crate) fn emit_host_cargo_configuration_digest_for_test(
+    probe_workspace: &std::path::Path,
+) -> InterpResult<String> {
+    let environment = EmitHostBuildEnvironment {
+        entries: Vec::new(),
+        digest: String::new(),
+    };
+    emit_host_cargo_configuration_digest(&environment, probe_workspace)
+}
+
+#[cfg(test)]
+pub(crate) fn emit_host_materialize_workspace_files_for_test(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+) -> InterpResult<()> {
+    emit_host_materialize_workspace_files(workspace, files)
+}
+
 fn emit_host_materialize_workspace_files(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -22669,18 +23240,12 @@ fn emit_host_materialize_workspace_files(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport_cached: mkdir {} failed: {e}",
-                    parent.display()
-                ),
+            std::fs::create_dir_all(parent).map_err(|e| {
+                InterpError::host_io("emit_host_run_transport_cached: mkdir", parent, &e)
             })?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport_cached: write {} failed: {e}",
-                full.display()
-            ),
+        std::fs::write(&full, text).map_err(|e| {
+            InterpError::host_io("emit_host_run_transport_cached: write", &full, &e)
         })?;
     }
     Ok(())
@@ -22704,10 +23269,19 @@ fn emit_host_run_transport_cached_in_workspace(
     let cold_control = std::env::var("GUNBC_CI_NATIVE_CACHE_COLD_CONTROL")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let recorded_cold_compile_nanos = std::fs::read_to_string(&cold_compile_receipt)
-        .ok()
-        .and_then(|s| s.trim().parse::<u128>().ok())
-        .filter(|n| *n > 0);
+    // An ABSENT receipt is the ordinary warm miss. Any other read failure is the host refusing,
+    // and is refused as such rather than absorbed into a rebuild that hides it.
+    let recorded_cold_compile_nanos = match std::fs::read_to_string(&cold_compile_receipt) {
+        Ok(s) => s.trim().parse::<u128>().ok().filter(|n| *n > 0),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(InterpError::host_io(
+                "emit_host_run_transport_cached: read cold compile receipt",
+                &cold_compile_receipt,
+                &e,
+            ))
+        }
+    };
     // The timing receipt is part of readiness for the production transition: an old marker
     // without its measured cold wall is a warm miss and widens to a rebuild, never a zero.
     let compile_skipped = !cold_control
@@ -22826,15 +23400,19 @@ fn emit_host_run_transport_cached_in_workspace(
             process_termination_label(&out.status)
         )));
         if out.status.success() {
-            std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
-                msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            std::fs::write(&ready_marker, b"1").map_err(|e| {
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: ready marker write",
+                    &ready_marker,
+                    &e,
+                )
             })?;
             std::fs::write(&cold_compile_receipt, cold_compile_nanos.to_string()).map_err(|e| {
-                InterpError::TypeError {
-                    msg: format!(
-                        "emit_host_run_transport_cached: cold compile receipt write failed: {e}"
-                    ),
-                }
+                InterpError::host_io(
+                    "emit_host_run_transport_cached: cold compile receipt write",
+                    &cold_compile_receipt,
+                    &e,
+                )
             })?;
         }
         return Ok(transport_result(
@@ -22889,19 +23467,11 @@ fn emit_host_run_transport_in_workspace(
         }
         let full = workspace.join(p);
         if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "emit_host_run_transport: mkdir {} failed: {e}",
-                    parent.display()
-                ),
-            })?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| InterpError::host_io("emit_host_run_transport: mkdir", parent, &e))?;
         }
-        std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
-            msg: format!(
-                "emit_host_run_transport: write {} failed: {e}",
-                full.display()
-            ),
-        })?;
+        std::fs::write(&full, text)
+            .map_err(|e| InterpError::host_io("emit_host_run_transport: write", &full, &e))?;
     }
 
     let target_dir = workspace.join("target");
@@ -26526,17 +27096,31 @@ fn expect_int(val: Option<&Value>, context: &str) -> InterpResult<i64> {
 /// deterministic, so a silently-different permutation is a plausible, stable, WRONG artifact
 /// (DESIGN.md 5 -- no fabricated plausible output).
 ///
-/// SO `cmp_values` IS DELIBERATELY NOT REUSED HERE. It answers `Ordering::Equal` for every
-/// pair it does not recognise -- mismatched kinds, records, variants, lists -- exactly the
-/// silent permutation above: a never-refusing comparator produces *an* order for key sets
-/// the emitted realization cannot represent, and `sort_by` with a non-total-order comparator
-/// leaves those keys wherever map iteration put them, so the answer is not even stable across
-/// runs. Refusing is the only honest arm. (`sort_by`'s own use of `cmp_values` is a separate
-/// caller contract, untouched here.)
+/// `cmp_values` -- which answered `Ordering::Equal` for every pair it did not recognise, an
+/// absorbing fallback that let `sort_by` silently disagree with the emitted `derive(Ord)` --
+/// was deleted in favour of the canonical content order behind `admit_emitted_ord_keys`.
 fn sorted_map_keys_in_emitted_order(
     keys: Vec<Value>,
     what: &str,
 ) -> Result<Vec<Value>, InterpError> {
+    admit_emitted_ord_keys(keys.iter(), what)?;
+    let mut keys = keys;
+    // Admitted kinds are homogeneous Str/Int/Bool, on which the canonical content order IS
+    // the emitted `Ord` (byte-lexicographic, numeric, false<true) -- one order, not a copy.
+    keys.sort_by(|a, b| canonical_content_cmp(a, b).expect("admitted scalar keys are ordered"));
+    Ok(keys)
+}
+
+/// The ONE admission for an interpreter sort that must agree with an emitted `K: Ord` sort
+/// (`sorted_map_keys`, `sort_by`): homogeneous Str, Int or Bool keys, whose emitted `Ord` is
+/// proven identical to the canonical content order. Every other kind refuses, typed: the
+/// emitted order there is a `derive(Ord)` in DECLARATION order (or does not compile, for
+/// `f64`), which the canonical spelling order does not reproduce, so any order here would be
+/// a silent disagreement between the two realizations (DESIGN section 5).
+fn admit_emitted_ord_keys<'a>(
+    keys: impl IntoIterator<Item = &'a Value>,
+    what: &str,
+) -> Result<(), InterpError> {
     #[derive(PartialEq, Eq)]
     enum KeyKind {
         Str,
@@ -26553,11 +27137,11 @@ fn sorted_map_keys_in_emitted_order(
     }
 
     let mut kind: Option<KeyKind> = None;
-    for k in &keys {
+    for k in keys {
         let this = kind_of(k).ok_or_else(|| InterpError::TypeError {
             msg: format!(
-                "{what}: map key of type '{}' has no emitted-Rust ordering to agree with \
-                 (emitted `sorted_map_keys<K: Ord>` orders by K's own Ord; only Str, Int and \
+                "{what}: key of type '{}' has no emitted-Rust ordering to agree with \
+                 (the emitted sort orders by K's own Ord; only Str, Int and \
                  Bool keys are proven to order identically in both realizations)",
                 k.type_label()
             ),
@@ -26568,34 +27152,15 @@ fn sorted_map_keys_in_emitted_order(
             Some(_) => {
                 return Err(InterpError::TypeError {
                     msg: format!(
-                        "{what}: map has keys of more than one type, so there is no emitted \
-                         `HashMap<K, V>` key ordering to agree with"
+                        "{what}: keys of more than one type, so there is no single emitted \
+                         `K: Ord` ordering to agree with"
                     ),
                 })
             }
         }
     }
 
-    let mut keys = keys;
-    keys.sort_by(|a, b| match (a, b) {
-        // `str`'s Ord is byte-lexicographic, and so is `String`'s in the emitted realization.
-        (Value::Str(x), Value::Str(y)) => x.as_ref().cmp(y.as_ref()),
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        // Unreachable: the loop above refused every other kind and every mixed key set.
-        _ => std::cmp::Ordering::Equal,
-    });
-    Ok(keys)
-}
-
-fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
-    match (a, b) {
-        (Value::Int(x), Value::Int(y)) => x.cmp(y),
-        (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-        (Value::Str(x), Value::Str(y)) => x.cmp(y),
-        (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
-        _ => std::cmp::Ordering::Equal,
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -30022,5 +30587,243 @@ mod portable_canonical_order_tests {
             fields: Rc::new(vec![]),
         };
         assert_ne!(value_hash(&v(t1)), value_hash(&other));
+    }
+}
+
+/// Controls for the canonical content order as the RENDERING order (node adhoc-77383faf-d07).
+#[cfg(test)]
+mod canonical_render_order_tests {
+    use super::*;
+    use im::vector as im_vec;
+    use std::cmp::Ordering;
+
+    fn key(v: Value) -> CanonKey {
+        CanonKey::new(v).expect("reflexive key")
+    }
+
+    fn variant(t: &'static str, v: &'static str, n: i64) -> Value {
+        Value::Variant {
+            type_name: Symbol(t),
+            variant_name: Symbol(v),
+            fields: Rc::new(vec![(Symbol("n"), Value::Int(n))]),
+        }
+    }
+
+    /// A map whose HAMT iteration order follows the process's RandomState: 64 string keys,
+    /// plus same-spelled variant keys that differ only in payload (the stand-in's tie case).
+    fn subject() -> Value {
+        let mut entries = HamtMap::new();
+        for i in 0..64 {
+            entries = entries.update(key(str_value(format!("k{i:02}"))), Value::Int(i));
+        }
+        for n in 0..8 {
+            entries = entries.update(key(variant("T", "V", n)), Value::Int(n));
+        }
+        map_value(entries)
+    }
+
+    const CHILD: &str = "GUNBC_CANONICAL_RENDER_CHILD";
+
+    fn child_output(test: &str, tag: &str) -> String {
+        let out = std::process::Command::new(std::env::current_exe().expect("test exe"))
+            .args([
+                "--exact",
+                &format!("v1_interpreter::canonical_render_order_tests::{test}"),
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("child process");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        text.lines()
+            .find_map(|l| l.split(tag).nth(1).map(|d| d.to_string()))
+            .unwrap_or_else(|| panic!("child printed no {tag}: {text}"))
+    }
+
+    #[test]
+    fn rendered_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("RENDER={}", subject());
+            return;
+        }
+        let test = "rendered_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "RENDER="), child_output(test, "RENDER="));
+        assert_eq!(a, b, "two processes rendered one map differently");
+        // Same-spelled variants with different payloads render in payload order.
+        let v0 = a.find("V { n: 0 }").expect("V0 rendered");
+        let v7 = a.find("V { n: 7 }").expect("V7 rendered");
+        assert!(v0 < v7, "tied-spelling variants must order by payload: {a}");
+    }
+
+    #[test]
+    fn debug_map_bytes_are_equal_across_two_processes() {
+        if std::env::var_os(CHILD).is_some() {
+            println!("DEBUG={:?}", subject());
+            return;
+        }
+        let test = "debug_map_bytes_are_equal_across_two_processes";
+        let (a, b) = (child_output(test, "DEBUG="), child_output(test, "DEBUG="));
+        assert_eq!(a, b, "two processes debug-formatted one map differently");
+    }
+
+    fn cmp(a: &Value, b: &Value) -> Ordering {
+        canonical_content_cmp(a, b).expect("content order")
+    }
+
+    /// One inhabitant of every kind, listed in ContentKind DECLARATION order.
+    fn one_of_each_kind() -> Vec<Value> {
+        vec![
+            Value::Null,
+            Value::Unit,
+            Value::Bool(false),
+            Value::Int(0),
+            Value::Float(0.0),
+            str_value("s".to_string()),
+            list_value(vec![Value::Int(1)]),
+            map_value(HamtMap::new().update(key(Value::Int(1)), Value::Int(1))),
+            Value::Set(Rc::new(OrdSet::unit("m".to_string()))),
+            Value::Record {
+                type_name: Symbol("R"),
+                fields: Rc::new(vec![(Symbol("a"), Value::Int(1))]),
+            },
+            variant("T", "V", 1),
+        ]
+    }
+
+    #[test]
+    fn kind_rank_is_content_kind_declaration_order() {
+        let xs = one_of_each_kind();
+        for w in xs.windows(2) {
+            assert_eq!(cmp(&w[0], &w[1]), Ordering::Less, "{:?} < {:?}", w[0], w[1]);
+        }
+    }
+
+    #[test]
+    fn floats_follow_ieee_total_order_including_zero_sign_and_nan_payloads() {
+        let neg_nan = f64::from_bits(0xfff8_0000_0000_0001);
+        let nan_lo = f64::from_bits(0x7ff8_0000_0000_0001);
+        let nan_hi = f64::from_bits(0x7ff8_0000_0000_0002);
+        let ordered = [
+            neg_nan,
+            f64::NEG_INFINITY,
+            -2.0,
+            -1.0,
+            -0.0,
+            0.0,
+            1.0,
+            f64::INFINITY,
+            nan_lo,
+            nan_hi,
+        ];
+        for w in ordered.windows(2) {
+            assert_eq!(
+                cmp(&Value::Float(w[0]), &Value::Float(w[1])),
+                Ordering::Less,
+                "{:e} ({:#x}) must order before {:e} ({:#x})",
+                w[0],
+                w[0].to_bits(),
+                w[1],
+                w[1].to_bits()
+            );
+        }
+    }
+
+    /// A generated corpus covering every kind pair, empty vs non-empty collections, and nested
+    /// maps and sets.
+    fn corpus() -> Vec<Value> {
+        let mut out = one_of_each_kind();
+        out.push(list_value(Vec::<Value>::new()));
+        out.push(map_value(HamtMap::new()));
+        out.push(Value::Set(Rc::new(OrdSet::new())));
+        out.push(Value::Float(-0.0));
+        out.push(Value::Float(f64::from_bits(0x7ff8_0000_0000_0003)));
+        out.push(variant("T", "W", 0));
+        out.push(variant("T", "V", 0));
+        let inner = map_value(
+            HamtMap::new()
+                .update(key(str_value("b".to_string())), Value::Int(2))
+                .update(key(str_value("a".to_string())), Value::Int(1)),
+        );
+        out.push(map_value(
+            HamtMap::new()
+                .update(key(Value::Int(1)), inner.clone())
+                .update(
+                    key(Value::Int(0)),
+                    Value::Set(Rc::new(OrdSet::unit("z".to_string()))),
+                ),
+        ));
+        out.push(list_value(vec![inner.clone(), inner]));
+        out
+    }
+
+    #[test]
+    fn value_and_portable_carriers_agree_on_every_pair() {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            item_leaf_owner_modules: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic);
+        let xs = corpus();
+        let ps: Vec<PortableValue> = xs
+            .iter()
+            .map(|v| portable_value_from_ctx(&ctx, v).expect("portable"))
+            .collect();
+        for (i, a) in xs.iter().enumerate() {
+            for (j, b) in xs.iter().enumerate() {
+                assert_eq!(
+                    cmp(a, b),
+                    portable_value_cmp(&ps[i], &ps[j]),
+                    "Value and PortableValue disagree on {a:?} vs {b:?}"
+                );
+                // Antisymmetry: the order is total, not merely consistent.
+                assert_eq!(cmp(a, b), cmp(b, a).reverse(), "{a:?} vs {b:?}");
+            }
+        }
+    }
+
+    /// The emitted realization sorts admitted keys by Rust's native `Ord` on String/i64/bool;
+    /// the canonical order must BE that order on exactly those kinds.
+    #[test]
+    fn canonical_order_is_native_ord_on_emitted_admitted_key_kinds() {
+        let strs = ["", "a", "B", "b", "\u{e9}", "z", "\u{1F600}"];
+        for x in strs {
+            for y in strs {
+                assert_eq!(
+                    cmp(&str_value(x.to_string()), &str_value(y.to_string())),
+                    x.to_string().cmp(&y.to_string())
+                );
+            }
+        }
+        let ints = [i64::MIN, -1, 0, 1, i64::MAX];
+        for x in ints {
+            for y in ints {
+                assert_eq!(cmp(&Value::Int(x), &Value::Int(y)), x.cmp(&y));
+            }
+        }
+        for x in [false, true] {
+            for y in [false, true] {
+                assert_eq!(cmp(&Value::Bool(x), &Value::Bool(y)), x.cmp(&y));
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_ord_admission_refuses_record_keys_and_admits_scalars() {
+        let rec = Value::Record {
+            type_name: Symbol("R"),
+            fields: Rc::new(vec![]),
+        };
+        let err = admit_emitted_ord_keys([&rec, &rec], "sort_by").expect_err("record keys refuse");
+        assert!(
+            format!("{err:?}").contains("no emitted-Rust ordering"),
+            "{err:?}"
+        );
+        let mixed = [Value::Int(1), str_value("a".to_string())];
+        assert!(admit_emitted_ord_keys(mixed.iter(), "sort_by").is_err());
+        let ints = [Value::Int(2), Value::Int(1)];
+        assert!(admit_emitted_ord_keys(ints.iter(), "sort_by").is_ok());
     }
 }

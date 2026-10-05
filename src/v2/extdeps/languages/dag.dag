@@ -22,7 +22,7 @@ import v2.std.optional {
   optional_absent,
   optional_present
 }
-import v2.std.parse_refusal_reason { DataValueMissingAfterEq, DeclarationMarkerNotTest, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, LetInExpressionDropped, NewlineBeforeDualRoleOperator, ParseRefusalReason }
+import v2.std.parse_refusal_reason { DataValueMissingAfterEq, DeclarationMarkerNotTest, FnExpressionBodyMissingAfterEq, KeywordAsPathSegment, KeywordAsValueName, LetInExpressionDropped, NewlineBeforeDualRoleOperator, ParseRefusalReason }
 import v2.std.grammar {
   GrammarEmitClassTerminal,
   GrammarEmitLexemeTerminal,
@@ -890,9 +890,114 @@ fn dag_grammar_keyword_terminal() -> GrammarExpr {
   )
 }
 
+// A KEYWORD IS NOT A VALUE NAME, AND A KEYWORD WHERE ONE IS INTRODUCED REFUSES BY NAME (operator ruling
+// via the N7 manager, 2026-10-03: close the binding/reference asymmetry from the BINDER side). Every
+// position that introduces a value name -- a parameter, a `let` binder, a `node NAME` / `NAME =` binder,
+// a field-pattern binder -- consumes exactly what a value REFERENCE admits (dag_grammar_primary_name_expr:
+// an identifier, the two type-declaration modifiers, and the declared contextual set
+// dag_contextual_value_name_keywords), so a name is declarable exactly when it is referenceable. Any other
+// keyword there refuses as KeywordAsValueName, located at the keyword, rather than as the generic
+// leftover parse_g0_tokens_remain at its first USE.
+// A field LABEL is not a value name and still admits a keyword (dag_grammar_binding_name_terminal:
+// `x.module`, `Rec { module: e }`, `{ module: m }`), and so do the statement and argument guards that
+// read it.
+//
+// THE REFUSAL IS A LEADING GUARD, NEVER A CHOICE ARM. grammar_expr_not_predicate around
+// grammar_expr_refuse_on_match captures nothing (v2.compiler.parse parse_sequence_capture answers the
+// other side of the sequence), so the name still captures as ONE identifier atom -- the shape the binder
+// readers take as pair.left -- and no choice row is added beside the name (the overlap roster those
+// productions were cleared to stays at zero).
+//
+// THE BARE `NAME =` SUGAR CARRIES NO GUARD, AND THE REASON IS MEASURED. A statement's alternatives are
+// dispatched by FIRST set, and a not-predicate is transparent to that set, so the let_sugar alternative's
+// first set is the value-name tokens and a statement that begins with a keyword never reaches it: a guard
+// there could not fire (a bare `loop = 1` refuses as parse_g0_tokens_remain at the keyword, measured).
+// It still refuses -- the binder reads the reference production, which admits no other keyword -- but
+// unnamed. NEXT TRIGGER, the capability: FIRST-set computation that sees through a refusal guard, at which
+// point this form takes dag_grammar_value_name_before(follow: `=`) like the others.
+//
+// IT FIRES ONLY WHERE THE KEYWORD CAN ONLY BE A BINDER. RefuseOnMatch stops the whole parse, and a pattern
+// is probed ahead of every match-arm statement and a `node NAME` sugar ahead of an expression statement,
+// so each position names the token that makes the keyword a binder: `:` after a parameter name, `:` or
+// `=` after `node NAME`, `,` or `}` after a field-pattern binder. After `let`
+// nothing else can follow, so that guard is unconditional. `true` and `false` are literal PATTERNS, so the
+// field-pattern guard does not refuse them.
+fn dag_grammar_value_name_keyword_terminal(admit_bool_literals: Bool) -> GrammarExpr {
+  fold_list(
+    xs: dag_binding_name_keyword_tokens(),
+    empty: dag_grammar_terminal(token_class: ^dag_token_kw_import),
+    cons: fn(acc, tok) {
+      if (tok == ^dag_token_kw_import) || dag_keyword_is_reference_value_name(tok: tok) {
+        acc
+      } else if admit_bool_literals && ((tok == ^dag_token_kw_true) || (tok == ^dag_token_kw_false)) {
+        acc
+      } else {
+        dag_grammar_choice(left: acc, right: dag_grammar_terminal(token_class: tok))
+      }
+    }
+  )
+}
+
+// A keyword the REFERENCE production admits as a value name (dag_grammar_primary_name_expr): the
+// declared contextual set and the two type-declaration modifiers dag_grammar_ident_or_type_decl_modifier_name
+// reads. The binder guard refuses exactly the binding keywords this answers false for.
+fn dag_keyword_is_reference_value_name(tok: Symbol) -> Bool {
+  (tok == ^dag_token_kw_nominal_opaque)
+    || (tok == ^dag_token_kw_sole_constructor)
+    || fold_list(xs: dag_contextual_value_name_keywords(), empty: false, cons: fn(acc, k) { acc || (k == tok) })
+}
+
+fn dag_grammar_value_name_guard(binder: GrammarExpr) -> GrammarExpr {
+  grammar_expr_not_predicate(
+    element: grammar_expr_refuse_on_match(element: binder, reason: KeywordAsValueName)
+  )
+}
+
+// A value name whose binder role is fixed by the token after it.
+fn dag_grammar_value_name_before(follow: GrammarExpr) -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_value_name_guard(
+      binder: dag_grammar_sequence(left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false), right: follow)
+    ),
+    right: dag_grammar_primary_name_expr()
+  )
+}
+
+// A value name whose position alone makes it a binder (after `let`).
+fn dag_grammar_value_name_unconditional() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_value_name_guard(binder: dag_grammar_value_name_keyword_terminal(admit_bool_literals: false)),
+    right: dag_grammar_primary_name_expr()
+  )
+}
+
+// A field-pattern binder: refuses a keyword that ends the field (`,` or `}`). After `:` the position is a
+// pattern, where `true` / `false` are literal patterns, so they are admitted there (admit_bool_literals: true).
+// Before the field name a keyword ending the field is a PUN -- `R { true }` binds a value named `true`, which
+// no reference can name -- so there they refuse like every other keyword (admit_bool_literals: false).
+fn dag_grammar_field_pattern_binder_guard(admit_bool_literals: Bool) -> GrammarExpr {
+  dag_grammar_value_name_guard(
+    binder: dag_grammar_sequence(
+      left: dag_grammar_value_name_keyword_terminal(admit_bool_literals: admit_bool_literals),
+      right: dag_grammar_choice(
+        left: dag_grammar_terminal(token_class: ^dag_token_comma),
+        right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
+      )
+    )
+  )
+}
+
+// THE FIRST SEGMENT IS A VALUE NAME, SO IT READS THE ONE VALUE-NAME PRODUCTION. A pattern's bare binder is a
+// one-segment qualified name (dag_grammar_constructor_pattern_expr), so a pattern binds exactly the names a
+// reference reads only if this head is dag_grammar_primary_name_expr -- the identifier, the two
+// type-declaration modifiers and the contextual set dag_contextual_value_name_keywords. Without it
+// `{ module: module }` declared nothing a later `module` could name. The cost is stated: a type, a declared
+// path, an alias or a service head may now also begin with `module` / `data`, which nothing declares, so it
+// refuses at resolve; no overlap row is added, because neither keyword shares a first token with an
+// identifier. Later segments are unchanged, so `rt.match` still refuses as KeywordAsPathSegment.
 fn dag_grammar_qualified_name_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_ident_or_type_decl_modifier_name(),
+    left: dag_grammar_primary_name_expr(),
     right: dag_grammar_repeat(
       element: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_dot),
@@ -906,8 +1011,26 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lt),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_ident_or_type_decl_modifier_name()),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_generic_param_expr()),
       right: dag_grammar_terminal(token_class: ^dag_token_gt)
+    )
+  )
+}
+
+// ONE TYPE PARAMETER: a name, optionally bounded by a KIND (`type MachineWidth<bits: WidthResolution>`),
+// as v1 02_parse parse_optional_type_param_kind reads it. Left-factored as seq(name, optional(suffix)),
+// the shape the other optional-suffix rules share (dag_grammar_typed_param_expr): an absent kind
+// captures as (name, <empty conj>), so no ordered choice re-reads the name. The kind lowers onto the
+// binder (v2.compiler.body_lowering_fold body_lower_generic_param_edge_of) and is enforced at each
+// application (v2.std.type_binder type_application_conformance).
+fn dag_grammar_generic_param_expr() -> GrammarExpr {
+  dag_grammar_sequence(
+    left: dag_grammar_ident_or_type_decl_modifier_name(),
+    right: dag_grammar_optional(
+      element: dag_grammar_sequence(
+        left: dag_grammar_terminal(token_class: ^dag_token_colon),
+        right: dag_grammar_nonterminal(production: ^dag_production_type_expr)
+      )
     )
   )
 }
@@ -924,7 +1047,7 @@ fn dag_grammar_generic_params_expr() -> GrammarExpr {
 // onto the parameter's binder (XL-2 PR2c-ii).
 fn dag_grammar_typed_param_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_binding_name_terminal(),
+    left: dag_grammar_value_name_before(follow: dag_grammar_terminal(token_class: ^dag_token_colon)),
     right: dag_grammar_sequence(
       left: dag_grammar_terminal(token_class: ^dag_token_colon),
       right: dag_grammar_sequence(
@@ -1291,7 +1414,7 @@ fn dag_grammar_let_expr() -> GrammarExpr {
       left: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_kw_let),
         right: dag_grammar_sequence(
-          left: dag_grammar_binding_name_terminal(),
+          left: dag_grammar_value_name_unconditional(),
           right: dag_grammar_choice(
             left: dag_grammar_sequence(
               left: dag_grammar_terminal(token_class: ^dag_token_colon),
@@ -1327,7 +1450,12 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
     left: dag_grammar_sequence(
       left: dag_grammar_literal_terminal(token_class: ^dag_token_ident, lexeme: symbol_intern_lexeme(lexeme: "node")),
       right: dag_grammar_sequence(
-        left: dag_grammar_binding_name_terminal(),
+        left: dag_grammar_value_name_before(
+          follow: dag_grammar_choice(
+            left: dag_grammar_terminal(token_class: ^dag_token_colon),
+            right: dag_grammar_terminal(token_class: ^dag_token_eq)
+          )
+        ),
         right: dag_grammar_sequence(
           left: dag_grammar_choice(
             left: dag_grammar_terminal(token_class: ^dag_token_colon),
@@ -1338,7 +1466,7 @@ fn dag_grammar_let_sugar_expr() -> GrammarExpr {
       )
     ),
     right: dag_grammar_sequence(
-      left: dag_grammar_binding_name_terminal(),
+      left: dag_grammar_primary_name_expr(),
       right: dag_grammar_sequence(
         left: dag_grammar_terminal(token_class: ^dag_token_eq),
         right: dag_grammar_nonterminal(production: ^dag_production_expr)
@@ -1746,13 +1874,24 @@ fn dag_grammar_primary_expr_expr() -> GrammarExpr {
 // could begin a new statement where the grammar expects the clause. `if`, `match` and `let` head
 // expressions of their own and stay out.
 fn dag_grammar_primary_name_expr() -> GrammarExpr {
-  dag_grammar_choice(
-    left: dag_grammar_ident_or_type_decl_modifier_name(),
-    right: dag_grammar_choice(
-      left: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_module),
-      right: dag_grammar_terminal_lexeme(token_class: ^dag_token_kw_data)
-    )
+  fold_list(
+    xs: dag_contextual_value_name_keywords(),
+    empty: dag_grammar_ident_or_type_decl_modifier_name(),
+    cons: fn(acc, tok) { dag_grammar_choice(left: acc, right: dag_grammar_terminal_lexeme(token_class: tok)) }
   )
+}
+
+// THE KEYWORDS THAT ARE ALSO VALUE NAMES, DECLARED ONCE. `module` and `data` head declarations only, so
+// neither can continue or begin an expression of its own, and the corpus names values with them
+// (`SourceRootBinding { module: module }`, 136 parameters named `module`). They are admitted as value
+// names at BOTH ends: a reference reads them through dag_grammar_primary_name_expr, and a binder IS that
+// same production behind the keyword guard (dag_grammar_value_name_before / _unconditional), so a name
+// can be declared exactly when it can be referenced -- no declare-but-cannot-use asymmetry. Every other
+// keyword at a value-binder position refuses as KeywordAsValueName (operator ruling via the N7 manager,
+// 2026-10-03: contextual, symmetric, one set). Adding a keyword here is a language decision: it must
+// head nothing that can follow an expression.
+fn dag_contextual_value_name_keywords() -> List<Symbol> {
+  [^dag_token_kw_module, ^dag_token_kw_data]
 }
 
 fn dag_grammar_primary_expr_core() -> GrammarExpr {
@@ -2005,11 +2144,17 @@ fn dag_grammar_pattern_expr() -> GrammarExpr {
 // choice of the two forms, both led by the same name). A punned field captures `(name, <empty>)`.
 fn dag_grammar_field_pattern_expr() -> GrammarExpr {
   dag_grammar_sequence(
-    left: dag_grammar_binding_name_terminal(),
-    right: dag_grammar_optional(
-      element: dag_grammar_sequence(
-        left: dag_grammar_terminal(token_class: ^dag_token_colon),
-        right: dag_grammar_nonterminal(production: ^dag_production_pattern)
+    left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: false),
+    right: dag_grammar_sequence(
+      left: dag_grammar_binding_name_terminal(),
+      right: dag_grammar_optional(
+        element: dag_grammar_sequence(
+          left: dag_grammar_terminal(token_class: ^dag_token_colon),
+          right: dag_grammar_sequence(
+            left: dag_grammar_field_pattern_binder_guard(admit_bool_literals: true),
+            right: dag_grammar_nonterminal(production: ^dag_production_pattern)
+          )
+        )
       )
     )
   )

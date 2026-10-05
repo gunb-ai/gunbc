@@ -334,10 +334,10 @@ pub fn utf8_encode_bytes(s: String) -> Vec<u8> {
     s.into_bytes().into_iter().collect()
 }
 
-/// std.error_primitives pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
+/// std.bytes pure_dag_seam_unreachable: bottom. Reached only if an arm its author proved
 /// unreachable was evaluated, and then it diverges, as the interpreter's arm refuses.
 pub fn pure_dag_seam_unreachable() -> i64 {
-    panic!("std.error_primitives pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
+    panic!("std.bytes pure_dag_seam_unreachable reached: an arm declared unreachable was evaluated")
 }
 
 /// See `char_at`: the ASCII fast path is bounded by `end`, not by the whole string.
@@ -700,7 +700,26 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+// THE EMITTED ORDERING-KEY ADMISSION: the counterpart of the interpreter's admit_emitted_ord_keys.
+// Only String, i64 and bool (and their aliases) are admitted, because on exactly those kinds the
+// native Ord IS the canonical content order (std.algebra TotalOrder). Any other key type -- a
+// derived-Ord record or enum (declaration order), or f64 (no total Ord) -- fails to compile here,
+// at the call, rather than sorting in an order the interpreter would not produce.
+#[diagnostic::on_unimplemented(
+    message = "EMIT REFUSED: `{Self}` is not an admitted ordering key; sorted_map_keys and sort_by admit only String, Int and Bool keys, whose order is the canonical content order in both realizations",
+    label = "ordering key of a type with no canonical emitted order"
+)]
+pub trait CanonicalOrdKey: Ord {}
+impl CanonicalOrdKey for String {}
+impl CanonicalOrdKey for RcStr {}
+impl CanonicalOrdKey for i64 {}
+impl CanonicalOrdKey for bool {}
+
+pub fn canonical_key_cmp<K: CanonicalOrdKey>(a: &K, b: &K) -> std::cmp::Ordering {
+    a.cmp(b)
+}
+
+pub fn sorted_map_keys<K: CanonicalOrdKey + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     let mut keys = map_keys(m);
     keys.sort();
     keys
