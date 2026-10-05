@@ -16,7 +16,7 @@ import v1.std.core {
   ParsedModuleItemKind, ModuleItemTypeDeclaration, ModuleItemFunction, ModuleItemDataValue,
   ModuleItemService, ModuleItemResource, ModuleItemUnrecognized, NotAModuleItem,
   LeafOwner, SingleOwner, LeafAmbiguous,
-  SourceSpan, qualified_last_segment,
+  SourceSpan, qualified_last_segment, module_path_segments,
   DeclaredCallableIdentity, callable_identity,
 }
 import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParameter }
@@ -260,6 +260,7 @@ type TypeDeclReferenceRoute
   | RouteCarriedBinder
   | RouteDeclaringSpan
   | RouteReferencingModuleDeclarer
+  | RouteQualifiedSpelling
   | RouteLeafSpelling
 
 type TypeDeclRoutedResolution {
@@ -289,13 +290,13 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
           let leaf = qualified_last_segment(name: authored)
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
-            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { none }
+            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { type_decl_qualifier_declarer(index: index, leaf: l, authored: authored) }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
           }
           match referencing_module_identity {
-            Present { value: identity } => TypeDeclRoutedResolution { route: RouteReferencingModuleDeclarer, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+            Present { value: identity } => TypeDeclRoutedResolution { route: if authored == leaf { RouteReferencingModuleDeclarer } else { RouteQualifiedSpelling }, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
             Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: by_spelling }
           }
       }
@@ -306,9 +307,9 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
 // reference is authored in a module that declares it: a module's own declaration is the binding its
 // scope gives that name, since a module cannot also import a second declaration of a leaf it
 // declares. That holds only for a BARE spelling: a qualified reference (other.module.Slot) names
-// another module's declaration, so when it arrives unstamped it is not decided by the local one and
-// stays LeafAmbiguous (resolve_type_decl_routed admits this arm only when the authored name equals
-// its leaf). The arm answers only when exactly one declarer of the leaf sits in the reference's file;
+// another module's declaration, so when it arrives unstamped it is never decided by the local one
+// (resolve_type_decl_routed admits this arm only when the authored name equals its leaf); a
+// qualified spelling is decided by type_decl_qualifier_declarer or refuses. The arm answers only when exactly one declarer of the leaf sits in the reference's file;
 // otherwise the reference stays LeafAmbiguous and refuses. Counted under its own route label
 // (referencing_module_declarer) in v1.tests.claim.carrier_realization_census emitter_decl_route.
 // WHY THE STAMP DOES NOT REACH THESE. A bare reference resolves (v1.compiler.infer_resolve
@@ -318,7 +319,23 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
 // Node.declaration. Stamping them at the use site would bind them in the REFERENCING scope, the wrong
 // one; they are owed a stamp in the DECLARING module's scope. Its trigger is
 // referencing_module_declarer_route_dissolves_on.
-data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer dissolves when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then the arm and type_decl_referencing_module_declarer are deleted and such a reference refuses unless carried.")
+// THE QUALIFIER'S DECLARER. A qualified spelling (std.materialization_ladder.Frame) names its declaring
+// module in the reference itself, so an unstamped qualified reference is decided by that module and by
+// no other: it resolves when the qualifier is a module that declares the leaf, and otherwise
+// (no.such.module.Slot) stays LeafAmbiguous and refuses. Counted as qualified_spelling; interim under
+// referencing_module_declarer_route_dissolves_on, whose capability (every reference stamped in its
+// declaring scope) removes both arms.
+fn type_decl_qualifier_declarer(index: TypeDeclIndex, leaf: String, authored: String) -> String? {
+  let segments = module_path_segments(path: authored)
+  let qualifier = segments |> take((segments |> count) - 1) |> join(separator: ".")
+  let identity = type_decl_identity(owner_module: qualifier, decl_name: leaf)
+  match map_get(index.by_identity, identity) {
+    Present { value: _ } => Present { value: identity }
+    Absent => none
+  }
+}
+
+data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer and RouteQualifiedSpelling dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer or qualified_spelling rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
 
 fn type_decl_referencing_module_declarer(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
   let local = type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
@@ -340,6 +357,7 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     RouteCarriedBinder => "carried_binder"
     RouteDeclaringSpan => "declaring_span"
     RouteReferencingModuleDeclarer => "referencing_module_declarer"
+    RouteQualifiedSpelling => "qualified_spelling"
     RouteLeafSpelling => "leaf_spelling"
   }
   match routed.resolution {
