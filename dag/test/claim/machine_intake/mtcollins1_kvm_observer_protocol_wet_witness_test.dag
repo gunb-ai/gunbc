@@ -24,21 +24,21 @@ import gunbc.owned_process {
   owned_process_release, owned_process_standing, owned_process_launch_script,
   owned_process_exit_prefix, owned_process_unpublished_line, owned_process_unpublished_survived_line, owned_process_unpublished_unobservable_line,
 }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord,
   KvmObserverEstablished, KvmObserverRefused, KvmSeatBusy, KvmObserverLost,
   KvmJournalConnectionLost, KvmJournalAcquisitionFailed, KvmNotConnected, KvmCanvasUnreadable,
   KvmStillHashed, KvmTeardownRecorded, KvmHandoffAdmitted, KvmHandoffRefused,
   KvmJournalEvent, KvmJournalNavigated, KvmJournalPageError, kvm_journal_events_at,
-  kvm_observer_launch_in, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, mtcollins1_kvm_observer_finish,
+  kvm_observer_protocol_launch, kvm_observer_trigger, kvm_handoff_admission, kvm_observer_standing_now, megarac_kvm_observer_finish,
 }
 import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_screen_boundary_report }
 import extdeps.bmc.megarac { megarac_ui_features_json }
 import v2.std.algebra { any }
 
 // PROCESS-AND-PROTOCOL EVIDENCE, NOT HARDWARE EVIDENCE (eager-owl-205, 2026-09-28). Each control runs
-// the REAL held observer -- the same kvm_observer_launch_in, triggers, handoff admission and
-// mtcollins1_kvm_observer_finish the boot runs -- in headless Chromium against a loopback controller
+// the REAL held observer -- the same launcher (through kvm_observer_protocol_launch), triggers, handoff admission and
+// megarac_kvm_observer_finish the boot runs -- in headless Chromium against a loopback controller
 // (gunbc.bmc_megarac_web_transport) that ENFORCES the transition table gunbc.bmc_megarac_web_adapter
 // derives from gunbc.bmc_model against every actual request. It needs gunbc.runner_browser_toolchain
 // ready on the executing runner; without it the observer is not started and every control here is
@@ -114,7 +114,7 @@ fn rig_with(w: BmcWorld, features_json: String) -> Rig {
         TransportServing { port: port, pid: _ } => {
           let obs = concat(dir, "/observer")
           let _made = shell.Mkdir.Parents(path: obs as FilePath)
-          kvm_observer_launch_in(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet", features_json: features_json)
+          kvm_observer_protocol_launch(dir_given: obs, base_url: concat("http://127.0.0.1:", port), host: concat("127.0.0.1:", port), username: "admin", password_file: pw_path, toolchain: loc, attempt: "wet", features_json: features_json)
         }
         TransportNotServing { cause: _ } => KvmObserverNotStarted { reason: "the loopback transport is not serving" }
       }
@@ -173,7 +173,7 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
   let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let loss_still = count(filter(rec.stills, s => match s { KvmStillHashed { at: a, seq: _, reason: why, path: _, digest: _ } => string_contains(s: why, pattern: "sol-channel-lost") && (millisecond_count(m: a.since_epoch) as Int) > 0  _ => false }))
   let navigations = navigation_route(start: r.start)
@@ -193,7 +193,7 @@ test fn a_held_observer_is_admitted_and_its_triggered_still_is_hash_bound() -> B
 test fn a_root_page_that_navigates_cannot_destroy_the_login() -> Bool {
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true))
   let admitted = match kvm_handoff_admission(start: r.start) { KvmHandoffAdmitted { session: s } => s == "7"  _ => false }
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let closed = close_rig(r: r)
   admitted && released(rec: rec) && closed
@@ -209,7 +209,7 @@ test fn a_viewer_without_its_feature_list_never_opens_kvm() -> Bool {
   let r = rig_with(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: true), features_json: "")
   let refused = match kvm_observer_standing_now(start: r.start) { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
   let page_error = match r.start { KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => any(kvm_journal_events_at(dir: d as String), e => match e { KvmJournalPageError { at: _, phase: p, detail: x } => p == "viewer" && string_contains(s: x, pattern: "indexOf")  _ => false })  _ => false }
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let closed = close_rig(r: r)
   refused && page_error && released(rec: rec) && closed
@@ -223,7 +223,7 @@ test fn a_busy_viewer_slot_refuses_the_observer_and_the_handoff() -> Bool {
   let r = rig(w: world(other_viewers: 1, close_at: no_close(), canvas_readable: true))
   let refused = match kvm_observer_standing_now(start: r.start) { KvmObserverRefused { at: _, refusal: x } => match x { KvmSeatBusy { viewer_count: n } => n == "1"  _ => false }  _ => false }
   let handoff = match kvm_handoff_admission(start: r.start) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "viewer_count=1")  _ => false }
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let log = transport_log(r: r)
   let closed = close_rig(r: r)
   refused && handoff && !string_contains(s: log, pattern: "kvm-open") && string_contains(s: log, pattern: "transition request=[\"logout\",\"csrf-7\"] status=200") && released(rec: rec) && closed
@@ -238,7 +238,7 @@ test fn a_connection_lost_mid_boot_is_reported_and_no_still_is_claimed_after_it(
   let reported = mtcollins1_boot_screen_boundary_report(screen: r.start, already: [])
   let lost = match kvm_observer_standing_now(start: r.start) { KvmObserverLost { at: _, established_at: _ } => true  _ => false }
   let handoff = match kvm_handoff_admission(start: r.start) { KvmHandoffRefused { cause: c } => string_contains(s: c, pattern: "LOST")  _ => false }
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let report_file = match r.start { KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } => read_or_empty(path: concat(d as String, "/boundary-report"))  _ => "" }
   let closed = close_rig(r: r)
   lost && handoff && count(rec.stills) == 0
@@ -252,7 +252,7 @@ test fn an_unreadable_canvas_is_acquisition_failed_with_the_browsers_words() -> 
   let r = rig(w: world(other_viewers: 0, close_at: no_close(), canvas_readable: false))
   let asked = kvm_observer_trigger(start: r.start, order: 2, reason: "sol-channel-lost")
   let _w = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
-  let rec = mtcollins1_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
+  let rec = megarac_kvm_observer_finish(start: r.start, attempt: "wet", terminal_order: 3)
   let unreadable = count(filter(rec.events, e => match e {
     KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: c, gen: _ } => match c { KvmCanvasUnreadable { detail: d } => string_contains(s: d, pattern: "Tainted canvases")  _ => false }
     _ => false
@@ -364,7 +364,7 @@ test fn a_relative_observer_directory_is_resolved_once() -> Bool {
   let dir = trim(s: made.path as String)
   match runner_browser_toolchain_here_wet() {
     BrowserToolchainReady { location: loc, standing: _ } => {
-      let start = kvm_observer_launch_in(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel", features_json: "")
+      let start = kvm_observer_protocol_launch(dir_given: dir, base_url: "http://127.0.0.1:9", host: "127.0.0.1:9", username: "u", password_file: "/nonexistent/credential", toolchain: loc, attempt: "rel", features_json: "")
       let refused = match start {
         KvmObserverStarted { dir: d, subject: _, standing: st, checked_at: _ } => starts_with(s: d as String, prefix: "/") && match st { KvmObserverRefused { at: _, refusal: _ } => true  _ => false }
         _ => false

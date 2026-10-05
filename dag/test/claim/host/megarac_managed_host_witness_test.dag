@@ -1,0 +1,236 @@
+module test.claim.megarac_managed_host_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcFirmwareFamily, AmiMegaRac, OpenBmc }
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.managed_host {
+  ManagedHost, managed_host_fixture, managed_hosts, ManagedHostAccessUnobserved, ManagedHostEndpointMismatch,
+  ManagedHostFound, managed_host_binding, managed_host_binding_for, managed_host_account_driving,
+}
+import extdeps.boards.types { BaseboardModel, GigabyteMp72Hb0 }
+import std.types { EpochMs }
+import std.content_hash { Sha256Digest, Sha256Hash }
+import std.decl_ref { decl_ref }
+import v2.std.optional { Present, Absent }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
+import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data megarac_operations: List<MegaRacOperation> = [MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming]
+
+// THE INHABITANCE CLAIM, AND IT ASSERTS THE ROUTE. The one managed row, mtcollins1, is admitted for every
+// MegaRAC operation the boot drives, and each carrier's endpoint, account and firmware are its binding's
+// own: the endpoint the binding observed, the account the binding carries, and the firmware that
+// observation read. Its observed family turning OpenBMC, its build changing, or its secure standing
+// going Absent turns this red.
+test fn w_the_real_row_is_admitted_for_each_megarac_operation_through_its_binding() -> Bool {
+  let hosts = managed_hosts()
+  count(hosts) == 1
+    && hosts |> all(h => (h.host as String) == (operator_host_mtcollins1 as String)
+      && megarac_operations |> all(op => match admit_megarac_host(host: h, operation: op) {
+        MegaRacHostAdmitted { host: a } =>
+          (a.binding.host.host as String) == (operator_host_mtcollins1 as String)
+            && a.firmware.family == AmiMegaRac
+            && (a.firmware.raw_version as String) == (a.binding.observation.identity.firmware.raw_version as String)
+            && (a.binding.observation.endpoint.host as String) != ""
+            && (a.binding.account as String) == "gunbc"
+        MegaRacHostRefused { cause: _ } => false
+      }))
+}
+
+fn identity_with(o: BmcAccessObservation, firmware: BmcFirmwareReleaseIdentity) -> BmcObservedIdentity {
+  BmcObservedIdentity { baseboard: o.identity.baseboard, chassis_part_number: o.identity.chassis_part_number, firmware: firmware }
+}
+
+fn observation_with(o: BmcAccessObservation, host: String, firmware: BmcFirmwareReleaseIdentity) -> BmcAccessObservation {
+  observation_on(o: o, host: host, identity: identity_with(o: o, firmware: firmware))
+}
+
+fn observation_on(o: BmcAccessObservation, host: String, identity: BmcObservedIdentity) -> BmcAccessObservation {
+  BmcAccessObservation {
+    endpoint: BmcControllerEndpoint { host: host as NonEmptyStr },
+    identity: identity,
+    discovered_surfaces: o.discovered_surfaces,
+    boot_control_routes: o.boot_control_routes,
+    redfish_virtual_media_probe: o.redfish_virtual_media_probe,
+    successful_read_surfaces: o.successful_read_surfaces,
+    successful_write_surfaces: o.successful_write_surfaces,
+    raw_response: o.raw_response,
+    observed_at: o.observed_at,
+  }
+}
+
+fn refused_for_every_operation(h: ManagedHost, refused: fn(MegaRacHostAdmission) -> Bool) -> Bool {
+  megarac_operations |> all(op => refused(admit_megarac_host(host: h, operation: op)))
+}
+
+// RED: THE SAME BOUND CONTROLLER, OBSERVED AS OPENBMC. Everything else of the real row is kept; the
+// observation's family is the only change, and every MegaRAC operation refuses it by family.
+test fn w_a_controller_observed_as_openbmc_is_refused_for_every_megarac_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let openbmc = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: o.endpoint.host as String, firmware: bmc_firmware_release_identity_of_wire(family: OpenBmc, wire: o.identity.firmware.raw_version)) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      refused_for_every_operation(h: openbmc, refused: a => match a {
+        MegaRacHostRefused { cause: MegaRacHostNotMegaRac { family: f } } => f == OpenBmc && string_contains(s: megarac_host_refusal_text(cause: MegaRacHostNotMegaRac { family: f }) as String, pattern: "not AMI MegaRAC")
+        _ => false
+      })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: THE SAME HOST WITH ITS CONTROLLER UNOBSERVED. There is no family to read, and every operation
+// refuses it as unbound, before any request.
+test fn w_a_controller_whose_family_is_unobserved_is_refused_for_every_megarac_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let unobserved = managed_host_fixture(host: h.host, access: BmcAccessUnobserved { endpoint: o.endpoint }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      refused_for_every_operation(h: unobserved, refused: a => match a {
+        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostAccessUnobserved { endpoint: _ } } } => true
+        _ => false
+      })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A MEGARAC CONTROLLER OF ANOTHER BUILD. The family is still MegaRAC; the raw firmware is the one
+// Mt. Jade's controller reports (gunbc.machine_intake_mtjade1_access_observation), a build none of these
+// operations was executed on, so each refuses it by build and names the build.
+test fn w_a_megarac_build_no_operation_was_executed_on_is_refused_for_every_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let other = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: o.endpoint.host as String, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11")) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      refused_for_every_operation(h: other, refused: a => match a {
+        MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: i } } => (i.firmware.raw_version as String) == "2.11"
+        _ => false
+      })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: CONTROLLER A'S SECURED ACCOUNT BESIDE CONTROLLER B'S ACCESS (the cut-0 join). The real row's
+// secure standing is kept and its access observation is re-pointed at another controller; no MegaRAC
+// carrier is minted, so the media attach, the viewer and the sensor read -- which take their endpoint
+// and account only from a carrier -- cannot drive B with A's account.
+test fn w_a_secured_account_beside_another_controllers_access_is_admitted_for_no_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      refused_for_every_operation(h: crossed, refused: a => match a {
+        MegaRacHostRefused { cause: MegaRacHostNotBound { standing: ManagedHostEndpointMismatch { observed: ob, secured: _ } } } => (ob.host as String) == "fixture-other-bmc"
+        _ => false
+      })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: A HOST THAT IS NOT MANAGED. mtjade1 has no row (docs/plans/managed-host-untangle.md: its absence
+// is the honest standing), so a procedure reached by its name refuses it for every operation.
+test fn w_a_host_that_is_not_managed_is_refused_for_every_operation() -> Bool {
+  megarac_operations |> all(op => match megarac_host_admission_in(hosts: managed_hosts(), host: "mtjade1", operation: op) {
+    MegaRacHostRefused { cause: MegaRacHostNotManaged { host: x } } => (x as String) == "mtjade1"
+    _ => false
+  }) && count(managed_hosts()) == 1
+}
+
+// RED: ANOTHER PRODUCT LINE REPORTING THE SAME BUILD. The real row's binding is kept and its observed
+// baseboard becomes a Gigabyte MP72-HB0 at MegaRAC 0.32: family and raw version match the Mt. Collins
+// controller exactly, and every operation still refuses, because none was grounded on that baseboard.
+test fn w_another_baseboard_at_the_same_megarac_build_is_refused_for_every_operation() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let other = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_on(o: o, host: o.endpoint.host as String, identity: BmcObservedIdentity { baseboard: GigabyteMp72Hb0, chassis_part_number: none, firmware: o.identity.firmware }) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      (o.identity.firmware.raw_version as String) == "0.32"
+        && refused_for_every_operation(h: other, refused: a => match a {
+          MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: i } } => i.baseboard == GigabyteMp72Hb0
+          _ => false
+        })
+    }
+  }) && count(managed_hosts()) == 1
+}
+
+fn fixture_evidence(label: String) -> EvidenceRef {
+  EvidenceRef { label: label as NonEmptyStr, digest: Sha256Hash(Sha256Digest { hex: "0000000000000000000000000000000000000000000000000000000000000000" }) }
+}
+
+// RED (THE CURRENT-BUILD GATE, SHADOW): THE REAL ROW, A READING OF ITS OBSERVED 0.32 BUILD, EXECUTED
+// EVIDENCE AT 0.32, AND A LATER RECORDED TRANSITION TO 0.45.3. The production admission would admit it
+// (that is the declared drop); the current-build gate mints no carrier for any operation and names the
+// two builds, before any request.
+test fn w_a_historical_observation_beside_a_known_later_build_mints_no_carrier() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let ev = megarac_operation_evidence_of(
+        readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "historical reading"), observed_at: 1000)],
+        receipts: [],
+        transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
+        recoveries: [],
+      )
+      megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: op) {
+        MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } => (ob.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
+        _ => false
+      })
+    }
+  })
+}
+
+// THE SHADOW GATE'S CONTROL: when the latest reading IS the observed build and the operation was
+// executed at it, the gate admits -- so the refusal above is the transition's, not the gate's default.
+test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let ev = megarac_operation_evidence_of(
+        readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "current reading"), observed_at: 5000)],
+        receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: o.endpoint, receipt: fixture_evidence(label: "run"), executed_at: 6000)],
+        transitions: [],
+        recoveries: [],
+      )
+      (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacVirtualMediaAttach) { MegaRacHostAdmitted { host: _ } => true  MegaRacHostRefused { cause: _ } => false })
+        && (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true  _ => false })
+    }
+  })
+}
+
+// THE COMMITTED EVIDENCE THROUGH THE SHADOW GATE, as the staged cut-over will see it today: mtcollins1's
+// only build reading is the 2026-09-05 0.32 observation and the 2026-10-02 reflash is recorded after it,
+// so every operation refuses as not current -- which is why production is not cut over yet.
+test fn w_the_committed_mtcollins1_evidence_is_refused_by_the_shadow_gate_as_not_current() -> Bool {
+  managed_hosts() |> all(h => megarac_operations |> all(op =>
+    match admit_megarac_host_at_current_build(evidence: megarac_operation_evidence(), host: h, operation: op) {
+      MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: _, current: c } } => (c.raw_version as String) == "0.45.3"
+      _ => false
+    }))
+    && count(managed_hosts()) == 1
+}
+
+// RED: ONE HOST'S ACCOUNT CANNOT BE DRIVEN AT ANOTHER CONTROLLER. The real lookup releases the account
+// only to a caller driving the controller the binding observed; a caller naming another endpoint gets
+// nothing, and a row whose secured account sits beside another controller's access releases nothing to
+// either controller.
+test fn w_an_account_is_released_only_with_the_controller_it_was_bound_to() -> Bool {
+  managed_hosts() |> all(h => match h.access {
+    BmcAccessUnobserved { endpoint: _ } => false
+    BmcAccessObserved { observation: o } => {
+      let lookup = managed_host_binding_for(host: h.host as NonEmptyStr)
+      let crossed = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observation_with(o: o, host: "fixture-other-bmc", firmware: o.identity.firmware) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let crossed_lookup = ManagedHostFound { standing: managed_host_binding(host: crossed) }
+      (match managed_host_account_driving(lookup: lookup, endpoint: o.endpoint) { Present { value: a } => (a as String) == "gunbc"  Absent => false })
+        && (match managed_host_account_driving(lookup: lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: BmcControllerEndpoint { host: "fixture-other-bmc" }) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: crossed_lookup, endpoint: o.endpoint) { Present { value: _ } => false  Absent => true })
+        && (match managed_host_account_driving(lookup: managed_host_binding_for(host: "mtjade1"), endpoint: o.endpoint) { Present { value: _ } => false  Absent => true })
+    }
+  })
+}
