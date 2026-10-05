@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { any, filter }
-import extdeps.bmc.ipmi_channel { IpmiUserId }
+import extdeps.bmc.ipmi_channel { IpmiChannelNumber, IpmiUserId, IpmiUserChannelAccess, IpmiChannelPrivilegeLimit }
 import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_chassis_control {
@@ -106,6 +106,7 @@ type BmcWorld {
   sol_drop_after_boot: Second?
   web: BmcWebWorld
   ipmi_users: List<BmcIpmiUser>
+  ipmi_user_access: List<IpmiUserChannelAccess>
   record_surfaces: BmcRecordSurfaces
 }
 
@@ -113,7 +114,7 @@ fn bmc_world(power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
     sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
-    web: bmc_web_world_untouched, ipmi_users: [], record_surfaces: bmc_record_surfaces_unmodeled,
+    web: bmc_web_world_untouched, ipmi_users: [], ipmi_user_access: [], record_surfaces: bmc_record_surfaces_unmodeled,
   }
 }
 
@@ -181,7 +182,7 @@ fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
     power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -190,7 +191,7 @@ fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -199,7 +200,7 @@ fn bmc_with_record_surfaces(world: BmcWorld, surfaces: BmcRecordSurfaces) -> Bmc
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: surfaces,
   }
 }
 
@@ -308,7 +309,7 @@ fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -317,7 +318,7 @@ fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -326,7 +327,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
     power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -342,7 +343,7 @@ fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
     power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -443,7 +444,7 @@ fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
-    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -474,7 +475,7 @@ fn bmc_with_ipmi_users(world: BmcWorld, users: List<BmcIpmiUser>) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: users, record_surfaces: world.record_surfaces,
+    web: world.web, ipmi_users: users, ipmi_user_access: world.ipmi_user_access, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -496,4 +497,43 @@ fn bmc_ipmi_set_user_password(world: BmcWorld, user: IpmiUserId, password: Strin
 // judged by, independent of the write's own completion.
 fn bmc_ipmi_user_accepts(world: BmcWorld, user: IpmiUserId, password: String) -> Bool {
   any(world.ipmi_users, u => (u.id as Int) == (user as Int) && u.password == password)
+}
+
+// ── IPMI USER ACCESS ─────────────────────────────────────────────────────────────────────────────
+//
+// THE CONTROLLER'S PER-CHANNEL USER ACCESS TABLE: one (channel, user, privilege limit) row per pair
+// the controller holds, the shape Get User Access returns (extdeps.bmc.ipmi_channel). The transition
+// is the Set User Access command of the public IPMI v2.0 specification (App NetFn, command 43h): it
+// sets one user's privilege limit on one channel and changes nothing else -- not the password, not
+// the row of any other channel or user. A write for a user the IPMI user table does not hold changes
+// nothing and is not completed.
+type BmcIpmiSetUserAccessStep {
+  world: BmcWorld
+  completed: Bool
+}
+
+fn bmc_with_ipmi_user_access(world: BmcWorld, rows: List<IpmiUserChannelAccess>) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web, ipmi_users: world.ipmi_users, ipmi_user_access: rows, record_surfaces: world.record_surfaces,
+  }
+}
+
+fn bmc_ipmi_set_user_access(world: BmcWorld, access: IpmiUserChannelAccess) -> BmcIpmiSetUserAccessStep {
+  if any(world.ipmi_users, u => (u.id as Int) == (access.user as Int)) {
+    let others = filter(world.ipmi_user_access, r => !((r.user as Int) == (access.user as Int) && (r.channel as Int) == (access.channel as Int)))
+    BmcIpmiSetUserAccessStep { world: bmc_with_ipmi_user_access(world: world, rows: list_append(others, access)), completed: true }
+  } else {
+    BmcIpmiSetUserAccessStep { world: world, completed: false }
+  }
+}
+
+// Get User Access for one (channel, user): the readback a channel-access write is judged by,
+// independent of the write's completion. Absent when the controller holds no row for the pair.
+fn bmc_ipmi_get_user_access(world: BmcWorld, user: IpmiUserId, channel: IpmiChannelNumber) -> IpmiChannelPrivilegeLimit? {
+  let wanted: IpmiChannelPrivilegeLimit? = none
+  filter(world.ipmi_user_access, r => (r.user as Int) == (user as Int) && (r.channel as Int) == (channel as Int))
+    |> fold(init: wanted, f: (acc, r) => match acc { Absent => Present { value: r.privilege }  Present { value: _ } => acc })
 }
