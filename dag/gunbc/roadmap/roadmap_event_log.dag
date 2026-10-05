@@ -659,7 +659,7 @@ fn standing_for_node(standings: RoadmapStandings, node_id: String) -> RoadmapNod
     StandingsObserved { rows } =>
       match (filter(rows, r => r.node_id == node_id)).first() {
         Present { value: r } => Present { value: r.standing }
-        Absent => none
+        Absent => Present { value: NodeOpen }
       }
   }
 }

@@ -6,13 +6,15 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import std.dissolution { unbound_dissolution }
 import extdeps.transports.rest {
+  RestResult,
+  RestAnswered,
+  RestRefused,
   RestMutationExchange,
-  RestExchangeSucceeded,
   RestExchangeStatusRefused,
   RestExchangeUnreached,
   RestExchangeUndecodable,
   RestExchangeCommitAmbiguous,
-  classify_rest_outcome,
+  classify_rest_refusal,
 }
 import extdeps.google.sheets
 import extdeps.google.sheets {
@@ -154,31 +156,32 @@ fn perform_batch_write(
 fn issue_batch_request(request: BatchValuesRequest) -> BatchMutationStanding uses net: Network admit_callers: [
   decl_ref(module_path: "gunbc.review_sheet_batch_actuator", decl_name: "perform_batch_write")
 ] {
-  let written = sheets.Spreadsheets.BatchUpdateValues(
+  match sheets.Spreadsheets.BatchUpdateValues(
     spreadsheet_id: request.spreadsheet_id as String,
     value_input_option: request.value_input_option,
     data: request.data,
     include_values_in_response: false,
-  )
-  match classify_rest_outcome(standing: RestMutationExchange { rest: written.outcome }) {
-    RestExchangeSucceeded =>
+  ) {
+    RestAnswered { answer: written } =>
       BatchMayHaveCommitted { commit: BatchCommitted { total_updated_cells: written.total_updated_cells } }
-    RestExchangeStatusRefused { status, body } =>
-      BatchDidNotCommit { cause: BatchRefused { status: status, body: body } }
-    RestExchangeCommitAmbiguous { detail } =>
-      BatchMayHaveCommitted { commit: BatchCommitAmbiguous { detail: detail } }
-    RestExchangeUnreached { cause } =>
-      BatchMayHaveCommitted {
-        commit: BatchCommitAmbiguous {
-          detail: join(["classify_rest_outcome answered Unreached for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+    RestRefused { refusal } => match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+      RestExchangeStatusRefused { status, body } =>
+        BatchDidNotCommit { cause: BatchRefused { status: status, body: body } }
+      RestExchangeCommitAmbiguous { detail } =>
+        BatchMayHaveCommitted { commit: BatchCommitAmbiguous { detail: detail } }
+      RestExchangeUnreached { cause } =>
+        BatchMayHaveCommitted {
+          commit: BatchCommitAmbiguous {
+            detail: join(["classify_rest_refusal answered Unreached for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+          }
         }
-      }
-    RestExchangeUndecodable { status, cause } =>
-      BatchMayHaveCommitted {
-        commit: BatchCommitAmbiguous {
-          detail: join(["classify_rest_outcome answered Undecodable(", to_string(status), ") for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+      RestExchangeUndecodable { status, cause } =>
+        BatchMayHaveCommitted {
+          commit: BatchCommitAmbiguous {
+            detail: join(["classify_rest_refusal answered Undecodable(", to_string(status), ") for a mutation exchange, which its own ruling maps to ambiguity: ", cause as String], "") as NonEmptyStr
+          }
         }
-      }
+    }
   }
 }
 

@@ -18,6 +18,17 @@ type DeclarationRef {
   field: DeclField
 }
 
+// WHETHER A REFERENCE NAMES A TYPE PARAMETER, read from the carrier and never from a spelling. It
+// lives beside the type for the reason the constructors do: one authority for what the field arm
+// means (DESIGN section 3).
+fn declaration_ref_is_type_parameter(ref: DeclarationRef) -> Bool {
+  match ref.field {
+    TypeParameter { name: _ } => true
+    WholeDeclaration => false
+    NamedField { field_name: _ } => false
+  }
+}
+
 // The constructors live HERE, beside the type they construct — single authority (DESIGN section 3).
 // Two parallel lanes each minted an identical fn decl_ref/decl_field_ref pair
 // (std.primitive_identity and std.roster_frontier, both 2026-08-01), and because v1-seed fn names

@@ -4,7 +4,9 @@
 use self::AliasKind::*;
 use self::KindInhabitance::*;
 pub use crate::std_decl_ref::DeclarationRef;
-pub use crate::std_decl_ref::{decl_ref, decl_type_parameter_ref};
+pub use crate::std_decl_ref::{
+    decl_ref, decl_type_parameter_ref, declaration_ref_is_type_parameter,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -413,7 +415,26 @@ pub fn preserve_nominal_brand_on_resolve(
     }
 }
 
+pub fn node_is_type_parameter_reference(n: Rc<Node>) -> bool {
+    match n.declaration.clone() {
+        Some(ref_) => crate::std_decl_ref::declaration_ref_is_type_parameter(ref_.clone()),
+        std::option::Option::None => false,
+    }
+}
+
 pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<Node> {
+    if node_is_type_parameter_reference(n.clone()) {
+        n.clone()
+    } else {
+        peel_nominal_alias_identity_by_name(n.clone(), env.clone(), module_name.clone())
+    }
+}
+
+pub fn peel_nominal_alias_identity_by_name(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+) -> Rc<Node> {
     {
         let source_indices = env.source_indices.clone();
         let brand = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -556,6 +577,82 @@ pub struct ParamResolveResult {
 pub struct ResourceUseResult {
     pub resource_use: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+pub fn generic_declaration_application(
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    type_name: String,
+    resolved_args: Rc<Vec<Rc<Node>>>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    env: Rc<TypeEnv>,
+) -> Rc<Node> {
+    {
+        let substituted_children = Rc::new({
+            let mut __result = Vec::new();
+            for child in decl.children.clone().iter().cloned() {
+                __result.push(substitute_type_slots(
+                    child.clone(),
+                    slot_bindings.clone(),
+                    type_name.clone(),
+                    env.source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        let is_recursive =
+            crate::v1_compiler_infer_env::is_recursive_type_by_name(env.clone(), type_name.clone());
+        let expanded_node = Rc::new(Node {
+            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+            name: type_name.clone(),
+            span: n.span.clone(),
+            ident_span: n.ident_span.clone(),
+            children: substituted_children.clone(),
+            connective: decl.connective.clone(),
+            params: Rc::new(vec![]),
+            inferred: n.inferred.clone(),
+            return_cardinality: n.return_cardinality.clone(),
+            uses: n.uses.clone(),
+            body: n.body.clone(),
+            transport: n.transport.clone(),
+            properties: decl.properties.clone(),
+            type_annotation: n.type_annotation.clone(),
+            is_self_recursive: is_recursive.clone(),
+            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+            match_pattern: n.match_pattern.clone(),
+            module_item_kind: n.module_item_kind.clone(),
+            declaration_marker: n.declaration_marker.clone(),
+            declaration: n.declaration.clone(),
+            expr_data: n.expr_data.clone(),
+            ident: None,
+        });
+        Rc::new(Node {
+            occurrence_identity: n.occurrence_identity.clone(),
+            name: type_name.clone(),
+            span: n.span.clone(),
+            ident_span: n.ident_span.clone(),
+            children: resolved_args.clone(),
+            connective: Connective::NoConnective,
+            params: Rc::new(vec![]),
+            inferred: Some(Rc::new(InferredNode::Resolved {
+                node: expanded_node.clone(),
+            })),
+            return_cardinality: n.return_cardinality.clone(),
+            uses: n.uses.clone(),
+            body: n.body.clone(),
+            transport: n.transport.clone(),
+            properties: decl.properties.clone(),
+            type_annotation: n.type_annotation.clone(),
+            is_self_recursive: is_recursive.clone(),
+            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+            match_pattern: n.match_pattern.clone(),
+            module_item_kind: n.module_item_kind.clone(),
+            declaration_marker: n.declaration_marker.clone(),
+            declaration: n.declaration.clone(),
+            expr_data: n.expr_data.clone(),
+            ident: None,
+        })
+    }
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
@@ -1644,76 +1741,15 @@ Rc::new(NodeResolveResult {
                             }
                         } else {
                             {
-                                let substituted_children = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for child in decl.children.clone().iter().cloned() {
-                                        __result.push(substitute_type_slots(
-                                            child.clone(),
-                                            slot_bindings.clone(),
-                                            type_name.clone(),
-                                            env.source_indices.clone(),
-                                        ));
-                                    }
-                                    __result
-                                });
-                                let is_recursive =
-                                    crate::v1_compiler_infer_env::is_recursive_type_by_name(
-                                        env.clone(),
-                                        type_name.clone(),
-                                    );
-                                let expanded_node = Rc::new(Node {
-                                    occurrence_identity: Rc::new(
-                                        NodeOccurrenceIdentity::OccurrenceSynthetic,
-                                    ),
-                                    name: type_name.clone(),
-                                    span: n.span.clone(),
-                                    ident_span: n.ident_span.clone(),
-                                    children: substituted_children.clone(),
-                                    connective: decl.connective.clone(),
-                                    params: Rc::new(vec![]),
-                                    inferred: n.inferred.clone(),
-                                    return_cardinality: n.return_cardinality.clone(),
-                                    uses: n.uses.clone(),
-                                    body: n.body.clone(),
-                                    transport: n.transport.clone(),
-                                    properties: decl.properties.clone(),
-                                    type_annotation: n.type_annotation.clone(),
-                                    is_self_recursive: is_recursive.clone(),
-                                    has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                                    match_pattern: n.match_pattern.clone(),
-                                    module_item_kind: n.module_item_kind.clone(),
-                                    declaration_marker: n.declaration_marker.clone(),
-                                    declaration: n.declaration.clone(),
-                                    expr_data: n.expr_data.clone(),
-                                    ident: None,
-                                });
                                 let result = Rc::new(NodeResolveResult {
-                                    resolved: Rc::new(Node {
-                                        occurrence_identity: n.occurrence_identity.clone(),
-                                        name: type_name.clone(),
-                                        span: n.span.clone(),
-                                        ident_span: n.ident_span.clone(),
-                                        children: resolved_args.clone(),
-                                        connective: Connective::NoConnective,
-                                        params: Rc::new(vec![]),
-                                        inferred: Some(Rc::new(InferredNode::Resolved {
-                                            node: expanded_node.clone(),
-                                        })),
-                                        return_cardinality: n.return_cardinality.clone(),
-                                        uses: n.uses.clone(),
-                                        body: n.body.clone(),
-                                        transport: n.transport.clone(),
-                                        properties: decl.properties.clone(),
-                                        type_annotation: n.type_annotation.clone(),
-                                        is_self_recursive: is_recursive.clone(),
-                                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                                        match_pattern: n.match_pattern.clone(),
-                                        module_item_kind: n.module_item_kind.clone(),
-                                        declaration_marker: n.declaration_marker.clone(),
-                                        declaration: n.declaration.clone(),
-                                        expr_data: n.expr_data.clone(),
-                                        ident: None,
-                                    }),
+                                    resolved: generic_declaration_application(
+                                        n.clone(),
+                                        decl.clone(),
+                                        type_name.clone(),
+                                        resolved_args.clone(),
+                                        slot_bindings.clone(),
+                                        env.clone(),
+                                    ),
                                     diagnostics: v1_rt::concat(
                                         v1_rt::concat(arity_diags.clone(), kind_diags.clone()),
                                         arg_diags.clone(),
