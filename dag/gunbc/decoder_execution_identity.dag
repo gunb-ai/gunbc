@@ -1,5 +1,6 @@
 module gunbc.decoder_execution_identity
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { FreeMonoid }
 import std.content_hash {

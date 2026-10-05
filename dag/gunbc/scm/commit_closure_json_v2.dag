@@ -551,7 +551,8 @@ fn decode_closure_document(v: JsonValue) -> ClosureDocLoadOutcome {
           Absent => decode_closure_document_body(v: v)
         }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberArray { elements: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
+    MemberObject { value: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "format" } } }
   }
 }
 
@@ -584,11 +585,13 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
                           ClosureDocRefused { cause: ClosureDocRootPositionUnresolved { reference: reference } }
                       }
                   }
-                _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } }
+                MemberString { value: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } }
+                MemberArray { elements: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "root" } } }
               }
           }
       }
-    _ => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberString { value: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
+    MemberObject { value: _ } => ClosureDocRefused { cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "objects" } } }
   }
 }
 // ---------------------------------------------------------------------------
