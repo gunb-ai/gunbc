@@ -2663,12 +2663,15 @@ fn resolve_pattern_tag_declared_payload_path_optional(ctx: ResolveContext, pat: 
       match path {
         Cons { head: only, tail: Empty } => resolve_declared_payload_path_lookup(ctx: ctx, name: only)
         _ =>
-          match list_find_first(
-            xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
-            predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p.path) }
+          match resolve_declared_payload_candidates(
+            ctx: ctx,
+            paths: list_map(
+              xs: symbol_index_absolute_candidates(index: ctx.namespace.symbol_index, qualified_path: path),
+              f: fn(c) { c.path }
+            )
           ) {
-            Present { value: candidate } => optional_present(value: candidate.path)
-            Absent => optional_absent()
+            Cons { head: only, tail: Empty } => optional_present(value: only)
+            _ => optional_absent()
           }
       }
   }
@@ -2702,13 +2705,28 @@ fn resolve_declared_payload_path_lookup(ctx: ResolveContext, name: Symbol) -> Op
   }
 }
 
+// The declared-payload paths among a candidate set, in lookup order.
+fn resolve_declared_payload_candidates(ctx: ResolveContext, paths: List<QualifiedName>) -> List<QualifiedName> {
+  match paths {
+    Empty => Empty
+    Cons { head: p, tail: rest } =>
+      if resolve_path_is_declared_payload(ctx: ctx, path: p) {
+        Cons { head: p, tail: resolve_declared_payload_candidates(ctx: ctx, paths: rest) }
+      } else {
+        resolve_declared_payload_candidates(ctx: ctx, paths: rest)
+      }
+  }
+}
+
+// An ambiguous tag must not name an arm by candidate order: a binder typed by the first of several
+// declared payloads fabricates a plausible output (DESIGN §5 -- a failure arm refuses, never
+// widens). Exactly one declared-payload candidate names the arm; a wider set leaves the binder
+// untyped, the behaviour that preceded binder typing. The arm the binder means is settled by the
+// scrutinee's coproduct at infer, not by name order here.
 fn resolve_first_declared_payload_path(ctx: ResolveContext, paths: List<QualifiedName>) -> Optional<QualifiedName> {
-  match list_find_first(
-    xs: paths,
-    predicate: fn(p) { resolve_path_is_declared_payload(ctx: ctx, path: p) }
-  ) {
-    Present { value: p } => optional_present(value: p)
-    Absent => optional_absent()
+  match resolve_declared_payload_candidates(ctx: ctx, paths: paths) {
+    Cons { head: only, tail: Empty } => optional_present(value: only)
+    _ => optional_absent()
   }
 }
 

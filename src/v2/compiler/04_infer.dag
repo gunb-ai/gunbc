@@ -2041,8 +2041,15 @@ fn infer_coproduct_coverage_obligation(
     }
   ) {
     Inhabits { homomorphism: _ } => outcome_accepted(value: covered_carrier)
-    InhabitanceUndecidable { reason: _ } =>
-      outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
+    InhabitanceUndecidable { reason: reason } =>
+      Accepted {
+        value: covered_carrier,
+        diagnostics: Some {
+          diagnostics: diagnostics_singleton(
+            d: inhabitance_undecidable_diagnostic(application: node, reason: reason)
+          )
+        }
+      }
     InhabitanceRefused { find_witness_reason: _ } =>
       outcome_rejected(infer_match_non_exhaustive_diagnostic(node: node))
   }
