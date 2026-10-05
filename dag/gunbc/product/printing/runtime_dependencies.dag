@@ -50,7 +50,7 @@ fn check(appimage:String,receipt:String) -> ProcessExit {
  let evidence=serialize_json(v:json_object(members:[json_kv(key:"os_release",value:json_string(s:os_read.content)),json_kv(key:"packages",value:json_array(elements:map(packages,p=>json_object(members:[json_kv(key:"package",value:json_string(s:p.package as String)),json_kv(key:"evidence",value:json_string(s:p.evidence))]))))]))
  if !Filesystem.WriteCreateNew(path:concat(receipt,".packages.json"),content:evidence).success {return exit_failure(reason:"Cannot preserve runtime package observation")}
  let missing=filter(packages,p=>!p.admitted)
- if count(missing)>0 {return exit_failure(reason:concat("Declared print runtime packages absent or unreadable; use product.printing.runtime_converge.run: ",join(map(missing,p=>p.package as String),", ")))}
+ if count(missing)>0 {return exit_failure(reason:concat("Declared print runtime packages absent or unreadable; use product.printed_chassis.print_workflow.converge_runtime: ",join(map(missing,p=>p.package as String),", ")))}
  let cad=match run_shell_command_capture(command:cadquery_import_probe_command(distributions:map(cad_toolchain_python_requirements,r=>python_distribution_name(r:r) as String)),transport:LocalExec) {
   ProcessRefused {exit_code:_,stderr:e}=>return exit_failure(reason:concat("Declared CAD Python dependencies could not import: ",e))
   ProcessOutputAbsent=>return exit_failure(reason:"CAD dependency probe returned no versions")

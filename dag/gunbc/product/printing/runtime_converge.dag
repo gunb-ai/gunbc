@@ -14,7 +14,7 @@ type RuntimeConvergence {admitted:Bool,evidence:String}
 // Explicit Ubuntu package convergence on the modeled printer LAN host. The same
 // package roots gate preparation. Reuse the existing observe/install/readback
 // lifecycle; an unreadable observation never authorizes a blind installation.
-fn run(receipt:String) -> ProcessExit {
+fn converge(receipt:String) -> ProcessExit {
  let host=printer_lan_host_identity() as NonEmptyStr
  let read=cat_command(path:"/etc/os-release")
  match typed_argv_exec_over_ssh(host:host,argv:concat([read.program.invocation as String],read.arguments)) {

@@ -2,7 +2,7 @@ module product.printed_chassis.print_workflow
 import extdeps.languages.json.parse {FieldAbsent,FieldMalformed,JsonDocumentUnreadable}
 import std.process {ExitFailure}
 import product.printing.runtime_dependencies {check}
-import product.printing.runtime_converge
+import product.printing.runtime_converge {converge}
 
 import std.types {String,NonEmptyStr,List,FilePath}
 import std.process {ProcessExit,ExitSuccess,exit_failure}
@@ -71,4 +71,4 @@ fn run(plan_file:String,output:String,appimage:String,machine:String,filament:St
 
 // Explicit dependency-provisioning phase. The print phase only observes; callers
 // request convergence through this same workflow root when the host needs setup.
-fn converge_runtime(receipt:String) -> ProcessExit {runtime_converge.run(receipt:receipt)}
+fn converge_runtime(receipt:String) -> ProcessExit {converge(receipt:receipt)}
