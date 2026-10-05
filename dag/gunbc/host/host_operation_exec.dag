@@ -12,7 +12,7 @@ import extdeps.crypto.hash
 import extdeps.nvidia.system_management_interface
 import extdeps.tools.stat
 import extdeps.tools.coreutils_head
-import std.nat { Nat }
+import std.measure { ByteSize, byte_size_count }
 import gunbc.host_effect {
   HostEffectTransport,
   LocalShell,
@@ -133,7 +133,7 @@ type HostOperation =
   | GetconfClockTicksPerSecond
   | Sha256SumFile { path: NonEmptyStr }
   | StatFileType { path: NonEmptyStr }
-  | HeadBytes { path: NonEmptyStr, count: Nat }
+  | HeadBytes { path: NonEmptyStr, count: ByteSize }
   | NvidiaSmiQueryComputeApps
 
 // THE OUTCOME IS DELIBERATELY NOT SshSessionExecResult. Three of the four legs produce one, but
@@ -294,7 +294,7 @@ fn host_operation_invocation(operation: HostOperation) -> BoundOperationInvocati
         service: head_operation_service,
         operation: "Bytes",
       },
-      bindings: [operation_argv_bind_text(name: "path", text: p as String), operation_argv_bind_text(name: "count", text: to_string(n))],
+      bindings: [operation_argv_bind_text(name: "path", text: p as String), operation_argv_bind_text(name: "count", text: to_string(byte_size_count(b: n)))],
     )
     NvidiaSmiQueryComputeApps => bind_operation_invocation(
       at: OperationRef {
@@ -443,7 +443,7 @@ fn host_operation_exec_local(operation: HostOperation) -> HostOperationOutcome {
       HostOperationObserved { stdout: result.file_type, success: result.success, stderr: Present { value: result.stderr } }
     }
     HeadBytes { path: p, count: n } => {
-      let result = coreutils.Head.Bytes(path: p, count: to_string(n) as NonEmptyStr)
+      let result = coreutils.Head.Bytes(path: p, count: to_string(byte_size_count(b: n)) as NonEmptyStr)
       HostOperationObserved { stdout: result.text, success: result.success, stderr: Present { value: result.stderr } }
     }
     NvidiaSmiQueryComputeApps => {

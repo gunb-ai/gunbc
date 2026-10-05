@@ -1,13 +1,20 @@
 module gunbc.host.path_observation
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
-import std.nat { Nat }
-import std.algebra { trim }
+import std.measure { ByteSize }
+import extdeps.tools.stat { StatFileKind, stat_file_kind_is_regular, stat_file_kind_word, StatFileTypeRead, StatFileTypeUnanswered, stat_file_type_reading }
 import gunbc.host_operation_exec { HostOperation, StatFileType, HeadBytes, host_operation_label }
 import gunbc.compute.host_occupancy { host_operation_ran, HostOperationRan, HostOperationExited, HostOperationNotRun, HostOperationResultUnreceived, host_operation_exit_unread }
 import gunbc.spark.host_effect_quiescence { ArgvRun }
 
 // ── WHAT IS AT A PATH ON A HOST, AND A BOUNDED READ OF IT, AS TYPED LEGS ─────────────────────
+//
+// DECLARED FRONTIER (DESIGN section 3c): host_path_kind and small_file_read have no executing consumer
+// on main in this change. Their consumer is gunbc.spark.arm_convergence, whose rank observe reads the
+// committed-arm record and the retired transaction files through them and deletes
+// arm_rank_observe_script; it lands in gunbc#13365. Trigger: #13365's next head after this change
+// lands consumes both and drops that script. The stat-word decoding these read is not new: it is
+// extdeps.tools.stat stat_file_type_reading, executed today by gunbc.fabric.fabric_cell_acquire.
 //
 // THE CONSUMER THIS EXISTS FOR (valiant-crab-775, after review 76640 on #13365): the arm convergence
 // observe reads, on each rank, whether a record file is present and what it says, and whether retired
@@ -17,20 +24,19 @@ import gunbc.spark.host_effect_quiescence { ArgvRun }
 // caller's (the same seam gunbc.compute.host_occupancy read_unit_activity uses), and each answer is
 // decided here, in .dag, from the exit code and the operation's own output.
 //
-// THREE ANSWERS, NEVER TWO. A path is a regular file, is something else, or is absent -- and when the
+// THREE ANSWERS, NEVER TWO. A path is present (of a stat-decoded kind), or is absent -- and when the
 // read itself fails for any other reason it is UNREAD, which is not absent. Collapsing unread into
 // absent would answer "no record" for a host whose read was refused, which is the fabricated default
 // DESIGN section 5 forbids.
 
-type PathKindRead
-  = PathRegularFile
-  | PathOtherKind { kind: String }
-  | PathAbsent
-  | PathKindUnread { cause: String }
-
-// GNU stat(1) %F prints "regular file" or, for a zero-length one, "regular empty file"; both are a
-// regular file. Every other word (directory, symbolic link, fifo, ...) is another kind.
-data path_stat_regular_words: List<String> = ["regular file", "regular empty file"]
+// THE KIND ITSELF IS extdeps.tools.stat StatFileKind, decoded there by stat_file_type_reading -- the one
+// decoder of stat's %F for every consumer (gunbc.fabric.fabric_cell_acquire reads it too). What this
+// module adds is only what the decoder deliberately leaves to its consumer: which non-completion means
+// the path is ABSENT.
+type HostPathKind
+  = HostPathPresent { kind: StatFileKind }
+  | HostPathAbsent
+  | HostPathUnread { cause: String }
 
 // ABSENCE IS READ FROM THE DIAGNOSTIC, not from the exit code alone. stat exits 1 both for a path that
 // does not exist and for one it could not examine, so the exit code cannot separate them; the C
@@ -39,22 +45,22 @@ data path_stat_regular_words: List<String> = ["regular file", "regular empty fil
 // refuses.
 data path_enoent_text: String = "No such file or directory"
 
-fn path_kind_of_exit(code: Int, stdout: String, stderr: String, operation: HostOperation) -> PathKindRead {
-  if code == 0 {
-    let word = trim(s: stdout)
-    if any(path_stat_regular_words, w => w == word) { PathRegularFile }
-    else if word == "" { PathKindUnread { cause: join([host_operation_label(operation: operation), " printed no file type"], "") } }
-    else { PathOtherKind { kind: word } }
-  } else if string_contains(s: stderr, pattern: path_enoent_text) { PathAbsent }
-  else { PathKindUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: stderr) } }
+fn host_path_kind_of_exit(code: Int, stdout: String, stderr: String, operation: HostOperation) -> HostPathKind {
+  match stat_file_type_reading(success: code == 0, output: stdout) {
+    StatFileTypeRead { kind: k } => HostPathPresent { kind: k }
+    StatFileTypeUnanswered { cause: c } =>
+      if code != 0 && string_contains(s: stderr, pattern: path_enoent_text) { HostPathAbsent }
+      else if code == 0 { HostPathUnread { cause: join([host_operation_label(operation: operation), ": ", c], "") } }
+      else { HostPathUnread { cause: host_operation_exit_unread(operation: operation, code: code, err: stderr) } }
+  }
 }
 
-fn path_kind(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> PathKindRead {
+fn host_path_kind(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr) -> HostPathKind {
   let operation = StatFileType { path: path }
   match host_operation_ran(run: run, operation: operation) {
-    HostOperationNotRun { cause: c } => PathKindUnread { cause: c }
-    HostOperationResultUnreceived { cause: c } => PathKindUnread { cause: c }
-    HostOperationExited { exit_code: code, stdout: out, stderr: err } => path_kind_of_exit(code: code, stdout: out, stderr: err, operation: operation)
+    HostOperationNotRun { cause: c } => HostPathUnread { cause: c }
+    HostOperationResultUnreceived { cause: c } => HostPathUnread { cause: c }
+    HostOperationExited { exit_code: code, stdout: out, stderr: err } => host_path_kind_of_exit(code: code, stdout: out, stderr: err, operation: operation)
   }
 }
 
@@ -66,12 +72,13 @@ type SmallFileRead
 // A SMALL FILE, READ AFTER ITS KIND IS KNOWN. Only a regular file is read, and only its first `limit`
 // bytes; an absent path is absent; anything else at the path -- a directory where the record should be
 // -- is unread, never empty text.
-fn small_file_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: Nat) -> SmallFileRead {
-  match path_kind(run: run, path: path) {
-    PathAbsent => SmallFileAbsent
-    PathKindUnread { cause: c } => SmallFileUnread { cause: c }
-    PathOtherKind { kind: k } => SmallFileUnread { cause: join([path as String, " is a ", k, ", not a regular file"], "") }
-    PathRegularFile => {
+fn small_file_read(run: fn(List<String>) -> ArgvRun, path: NonEmptyStr, limit: ByteSize) -> SmallFileRead {
+  match host_path_kind(run: run, path: path) {
+    HostPathAbsent => SmallFileAbsent
+    HostPathUnread { cause: c } => SmallFileUnread { cause: c }
+    HostPathPresent { kind: k } =>
+      if !stat_file_kind_is_regular(kind: k) { SmallFileUnread { cause: join([path as String, " is a ", stat_file_kind_word(kind: k), ", not a regular file"], "") } }
+      else {
       let operation = HeadBytes { path: path, count: limit }
       match host_operation_ran(run: run, operation: operation) {
         HostOperationNotRun { cause: c } => SmallFileUnread { cause: c }

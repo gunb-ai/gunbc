@@ -234,3 +234,92 @@ fn stat_field_reading(outcome: ProcessOutcome) -> StatFieldReading {
       StatFieldUnread { detail: join(["stat exit ", to_string(code), ": ", trim(s: e)], "") }
   }
 }
+
+// ── WHAT %F SAYS, AS A CLOSED VOCABULARY ────────────────────────────────────────────────────
+//
+// GNU stat(1) %F prints the file type as a word ("regular file", "regular empty file", "directory",
+// ...). The meaning of those words is this upstream's fact, so its decoding lives here, once, for every
+// consumer of stat.File.FileType (gunbc.fabric.fabric_cell_acquire, gunbc.host.path_observation): two
+// decoders of one upstream output would drift. A word this table does not know is UnknownKind with the
+// word kept, never a guess.
+type StatFileKind
+  = DirectoryKind
+  | RegularFileKind
+  | SymbolicLinkKind
+  | SocketKind
+  | FifoKind
+  | CharacterDeviceKind
+  | BlockDeviceKind
+  | UnknownKind { word: String }
+
+fn stat_file_kind_of(word: String) -> StatFileKind {
+  let w = trim(word)
+  if w == "directory" { DirectoryKind }
+  else if w == "regular file" { RegularFileKind }
+  else if w == "regular empty file" { RegularFileKind }
+  else if w == "symbolic link" { SymbolicLinkKind }
+  else if w == "socket" { SocketKind }
+  else if w == "fifo" { FifoKind }
+  else if w == "character special file" { CharacterDeviceKind }
+  else if w == "block special file" { BlockDeviceKind }
+  else { UnknownKind { word: w } }
+}
+
+fn stat_file_kind_word(kind: StatFileKind) -> String {
+  match kind {
+    DirectoryKind => "directory"
+    RegularFileKind => "regular file"
+    SymbolicLinkKind => "symbolic link"
+    SocketKind => "socket"
+    FifoKind => "fifo"
+    CharacterDeviceKind => "character special file"
+    BlockDeviceKind => "block special file"
+    UnknownKind { word: w } => w
+  }
+}
+
+fn stat_file_kind_is_regular(kind: StatFileKind) -> Bool {
+  match kind {
+    RegularFileKind => true
+    DirectoryKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+fn stat_file_kind_is_directory(kind: StatFileKind) -> Bool {
+  match kind {
+    DirectoryKind => true
+    RegularFileKind => false
+    SymbolicLinkKind => false
+    SocketKind => false
+    FifoKind => false
+    CharacterDeviceKind => false
+    BlockDeviceKind => false
+    UnknownKind { word: _ } => false
+  }
+}
+
+// A COMPLETED READ THAT PRINTED NOTHING IS UNANSWERED, NOT UNRECOGNIZED: an empty word is not a kind.
+// A read that did not complete is unanswered too; what a non-completion MEANS (absent, refused) is the
+// consumer's to decide from the diagnostic, not this decoder's.
+type StatFileTypeReading
+  = StatFileTypeRead { kind: StatFileKind }
+  | StatFileTypeUnanswered { cause: String }
+
+fn stat_file_type_reading(success: Bool, output: String) -> StatFileTypeReading {
+  if success {
+    let w = trim(output)
+    if w == "" {
+      StatFileTypeUnanswered { cause: "the metadata read exited successfully and printed no file type, so the path kind is unanswered and not unrecognized" }
+    } else {
+      StatFileTypeRead { kind: stat_file_kind_of(word: w) }
+    }
+  } else {
+    StatFileTypeUnanswered { cause: "the metadata read did not complete" }
+  }
+}
