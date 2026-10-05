@@ -17015,9 +17015,10 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
   }
 }
 
+// The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
+// is built once over every module (build_symbol_index_census) and every module's type environment
+// carries the same one, so the first module's is the closure's.
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
-  // The corpus symbol index is built once over every module (build_symbol_index_census) and every
-  // module's type environment carries the same one, so the first module's is the closure's.
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
     Absent => empty_symbol_index()
