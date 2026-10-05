@@ -1,4 +1,4 @@
-module v2.test.parse.token_stream_cursor
+module test.claim.parse_test_token_stream_cursor
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

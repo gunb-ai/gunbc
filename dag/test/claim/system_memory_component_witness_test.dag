@@ -1,0 +1,114 @@
+module test.claim.system_memory_component_witness
+
+import std.types { Bool, List }
+import std.nat { Nat }
+import v2.std.algebra { filter }
+import v2.std.optional { Present, Absent }
+import std.measure { bandwidth, gibibyte, gibibyte_to_byte_size }
+import extdeps.memory.types { MemoryFacts, Hbm }
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.systems.types {
+  CoherentSuperchipCatalogRow, CoherentMemoryTier, SystemMemoryComponent,
+  GpuAndCpuShareOnePool, GpuAddressesDirectly, GpuAddressesAcrossCoherentLink,
+  coherent_superchip_memory_components, integrated_system_memory_components, system_memory_component_same,
+}
+import extdeps.systems.nvidia { nvidia_dgx_spark_1tb_catalog, nvidia_dgx_spark_4tb_catalog }
+import extdeps.systems.nvidia_gh200 { nvidia_gh200_480gb_catalog }
+
+// THE IDENTITY UNDER TEST is extdeps.systems.types system_memory_component_same, over components
+// that only the row projections can construct. The aliasing reds edit a CATALOG ROW, which is a
+// public record. That is the one route by which same-system, same-arm components with different
+// facts could reach a tier join. Each edit must project a component that is not the original's.
+
+fn gh200_components(row: CoherentSuperchipCatalogRow) -> List<SystemMemoryComponent> {
+  coherent_superchip_memory_components(row: row)
+}
+
+// The component reached a given way, or Absent. Claims require Present, so a missing component can
+// never satisfy a "does not alias" red by default.
+fn reached(xs: List<SystemMemoryComponent>, link: Bool) -> SystemMemoryComponent? {
+  first(filter(xs, c => match c.addressability {
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => link
+    GpuAddressesDirectly => !link
+    GpuAndCpuShareOnePool => !link
+  }))
+}
+
+fn both_present_and(a: SystemMemoryComponent?, b: SystemMemoryComponent?, same_expected: Bool) -> Bool {
+  match a {
+    Absent => false
+    Present { value: x } =>
+      match b {
+        Absent => false
+        Present { value: y } => system_memory_component_same(a: x, b: y) == same_expected
+      }
+  }
+}
+
+data larger_hbm_gpu: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia_gh200_480gb_catalog.gpu.vendor,
+  model: nvidia_gh200_480gb_catalog.gpu.model,
+  microarchitecture: nvidia_gh200_480gb_catalog.gpu.microarchitecture,
+  execution_lane_count: nvidia_gh200_480gb_catalog.gpu.execution_lane_count,
+  memory: MemoryFacts { capacity: gibibyte_to_byte_size(g: gibibyte(count: 144)), memory_kind: Hbm },
+  memory_bandwidth: nvidia_gh200_480gb_catalog.gpu.memory_bandwidth,
+  boost_clock: nvidia_gh200_480gb_catalog.gpu.boost_clock,
+  tdp_watts: nvidia_gh200_480gb_catalog.gpu.tdp_watts,
+  compute_capability: nvidia_gh200_480gb_catalog.gpu.compute_capability,
+  supported_runtimes: nvidia_gh200_480gb_catalog.gpu.supported_runtimes,
+  interconnect: nvidia_gh200_480gb_catalog.gpu.interconnect,
+  sm_cache: nvidia_gh200_480gb_catalog.gpu.sm_cache,
+  sm_cache_citations: nvidia_gh200_480gb_catalog.gpu.sm_cache_citations,
+}
+
+fn edited_row(gpu: GpuModelCatalogRow, link_rate_bytes_per_second: Nat) -> CoherentSuperchipCatalogRow {
+  CoherentSuperchipCatalogRow {
+    vendor: nvidia_gh200_480gb_catalog.vendor,
+    model: nvidia_gh200_480gb_catalog.model,
+    board_designation: nvidia_gh200_480gb_catalog.board_designation,
+    cpu_architecture: nvidia_gh200_480gb_catalog.cpu_architecture,
+    cpu_core_clusters: nvidia_gh200_480gb_catalog.cpu_core_clusters,
+    gpu: gpu,
+    cpu_memory: nvidia_gh200_480gb_catalog.cpu_memory,
+    chip_to_chip_bandwidth_per_direction: bandwidth(count: link_rate_bytes_per_second),
+    module_power_floor: nvidia_gh200_480gb_catalog.module_power_floor,
+    module_power_ceiling: nvidia_gh200_480gb_catalog.module_power_ceiling,
+    figure_standing: nvidia_gh200_480gb_catalog.figure_standing,
+  }
+}
+
+// Positive control: the same row projected twice names the same components, and its two memories
+// are distinct.
+test fn w_a_row_projects_one_identity_per_memory() -> Bool {
+  let a = gh200_components(row: nvidia_gh200_480gb_catalog)
+  let b = gh200_components(row: nvidia_gh200_480gb_catalog)
+  count(a) == 2
+    && both_present_and(a: reached(xs: a, link: false), b: reached(xs: b, link: false), same_expected: true)
+    && both_present_and(a: reached(xs: a, link: true), b: reached(xs: b, link: true), same_expected: true)
+    && both_present_and(a: reached(xs: a, link: false), b: reached(xs: a, link: true), same_expected: false)
+}
+
+// RED: same system, same arm, different memory. A GPU-local component whose capacity differs is
+// not the original's.
+test fn w_same_system_and_arm_with_different_memory_does_not_alias() -> Bool {
+  both_present_and(
+    a: reached(xs: gh200_components(row: nvidia_gh200_480gb_catalog), link: false),
+    b: reached(xs: gh200_components(row: edited_row(gpu: larger_hbm_gpu, link_rate_bytes_per_second: 450000000000)), link: false),
+    same_expected: false)
+}
+
+// RED: same system, same coherent-link arm, different link rate. The link components do not alias.
+test fn w_same_system_and_link_arm_with_a_different_rate_does_not_alias() -> Bool {
+  both_present_and(
+    a: reached(xs: gh200_components(row: nvidia_gh200_480gb_catalog), link: true),
+    b: reached(xs: gh200_components(row: edited_row(gpu: nvidia_gh200_480gb_catalog.gpu, link_rate_bytes_per_second: 900000000000)), link: true),
+    same_expected: false)
+}
+
+// The two DGX Spark SKUs differ only in storage, so their one memory is one identity.
+test fn w_spark_skus_share_their_one_memory_identity() -> Bool {
+  both_present_and(
+    a: reached(xs: integrated_system_memory_components(row: nvidia_dgx_spark_1tb_catalog), link: false),
+    b: reached(xs: integrated_system_memory_components(row: nvidia_dgx_spark_4tb_catalog), link: false),
+    same_expected: true)
+}

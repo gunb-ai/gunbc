@@ -1,0 +1,1282 @@
+module gunbc.fabric.workspace_checkpoint_instrument
+
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Map }
+import v2.std.optional { Present, Absent }
+import std.algebra { Cons, Empty, MapIntroductionEntry, map_from_entries }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.measure { ByteSize, byte_size, measure_count, ObservationInstant, ProcessMonotonic, WallClock, Nanosecond, nanosecond, nanosecond_count }
+import std.content_hash { Sha256Digest, sha256_hex_digest, content_hash_eq_cryptographic }
+import std.durable_compare_and_set { CasGenerationPublicationRefused }
+import std.fabric_blob {
+  FabricBlobAddress, FabricBlobReading, fabric_blob_address_eq, fabric_blob_object_name,
+  fabric_blob_reading_digest, fabric_blob_reading_size, fabric_blob_reading_path,
+  FabricBlobRead, FabricBlobReadRefused, read_staged_fabric_blob, fabric_blob_fault_text,
+  FabricBlobPut, FabricBlobStored, FabricBlobOccupied, FabricBlobPutRefused, FabricBlobPutOutcomeUnknown, FabricBlobPutRefusedTooLarge,
+  FabricBlobFetched, FabricBlobAbsent, FabricBlobGetUnavailable,
+}
+import std.fabric_storage {
+  FabricObjectRef, fabric_object_ref_wire,
+  FabricHeadRead, FabricHeadObserved, FabricHeadReadRefused, FabricHeadAbsent, FabricHeadAt,
+  FabricHeadAdvance, FabricStorageFault, FabricStoreRefused, fabric_storage_fault_wire,
+  FabricPut, FabricObjectStored, FabricPutRefused,
+  FabricObjectFetched, FabricObjectGetRefused,
+}
+import std.checkpointed_workspace {
+  WorkspaceWriterEpoch, WorkspaceEntry, WorkspaceHeadEntry, WorkspaceRevision, WorkspaceFence,
+  WorkspaceStoredEntry, WorkspaceStoredEntryAdmitted, WorkspaceStoredBytesCorrupt, WorkspaceStoredEntryMismatch,
+  workspace_stored_entry_of, workspace_stored_entry_ref, workspace_stored_entry_entry, workspace_head_entry_decode, workspace_head_name,
+  WorkspaceChange, WorkspaceCommitRevision,
+  WorkspaceAdvancePlan, WorkspaceAdvanceDecision, WorkspaceAdvancePlanned, WorkspaceAdvanceStaleEpoch, WorkspaceRevisionEpochNotCurrent,
+  WorkspaceAdvanceForeignWorkspace, WorkspaceFenceNotLater,
+  workspace_advance_plan, workspace_plan_object, workspace_plan_expected,
+  WorkspaceCommit, WorkspaceCommitted, WorkspaceCommitStaleEpoch, WorkspaceCommitRaced, WorkspaceCommitObservedUndecoded,
+  WorkspaceCommitResultMismatch, WorkspaceCommitFailed, workspace_commit_classify, workspace_receipt_revision,
+  WorkspaceDurabilityState, WorkspaceClean, CheckpointPathMaintainingCoverage, workspace_state_after_commit,
+  WorkspaceRestorePoint, WorkspaceRestoreRevision, WorkspaceRestoreEmpty, workspace_restore_point,
+  WorkspaceAge, WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
+import extdeps.exec.command { ArgvCommand, LocalExec }
+import extdeps.cloudflare.r2 { R2ObjectLocator }
+import extdeps.crypto.hash { Digest }
+import extdeps.tools.stat
+import extdeps.tools.btrfs_progs { btrfs_filesystem_type_word, btrfs_subvolume_create_command, btrfs_subvolume_snapshot_read_only_command, btrfs_subvolume_delete_command }
+import extdeps.tools.kopia {
+  KopiaRelease, kopia_release, kopia_release_download_url, kopia_release_strip_components, kopia_program_at,
+  kopia_repository_create_filesystem_command, kopia_snapshot_create_command, KopiaSnapshotSummary, kopia_snapshot_summary_of,
+}
+import extdeps.tools.curl { curl_download_command }
+import extdeps.tools.tar { tar_extract_command }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.auth.access_token_source { AccessTokenSource, AccessTokenSourceSelected, AccessTokenSourceUnavailable, select_access_token_source }
+import gunbc.cloudflare.r2_origin { FabricWorkspace }
+import gunbc.cloudflare.r2_staged_transfer { WriteCredentialCustody, WriteCredentialShredded, WriteCredentialResidueRemains, R2StagingCustody }
+import gunbc.fabric.fabric_blob_r2 {
+  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTarget, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
+  put_workspace_chunk, get_workspace_chunk, get_fabric_blob, release_fabric_blob_staging,
+}
+import gunbc.fabric.fabric_blob_placement { fabric_workspace_object_bound }
+import gunbc.fabric.fabric_object_r2 {
+  put_fabric_object_r2, get_fabric_object_r2,
+  FabricObjectR2PutVerdict, FabricObjectR2Stored, FabricObjectR2PresentVerified, FabricObjectR2OccupiedByOther, FabricObjectR2Refused, FabricObjectR2OutcomeUnknown,
+}
+import gunbc.fabric.workspace_source { fabric_workspace_source_key, workspace_put_words, workspace_put_landed }
+import gunbc.fabric_storage_r2_head {
+  R2HeadBinding, R2HeadCredential, r2_head_binding, r2_head_read, r2_head_advance, r2_head_fabric_advance,
+  R2HeadAdvanceResult, R2HeadAdvanceKnown, R2HeadAdvanceOutcomeUnknown, R2HeadStagingCustody, r2_head_staging_of,
+  R2HeadCasAdmission, R2HeadCasAdmittedArm, R2HeadCasNotGrounded, R2HeadCasAdmitted, r2_head_cas_admission, r2_head_cas_ground,
+}
+import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, HostnameShortCaptureRefused }
+import gunbc.host_effect { LocalShell }
+import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
+
+// THE RECOVERABLE-WORKSPACE STAGE 0/1 INSTRUMENT: WHAT A CHECKPOINT OF THE OPERATOR'S REAL WORKSPACE
+// COSTS ON THIS HARDWARE, AND WHETHER A DESTROYED WORKSPACE COMES BACK FROM ITS LAST COMMIT.
+//
+// Two entries, each a dispatched fleet-converge mode on srv3's runner (gunbc.fleet.fleet_converge_workflow):
+//
+//   STAGE 0, workspace_checkpoint_measure_wet. The workspace is the archive the srv1 source pack
+//   published (gunbc.fabric.workspace_source), fetched by its SHA-256 and verified against it. The
+//   instrument observes whether the filesystem that will hold it can be snapshotted by this
+//   unprivileged runner, and REFUSES if not -- a plain copy is not a snapshot and is never
+//   substituted. It then times, separately: a read-only filesystem snapshot; an independent
+//   content-scanning snapshot tool (kopia, pinned at extdeps.tools.kopia) over that snapshot; and
+//   the checkpoint the contract defines -- every file of the snapshot uploaded as a content-addressed
+//   chunk into the workspace bucket, then the revision object and the head advance through
+//   std.checkpointed_workspace. The receipt carries each time and every verdict with its inputs;
+//   the numbers live there and nowhere else (DESIGN 6: name the instrument, never transcribe it).
+//
+//   STAGE 1, workspace_checkpoint_restore_wet. Create a workspace, edit it, commit it (the barrier),
+//   upload one more chunk WITHOUT advancing the head, destroy the directory, rebuild it from
+//   workspace_restore_point over the head's closure, and require byte-equality to the barrier and
+//   that the uncommitted chunk is absent from what came back. This is the real-path pairing claim
+//   std.checkpointed_workspace's header names.
+//
+// THE COMMIT IS GATED ON THE HEAD'S CAS GROUND, AND REFUSES WHILE IT IS A BET. The head realization
+// is gunbc.fabric_storage_r2_head, whose If-Match linearizability is not yet cited; its projection
+// to std.fabric_storage (r2_head_fabric_advance) demands the sealed admission, and
+// workspace_commit_classify is the only producer of a committed receipt. So the commit asks
+// r2_head_cas_admission first and, while it is not grounded, refuses with the read obligation it
+// carries and advances nothing. When the race probe is receipted and the ground is cited, the same
+// code commits. A second commit verdict beside the classifier is not built.
+
+// ── THE SNAPSHOT CAPABILITY ────────────────────────────────────────────────────────────────────
+//
+// Observed from the filesystem type of the directory that will hold the workspace. Only btrfs is
+// realized: its subvolumes are created and snapshotted by their unprivileged owner. A zfs dataset
+// needs a delegated `zfs allow snapshot`, and an LVM thin snapshot needs root; this runner holds
+// neither grant and none is widened, so every type but btrfs is the absent arm, naming the type.
+type WorkspaceSnapshotCapability
+  = WorkspaceSnapshotBtrfs { parent: NonEmptyStr }
+  | WorkspaceSnapshotAbsent { parent: NonEmptyStr, filesystem_type: String }
+  | WorkspaceSnapshotUnobserved { parent: NonEmptyStr, detail: String }
+
+fn workspace_snapshot_capability(parent: NonEmptyStr, observed: Bool, type_word: String) -> WorkspaceSnapshotCapability {
+  let word = replace(type_word, "\n", "")
+  if !observed {
+    WorkspaceSnapshotUnobserved { parent: parent, detail: word }
+  } else if word == (btrfs_filesystem_type_word as String) {
+    WorkspaceSnapshotBtrfs { parent: parent }
+  } else {
+    WorkspaceSnapshotAbsent { parent: parent, filesystem_type: word }
+  }
+}
+
+fn workspace_snapshot_capability_words(c: WorkspaceSnapshotCapability) -> String {
+  match c {
+    WorkspaceSnapshotBtrfs { parent: p } => join(["btrfs-subvolume parent=", p as String], "")
+    WorkspaceSnapshotAbsent { parent: p, filesystem_type: t } =>
+      join(["absent parent=", p as String, " filesystem=", t, " (btrfs subvolumes are the realized snapshot; a zfs dataset needs a delegated zfs allow and LVM thin needs root, neither held by this runner)"], "")
+    WorkspaceSnapshotUnobserved { parent: p, detail: d } => join(["unobserved parent=", p as String, " stat: ", d], "")
+  }
+}
+
+// ── THE DRAFT NUMBERS AND THEIR VERDICTS ───────────────────────────────────────────────────────
+//
+// The draft published numbers of the recoverable-workspace plan (gunb-ai/gunbc-private docs/plans/
+// 2026-10-02-recoverable-workspace-demo.md, "The published numbers"): an internal checkpoint target
+// of 10 s, a published window of 60 s, a quota of 10 GB. They are drafts stage 0 exists to test, so
+// they are inputs to verdicts here, never a std.checkpointed_workspace policy: that policy also needs
+// an outage deadline the draft does not state, and constructing one would author a number nobody set.
+type WorkspaceDraftNumbers {
+  checkpoint_target: Nanosecond
+  window: Nanosecond
+  quota: ByteSize
+}
+
+data workspace_draft_numbers: WorkspaceDraftNumbers = WorkspaceDraftNumbers {
+  checkpoint_target: nanosecond(count: 10000000000),
+  window: nanosecond(count: 60000000000),
+  quota: byte_size(count: 10000000000),
+}
+
+// A MEASURED PART: a duration in milliseconds, or the reason it was not measured.
+type WorkspaceMeasuredPart
+  = PartMeasured { label: NonEmptyStr, elapsed: Nanosecond }
+  | PartUnmeasured { label: NonEmptyStr, reason: String }
+
+// A BOUND'S VERDICT OVER A SUM OF PARTS. Every part measured decides it; a missing part leaves it
+// undecided UNLESS the measured parts alone already exceed the bound, which no missing part can undo.
+type WorkspaceBoundVerdict
+  = BoundHolds { total: Nanosecond, bound: Nanosecond }
+  | BoundExceeded { at_least: Nanosecond, bound: Nanosecond, complete: Bool }
+  | BoundUndecided { measured: Nanosecond, bound: Nanosecond, missing: List<String> }
+
+fn workspace_parts_measured(parts: List<WorkspaceMeasuredPart>) -> Nanosecond {
+  nanosecond(count: fold(parts, init: 0, f: (acc, p) => match p {
+    PartMeasured { label: _, elapsed: e } => acc + nanosecond_count(n: e)
+    PartUnmeasured { label: _, reason: _ } => acc
+  }))
+}
+
+fn workspace_parts_missing(parts: List<WorkspaceMeasuredPart>) -> List<String> {
+  flat_map(parts, p => match p {
+    PartMeasured { label: _, elapsed: _ } => []
+    PartUnmeasured { label: l, reason: r } => [join([l as String, ": ", r], "")]
+  })
+}
+
+fn workspace_bound_verdict(parts: List<WorkspaceMeasuredPart>, bound: Nanosecond) -> WorkspaceBoundVerdict {
+  let measured = workspace_parts_measured(parts: parts)
+  let missing = workspace_parts_missing(parts: parts)
+  let over = nanosecond_count(n: measured) > nanosecond_count(n: bound)
+  match missing {
+    Empty => if !over { BoundHolds { total: measured, bound: bound } } else { BoundExceeded { at_least: measured, bound: bound, complete: true } }
+    Cons { head: _, tail: _ } =>
+      if over { BoundExceeded { at_least: measured, bound: bound, complete: false } } else { BoundUndecided { measured: measured, bound: bound, missing: missing } }
+  }
+}
+
+type WorkspaceQuotaVerdict
+  = QuotaHolds { size: ByteSize, quota: ByteSize }
+  | QuotaExceeded { size: ByteSize, quota: ByteSize }
+
+fn workspace_quota_verdict(size: ByteSize, quota: ByteSize) -> WorkspaceQuotaVerdict {
+  if measure_count(m: size) <= measure_count(m: quota) { QuotaHolds { size: size, quota: quota } } else { QuotaExceeded { size: size, quota: quota } }
+}
+
+fn workspace_part_words(p: WorkspaceMeasuredPart) -> String {
+  match p {
+    PartMeasured { label: l, elapsed: e } => join([l as String, "=", workspace_ms_words(n: e)], "")
+    PartUnmeasured { label: l, reason: r } => join([l as String, "=unmeasured(", r, ")"], "")
+  }
+}
+
+fn workspace_bound_words(name: String, parts: List<WorkspaceMeasuredPart>, v: WorkspaceBoundVerdict) -> String {
+  let inputs = join(map(parts, p => workspace_part_words(p: p)), " + ")
+  match v {
+    BoundHolds { total: t, bound: b } => join([name, "=holds total=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " inputs: ", inputs], "")
+    BoundExceeded { at_least: t, bound: b, complete: c } => join([name, "=exceeded at_least=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), if c { " complete" } else { " by-measured-parts-alone" }, " inputs: ", inputs], "")
+    BoundUndecided { measured: t, bound: b, missing: m } => join([name, "=undecided measured=", workspace_ms_words(n: t), " bound=", workspace_ms_words(n: b), " missing: ", join(m, "; "), " inputs: ", inputs], "")
+  }
+}
+
+fn workspace_quota_words(v: WorkspaceQuotaVerdict) -> String {
+  match v {
+    QuotaHolds { size: n, quota: q } => join(["quota=holds bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
+    QuotaExceeded { size: n, quota: q } => join(["quota=exceeded bytes=", to_string(measure_count(m: n)), " quota_bytes=", to_string(measure_count(m: q))], "")
+  }
+}
+
+// ── CUSTODY: WHAT EVERY EFFECT LEFT BEHIND, CARRIED TO THE EXIT ────────────────────────────────
+//
+// Every R2 write hands back its write credential's custody and every R2 fetch its staging
+// directory's (gunbc.cloudflare.r2_staged_transfer). They ride beside each result, are joined by
+// concatenation so a later residue never shadows an earlier one, are printed in every receipt, and
+// make the invocation exit nonzero naming them -- even when the measurement or the commit stands,
+// exactly as the origin and blob paths do. A residue never changes a verdict.
+type WorkspaceCustody {
+  credential_residue: List<NonEmptyStr>
+  staging_residue: List<NonEmptyStr>
+}
+
+data workspace_custody_clean: WorkspaceCustody = WorkspaceCustody { credential_residue: [], staging_residue: [] }
+
+fn workspace_custody_join(a: WorkspaceCustody, b: WorkspaceCustody) -> WorkspaceCustody {
+  WorkspaceCustody { credential_residue: concat(a.credential_residue, b.credential_residue), staging_residue: concat(a.staging_residue, b.staging_residue) }
+}
+
+fn workspace_custody_all(cs: List<WorkspaceCustody>) -> WorkspaceCustody {
+  WorkspaceCustody { credential_residue: flat_map(cs, c => c.credential_residue), staging_residue: flat_map(cs, c => c.staging_residue) }
+}
+
+fn workspace_custody_of_credential(c: WriteCredentialCustody) -> WorkspaceCustody {
+  match c {
+    WriteCredentialShredded => workspace_custody_clean
+    WriteCredentialResidueRemains { cause: why } => WorkspaceCustody { credential_residue: [why], staging_residue: [] }
+  }
+}
+
+fn workspace_custody_of_staging(s: R2HeadStagingCustody) -> WorkspaceCustody {
+  WorkspaceCustody { credential_residue: [], staging_residue: s.residue_paths }
+}
+
+fn workspace_custody_of_r2_staging(s: R2StagingCustody) -> WorkspaceCustody {
+  workspace_custody_of_staging(s: r2_head_staging_of(custody: s))
+}
+
+fn workspace_custody_of_head_advance(r: R2HeadAdvanceResult) -> WorkspaceCustody {
+  match r {
+    R2HeadAdvanceKnown { settled: _, credential: c, staging: s } => workspace_custody_join(a: workspace_custody_of_credential(c: c), b: workspace_custody_of_staging(s: s))
+    R2HeadAdvanceOutcomeUnknown { expected: _, attempted_successor: _, cause: _, credential: c, staging: s } => workspace_custody_join(a: workspace_custody_of_credential(c: c), b: workspace_custody_of_staging(s: s))
+  }
+}
+
+fn workspace_custody_is_clean(c: WorkspaceCustody) -> Bool {
+  match c.credential_residue {
+    Cons { head: _, tail: _ } => false
+    Empty => match c.staging_residue { Cons { head: _, tail: _ } => false  Empty => true }
+  }
+}
+
+fn workspace_custody_words(c: WorkspaceCustody) -> String {
+  if workspace_custody_is_clean(c: c) {
+    "custody=clean"
+  } else {
+    join(["custody=RESIDUE credential=[", join(map(c.credential_residue, x => x as String), "; "), "] staging=[", join(map(c.staging_residue, x => x as String), " "), "]"], "")
+  }
+}
+
+// THE EXIT A RUN OWES ITS CUSTODY: a residue turns any outcome, success included, into a failure that
+// names it, and a failure keeps its own reason with the residue appended.
+fn workspace_exit_with_custody(outcome: ProcessExit, custody: WorkspaceCustody) -> ProcessExit {
+  if workspace_custody_is_clean(c: custody) {
+    outcome
+  } else {
+    match outcome {
+      ExitSuccess => exit_failure(reason: concat("workspace_checkpoint: the run completed but left residue requiring cleanup: ", workspace_custody_words(c: custody)))
+      ExitFailure { code: k, reason: r } => ExitFailure { code: k, reason: join([r, "\n", workspace_custody_words(c: custody)], "") }
+    }
+  }
+}
+
+// ── THE COMMIT, GATED ON THE HEAD'S CAS GROUND ─────────────────────────────────────────────────
+type WorkspaceInstrumentCommit
+  = InstrumentCommitCasNotGrounded { read_obligation: NonEmptyStr }
+  | InstrumentCommitObjectUnput { verdict: FabricObjectR2PutVerdict }
+  | InstrumentCommitOutcomeUnknown { cause: NonEmptyStr }
+  | InstrumentCommitClassified { commit: WorkspaceCommit, state: WorkspaceDurabilityState }
+
+type WorkspaceCommitAttempt {
+  commit: WorkspaceInstrumentCommit
+  custody: WorkspaceCustody
+}
+
+data workspace_instrument_clean_state: WorkspaceDurabilityState = WorkspaceDurabilityState { coverage: WorkspaceClean, path: CheckpointPathMaintainingCoverage }
+
+// THE ADMISSION IS ASKED BEFORE ANY BYTE MOVES: a NotGrounded ground returns here with nothing put
+// and nothing advanced, so this arm is reachable from a supplied admission without a store.
+fn workspace_instrument_commit(admission: R2HeadCasAdmission, plan: WorkspaceAdvancePlan, binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceCommitAttempt {
+  match admission {
+    R2HeadCasNotGrounded { read_obligation: o } => WorkspaceCommitAttempt { commit: InstrumentCommitCasNotGrounded { read_obligation: o }, custody: workspace_custody_clean }
+    R2HeadCasAdmittedArm { admitted: a } => workspace_instrument_commit_admitted(admitted: a, plan: plan, binding: binding, token_source: token_source)
+  }
+}
+
+// THE OBJECT IS ON THE STORE BEFORE THE HEAD NAMES IT, and only a put the readback proved stored
+// counts: an object occupied by other bytes, refused, or of unknown outcome advances nothing. Every
+// custody fact -- the object put's, the advance's, the observed-entry read's -- rides out beside the
+// commit, which stands whatever the residue.
+fn workspace_instrument_commit_admitted(admitted: R2HeadCasAdmitted, plan: WorkspaceAdvancePlan, binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceCommitAttempt {
+  let put = put_fabric_object_r2(object: workspace_plan_object(plan: plan), purpose: FabricWorkspace {}, token_source: token_source)
+  let put_custody = workspace_custody_join(a: workspace_custody_of_credential(c: put.credential), b: workspace_custody_of_staging(s: put.staging))
+  match workspace_put_stored_object(verdict: put.verdict) {
+    Absent => WorkspaceCommitAttempt { commit: InstrumentCommitObjectUnput { verdict: put.verdict }, custody: put_custody }
+    Present { value: stored } => {
+      let result = r2_head_advance(binding: binding, expected: workspace_plan_expected(plan: plan), to: stored, token_source: token_source)
+      let advance_custody = workspace_custody_join(a: put_custody, b: workspace_custody_of_head_advance(r: result))
+      match r2_head_fabric_advance(admitted: admitted, result: result) {
+        Absent => WorkspaceCommitAttempt { commit: InstrumentCommitOutcomeUnknown { cause: "the head put's outcome is unknown; the next head read decides whether it committed" }, custody: advance_custody }
+        Present { value: advance } => {
+          let observed = workspace_observed_entry(binding: binding, token_source: token_source)
+          let commit = workspace_commit_classify(plan: plan, advance: advance, observed_entry: observed.entry)
+          WorkspaceCommitAttempt {
+            commit: InstrumentCommitClassified { commit: commit, state: workspace_state_after_commit(prior: workspace_instrument_clean_state, result: commit, first_write_after_snapshot: none, at: workspace_instrument_now()) },
+            custody: workspace_custody_join(a: advance_custody, b: observed.custody),
+          }
+        }
+      }
+    }
+  }
+}
+
+fn workspace_put_stored_object(verdict: FabricObjectR2PutVerdict) -> FabricObjectRef? {
+  match verdict {
+    FabricObjectR2Stored { object: o } => Present { value: o }
+    FabricObjectR2PresentVerified { object: o } => Present { value: o }
+    FabricObjectR2OccupiedByOther { object: _, fault: _ } => none
+    FabricObjectR2Refused { fault: _ } => none
+    FabricObjectR2OutcomeUnknown { object: _, cause: _ } => none
+  }
+}
+
+fn workspace_object_put_words(v: FabricObjectR2PutVerdict) -> String {
+  match v {
+    FabricObjectR2Stored { object: _ } => "stored"
+    FabricObjectR2PresentVerified { object: _ } => "present-verified"
+    FabricObjectR2OccupiedByOther { object: _, fault: f } => join(["occupied-by-other-bytes ", fabric_storage_fault_wire(fault: f)], "")
+    FabricObjectR2Refused { fault: f } => join(["refused ", fabric_storage_fault_wire(fault: f)], "")
+    FabricObjectR2OutcomeUnknown { object: _, cause: c } => join(["outcome-unknown ", c as String], "")
+  }
+}
+
+// The commit instant is read from this process's own monotonic clock. Coverage arithmetic compares
+// it only with instants of the same process, which is the one domain this run has.
+fn workspace_instrument_now() -> ObservationInstant {
+  workspace_instant(label: "workspace-instrument-commit-at")
+}
+
+// EVERY INSTANT THIS RUN READS IS A std.measure ObservationInstant OF ONE DOMAIN, the process's own
+// monotonic clock, and every span is derived from two of them by std.checkpointed_workspace
+// workspace_age_between -- never by subtracting bare counts. A span that cannot be derived (instants
+// out of order, or of another domain) is a named unmeasured part, never zero.
+fn workspace_instant(label: String) -> ObservationInstant {
+  ObservationInstant {
+    domain: ProcessMonotonic { process: "workspace-checkpoint-instrument" },
+    basis: WallClock,
+    since_origin: nanosecond(count: observed_monotonic_nanos(label)),
+  }
+}
+
+fn workspace_part_since(part: NonEmptyStr, start: ObservationInstant, end_label: String) -> WorkspaceMeasuredPart {
+  match workspace_age_between(from: start, to: workspace_instant(label: end_label)) {
+    WorkspaceAgeOf { age: a } => PartMeasured { label: part, elapsed: a }
+    WorkspaceAgeUndefined { order: _ } => PartUnmeasured { label: part, reason: "the span's two monotonic instants did not order within one clock domain" }
+  }
+}
+
+fn workspace_commit_words(c: WorkspaceInstrumentCommit) -> String {
+  match c {
+    InstrumentCommitCasNotGrounded { read_obligation: o } => join(["refused-cas-not-grounded read_obligation=", o as String], "")
+    InstrumentCommitObjectUnput { verdict: v } => join(["refused-revision-object-unput ", workspace_object_put_words(v: v)], "")
+    InstrumentCommitOutcomeUnknown { cause: c } => join(["outcome-unknown ", c as String], "")
+    InstrumentCommitClassified { commit: k, state: _ } =>
+      match k {
+        WorkspaceCommitted { receipt: r } => join(["committed revision=", fabric_object_ref_wire(object: workspace_receipt_revision(receipt: r)) as String], "")
+        WorkspaceCommitStaleEpoch { writer_epoch: w, current_epoch: e } => join(["stale-epoch writer=", to_string(w), " current=", to_string(e)], "")
+        WorkspaceCommitRaced { observed: _ } => "raced"
+        WorkspaceCommitObservedUndecoded { observed: _ } => "observed-undecoded"
+        WorkspaceCommitResultMismatch { detail: d } => join(["result-mismatch ", d as String], "")
+        WorkspaceCommitFailed { fault: f } => join(["failed ", fabric_storage_fault_wire(fault: f)], "")
+      }
+  }
+}
+
+fn workspace_commit_is_committed(c: WorkspaceInstrumentCommit) -> Bool {
+  match c {
+    InstrumentCommitClassified { commit: WorkspaceCommitted { receipt: _ }, state: _ } => true
+    InstrumentCommitClassified { commit: _, state: _ } => false
+    InstrumentCommitCasNotGrounded { read_obligation: _ } => false
+    InstrumentCommitObjectUnput { verdict: _ } => false
+    InstrumentCommitOutcomeUnknown { cause: _ } => false
+  }
+}
+
+// ── RESTORE: THE BYTE-EQUALITY FOLD ────────────────────────────────────────────────────────────
+//
+// The barrier is the committed entries (path -> chunk); the restored side is what was read back off
+// disk after recreation (path -> SHA-256 of the bytes now there). Equality is an identity join on
+// path in both directions, so a missing file, an extra file and a changed file are three refusals,
+// never one count. The uncommitted chunk must be in neither the restore point nor the restored files.
+type WorkspaceRestoredFile {
+  path: NonEmptyStr
+  digest: Sha256Digest
+}
+
+type WorkspaceRestoreComparison
+  = RestoreByteEqual { files: Int }
+  | RestoreMissingFile { path: NonEmptyStr }
+  | RestoreExtraFile { path: NonEmptyStr }
+  | RestoreBytesDiffer { path: NonEmptyStr }
+  | RestoreCarriesUncommittedChunk { path: NonEmptyStr }
+
+fn workspace_restore_compare(barrier: List<WorkspaceEntry>, restored: List<WorkspaceRestoredFile>, uncommitted: FabricBlobAddress) -> WorkspaceRestoreComparison {
+  let by_path: Map<String, Sha256Digest> = map_from_entries(entries: map(restored, f => MapIntroductionEntry { key: f.path as String, value: f.digest }))
+  let barrier_paths: Map<String, Bool> = map_from_entries(entries: map(barrier, e => MapIntroductionEntry { key: e.path as String, value: true }))
+  match workspace_restore_first_uncommitted(restored: restored, uncommitted: uncommitted) {
+    Present { value: p } => RestoreCarriesUncommittedChunk { path: p }
+    Absent =>
+      match workspace_restore_barrier_fault(barrier: barrier, by_path: by_path) {
+        Present { value: fault } => fault
+        Absent =>
+          match workspace_restore_extra(restored: restored, barrier_paths: barrier_paths) {
+            Present { value: p } => RestoreExtraFile { path: p }
+            Absent => RestoreByteEqual { files: length(barrier) }
+          }
+      }
+  }
+}
+
+fn workspace_restore_first_uncommitted(restored: List<WorkspaceRestoredFile>, uncommitted: FabricBlobAddress) -> NonEmptyStr? {
+  match restored {
+    Empty => none
+    Cons { head: f, tail: rest } =>
+      if content_hash_eq_cryptographic(left: f.digest, right: uncommitted.key) { Present { value: f.path } } else { workspace_restore_first_uncommitted(restored: rest, uncommitted: uncommitted) }
+  }
+}
+
+fn workspace_restore_barrier_fault(barrier: List<WorkspaceEntry>, by_path: Map<String, Sha256Digest>) -> WorkspaceRestoreComparison? {
+  match barrier {
+    Empty => none
+    Cons { head: e, tail: rest } =>
+      match map_get(by_path, e.path as String) {
+        Absent => Present { value: RestoreMissingFile { path: e.path } }
+        Present { value: d } =>
+          if content_hash_eq_cryptographic(left: d, right: e.chunk.key) { workspace_restore_barrier_fault(barrier: rest, by_path: by_path) } else { Present { value: RestoreBytesDiffer { path: e.path } } }
+      }
+  }
+}
+
+fn workspace_restore_extra(restored: List<WorkspaceRestoredFile>, barrier_paths: Map<String, Bool>) -> NonEmptyStr? {
+  match restored {
+    Empty => none
+    Cons { head: f, tail: rest } =>
+      match map_get(barrier_paths, f.path as String) {
+        Absent => Present { value: f.path }
+        Present { value: _ } => workspace_restore_extra(restored: rest, barrier_paths: barrier_paths)
+      }
+  }
+}
+
+fn workspace_restore_point_carries(point: WorkspaceRestorePoint, chunk: FabricBlobAddress) -> Bool {
+  match point {
+    WorkspaceRestoreEmpty => false
+    WorkspaceRestoreRevision { revision: _, entries: es } => any(es, e => fabric_blob_address_eq(a: e.chunk, b: chunk))
+  }
+}
+
+fn workspace_restore_words(c: WorkspaceRestoreComparison) -> String {
+  match c {
+    RestoreByteEqual { files: n } => join(["byte-equal files=", to_string(n)], "")
+    RestoreMissingFile { path: p } => join(["missing ", p as String], "")
+    RestoreExtraFile { path: p } => join(["extra ", p as String], "")
+    RestoreBytesDiffer { path: p } => join(["bytes-differ ", p as String], "")
+    RestoreCarriesUncommittedChunk { path: p } => join(["carries-uncommitted-chunk ", p as String], "")
+  }
+}
+
+// ── EFFECTS: THE HEAD, ITS CLOSURE, AND THE CHUNKS ─────────────────────────────────────────────
+
+data workspace_head_prefix: NonEmptyStr = "heads/"
+
+type WorkspaceHeadBinding
+  = WorkspaceHeadBound { binding: R2HeadBinding }
+  | WorkspaceHeadUnbound { cause: NonEmptyStr }
+
+fn workspace_head_key(workspace: NonEmptyStr) -> NonEmptyStr {
+  concat(workspace_head_prefix as String, workspace_head_name(workspace: workspace) as String) as NonEmptyStr
+}
+
+// ONE LOCATOR, TWO CREDENTIALS, both resolved from the workspace bucket's standing
+// (gunbc.cloudflare.r2_origin fabric_workspace_standing), so an unminted credential refuses here,
+// typed, before any network call.
+fn workspace_head_binding(workspace: NonEmptyStr) -> WorkspaceHeadBinding {
+  let key = workspace_head_key(workspace: workspace)
+  match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: key, purpose: FabricWorkspace {}) {
+    FabricBlobTargetRefused { cause: c } => WorkspaceHeadUnbound { cause: c }
+    FabricBlobTargetReady { target: r } =>
+      match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: key, purpose: FabricWorkspace {}) {
+        FabricBlobTargetRefused { cause: c } => WorkspaceHeadUnbound { cause: c }
+        FabricBlobTargetReady { target: w } =>
+          WorkspaceHeadBound {
+            binding: r2_head_binding(
+              locator: r.locator,
+              read: R2HeadCredential { access_key_id: r.access_key_id, token_value: r.token_value },
+              write: R2HeadCredential { access_key_id: w.access_key_id, token_value: w.token_value },
+            )
+          }
+      }
+  }
+}
+
+type WorkspaceStoredEntryRead
+  = WorkspaceStoredEntryHeld { stored: WorkspaceStoredEntry, custody: WorkspaceCustody }
+  | WorkspaceStoredEntryUnread { detail: String, custody: WorkspaceCustody }
+
+fn workspace_stored_entry_read(object: FabricObjectRef, token_source: AccessTokenSource) -> WorkspaceStoredEntryRead {
+  let got = get_fabric_object_r2(object: object, purpose: FabricWorkspace {}, token_source: token_source)
+  let custody = workspace_custody_of_staging(s: got.staging)
+  match got.get {
+    FabricObjectGetRefused { fault: f } => WorkspaceStoredEntryUnread { detail: fabric_storage_fault_wire(fault: f), custody: custody }
+    FabricObjectFetched { stored: st } =>
+      match workspace_head_entry_decode(object: st.content) {
+        Absent => WorkspaceStoredEntryUnread { detail: join(["the object ", fabric_object_ref_wire(object: object) as String, " is not a workspace head entry"], ""), custody: custody }
+        Present { value: decoded } =>
+          match workspace_stored_entry_of(asked: object, content: st.content, decoded: decoded) {
+            WorkspaceStoredEntryAdmitted { stored: s } => WorkspaceStoredEntryHeld { stored: s, custody: custody }
+            WorkspaceStoredBytesCorrupt { fault: f } => WorkspaceStoredEntryUnread { detail: fabric_storage_fault_wire(fault: f), custody: custody }
+            WorkspaceStoredEntryMismatch { ref: r } => WorkspaceStoredEntryUnread { detail: join(["the decoded entry does not re-encode to ", fabric_object_ref_wire(object: r) as String], ""), custody: custody }
+          }
+      }
+  }
+}
+
+// THE ENTRY THE HEAD NOW NAMES, for the classifier's moved arm. Any failure to read it is absence,
+// which the classifier answers as WorkspaceCommitObservedUndecoded -- never as a race.
+type WorkspaceObservedEntry {
+  entry: WorkspaceStoredEntry?
+  custody: WorkspaceCustody
+}
+
+fn workspace_observed_entry(binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceObservedEntry {
+  let head = r2_head_read(binding: binding, token_source: token_source)
+  let head_custody = workspace_custody_of_r2_staging(s: head.staging)
+  match head.read {
+    FabricHeadReadRefused { fault: _ } => WorkspaceObservedEntry { entry: none, custody: head_custody }
+    FabricHeadObserved { reading: FabricHeadAbsent } => WorkspaceObservedEntry { entry: none, custody: head_custody }
+    FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } =>
+      match workspace_stored_entry_read(object: o, token_source: token_source) {
+        WorkspaceStoredEntryHeld { stored: s, custody: c } => WorkspaceObservedEntry { entry: Present { value: s }, custody: workspace_custody_join(a: head_custody, b: c) }
+        WorkspaceStoredEntryUnread { detail: _, custody: c } => WorkspaceObservedEntry { entry: none, custody: workspace_custody_join(a: head_custody, b: c) }
+      }
+  }
+}
+
+// THE CLOSURE FROM THE HEAD, NEWEST FIRST, BOUNDED. Every step is a verified read of the parent the
+// previous entry links; exhausting the bound refuses rather than truncating, and an unreadable step
+// refuses rather than ending the chain early.
+type WorkspaceClosure
+  = WorkspaceClosureRead { newest_first: List<WorkspaceStoredEntry>, custody: WorkspaceCustody }
+  | WorkspaceClosureRefused { detail: String, custody: WorkspaceCustody }
+
+data workspace_closure_bound: Int = 64
+
+fn workspace_entry_parent(entry: WorkspaceHeadEntry) -> FabricObjectRef? {
+  match entry {
+    WorkspaceRevision { writer: _, parent: p, entries: _ } => p
+    WorkspaceFence { writer: _, parent: p } => p
+  }
+}
+
+// Entries and each step's custody are prepended and reversed once when the walk ends, so neither
+// is a copied accumulator (DESIGN 6, bare minimum cost).
+fn workspace_closure_from(object: FabricObjectRef?, token_source: AccessTokenSource, acc: List<WorkspaceStoredEntry>, budget: Int, custodies: List<WorkspaceCustody>) -> WorkspaceClosure {
+  match object {
+    Absent => WorkspaceClosureRead { newest_first: reverse(acc), custody: workspace_custody_all(cs: reverse(custodies)) }
+    Present { value: o } =>
+      if budget <= 0 {
+        WorkspaceClosureRefused { detail: join(["the closure exceeds ", to_string(workspace_closure_bound), " entries at ", fabric_object_ref_wire(object: o) as String], ""), custody: workspace_custody_all(cs: reverse(custodies)) }
+      } else {
+        match workspace_stored_entry_read(object: o, token_source: token_source) {
+          WorkspaceStoredEntryUnread { detail: d, custody: c } => WorkspaceClosureRefused { detail: d, custody: workspace_custody_all(cs: reverse(Cons { head: c, tail: custodies })) }
+          WorkspaceStoredEntryHeld { stored: s, custody: c } => workspace_closure_from(object: workspace_entry_parent(entry: workspace_stored_entry_entry(stored: s)), token_source: token_source, acc: Cons { head: s, tail: acc }, budget: budget - 1, custodies: Cons { head: c, tail: custodies })
+        }
+      }
+  }
+}
+
+fn workspace_closure(binding: R2HeadBinding, token_source: AccessTokenSource) -> WorkspaceClosure {
+  let head = r2_head_read(binding: binding, token_source: token_source)
+  let custody = workspace_custody_of_r2_staging(s: head.staging)
+  match head.read {
+    FabricHeadReadRefused { fault: f } => WorkspaceClosureRefused { detail: fabric_storage_fault_wire(fault: f), custody: custody }
+    FabricHeadObserved { reading: FabricHeadAbsent } => WorkspaceClosureRead { newest_first: [], custody: custody }
+    FabricHeadObserved { reading: FabricHeadAt { object: o, generation: _ } } => workspace_closure_from(object: Present { value: o }, token_source: token_source, acc: [], budget: workspace_closure_bound, custodies: [custody])
+  }
+}
+
+// ── UPLOADING A TREE AS CONTENT-ADDRESSED CHUNKS ───────────────────────────────────────────────
+//
+// Every regular file is one chunk addressed by the SHA-256 of its bytes (std.fabric_blob), put
+// create-only: a chunk already in the bucket answers occupied and is not re-sent, so a second
+// checkpoint uploads only changed content. A symbolic link is not a std.checkpointed_workspace entry
+// (an entry is path, chunk, size), so links are counted and named as not carried, never followed.
+type WorkspaceUpload
+  = WorkspaceUploaded { entries: List<WorkspaceEntry>, stored: Int, occupied: Int, bytes: ByteSize, symlinks: Int, custody: WorkspaceCustody }
+  | WorkspaceUploadRefused { detail: String, custody: WorkspaceCustody }
+
+// ONE ENUMERATION LINE'S OUTCOME. The lines are mapped once and then summarized, so the cost is
+// linear in the file count: an accumulator copied per file would make a twenty-thousand-file
+// workspace quadratic (DESIGN 6, bare minimum cost).
+type WorkspaceChunkOutcome
+  = ChunkStored { entry: WorkspaceEntry, custody: WorkspaceCustody }
+  | ChunkOccupied { entry: WorkspaceEntry, custody: WorkspaceCustody }
+  | ChunkSymlinkNotCarried
+  | ChunkRefused { detail: String, custody: WorkspaceCustody }
+
+fn workspace_upload_tree(root: NonEmptyStr, token_source: AccessTokenSource) -> WorkspaceUpload {
+  let listing = shell.Find.FilesAndSymlinksWithMode(root: root as FilePath)
+  if listing.success == false {
+    WorkspaceUploadRefused { detail: concat("the workspace could not be enumerated: ", listing.stderr), custody: workspace_custody_clean }
+  } else {
+    workspace_upload_summary(outcomes: map(filter(split(listing.stdout, separator: "\n"), l => l != ""), l => workspace_chunk_of_line(root: root, line: l, token_source: token_source)))
+  }
+}
+
+fn workspace_chunk_custody(o: WorkspaceChunkOutcome) -> WorkspaceCustody {
+  match o {
+    ChunkStored { entry: _, custody: c } => c
+    ChunkOccupied { entry: _, custody: c } => c
+    ChunkRefused { detail: _, custody: c } => c
+    ChunkSymlinkNotCarried => workspace_custody_clean
+  }
+}
+
+fn workspace_upload_summary(outcomes: List<WorkspaceChunkOutcome>) -> WorkspaceUpload {
+  let custody = workspace_custody_all(cs: map(outcomes, o => workspace_chunk_custody(o: o)))
+  let refusals = flat_map(outcomes, o => match o {
+    ChunkRefused { detail: d, custody: _ } => [d]
+    ChunkStored { entry: _, custody: _ } => []
+    ChunkOccupied { entry: _, custody: _ } => []
+    ChunkSymlinkNotCarried => []
+  })
+  match refusals {
+    Cons { head: d, tail: rest } => WorkspaceUploadRefused { detail: join([d, " (", to_string(length(rest)), " further refusals)"], ""), custody: custody }
+    Empty => {
+      let entries = flat_map(outcomes, o => match o {
+        ChunkStored { entry: e, custody: _ } => [e]
+        ChunkOccupied { entry: e, custody: _ } => [e]
+        ChunkSymlinkNotCarried => []
+        ChunkRefused { detail: _, custody: _ } => []
+      })
+      WorkspaceUploaded {
+        entries: entries,
+        stored: length(filter(outcomes, o => match o { ChunkStored { entry: _, custody: _ } => true  ChunkOccupied { entry: _, custody: _ } => false  ChunkSymlinkNotCarried => false  ChunkRefused { detail: _, custody: _ } => false })),
+        occupied: length(filter(outcomes, o => match o { ChunkOccupied { entry: _, custody: _ } => true  ChunkStored { entry: _, custody: _ } => false  ChunkSymlinkNotCarried => false  ChunkRefused { detail: _, custody: _ } => false })),
+        bytes: byte_size(count: fold(entries, init: 0, f: (acc, e) => acc + measure_count(m: e.size))),
+        symlinks: length(filter(outcomes, o => match o { ChunkSymlinkNotCarried => true  ChunkStored { entry: _, custody: _ } => false  ChunkOccupied { entry: _, custody: _ } => false  ChunkRefused { detail: _, custody: _ } => false })),
+        custody: custody,
+      }
+    }
+  }
+}
+
+fn workspace_chunk_of_line(root: NonEmptyStr, line: String, token_source: AccessTokenSource) -> WorkspaceChunkOutcome {
+  match split(line, separator: "\t") {
+    Cons { head: kind, tail: Cons { head: _, tail: Cons { head: relative, tail: _ } } } =>
+      if kind == "l" {
+        ChunkSymlinkNotCarried
+      } else if kind == "f" && relative != "" {
+        workspace_chunk_of_file(root: root, relative: relative, token_source: token_source)
+      } else {
+        ChunkRefused { detail: concat("an enumeration line is not a file or symlink record: ", line), custody: workspace_custody_clean }
+      }
+    Cons { head: _, tail: _ } => ChunkRefused { detail: concat("an enumeration line is not a file or symlink record: ", line), custody: workspace_custody_clean }
+    Empty => ChunkRefused { detail: "an empty enumeration line", custody: workspace_custody_clean }
+  }
+}
+
+fn workspace_chunk_of_file(root: NonEmptyStr, relative: String, token_source: AccessTokenSource) -> WorkspaceChunkOutcome {
+  match read_staged_fabric_blob(path: join([root as String, "/", relative], "") as NonEmptyStr) {
+    FabricBlobReadRefused { fault: f } => ChunkRefused { detail: join([relative, ": ", fabric_blob_fault_text(fault: f)], ""), custody: workspace_custody_clean }
+    FabricBlobRead { reading: r } => {
+      let address = FabricBlobAddress { key: fabric_blob_reading_digest(reading: r) }
+      let entry = WorkspaceEntry { path: relative as NonEmptyStr, chunk: address, size: fabric_blob_reading_size(reading: r) }
+      let put = put_workspace_chunk(address: address, reading: r, token_source: token_source)
+      let custody = workspace_custody_of_credential(c: put.credential)
+      match put.verdict {
+        FabricBlobStored { address: _ } => ChunkStored { entry: entry, custody: custody }
+        FabricBlobOccupied { address: _ } => ChunkOccupied { entry: entry, custody: custody }
+        FabricBlobPutRefused { address: _, fault: _ } => ChunkRefused { detail: join([relative, ": ", workspace_put_words(put: put.verdict)], ""), custody: custody }
+        FabricBlobPutOutcomeUnknown { address: _, cause: _ } => ChunkRefused { detail: join([relative, ": ", workspace_put_words(put: put.verdict)], ""), custody: custody }
+        FabricBlobPutRefusedTooLarge { address: _, size: _, bound: _ } => ChunkRefused { detail: join([relative, ": ", workspace_put_words(put: put.verdict)], ""), custody: custody }
+      }
+    }
+  }
+}
+
+fn workspace_run_refusal(run: ProcessRunOutcome) -> String? {
+  match run {
+    ProcessNotSpawned { program: p, cause: c } => Present { value: join([p as String, " did not run: ", c as String], "") }
+    ProcessRan { observation: o } => if o.exit_code == 0 { none } else { Present { value: join(["exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+  }
+}
+
+fn workspace_run_local(command: ArgvCommand) -> ProcessRunOutcome {
+  run_shell_command_observe_outcome(command: command, transport: LocalExec)
+}
+
+fn workspace_ms_words(n: Nanosecond) -> String {
+  join([to_string(nanosecond_count(n: n) / 1000000), "ms"], "")
+}
+
+// ── THE DISPATCH SUBJECT ───────────────────────────────────────────────────────────────────────
+
+data workspace_checkpoint_host: NonEmptyStr = "srv3"
+
+data workspace_source_object_env: NonEmptyStr = "WORKSPACE_SOURCE_OBJECT"
+
+data workspace_measure_receipt_path: String = "target/workspace-checkpoint-measure-receipt.txt"
+
+data workspace_restore_receipt_path: String = "target/workspace-checkpoint-restore-receipt.txt"
+
+fn workspace_this_host() -> String {
+  match hostname_short_read(transport: LocalShell) {
+    HostnameShortCaptured { value: v } => v
+    HostnameShortCaptureRefused { reason: _ } => ""
+  }
+}
+
+fn workspace_run_identity() -> String {
+  match actions_variable_read(name: "GITHUB_RUN_ID") {
+    ActionsVariablePresent { value: v } => replace(v, "\n", "")
+    ActionsVariableAbsent { variable: _, detail: _ } => ""
+  }
+}
+
+fn workspace_finish(path: String, receipt: String, outcome: ProcessExit) -> ProcessExit {
+  let w = Filesystem.Write(path: path, content: receipt)
+  if w.success == false {
+    exit_failure(reason: join(["workspace_checkpoint: receipt write failed: ", w.error, "\n", receipt], ""))
+  } else {
+    outcome
+  }
+}
+
+type WorkspaceRunSubject
+  = WorkspaceRunAdmitted { run: NonEmptyStr, token_source: AccessTokenSource }
+  | WorkspaceRunRefused { reason: String }
+
+fn workspace_run_subject() -> WorkspaceRunSubject {
+  let host = workspace_this_host()
+  let run = workspace_run_identity()
+  if host != (workspace_checkpoint_host as String) {
+    WorkspaceRunRefused { reason: join(["the instrument is pinned to ", workspace_checkpoint_host as String, " but this job runs on '", host, "'"], "") }
+  } else if run == "" {
+    WorkspaceRunRefused { reason: "GITHUB_RUN_ID is not set; the workspace name is derived from the run and a run without one has no workspace" }
+  } else {
+    match select_access_token_source() {
+      AccessTokenSourceUnavailable { cause: c } => WorkspaceRunRefused { reason: c as String }
+      AccessTokenSourceSelected { source: s } => WorkspaceRunAdmitted { run: run as NonEmptyStr, token_source: s }
+    }
+  }
+}
+
+// THE PARENT THE WORKSPACE LIVES UNDER IS THE JOB USER'S HOME: whether that filesystem can be
+// snapshotted is exactly the observation, and a parent this instrument chose for convenience would
+// answer a different question than "can this runner checkpoint a workspace it holds".
+fn workspace_parent() -> NonEmptyStr? {
+  match shell.Env.Get(name: "HOME").value {
+    Absent => none
+    Present { value: h } => if h == "" { none } else { Present { value: join([h, "/gunbc-workspace-instrument"], "") as NonEmptyStr } }
+  }
+}
+
+// ── KOPIA, PLACED UNDER THE RUN'S OWN DIRECTORY ────────────────────────────────────────────────
+//
+// The runner installs nothing system-wide: the pinned release asset for this machine's architecture
+// is downloaded into the run's scratch, its SHA-256 compared with the digest extdeps.tools.kopia
+// pins, and only then extracted. A mismatched or unknown architecture refuses.
+type KopiaPlacement
+  = KopiaPlaced { binary: NonEmptyStr }
+  | KopiaUnplaced { cause: String }
+
+fn kopia_asset_for(kopia: KopiaRelease, machine: String) -> KopiaAsset? {
+  if machine == "aarch64" {
+    Present { value: KopiaAsset { name: kopia.asset_aarch64, digest: kopia.digest_aarch64 } }
+  } else if machine == "x86_64" {
+    Present { value: KopiaAsset { name: kopia.asset_x86_64, digest: kopia.digest_x86_64 } }
+  } else {
+    none
+  }
+}
+
+type KopiaAsset {
+  name: NonEmptyStr
+  digest: Digest
+}
+
+fn kopia_place(scratch: NonEmptyStr) -> KopiaPlacement {
+  let machine = shell.Uname.Machine()
+  match kopia_asset_for(kopia: kopia_release, machine: replace(machine.machine, "\n", "")) {
+    Absent => KopiaUnplaced { cause: join(["no pinned kopia asset for machine '", replace(machine.machine, "\n", ""), "'"], "") }
+    Present { value: asset } => {
+      let archive = join([scratch as String, "/", asset.name as String], "")
+      let dir = join([scratch as String, "/kopia-bin"], "")
+      match workspace_run_refusal(run: workspace_run_local(command: curl_download_command(url: kopia_release_download_url(kopia: kopia_release, asset: asset.name), destination: archive))) {
+        Present { value: why } => KopiaUnplaced { cause: concat("the kopia release could not be downloaded: ", why) }
+        Absent =>
+          match read_staged_fabric_blob(path: archive as NonEmptyStr) {
+            FabricBlobReadRefused { fault: f } => KopiaUnplaced { cause: fabric_blob_fault_text(fault: f) }
+            FabricBlobRead { reading: r } =>
+              if fabric_blob_reading_digest(reading: r).hex != (asset.digest.hex as String) {
+                KopiaUnplaced { cause: join(["the downloaded ", asset.name as String, " has SHA-256 ", fabric_blob_reading_digest(reading: r).hex, ", not the pinned ", asset.digest.hex as String], "") }
+              } else {
+                let made = shell.Mkdir.Parents(path: dir as FilePath)
+                match workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: archive, into_directory: dir, strip_components: kopia_release_strip_components))) {
+                  Present { value: why } => KopiaUnplaced { cause: concat("the kopia release could not be extracted: ", why) }
+                  Absent => KopiaPlaced { binary: join([dir, "/kopia"], "") as NonEmptyStr }
+                }
+              }
+          }
+      }
+    }
+  }
+}
+
+// THE SCAN: a fresh filesystem repository in the run's scratch, then one timed `snapshot create` of
+// the read-only snapshot, so the tool reads the same frozen tree the chunk upload reads. Only the
+// snapshot create is timed; repository creation is setup.
+type KopiaScan
+  = KopiaScanned { part: WorkspaceMeasuredPart, summary: KopiaSnapshotSummary? }
+  | KopiaScanRefused { cause: String }
+
+fn kopia_scan(scratch: NonEmptyStr, source: NonEmptyStr) -> KopiaScan {
+  match kopia_place(scratch: scratch) {
+    KopiaUnplaced { cause: c } => KopiaScanRefused { cause: c }
+    KopiaPlaced { binary: b } => {
+      let program = kopia_program_at(path: b)
+      let config = join([scratch as String, "/kopia.config"], "")
+      let logs = join([scratch as String, "/kopia-logs"], "")
+      let password = "workspace-checkpoint-instrument-scratch-repository"
+      match workspace_run_refusal(run: workspace_run_local(command: kopia_repository_create_filesystem_command(program: program, repository: join([scratch as String, "/kopia-repo"], ""), config_file: config, password: password, cache_directory: join([scratch as String, "/kopia-cache"], ""), log_directory: logs))) {
+        Present { value: why } => KopiaScanRefused { cause: concat("kopia repository create: ", why) }
+        Absent => {
+          let start = workspace_instant(label: "workspace-kopia-scan-start")
+          let run = workspace_run_local(command: kopia_snapshot_create_command(program: program, source: source as String, config_file: config, password: password, log_directory: logs))
+          let scanned = workspace_part_since(part: "scan", start: start, end_label: "workspace-kopia-scan-end")
+          match run {
+            ProcessNotSpawned { program: p, cause: c } => KopiaScanRefused { cause: join([p as String, " did not run: ", c as String], "") }
+            ProcessRan { observation: o } =>
+              if o.exit_code != 0 { KopiaScanRefused { cause: join(["kopia snapshot create exit ", to_string(o.exit_code), ": ", o.stderr], "") } } else { KopiaScanned { part: scanned, summary: kopia_snapshot_summary_of(manifest: o.stdout) } }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn kopia_scan_words(scan: KopiaScan) -> String {
+  match scan {
+    KopiaScanRefused { cause: c } => join(["scan=refused ", c], "")
+    KopiaScanned { part: p, summary: s } =>
+      join(["scan_tool=kopia-", kopia_release.version as String, " ", workspace_part_words(p: p), match s {
+        Present { value: k } => join([" kopia_files=", to_string(k.files), " kopia_bytes=", to_string(measure_count(m: k.bytes))], "")
+        Absent => " kopia_summary=unread"
+      }], "")
+  }
+}
+
+fn kopia_scan_part(scan: KopiaScan) -> WorkspaceMeasuredPart {
+  match scan {
+    KopiaScanned { part: p, summary: _ } => p
+    KopiaScanRefused { cause: c } => PartUnmeasured { label: "scan", reason: c }
+  }
+}
+
+// ── STAGE 0: MEASURE ───────────────────────────────────────────────────────────────────────────
+
+fn workspace_checkpoint_measure_wet() -> ProcessExit {
+  match workspace_run_subject() {
+    WorkspaceRunRefused { reason: r } => workspace_finish(path: workspace_measure_receipt_path, receipt: join(["workspace_checkpoint_measure verdict=refused-subject ", r, "\n"], ""), outcome: exit_failure(reason: concat("workspace_checkpoint_measure: ", r)))
+    WorkspaceRunAdmitted { run: run, token_source: ts } =>
+      match workspace_parent() {
+        Absent => workspace_finish(path: workspace_measure_receipt_path, receipt: "workspace_checkpoint_measure verdict=refused-no-home\n", outcome: exit_failure(reason: "workspace_checkpoint_measure: HOME is unset, so the workspace has no parent"))
+        Present { value: parent } => {
+          let made = shell.Mkdir.Parents(path: parent as FilePath)
+          let fs = stat.File.FilesystemType(path: parent as String)
+          let capability = workspace_snapshot_capability(parent: parent, observed: made.success && fs.success, type_word: fs.type_word)
+          let head = join(["workspace_checkpoint_measure host=", workspace_checkpoint_host as String, " run=", run as String, "\n", "snapshot_capability=", workspace_snapshot_capability_words(c: capability), "\n"], "")
+          match capability {
+            WorkspaceSnapshotAbsent { parent: _, filesystem_type: _ } => workspace_finish(path: workspace_measure_receipt_path, receipt: concat(head, "verdict=refused-no-snapshot-capability\n"), outcome: exit_failure(reason: concat("workspace_checkpoint_measure: no snapshot capability; a plain copy is not substituted: ", workspace_snapshot_capability_words(c: capability))))
+            WorkspaceSnapshotUnobserved { parent: _, detail: _ } => workspace_finish(path: workspace_measure_receipt_path, receipt: concat(head, "verdict=refused-capability-unobserved\n"), outcome: exit_failure(reason: concat("workspace_checkpoint_measure: ", workspace_snapshot_capability_words(c: capability))))
+            WorkspaceSnapshotBtrfs { parent: p } => workspace_measure_on_btrfs(parent: p, run: run, token_source: ts, head: head)
+          }
+        }
+      }
+  }
+}
+
+fn workspace_source_address() -> FabricBlobAddress? {
+  match actions_variable_read(name: workspace_source_object_env as String) {
+    ActionsVariableAbsent { variable: _, detail: _ } => none
+    ActionsVariablePresent { value: v } =>
+      match sha256_hex_digest(hex: replace(v, "\n", "")) {
+        Absent => none
+        Present { value: d } => Present { value: FabricBlobAddress { key: d } }
+      }
+  }
+}
+
+fn workspace_measure_fail(head: String, verdict: String, why: String, custody: WorkspaceCustody) -> ProcessExit {
+  workspace_finish(path: workspace_measure_receipt_path, receipt: join([head, workspace_custody_words(c: custody), "\nverdict=", verdict, "\n"], ""), outcome: workspace_exit_with_custody(outcome: exit_failure(reason: concat("workspace_checkpoint_measure: ", why)), custody: custody))
+}
+
+fn workspace_measure_on_btrfs(parent: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, head: String) -> ProcessExit {
+  match workspace_source_address() {
+    Absent => workspace_measure_fail(head: head, verdict: "refused-no-source-object", why: join([workspace_source_object_env as String, " does not name a 64-digit lower-hex SHA-256 (the address the srv1 source pack published)"], ""), custody: workspace_custody_clean)
+    Present { value: source } =>
+      match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: workspace_head_key(workspace: concat("stage0-", run as String) as NonEmptyStr), purpose: FabricWorkspace {}) {
+        FabricBlobTargetRefused { cause: c } => workspace_measure_fail(head: head, verdict: "refused-bucket-unbound", why: c as String, custody: workspace_custody_clean)
+        FabricBlobTargetReady { target: _ } => {
+          let workspace = join([parent as String, "/ws-", run as String], "")
+          let snapshot = join([parent as String, "/ws-", run as String, "-snapshot"], "")
+          let scratch = shell.Mktemp.Dir()
+          match workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_create_command(path: workspace))) {
+            Present { value: why } => workspace_measure_fail(head: head, verdict: "refused-subvolume-create", why: concat("the workspace subvolume could not be created: ", why), custody: workspace_custody_clean)
+            Absent =>
+              let fetched = get_fabric_blob(address: source, key: fabric_workspace_source_key(address: source), purpose: FabricWorkspace {}, token_source: token_source)
+              match fetched.verdict {
+                FabricBlobAbsent { address: _ } => workspace_measure_fail(head: head, verdict: "refused-source-absent", why: join(["no source object at ", fabric_workspace_source_key(address: source) as String], ""), custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)))
+                FabricBlobGetUnavailable { address: _, fault: f } => workspace_measure_fail(head: head, verdict: "refused-source-unavailable", why: fabric_blob_fault_text(fault: f), custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)))
+                FabricBlobFetched { address: _, reading: r } =>
+                  if !content_hash_eq_cryptographic(left: fabric_blob_reading_digest(reading: r), right: source.key) {
+                    workspace_measure_fail(head: head, verdict: "refused-source-digest-mismatch", why: join(["the fetched source hashes to ", fabric_blob_reading_digest(reading: r).hex, ", not the dispatched address"], ""), custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)))
+                  } else {
+                    let extracted = workspace_run_refusal(run: workspace_run_local(command: tar_extract_command(archive: fabric_blob_reading_path(reading: r) as String, into_directory: workspace, strip_components: 0)))
+                    let source_custody = workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging))
+                    match extracted {
+                      Present { value: why } => workspace_measure_fail(head: head, verdict: "refused-source-extract", why: concat("the source archive could not be extracted: ", why), custody: source_custody)
+                      Absent => workspace_measure_extracted(workspace: workspace as NonEmptyStr, snapshot: snapshot as NonEmptyStr, scratch: scratch.path as NonEmptyStr, run: run, token_source: token_source, custody: source_custody, head: concat(head, join(["source_object=", fabric_blob_object_name(address: source) as String, " source_bytes=", to_string(measure_count(m: fabric_blob_reading_size(reading: r))), "\n"], "")))
+                    }
+                  }
+              }
+          }
+        }
+      }
+  }
+}
+
+fn workspace_measure_extracted(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody, head: String) -> ProcessExit {
+  let snap_start = workspace_instant(label: "workspace-snapshot-start")
+  let snap_refusal = workspace_run_refusal(run: workspace_run_local(command: btrfs_subvolume_snapshot_read_only_command(source: workspace as String, destination: snapshot as String)))
+  let snap = workspace_part_since(part: "snapshot", start: snap_start, end_label: "workspace-snapshot-end")
+  match snap_refusal {
+    Present { value: why } => workspace_measure_fail(head: concat(head, "snapshot_method=btrfs-subvolume-snapshot-ro\n"), verdict: "refused-snapshot", why: concat("the snapshot failed: ", why), custody: custody)
+    Absent => {
+      let scan = kopia_scan(scratch: scratch, source: snapshot)
+      let up_start = workspace_instant(label: "workspace-upload-start")
+      let upload = workspace_upload_tree(root: snapshot, token_source: token_source)
+      let upload_timed = workspace_part_since(part: "upload", start: up_start, end_label: "workspace-upload-end")
+      workspace_measure_report(workspace: workspace, snapshot: snapshot, scratch: scratch, run: run, token_source: token_source, custody: custody, head: head, snap: snap, scan: scan, upload: upload, upload_timed: upload_timed)
+    }
+  }
+}
+
+fn workspace_measure_report(workspace: NonEmptyStr, snapshot: NonEmptyStr, scratch: NonEmptyStr, run: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody, head: String, snap: WorkspaceMeasuredPart, scan: KopiaScan, upload: WorkspaceUpload, upload_timed: WorkspaceMeasuredPart) -> ProcessExit {
+  let writer = WorkspaceWriterEpoch { workspace: join(["stage0-", run as String], "") as NonEmptyStr, epoch: 1 }
+  let timed_commit = match upload {
+    WorkspaceUploadRefused { detail: d, custody: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: concat("the upload refused: ", d) }, custody: workspace_custody_clean }
+    WorkspaceUploaded { entries: es, stored: _, occupied: _, bytes: _, symlinks: _, custody: _ } => workspace_timed_commit(writer: writer, entries: es, token_source: token_source)
+  }
+  let upload_part = match upload {
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _, custody: _ } => upload_timed
+    WorkspaceUploadRefused { detail: d, custody: _ } => PartUnmeasured { label: "upload", reason: d }
+  }
+  let upload_custody = match upload {
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: _, symlinks: _, custody: c } => c
+    WorkspaceUploadRefused { detail: _, custody: c } => c
+  }
+  let run_custody = workspace_custody_all(cs: [custody, upload_custody, timed_commit.custody])
+  let snapshot_parts = [snap, upload_part, timed_commit.part]
+  let scan_parts = [kopia_scan_part(scan: scan), upload_part, timed_commit.part]
+  let n = workspace_draft_numbers
+  let upload_words = match upload {
+    WorkspaceUploaded { entries: es, stored: st, occupied: oc, bytes: b, symlinks: sl, custody: _ } =>
+      join(["files=", to_string(length(es)), " bytes=", to_string(measure_count(m: b)), " chunks_uploaded=", to_string(st), " chunks_already_present=", to_string(oc), " symlinks_not_carried=", to_string(sl), " ", workspace_part_words(p: upload_timed)], "")
+    WorkspaceUploadRefused { detail: d, custody: _ } => join(["upload=refused ", d], "")
+  }
+  let quota_line = match upload {
+    WorkspaceUploaded { entries: _, stored: _, occupied: _, bytes: b, symlinks: _, custody: _ } => workspace_quota_words(v: workspace_quota_verdict(size: b, quota: n.quota))
+    WorkspaceUploadRefused { detail: _, custody: _ } => "quota=undecided (the upload refused, so no byte total was established)"
+  }
+  let cleanup = join([
+    "cleanup snapshot=", if process_ok(run: workspace_run_local(command: btrfs_subvolume_delete_command(path: snapshot as String))) { "deleted" } else { "retained" },
+    " workspace=", if process_ok(run: workspace_run_local(command: btrfs_subvolume_delete_command(path: workspace as String))) { "deleted" } else { "retained" },
+    " scratch=", if shell.Remove.RecursiveForce(path: scratch as FilePath).success { "removed" } else { "retained" },
+  ], "")
+  let receipt = join([
+    head,
+    "snapshot_method=btrfs-subvolume-snapshot-ro ", workspace_part_words(p: snap), "\n",
+    kopia_scan_words(scan: scan), "\n",
+    upload_words, "\n",
+    "commit=", match timed_commit.commit { Present { value: c } => workspace_commit_words(c: c)  Absent => "not-attempted" }, " ", workspace_part_words(p: timed_commit.part), "\n",
+    workspace_bound_words(name: "snapshot_path_vs_target", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.checkpoint_target)), "\n",
+    workspace_bound_words(name: "snapshot_path_vs_window", parts: snapshot_parts, v: workspace_bound_verdict(parts: snapshot_parts, bound: n.window)), "\n",
+    workspace_bound_words(name: "scan_path_vs_target", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.checkpoint_target)), "\n",
+    workspace_bound_words(name: "scan_path_vs_window", parts: scan_parts, v: workspace_bound_verdict(parts: scan_parts, bound: n.window)), "\n",
+    quota_line, "\n",
+    cleanup, "\n",
+    workspace_custody_words(c: run_custody), "\n",
+  ], "")
+  let committed = match timed_commit.commit { Present { value: c } => workspace_commit_is_committed(c: c)  Absent => false }
+  if committed {
+    workspace_finish(path: workspace_measure_receipt_path, receipt: concat(receipt, "verdict=measured\n"), outcome: workspace_exit_with_custody(outcome: ExitSuccess, custody: run_custody))
+  } else {
+    workspace_finish(path: workspace_measure_receipt_path, receipt: concat(receipt, "verdict=measured-uncommitted\n"), outcome: workspace_exit_with_custody(outcome: exit_failure(reason: concat("workspace_checkpoint_measure: the checkpoint did not commit; the receipt carries every measured part\n", receipt)), custody: run_custody))
+  }
+}
+
+fn process_ok(run: ProcessRunOutcome) -> Bool {
+  match workspace_run_refusal(run: run) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+type WorkspaceTimedCommit {
+  commit: WorkspaceInstrumentCommit?
+  part: WorkspaceMeasuredPart
+  custody: WorkspaceCustody
+}
+
+// THE COMMIT, TIMED ONLY WHEN IT COMMITTED: a refused or unknown commit has no commit time, and its
+// absence is a named unmeasured part rather than the time a refusal took.
+fn workspace_timed_commit(writer: WorkspaceWriterEpoch, entries: List<WorkspaceEntry>, token_source: AccessTokenSource) -> WorkspaceTimedCommit {
+  match workspace_head_binding(workspace: writer.workspace) {
+    WorkspaceHeadUnbound { cause: c } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: c as String }, custody: workspace_custody_clean }
+    WorkspaceHeadBound { binding: b } =>
+      match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: entries }, built_on: none) {
+        WorkspaceAdvancePlanned { plan: plan } => {
+          let start = workspace_instant(label: "workspace-commit-start")
+          let attempt = workspace_instrument_commit(admission: r2_head_cas_admission(ground: r2_head_cas_ground()), plan: plan, binding: b, token_source: token_source)
+          let commit_timed = workspace_part_since(part: "commit", start: start, end_label: "workspace-commit-end")
+          WorkspaceTimedCommit {
+            commit: Present { value: attempt.commit },
+            part: if workspace_commit_is_committed(c: attempt.commit) { commit_timed } else { PartUnmeasured { label: "commit", reason: workspace_commit_words(c: attempt.commit) } },
+            custody: attempt.custody,
+          }
+        }
+        WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as stale" }, custody: workspace_custody_clean }
+        WorkspaceRevisionEpochNotCurrent { writer_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry's epoch" }, custody: workspace_custody_clean }
+        WorkspaceAdvanceForeignWorkspace { writer: _, built_on: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a first entry as foreign" }, custody: workspace_custody_clean }
+        WorkspaceFenceNotLater { fence_epoch: _, current_epoch: _ } => WorkspaceTimedCommit { commit: none, part: PartUnmeasured { label: "commit", reason: "the plan refused a revision as a fence" }, custody: workspace_custody_clean }
+      }
+  }
+}
+
+// ── STAGE 1: CREATE, EDIT, BARRIER, UNCOMMITTED UPLOAD, DESTROY, RECREATE ──────────────────────
+//
+// The workspace is small and authored here because the claim is about the CONTRACT, not the size:
+// restore selects the last committed revision and nothing else. The files are written, one is then
+// edited (so the barrier holds the edit, not the first write), the tree is committed, and one more
+// chunk is put with no head advance -- an upload that a crash between chunk and commit would leave.
+
+type WorkspaceAuthoredFile {
+  path: NonEmptyStr
+  content: String
+}
+
+data workspace_restore_first_writes: List<WorkspaceAuthoredFile> = [
+  WorkspaceAuthoredFile { path: "README.md", content: "workspace stage 1: first write\n" },
+  WorkspaceAuthoredFile { path: "src/a.txt", content: "alpha\n" },
+  WorkspaceAuthoredFile { path: "src/nested/b.txt", content: "beta\n" },
+]
+
+data workspace_restore_edit: WorkspaceAuthoredFile = WorkspaceAuthoredFile { path: "README.md", content: "workspace stage 1: edited before the barrier\n" }
+
+fn workspace_dirname(path: String) -> String {
+  let parts = split(path, separator: "/")
+  join(take(parts, n: length(parts) - 1), "/")
+}
+
+fn workspace_write_authored(dir: NonEmptyStr, file: WorkspaceAuthoredFile) -> Bool {
+  let target = join([dir as String, "/", file.path as String], "")
+  let made = shell.Mkdir.Parents(path: workspace_dirname(path: target) as FilePath)
+  made.success && Filesystem.Write(path: target, content: file.content).success
+}
+
+fn workspace_restore_fail(head: String, verdict: String, why: String, custody: WorkspaceCustody) -> ProcessExit {
+  workspace_finish(path: workspace_restore_receipt_path, receipt: join([head, workspace_custody_words(c: custody), "\nverdict=", verdict, "\n"], ""), outcome: workspace_exit_with_custody(outcome: exit_failure(reason: concat("workspace_checkpoint_restore: ", why)), custody: custody))
+}
+
+fn workspace_checkpoint_restore_wet() -> ProcessExit {
+  match workspace_run_subject() {
+    WorkspaceRunRefused { reason: r } => workspace_finish(path: workspace_restore_receipt_path, receipt: join(["workspace_checkpoint_restore verdict=refused-subject ", r, "\n"], ""), outcome: exit_failure(reason: concat("workspace_checkpoint_restore: ", r)))
+    WorkspaceRunAdmitted { run: run, token_source: ts } => {
+      let writer = WorkspaceWriterEpoch { workspace: join(["stage1-", run as String], "") as NonEmptyStr, epoch: 1 }
+      let head = join(["workspace_checkpoint_restore host=", workspace_checkpoint_host as String, " run=", run as String, " workspace=", writer.workspace as String, "\n"], "")
+      let scratch = shell.Mktemp.Dir()
+      match workspace_head_binding(workspace: writer.workspace) {
+        WorkspaceHeadUnbound { cause: c } => workspace_restore_fail(head: head, verdict: "refused-head-unbound", why: c as String, custody: workspace_custody_clean)
+        WorkspaceHeadBound { binding: b } =>
+          if scratch.success == false {
+            workspace_restore_fail(head: head, verdict: "refused-no-scratch", why: "no private directory could be minted", custody: workspace_custody_clean)
+          } else {
+            let dir = join([scratch.path as String, "/workspace"], "") as NonEmptyStr
+            let written = all(workspace_restore_first_writes, f => workspace_write_authored(dir: dir, file: f)) && workspace_write_authored(dir: dir, file: workspace_restore_edit)
+            if !written {
+              workspace_restore_fail(head: head, verdict: "refused-authoring", why: "the workspace files could not be written", custody: workspace_custody_clean)
+            } else {
+              workspace_restore_barrier(head: head, writer: writer, binding: b, dir: dir, scratch: scratch.path as NonEmptyStr, token_source: ts)
+            }
+          }
+      }
+    }
+  }
+}
+
+fn workspace_restore_barrier(head: String, writer: WorkspaceWriterEpoch, binding: R2HeadBinding, dir: NonEmptyStr, scratch: NonEmptyStr, token_source: AccessTokenSource) -> ProcessExit {
+  match workspace_upload_tree(root: dir, token_source: token_source) {
+    WorkspaceUploadRefused { detail: d, custody: c } => workspace_restore_fail(head: head, verdict: "refused-barrier-upload", why: d, custody: c)
+    WorkspaceUploaded { entries: es, stored: _, occupied: _, bytes: _, symlinks: _, custody: upload_custody } =>
+      match workspace_advance_plan(writer: writer, change: WorkspaceCommitRevision { entries: es }, built_on: none) {
+        WorkspaceAdvanceStaleEpoch { writer_epoch: _, current_epoch: _ } => workspace_restore_fail(head: head, verdict: "refused-plan", why: "stale epoch on a first entry", custody: upload_custody)
+        WorkspaceRevisionEpochNotCurrent { writer_epoch: _, current_epoch: _ } => workspace_restore_fail(head: head, verdict: "refused-plan", why: "epoch not current on a first entry", custody: upload_custody)
+        WorkspaceAdvanceForeignWorkspace { writer: _, built_on: _ } => workspace_restore_fail(head: head, verdict: "refused-plan", why: "foreign workspace on a first entry", custody: upload_custody)
+        WorkspaceFenceNotLater { fence_epoch: _, current_epoch: _ } => workspace_restore_fail(head: head, verdict: "refused-plan", why: "a revision planned as a fence", custody: upload_custody)
+        WorkspaceAdvancePlanned { plan: plan } => {
+          let attempt = workspace_instrument_commit(admission: r2_head_cas_admission(ground: r2_head_cas_ground()), plan: plan, binding: binding, token_source: token_source)
+          let custody = workspace_custody_join(a: upload_custody, b: attempt.custody)
+          let head2 = join([head, "barrier_files=", to_string(length(es)), " commit=", workspace_commit_words(c: attempt.commit), "\n"], "")
+          if !workspace_commit_is_committed(c: attempt.commit) {
+            workspace_restore_fail(head: head2, verdict: "refused-barrier-uncommitted", why: concat("the barrier did not commit, so there is nothing a restore may select: ", workspace_commit_words(c: attempt.commit)), custody: custody)
+          } else {
+            workspace_restore_after_barrier(head: head2, binding: binding, barrier: es, dir: dir, scratch: scratch, token_source: token_source, custody: custody)
+          }
+        }
+      }
+  }
+}
+
+fn workspace_restore_after_barrier(head: String, binding: R2HeadBinding, barrier: List<WorkspaceEntry>, dir: NonEmptyStr, scratch: NonEmptyStr, token_source: AccessTokenSource, custody: WorkspaceCustody) -> ProcessExit {
+  let stray = join([scratch as String, "/uncommitted"], "")
+  let staged = Filesystem.Write(path: stray, content: join(["an upload with no head advance: ", head], ""))
+  match read_staged_fabric_blob(path: stray as NonEmptyStr) {
+    FabricBlobReadRefused { fault: f } => workspace_restore_fail(head: head, verdict: "refused-uncommitted-unstaged", why: fabric_blob_fault_text(fault: f), custody: custody)
+    FabricBlobRead { reading: r } => {
+      let uncommitted = FabricBlobAddress { key: fabric_blob_reading_digest(reading: r) }
+      let put = put_workspace_chunk(address: uncommitted, reading: r, token_source: token_source)
+      let custody2 = workspace_custody_join(a: custody, b: workspace_custody_of_credential(c: put.credential))
+      let head2 = join([head, "uncommitted_chunk=", fabric_blob_object_name(address: uncommitted) as String, " put=", workspace_put_words(put: put.verdict), "\n"], "")
+      if !workspace_put_landed(put: put.verdict) {
+        workspace_restore_fail(head: head2, verdict: "refused-uncommitted-unput", why: "the uncommitted chunk was not put, so its exclusion would prove nothing", custody: custody2)
+      } else {
+        let destroyed = shell.Remove.RecursiveForce(path: dir as FilePath)
+        if !destroyed.success {
+          workspace_restore_fail(head: head2, verdict: "refused-destroy", why: "the workspace directory could not be destroyed", custody: custody2)
+        } else {
+          workspace_restore_recreate(head: concat(head2, "destroyed=yes\n"), binding: binding, barrier: barrier, dir: dir, uncommitted: uncommitted, token_source: token_source, custody: custody2)
+        }
+      }
+    }
+  }
+}
+
+fn workspace_restore_recreate(head: String, binding: R2HeadBinding, barrier: List<WorkspaceEntry>, dir: NonEmptyStr, uncommitted: FabricBlobAddress, token_source: AccessTokenSource, custody: WorkspaceCustody) -> ProcessExit {
+  match workspace_closure(binding: binding, token_source: token_source) {
+    WorkspaceClosureRefused { detail: d, custody: c } => workspace_restore_fail(head: head, verdict: "refused-closure", why: d, custody: workspace_custody_join(a: custody, b: c))
+    WorkspaceClosureRead { newest_first: closure, custody: c } => {
+      let read_custody = workspace_custody_join(a: custody, b: c)
+      let point = workspace_restore_point(newest_first: closure)
+      if workspace_restore_point_carries(point: point, chunk: uncommitted) {
+        workspace_restore_fail(head: head, verdict: "refused-restore-point-carries-uncommitted", why: "the restore point names the uncommitted chunk", custody: read_custody)
+      } else {
+        match point {
+          WorkspaceRestoreEmpty => workspace_restore_fail(head: head, verdict: "refused-restore-empty", why: "the head closure holds no revision after a committed barrier", custody: read_custody)
+          WorkspaceRestoreRevision { revision: rev, entries: es } => {
+            let head2 = join([head, "restore_point=", fabric_object_ref_wire(object: rev) as String, " closure_entries=", to_string(length(closure)), "\n"], "")
+            let restored_entries = map(es, e => workspace_restore_entry(dir: dir, entry: e, token_source: token_source))
+            let all_custody = workspace_custody_all(cs: concat([read_custody], map(restored_entries, r => r.custody)))
+            match flat_map(restored_entries, r => r.failures) {
+              Cons { head: f, tail: _ } => workspace_restore_fail(head: head2, verdict: "refused-chunk-restore", why: f, custody: all_custody)
+              Empty =>
+                match workspace_restored_files(dir: dir) {
+                  Absent => workspace_restore_fail(head: head2, verdict: "refused-readback", why: "the restored workspace could not be read back", custody: all_custody)
+                  Present { value: restored } => {
+                    let comparison = workspace_restore_compare(barrier: barrier, restored: restored, uncommitted: uncommitted)
+                    let receipt = join([head2, "comparison=", workspace_restore_words(c: comparison), "\n"], "")
+                    match comparison {
+                      RestoreByteEqual { files: _ } => workspace_finish(path: workspace_restore_receipt_path, receipt: join([receipt, workspace_custody_words(c: all_custody), "\nverdict=restored-byte-equal\n"], ""), outcome: workspace_exit_with_custody(outcome: ExitSuccess, custody: all_custody))
+                      RestoreMissingFile { path: _ } => workspace_restore_fail(head: receipt, verdict: "restore-differs", why: workspace_restore_words(c: comparison), custody: all_custody)
+                      RestoreExtraFile { path: _ } => workspace_restore_fail(head: receipt, verdict: "restore-differs", why: workspace_restore_words(c: comparison), custody: all_custody)
+                      RestoreBytesDiffer { path: _ } => workspace_restore_fail(head: receipt, verdict: "restore-differs", why: workspace_restore_words(c: comparison), custody: all_custody)
+                      RestoreCarriesUncommittedChunk { path: _ } => workspace_restore_fail(head: receipt, verdict: "restore-carries-uncommitted", why: workspace_restore_words(c: comparison), custody: all_custody)
+                    }
+                  }
+                }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ONE ENTRY BACK ONTO DISK: fetch the chunk by its address, require the fetched bytes to hash to
+// that address, and copy them to the entry's path. Empty failures means restored; the staging
+// directory is released on every arm and its custody returned.
+type WorkspaceEntryRestore {
+  failures: List<String>
+  custody: WorkspaceCustody
+}
+
+fn workspace_restore_entry(dir: NonEmptyStr, entry: WorkspaceEntry, token_source: AccessTokenSource) -> WorkspaceEntryRestore {
+  let fetched = get_workspace_chunk(address: entry.chunk, token_source: token_source)
+  match fetched.verdict {
+    FabricBlobAbsent { address: _ } => WorkspaceEntryRestore { failures: [join([entry.path as String, ": the chunk is absent"], "")], custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)) }
+    FabricBlobGetUnavailable { address: _, fault: f } => WorkspaceEntryRestore { failures: [join([entry.path as String, ": ", fabric_blob_fault_text(fault: f)], "")], custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)) }
+    FabricBlobFetched { address: _, reading: r } =>
+      if !content_hash_eq_cryptographic(left: fabric_blob_reading_digest(reading: r), right: entry.chunk.key) {
+        WorkspaceEntryRestore { failures: [join([entry.path as String, ": the fetched bytes do not hash to the chunk's address"], "")], custody: workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging)) }
+      } else {
+        let target = join([dir as String, "/", entry.path as String], "")
+        let made = shell.Mkdir.Parents(path: workspace_dirname(path: target) as FilePath)
+        let copied = shell.Copy.File(source: fabric_blob_reading_path(reading: r) as FilePath, destination: target as FilePath)
+        let custody = workspace_custody_of_r2_staging(s: release_fabric_blob_staging(staging: fetched.staging))
+        WorkspaceEntryRestore { failures: if made.success && copied.success { [] } else { [join([entry.path as String, ": the chunk could not be written to its path"], "")] }, custody: custody }
+      }
+  }
+}
+
+fn workspace_restored_files(dir: NonEmptyStr) -> List<WorkspaceRestoredFile>? {
+  let listing = shell.Find.FilesAndSymlinksWithMode(root: dir as FilePath)
+  if listing.success == false {
+    none
+  } else {
+    let read = map(filter(split(listing.stdout, separator: "\n"), l => l != ""), l => workspace_restored_file(dir: dir, line: l))
+    if any(read, r => match r { Absent => true  Present { value: _ } => false }) {
+      none
+    } else {
+      Present { value: flat_map(read, r => match r { Present { value: f } => [f]  Absent => [] }) }
+    }
+  }
+}
+
+fn workspace_restored_file(dir: NonEmptyStr, line: String) -> WorkspaceRestoredFile? {
+  match split(line, separator: "\t") {
+    Cons { head: kind, tail: Cons { head: _, tail: Cons { head: relative, tail: _ } } } =>
+      if kind != "f" || relative == "" {
+        none
+      } else {
+        match read_staged_fabric_blob(path: join([dir as String, "/", relative], "") as NonEmptyStr) {
+          FabricBlobReadRefused { fault: _ } => none
+          FabricBlobRead { reading: r } => Present { value: WorkspaceRestoredFile { path: relative as NonEmptyStr, digest: fabric_blob_reading_digest(reading: r) } }
+        }
+      }
+    Cons { head: _, tail: _ } => none
+    Empty => none
+  }
+}
