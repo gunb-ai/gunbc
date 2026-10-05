@@ -121,24 +121,6 @@ fn vfp_type_name(t: Node) -> Symbol {
   }
 }
 
-fn vfp_construction_tag_carrier(n: Optional<Node>) -> Symbol {
-  match n {
-    Absent => ^vfp_subject_absent
-    Present { value: node } =>
-      match construct_tag_optional(n: node) {
-        Absent => ^vfp_tag_unresolved
-        Present { value: reference } =>
-          match declaration_reference_path_optional(node: reference) {
-            Absent => ^vfp_tag_unresolved
-            Present { value: p } =>
-              match qualified_name_last_segment(qn: qualified_name_init(qn: p)) {
-                Present { value: s } => s
-                Absent => ^vfp_tag_no_carrier
-              }
-          }
-      }
-  }
-}
 
 fn vfp_fact_in(inferred: ObligatedInferredTree, subject: Optional<Node>) -> Symbol {
   match subject {
@@ -187,6 +169,26 @@ fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
   }
 }
 
+// THE CARRIER HALF OF THE SAME DECODE: what the read names as the variant's declaring coproduct
+// (^Seal for the fixture) -- the field the alias mechanism exists to fill, since the tag's own
+// path (the module-level alias `p.Boxed`) does not carry it. TEMPORARY: goes out with the RFM
+// retirement.
+fn vfp_construct_read_carrier_decode(resolved: ResolvedTree) -> Symbol {
+  match vfp_find_construction(n: resolved.root) {
+    Absent => ^vfp_read_subject_absent
+    Present { value: node } =>
+      match infer_record_construct_read(node: node, resolved: resolved) {
+        ConstructIsRecord { construct: _ } => ^vfp_read_record
+        ConstructIsVariantArm { construct: c } =>
+          match qualified_name_last_segment(qn: c.variant_path) {
+            Present { value: s } => s
+            Absent => ^vfp_read_no_carrier
+          }
+        ConstructNotARecord => ^vfp_read_not_a_record
+      }
+  }
+}
+
 // WHAT THE FIXTURE ESTABLISHES, decided once per program by one nullary producer enrolled WARM in
 // v2.workflow.floor_pure_producer_share. `reasons` is the whole chain in order: a resolve or infer
 // refusal's reasons, or `^infers` followed by the accepted inference's advisories. A FACT field is
@@ -197,10 +199,10 @@ fn vfp_construct_read_decode(resolved: ResolvedTree) -> Symbol {
 type VfpReading {
   reasons: List<Symbol>
   construction_fact: Symbol
-  construction_tag_carrier: Symbol
   match_fact: Symbol
   arm_body_fact: Symbol
   construct_read: Symbol
+  construct_read_carrier: Symbol
 }
 
 // THE ROUND-TRIP FIXTURE, the enrolled variant_field_native_binding claims' own shape: a positional
@@ -223,22 +225,20 @@ fn vfp_reading(src: String) -> VfpReading {
     Rejected { diagnostics: r } => VfpReading {
       reasons: vfp_reasons(r: r),
       construction_fact: r.head.reason,
-      construction_tag_carrier: ^vfp_refused_at_resolve,
       match_fact: r.head.reason,
       arm_body_fact: r.head.reason,
-      construct_read: ^vfp_refused_at_resolve
+      construct_read: ^vfp_refused_at_resolve,
+      construct_read_carrier: ^vfp_refused_at_resolve
     }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
         Rejected { diagnostics: r } => VfpReading {
           reasons: vfp_reasons(r: r),
           construction_fact: vfp_last(xs: vfp_reasons(r: r)),
-          construction_tag_carrier: vfp_construction_tag_carrier(
-            n: vfp_find_construction(n: resolved.root)
-          ),
           match_fact: vfp_last(xs: vfp_reasons(r: r)),
           arm_body_fact: vfp_last(xs: vfp_reasons(r: r)),
-          construct_read: vfp_construct_read_decode(resolved: resolved)
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
         }
         Accepted { value: inferred, diagnostics: d } => VfpReading {
           reasons: match d {
@@ -248,9 +248,6 @@ fn vfp_reading(src: String) -> VfpReading {
           construction_fact: vfp_fact_in(
             inferred: inferred,
             subject: vfp_find_construction(n: resolved.root)
-          ),
-          construction_tag_carrier: vfp_construction_tag_carrier(
-            n: vfp_find_construction(n: resolved.root)
           ),
           match_fact: vfp_fact_in(
             inferred: inferred,
@@ -263,7 +260,8 @@ fn vfp_reading(src: String) -> VfpReading {
               Present { value: m } => vfp_first_arm_body_of(m: m)
             }
           ),
-          construct_read: vfp_construct_read_decode(resolved: resolved)
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          construct_read_carrier: vfp_construct_read_carrier_decode(resolved: resolved)
         }
       }
   }
@@ -281,8 +279,8 @@ test fn vfp_the_construct_read_names_the_variant_holds() -> Bool {
   vfp_round_trip_reading().construct_read == ^Boxed
 }
 
-test fn vfp_the_construction_tag_resolves_to_its_carrier_holds() -> Bool {
-  vfp_round_trip_reading().construction_tag_carrier == ^Seal
+test fn vfp_the_construct_read_carrier_is_the_declaring_coproduct_holds() -> Bool {
+  vfp_round_trip_reading().construct_read_carrier == ^Seal
 }
 
 test fn vfp_the_match_types_from_its_arms_holds() -> Bool {
@@ -303,6 +301,6 @@ test fn vfp_the_partial_match_refuses_as_not_covering_the_carrier_holds() -> Boo
 // path -- the control separates the resolve binding (green on both sides of the fix) from the
 // infer facts (red on main, green here), and gives the partial reading its second consumer under
 // the warm-producer sharing conjunct.
-test fn vfp_the_partial_fixture_resolves_its_construction_tag_to_its_carrier_holds() -> Bool {
-  vfp_partial_reading().construction_tag_carrier == ^Seal
+test fn vfp_the_partial_fixture_still_mints_its_variant_row_holds() -> Bool {
+  vfp_partial_reading().construct_read == ^Boxed
 }

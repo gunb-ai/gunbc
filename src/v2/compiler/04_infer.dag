@@ -72,7 +72,7 @@ import v2.std.optional {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup, symbol_index_variant_alias_carrier }
 import v2.compiler.fold_lowering { FoldMemberFormal, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
 import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
 import v2.std.list_introduction { list_introduction_elements_optional, list_introduction_head_path }
@@ -5593,6 +5593,41 @@ fn infer_record_formals_payload(formals: InferRecordFormals) -> Node {
   }
 }
 
+// ONE MINT FOR BOTH PATH FORMS. The tag's path is either the variant's declared path (the
+// containment form: `p.Seal.Boxed`) or the module-level unique-variant alias (`p.Boxed`), whose
+// carrier the index carries beside it; by here the path IS the declared path either way, so the
+// construction types by the declaring coproduct, its params, and the variant's own payload.
+fn infer_variant_arm_construct(
+  reference: Node,
+  resolved: ResolvedTree,
+  declared_path: QualifiedName
+) -> InferConstructRead {
+  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
+    Absent => ConstructNotARecord
+    Present { value: resolved_decl } =>
+      match qualified_name_last_segment(qn: declared_path) {
+        Absent => ConstructNotARecord
+        Present { value: _ } =>
+          match qualified_name_init(qn: declared_path) {
+            Absent => ConstructNotARecord
+            Present { value: carrier } =>
+              ConstructIsVariantArm {
+                construct: InferVariantArmConstruct {
+                  record: reference,
+                  arm_path: declared_path,
+                  variant_path: carrier,
+                  formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
+                  type_params: symbol_index_declared_type_params_at(
+                    index: resolved.resolved_declarations,
+                    qualified_path: carrier
+                  )
+                }
+              }
+          }
+      }
+  }
+}
+
 // A CONSTRUCTION'S TAG IS A RESOLVED REFERENCE, BARE OR QUALIFIED ALIKE: resolve rewrites the tag
 // to the declaration it binds (the qualified door and the atom walk meet in resolve_atom_bound, the
 // same producer the bare door uses), so the variant's declaring path is the reference's own path --
@@ -5611,25 +5646,19 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
-                  match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-                    Absent => ConstructNotARecord
-                    Present { value: resolved_decl } =>
-                      match qualified_name_last_segment(qn: path) {
-                        Absent => ConstructNotARecord
-                        Present { value: _ } =>
-                          ConstructIsVariantArm {
-                            construct: InferVariantArmConstruct {
-                              record: reference,
-                              arm_path: path,
-                              variant_path: qualified_name_init(qn: path),
-                              formals: infer_record_formals(resolved: resolved, path: path, authored: resolved_decl),
-                              type_params: symbol_index_declared_type_params_at(
-                                index: resolved.resolved_declarations,
-                                qualified_path: qualified_name_init(qn: path)
-                              )
-                            }
-                          }
-                      }
+                  match symbol_index_variant_alias_carrier(index: resolved.resolved_declarations, alias_path: path) {
+                    Absent =>
+                      infer_variant_arm_construct(
+                        reference: reference,
+                        resolved: resolved,
+                        declared_path: path
+                      )
+                    Present { value: declared } =>
+                      infer_variant_arm_construct(
+                        reference: reference,
+                        resolved: resolved,
+                        declared_path: declared
+                      )
                   }
                 RecordTypePayload =>
                   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
