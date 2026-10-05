@@ -2951,9 +2951,12 @@ static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(No
 /// closure is stored as (path, bytes) under the memo key, never looked up by path alone, so a file
 /// that changed between runs cannot be replayed with another fill's bytes (review 76336). Identical
 /// bytes for one path are shared, not copied, through `interned`.
+/// One fill's closure: every recorded path with the exact bytes that fill read.
+type RecordedFixtureClosure = Vec<(String, Arc<String>)>;
+
 #[derive(Default)]
 struct FixtureClosureMemoReplay {
-    closure_by_memo_key: std::collections::HashMap<String, Vec<(String, Arc<String>)>>,
+    closure_by_memo_key: std::collections::HashMap<String, RecordedFixtureClosure>,
     interned: std::collections::HashMap<String, Vec<Arc<String>>>,
 }
 
@@ -2975,7 +2978,7 @@ thread_local! {
     /// The paths the last [`record_fixture_closure`] on this thread recorded, taken by the memo
     /// wrapper that triggered the fill. Cleared before each fill so a fill that panicked before
     /// resolving cannot inherit an earlier fill's closure.
-    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<Vec<(String, Arc<String>)>>> = const { RefCell::new(None) };
+    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<RecordedFixtureClosure>> = const { RefCell::new(None) };
 }
 
 /// Called by a memo wrapper just before it fills.
@@ -3025,7 +3028,7 @@ pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
 /// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
 /// instruments' uncached paths with the exact source vector they compile.
 pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
-    let closure: Vec<(String, Arc<String>)> = {
+    let closure: RecordedFixtureClosure = {
         let mut replay = FIXTURE_CLOSURE_MEMO_REPLAY
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
