@@ -8,7 +8,13 @@ import v2.lens.cost {
   SumCost,
   SymbolicCost,
   UnknownCost,
-  symbolic_cost_of_node
+  symbolic_cost_of_node,
+  ConstantCost,
+  ExponentialCost,
+  FactorialCost,
+  LogCost,
+  PolyLogCost,
+  PolynomialCost
 }
 import v2.std.optional {
   Absent,
@@ -29,6 +35,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
   arrow_body_target_lookup,
+  ComputationNode
 }
 import v2.std.algebra { CopiedPortFact, fold_list }
 

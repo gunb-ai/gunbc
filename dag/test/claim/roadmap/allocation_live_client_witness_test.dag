@@ -2,7 +2,11 @@ module test.claim.allocation_live_client_witness_test
 
 import std.types { String, Bool }
 import gunbc.roadmap_allocation_page { allocation_page_with_stylesheet, AllocationViewerSignedIn, AllocationViewerSignedOut }
-import gunbc.roadmap_allocation_style { allocation_css }
+import gunbc.roadmap_allocation_style { allocation_rules }
+import gunbc.design.material { StaticRule, decl }
+import extdeps.languages.css.selectors { ClassSelector }
+import extdeps.languages.css.properties { Display }
+import gunbc.site.document { SiteStyles, site_styles, site_extend_styles, site_styles_css }
 import gunbc.roadmap_allocation_client { allocation_live_source }
 import gunbc.roadmap_allocation_location { allocation_list_path, allocation_item_prefix, allocation_release_suffix }
 import gunbc.workspace_allocation { workspace_profiles, workspace_profile_wire, workspace_profile_parse }
@@ -12,7 +16,7 @@ import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected 
 // The roadmap stylesheet is supplied: no claim below reads it, and rendering the real one is the
 // whole cost of the page. The route that supplies roadmap_css() and the real session's token is
 // gunbc.roadmap_serve allocation_page_response.
-data fx_roadmap_stylesheet: String = ".fx-roadmap-sheet{}"
+data fx_roadmap_stylesheet: SiteStyles = site_styles(rules: [StaticRule { selector: ClassSelector { name: "fx-roadmap-sheet" }, decls: [decl(prop: Display, value: "block")] }])
 data fx_csrf: String = "fx-csrf-token"
 
 fn allocation_preview_signed_in() -> String {
@@ -84,5 +88,5 @@ test fn witness_allocation_client_drives_the_real_contract() -> Bool {
 }
 
 test fn witness_allocation_head_carries_the_supplied_stylesheet_then_the_allocation_rules() -> Bool {
-  string_contains(s: allocation_preview_signed_in(), pattern: concat("<style>", concat(fx_roadmap_stylesheet, allocation_css())))
+  string_contains(s: allocation_preview_signed_in(), pattern: concat("<style>", site_styles_css(styles: site_extend_styles(base: fx_roadmap_stylesheet, rules: allocation_rules()))))
 }

@@ -224,6 +224,7 @@ mod emitted_closure_compile_host;
 // TEST-ONLY, and wired the same #[path] way as the hosts above rather than through lib.rs: the
 // falsifier exists to be invoked by one #[ignore] test and has no production caller, so declaring
 // it unconditionally would put a module nothing calls into every release build.
+pub(crate) mod claim_call_site_demand;
 #[cfg(test)]
 #[path = "evaluation_budget_consequence_falsifier_host.rs"]
 mod evaluation_budget_consequence_falsifier_host;
@@ -43298,8 +43299,8 @@ const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 /// (`discover_floor_rows_for_source` / `floor_discovery_finalize_source_outcomes`, qualified —
 /// the floor's roster IS that fold's answer), the output policy (`resolve_channel_policy` /
 /// `resolve_shell_trace_stream_policy`, bare, from `install_output_policy_in`), and the
-/// cross-claim pure-producer share roster (`floor_cross_claim_pure_producers_warm` /
-/// `..._claim_forced`, via `install_pure_producer_share`), and the opaque-host-call surface
+/// cross-claim pure-producer share (`floor_cross_claim_share_derivation` and the carried-input
+/// rows, via `install_pure_producer_share` / `derive_and_install_cross_claim_share`), and the opaque-host-call surface
 /// (`opaque_host_call_surface`, via `floor_required_opaque_host_call_surface`, which arms the
 /// per-claim preemption-reachability recorder). Every one is a closure seed of the
 /// gate-bounded prepared subject; a new by-name evaluation adds its module here or refuses at
@@ -44933,8 +44934,6 @@ fn witness_eval_verdict_from_claim_outcome(
     })
 }
 
-pub use required_regen_host::{pass1_digest_for_fixed_point, FirstGeneration};
-
 /// THE FALSIFIER'S ONE ENTRY AND ITS ONE PREDICATE, re-exported for the generated #[ignore] test.
 ///
 /// The predicate is here rather than in the test body because a test that pattern-matched the
@@ -44971,13 +44970,6 @@ pub fn run_required_regen_scoped(
     let workspace = workspace_root();
     let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
     required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
-}
-
-pub fn run_required_regen_fixed_point(
-    receipt_rel: &str,
-    pass1_digest: Option<String>,
-) -> Result<required_regen_host::RequiredRegenOutcome, String> {
-    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }
 
 /// The emitted `dag-artifact.json`'s own two-run identity control and its positive control --

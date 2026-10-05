@@ -43,8 +43,8 @@ fn census_wet_snapshot(layout: RoadmapEventCarrierLayout) -> RoadmapEventCarrier
   let temporary = shell.Mktemp.DirWithTemplate(template: roadmap_event_snapshot_template(layout: layout))
   let added = carrier_exec(layout: layout, workdir: layout.repo_root as String, args: ["worktree", "add", "--detach", "--no-checkout", temporary.path, "HEAD"])
   match added {
-    CarrierExecOk { stdout: _ } => RoadmapEventCarrierLayout { repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
-    CarrierExecFailed { exit_code: _, stderr: _ } => RoadmapEventCarrierLayout { repo_root: layout.repo_root, worktree: "/nonexistent/worktree-add-failed" as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
+    CarrierExecOk { stdout: _ } => RoadmapEventCarrierLayout { remote: layout.remote, repo_root: layout.repo_root, worktree: temporary.path as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
+    CarrierExecFailed { exit_code: _, stderr: _ } => RoadmapEventCarrierLayout { remote: layout.remote, repo_root: layout.repo_root, worktree: "/nonexistent/worktree-add-failed" as FilePath, git_program: layout.git_program, directory_program: layout.directory_program }
   }
 }
 

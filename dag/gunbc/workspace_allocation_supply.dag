@@ -122,22 +122,19 @@ fn workspace_slot_observation_refusal(root: NonEmptyStr, slot: RunnerSlotIdentit
   } }
 }
 
-fn workspace_supply_from_field(root: NonEmptyStr, field: CandidateField<NonEmptyStr>, observations: List<WorkspaceHostSupplyObservation>, now: Timestamp) -> WorkspaceSupplyProjection {
+// The host already applied workspace_slot_observation_refusal before minting its admission, and
+// the join re-judged freshness; here each designated slot needs exactly one admission and one
+// admitted candidate, or it is a located refusal.
+fn workspace_supply_from_field(field: CandidateField<NonEmptyStr>, admitted_slots: List<RunnerSlotIdentity>) -> WorkspaceSupplyProjection {
   fold(workspace_execution_slot_identities(), init: WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: [], sanctions: [] }, refused: [] }, f: (acc, slot) => {
-    let samples = filter(observations, sample => (sample.host as String) == (slot.host as String))
+    let samples = filter(admitted_slots, admitted => runner_slot_identity_equal(a: admitted, b: slot))
     let candidates = filter(field.admitted, candidate => candidate.offer.executor == fabric_cell_allocation_key(slot: slot))
-    if samples.count() != 1 || candidates.count() != 1 { WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "expected one admitted offer and one current host observation" }] } }
-    else { match samples.first() {
+    if samples.count() != 1 || candidates.count() != 1 { WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "expected one admitted offer and one current host admission for the slot" }] } }
+    else { match candidates.first() {
       Absent => acc
-      Present { value: sample } => match workspace_slot_observation_refusal(root: root, slot: slot, observation: sample, now: now) {
-        Present { value: reason } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: reason }] }
-        Absent => match candidates.first() {
-          Absent => acc
-          Present { value: candidate } => match bind_fabric_cell_candidate(slot: slot, candidate: candidate) {
-            CellCandidateBound { bound } => WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: acc.supply.roster + [bound], sanctions: acc.supply.sanctions + [fleet_cell_sanction(slot: slot)] }, refused: acc.refused }
-            OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "offer executor is not the designated slot" }] }
-          }
-        }
+      Present { value: candidate } => match bind_fabric_cell_candidate(slot: slot, candidate: candidate) {
+        CellCandidateBound { bound } => WorkspaceSupplyProjection { supply: WorkspaceDedicatedSupply { roster: acc.supply.roster + [bound], sanctions: acc.supply.sanctions + [fleet_cell_sanction(slot: slot)] }, refused: acc.refused }
+        OfferExecutorIsNotTheCell { slot_key: _, executor: _ } => WorkspaceSupplyProjection { supply: acc.supply, refused: acc.refused + [WorkspaceSupplyRefusal { slot: slot, reason: "offer executor is not the designated slot" }] }
       }
     } }
   })
