@@ -191,7 +191,7 @@ pub fn annotation_subjects(
             __sorted.sort_by(|a: &i64, b: &i64| {
                 let __ka = (|start: i64| start.clone())(a.clone());
                 let __kb = (|start: i64| start.clone())(b.clone());
-                v1_rt::canonical_key_cmp(&__ka, &__kb)
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
         });
