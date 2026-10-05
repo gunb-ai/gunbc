@@ -81,7 +81,7 @@ test fn a_property_value_the_wire_cannot_carry_is_refused() -> Bool {
 // point: the wait fixture alone proved one shape and the other builders drifted silently.
 
 // The collecting transient: --unit, --collect, the properties, then -- (the old order).
-test fn the_collecting_transient_builder_emits_unit_collect_then_properties() -> Bool {
+test fn the_collecting_transient_builder_emits_unit_properties_collect() -> Bool {
   match systemd_run_transient_unit_command(
     unit: "fci1-order.service",
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
@@ -92,7 +92,7 @@ test fn the_collecting_transient_builder_emits_unit_collect_then_properties() ->
       argv_exact_token_equal(
         left: argv_words(command: command),
         right: [
-          "systemd-run", "--unit=fci1-order.service", "--collect", "--property=MemoryMax=17179869184", "--", "/bin/true",
+          "systemd-run", "--unit=fci1-order.service", "--property=MemoryMax=17179869184", "--collect", "--", "/bin/true",
         ],
       )
   }
@@ -138,7 +138,7 @@ test fn the_user_wait_builder_renders_the_old_order() -> Bool {
 
 // The scope builder: --user --scope lead (the account drop runs under the user manager), long
 // properties, then --.
-test fn the_scope_builder_leads_with_user_and_scope() -> Bool {
+test fn the_scope_builder_leads_with_scope_only() -> Bool {
   match systemd_run_system_scope_command(
     properties: [SystemdRunProperty { property: MemoryMax, value: "17179869184" as NonEmptyStr }],
     command_argv: ["/bin/true"],
@@ -147,7 +147,7 @@ test fn the_scope_builder_leads_with_user_and_scope() -> Bool {
     SystemdRunCommandReady { command: command } =>
       argv_exact_token_equal(
         left: argv_words(command: command),
-        right: ["systemd-run", "--user", "--scope", "--property=MemoryMax=17179869184", "--", "/bin/true"],
+        right: ["systemd-run", "--scope", "--property=MemoryMax=17179869184", "--", "/bin/true"],
       )
   }
 }

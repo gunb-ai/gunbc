@@ -252,21 +252,23 @@ fn systemd_run_user_wait_command(unit: NonEmptyStr, properties: List<SystemdRunP
   )
 }
 
-// The pre-cutover scope builder led with --user --scope (the caller drops to the account's user
-// manager); the typed builder renders the same two flags in the same order.
+// The pre-cutover system-scope builder led with --scope only (blob 71a9a1c5d3~1 line 158:
+// ["systemd-run", "--scope"]); the account entry happens in the command tail (setpriv).
 fn systemd_run_system_scope_command(properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
-  systemd_run_command_of(options: list_append(left: [RunUserManager, RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+  systemd_run_command_of(options: list_append(left: [RunScope], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
 }
 
 // The full invocation, and the authority the materialized operation argv is checked against. It
 // COMPOSES the option words through the one projection rather than re-deriving them; if this fold
 // and the transport template ever disagree about word order,
 // systemd_run_transient_operation_argv_matches_authority goes red.
-// Word order is byte identity against the retired builder: --unit, --collect, the properties,
-// then --. The retained variant below is the same builder WITHOUT the --collect arm, because
-// RunTransientRetained exists precisely so the terminal state stays observable.
+// Word order: --unit, the properties, --collect, then -- (main's green nbd witness pins this
+// order over the retired blob's --unit, --collect, properties; the union cannot hold both, and
+// main is the landed authority). The retained variant below is the same builder WITHOUT the
+// --collect arm, because RunTransientRetained exists precisely so the terminal state stays
+// observable.
 fn systemd_run_transient_unit_command(unit: NonEmptyStr, properties: List<SystemdRunProperty>, command_argv: List<String>) -> SystemdRunCommandReading {
-  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }, Collect], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [EndOfOptions])), command_argv: command_argv)
+  systemd_run_command_of(options: list_append(left: [RunUnit { unit: unit }], right: list_append(left: systemd_run_property_options_long(properties: properties), right: [Collect, EndOfOptions])), command_argv: command_argv)
 }
 
 // The retained shape: no --collect, so the transient unit survives its process and its terminal

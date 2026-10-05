@@ -1180,7 +1180,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     SystemdRunCommandRefused { reason: _ } => false
     SystemdRunCommandReady { command: command } => {
       let cmd = dispatch_unit_exec_argv(command: command, resolved_program: "/usr/bin/systemd-run" as FilePath)
-      string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+      string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:6.node-1.12.att-20260920.26.conformance-external-facts.6.abc123")
     }
   }
 }
