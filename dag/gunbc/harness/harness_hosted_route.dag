@@ -3,7 +3,7 @@ module gunbc.harness.harness_hosted_route
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count_value, Second, second_count }
+import std.measure { TokenCount, token_count_value, Second, second_count, MoneyAmountMicro, money_amount_micro_count }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -38,7 +38,7 @@ import extdeps.openrouter.openrouter {
 }
 import extdeps.openrouter.nvidia_nemotron_3_ultra_free {
   nemotron_ultra_free_max_completion_tokens, nemotron_ultra_free_supported_efforts,
-  nemotron_ultra_free_price_per_token_micro_usd, nemotron_ultra_free_terms,
+  nemotron_ultra_free_price_per_token, nemotron_ultra_free_terms,
 }
 import extdeps.nvidia.api_trial_terms { NvidiaApiTrialTerms, nvidia_api_trial_terms_wire }
 import gunbc.secret_provision { openrouter_free_tier_key_secret_ref }
@@ -84,7 +84,7 @@ type HarnessHostedRoute {
   per_minute: UpstreamRateLimit
   max_completion: TokenCount
   supported_efforts: List<OpenRouterReasoningEffort>
-  price_per_token_micro_usd: Int
+  price_per_token: MoneyAmountMicro
   terms: NvidiaApiTrialTerms
 }
 
@@ -102,7 +102,7 @@ fn harness_hosted_route_for(unit: HarnessServingUnit) -> HarnessHostedRoute? {
       per_minute: openrouter_free_models_per_minute,
       max_completion: nemotron_ultra_free_max_completion_tokens,
       supported_efforts: nemotron_ultra_free_supported_efforts,
-      price_per_token_micro_usd: nemotron_ultra_free_price_per_token_micro_usd,
+      price_per_token: nemotron_ultra_free_price_per_token,
       terms: nemotron_ultra_free_terms,
     } }
   }
@@ -193,7 +193,7 @@ fn hosted_level_entry(route: HarnessHostedRoute, level: HarnessReasoningLevel, m
     display_label: harness_reasoning_level_wire(level: level),
     readings: [
       AxisReading { axis: ax_hosted_reasoning_depth, interval_micro: degenerate_interval(point: hosted_level_depth_rank(route: route, level: level) * 1000000) },
-      AxisReading { axis: ax_hosted_money_per_request, interval_micro: degenerate_interval(point: route.price_per_token_micro_usd * max_tokens) },
+      AxisReading { axis: ax_hosted_money_per_request, interval_micro: degenerate_interval(point: (money_amount_micro_count(m: route.price_per_token) as Int) * max_tokens) },
       AxisReading { axis: ax_hosted_quota_per_request, interval_micro: degenerate_interval(point: 1000000) },
       AxisReading { axis: ax_hosted_level_admitted, interval_micro: degenerate_interval(point: if hosted_level_admitted(route: route, level: level, max_tokens: max_tokens) { 1000000 } else { 0 }) },
     ],

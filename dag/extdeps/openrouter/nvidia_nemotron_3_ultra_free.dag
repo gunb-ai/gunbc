@@ -1,7 +1,7 @@
 module extdeps.openrouter.nvidia_nemotron_3_ultra_free
 
-import std.types { NonEmptyStr, Bool, Int, List }
-import std.measure { TokenCount, token_count }
+import std.types { NonEmptyStr, Bool, List }
+import std.measure { TokenCount, token_count, MoneyAmountMicro, money_amount_micro }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority {
   ExternalAuthority, ExternalModelScope, ExternalSubjectRef,
@@ -61,9 +61,9 @@ data nemotron_ultra_free_supported_efforts: List<OpenRouterReasoningEffort> = [E
 
 data nemotron_ultra_free_reasoning_mandatory: Bool = false
 
-// THE PRICE IS ZERO PER TOKEN AND THE LIMIT IS PER REQUEST, which is what makes reasoning depth cost
+// THE PRICE IS ZERO PER TOKEN (prompt and completion both read "0" USD) AND THE LIMIT IS PER REQUEST, which is what makes reasoning depth cost
 // neither money nor quota on this listing: a deeper effort spends latency and completion budget only.
-data nemotron_ultra_free_price_per_token_micro_usd: Int = 0
+data nemotron_ultra_free_price_per_token: MoneyAmountMicro = money_amount_micro(count: 0)
 
 // WHICH MODEL MODE EACH ACCEPTED EFFORT REACHES IS NOT STATED, AND NOTHING HERE ASSERTS IT. The two
 // efforts coincide with the card's two thinking modes (full and medium), and "high reaches full" is the
