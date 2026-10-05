@@ -32,6 +32,7 @@ import gunbc.roadmap_dispatch_actuator { dispatch_events_projection_argv_at, dis
 import gunbc.roadmap_dispatch_actuator {
   DispatchExecutorRequest, ExecutorDefault, dispatch_actuator_selection_for_request,
   RecordedAttemptFingerprint, dispatch_tmux_session_scope_for_recorded,
+  dispatch_credential_snapshot_path_for_instance, dispatch_credential_snapshot_discard,
   filter_dispatch_tmux_sessions, dispatch_node_id_from_session_name,
   dispatch_attempt_review_dir_for_instance, dispatch_attempt_review_verdict_path_for_instance, dispatch_attempt_review_verdict_basename,
   dispatch_review_unit_name, dispatch_review_unit_argv,
@@ -2034,6 +2035,51 @@ fn belt_footprint_admission_for_instance(
 // spawned one could disagree with nothing recording it. That is the same class the observe fold
 // closed, sitting on the one route where the model actually reaches a process, and this module's own
 // rule is that the fix is the carrier rather than the call.
+// ONE OWNER FOR THE CREDENTIAL SNAPSHOT'S LIFECYCLE AFTER SELECTION (side-chat finding, 2026-10-05).
+// A vendor selection may take a per-attempt credential snapshot (gunbc.roadmap_dispatch_actuator
+// dispatch_credential_snapshot_path_for_instance). Exactly one path consumes it: the launched child,
+// whose wrapper removes it before exec. Every other way out of the spawn after selection -- a refused
+// provider preflight, no spawn route, a supervisor route, a placement refusal, any SpawnFailed --
+// never launches that child, so the snapshot would outlive the attempt. The decision is a pure fold
+// over the outcome so every arm is witnessed; the discard is applied once, here, around everything
+// that follows selection. rm -f on a path no selection wrote succeeds, so providers that take no
+// snapshot pass through unchanged.
+type BeltSnapshotDisposition
+  = SnapshotConsumedByChild
+  | SnapshotDiscardRequired
+
+fn belt_snapshot_disposition(outcome: BeltSpawnOutcome) -> BeltSnapshotDisposition {
+  match outcome {
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => SnapshotConsumedByChild
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => SnapshotDiscardRequired
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => SnapshotDiscardRequired
+    SpawnNotAdmitted { node_id: _, refusal: _ } => SnapshotDiscardRequired
+  }
+}
+
+fn belt_snapshot_owned_outcome(
+  snapshot: NonEmptyStr,
+  provider_wire_label: String,
+  launch: LaunchIdentity,
+  outcome: BeltSpawnOutcome,
+) -> BeltSpawnOutcome {
+  match belt_snapshot_disposition(outcome: outcome) {
+    SnapshotConsumedByChild => outcome
+    SnapshotDiscardRequired =>
+      if dispatch_credential_snapshot_discard(snapshot: snapshot) {
+        outcome
+      } else {
+        SpawnFailed {
+          node_id: launch.node_id as String,
+          step: "credential-snapshot-discard",
+          detail: join(["the attempt did not launch its provider, and its credential snapshot ", snapshot as String, " could not be removed"], ""),
+          provider: provider_wire_label,
+          launch: launch,
+        }
+      }
+  }
+}
+
 fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
@@ -2087,8 +2133,8 @@ fn belt_actuate_spawn_for_instance(
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
             launch: launch,
           }
-        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } =>
-          match belt_provider_preflight_for_instance(
+        DispatchActuatorSelectionOk { provider, effort: _, model: _, process_fingerprint: _ } => {
+          let post_selection = match belt_provider_preflight_for_instance(
             instance: instance,
             provider: provider,
           ) {
@@ -2117,6 +2163,18 @@ fn belt_actuate_spawn_for_instance(
                 request: request,
               )
           }
+          belt_snapshot_owned_outcome(
+            snapshot: dispatch_credential_snapshot_path_for_instance(
+              instance: instance,
+              node_id: node.node,
+              attempt_key: dispatch_attempt_key(node_id: node.node, probed_at: probed_at),
+              provider: provider,
+            ),
+            provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
+            launch: launch,
+            outcome: post_selection,
+          )
+        }
       }
     }
   }

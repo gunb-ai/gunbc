@@ -111,7 +111,12 @@ data posix_sh_export_from_file_unreadable_exit: Int = 78
 
 // WHETHER THE FILE OUTLIVES THE READ. A one-shot snapshot (one credential, one child) is removed by
 // the shell right after it is read and before the exec, so the value exists afterwards only in that
-// child's environment; a file another reader still needs is kept.
+// child's environment; a file another reader still needs is kept. A SUCCESSFUL REMOVAL IS A
+// PRECONDITION OF THE EXEC (side-chat finding, 2026-10-05): measured under dash with the parent
+// directory readable but not writable, a bare `rm -f` failed and the command still ran, and a second
+// launch ran again with the same value. So the removal carries its own failure arm and a snapshot
+// that cannot be consumed refuses the launch with exit 79 -- distinct from 78 (unreadable).
+data posix_sh_export_from_file_unremovable_exit: Int = 79
 type PosixShFileDisposition
   = PosixShKeepFile
   | PosixShRemoveFileAfterRead
@@ -120,7 +125,12 @@ fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> Lis
   match disposition {
     PosixShKeepFile => []
     PosixShRemoveFileAfterRead =>
-      [bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")])]
+      [
+        bash_build_or_else(
+          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")]),
+          right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+        ),
+      ]
   }
 }
 
