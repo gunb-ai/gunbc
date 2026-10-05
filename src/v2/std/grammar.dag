@@ -286,7 +286,7 @@ fn grammar_expr_expect(element: GrammarExpr, reason: ParseRefusalReason) -> Gram
 }
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
-  Optional { element: element }
+  v2.std.grammar.Optional { element: element }
 }
 
 fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
@@ -356,7 +356,7 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
         fold_grammar_expr(expr: left, algebra: algebra),
         fold_grammar_expr(expr: right, algebra: algebra)
       )
-    Optional { element: element } =>
+    v2.std.grammar.Optional { element: element } =>
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
@@ -3389,7 +3389,7 @@ fn grammar_emit_expr(index: GrammarEmitIndex, expr: GrammarExpr, node: Node) -> 
     Nonterminal { production: p } => grammar_emit_production_capture(index: index, expected: p, node: node)
     Sequence { left: l, right: r } => grammar_emit_sequence(index: index, left: l, right: r, node: node)
     Choice { left: l, right: r } => grammar_emit_choice(index: index, left: l, right: r, node: node)
-    Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
+    v2.std.grammar.Optional { element: e } => grammar_emit_optional(index: index, element: e, node: node)
     Repeat { element: e } => grammar_emit_repeat(index: index, element: e, node: node)
     Expect { element: e, reason: _ } => grammar_emit_expr(index: index, expr: e, node: node)
     RefuseOnMatch { element: _, reason: _ } => grammar_emit_mismatch(reason: ^grammar_emit_refuse_on_match_derives_no_tree, at: node)
