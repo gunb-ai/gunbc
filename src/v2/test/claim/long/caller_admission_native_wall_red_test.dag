@@ -257,8 +257,8 @@ fn dbg_decl_lookup() -> ProcessExit {
               match wall_red_assembled(subject_src: wall_red_subject_text(), peer_src: wall_red_peer_text()) {
                 Rejected { diagnostics: d } => exit_failure(reason: dbg_reasons_full(prefix: "SUBJECT-RESOLVE", d: d))
                 Accepted { value: rt, diagnostics: _ } =>
-                  match find_named_child(root: rt.root, name: ^unlisted_caller) {
-                    Rejected { diagnostics: _ } => exit_failure(reason: "NO-ARROW")
+                  match sugar_named_child_optional(root: sugar_named_child_optional_ok(root: rt.root, name: ^grammar_production_captured_node_projection), name: ^unlisted_caller) {
+                    Absent => exit_failure(reason: "NO-ARROW")
                     Accepted { value: arrow, diagnostics: _ } =>
                       match dbg_admit_decl_lookup_from_arrow(arrow: arrow, declarations: rt.resolved_declarations) {
                         Absent => exit_failure(reason: "LINKS-UNREADABLE")
