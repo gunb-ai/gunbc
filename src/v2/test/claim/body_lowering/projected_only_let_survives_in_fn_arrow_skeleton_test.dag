@@ -41,16 +41,26 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 data por_pool_roots: List<String> = []
 data por_pool_files: List<String> = ["src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag"]
 
-type PorPair = PorPair { left: String, right: String }
+type PorPair = PorPair { meta: PorMeta, right: String }
+
+type PorMeta = PorMeta { tag: String }
 
 fn por_mk_pair(s: String) -> PorPair {
-  PorPair { left: trim(s), right: s }
+  PorPair { meta: PorMeta { tag: trim(s) }, right: s }
 }
 
-// THE SPECIMEN (the red): a bound named call whose record is used only through field projections.
+// THE SPECIMEN (single projection): a bound named call whose record is used only through
+// one field projection.
 fn por_projected_only_record(p: String) -> String {
   let pair = por_mk_pair(s: p)
   trim(pair.right)
+}
+
+// THE SPECIMEN (nested projection): the same shape through two levels -- if the marshal ever
+// stopped recursing through projections, the base would go unreferenced exactly here.
+fn por_projected_nested_record(p: String) -> String {
+  let pair = por_mk_pair(s: p)
+  trim(pair.meta.tag)
 }
 
 // POSITIVE CONTROL: the same bound record passed WHOLE to a receiver. Always live, old and new.
@@ -83,35 +93,54 @@ fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
     xs: por_decl_facts,
     predicate: fn(d) { d.name == "por_record_passed_whole" },
   )
+  let por_nested_pick = list_find_first(
+    xs: por_decl_facts,
+    predicate: fn(d) { d.name == "por_projected_nested_record" },
+  )
   match por_projected_pick {
     Present { value: por_pd } =>
       match por_whole_pick {
-        Present { value: por_wd } => {
-          let por_projected_ids = atom_identities_in_subtree(node: por_pd.output)
-          let por_whole_ids = atom_identities_in_subtree(node: por_wd.output)
-          let por_specimen_has_producer = por_symbol_seen(symbols: por_projected_ids, callee_id: por_mk_pair_callee_id)
-          let por_control_has_producer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_mk_pair_callee_id)
-          let por_control_has_consumer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_pair_callee_id)
-          if por_control_has_producer {
-            if por_control_has_consumer {
-              if por_specimen_has_producer {
-                ExitSuccess
+        Present { value: por_wd } =>
+          match por_nested_pick {
+            Present { value: por_nd } => {
+              let por_projected_ids = atom_identities_in_subtree(node: por_pd.output)
+              let por_whole_ids = atom_identities_in_subtree(node: por_wd.output)
+              let por_nested_ids = atom_identities_in_subtree(node: por_nd.output)
+              let por_specimen_has_producer = por_symbol_seen(symbols: por_projected_ids, callee_id: por_mk_pair_callee_id)
+              let por_nested_has_producer = por_symbol_seen(symbols: por_nested_ids, callee_id: por_mk_pair_callee_id)
+              let por_control_has_producer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_mk_pair_callee_id)
+              let por_control_has_consumer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_pair_callee_id)
+              if por_control_has_producer {
+                if por_control_has_consumer {
+                  if por_specimen_has_producer {
+                    if por_nested_has_producer {
+                      ExitSuccess
+                    } else {
+                      exit_failure(
+                        reason: "RED (nested): a let consumed only through a two-level projection lost its producing call from the fn-arrow skeleton",
+                      )
+                    }
+                  } else {
+                    exit_failure(
+                      reason: "RED: a projected-only let lost its producing call from the fn-arrow skeleton -- the body grain carries the projection's consumer but not the call that produced the binding",
+                    )
+                  }
+                } else {
+                  exit_failure(
+                    reason: "control skeleton lacks the por_sink_pair callee; the whole-record control's consumption is not visible, so the discriminator proves nothing",
+                  )
+                }
               } else {
                 exit_failure(
-                  reason: "RED: a projected-only let lost its producing call from the fn-arrow skeleton -- the body grain carries the projection's consumer but not the call that produced the binding",
+                  reason: "control skeleton lacks the por_mk_pair callee; the whole-record let itself is not live, so the enumeration route is broken",
                 )
               }
-            } else {
-              exit_failure(
-                reason: "control skeleton lacks the por_sink_pair callee; the whole-record control's consumption is not visible, so the discriminator proves nothing",
-              )
             }
-          } else {
-            exit_failure(
-              reason: "control skeleton lacks the por_mk_pair callee; the whole-record let itself is not live, so the enumeration route is broken",
-            )
+            Absent =>
+              exit_failure(
+                reason: "self-enumeration did not find por_projected_nested_record in this module's own decl facts",
+              )
           }
-        }
         Absent =>
           exit_failure(
             reason: "self-enumeration did not find por_record_passed_whole in this module's own decl facts",
@@ -121,5 +150,4 @@ fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
       exit_failure(
         reason: "self-enumeration did not find por_projected_only_record in this module's own decl facts",
       )
-  }
-}
+  }}
