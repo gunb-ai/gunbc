@@ -11,7 +11,7 @@ import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing {
-  MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperation, MegaRacOperationStanding, megarac_operation_eq, MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   OperationExecutedAtBuild, OperationRecoveredFromServedArtifact,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition,
   megarac_operation_standings, megarac_operation_grounded_at, megarac_operation_executed_at, megarac_identity_eq,
@@ -34,12 +34,12 @@ fn evidence(label: String) -> EvidenceRef {
 // THE CONTROL: a receipt beside a reading of its controller, with nothing recorded between them, is
 // grounded at exactly that reading's identity, and at no other build.
 test fn w_a_receipt_beside_a_reading_of_its_build_is_grounded_there() -> Bool {
-  let ev = MegaRacOperationEvidence {
+  let ev = megarac_operation_evidence_of(
     readings: [megarac_build_reading(endpoint: controller, identity: identity_at(wire: "0.32"), evidence: evidence(label: "reading"), observed_at: 1000)],
     receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: controller, receipt: evidence(label: "run"), executed_at: 2000)],
     transitions: [],
     recoveries: [],
-  }
+  )
   megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.32"))
     && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacVirtualMediaAttach, identity: identity_at(wire: "0.45.3"))
     && !megarac_operation_grounded_at(evidence: ev, operation: MegaRacKvmCanvasStill, identity: identity_at(wire: "0.32"))
@@ -48,12 +48,12 @@ test fn w_a_receipt_beside_a_reading_of_its_build_is_grounded_there() -> Bool {
 // RED: THE SAME RECEIPT WITH A REFLASH RECORDED BETWEEN IT AND THE ONLY READING grounds nothing: the
 // reading describes the controller before the flash and the receipt the controller after it.
 test fn w_a_receipt_across_a_reflash_grounds_no_build() -> Bool {
-  let ev = MegaRacOperationEvidence {
+  let ev = megarac_operation_evidence_of(
     readings: [megarac_build_reading(endpoint: controller, identity: identity_at(wire: "0.32"), evidence: evidence(label: "reading"), observed_at: 1000)],
     receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: controller, receipt: evidence(label: "run"), executed_at: 3000)],
     transitions: [megarac_firmware_transition(endpoint: controller, from: identity_at(wire: "0.32").firmware, to: identity_at(wire: "0.45.3").firmware, not_before: 1500, not_after: 2500, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
     recoveries: [],
-  }
+  )
   count(megarac_operation_standings(evidence: ev)) == 0
 }
 

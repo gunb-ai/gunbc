@@ -96,11 +96,33 @@ type MegaRacOperationServedArtifactRecovery sole_constructor {
   read_at: EpochMs
 }
 
-type MegaRacOperationEvidence {
+// THE WHOLE EVIDENCE POPULATION, SEALED. An operation's grounding and a controller's current build are
+// conclusions over the COMPLETE population: drop a recorded transition from otherwise genuine rows and a
+// superseded build reads as current. So the population is sole_constructor too, and its one mint is
+// sealed to the committed evidence rows (gunbc.machine_intake_megarac_operation_evidence) and to named
+// witness fixtures; no other caller can assemble, subset or rebuild one.
+type MegaRacOperationEvidence sole_constructor {
   readings: List<MegaRacBuildReading>
   receipts: List<MegaRacOperationReceipt>
   transitions: List<MegaRacFirmwareTransition>
   recoveries: List<MegaRacOperationServedArtifactRecovery>
+}
+
+fn megarac_operation_evidence_of(
+  readings: List<MegaRacBuildReading>,
+  receipts: List<MegaRacOperationReceipt>,
+  transitions: List<MegaRacFirmwareTransition>,
+  recoveries: List<MegaRacOperationServedArtifactRecovery>,
+) -> MegaRacOperationEvidence
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
+    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
+    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
+  ]
+{
+  MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions, recoveries: recoveries }
 }
 
 fn megarac_build_reading(endpoint: BmcControllerEndpoint, identity: BmcObservedIdentity, evidence: EvidenceRef, observed_at: EpochMs) -> MegaRacBuildReading

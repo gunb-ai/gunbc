@@ -7,7 +7,7 @@ import extdeps.bmc.endpoint { AmiMegaRac }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import gunbc.machine_intake_receipt { EvidenceRef }
 import gunbc.megarac_operation_standing {
-  MegaRacOperationEvidence, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
+  MegaRacOperationEvidence, megarac_operation_evidence_of, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming,
   megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition, megarac_operation_served_artifact_recovery, ServedArtifactDigestOnly,
 }
 import gunbc.machine_intake_mtcollins1_access_observation {
@@ -91,7 +91,7 @@ data mtcollins1_reflash_not_before: EpochMs = 1790899200000
 data mtcollins1_reflash_not_after: EpochMs = 1790985600000
 
 fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
-  MegaRacOperationEvidence {
+  megarac_operation_evidence_of(
     readings: [
       megarac_build_reading(endpoint: mtcollins1_endpoint, identity: mtcollins1_identity, evidence: mtcollins1_intake_reading_evidence, observed_at: mtcollins1_observed_at),
     ],
@@ -122,5 +122,5 @@ fn mtcollins1_megarac_operation_evidence() -> MegaRacOperationEvidence {
         read_at: megarac_served_bundle_0_32_read_on,
       ),
     ],
-  }
+  )
 }

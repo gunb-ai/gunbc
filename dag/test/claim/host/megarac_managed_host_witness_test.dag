@@ -16,7 +16,7 @@ import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
 import v2.std.optional { Present, Absent }
 import gunbc.machine_intake_receipt { EvidenceRef }
-import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
+import gunbc.megarac_operation_standing { MegaRacOperationEvidence, megarac_operation_evidence_of, megarac_build_reading, megarac_operation_receipt, megarac_firmware_transition }
 import gunbc.megarac_managed_host { MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, MegaRacHostNotManaged, MegaRacHostNotBound, MegaRacHostNotMegaRac, MegaRacOperationNotGrounded, MegaRacObservationNotCurrent, admit_megarac_host, megarac_host_admission_in, megarac_host_refusal_text }
 import gunbc.megarac_operation_standing { MegaRacOperation, MegaRacVirtualMediaAttach, MegaRacKvmCanvasStill, MegaRacSdrSocketNaming }
 
@@ -171,12 +171,12 @@ test fn w_a_historical_observation_beside_a_known_later_build_mints_no_carrier()
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let ev = MegaRacOperationEvidence {
+      let ev = megarac_operation_evidence_of(
         readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "historical reading"), observed_at: 1000)],
         receipts: [],
         transitions: [megarac_firmware_transition(endpoint: o.endpoint, from: o.identity.firmware, to: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3"), not_before: 2000, not_after: 3000, record: decl_ref(module_path: "fixture", decl_name: "reflash"))],
         recoveries: [],
-      }
+      )
       megarac_operations |> all(op => match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: op) {
         MegaRacHostRefused { cause: MegaRacObservationNotCurrent { observed: ob, current: c } } => (ob.raw_version as String) == "0.32" && (c.raw_version as String) == "0.45.3"
         _ => false
@@ -191,12 +191,12 @@ test fn w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let ev = MegaRacOperationEvidence {
+      let ev = megarac_operation_evidence_of(
         readings: [megarac_build_reading(endpoint: o.endpoint, identity: o.identity, evidence: fixture_evidence(label: "current reading"), observed_at: 5000)],
         receipts: [megarac_operation_receipt(operation: MegaRacVirtualMediaAttach, endpoint: o.endpoint, receipt: fixture_evidence(label: "run"), executed_at: 6000)],
         transitions: [],
         recoveries: [],
-      }
+      )
       (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacVirtualMediaAttach) { MegaRacHostAdmitted { host: _ } => true  MegaRacHostRefused { cause: _ } => false })
         && (match admit_megarac_host_at_current_build(evidence: ev, host: h, operation: MegaRacKvmCanvasStill) { MegaRacHostRefused { cause: MegaRacOperationNotGrounded { operation: _, identity: _ } } => true  _ => false })
     }
