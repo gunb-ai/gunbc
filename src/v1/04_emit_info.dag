@@ -665,7 +665,7 @@ fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> Type
 // answers Absent; the Bool readers below then answer false, which emits nothing from the name (the
 // variant-parent readers refuse an unresolved parent, v1.compiler.emit_rust
 // refuse_unresolved_bare_variant_pattern).
-fn type_summary_answer(index: TypeSummaryIndex, key: String, question: (TypeSummary) -> Bool) -> Bool? {
+fn type_summary_answer(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> Bool? {
   match type_summary_lookup(index: index, key: key) {
     TypeSummaryFound { summary: summary } => Present { value: question(summary) }
     TypeSummaryNotDeclared => none
@@ -682,7 +682,7 @@ fn type_summary_answer(index: TypeSummaryIndex, key: String, question: (TypeSumm
   }
 }
 
-fn type_summary_answer_or_false(index: TypeSummaryIndex, key: String, question: (TypeSummary) -> Bool) -> Bool {
+fn type_summary_answer_or_false(index: TypeSummaryIndex, key: String, question: fn(TypeSummary) -> Bool) -> Bool {
   match type_summary_answer(index: index, key: key, question: question) {
     Present { value: v } => v
     Absent => false
@@ -753,11 +753,11 @@ fn summary_is_enum(summary: TypeSummary) -> Bool {
 }
 
 fn variant_belongs_to_enum(type_summaries: TypeSummaryIndex, variant_name: String, enum_name: String) -> Bool {
-  type_summary_answer_or_false(index: type_summaries, key: enum_name, question: (summary) => summary_is_enum_with_variant(summary: summary, variant_name: variant_name))
+  type_summary_answer_or_false(index: type_summaries, key: enum_name, question: summary => summary_is_enum_with_variant(summary: summary, variant_name: variant_name))
 }
 
 fn is_enum_in_summaries(type_summaries: TypeSummaryIndex, type_name: String) -> Bool {
-  type_summary_answer_or_false(index: type_summaries, key: type_name, question: (summary) => summary_is_enum(summary: summary))
+  type_summary_answer_or_false(index: type_summaries, key: type_name, question: summary => summary_is_enum(summary: summary))
 }
 
 fn find_variant_parent(type_summaries: TypeSummaryIndex, variant_name: String, scope_enums: List<String>) -> String? {
