@@ -1156,8 +1156,27 @@ fn roadmap_surface_rules() -> List<BuildRule> {
       decl(prop: FontSize, value: "var(--text-12)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-rail-meter" }, decls: [
-      decl(prop: Margin, value: "var(--space-4) 0 var(--space-8)"),
+      decl(prop: Margin, value: "var(--space-2) 0 var(--space-8) calc(10ch + var(--space-8))"),
       decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".work-attempt-failures" }, decls: [
+      decl(prop: Margin, value: "var(--space-4) 0 0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-2)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Width, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".work-attempt-failure" }, decls: [
+      decl(prop: BorderLeft, value: "var(--border-2) solid var(--issue-error)"),
+      decl(prop: PaddingLeft, value: "var(--space-6)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".work-attempt-failure:target" }, decls: [
+      decl(prop: Background, value: "var(--issue-highlight)"),
+      decl(prop: Color, value: "var(--issue-text)")
     ] },
     StaticRule { selector: RawSelector { text: ".issue-rail .issue-field" }, decls: [
       decl(prop: Display, value: "grid"),

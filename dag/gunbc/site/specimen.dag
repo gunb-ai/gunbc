@@ -42,13 +42,18 @@ import gunbc.site.element.priority_mark { PriorityMark, priority_mark }
 import gunbc.site.element.node_row { NodeRow, NodeRowFlat, NodeRowDensityGrid, node_row, node_row_header }
 import gunbc.site.element.relation_table { RelationTable, relation_table }
 import gunbc.site.element.node_chain { node_chain }
-import gunbc.site.element.build_meter { BuildMeter, BuildMeterView, build_meter }
-import gunbc.roadmap.roadmap_build_meter { build_meter_view_of }
-import gunbc.roadmap_issue_location { issue_anchor_path }
+import gunbc.site.element.build_meter {
+  BuildMeterView, BuildMeterRound, BuildMeterMark, BuildMeterKind, BuildMeterTypedOperation, BuildMeterRoundsRecorded, BuildMeterWorking,
+  BuildMeterReason, BuildMeterRead, BuildMeterWrite, BuildMeterEdit, BuildMeterRun, BuildMeterSearch, BuildMeterReport, build_meter,
+}
+import gunbc.roadmap.roadmap_build_meter { build_meter_view_of, compact_work_summary_of_view }
+import gunbc.roadmap_issue_location { issue_work_path }
+import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import gunbc.harness.harness_throughput { HarnessRoundLedger, RoundObservation, RoundsObserved, RoundsUnobserved }
-import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted }
+import gunbc.roadmap_provider_events { ProviderExecutionState, ProviderRunning, ProviderAwaitingSeat, ProviderCompleted, ProviderNotStarted, ProviderBudgetSpent, ProviderEventsRefused }
 import gunbc.roadmap_workflow_stage {
-  WorkflowSegment, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed,
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState, WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete,
+  WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
   EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment,
   VerificationWorkflowSegment, PublicationWorkflowSegment,
 }
@@ -402,14 +407,61 @@ fn specimen_issue_composite() -> List<Fragment> {
   ]
 }
 
-// The build meter, over planted attempts. Each fixture is a ledger and a set of stage states put
-// through the production derivation (gunbc.roadmap.roadmap_build_meter build_meter_view_of), so
-// what is shown is what an attempt with those records would show. The records are invented; the
-// derivation and the element are the real ones.
+// The compact work summary, over planted attempts. Fixtures that only the round ledger can
+// describe go through the production derivation (gunbc.roadmap.roadmap_build_meter
+// build_meter_view_of), so what is shown is what an attempt with those records would show; the
+// two that carry typed operation kinds are supplied as views, because no producer emits those
+// kinds yet. One fixture is a real run: its rounds were captured from the attempt's event log by
+// issue-tracker-shots/meter/convert-real.cjs and are embedded here unchanged; its stages are
+// planted to match its recorded terminal (the harness's 40-step budget).
 data specimen_meter_class: String = "specimen-meter"
 data specimen_meters_class: String = "specimen-meters"
+data specimen_meter_subject: String = "frontend-elements"
 data specimen_meter_first_round_ms: Int = 1790694000000
 data specimen_meter_round_ms: Int = 47000
+
+data specimen_real_run_rounds: List<RoundObservation> = [
+  RoundObservation { step: 1, input_tokens: 2152, output_tokens: 186, epoch_ms: 1789887228000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 2, input_tokens: 2526, output_tokens: 201, epoch_ms: 1789887241000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 3, input_tokens: 4432, output_tokens: 299, epoch_ms: 1789887259000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 4, input_tokens: 6735, output_tokens: 315, epoch_ms: 1789887283000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 5, input_tokens: 8280, output_tokens: 280, epoch_ms: 1789887307000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 6, input_tokens: 10018, output_tokens: 3303, epoch_ms: 1789887474000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 7, input_tokens: 14503, output_tokens: 396, epoch_ms: 1789887503000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 8, input_tokens: 17385, output_tokens: 2436, epoch_ms: 1789887627000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 9, input_tokens: 22564, output_tokens: 1356, epoch_ms: 1789887703000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 10, input_tokens: 24940, output_tokens: 5653, epoch_ms: 1789887971000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 11, input_tokens: 35282, output_tokens: 6359, epoch_ms: 1789888278000, files_changed: Present { value: 0 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 12, input_tokens: 43510, output_tokens: 6519, epoch_ms: 1789888589000, files_changed: Present { value: 2 }, tool_calls: Present { value: 2 } },
+  RoundObservation { step: 13, input_tokens: 50285, output_tokens: 2903, epoch_ms: 1789888734000, files_changed: Present { value: 3 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 14, input_tokens: 53231, output_tokens: 576, epoch_ms: 1789888768000, files_changed: Present { value: 3 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 15, input_tokens: 53935, output_tokens: 529, epoch_ms: 1789888794000, files_changed: Present { value: 4 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 16, input_tokens: 54619, output_tokens: 1070, epoch_ms: 1789888845000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 17, input_tokens: 55730, output_tokens: 1178, epoch_ms: 1789888903000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 18, input_tokens: 57198, output_tokens: 392, epoch_ms: 1789888924000, files_changed: Present { value: 5 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 19, input_tokens: 57747, output_tokens: 1478, epoch_ms: 1789889002000, files_changed: Present { value: 6 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 20, input_tokens: 59266, output_tokens: 775, epoch_ms: 1789889040000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 21, input_tokens: 60082, output_tokens: 244, epoch_ms: 1789889055000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 22, input_tokens: 60517, output_tokens: 428, epoch_ms: 1789889077000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 23, input_tokens: 61102, output_tokens: 354, epoch_ms: 1789889153000, files_changed: Present { value: 8 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 24, input_tokens: 61517, output_tokens: 447, epoch_ms: 1789889295000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 25, input_tokens: 62011, output_tokens: 84, epoch_ms: 1789889302000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 26, input_tokens: 62137, output_tokens: 140, epoch_ms: 1789889412000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 27, input_tokens: 62788, output_tokens: 154, epoch_ms: 1789889534000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 28, input_tokens: 63016, output_tokens: 143, epoch_ms: 1789889542000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 29, input_tokens: 63314, output_tokens: 300, epoch_ms: 1789889662000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 30, input_tokens: 63733, output_tokens: 106, epoch_ms: 1789889779000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 31, input_tokens: 63958, output_tokens: 446, epoch_ms: 1789889912000, files_changed: Present { value: 9 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 32, input_tokens: 68811, output_tokens: 278, epoch_ms: 1789889934000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 33, input_tokens: 69253, output_tokens: 71, epoch_ms: 1789890052000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 34, input_tokens: 70235, output_tokens: 201, epoch_ms: 1789890062000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 35, input_tokens: 70624, output_tokens: 2186, epoch_ms: 1789890164000, files_changed: Present { value: 10 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 36, input_tokens: 72855, output_tokens: 270, epoch_ms: 1789890182000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 37, input_tokens: 73167, output_tokens: 115, epoch_ms: 1789890189000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 38, input_tokens: 73326, output_tokens: 115, epoch_ms: 1789890312000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 39, input_tokens: 73518, output_tokens: 119, epoch_ms: 1789890435000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+  RoundObservation { step: 40, input_tokens: 73714, output_tokens: 229, epoch_ms: 1789890564000, files_changed: Present { value: 11 }, tool_calls: Present { value: 1 } },
+]
 
 fn specimen_meter_round(step: Int, tool_calls: Int, files_changed: Int, output_tokens: Int) -> RoundObservation {
   RoundObservation {
@@ -422,7 +474,8 @@ fn specimen_meter_round(step: Int, tool_calls: Int, files_changed: Int, output_t
   }
 }
 
-// Six rounds of ordinary work: mostly tool calls, one round of reasoning alone, two writes.
+// Six rounds of ordinary work: mostly tool calls, one round of reasoning alone, two changed-path
+// rises.
 fn specimen_meter_spell(base: Int, files: Int) -> List<RoundObservation> {
   [
     specimen_meter_round(step: base + 1, tool_calls: 3, files_changed: files, output_tokens: 420),
@@ -438,32 +491,53 @@ fn specimen_meter_spells(spells: Int) -> List<RoundObservation> {
   flat_map([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].take(n: spells), i => specimen_meter_spell(base: i * 6, files: i * 2))
 }
 
-// Every round changes more of the tree than the one before.
-fn specimen_meter_write_heavy() -> List<RoundObservation> {
-  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], i =>
-    specimen_meter_round(step: i, tool_calls: 2 + i / 5, files_changed: i * 2 - i / 3, output_tokens: 300 * i))
+fn specimen_meter_segment(kind: WorkflowSegmentKind, state: WorkflowSegmentState, detail: String) -> WorkflowSegment {
+  WorkflowSegment { kind: kind, state: state, detail: detail }
 }
 
-fn specimen_meter_stage(state: WorkflowSegmentState, detail: String) -> List<WorkflowSegment> {
-  [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: state, detail: detail },
-    WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-  ]
+// The six attempt stages with the given states, in order, each with an optional detail.
+fn specimen_meter_stages(states: List<WorkflowSegmentState>, details: List<String>) -> List<WorkflowSegment> {
+  map(enumerate([EnvironmentWorkflowSegment, WorkspaceWorkflowSegment, AgentWorkflowSegment, SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment]), pair =>
+    specimen_meter_segment(
+      kind: pair.second,
+      state: match states.skip(n: pair.first).first() { Present { value: st } => st  Absent => WorkflowSegmentPending },
+      detail: match details.skip(n: pair.first).first() { Present { value: d } => d  Absent => "" }))
 }
 
-fn specimen_meter_stages_through(verification: WorkflowSegmentState, verification_detail: String, publication: WorkflowSegmentState) -> List<WorkflowSegment> {
-  [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: SubmissionWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: verification, detail: verification_detail },
-    WorkflowSegment { kind: PublicationWorkflowSegment, state: publication, detail: "" },
-  ]
+fn specimen_meter_running() -> ProviderExecutionState {
+  ProviderRunning { activity: "Agent working" }
+}
+
+// A typed round: each pair is a kind and its count, recorded by the producer that dispatched it.
+fn specimen_typed_round(step: Int, marks: List<BuildMeterMark>, output_tokens: Int) -> BuildMeterRound {
+  BuildMeterRound { step: step, marks: marks, input_tokens: 9000 + step * 650, output_tokens: output_tokens }
+}
+
+fn specimen_typed(kind: BuildMeterKind, n: Int) -> BuildMeterMark {
+  BuildMeterMark { kind: kind, count: n, evidence: BuildMeterTypedOperation }
+}
+
+fn specimen_read_heavy_rounds() -> List<BuildMeterRound> {
+  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16], i => specimen_typed_round(step: i, output_tokens: 200 + (i - (i / 5) * 5) * 700, marks: if i - (i / 4) * 4 == 0 { [specimen_typed(kind: BuildMeterReason, n: 1), specimen_typed(kind: BuildMeterSearch, n: 2), specimen_typed(kind: BuildMeterRead, n: 3)] } else if i - (i / 7) * 7 == 0 { [specimen_typed(kind: BuildMeterRead, n: 4), specimen_typed(kind: BuildMeterRun, n: 1)] } else { [specimen_typed(kind: BuildMeterRead, n: 1 + i - (i / 3) * 3)] }))
+}
+
+fn specimen_write_heavy_rounds() -> List<BuildMeterRound> {
+  map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], i => specimen_typed_round(step: i, output_tokens: 600 + i * 300, marks: if i == 1 { [specimen_typed(kind: BuildMeterRead, n: 3), specimen_typed(kind: BuildMeterReason, n: 1)] } else if i - (i / 3) * 3 == 0 { [specimen_typed(kind: BuildMeterEdit, n: 2), specimen_typed(kind: BuildMeterRun, n: 1)] } else if i == 14 { [specimen_typed(kind: BuildMeterRun, n: 2), specimen_typed(kind: BuildMeterReport, n: 1)] } else { [specimen_typed(kind: BuildMeterWrite, n: 1 + i - (i / 2) * 2), specimen_typed(kind: BuildMeterEdit, n: 1)] }))
+}
+
+fn specimen_typed_view(attempt_key: String, rounds: List<BuildMeterRound>, last_at: String) -> BuildMeterView {
+  BuildMeterView {
+    attempt_key: attempt_key,
+    attempt_label: attempt_key_short_form(key: attempt_key),
+    stage: Present { value: AgentWorkflowSegment },
+    stage_state: Present { value: WorkflowSegmentActive },
+    coverage: BuildMeterRoundsRecorded { rounds: rounds, last_recorded_at: last_at },
+    pose: BuildMeterWorking,
+    stale: false,
+    failure: none,
+    handoff: HandoffAwaitingWorker,
+    destination: issue_work_path(node_id: specimen_meter_subject),
+  }
 }
 
 type SpecimenMeter {
@@ -471,45 +545,48 @@ type SpecimenMeter {
   view: BuildMeterView
 }
 
-fn specimen_meter_running() -> ProviderExecutionState {
-  ProviderRunning { activity: "Agent working" }
+fn specimen_meter_derived(attempt_key: String, segments: List<WorkflowSegment>, rounds: HarnessRoundLedger, provider: ProviderExecutionState, handoff: CandidateHandoffState, stale: Bool) -> BuildMeterView {
+  build_meter_view_of(node_id: specimen_meter_subject, attempt_key: attempt_key, segments: segments, rounds: rounds, provider: provider, handoff: handoff, stale: stale)
 }
 
 fn specimen_meters() -> List<SpecimenMeter> {
+  let agent_active = specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
   [
-    SpecimenMeter { caption: "Working, a few rounds", view: build_meter_view_of(
-      attempt_key: "5f1c9a2e77d04b13", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 1) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
-    SpecimenMeter { caption: "A long run, 60 rounds", view: build_meter_view_of(
-      attempt_key: "a3e07c5d1b9f4462", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 10) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
-    SpecimenMeter { caption: "Waiting for a seat", view: build_meter_view_of(
-      attempt_key: "0bd4418ce2a75f90", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 1).take(n: 3) }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker) },
-    SpecimenMeter { caption: "Rounds unobserved", view: build_meter_view_of(
-      attempt_key: "c81e3f6a9d2047b5", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
-      rounds: RoundsUnobserved { reason: "round 7 carries an output token count that is not a number" as NonEmptyStr }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
-    SpecimenMeter { caption: "Stopped: verification failed", view: build_meter_view_of(
-      attempt_key: "7742b0e19c3d5a68", segments: specimen_meter_stages_through(verification: WorkflowSegmentFailed, verification_detail: "3 of 41 claims red", publication: WorkflowSegmentPending),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }) },
-    SpecimenMeter { caption: "Published", view: build_meter_view_of(
-      attempt_key: "e69a15d83f0c2b74", segments: specimen_meter_stages_through(verification: WorkflowSegmentComplete, verification_detail: "", publication: WorkflowSegmentComplete),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }) },
-    SpecimenMeter { caption: "A write-heavy run", view: build_meter_view_of(
-      attempt_key: "2d5b8f04a1c7e936", segments: specimen_meter_stage(state: WorkflowSegmentActive, detail: ""),
-      rounds: RoundsObserved { rounds: specimen_meter_write_heavy() }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker) },
+    SpecimenMeter { caption: "Real run: shell-typed-invocation-a5908ed38768df111 (rounds from its log; budget spent)", view: specimen_meter_derived(
+      attempt_key: "a5908ed38768df111",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: ["", "", "the harness ended the turn at its 40-step budget"]),
+      rounds: RoundsObserved { rounds: specimen_real_run_rounds }, provider: ProviderBudgetSpent { activity: "Agent stopped at its step budget", detail: "40 of 40 steps taken" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenMeter { caption: "Read-heavy (typed operations, supplied)", view: specimen_typed_view(attempt_key: "4b7e2c9105d8a3f6", rounds: specimen_read_heavy_rounds(), last_at: "2026-09-29T15:12:31Z") },
+    SpecimenMeter { caption: "Write and edit heavy (typed operations, supplied)", view: specimen_typed_view(attempt_key: "2d5b8f04a1c7e936", rounds: specimen_write_heavy_rounds(), last_at: "2026-09-29T15:10:58Z") },
+    SpecimenMeter { caption: "Waiting for a seat, no round yet", view: specimen_meter_derived(
+      attempt_key: "0bd4418ce2a75f90", segments: agent_active,
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenMeter { caption: "Legacy: refused, rounds not recorded", view: specimen_meter_derived(
+      attempt_key: "0cfc18886a3d3b10",
+      segments: specimen_meter_stages(states: [WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentPending, WorkflowSegmentRefused], details: ["environment admission receipt unavailable", "worktree marker unavailable", "attempt predates modeled admission and event capture", "no submission capture", "", "legacy branch has no modeled workspace publication receipt"]),
+      rounds: RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr }, provider: ProviderEventsRefused { activity: "legacy attempt — supersedable", detail: "attempt predates modeled admission and event capture" }, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenMeter { caption: "Refused before the first round", view: specimen_meter_derived(
+      attempt_key: "c81e3f6a9d2047b5",
+      segments: specimen_meter_stages(states: [WorkflowSegmentRefused], details: ["admission receipt records a refusal: no seat class admits this work"]),
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, stale: false) },
+    SpecimenMeter { caption: "Verification failed after 18 rounds", view: specimen_meter_derived(
+      attempt_key: "7742b0e19c3d5a68",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "", "", "3 of 41 claims red"]),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }, stale: false) },
+    SpecimenMeter { caption: "Stale: launched on an earlier revision", view: specimen_meter_derived(
+      attempt_key: "5f1c9a2e77d04b13", segments: agent_active,
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) },
+    SpecimenMeter { caption: "Published", view: specimen_meter_derived(
+      attempt_key: "e69a15d83f0c2b74",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) },
   ]
 }
 
 fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
   el_attrs("div", [attr(name: "class", value: specimen_meter_class)], [
     specimen_note(text: row.caption),
-    build_meter(input: BuildMeter {
-      view: row.view,
-      subject: join(["specimen-", row.view.attempt_key], ""),
-      href: issue_anchor_path(node_id: "frontend-elements", anchor: "work"),
-      link_attributes: [],
-    }),
+    build_meter(summary: compact_work_summary_of_view(subject: join(["specimen-", row.view.attempt_key], ""), view: row.view), link_attributes: []),
   ])
 }
 

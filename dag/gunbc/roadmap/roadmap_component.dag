@@ -1,5 +1,5 @@
 module gunbc.roadmap_component
-import gunbc.site.element.build_meter { build_meter_subject_attribute, build_meter_key_attribute, build_meter_rounds_attribute, build_meter_beat_class, build_meter_wire_key_member }
+import gunbc.site.element.build_meter { build_meter_subject_attribute, build_meter_revision_attribute, build_meter_rounds_attribute, build_meter_beat_class, build_meter_wire_revision_member }
 import gunbc.site.build_meter_client { build_meter_reduced_motion_expr }
 import gunbc.site.controls { ts_on_click, longest_label_len, dispatch_reserved_ch_for, theme_toggle_labels, theme_toggle_reserved_width, sound_toggle_labels, sound_toggle_reserved_width, js_local_storage_get, js_sound_muted_predicate, js_actx_member, js_oscillator_tick_body, js_oscillator_schedule_stmts, sound_preamble_statements, sound_toggle_bind_statements, js_document_element, theme_toggle_bind_statements, account_query_expr, account_swap_statements, dispatch_button_ch_gutter, theme_storage_key, theme_toggle_class, theme_toggle_auto_value, theme_toggle_label_prefix, sound_toggle_class, sound_toggle_note, sound_toggle_label_on, sound_toggle_label_off, sound_muted_storage_value, sound_sounding_storage_value, js_sound_muted_fn, js_audio_context_var, js_tick_fn, sound_preamble_note, js_theme_choice_fn, js_theme_apply_fn }
 
@@ -2660,22 +2660,28 @@ fn activity_paint_stmts() -> List<TsStmt> {
 // paint minted one 'inspect' after every row the wire carried an attempt for — inline in the
 // issue table, and stacked one-per-member inside project and family rows on the old dashboard
 // lanes (fifteen deep). Execution history lives exclusively on the Work tab.
-// THE BUILD METER REFRESH rides this same workflow observation: no second timer and no new route.
-// Each wire attempt carries the key of its current meter view
-// (gunbc.roadmap.roadmap_build_meter build_meter_wire_key). Where this page shows a meter for the
-// attempt's node and the key it drew differs, the page asks its own address for the issue page
-// again, takes the meter the server rendered there, and replaces the body whole: the picture
-// catches up at once however many rounds landed, and the browser draws nothing of its own. One
-// request is made per distinct wire key, so a page and a wire that keep disagreeing cannot make a
-// request per observation; a request that fails forgets the key, and the next observation asks
-// again. If the recorded round count rose, the element is given its beat class once, for one
-// small acted beat, and never under reduced motion.
+// THE COMPACT WORK SUMMARY REFRESH rides this same workflow observation: no second timer and no
+// new route. Each wire attempt carries its current view revision
+// (gunbc.roadmap.roadmap_build_meter attempt_view_revision). Where this page shows a summary for
+// the attempt's node and the revision it drew differs, the page records the revision it now wants
+// and asks its own address for the issue page, takes the summary the server rendered there, and
+// replaces the body and the link destination whole: the picture catches up at once however much
+// changed, and the browser draws nothing of its own.
+//
+// A RENDERING IS TAKEN ONLY IF IT IS THE ONE STILL WANTED. If revision B is wanted while the read
+// for A is outstanding, A's rendering, arriving late, carries revision A and is discarded; only a
+// rendering whose own revision equals the latest wanted one replaces what is drawn. One read is
+// made per distinct wanted revision, so a page and a wire that keep disagreeing cannot make a read
+// per observation; a read that fails forgets that revision, and the next observation asks again.
+// If the recorded round count rose, the element gets its beat class once, never under reduced
+// motion.
 data workflow_meter_beat_ms: Milliseconds = 1500
+data workflow_meter_wanted_attribute: String = "data-meter-wanted"
 data workflow_meter_asked_attribute: String = "data-meter-asked"
 
-fn workflow_meter_body_attribute_expr(attribute: String) -> TsExpr {
+fn workflow_meter_body_attribute_expr(element: String, attribute: String) -> TsExpr {
   ts_call(
-    callee: ts_member(object: ts_member(object: ts_ident(name: "bm"), property: "firstElementChild"), property: "getAttribute"),
+    callee: ts_member(object: ts_member(object: ts_ident(name: element), property: "firstElementChild"), property: "getAttribute"),
     args: [ts_lit_str(value: attribute)])
 }
 
@@ -2693,6 +2699,10 @@ fn workflow_meter_bm_call(method: String, args: List<TsExpr>) -> TsStmt {
   ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "bm"), property: method), args: args))
 }
 
+fn workflow_meter_bm_attribute(name: String) -> TsExpr {
+  ts_call(callee: ts_member(object: ts_ident(name: "bm"), property: "getAttribute"), args: [ts_lit_str(value: name)])
+}
+
 fn workflow_meter_swap_stmts() -> List<TsStmt> {
   [
     ts_const(name: "fresh", value: ts_call(
@@ -2704,19 +2714,29 @@ fn workflow_meter_swap_stmts() -> List<TsStmt> {
       args: [ts_ident(name: "bmSelector")])),
     ts_if(
       cond: ts_binop(
-        left: ts_binop(left: ts_ident(name: "fresh"), op: "&&", right: ts_member(object: ts_ident(name: "fresh"), property: "firstElementChild")),
+        left: ts_binop(
+          left: ts_binop(left: ts_ident(name: "fresh"), op: "&&", right: ts_member(object: ts_ident(name: "fresh"), property: "firstElementChild")),
+          op: "&&",
+          right: ts_member(object: ts_ident(name: "bm"), property: "firstElementChild")),
         op: "&&",
-        right: ts_member(object: ts_ident(name: "bm"), property: "firstElementChild")),
+        right: ts_binop(
+          left: workflow_meter_body_attribute_expr(element: "fresh", attribute: build_meter_revision_attribute),
+          op: "===",
+          right: workflow_meter_bm_attribute(name: workflow_meter_wanted_attribute))),
       then: ts_block(stmts: [
-        ts_const(name: "bmRoundsBefore", value: ts_prefix(op: "+", expr: workflow_meter_body_attribute_expr(attribute: build_meter_rounds_attribute))),
+        ts_const(name: "bmRoundsBefore", value: ts_prefix(op: "+", expr: workflow_meter_body_attribute_expr(element: "bm", attribute: build_meter_rounds_attribute))),
         ts_expr_stmt(expr: ts_binop(
           left: ts_member(object: ts_ident(name: "bm"), property: "innerHTML"),
           op: "=",
           right: ts_member(object: ts_ident(name: "fresh"), property: "innerHTML"))),
+        workflow_meter_bm_call(method: "setAttribute", args: [
+          ts_lit_str(value: "href"),
+          ts_call(callee: ts_member(object: ts_ident(name: "fresh"), property: "getAttribute"), args: [ts_lit_str(value: "href")]),
+        ]),
         ts_if(
           cond: ts_binop(
             left: ts_binop(
-              left: ts_prefix(op: "+", expr: workflow_meter_body_attribute_expr(attribute: build_meter_rounds_attribute)),
+              left: ts_prefix(op: "+", expr: workflow_meter_body_attribute_expr(element: "bm", attribute: build_meter_rounds_attribute)),
               op: ">",
               right: ts_ident(name: "bmRoundsBefore")),
             op: "&&",
@@ -2749,47 +2769,50 @@ fn workflow_meter_refresh_stmts() -> List<TsStmt> {
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
       args: [ts_ident(name: "bmSelector")])),
     ts_const(name: "mk", value: ts_binop(
-      left: ts_member(object: ts_ident(name: "attempt"), property: build_meter_wire_key_member),
+      left: ts_member(object: ts_ident(name: "attempt"), property: build_meter_wire_revision_member),
       op: "||",
       right: ts_lit_str(value: ""))),
     ts_if(
       cond: ts_binop(
         left: ts_binop(
-          left: ts_binop(
-            left: ts_binop(left: ts_ident(name: "bm"), op: "&&", right: ts_ident(name: "mk")),
-            op: "&&",
-            right: ts_member(object: ts_ident(name: "bm"), property: "firstElementChild")),
+          left: ts_binop(left: ts_ident(name: "bm"), op: "&&", right: ts_ident(name: "mk")),
           op: "&&",
-          right: ts_binop(
-            left: workflow_meter_body_attribute_expr(attribute: build_meter_key_attribute),
-            op: "!==",
-            right: ts_ident(name: "mk"))),
+          right: ts_member(object: ts_ident(name: "bm"), property: "firstElementChild")),
         op: "&&",
         right: ts_binop(
-          left: ts_call(callee: ts_member(object: ts_ident(name: "bm"), property: "getAttribute"), args: [ts_lit_str(value: workflow_meter_asked_attribute)]),
+          left: workflow_meter_body_attribute_expr(element: "bm", attribute: build_meter_revision_attribute),
           op: "!==",
           right: ts_ident(name: "mk"))),
       then: ts_block(stmts: [
-        workflow_meter_bm_call(method: "setAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute), ts_ident(name: "mk")]),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(
-            object: ts_call(
+        workflow_meter_bm_call(method: "setAttribute", args: [ts_lit_str(value: workflow_meter_wanted_attribute), ts_ident(name: "mk")]),
+        ts_if(
+          cond: ts_binop(left: workflow_meter_bm_attribute(name: workflow_meter_asked_attribute), op: "!==", right: ts_ident(name: "mk")),
+          then: ts_block(stmts: [
+            workflow_meter_bm_call(method: "setAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute), ts_ident(name: "mk")]),
+            ts_expr_stmt(expr: ts_call(
               callee: ts_member(
                 object: ts_call(
                   callee: ts_member(
                     object: ts_call(
-                      callee: ts_ident(name: "fetch"),
-                      args: [ts_member(object: ts_member(object: ts_ident(name: "window"), property: "location"), property: "pathname")]),
+                      callee: ts_member(
+                        object: ts_call(
+                          callee: ts_ident(name: "fetch"),
+                          args: [ts_member(object: ts_member(object: ts_ident(name: "window"), property: "location"), property: "pathname")]),
+                        property: "then"),
+                      args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
+                        ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "text"), args: []) }),
+                      ]))]),
                     property: "then"),
-                  args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
-                    ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "r"), property: "text"), args: []) }),
-                  ]))]),
-                property: "then"),
-              args: [ts_arrow(params: ["page"], body: ts_block(stmts: workflow_meter_swap_stmts()))]),
-            property: "catch"),
-          args: [ts_arrow(params: [], body: ts_block(stmts: [
-            workflow_meter_bm_call(method: "removeAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute)]),
-          ]))])),
+                  args: [ts_arrow(params: ["page"], body: ts_block(stmts: workflow_meter_swap_stmts()))]),
+                property: "catch"),
+              args: [ts_arrow(params: [], body: ts_block(stmts: [
+                ts_if(
+                  cond: ts_binop(left: workflow_meter_bm_attribute(name: workflow_meter_asked_attribute), op: "===", right: ts_ident(name: "mk")),
+                  then: ts_block(stmts: [workflow_meter_bm_call(method: "removeAttribute", args: [ts_lit_str(value: workflow_meter_asked_attribute)])]),
+                  else_stmt: none),
+              ]))])),
+          ]),
+          else_stmt: none),
       ]),
       else_stmt: none),
   ]

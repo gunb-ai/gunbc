@@ -32,7 +32,7 @@ import gunbc.roadmap_allocation_location { allocation_page_path }
 
 import gunbc.roadmap.roadmap_event_log { RoadmapNodeStanding, RoadmapStandings, StandingsObserved, StandingsUnobserved, standing_for_node, assignment_for_node, roadmap_issue_history_newest_first, roadmap_node_standing, roadmap_node_standing_key, roadmap_node_standing_text_naming, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete, RoadmapEventEnvelope, roadmap_event_kind_word }
 import gunbc.roadmap.roadmap_event_log {
-  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label,
+  EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, event_principal_label, event_principal_is_fabric,
   IssueComment, IssueAssignmentProjection, roadmap_issue_comments, roadmap_issue_assignment, issue_comment_anchor,
   ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack,
   attempt_result_outcome_word, attempt_result_outcome_text, roadmap_claim_return_to, RoadmapEventId,
@@ -85,7 +85,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   relation_summary, relation_count_text, relation_kind_label, relation_empty_text, relation_undeclared_text,
   node_status_is_closed, node_chain_refusal_text,
 }
-import gunbc.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path }
+import gunbc.roadmap_issue_location { issue_page_path, issue_assign_path, issue_comment_path, issue_anchor_path, issue_work_tab_anchor, issue_work_event_anchor }
 import gunbc.roadmap_component { activity_round_live_class, activity_round_remaining_class, round_strip_playback_ms }
 import gunbc.roadmap_component { roadmap_dispatch_asset_path, disclosure_mark_class, disclosure_mark_glyph, workflow_controls_class, dashboard_instance_class, dashboard_instance_label_class, activity_ledger_class, activity_obligation_class, activity_evidence_class, activity_evidence_row_class, activity_located_reason_class, activity_round_strip_class, activity_round_read_class, activity_round_write_class, activity_round_unmeasured_class, activity_round_reason_class, node_attempt_stale_class, stage_strip_class, stage_segment_class, stage_live_class, activity_throughput_class, activity_line_prefix_class }
 import gunbc.site.controls { sound_toggle_class, theme_toggle_class, theme_toggle_label_prefix, theme_toggle_auto_value }
@@ -130,8 +130,8 @@ import gunbc.roadmap_presentation {
   issue_status_label, issue_status_details, issue_first_open_kind, issue_wait_state_label,
 }
 import gunbc.roadmap_workflow_progress { WorkflowAttemptProgress }
-import gunbc.roadmap.roadmap_build_meter { build_meter_view }
-import gunbc.site.element.build_meter { BuildMeter, build_meter }
+import gunbc.roadmap.roadmap_build_meter { compact_work_summary, FailureEvent, attempt_failure_events }
+import gunbc.site.element.build_meter { build_meter, failure_event_words }
 import gunbc.roadmap_workflow_command { attempt_key_short_form }
 import extdeps.google.issue_tracker {
   issue_results_sort_key_wire, issue_results_sort_numeric,
@@ -613,13 +613,6 @@ fn issue_assign_suggestion_nodes(p: EventPrincipal, profiles: List<PrincipalProf
       [ el_class("span", "issue-assign-name", [ txt(display.name) ]),
         el_class("span", "issue-assign-email", [ txt(display.detail) ]) ],
       [ el_class("span", "issue-assign-kind", [ txt(if event_principal_is_fabric(p: p) { "Group · starts a workflow run" } else { "Person" }) ]) ])))
-}
-
-fn event_principal_is_fabric(p: EventPrincipal) -> Bool {
-  match p {
-    EventPrincipalAuthenticated { ref } => principal_ref_eq(a: ref, b: fabric_workflow_principal)
-    LegacyEmailPrincipal { email: _, authentication_unestablished: _ } => false
-  }
 }
 
 fn suggestion_kind_wire(p: EventPrincipal) -> String {
@@ -1814,14 +1807,30 @@ fn issue_work_history_row_node(seg: RoundSegment) -> Fragment {
 // the attempt's short key and its decided outcome sentence — the latest attempt's summary is the
 // table row's whole claim about execution; the tab is where a node's N attempts are enumerated.
 fn issue_attempt_history_row_node(progress: WorkflowAttemptProgress) -> Fragment {
-  el_attrs("div", [
-    attr(name: "class", value: "taskbar work-attempt-row" ),
-    attr(name: "data-attempt", value: attempt_key_short_form(key: progress.attempt_key) ),
-  ], [
-    el_class("div", "taskbar-face", concat(
-      [ el_class("span", "work-history-step", [ txt(attempt_key_short_form(key: progress.attempt_key)) ]) ],
-      [ el_class("span", "taskbar-title", [ txt(activity_summary_line(a: activity_view_from_progress(progress: progress))) ]) ]))
-  ])
+  el_class("div", "work-attempt", concat([
+    el_attrs("div", [
+      attr(name: "class", value: "taskbar work-attempt-row" ),
+      attr(name: "data-attempt", value: attempt_key_short_form(key: progress.attempt_key) ),
+    ], [
+      el_class("div", "taskbar-face", concat(
+        [ el_class("span", "work-history-step", [ txt(attempt_key_short_form(key: progress.attempt_key)) ]) ],
+        [ el_class("span", "taskbar-title", [ txt(activity_summary_line(a: activity_view_from_progress(progress: progress))) ]) ]))
+    ]),
+  ], issue_attempt_failure_nodes(events: attempt_failure_events(progress: progress))))
+}
+
+// AN ATTEMPT'S FAILURE EVENTS, each its own row anchored by its workflow obligation identity
+// (gunbc.roadmap_issue_location issue_work_event_anchor), so the compact work summary's link opens
+// the Work tab at the event it names. The rows are the producer's list
+// (gunbc.roadmap.roadmap_build_meter attempt_failure_events), worded by the element's one wording.
+fn issue_attempt_failure_nodes(events: List<FailureEvent>) -> List<Fragment> {
+  if count(events) == 0 { [] } else {
+    [ el_class("ol", "work-attempt-failures", map(events, e =>
+        el_attrs("li", [
+          attr(name: "class", value: "work-attempt-failure"),
+          attr(name: "id", value: issue_work_event_anchor(workflow_id: e.key.workflow_id, obligation_id: e.key.obligation_id)),
+        ], [ txt(if e.detail == "" { failure_event_words(kind: e.kind, stage: e.stage) } else { join([failure_event_words(kind: e.kind, stage: e.stage), ": ", e.detail], "") }) ]))) ]
+  }
 }
 
 // THE EVENT HISTORY (owner ruling 2026-09-24: the Work tab carries the issue's execution
@@ -2328,7 +2337,7 @@ fn issue_detail_page(view: WorkRowView, hierarchy: IssueHierarchyView, observati
       el_class("div", "issue-panels", [
         el_class("section", "panel-comments", issue_comments_tab_nodes(view: view, events: events, expected_revision: expected_revision, command_context: command_context)),
         el_class("section", "panel-dependencies", issue_dependencies_tab_nodes(view: view, hierarchy: hierarchy)),
-        el_class("section", "panel-work", issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
+        el_attrs("section", [attr(name: "class", value: "panel-work"), attr(name: "id", value: issue_work_tab_anchor)], issue_work_tab_nodes(view: view, attempts: attempts, events: events)),
         el_class("section", "panel-history", issue_history_tab_nodes(events: events, profiles: view.profiles)),
       ]),
       issue_metadata_rail_node(view: view, hierarchy: hierarchy, attempts: attempts, events: events, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context),
@@ -2487,33 +2496,19 @@ fn issue_rail_assignee_row(view: WorkRowView, attempts: List<WorkflowAttemptProg
   ], issue_detail_action_bar_nodes(view: view, current_assignee: if label == "Unassigned" { "" } else { label }, viewer: viewer, recents: recents, expected_revision: expected_revision, command_context: command_context)))])
 }
 
-// THE BUILD METER, DIRECTLY UNDER THE ASSIGNEE, AND ONLY FOR FABRIC'S WORK. When the issue is held
-// by the Fabric workflow and has an attempt, the rail shows the latest attempt's recorded progress
-// as the BuildMeter element (gunbc.site.element.build_meter) over the one view derived from that
-// attempt (gunbc.roadmap.roadmap_build_meter build_meter_view). It is a link to this issue's Work
-// tab, where the attempt's receipts are listed, and it carries the tab chip so the page's tab
-// control opens that tab in place. Held by anyone else, or with no attempt, there is nothing to
-// show and nothing is rendered: no row, no placeholder.
+// THE COMPACT WORK SUMMARY, DIRECTLY UNDER THE ASSIGNEE. Whether the issue has one is the
+// producer's decision (gunbc.roadmap.roadmap_build_meter compact_work_summary: Fabric holds it and
+// it has an attempt); the rail only places it, as the BuildMeter element, a link into the Work
+// tab carrying the tab chip so the page's tab control opens that tab in place. No summary, no
+// node.
 data issue_rail_meter_class: String = "issue-rail-meter"
-data issue_work_tab_key: String = "work"
 
 fn issue_rail_build_meter_nodes(view: WorkRowView, attempts: List<WorkflowAttemptProgress>, assignment: IssueAssignmentProjection) -> List<Fragment> {
-  match assignment.holder {
+  match compact_work_summary(holder: assignment.holder, attempts: attempts, stale: view.attempt_stale) {
     Absent => []
-    Present { value: holder } =>
-      if !event_principal_is_fabric(p: holder) { [] } else {
-        match attempts.first() {
-          Absent => []
-          Present { value: latest } => [
-            el_class("div", issue_rail_meter_class, [build_meter(input: BuildMeter {
-              view: build_meter_view(progress: latest),
-              subject: view.node_id,
-              href: issue_anchor_path(node_id: view.node_id, anchor: issue_work_tab_key),
-              link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_key)],
-            })]),
-          ]
-        }
-      }
+    Present { value: summary } => [
+      el_class("div", issue_rail_meter_class, [build_meter(summary: summary, link_attributes: [attr(name: "data-tab-chip", value: issue_work_tab_anchor)])]),
+    ]
   }
 }
 
