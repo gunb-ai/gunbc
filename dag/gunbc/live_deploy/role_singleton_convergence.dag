@@ -424,7 +424,9 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
 }
 
 // ── The ssh probe reading source ────────────────────────────────────────────────────────────────
-// Each roster host is read over the transport that reaches it from the applying host: the apply's own
+// A REFUSING FALLBACK, not the ruled realization: cross-host observation is host self-report (operator,
+// 2026-10-05) and no cross-host ssh is granted, so a remote leg refuses and the host is unobservable --
+// absence is only ever a successful listing, so an ungranted probe never reads as absent. Each roster host is read over the transport that reaches it from the applying host: the apply's own
 // transport for the host it is applying to, ssh to the target's declared ssh_host for every other
 // roster host. EVERY roster deployment's members are probed on EVERY host -- probing only where a
 // deployment is targeted is what made a realization on the wrong host invisible. A host whose legs
