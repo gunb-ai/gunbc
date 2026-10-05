@@ -23,7 +23,7 @@ import v2.workflow.floor_terminal_ledger {
 // THE WALL STANDS AT THE TWO MOMENTS A ROW'S VERDICT IS IN QUESTION, and the floor runs the claim
 // at both for its verdict alone:
 //   - ADMISSION: an identity the head roster carries and the base roster does not
-//     (`cost_debt_admitted_identities_at_base`). Without this the row is declined at build on the
+//     (`cost_debt_admitted_identities_against_base`). Without this the row is declined at build on the
 //     very change that adds it, so nothing ever establishes that the claim it hides passes.
 //   - RESTORATION: a rostered identity whose witness the change touches -- the changed-witness
 //     override `v2.workflow.required_floor` `ChangedCostDebtVerdictOnly` already plans.
@@ -64,7 +64,9 @@ fn cost_debt_verdict_standing(outcome: ClaimDisposition) -> CostDebtVerdictStand
   }
 }
 
-// The cause a refusing standing prints, and the empty string on the one that does not refuse.
+// THE ONE ANSWER TO "DOES THIS STANDING REFUSE": its cause, and the empty string on the one arm that
+// stands. The floor reads only this (through `cost_debt_verdict_cause_for_reading`), so no second
+// predicate answers the same question (review 76273).
 fn cost_debt_verdict_refusal_cause(standing: CostDebtVerdictStanding) -> String {
   match standing {
     CostDebtVerdictPassed => ""
@@ -88,12 +90,6 @@ fn cost_debt_verdict_cause_for_reading(reading: CostDebtVerdictReading) -> Strin
   }
 }
 
-fn cost_debt_verdict_refuses(standing: CostDebtVerdictStanding) -> Bool {
-  match standing {
-    CostDebtVerdictPassed => false
-    CostDebtRowHidesSemanticRed => true
-    CostDebtRowVerdictUnreached => true
-  }
 }
 
 // ── ADMISSION: WHICH HEAD ROWS THE BASE DID NOT CARRY ──────────────────────────────────────────

@@ -3,7 +3,8 @@ module v2.test.floor_cost_debt_verdict
 import std.types { List }
 import v2.workflow.floor_cost_debt_verdict {
   cost_debt_admitted_identities,
-  cost_debt_verdict_standing, cost_debt_verdict_refuses, cost_debt_verdict_refusal_cause,
+  cost_debt_verdict_standing, cost_debt_verdict_refusal_cause,
+  CostDebtVerdictReading, CostDebtTerminalOutcome, CostDebtNoTerminalOutcome, cost_debt_verdict_cause_for_reading,
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
@@ -44,7 +45,7 @@ fn admitted(identity: String) -> Bool {
 // The floor's answer for one rostered identity on this change: refused exactly when the change
 // admits it and its unbudgeted run did not pass.
 fn row_refused(identity: String, outcome: ClaimDisposition) -> Bool {
-  admitted(identity: identity) && cost_debt_verdict_refuses(standing: cost_debt_verdict_standing(outcome: outcome))
+  admitted(identity: identity) && (cost_debt_verdict_cause_for_reading(reading: CostDebtTerminalOutcome { outcome: outcome }) != "")
 }
 
 // RED: a planted row over a semantically failing claim is refused, under the cause that names it.
@@ -77,3 +78,8 @@ test fn a_row_the_base_already_carried_is_not_admitted() -> Bool {
   !admitted(identity: "t.w_old") && !row_refused(identity: "t.w_old", outcome: Failed {})
 }
 
+// RED: an owed row with no terminal outcome (planning declined it) is unreached, through the same
+// entry the floor calls.
+test fn an_owed_row_with_no_terminal_outcome_is_unreached() -> Bool {
+  cost_debt_verdict_cause_for_reading(reading: CostDebtNoTerminalOutcome {}) == "CostDebtRowVerdictUnreached"
+}
