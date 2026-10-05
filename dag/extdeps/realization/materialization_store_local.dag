@@ -205,43 +205,74 @@ fn store_marker_label_admissible(instance_label: NonEmptyStr) -> Bool {
   !string_contains(s: instance_label as String, pattern: "\n")
 }
 
-type StoreMarkerSpan { start: Int, length: Int, bytes: Int }
+type StoreMarkerSpan { start: Int, length: Int, bytes: ByteSize }
 
-// The scan's phases: 0 reading a family's scalar count, 1 inside the family name, 2 expecting "=",
-// 3 reading the byte count, 4 past the field's terminating line feed (the instance line).
-type StoreMarkerScan { ok: Bool, phase: Int, number: Int, digits: Int, remaining: Int, start: Int, position: Int, tail: Int, spans: List<StoreMarkerSpan> }
+// The scan over the catalog field, one arm per phase, each carrying only what that phase needs. A
+// refusal is its own arm, so no state can be both refused and holding rows, and no phase can be
+// written that the grammar does not have. Positions are scalar offsets into the field.
+type StoreMarkerScan
+  = StoreMarkerReadingCount { digits: StoreMarkerDigits, spans: List<StoreMarkerSpan> }
+  | StoreMarkerReadingName { start: Int, remaining: Int, spans: List<StoreMarkerSpan> }
+  | StoreMarkerExpectingEquals { start: Int, length: Int, spans: List<StoreMarkerSpan> }
+  | StoreMarkerReadingBytes { start: Int, length: Int, digits: StoreMarkerDigits, spans: List<StoreMarkerSpan> }
+  | StoreMarkerPastField { tail: Int, spans: List<StoreMarkerSpan> }
+  | StoreMarkerScanRefused
 
-fn store_marker_scan_digit(acc: StoreMarkerScan, c: Int) -> StoreMarkerScan {
-  if (acc.digits > 0 && acc.number == 0) || acc.number > (int_inclusive_max() - (c - 48)) / 10 {
-    StoreMarkerScan { ok: false, phase: acc.phase, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0, spans: acc.spans }
-  } else {
-    StoreMarkerScan { ok: true, phase: acc.phase, number: acc.number * 10 + (c - 48), digits: acc.digits + 1, remaining: acc.remaining, start: acc.start, position: acc.position + 1, tail: acc.tail, spans: acc.spans }
+// A decimal numeral being read: none read yet, or a canonical value (no leading zero, no overflow).
+type StoreMarkerDigits
+  = StoreMarkerNoDigits
+  | StoreMarkerDigitsRead { value: Int }
+
+type StoreMarkerScanAt { position: Int, scan: StoreMarkerScan }
+
+fn store_marker_digit(d: StoreMarkerDigits, c: Int) -> StoreMarkerDigits? {
+  match d {
+    StoreMarkerNoDigits => Present { value: StoreMarkerDigitsRead { value: c - 48 } }
+    StoreMarkerDigitsRead { value: n } =>
+      if n == 0 || n > (int_inclusive_max() - (c - 48)) / 10 { none } else { Present { value: StoreMarkerDigitsRead { value: n * 10 + (c - 48) } } }
   }
 }
 
-fn store_marker_scan_step(acc: StoreMarkerScan, c: Int) -> StoreMarkerScan {
-  let refused = StoreMarkerScan { ok: false, phase: acc.phase, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0, spans: acc.spans }
+fn store_marker_scan_step(scan: StoreMarkerScan, position: Int, c: Int) -> StoreMarkerScan {
   let is_digit = c >= 48 && c <= 57
-  if !acc.ok { acc } else if acc.phase == 0 {
-    if is_digit { store_marker_scan_digit(acc: acc, c: c) }
-    else if c == 58 && acc.digits > 0 && acc.number > 0 {
-      StoreMarkerScan { ok: true, phase: 1, number: 0, digits: 0, remaining: acc.number, start: acc.position + 1, position: acc.position + 1, tail: 0, spans: acc.spans }
-    } else if c == 10 && acc.digits == 0 && count(acc.spans) > 0 {
-      StoreMarkerScan { ok: true, phase: 4, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: acc.position + 1, spans: acc.spans }
-    } else { refused }
-  } else if acc.phase == 1 {
-    StoreMarkerScan { ok: true, phase: if acc.remaining == 1 { 2 } else { 1 }, number: 0, digits: 0, remaining: acc.remaining - 1, start: acc.start, position: acc.position + 1, tail: 0, spans: acc.spans }
-  } else if acc.phase == 2 {
-    if c == 61 { StoreMarkerScan { ok: true, phase: 3, number: 0, digits: 0, remaining: acc.position - acc.start, start: acc.start, position: acc.position + 1, tail: 0, spans: acc.spans } } else { refused }
-  } else if acc.phase == 3 {
-    if is_digit { store_marker_scan_digit(acc: acc, c: c) }
-    else if c == 59 && acc.digits > 0 {
-      StoreMarkerScan {
-        ok: true, phase: 0, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: 0,
-        spans: acc.spans |> list_push(StoreMarkerSpan { start: acc.start, length: acc.remaining, bytes: acc.number })
-      }
-    } else { refused }
-  } else { StoreMarkerScan { ok: acc.ok, phase: 4, number: 0, digits: 0, remaining: 0, start: 0, position: acc.position + 1, tail: acc.tail, spans: acc.spans } }
+  match scan {
+    StoreMarkerScanRefused => StoreMarkerScanRefused
+    StoreMarkerPastField { tail: t, spans: sp } => StoreMarkerPastField { tail: t, spans: sp }
+    StoreMarkerReadingCount { digits: d, spans: sp } =>
+      if is_digit {
+        match store_marker_digit(d: d, c: c) {
+          Absent => StoreMarkerScanRefused
+          Present { value: d2 } => StoreMarkerReadingCount { digits: d2, spans: sp }
+        }
+      } else if c == 58 {
+        match d {
+          StoreMarkerDigitsRead { value: n } => if n > 0 { StoreMarkerReadingName { start: position + 1, remaining: n, spans: sp } } else { StoreMarkerScanRefused }
+          StoreMarkerNoDigits => StoreMarkerScanRefused
+        }
+      } else if c == 10 {
+        match d {
+          StoreMarkerNoDigits => if count(sp) > 0 { StoreMarkerPastField { tail: position + 1, spans: sp } } else { StoreMarkerScanRefused }
+          StoreMarkerDigitsRead { value: _ } => StoreMarkerScanRefused
+        }
+      } else { StoreMarkerScanRefused }
+    StoreMarkerReadingName { start: st, remaining: r, spans: sp } =>
+      if r == 1 { StoreMarkerExpectingEquals { start: st, length: position + 1 - st, spans: sp } } else { StoreMarkerReadingName { start: st, remaining: r - 1, spans: sp } }
+    StoreMarkerExpectingEquals { start: st, length: l, spans: sp } =>
+      if c == 61 { StoreMarkerReadingBytes { start: st, length: l, digits: StoreMarkerNoDigits, spans: sp } } else { StoreMarkerScanRefused }
+    StoreMarkerReadingBytes { start: st, length: l, digits: d, spans: sp } =>
+      if is_digit {
+        match store_marker_digit(d: d, c: c) {
+          Absent => StoreMarkerScanRefused
+          Present { value: d2 } => StoreMarkerReadingBytes { start: st, length: l, digits: d2, spans: sp }
+        }
+      } else if c == 59 {
+        match d {
+          StoreMarkerDigitsRead { value: n } =>
+            StoreMarkerReadingCount { digits: StoreMarkerNoDigits, spans: sp |> list_push(StoreMarkerSpan { start: st, length: l, bytes: byte_size(count: n) }) }
+          StoreMarkerNoDigits => StoreMarkerScanRefused
+        }
+      } else { StoreMarkerScanRefused }
+  }
 }
 
 type StoreMarkerDecode
@@ -253,25 +284,27 @@ fn store_marker_decode(root: MaterializationStoreRoot, content: String) -> Store
   let head = store_marker_head(root: root)
   if !starts_with(s: content, prefix: head) { StoreMarkerForeign } else {
     let scalars = unicode_scalar_unfold(s: substring(s: content, start: string_length(s: head), end: string_length(s: content)))
-    let scan = fold(scalars, init: StoreMarkerScan { ok: true, phase: 0, number: 0, digits: 0, remaining: 0, start: 0, position: 0, tail: 0, spans: [] }, f: (acc, c) => store_marker_scan_step(acc: acc, c: c))
-    if !scan.ok || scan.phase != 4 {
-      StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
-    } else {
-      let field = unicode_scalar_fold(xs: take(scalars, scan.tail - 1))
-      let tail = unicode_scalar_fold(xs: skip(scalars, scan.tail))
-      let catalog = scan.spans |> map(sp => LocalStoreFamilyBudget {
-        family: unicode_scalar_fold(xs: take(skip(scalars, sp.start), sp.length)) as ArtifactKindId,
-        budget: byte_size(count: sp.bytes)
-      })
-      if !starts_with(s: tail, prefix: "instance ") || string_length(s: tail) <= 10 || !ends_with(s: tail, suffix: "\n") || count(tail.split(delimiter: "\n")) != 2 {
-        StoreMarkerMalformed { detail: "the catalog field is not followed by exactly one instance line" }
-      } else if !store_marker_catalog_admissible(budgets: catalog) {
-        StoreMarkerMalformed { detail: "the family catalog names a family more than once" }
-      } else if store_marker_catalog_field(budgets: catalog) != field {
-        StoreMarkerMalformed { detail: "the family catalog is not in its canonical sorted encoding" }
-      } else {
-        StoreMarkerDecoded { catalog: catalog }
+    let scan = fold(scalars, init: StoreMarkerScanAt { position: 0, scan: StoreMarkerReadingCount { digits: StoreMarkerNoDigits, spans: [] } }, f: (acc, c) =>
+      StoreMarkerScanAt { position: acc.position + 1, scan: store_marker_scan_step(scan: acc.scan, position: acc.position, c: c) })
+    match scan.scan {
+      StoreMarkerPastField { tail: tail_at, spans: spans } => {
+        let field = unicode_scalar_fold(xs: take(scalars, tail_at - 1))
+        let tail = unicode_scalar_fold(xs: skip(scalars, tail_at))
+        let catalog = spans |> map(sp => LocalStoreFamilyBudget {
+          family: unicode_scalar_fold(xs: take(skip(scalars, sp.start), sp.length)) as ArtifactKindId,
+          budget: sp.bytes
+        })
+        if !starts_with(s: tail, prefix: "instance ") || string_length(s: tail) <= 10 || !ends_with(s: tail, suffix: "\n") || count(tail.split(delimiter: "\n")) != 2 {
+          StoreMarkerMalformed { detail: "the catalog field is not followed by exactly one instance line" }
+        } else if !store_marker_catalog_admissible(budgets: catalog) {
+          StoreMarkerMalformed { detail: "the family catalog names a family more than once" }
+        } else if store_marker_catalog_field(budgets: catalog) != field {
+          StoreMarkerMalformed { detail: "the family catalog is not in its canonical sorted encoding" }
+        } else {
+          StoreMarkerDecoded { catalog: catalog }
+        }
       }
+      _ => StoreMarkerMalformed { detail: "the family catalog field is not a sequence of length-prefixed rows ending in one line feed" }
     }
   }
 }
