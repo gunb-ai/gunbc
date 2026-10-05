@@ -55,7 +55,7 @@ import gunbc.live_deploy.role_singleton_convergence {
 // the REAL adjudication and convergence over every roster host. The real fetch is exercised once, by
 // the inhabitance claim at the end, through the canonical assessor.
 
-data now_millis: EpochMs = 1800000000000 as EpochMs
+data now_millis: EpochMs = 1800000000000
 
 fn node_of(host: String) -> NonEmptyStr {
   match host_row(host: host as NonEmptyStr, rows: desired_deployment_roster()) {
@@ -89,7 +89,11 @@ fn instance_body(r: RoleSingletonSelfReport) -> String {
 }
 
 fn served_by(node_host: String, r: RoleSingletonSelfReport) -> FetchedSelfReport {
-  SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: node_host) }, body: instance_body(r: r) }
+  served_at(node_host: node_host, r: r, received: now_millis)
+}
+
+fn served_at(node_host: String, r: RoleSingletonSelfReport, received: EpochMs) -> FetchedSelfReport {
+  SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: node_host) }, body: instance_body(r: r), received_at_unix_millis: received }
 }
 
 fn honest(host: String, sightings: List<RoleSingletonSighting>) -> FetchedSelfReport {
@@ -98,7 +102,7 @@ fn honest(host: String, sightings: List<RoleSingletonSighting>) -> FetchedSelfRe
 
 fn decide_with(desired: ProdRoleRealization, srv1: FetchedSelfReport, srv2: FetchedSelfReport) -> RoleSingletonConvergence {
   let rows = desired_deployment_roster()
-  let source = self_report_reading_source_with(fetch: row => if (row.target.ssh_host as String) == "srv1" { srv1 } else { srv2 }, now_unix_millis: now_millis)
+  let source = self_report_reading_source_with(fetch: row => if (row.target.ssh_host as String) == "srv1" { srv1 } else { srv2 })
   role_singleton_convergence(desired: desired, observed: observe_role_singletons_with(source: source, rows: rows), rows: rows)
 }
 
@@ -152,7 +156,7 @@ test fn the_srv1_holder_self_reporting_a_complete_marked_realization_is_a_noop()
 // host. The control is the Noop above, which differs only in srv2's leg.
 test fn srv2s_report_absent_refuses_as_unobservable_never_as_absent() -> Bool {
   refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: SelfReportUnserved { cause: "GET failed" }), host: "srv2")
-    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: "srv2") }, body: "{\"schema\":\"roadmap-dashboard-instance/v1\"}" }), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeNamed { name: node_of(host: "srv2") }, body: "{\"schema\":\"roadmap-dashboard-instance/v1\"}", received_at_unix_millis: now_millis }), host: "srv2")
     && is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: srv2_empty()))
 }
 
@@ -161,13 +165,22 @@ test fn srv2s_report_absent_refuses_as_unobservable_never_as_absent() -> Bool {
 // older refuses, and so does one from beyond the bound in the reader's future.
 test fn a_stale_report_refuses_and_one_at_the_bound_is_admitted() -> Bool {
   let bound = role_singleton_self_report_max_age_millis()
-  let at_bound = served_by(node_host: "srv2", r: report(host: "srv2", at: (now_millis - bound) as EpochMs, sightings: []))
-  let stale = served_by(node_host: "srv2", r: report(host: "srv2", at: (now_millis - bound - 1) as EpochMs, sightings: []))
-  let future = served_by(node_host: "srv2", r: report(host: "srv2", at: (now_millis + bound + 1) as EpochMs, sightings: []))
+  let at_bound = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound, sightings: []))
+  let stale = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis - bound - 1, sightings: []))
+  let future = served_by(node_host: "srv2", r: report(host: "srv2", at: now_millis + bound + 1, sightings: []))
   bound > 0
     && is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: at_bound))
     && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: stale), host: "srv2")
     && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: future), host: "srv2")
+}
+
+// EACH REPORT IS JUDGED AGAINST ITS OWN RECEIPT (review 76312): srv2, fetched after srv1, produced and
+// received three fetch deadlines after srv1's receipt, is fresh; the same report judged against srv1's
+// receipt instant would read as from the future and refuse.
+test fn a_later_fetched_host_is_judged_against_its_own_receipt() -> Bool {
+  let later = now_millis + 3 * role_singleton_self_report_max_age_millis()
+  is_noop(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_at(node_host: "srv2", r: report(host: "srv2", at: later, sightings: []), received: later)))
+    && refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: served_at(node_host: "srv2", r: report(host: "srv2", at: later, sightings: []), received: now_millis)), host: "srv2")
 }
 
 // ── A report signed as the wrong host refuses ───────────────────────────────────────────────────
@@ -180,7 +193,7 @@ test fn a_report_signed_as_the_wrong_host_refuses() -> Bool {
   refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv1", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
     && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: report(host: "srv1", at: now_millis, sightings: []))), host: "srv2")
     && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: served_by(node_host: "srv2", r: RoleSingletonSelfReport { host: "srv2" as NonEmptyStr, observed_at_unix_millis: now_millis, reading: HostRoleSingletonsRead { host: "srv2" as NonEmptyStr, sightings: [SightedBroker { host: "srv1" as NonEmptyStr }] } })), host: "srv2")
-    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: "whois failed" }, body: instance_body(r: report(host: "srv2", at: now_millis, sightings: [])) }), host: "srv2")
+    && refused_unobservable_on(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: "whois failed" }, body: instance_body(r: report(host: "srv2", at: now_millis, sightings: [])), received_at_unix_millis: now_millis }), host: "srv2")
     && is_noop(c: decide_with(desired: desired, srv1: srv1_holder(), srv2: srv2_empty()))
 }
 
@@ -234,26 +247,26 @@ test fn a_report_with_a_negative_observed_at_is_undecodable() -> Bool {
 // ── Mutants ─────────────────────────────────────────────────────────────────────────────────────
 // Each mutant is the real adjudication with one hole; the claim holds only if the real reader refuses
 // where the mutant reaches a decision the world does not support.
-fn mutant_missing_as_absent(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now: EpochMs) -> HostRoleSingletonReading {
+fn mutant_missing_as_absent(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport) -> HostRoleSingletonReading {
   match fetched {
     SelfReportUnserved { cause: _ } => HostRoleSingletonsRead { host: host, sightings: [] }
-    SelfReportServed { peer_node: _, body: _ } => self_report_host_reading(host: host, expected_node: expected_node, fetched: fetched, now_unix_millis: now)
+    SelfReportServed { peer_node: _, body: _, received_at_unix_millis: _ } => self_report_host_reading(host: host, expected_node: expected_node, fetched: fetched)
   }
 }
 
-fn mutant_any_host(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now: EpochMs) -> HostRoleSingletonReading {
+fn mutant_any_host(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport) -> HostRoleSingletonReading {
   match fetched {
     SelfReportUnserved { cause } => self_report_unobservable(host: host, cause: cause)
-    SelfReportServed { peer_node: _, body } => match decode_self_report_in_instance_document(body: body) {
+    SelfReportServed { peer_node: _, body, received_at_unix_millis: _ } => match decode_self_report_in_instance_document(body: body) {
       SelfReportDecoded { report: r } => r.reading
       SelfReportUndecodable { cause } => self_report_unobservable(host: host, cause: cause)
     }
   }
 }
 
-fn decide_mutant(adjudicate: fn(NonEmptyStr, NonEmptyStr, FetchedSelfReport, EpochMs) -> HostRoleSingletonReading, desired: ProdRoleRealization, srv1: FetchedSelfReport, srv2: FetchedSelfReport) -> RoleSingletonConvergence {
+fn decide_mutant(adjudicate: fn(NonEmptyStr, NonEmptyStr, FetchedSelfReport) -> HostRoleSingletonReading, desired: ProdRoleRealization, srv1: FetchedSelfReport, srv2: FetchedSelfReport) -> RoleSingletonConvergence {
   let rows = desired_deployment_roster()
-  let readings = roster_hosts(rows: rows) |> map(h => adjudicate(h, node_of(host: h as String), if (h as String) == "srv1" { srv1 } else { srv2 }, now_millis))
+  let readings = roster_hosts(rows: rows) |> map(h => adjudicate(h, node_of(host: h as String), if (h as String) == "srv1" { srv1 } else { srv2 }))
   role_singleton_convergence(desired: desired, observed: role_singleton_observation_of(readings: readings, rows: rows), rows: rows)
 }
 
@@ -262,7 +275,7 @@ fn decide_mutant(adjudicate: fn(NonEmptyStr, NonEmptyStr, FetchedSelfReport, Epo
 test fn a_mutant_reading_a_missing_report_as_absent_installs_where_the_real_reader_refuses() -> Bool {
   let unreported = SelfReportUnserved { cause: "GET failed" }
   refused_unobservable_on(c: decide_with(desired: fx_moved(), srv1: unreported, srv2: srv2_empty()), host: "srv1")
-    && match decide_mutant(adjudicate: (h, n, f, t) => mutant_missing_as_absent(host: h, expected_node: n, fetched: f, now: t), desired: fx_moved(), srv1: unreported, srv2: srv2_empty()) {
+    && match decide_mutant(adjudicate: (h, n, f) => mutant_missing_as_absent(host: h, expected_node: n, fetched: f), desired: fx_moved(), srv1: unreported, srv2: srv2_empty()) {
       RoleSingletonInstall { holder } => holder.instance.deployment == srv2_deploy_deployment
       _ => false
     }
@@ -273,7 +286,7 @@ test fn a_mutant_reading_a_missing_report_as_absent_installs_where_the_real_read
 test fn a_mutant_accepting_any_hosts_report_reads_noop_where_the_real_reader_refuses() -> Bool {
   let impostor = served_by(node_host: "srv1", r: report(host: "srv1", at: now_millis, sightings: []))
   refused_unobservable_on(c: decide_with(desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: impostor), host: "srv2")
-    && is_noop(c: decide_mutant(adjudicate: (h, n, f, t) => mutant_any_host(host: h, expected_node: n, fetched: f, now: t), desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: impostor))
+    && is_noop(c: decide_mutant(adjudicate: (h, n, f) => mutant_any_host(host: h, expected_node: n, fetched: f), desired: prod_role_actuated_realization(), srv1: srv1_holder(), srv2: impostor))
 }
 
 // ── Inhabitance: the real producer and the real reader ──────────────────────────────────────────
@@ -296,8 +309,8 @@ test fn the_real_producers_report_decodes_as_itself() -> Bool {
     }
 }
 
-// THE REAL OBSERVATION RUNS THE REAL READER. On a hermetic route the clock refuses (Clock.UnixMillis
-// mock), so the reader's own clock-unreadable arm answers; on a live route the fetch runs. observe_role_singletons_by_self_report is the observation
+// THE REAL OBSERVATION RUNS THE REAL FETCH. On a hermetic route the GET refuses (its mock), so the
+// reader's unserved arm answers; on a live route without a grant the GET fails the same way. observe_role_singletons_by_self_report is the observation
 // the canonical assessor (assess_and_admit_rostered, sealed to its callers) decides over. With no granted
 // reach the fetch is unserved, or the served document carries no report, so it refuses as unobservable
 // with the self-report reader's own cause prefix -- the ROUTE asserted, not only the verdict: an
@@ -305,7 +318,7 @@ test fn the_real_producers_report_decodes_as_itself() -> Bool {
 test fn the_real_observation_reads_through_the_self_report_reader_and_refuses_without_a_grant() -> Bool {
   match observe_role_singletons_by_self_report(rows: desired_deployment_roster()) {
     RoleSingletonObservationRefused { cause } => match cause {
-      RoleSingletonHostUnobservable { host: _, cause: c } => starts_with(s: c, prefix: "self-report: ")
+      RoleSingletonHostUnobservable { host: _, cause: c } => starts_with(s: c, prefix: "self-report: GET ")
       _ => false
     }
     RoleSingletonsObserved { realizations: _ } => false

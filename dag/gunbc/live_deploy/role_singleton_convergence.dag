@@ -447,8 +447,8 @@ fn role_singleton_refusal_detail(cause: RoleSingletonRefusal) -> String {
 //   * it NAMES THAT HOST, and every sighting in it is of that host -- a report is a reading of its
 //     reporter only;
 //   * it is FRESH: the report is produced while serving the GET, so its observed_at must lie within
-//     the fetch deadline (extdeps.tools.curl curl_localhost_max_time) of the reader's own clock, in
-//     either direction (a report from the future is a clock fault, not a fresh report).
+//     the fetch deadline (extdeps.tools.curl curl_localhost_max_time) of the reader's clock read when
+//     THAT response arrived, in either direction (a report from the future is a clock fault).
 // Anything else -- unreachable, unserved, unidentified peer, another node, undecodable, stale, a host
 // that reported ITSELF unobservable -- is RoleSingletonHostUnobservable and NEVER absent: absence is
 // only ever a successful listing on the host, reported by that host.
@@ -811,7 +811,7 @@ fn decode_self_report_value(v: JsonValue) -> SelfReportDecode {
             FieldRead { value: at } => if at < 0 { SelfReportUndecodable { cause: join(["observed_at_unix_millis is negative: ", to_string(at)], "") } } else { match json_object_unique_member(v: v, key: "reading") {
               JsonMemberFound { value: r } => match decode_reading(v: r) {
                 ReadingUndecodable { cause } => SelfReportUndecodable { cause: cause }
-                ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at as EpochMs, reading: reading } }
+                ReadingDecoded { reading } => SelfReportDecoded { report: RoleSingletonSelfReport { host: h as NonEmptyStr, observed_at_unix_millis: at, reading: reading } }
               }
               JsonMemberAbsent => SelfReportUndecodable { cause: "reading is missing" }
               JsonMemberDuplicated { count: _ } => SelfReportUndecodable { cause: "reading is duplicated" }
@@ -839,7 +839,7 @@ fn decode_self_report_in_instance_document(body: String) -> SelfReportDecode {
 
 // ── The reader: whose report, how old, of what ──────────────────────────────────────────────────
 type FetchedSelfReport
-  = SelfReportServed { peer_node: WhoIsNodeName, body: String }
+  = SelfReportServed { peer_node: WhoIsNodeName, body: String, received_at_unix_millis: EpochMs }
   | SelfReportUnserved { cause: String }
 
 fn role_singleton_self_report_max_age_millis() -> Int {
@@ -875,10 +875,10 @@ fn reading_of_reported_host(host: NonEmptyStr, reading: HostRoleSingletonReading
 }
 
 // THE ADJUDICATION OF ONE HOST'S REPORT, from what the fetch returned and the reader's own clock.
-fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport, now_unix_millis: EpochMs) -> HostRoleSingletonReading {
+fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetched: FetchedSelfReport) -> HostRoleSingletonReading {
   match fetched {
     SelfReportUnserved { cause } => self_report_unobservable(host: host, cause: cause)
-    SelfReportServed { peer_node, body } => match peer_node {
+    SelfReportServed { peer_node, body, received_at_unix_millis } => match peer_node {
       WhoIsNodeUnreadable { cause } => self_report_unobservable(host: host, cause: join(["the serving peer is unidentified: ", cause], ""))
       WhoIsNodeNamed { name } =>
         if (name as String) != (expected_node as String) {
@@ -890,12 +890,12 @@ fn self_report_host_reading(host: NonEmptyStr, expected_node: NonEmptyStr, fetch
               if (report.host as String) != (host as String) {
                 self_report_unobservable(host: host, cause: join(["the report names host ", report.host as String], ""))
               } else {
-                let age = now_unix_millis - report.observed_at_unix_millis
+                let age = received_at_unix_millis - report.observed_at_unix_millis
                 let bound = role_singleton_self_report_max_age_millis()
                 if age > bound {
                   self_report_unobservable(host: host, cause: join(["the report is stale: ", to_string(age), "ms old, bound ", to_string(bound), "ms"], ""))
                 } else if age < 0 - bound {
-                  self_report_unobservable(host: host, cause: join(["the report is from ", to_string(0 - age), "ms in the future of the reader's clock, bound ", to_string(bound), "ms"], ""))
+                  self_report_unobservable(host: host, cause: join(["the report is from ", to_string(0 - age), "ms after the reader received it, bound ", to_string(bound), "ms"], ""))
                 } else {
                   reading_of_reported_host(host: host, reading: report.reading)
                 }
@@ -924,11 +924,16 @@ fn fetch_self_report(row: DesiredDeployment) -> FetchedSelfReport {
               SelfReportUnserved { cause: join(["GET ", url, " reported no peer address"], "") }
             } else {
               let body = join(take(lines, n: length(lines) - 1), "\n")
-              let w = tailscale.WhoIs.Json(address: trim(s: peer) as NonEmptyStr)
-              if w.success {
-                SelfReportServed { peer_node: whois_node_name(whois_json: w.stdout), body: body }
-              } else {
-                SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: join(["tailscale whois failed for ", trim(s: peer)], "") }, body: body }
+              match clock_unix_millis_read() {
+                ClockUnixMillisRefused { detail } => SelfReportUnserved { cause: join(["the reader's clock is unreadable at receipt: ", detail], "") }
+                ClockUnixMillisObserved { millis } => {
+                  let w = tailscale.WhoIs.Json(address: trim(s: peer) as NonEmptyStr)
+                  if w.success {
+                    SelfReportServed { peer_node: whois_node_name(whois_json: w.stdout), body: body, received_at_unix_millis: millis }
+                  } else {
+                    SelfReportServed { peer_node: WhoIsNodeUnreadable { cause: join(["tailscale whois failed for ", trim(s: peer)], "") }, body: body, received_at_unix_millis: millis }
+                  }
+                }
               }
             }
         }
@@ -941,13 +946,13 @@ fn host_row(host: NonEmptyStr, rows: List<DesiredDeployment>) -> DesiredDeployme
   rows |> filter(r => (r.target.ssh_host as String) == (host as String)) |> first
 }
 
-fn self_report_reading_source_with(fetch: fn(DesiredDeployment) -> FetchedSelfReport, now_unix_millis: EpochMs) -> RoleSingletonReadingSource {
+fn self_report_reading_source_with(fetch: fn(DesiredDeployment) -> FetchedSelfReport) -> RoleSingletonReadingSource {
   RoleSingletonReadingSource {
     read: (host, rows) => match host_row(host: host, rows: rows) {
       Absent => self_report_unobservable(host: host, cause: "no roster row targets this host")
       Present { value: row } => match roster_host_tailnet_node(row: row) {
         Absent => self_report_unobservable(host: host, cause: "the roster row declares no tailnet domain, so no node can be bound to the host")
-        Present { value: node } => self_report_host_reading(host: host, expected_node: node, fetched: fetch(row), now_unix_millis: now_unix_millis)
+        Present { value: node } => self_report_host_reading(host: host, expected_node: node, fetched: fetch(row))
       }
     },
   }
@@ -957,15 +962,11 @@ fn roster_hosts(rows: List<DesiredDeployment>) -> List<NonEmptyStr> {
   distinct_hosts(hosts: rows |> map(r => r.target.ssh_host))
 }
 
-// THE OBSERVATION FROM SELF-REPORTS. A reader whose own clock is unreadable can judge no report's age,
-// so every roster host is unobservable.
+// THE OBSERVATION FROM SELF-REPORTS. Each fetch reads the reader's clock when its response arrives,
+// so a host fetched late in the sequence is judged against its own receipt, not against one instant
+// taken before the first fetch (review 76312).
 fn observe_role_singletons_by_self_report(rows: List<DesiredDeployment>) -> RoleSingletonObservation {
-  match clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail } =>
-      role_singleton_observation_of(readings: roster_hosts(rows: rows) |> map(h => self_report_unobservable(host: h, cause: join(["the reader's clock is unreadable: ", detail], ""))), rows: rows)
-    ClockUnixMillisObserved { millis } =>
-      observe_role_singletons_with(source: self_report_reading_source_with(fetch: r => fetch_self_report(row: r), now_unix_millis: millis), rows: rows)
-  }
+  observe_role_singletons_with(source: self_report_reading_source_with(fetch: r => fetch_self_report(row: r)), rows: rows)
 }
 
 fn observe_role_singletons_with(source: RoleSingletonReadingSource, rows: List<DesiredDeployment>) -> RoleSingletonObservation {

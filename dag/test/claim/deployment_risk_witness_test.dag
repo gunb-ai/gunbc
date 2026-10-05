@@ -64,7 +64,7 @@ import gunbc.live_deploy.spec {
   deployment_owns_the_host_approval_broker,
   deployment_fabric_storage_door_socket,
 }
-import gunbc.live_deploy.desired { srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
+import gunbc.live_deploy.desired { deployment_spec_srv1, srv1_production_desired_deployment, DesiredDeployment, desired_deployment_roster, deployment_srv2_target, prod_role_actuated_realization, prod_role_actuated_realization_in }
 import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
 import gunbc.live_deploy.role_singleton_convergence {
   RoleSingletonConvergence,
@@ -808,3 +808,4 @@ test fn the_marker_readback_has_three_distinct_outcomes() -> Bool {
   }
   exact && absent && unlistable && unreadable
 }
+
