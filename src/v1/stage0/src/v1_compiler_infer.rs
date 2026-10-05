@@ -5241,7 +5241,7 @@ pub fn literal_introduction_type_mismatch(
         );
         match (*actual_expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
             {
                 let LiteralValue::LitInt { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -6524,7 +6524,13 @@ pub fn nominal_product_head_name(n: Rc<Node>, scope: Rc<InferScope>) -> String {
                     nominal_product_head_name_if_declared_product(name.clone(), scope.clone())
                 }
                 TypeHeadExposure::ExposedTypeHead { ref view, .. }
-                    if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+                    if matches!(
+                        view.as_ref(),
+                        TypeHeadView::ProductHead {
+                            type_identity: _,
+                            ..
+                        }
+                    ) =>
                 {
                     let TypeHeadView::ProductHead {
                         type_identity: _, ..
@@ -24100,7 +24106,7 @@ pub fn kernel_coproduct_variant_locals(env: Rc<TypeEnv>) -> Rc<HashMap<String, R
                     __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                         let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                         let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                        __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                        v1_rt::canonical_key_cmp(&__ka, &__kb)
                     });
                     __sorted
                 }),
@@ -24239,7 +24245,7 @@ pub fn kernel_variant_owner_candidates(env: Rc<TypeEnv>, name: String) -> Rc<Vec
             __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                 let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                 let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+                v1_rt::canonical_key_cmp(&__ka, &__kb)
             });
             __sorted
         })
@@ -29162,7 +29168,7 @@ pub fn grounded_successor(
 ) -> Rc<Node> {
     match (*prev.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
-            if matches!(value.as_ref(), LiteralValue::LitInt { .. }) =>
+            if matches!(value.as_ref(), LiteralValue::LitInt { value: _, .. }) =>
         {
             let LiteralValue::LitInt { value: j, .. } = value.as_ref() else {
                 unreachable!()
