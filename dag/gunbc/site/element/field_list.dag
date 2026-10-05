@@ -243,6 +243,7 @@ fn field_label_column() -> String {
 fn field_single_line_decls() -> List<CssDecl> {
   [
     decl(prop: Display, value: "block"),
+    decl(prop: Position, value: "relative"),
     decl(prop: MinWidth, value: scale_var(t: space_0)),
     decl(prop: Overflow, value: "hidden"),
     decl(prop: TextOverflow, value: "ellipsis"),

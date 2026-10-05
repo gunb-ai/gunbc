@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_submission {
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, AnimationDelay, AnimationDuration, Background, BorderRadius, BoxShadow, Display, Fill, Gap, Height,
-  Margin, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width, RawProperty,
+  Margin, MaxWidth, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width, RawProperty,
 }
 
 // BuildMeter: one attempt's recorded work as a quiet visual link. It draws a strip of the recent
@@ -299,6 +299,9 @@ data build_meter_worker_class: String = "el-build-meter-worker"
 data build_meter_face_class: String = "el-build-meter-face"
 data build_meter_arm_class: String = "el-build-meter-arm"
 data build_meter_droop_class: String = "el-build-meter-droop"
+// The hover digest wraps at a short measure rather than running past the page: it names the failure
+// and the target the link opens, which can be longer than the strip.
+data build_meter_digest_measure: String = "32ch"
 data build_meter_sleep_class: String = "el-build-meter-sleep"
 data build_meter_blink_class: String = "el-build-meter-blink"
 data build_meter_name_class: String = "el-build-meter-name"
@@ -1178,7 +1181,8 @@ fn build_meter_rules() -> List<BuildRule> {
       decl(prop: Background, value: palette_var(slot: SlotSurface)),
       decl(prop: BoxShadow, value: join(["inset 0 0 0 ", scale_var(t: border_1), " ", palette_var(slot: SlotBorder)], "")),
       decl(prop: BorderRadius, value: scale_var(t: radius_element)),
-      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: Width, value: "max-content"),
+      decl(prop: MaxWidth, value: build_meter_digest_measure),
       decl(prop: Opacity, value: "0"),
       decl(prop: RawProperty { name: "pointer-events" }, value: "none"),
     ]) },
