@@ -1711,7 +1711,7 @@ fn infer_application_result_type(
               } else {
                 optional_present(value: declared)
               }
-            _ => Absent
+            ComputationNode { behavior: _ } => optional_absent()
           }
       }
   }
