@@ -6,7 +6,7 @@ import std.types { String, NonEmptyStr, Secret, List }
 import extdeps.cloud.gcp.iam { IamCondition }
 import extdeps.cloud.gcp.gcp { GcpOperation }
 import extdeps.cloud.gcp.errors { GcpErrorShape }
-import extdeps.transports.rest { RestOutcome }
+
 import extdeps.ietf.http_semantics { GET, POST }
 import std.resources { Network }
 
@@ -35,7 +35,7 @@ service gcp.IamDeny {
   operation GetPolicy {
     requires Network
     input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr }
-    output { name: String, etag: String, rules: List<GcpDenyPolicyRule>?, outcome: RestOutcome }
+    output { name: String, etag: String, rules: List<GcpDenyPolicyRule>? }
     readonly
     transport rest { method: GET, path: "/v2/policies/\{attachment_point\}/denypolicies/\{policy_id\}" }
     response {
@@ -51,7 +51,7 @@ service gcp.IamDeny {
   operation CreatePolicy {
     requires Network
     input { access_token: Secret, attachment_point: NonEmptyStr, policy_id: NonEmptyStr, rules: List<GcpDenyPolicyRule> }
-    output { operation_name: String from "name", outcome: RestOutcome }
+    output { operation_name: String from "name" }
     transport rest { method: POST, path: "/v2/policies/\{attachment_point\}/denypolicies",
       query: { policyId: policy_id }, body: { rules: rules } }
     response {

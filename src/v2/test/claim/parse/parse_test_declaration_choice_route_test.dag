@@ -9,12 +9,11 @@ import v2.compiler.body_lowering_fold {
   body_lower_param_list_comma_spine_optional
 }
 import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
-import v2.compiler.program_assembly { dag_prepared_grammar }
-import v2.compiler.tokenize { tokenize }
+import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.compiler.tokenize { tokenize_prepared }
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFound,
-  dag_lex,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional
 }
@@ -48,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // One fragment parsed at one production of the real prepared grammar.
 fn route_parse_at(text: String, production: Symbol) -> Outcome<Node> {
-  match tokenize(text: text, file: ^declaration_choice_route_probe, rules: dag_lex()) {
+  match tokenize_prepared(text: text, file: ^declaration_choice_route_probe, prepared: dag_prepared_lex()) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
     Accepted { value: ts, diagnostics: _ } =>
       match dag_prepared_grammar() {
