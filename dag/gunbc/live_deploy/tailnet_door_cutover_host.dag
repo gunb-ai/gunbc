@@ -1,0 +1,171 @@
+module gunbc.live_deploy.tailnet_door_cutover_host
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import extdeps.tailscale.serve {
+  ServeStatusProxies, ServeStatusUnreadable,
+  tailscale_serve_status_json_command, tailscale_serve_status_route_proxy_targets, tailscale_serve_route_key,
+}
+import extdeps.sudo.elevation { sudo_elevate_command }
+import extdeps.exec.command { argv_words, LocalExec }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome }
+import gunbc.typed_argv_exec { typed_argv_exec_over_ssh, typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, FleetSsh, EmitArtifactThenThinRun }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.tailnet_door_cutover {
+  ServeRouteObservation, ServeRouteTargets, ServeRouteUnreadable,
+  CapturedServeBackend, CapturedRestorableBackend, CapturedNoRoute,
+  CutoverPhase, CutoverPrepared, CutoverRepointed, CutoverRollingBack, CutoverSettledCommitted, CutoverSettledRolledBack,
+  CutoverJournalRecord, CutoverJournalRead, CutoverJournalAbsent, CutoverJournalPresent, CutoverJournalUnreadable,
+  CutoverJournalWrite, CutoverJournalWritten, CutoverJournalFenced, CutoverJournalWriteRefused,
+  CutoverBinding,
+}
+import std.types { Int }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.durable_compare_and_set {
+  CasExpectation, ExpectSlotAbsent, ExpectSlotGeneration, CasObservedReadable, CasObservedUnreadable,
+  CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused, cas_unreadable_slot_detail,
+}
+import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, json_field_value }
+import extdeps.tailscale.serve { tailscale_serve_route_key_label, tailscale_serve_proxy_url, tailscale_serve_backend_of_proxy_target }
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+
+// The node's serve configuration at the deployment's route key, read as the deploy principal.
+fn serve_route_observation_of_status(status_json: String, spec: DeploymentSpec) -> ServeRouteObservation {
+  match tailscale_serve_status_route_proxy_targets(status_json: status_json, key: tailscale_serve_route_key(endpoint: spec.names.tailscale_serve_endpoint)) {
+    ServeStatusUnreadable => ServeRouteUnreadable { detail: "tailscale serve status printed a document that could not be read" }
+    ServeStatusProxies { targets } => ServeRouteTargets { targets: targets }
+  }
+}
+
+fn serve_route_observation_of_outcome(outcome: TypedArgvExecOutcome, spec: DeploymentSpec) -> ServeRouteObservation {
+  match outcome {
+    TypedArgvExecRefused { reason: why } => ServeRouteUnreadable { detail: why }
+    TypedArgvExecConverged { result: r } =>
+      if r.success { serve_route_observation_of_status(status_json: r.stdout, spec: spec) }
+      else { ServeRouteUnreadable { detail: join(["tailscale serve status exited ", to_string(r.exit_code), ": ", trim(r.stderr)], "") } }
+  }
+}
+
+fn live_deploy_serve_route_observe(spec: DeploymentSpec, transport: HostEffectTransport) -> ServeRouteObservation {
+  let command = sudo_elevate_command(command: argv_words(command: tailscale_serve_status_json_command()))
+  match transport {
+    LocalShell =>
+      match run_shell_command_observe_outcome(command: command, transport: LocalExec) {
+        ProcessNotSpawned { program: _, cause: why } => ServeRouteUnreadable { detail: concat("tailscale serve status was not spawned: ", why as String) }
+        ProcessRan { observation: o } =>
+          if o.exit_code == 0 { serve_route_observation_of_status(status_json: o.stdout, spec: spec) }
+          else { ServeRouteUnreadable { detail: join(["tailscale serve status exited ", to_string(o.exit_code), ": ", trim(o.stderr)], "") } }
+      }
+    SshShell { ssh_host: h } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)), spec: spec)
+    FleetSsh { target: t, context: c } => serve_route_observation_of_outcome(outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)), spec: spec)
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ServeRouteUnreadable { detail: "serve status read refused EmitArtifactThenThinRun transport" }
+  }
+}
+
+// ── THE CUTOVER JOURNAL, DURABLE ───────────────────────────────────────────────────────────────
+// One compare-and-set slot in the fabric state store per (host, route): the store's generation is
+// the fence, so a write that names a generation another run has since advanced is refused there,
+// not here. The slot outlives the job that wrote it, which is the whole reason it exists -- a run
+// cancelled between the re-point and the commit leaves its capture where the next run reads it.
+
+// What this run is cutting over.
+fn tailnet_door_cutover_binding(spec: DeploymentSpec, candidate: CandidateRelease) -> CutoverBinding {
+  CutoverBinding {
+    route: join([spec.target.ssh_host as String, " ", tailscale_serve_route_key_label(key: tailscale_serve_route_key(endpoint: spec.names.tailscale_serve_endpoint)) as String], ""),
+    door_target: tailscale_serve_proxy_url(endpoint: spec.names.tailscale_serve_endpoint),
+    release_revision: candidate.revision as String,
+  }
+}
+
+// A slot key may not carry a path separator and a route label does, so the key is the route's
+// content identity under a fixed prefix.
+fn tailnet_door_cutover_journal_key(binding: CutoverBinding) -> NonEmptyStr {
+  join(["tailnet-door-cutover-", serialize_content_hash(hash: content_hash_of_value(value: binding.route as NonEmptyStr)) as String], "") as NonEmptyStr
+}
+
+fn cutover_phase_wire(phase: CutoverPhase) -> String {
+  match phase {
+    CutoverPrepared => "prepared"
+    CutoverRepointed => "repointed"
+    CutoverRollingBack => "rolling-back"
+    CutoverSettledCommitted => "committed"
+    CutoverSettledRolledBack => "rolled-back"
+  }
+}
+
+fn cutover_phase_of_wire(wire: String) -> CutoverPhase? {
+  if wire == "prepared" { Present { value: CutoverPrepared } }
+  else if wire == "repointed" { Present { value: CutoverRepointed } }
+  else if wire == "rolling-back" { Present { value: CutoverRollingBack } }
+  else if wire == "committed" { Present { value: CutoverSettledCommitted } }
+  else if wire == "rolled-back" { Present { value: CutoverSettledRolledBack } }
+  else { none }
+}
+
+// The capture is journaled as the status target it was read as, the empty target being no route.
+fn cutover_journal_record_json(record: CutoverJournalRecord) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "route", value: json_string(s: record.route)),
+    json_kv(key: "door_target", value: json_string(s: record.door_target)),
+    json_kv(key: "release", value: json_string(s: record.release_revision)),
+    json_kv(key: "prior_target", value: json_string(s: match record.prior { CapturedRestorableBackend { target: t, backend: _ } => t CapturedNoRoute => "" })),
+    json_kv(key: "phase", value: json_string(s: cutover_phase_wire(phase: record.phase))),
+  ])) as NonEmptyStr
+}
+
+fn cutover_journal_string(doc: JsonValue, key: String) -> String? {
+  json_field_value(r: json_field_string(obj: doc, key: key))
+}
+
+// A record whose capture no longer restates as a serve backend is not a record this run may act
+// on: it decodes as nothing, and the read reports the slot unreadable.
+fn cutover_journal_record_of_json(text: String) -> CutoverJournalRecord? {
+  match parse_json_document(s: text) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: doc } =>
+      match cutover_journal_string(doc: doc, key: "route") { Absent => none Present { value: route } =>
+      match cutover_journal_string(doc: doc, key: "door_target") { Absent => none Present { value: door_target } =>
+      match cutover_journal_string(doc: doc, key: "release") { Absent => none Present { value: release_text } =>
+      match cutover_journal_string(doc: doc, key: "prior_target") { Absent => none Present { value: prior_target } =>
+      match cutover_journal_string(doc: doc, key: "phase") { Absent => none Present { value: phase_wire } =>
+      match cutover_phase_of_wire(wire: phase_wire) { Absent => none Present { value: phase } =>
+        if route == "" || door_target == "" { none }
+        else if prior_target == "" { Present { value: CutoverJournalRecord { route: route, door_target: door_target, release_revision: release_text, prior: CapturedNoRoute, phase: phase } } }
+        else { match tailscale_serve_backend_of_proxy_target(target: prior_target) {
+          Absent => none
+          Present { value: backend } => Present { value: CutoverJournalRecord { route: route, door_target: door_target, release_revision: release_text, prior: CapturedRestorableBackend { target: prior_target, backend: backend }, phase: phase } }
+        } }
+      } } } } } }
+  }
+}
+
+fn tailnet_door_cutover_journal_read(store: FabricStorageBinding, binding: CutoverBinding) -> CutoverJournalRead {
+  match fabric_storage_observe_cas_slot(store: store, key: tailnet_door_cutover_journal_key(binding: binding)) {
+    CasObservedUnreadable { cause: c } => CutoverJournalUnreadable { detail: cas_unreadable_slot_detail(cause: c) }
+    CasObservedReadable { readable: CasReadableAbsent } => CutoverJournalAbsent
+    CasObservedReadable { readable: CasReadablePresent { version: version } } =>
+      match cutover_journal_record_of_json(text: version.value as String) {
+        Absent => CutoverJournalUnreadable { detail: "the cutover journal slot holds a record that could not be decoded" }
+        Present { value: record } => CutoverJournalPresent { record: record, generation: version.generation }
+      }
+  }
+}
+
+fn tailnet_door_cutover_journal_write(store: FabricStorageBinding, binding: CutoverBinding, expected_generation: Int, record: CutoverJournalRecord) -> CutoverJournalWrite {
+  let expected = if expected_generation == 0 { ExpectSlotAbsent } else { ExpectSlotGeneration { generation: expected_generation } }
+  match admit_cas_attempt_for_derived_payload(key: tailnet_door_cutover_journal_key(binding: binding), expected: expected, proposed: cutover_journal_record_json(record: record)) {
+    DerivedPayloadKeyNotSlotAddressable { key: _ } => CutoverJournalWriteRefused { detail: "the cutover journal key is not slot addressable" }
+    DerivedPayloadAdmitted { verified: verified } =>
+      match fabric_storage_compare_and_set(store: store, verified: verified) {
+        CasCommitted { committed: version } => CutoverJournalWritten { generation: version.generation }
+        CasPreconditionFailed { expected: _, observed: _ } => CutoverJournalFenced
+        CasStoreRefused { cause: _ } => CutoverJournalWriteRefused { detail: "the fabric state store refused the cutover journal write" }
+      }
+  }
+}

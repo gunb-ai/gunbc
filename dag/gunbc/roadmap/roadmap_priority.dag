@@ -1,0 +1,56 @@
+module gunbc.roadmap_priority
+
+import std.types { String, List, Int }
+import v2.std.algebra { any }
+import gunbc.roadmap.roadmap_project { RoadmapMembershipIndex, node_project_membership_in, MembershipStandalone, MembershipMember, MembershipAmbiguous }
+
+// Provisional display priority, not a scheduler input or an authored Fermi estimate.
+// Owner 2026-10-04: v2 self-hosting is P1; other work is P2 or lower.
+// Shell-to-DAG is non-blocking migration debt, hence P3.
+// The nearest classified project wins. No issue becomes urgent merely because it is blocked.
+type RoadmapPriority = PriorityP0 | PriorityP1 | PriorityP2 | PriorityP3
+type ProjectPriority { project: String, priority: RoadmapPriority, reason: String }
+type DerivedPriority { priority: RoadmapPriority, source: String, reason: String }
+
+data project_priorities: List<ProjectPriority> = [
+  ProjectPriority { project: "v2-compiler-live", priority: PriorityP1, reason: "v2 self-hosting and production-route work" },
+  ProjectPriority { project: "dp-m2-shell-residue-retired", priority: PriorityP3, reason: "Non-blocking shell-to-DAG migration debt" },
+  ProjectPriority { project: "shell-typed-invocation", priority: PriorityP3, reason: "Non-blocking shell-to-DAG migration debt" }
+]
+
+fn roadmap_priority_rank(priority: RoadmapPriority) -> Int {
+  match priority { PriorityP0 => 0 PriorityP1 => 1 PriorityP2 => 2 PriorityP3 => 3 }
+}
+fn roadmap_priority_label(priority: RoadmapPriority) -> String {
+  match priority { PriorityP0 => "P0" PriorityP1 => "P1" PriorityP2 => "P2" PriorityP3 => "P3" }
+}
+fn priority_default(reason: String) -> DerivedPriority {
+  DerivedPriority { priority: PriorityP2, source: "", reason: reason }
+}
+fn project_priority_walk(node_id: String, index: RoadmapMembershipIndex, policies: List<ProjectPriority>, visited: List<String>) -> DerivedPriority {
+  if any(visited, n => n == node_id) {
+    priority_default(reason: "Provisional default; cyclic project membership")
+  } else {
+    let policy: ProjectPriority? = fold(policies, init: none, f: (acc, p) => if p.project == node_id { Present { value: p } } else { acc })
+    match policy {
+      Present { value: p } => DerivedPriority { priority: p.priority, source: p.project, reason: p.reason }
+      Absent => match node_project_membership_in(node_id: node_id, index: index) {
+        MembershipStandalone => priority_default(reason: "Provisional default; no classified project")
+        MembershipAmbiguous { arcs: _ } => priority_default(reason: "Provisional default; ambiguous project membership")
+        MembershipMember { arc } => project_priority_walk(node_id: arc, index: index, policies: policies, visited: concat(visited, [node_id]))
+      }
+    }
+  }
+}
+fn issue_priority_of(node_id: String, index: RoadmapMembershipIndex) -> DerivedPriority {
+  project_priority_walk(node_id: node_id, index: index, policies: project_priorities, visited: [])
+}
+fn issue_priority_explanation(value: DerivedPriority) -> String {
+  join([roadmap_priority_label(priority: value.priority), " · ", value.reason, if value.source == "" { "" } else { join([" · inherited from ", value.source], "") }], "")
+}
+
+// Default terms: status descending, then priority ascending (P0 is highest urgency).
+// The interactive view can replace these defaults with its ordered preference terms.
+fn workspace_priority_order_key(priority: RoadmapPriority, status_rank: Int) -> Int {
+  (10 - status_rank) * 10 + roadmap_priority_rank(priority: priority)
+}

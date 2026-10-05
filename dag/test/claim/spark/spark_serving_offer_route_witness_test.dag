@@ -7,7 +7,7 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
   RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,

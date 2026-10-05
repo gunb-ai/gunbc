@@ -1,6 +1,6 @@
 module gunbc.rung_drop.native_lane_second_textual_production_reading
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 

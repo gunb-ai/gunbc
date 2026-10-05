@@ -6,7 +6,7 @@ import std.measure {
   ByteSize, byte_size_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte,
   Nanosecond, nanosecond_count,
 }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.fabric.identity { FabricIdentity, OfferKey, fabric_identity_eq }
 import extdeps.ethernet.link_mode { LinkMode, link_mode_eq }
 import extdeps.storage.types { PcieLink, Gen5 }

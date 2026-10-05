@@ -9,7 +9,7 @@ import std.layout {
 }
 import std.languages { SerializationKnobs, SerialField }
 import std.serialize { serial_field, serial_scalar, serialize_fields_doc }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.host_converge { ConvergeKnob, PerSlotMemoryCap }
 import gunbc.host_runner_memory_provision {
   runner_memory_host_converge,
