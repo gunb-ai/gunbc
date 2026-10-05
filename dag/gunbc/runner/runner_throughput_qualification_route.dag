@@ -383,12 +383,12 @@ fn route_deregisters_what_it_registered(route: List<QualificationStage>) -> Bool
     && (registered |> all(u => deregistered |> any(d => d == u)))
 }
 
+// Only a dispatch stage is asked to name the attempt; the other four stages say so by name, not
+// by wildcard, so a stage added later must state that here rather than inherit the vacuous pass.
 fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, attempt: NonEmptyStr) -> Bool {
   route |> all(s =>
     match s {
       DispatchFloorToSlot { workload: _, selector: sel, dispatch: _ } => sel |> any(l => l == (attempt as String))
-      // Named, not wildcarded: only a dispatch stage is asked to name the attempt, but a stage
-      // added later must state that here rather than inherit the vacuous pass.
       BootHostUnderApprovalGate { host: _, boot: _, image: _ } => true
       RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => true
       CollectInstruments { instruments: _ } => true
