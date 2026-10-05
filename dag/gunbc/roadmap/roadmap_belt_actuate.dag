@@ -115,7 +115,7 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchLiveSession,
   DispatchSpawnCommands,
   DispatchSessionContainer, TmuxSessionContainer, SystemdUnitContainer,
-  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_run,
+  dispatch_worker_unit_properties_for_plan, dispatch_worker_unit_command,
   dispatch_attempt_unit_name,
   attempt_unit_observation,
   worker_process_from_attempt_unit,
@@ -1345,10 +1345,15 @@ fn belt_session_container_create(
               match session_placement_begin_launch(stores: held.stores, grant: held.grant) {
                 SessionLaunchRefused { detail } => ExecStepFailed { step: "session-launch-gate", detail: detail }
                 SessionLaunchAdmitted { grant: launched } =>
-                  belt_exec_steps(
-                    steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_worker_unit_run(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) }],
-                    workdir: workdir,
-                  )
+                  match dispatch_worker_unit_command(instance: instance, plan: plan, granted: launched.amount, process_bounds: session_process_bounds) {
+                    SystemdRunCommandRefused { reason: why } =>
+                      ExecStepFailed { step: "harness-unit-start", detail: why }
+                    SystemdRunCommandReady { command: command } =>
+                      belt_exec_steps(
+                        steps: [BeltExecStep { step: "harness-unit-start", command: dispatch_unit_exec_argv(command: command, resolved_program: plan.systemd_run_program) }],
+                        workdir: workdir,
+                      )
+                  }
               }
           }
         }
