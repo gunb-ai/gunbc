@@ -12,7 +12,7 @@ import gunbc.fleet_host_budget {
   CompilePoolResolution, CompilePoolDerived, CompilePoolUnresolved,
 }
 import gunbc.runner_activation { HostCompilePoolReady }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 data host_compile_pool_scope_disposition: ConstructionMechanism = SingleAuthority
 

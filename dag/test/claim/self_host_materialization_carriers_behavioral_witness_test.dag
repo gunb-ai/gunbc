@@ -2,7 +2,7 @@ module test.claim.self_host_materialization_carriers_behavioral_witness
 
 import tools.self_host_module_behavioral_transport_roster { compiler_module_behavioral_receipt_for }
 
-// Wet self-host behavioral receipt (materialization_carriers): the driver (the roster's driver_rel)
+// Wet self-host behavioral receipt (materialization_carriers): the rendered driver (the roster row's contract, also run interpreted)
 // checks the .dag contract on the EMITTED module with no seed oracle -- materialization_allows_memo_store
 // permits the memo store for Memoize and refuses it for Recompute and Share; --inject-fault asserts
 // only that Recompute wrongly stores. It used to compare the prose v2_compiler_materialization_note

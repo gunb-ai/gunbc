@@ -17,9 +17,10 @@ import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message,
-  KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous
+  KernelGrounding, KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous,
+  kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous
 }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type, dag_cast_requires_proof, SubtractionRefinementAmbiguous, HostText, CodePointSequence, NotText, TextRepresentationUnidentified, KernelMinted, CorpusDeclared, DeclarationIdentityAbsent }
 import v1.compiler.type_head_exposure {
   TypeHeadView, KernelScalarHead, ApplicationHead, ProductHead, CoproductHead, CallableHead,
@@ -29,7 +30,7 @@ import v1.compiler.type_head_exposure {
 }
 import v1.std.core { Unmarked, declaration_provenance_of,
   callable_identity, DeclaredCallableIdentity,
-  resolved_node_is_kernel_identity_for_name,
+  resolved_node_is_kernel_identity_for_name, type_variable_binder_name,
   Node, InternTable,
   intern, intern_str, empty_intern_table,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, find_property_string, has_child_named, build_newline_index,
@@ -54,7 +55,7 @@ import v1.std.core { Unmarked, declaration_provenance_of,
   ErrorNode, make_error_node, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_span,
   AlgebraApplicationEvidenceUnavailable,
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
-  InternalError, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
+  InternalError, KernelMintShapeMismatch, TypeMismatch, TypeParameterInValuePosition, TextRepresentationUnidentifiedAtBoundary, TextCrossingHasNoImplicitRoute, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
   EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
@@ -742,6 +743,23 @@ fn variant_reference_inferred_node(expected: Node?, name: String, owner_name: St
   }
 }
 
+// THE IDENTITY OF AN ARM WHOSE OWNER IS A KERNEL MINT. A mint that a
+// gunbc.structural_realization_bindings kernel_mint_declaration_rows row binds to a corpus
+// declaration answers with THAT declaration (the kernel Optional is v2.std.optional Optional), so
+// the arm has one identity whether it was reached through `T?` or through an import. A mint with
+// no row is a kernel type or it is unrecovered, as before.
+fn kernel_mint_parent_identity(minted_name: String) -> VariantParentIdentity {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: minted_name) {
+    KernelMintDeclarationFound { declaration: d } => VariantParentIdentified { key: VariantParentDeclaration { declaration: d } }
+    KernelMintDeclarationAmbiguous { row_count: _ } => VariantParentUnrecovered { cause: "the owning kernel mint is bound to more than one declaration" as NonEmptyStr }
+    KernelMintDeclarationAbsent =>
+      match kernel_type_name(name: minted_name) {
+        KernelTypeNameAdmitted { kernel_name: k } => VariantParentIdentified { key: VariantParentKernelType { kernel_name: k } }
+        NotAKernelTypeName { name: _ } => VariantParentUnrecovered { cause: "the owning coproduct is a kernel mint whose name is not a kernel type" as NonEmptyStr }
+      }
+  }
+}
+
 // THE DECLARATION A VARIANT BELONGS TO, read here where the owning coproduct's node is live
 // (std.target_representation VariantParentIdentity): the same census-by-identity read
 // type_reference_declaration performs for a binary operator's operand, and for the same reason it is
@@ -756,11 +774,7 @@ fn variant_parent_identity_of(owner: Node?, scope: InferScope) -> VariantParentI
         Present { value: od } => VariantParentIdentified { key: VariantParentDeclaration { declaration: od.declaration } }
         Absent =>
           match declaration_provenance_of(item: o) {
-            KernelMinted { minted_name: m } =>
-              match kernel_type_name(name: m) {
-                KernelTypeNameAdmitted { kernel_name: k } => VariantParentIdentified { key: VariantParentKernelType { kernel_name: k } }
-                NotAKernelTypeName { name: _ } => VariantParentUnrecovered { cause: "the owning coproduct is a kernel mint whose name is not a kernel type" as NonEmptyStr }
-              }
+            KernelMinted { minted_name: m } => kernel_mint_parent_identity(minted_name: m)
             _ => VariantParentUnrecovered { cause: "the owning coproduct is neither an identified corpus declaration nor a kernel type (alias or unresolved)" as NonEmptyStr }
           }
       }
@@ -1338,6 +1352,41 @@ fn constructor_reference_admission_early_refusal(
   }
 }
 
+// A TEXT CROSSING'S REFUSAL NAMES ITS ROUTE (operator ruling O5, 2026-10-03). Host text and a
+// code-point sequence meet only through a declared conversion plan, and under O5 a plan is selected
+// by calling the ordinary function its row names. So where the checker refuses a crossing by
+// declaration identity, the residual names the function that would make it lawful: the unfold when
+// the produced side is host text, the fold when it is a code-point sequence. Every other mismatch
+// keeps its ordinary TypeMismatch.
+//
+// ONE ARM PER TextRepresentation, NO WILDCARD (zero-ambiguity ruling, via sharp-raven-357 on #13151):
+// a variant added later must fail the route match at compile time rather than be silently advised to
+// call the fold. A crossing is only reported between two text readings, so the NotText and
+// Unidentified arms name no route and keep the plain mismatch instead of guessing one.
+fn text_crossing_or_type_mismatch_error(expected: Node, got: Node, env: TypeEnv, span: SourceSpan, module_name: String) -> ErrorNode {
+  let si = env.source_indices
+  let plain = type_mismatch_error(expected: node_type_shape(n: expected, source_indices: si), got: node_type_shape(n: got, source_indices: si), span: span, module_name: module_name)
+  if text_crossing_by_identity(left: expected, right: got, env: env) {
+    match text_representation_by_identity(n: got, env: env) {
+      HostText => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_unfold", si: si, span: span, module_name: module_name)
+      CodePointSequence => text_crossing_route_error(expected: expected, got: got, route: "unicode_scalar_fold", si: si, span: span, module_name: module_name)
+      NotText => plain
+      TextRepresentationUnidentified => plain
+    }
+  } else {
+    plain
+  }
+}
+
+fn text_crossing_route_error(expected: Node, got: Node, route: String, si: Map<String, NewlineIndex>, span: SourceSpan, module_name: String) -> ErrorNode {
+  make_error_node(diagnostic: TextCrossingHasNoImplicitRoute {
+    expected: node_type_shape(n: expected, source_indices: si),
+    got: node_type_shape(n: got, source_indices: si),
+    route: route,
+    span: span
+  }, module_name: module_name)
+}
+
 fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_name: String) -> ErrorNode {
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
@@ -1598,12 +1647,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
     scope: scope)
   if (cardinality_diags |> count) > 0 { cardinality_diags }
   else if text_crossing_by_identity(left: declared, right: produced, env: scope.type_env) {
-    [type_mismatch_error(
-      expected: node_type_shape(n: declared, source_indices: si),
-      got: node_type_shape(n: produced, source_indices: si),
-      span: span,
-      module_name: scope.module_name
-    )]
+    [text_crossing_or_type_mismatch_error(expected: declared, got: produced, env: scope.type_env, span: span, module_name: scope.module_name)]
   }
   else if declared_type_kernel_inhabitance_mismatch_here_or_at_element(
       declared: declared, produced: produced, scope: scope) {
@@ -5605,12 +5649,7 @@ fn direct_call_structured_application_mismatch_diags(
               formal: formal, substitution_basis: app.formal.substitution_basis, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices)) {
             let actual_raw = resolved_type(n: actual_expr)
             let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
-            [type_mismatch_error(
-              expected: node_type_shape(n: formal, source_indices: source_indices),
-              got: node_type_shape(n: actual, source_indices: source_indices),
-              span: actual_expr.span,
-              module_name: module_name
-            )]
+            [text_crossing_or_type_mismatch_error(expected: formal, got: actual, env: type_env, span: actual_expr.span, module_name: module_name)]
           } else {
             []
           }
@@ -7114,7 +7153,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
           let optional_coproduct_subject = scrutinee_name == "Optional" && (variant_name == "Present" || variant_name == "Absent")
           let witness_container_subject = is_witness_type_name(name: scrutinee_name) && (variant_name == "Holds" || variant_name == "Violates")
           if (optional_cardinality_subject || optional_coproduct_subject) && (variant_name == "Present" || variant_name == "Absent") {
-            PatternParentReading { parent_enum: Present { value: "Optional" }, identity: VariantParentUnrecovered { cause: "the arm belongs to the optional wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr } }
+            PatternParentReading { parent_enum: Present { value: "Optional" }, identity: kernel_mint_parent_identity(minted_name: kernel_optional_mint_name) }
           } else if witness_container_subject {
             PatternParentReading { parent_enum: Present { value: "Witness" }, identity: VariantParentUnrecovered { cause: "the arm belongs to the witness wrapper, not to the scrutinee's declared coproduct" as NonEmptyStr } }
           } else {
@@ -15047,6 +15086,19 @@ fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_inde
   }
 }
 
+// THE SEED'S ONE MINT OF THE OPTIONAL COPRODUCT. `T?` resolves to this node in every kernel scope
+// this module builds; it was written out three times, once per builder. It is a mint and not the
+// declaration: a module that uses `T?` need not hold v2.std.optional in its closure. Which
+// declaration it stands for is gunbc.structural_realization_bindings kernel_mint_declaration_rows,
+// and kernel_mint_shape_diagnostics refuses if the two stop agreeing.
+fn kernel_optional_type_node() -> Node {
+  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  kernel_optional
+}
+
 // THE AUTHORED HALF OF THIS FUNCTION'S VISIBILITY MAPS, KEPT SEPARATE BECAUSE THE UNION DESTROYS IT.
 // `build_type_env` folds BOTH import arms into one `source_visible_names` map: an is_all import
 // contributes every name in the imported module's interface AND every name that module itself
@@ -15102,10 +15154,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
 
@@ -15273,10 +15322,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     init: empty_map(),
     f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding { name: name, resolved: Node { occurrence_identity: OccurrenceSynthetic, name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }, provenance: SubValueUnknown, alias_rhs: none })
   )
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
@@ -16565,6 +16611,99 @@ fn ground_node(n: Node, ctx: GroundCtx) -> GroundOut {
   }
 }
 
+// THE TYPE-VARIABLE BINDER A FIELD'S TYPE NAMES, or Absent when the field's type is not one of
+// the declaration's own type parameters. After resolution a parameter leaf looks like a concrete
+// type of that name, so the binder is not on the node; v1.compiler.infer_env
+// declaration_substitution_basis is the corpus's one authority for "is this leaf a parameter of
+// this declaration" (its roster is the declaration's own generic names), and this reads the
+// field's type through it. A field already stamped as a type variable -- the kernel mint's own --
+// answers directly.
+fn payload_field_type_binder(f: Node, env: TypeEnv, generic_names: List<String>) -> String? {
+  match type_variable_binder_name(n: f) {
+    Present { value: tv } => Present { value: tv }
+    Absent =>
+      if f.inferred == none {
+        let label = type_node_label(n: f, source_indices: env.source_indices)
+        if generic_names |> any(g => g == label) { Present { value: label } } else { none }
+      } else {
+        type_variable_binder_name(n: declaration_substitution_basis(n: child_type_node(ch: f), env: env, generic_names: generic_names))
+      }
+  }
+}
+
+// WHAT THE KERNEL OPTIONAL'S DECLARATION MUST BE, judged on the declaration itself and by type,
+// not against the mint's node and not by spelling alone. Arm names and a field name agreeing is
+// not enough: `Present { value: Int }` has the same names and is a different type, and every `T?`
+// arm would then be stamped with a parent that is not the optional of T. The four facts:
+// exactly one type parameter; exactly two arms; one arm with no fields; one arm with exactly one
+// field, named as the mint names it, whose TYPE IS THAT PARAMETER -- read from the field's
+// type-variable binder, which is what makes `value: Int` and `value: B` under a second parameter
+// both refuse. Absent when the declaration conforms; otherwise the first fact it breaks.
+fn kernel_optional_shape_refusal(decl: Node, env: TypeEnv) -> String? {
+  let si = env.source_indices
+  let mint = kernel_optional_type_node()
+  let mint_payload_field = match mint.children |> flat_map(v => variant_node_fields(n: v)) |> first {
+    Present { value: f } => f.name
+    Absent => ""
+  }
+  let is_coproduct = decl.connective == Disj
+  if !is_coproduct {
+    Present { value: "it is not a coproduct" }
+  } else if (decl.params |> count) != 1 {
+    Present { value: concat("it declares ", to_string(decl.params |> count), " type parameters where the optional of T has exactly one") }
+  } else if (decl.children |> count) != 2 {
+    Present { value: concat("it declares ", to_string(decl.children |> count), " arms where the optional of T has exactly two") }
+  } else {
+    let nullary = decl.children |> filter(v => (variant_node_fields(n: v) |> count) == 0)
+    let unary = decl.children |> filter(v => (variant_node_fields(n: v) |> count) == 1)
+    let param_name = match decl.params |> first {
+      Present { value: p } => generic_param_name_at(n: p, source_indices: si)
+      Absent => ""
+    }
+    if (nullary |> count) != 1 || (unary |> count) != 1 {
+      Present { value: "its arms are not one arm with no payload and one arm with a single field" }
+    } else {
+      match unary |> flat_map(v => variant_node_fields(n: v)) |> first {
+        Absent => Present { value: "its payload arm has no field" }
+        Present { value: f } =>
+          if authored_name_at(source_indices: si, node: f) != mint_payload_field {
+            Present { value: concat("its payload field is named '", authored_name_at(source_indices: si, node: f), "' where the kernel mint names it '", mint_payload_field, "'") }
+          } else {
+            match payload_field_type_binder(f: f, env: env, generic_names: decl.params |> map(p => generic_param_name_at(n: p, source_indices: si))) {
+              Present { value: tv } =>
+                if tv == param_name { none }
+                else { Present { value: concat("its payload field's type is the type variable '", tv, "', which is not its type parameter '", param_name, "'") } }
+              Absent => Present { value: concat("its payload field's type, '", authored_name_at(source_indices: si, node: child_type_node(ch: f)), "', is not its type parameter '", param_name, "'") }
+            }
+          }
+      }
+    }
+  }
+}
+
+// Judged where the declaring module is typechecked, because that is the one place the declaration
+// is certainly in the closure, and keyed on the DeclarationRef the row carries: moving the
+// declaration changes the row and not this check. A row naming a declaration its module does not
+// declare, and a row for a name this seed does not mint, refuse under the same class.
+fn kernel_mint_shape_diagnostics(env: TypeEnv, module_name: String, module_span: SourceSpan) -> List<ErrorNode> {
+  kernel_mint_declaration_rows |> flat_map(row =>
+    if (row.declaration.module_path as String) != module_name { [] }
+    else if (row.minted_name as String) != kernel_optional_mint_name {
+      [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: concat("the seed mints no kernel type named '", row.minted_name as String, "'"), span: module_span }, module_name: module_name)]
+    } else {
+      match declaration_node_of_ref(d: row.declaration, env: env) {
+        Absent =>
+          [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: "this module does not declare it", span: module_span }, module_name: module_name)]
+        Present { value: decl } =>
+          match kernel_optional_shape_refusal(decl: decl, env: env) {
+            Absent => []
+            Present { value: cause } =>
+              [make_error_node(diagnostic: KernelMintShapeMismatch { declaration_name: row.declaration.decl_name as String, cause: cause, span: decl.span }, module_name: module_name)]
+          }
+      }
+    })
+}
+
 fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> GroundedItems {
   let states = grounded_carrier_states(env: env)
   let views = states |> flat_map(s =>
@@ -16727,7 +16866,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     diagnostics: frontier_occurrence_budget_checked(
       module_name: resolved_module_name,
       module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, seed_diags)),
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
     binding_forks: env_result.binding_forks
   }
 }
@@ -17227,10 +17366,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
     resolved: Node { occurrence_identity: OccurrenceSynthetic, name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData },
     provenance: SubValueUnknown, alias_rhs: none
   })
-  let present_value_field = Node { occurrence_identity: OccurrenceSynthetic, name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let present_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
-  let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let kernel_optional = kernel_optional_type_node()
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown, alias_rhs: none })
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool_type_node(), provenance: SubValueUnknown, alias_rhs: none })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)

@@ -635,7 +635,7 @@ fn json_field_string_list(obj: JsonValue, key: String) -> JsonFieldRead<List<Str
 // matches would report the first and hide the rest, which turns one decode into four round trips
 // against a live daemon -- and against a CAPTURE, which cannot be re-run at all, it would hide
 // findings permanently.
-fn json_field_value(r: JsonFieldRead<T>) -> T? {
+fn json_field_value<T>(r: JsonFieldRead<T>) -> T? {
   match r {
     FieldAbsent => none
     FieldMalformed { cause: _ } => none
@@ -644,7 +644,7 @@ fn json_field_value(r: JsonFieldRead<T>) -> T? {
 }
 
 
-fn json_field_cause(r: JsonFieldRead<T>) -> String? {
+fn json_field_cause<T>(r: JsonFieldRead<T>) -> String? {
   match r {
     FieldAbsent => none
     FieldMalformed { cause: c } => Present { value: c }
