@@ -1,0 +1,36 @@
+module test.claim.unicode_scalar_from_code_point_witness
+
+import std.error_primitives { Ok, Err }
+import std.unicode.scalar { CodePointOutOfRange, SurrogateCodePoint, char_text, from_code_point }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// std.unicode.scalar from_code_point is PARTIAL over Int and its refusal is typed by cause. The
+// positive control and each refusal arm are separate claims so a red names which one moved.
+
+test fn from_code_point_spells_a_scalar() -> Bool {
+  match from_code_point(cp: 65) {
+    Ok { value: s } => s == "A"
+    Err { value: _ } => false
+  }
+}
+
+test fn from_code_point_RED_a_surrogate_refuses_as_surrogate() -> Bool {
+  match from_code_point(cp: 55296) {
+    Ok { value: _ } => false
+    Err { value: SurrogateCodePoint { code_point: cp } } => cp == 55296
+    Err { value: CodePointOutOfRange { code_point: _ } } => false
+  }
+}
+
+test fn from_code_point_RED_past_the_last_scalar_refuses_as_out_of_range() -> Bool {
+  match from_code_point(cp: 1114112) {
+    Ok { value: _ } => false
+    Err { value: CodePointOutOfRange { code_point: cp } } => cp == 1114112
+    Err { value: SurrogateCodePoint { code_point: _ } } => false
+  }
+}
+
+test fn char_text_spells_one_char() -> Bool {
+  char_text(c: 233) == "\u{e9}"
+}

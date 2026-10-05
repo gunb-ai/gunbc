@@ -1,6 +1,7 @@
 module v2.extdeps.languages.swift.rows
 
-import std.types { String, List, Bool, Int }
+import std.types { String, List, Bool, Int, Char }
+import std.unicode.scalar { char_text }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { list_append, length }
@@ -578,7 +579,7 @@ fn list_reverse_attrs(xs: List<SwiftAttribute>) -> List<SwiftAttribute> {
 }
 
 // ── String literals: a text segment's lexeme is its escaped spelling ─────────────────────────
-fn swl_escape_scalar(cp: Int) -> String {
+fn swl_escape_scalar(cp: Char) -> String {
   if cp == 92 { "\\\\" }
   else if cp == 34 { "\\\"" }
   else if cp == 10 { "\\n" }
@@ -586,7 +587,7 @@ fn swl_escape_scalar(cp: Int) -> String {
   else if cp == 13 { "\\r" }
   else if cp == 0 { "\\0" }
   else if cp < 32 || cp >= 127 { join(["\\u\{", int_to_upper_hex(n: cp), "\}"], "") }
-  else { from_code_point(cp: cp) }
+  else { char_text(c: cp) }
 }
 
 fn swl_escape_text(s: String) -> String {

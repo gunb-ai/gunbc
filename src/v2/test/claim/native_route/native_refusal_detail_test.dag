@@ -1,5 +1,7 @@
 module v2.test.claim.native_route.native_refusal_detail
 
+import std.unicode.scalar { char_text }
+
 import gunbc.witness_v2_native_route { NativeRouteMemberRow, native_route_member_row_text }
 import v2.compiler.compile {
   NativeLaneModuleContextRowsDecided,
@@ -416,13 +418,13 @@ test fn an_ordinary_atom_renders_readably_holds() -> Bool {
 }
 
 test fn an_embedded_backtick_and_backslash_stay_unambiguous_holds() -> Bool {
-  atom_locus_text(lexeme: concat("left`right", concat(from_code_point(cp: 92), "x")))
-    == concat("<synthetic node occurrence \"left`right", concat(from_code_point(cp: 92), concat(from_code_point(cp: 92), "x\">")))
+  atom_locus_text(lexeme: concat("left`right", concat(char_text(c: 92), "x")))
+    == concat("<synthetic node occurrence \"left`right", concat(char_text(c: 92), concat(char_text(c: 92), "x\">")))
 }
 
 test fn newline_cr_and_esc_become_visible_escapes_holds() -> Bool {
-  let bs = from_code_point(cp: 92)
-  atom_locus_text(lexeme: concat("a", concat(from_code_point(cp: 10), concat("b", concat(from_code_point(cp: 13), concat("c", concat(from_code_point(cp: 27), "d")))))))
+  let bs = char_text(c: 92)
+  atom_locus_text(lexeme: concat("a", concat(char_text(c: 10), concat("b", concat(char_text(c: 13), concat("c", concat(char_text(c: 27), "d")))))))
     == concat("<synthetic node occurrence \"a", concat(bs, concat("nb", concat(bs, concat("rc", concat(bs, "u001Bd\">"))))))
 }
 

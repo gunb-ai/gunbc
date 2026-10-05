@@ -1,0 +1,44 @@
+module std.unicode.scalar
+
+import std.algebra { Empty, list_snoc_item }
+import std.coercion { unicode_scalar_fold }
+import std.error_primitives { Result, Ok, Err }
+import std.types { Char }
+import std.unicode.types { unicode_scalar, unicode_surrogate_first_code_point, unicode_surrogate_last_code_point }
+
+// WHY A CODE POINT IS NOT A Char. Unicode Standard 17.0 Core Specification section 3.9, D76: the
+// scalar values are U+0000..U+D7FF and U+E000..U+10FFFF, so an Int code point names a scalar only
+// when std.unicode.types unicode_scalar holds. The two ways it fails are the two arms here, each
+// carrying the code point it refused, so a caller reports WHICH value and WHY rather than a bare no.
+type NotUnicodeScalar
+  = SurrogateCodePoint { code_point: Int }
+  | CodePointOutOfRange { code_point: Int }
+
+// THE ONE DECLARATION OF from_code_point, AND IT IS PARTIAL. An Int code point is spelled as host
+// text only when it is a Unicode scalar; otherwise this refuses, typed. It is never a total
+// Int -> String: a total reading would fabricate text for a surrogate or an out-of-range value.
+// It is realized through the declared text-crossing route std.coercion unicode_scalar_fold (DESIGN
+// section 4, UnicodeScalarSequenceUnfold), over a one-scalar sequence, so the kernel writer behind
+// that route stays the realization. The v1 seed builtin of the same name (v1.compiler.infer_method
+// BuiltinSignature "from_code_point") is total over Int; it is NOT a second authority for this
+// meaning, and a caller that still binds it bare is enumerated debt
+// (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin).
+// A caller holding a Char already has a scalar by construction and spells it through
+// unicode_scalar_fold directly; it never needs this function and never handles its refusal.
+fn from_code_point(cp: Int) -> Result<String, NotUnicodeScalar> {
+  if unicode_scalar(code_point: cp) {
+    Ok { value: unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: cp)) }
+  } else if (cp >= unicode_surrogate_first_code_point) && (cp <= unicode_surrogate_last_code_point) {
+    Err { value: SurrogateCodePoint { code_point: cp } }
+  } else {
+    Err { value: CodePointOutOfRange { code_point: cp } }
+  }
+}
+
+// THE TOTAL SIBLING: a Char is a Unicode scalar by construction (std.types Char = Int where
+// unicode_scalar), so spelling ONE Char as host text cannot refuse. A caller that holds a Char calls
+// this, never from_code_point -- handling a refusal that cannot happen would be validation standing
+// where construction is available (DESIGN section 5).
+fn char_text(c: Char) -> String {
+  unicode_scalar_fold(xs: list_snoc_item(xs: Empty, item: c))
+}

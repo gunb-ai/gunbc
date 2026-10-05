@@ -1,5 +1,7 @@
 module v2.test.claim.sql_create_table_fold
 
+import std.unicode.scalar { char_text }
+
 import v2.extdeps.formats.sql {
   SqlColumnConstraints,
   SqlColumnDefaultAbsent,
@@ -239,6 +241,6 @@ test fn sql_fold_single_col_uses_leaf_list_production_holds() -> Bool {
 }
 
 test fn sql_fold_direct_serialize_tier_holds() -> Bool {
-  sql_fold_stmt_kind_sentinel == from_code_point(cp: 2)
+  sql_fold_stmt_kind_sentinel == char_text(c: 2)
     && sql_fold_direct_serialize_single_col_holds()
 }
