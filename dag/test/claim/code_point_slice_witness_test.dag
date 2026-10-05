@@ -80,13 +80,15 @@ test fn code_point_slice_refuses_an_overlong_field() -> Bool {
   decode_fields(body: "4:\u{e9}\u{4e2d}") == none
 }
 
-// THE WALK AT SCALE: 2048 non-ASCII fields, 12,288 code points. Under the copying realizations
-// every `get` / `count` flattened the whole list and every `skip` copied the remainder, so this
-// claim's host work was quadratic in the body; claim_batch with GUNBC_INTERP_STATS=1 reports it
-// as the fm_flatten line, which is the instrument for this claim's cost.
+// THE WALK OVER MANY FIELDS: 512 non-ASCII fields, 3,072 code points, sized under the floor's
+// new-witness eval-step budget (v2.workflow.required_floor). This claim's subject is that the
+// decode stays correct field after field; the COST of the walk is not measured here, because eval
+// steps cannot see a host-level copy. The cost controls that can, RED on the copying forms and
+// GREEN on the sharing ones, are gunbc.repo_self_build repo_self_slice_cost_control_command, run on
+// the merge path by the generated job's slice cost step.
 test fn code_point_slice_walk_is_correct_at_scale() -> Bool {
-  match decode_fields(body: doubled(s: "3:\u{e9}\u{4e2d}\u{1f600}", times: 11)) {
+  match decode_fields(body: doubled(s: "3:\u{e9}\u{4e2d}\u{1f600}", times: 9)) {
     Absent => false
-    Present { value: fs } => count(fs) == 2048 && fs |> all(f => f == "\u{e9}\u{4e2d}\u{1f600}")
+    Present { value: fs } => count(fs) == 512 && fs |> all(f => f == "\u{e9}\u{4e2d}\u{1f600}")
   }
 }
