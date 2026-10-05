@@ -131,7 +131,7 @@ import v2.std.diagnostic {
   rejected_with_pending
 }
 import v2.std.integer { Int, integer_string_to_decimal_digits_optional }
-import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_last_segment, qualified_name_snoc, qualified_name_to_dotted_string, qualified_name_spine_of_atoms, qualified_name_spine_shape_present }
 import v2.std.symbol_index {
   SymbolIndex,
   empty_symbol_index,
@@ -198,6 +198,8 @@ import v2.std.arrow_contract { effect_claim_label, hermetic_claim_label }
 import std.effects { EffectClaim, ReadonlyClaim, IdempotentClaim }
 import v2.std.node_query {
   binder_edge,
+  construct_field_edges,
+  construct_tag_path_optional,
   member_edge_type_node,
   node_positional_child_targets,
   construct_node,
@@ -4734,38 +4736,49 @@ fn body_lower_admit_record_spine(entries: List<Node>, template: Node) -> Optiona
   )
 }
 
-// ONE ENTRY -> ONE RECORD CONJ IN THE SPINE, ALWAYS GROUNDABLE. A decl_ref(module_path, decl_name)
-// call lowers to a record conj whose authored edges carry the operator spelling (^decl_ref) and the two
-// string lexemes as plain atoms keeping the literals' own occurrences (the where-clause lowering's
-// precedent). An entry that READS but is not such a call lowers to a marker record the reader refuses
-// at the entry (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token
-// subtree. Only a spine the reader cannot walk returns Absent, failing the whole roster into the clause
-// fallback's refusal. The record conj itself is minted with the roster template's id (pending below the
-// spine root), never with the call's: a conj and the atom under it cannot share one minted id.
+// ONE ENTRY -> ONE RECORD CONJ IN THE SPINE, ALWAYS GROUNDABLE. The entry's call is read through the
+// shared construct readers -- construct_tag_path_optional for the callee (the same accessor every
+// other callee consumer uses) and the authored field edges for the two coordinates, whose string
+// literals are read by the language's own dag_string_literal_value_symbol_optional. The record carries
+// the operator spelling (^decl_ref) and the two lexemes as plain atoms. An entry that READS but is not
+// such a call lowers to a marker record the reader refuses at the entry
+// (^infer_reason_admit_callers_entry_not_decl_ref) — never dropped, never a raw token subtree. Only a
+// spine the reader cannot walk returns Absent, failing the whole roster into the clause fallback's
+// refusal. EVERY built node is minted with the roster template's id: close_lowered_image marks them
+// all OccurrencePending below the spine root, so allocation gives each a real id and no two built
+// nodes ever share one minted identity.
 fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
   match body_lower_admit_entry_call_optional(item: entry) {
     Absent => optional_absent()
     Present { value: call } =>
       match call.kind {
         ComputationNode { behavior: Transform } =>
-          match body_lower_admit_operator_edge(children: call.children) {
-            Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
-            Present { value: op_edge } =>
-              match op_edge.target.kind {
-                TypeNode { connective: Atom { identity: op } } =>
-                  if symbol_eq(a: op, b: ^decl_ref) {
-                    match body_lower_admit_string_field_edge(call: call, field: ^module_path) {
-                      Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
+          match construct_tag_path_optional(n: call) {
+            Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
+            Present { value: callee } =>
+              match qualified_name_last_segment(qn: callee) {
+                Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
+                Present { value: seg } =>
+                  if symbol_eq(a: seg, b: ^decl_ref) {
+                    match body_lower_admit_string_field_edge(call: call, field: ^module_path, template: template) {
+                      Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
                       Present { value: mp_edge } =>
-                        match body_lower_admit_string_field_edge(call: call, field: ^decl_name) {
-                          Absent => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
+                        match body_lower_admit_string_field_edge(call: call, field: ^decl_name, template: template) {
+                          Absent => optional_present(value: body_lower_admit_entry_marker(template: template))
                           Present { value: dn_edge } =>
                             optional_present(
                               value: Edge {
                                 label: Authored { name: ^admit_callers_clause_body },
                                 target: sugar_type_node(
                                   connective: Conj,
-                                  children: [op_edge, mp_edge, dn_edge],
+                                  children: [
+                                    Edge {
+                                      label: Authored { name: ^decl_ref },
+                                      target: sugar_type_node(connective: Atom { identity: ^decl_ref }, children: [], n: template)
+                                    },
+                                    mp_edge,
+                                    dn_edge
+                                  ],
                                   n: template
                                 )
                               }
@@ -4773,28 +4786,46 @@ fn body_lower_admit_entry_edge(entry: Node, template: Node) -> Optional<Edge> {
                         }
                     }
                   } else {
-                    optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
+                    optional_present(value: body_lower_admit_entry_marker(template: template))
                   }
-                _ => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
               }
           }
-        _ => optional_present(value: body_lower_admit_entry_marker(node: entry, template: template))
+        _ => optional_present(value: body_lower_admit_entry_marker(template: template))
+      }
+  }
+}
+
+// @field -> string literal -> the value lexeme as an interned symbol, read by the language's own
+// string-literal reader, hung as the record's authored field edge. Absent when the edge is missing or
+// its target is not a string literal.
+fn body_lower_admit_string_field_edge(call: Node, field: Symbol, template: Node) -> Optional<Edge> {
+  match sugar_named_child_optional(root: call, name: field) {
+    Absent => optional_absent()
+    Present { value: literal } =>
+      match dag_string_literal_value_symbol_optional(node: literal) {
+        Absent => optional_absent()
+        Present { value: lexeme } =>
+          optional_present(
+            value: Edge {
+              label: Authored { name: field },
+              target: sugar_type_node(connective: Atom { identity: lexeme }, children: [], n: template)
+            }
+          )
       }
   }
 }
 
 // THE UNINTERPRETABLE-ENTRY MARKER: a record conj whose single edge names the refusal the reader
-// raises at the entry. The conj is minted with the template's id (close_lowered_image marks it
-// pending, allocation gives it a real id); the atom keeps the entry's own occurrence — the entry
-// left the tree in the swap, and no two built nodes share one minted id.
-fn body_lower_admit_entry_marker(node: Node, template: Node) -> Edge {
+// raises at the entry. Minted with the template's id like every other built node; close_lowered_image
+// marks it pending and allocation gives it a real id.
+fn body_lower_admit_entry_marker(template: Node) -> Edge {
   Edge {
     label: Authored { name: ^uninterpretable },
     target: sugar_type_node(
       connective: Conj,
       children: [Edge {
         label: Authored { name: ^infer_reason_admit_callers_entry_not_decl_ref },
-        target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref }, children: [], n: node)
+        target: sugar_type_node(connective: Atom { identity: ^infer_reason_admit_callers_entry_not_decl_ref }, children: [], n: template)
       }],
       n: template
     )
@@ -4812,40 +4843,6 @@ fn body_lower_admit_entry_call_optional(item: Node) -> Optional<Node> {
         body_lower_admit_entry_call_optional(item: pair.left)
       } else {
         optional_absent()
-      }
-  }
-}
-
-fn body_lower_admit_operator_edge(children: List<Edge>) -> Optional<Edge> {
-  fold(children, init: optional_absent(), f: fn(acc, e) {
-    match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        match e.label {
-          Positional => optional_present(value: e)
-          _ => optional_absent()
-        }
-    }
-  })
-}
-
-// @field -> string-literal atom -> the value lexeme as an interned symbol, hung as the record's
-// authored field edge so the atom KEEPS THE LITERAL'S OWN OCCURRENCE (the where-clause lowering's
-// precedent: authored atoms ride their authored occurrences, so resolve and infer see the lexeme
-// the module wrote).
-fn body_lower_admit_string_field_edge(call: Node, field: Symbol) -> Optional<Edge> {
-  match sugar_named_child_optional(root: call, name: field) {
-    Absent => optional_absent()
-    Present { value: literal } =>
-      match dag_string_literal_value_symbol_optional(node: literal) {
-        Absent => optional_absent()
-        Present { value: lexeme } =>
-          optional_present(
-            value: Edge {
-              label: Authored { name: field },
-              target: sugar_type_node(connective: Atom { identity: lexeme }, children: [], n: literal)
-            }
-          )
       }
   }
 }
