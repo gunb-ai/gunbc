@@ -520,7 +520,7 @@ fn strip_provenance_fold_init(n: Node) -> Node {
 fn strip_provenance_fold_step(acc: Node, edge: Edge, child: Node) -> Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+    children: list_snoc_item(xs: acc.children, item: Edge { label: edge.label, target: child })
   )
 }
 
@@ -849,13 +849,16 @@ fn arrow_named_edge_is_non_binder(e: Edge) -> Bool {
   }
 }
 
-// WHETHER AN EDGE IS AN ARROW'S DECLARED ORDER: label metadata (the domain's binder labels), not a value
-// the Arrow is built from. The one classification every reader that walks values through an Arrow asks
-// -- v2.compiler.infer (its gather fold and product evidence) and std.kind's roster-kind index -- so
-// no reader keeps its own list of metadata labels.
+// WHETHER AN EDGE IS A DECLARED ORDER: label metadata (binder labels), not a value the parent is built
+// from. Two parents carry one: an Arrow (its domain's order) and a type-parameter binder set
+// (type_binder_conj_conforms). A Conj can carry the core marker only as a binder set -- no authored
+// label spells a core marker -- so the Conj arm answers for exactly those. The one classification
+// every reader that walks values through either asks -- v2.compiler.infer (its gather fold and product
+// evidence) and std.kind's roster-kind index -- so no reader keeps its own list of metadata labels.
 fn arrow_signature_order_edge(parent: Node, edge: Edge) -> Bool {
   match parent.kind {
     TypeNode { connective: Arrow } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
+    TypeNode { connective: Conj } => edge_is_core(e: edge, marker: ArrowSignatureOrderEdge)
     _ => false
   }
 }
@@ -927,7 +930,12 @@ fn arrow_signature_order_list_read(list: Node) -> ArrowParameterOrderRead {
           OrderUnreadable => OrderUnreadable
         }
       }
-    _ => OrderUnreadable
+    TypeNode { connective: _ } => OrderUnreadable
+    ComputationNode { behavior: Value } => OrderUnreadable
+    ComputationNode { behavior: Branch } => OrderUnreadable
+    ComputationNode { behavior: Loop } => OrderUnreadable
+    ComputationNode { behavior: Bind } => OrderUnreadable
+    ComputationNode { behavior: Match } => OrderUnreadable
   }
 }
 
@@ -940,7 +948,12 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
       match element.kind {
         TypeNode { connective: Atom { identity: sym } } =>
           if count(element.children) == 0 { OrderLabels { labels: Cons { head: sym, tail: ls } } } else { OrderUnreadable }
-        _ => OrderUnreadable
+        TypeNode { connective: Conj } => OrderUnreadable
+        TypeNode { connective: Disj } => OrderUnreadable
+        TypeNode { connective: Arrow } => OrderUnreadable
+        TypeNode { connective: Cardinality } => OrderUnreadable
+        TypeNode { connective: Instantiation } => OrderUnreadable
+        ComputationNode { behavior: _ } => OrderUnreadable
       }
   }
 }
@@ -1047,7 +1060,12 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
                 }
             }
           })
-        _ => DomainBinderLabelsUnreadable
+        TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Cardinality } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
+        ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
     FirstPositionalAbsent => DomainBinderLabelsUnreadable
   }
@@ -1078,24 +1096,81 @@ fn arrow_first_positional_target(children: List<Edge>) -> FirstPositionalTarget 
 // the Conj (v2.std.type_binder) rather than by a second node kind. The same Conj rides on an Arrow for
 // `fn f<T>` and on a type declaration's member for `type Box<T>`; a binder whose target is not its own
 // Atom is unwritable here rather than refused downstream.
+//
+// A KINDED TYPE PARAMETER (`type MachineWidth<bits: WidthResolution>`) carries its kind the way a value
+// binder carries its type: one BinderTypeEdge, here on the binder's own Atom, so the identity the
+// binder declares is unchanged and an unkinded binder is exactly the leaf it was. Any other child is
+// unwritable. v2.std.type_binder type_param_kind_optional is the one reader of the edge.
 fn type_binder_conforms(e: Edge) -> Bool {
   match e.label {
     Positional => false
     StructuralLabel { label: _ } => false
     Authored { name: sym } =>
       match e.target.kind {
-        TypeNode { connective: Atom { identity: id } } => (id == sym) && (count(e.target.children) == 0)
-        _ => false
+        TypeNode { connective: Atom { identity: id } } => (id == sym) && type_binder_children_conform(children: e.target.children)
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
 
+fn type_binder_children_conform(children: List<Edge>) -> Bool {
+  match children {
+    Empty => true
+    Cons { head: k, tail: Empty } => edge_is_core(e: k, marker: BinderTypeEdge)
+    Cons { head: _, tail: Cons { head: _, tail: _ } } => false
+  }
+}
+
+// A BINDER SET CARRIES ITS DECLARED ORDER, the way an Arrow's domain does. The Conj's binder edges are
+// labelled, and content hashing sorts labelled edges, so `type Pair<z, a>` and `type Pair<a, z>` would
+// otherwise be one identity and an application's arguments would pair with binders in LABEL order. So
+// a set that binds any name carries exactly one ^arrow_signature_order_edge -- the carrier a declared
+// signature already uses (v2.std.arrow_signature signature_order_edge), read by the same parser
+// (arrow_signature_order_read) -- whose labels are exactly a permutation of the binder labels; a set
+// that binds none carries no order. Any other edge is unwritable here.
 fn type_binder_conj_conforms(t: Node) -> Bool {
   match t.kind {
     TypeNode { connective: Conj } =>
       all_names_distinct(children: t.children)
-        && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_conforms(e: e) })
-    _ => false
+        && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_set_edge_conforms(e: e) })
+        && type_binder_order_conforms(children: t.children)
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn type_binder_set_edge_conforms(e: Edge) -> Bool {
+  match e.label {
+    Authored { name: _ } => type_binder_conforms(e: e)
+    StructuralLabel { label: _ } => edge_is_core(e: e, marker: ArrowSignatureOrderEdge)
+    Positional => false
+  }
+}
+
+fn type_binder_labels_of(children: List<Edge>) -> List<Symbol> {
+  fold(children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Authored { name: sym } => list_snoc_item(xs: acc, item: sym)
+      StructuralLabel { label: _ } => acc
+      Positional => acc
+    }
+  })
+}
+
+fn type_binder_order_conforms(children: List<Edge>) -> Bool {
+  match arrow_signature_order_read(children: children) {
+    OrderAbsent => count(type_binder_labels_of(children: children)) == 0
+    OrderUnreadable => false
+    OrderLabels { labels: labels } => symbols_are_one_distinct_set(a: labels, b: type_binder_labels_of(children: children))
   }
 }
 
@@ -1282,7 +1357,9 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
 fn declaration_reference_body_marked(target: Node) -> Bool {
   match resolved_reference_body_kind(target: target) {
     MarkedReference { kind: DeclarationReferenceKind } => true
-    _ => false
+    MarkedReference { kind: ParameterReferenceKind } => false
+    MarkedReference { kind: LexicalReferenceKind } => false
+    NotMarkedReference => false
   }
 }
 
@@ -1296,7 +1373,12 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
       } else {
         NotMarkedReference
       }
-    _ => NotMarkedReference
+    TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
+    TypeNode { connective: Disj } => NotMarkedReference
+    TypeNode { connective: Arrow } => NotMarkedReference
+    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Instantiation } => NotMarkedReference
+    ComputationNode { behavior: _ } => NotMarkedReference
   }
 }
 
@@ -1312,7 +1394,9 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: Disj } => UnsupportedArrowBody
+    TypeNode { connective: Cardinality } => UnsupportedArrowBody
+    TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
 
@@ -1371,7 +1455,12 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Conj } =>
       all_edges_named(children: node.children)
         && (arrow_body_construct_tag_leads(node: node) || arrow_body_some_edge_targets_an_atom(node: node))
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1509,7 +1598,16 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
         Authored { name: _ } => CostEdgeNotPriced
         Positional => CostEdgeNotPriced
       }
-    _ => CostEdgeComposed
+    TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
+    TypeNode { connective: Conj } => CostEdgeComposed
+    TypeNode { connective: Disj } => CostEdgeComposed
+    TypeNode { connective: Cardinality } => CostEdgeComposed
+    TypeNode { connective: Instantiation } => CostEdgeComposed
+    ComputationNode { behavior: Value } => CostEdgeComposed
+    ComputationNode { behavior: Transform } => CostEdgeComposed
+    ComputationNode { behavior: Branch } => CostEdgeComposed
+    ComputationNode { behavior: Bind } => CostEdgeComposed
+    ComputationNode { behavior: Match } => CostEdgeComposed
   }
 }
 
@@ -1672,7 +1770,12 @@ fn well_formed(n: Node) -> Bool {
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
