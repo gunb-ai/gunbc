@@ -22,7 +22,6 @@ import v2.std.node {
   BinderTypeEdge,
   BinderDefaultEdge,
   core_edge,
-  Cardinality,
   Ambiguous,
   Atom,
   ArmPayload,
@@ -63,7 +62,7 @@ import v2.std.node {
   ConstructTagElidedEdge,
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional, qualified_name_from_node, qualified_name_spine_shape_present }
-import std.constructors { Cardinality, Required, Optional }
+import std.constructors { Required, Optional }
 import v2.std.optional { Optional, optional_absent, optional_present }
 
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
@@ -209,7 +208,7 @@ fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayload
 type DeclaredField {
   name: Symbol
   type_node: Node
-  cardinality: Cardinality
+  cardinality: std.constructors.Cardinality
   default: Optional<Node>
 }
 
@@ -255,9 +254,9 @@ fn is_wildcard_pattern(pattern: Node) -> Bool {
 }
 
 
-fn declared_field_cardinality_of_target(target: Node) -> Cardinality {
+fn declared_field_cardinality_of_target(target: Node) -> std.constructors.Cardinality {
   match target.kind {
-    TypeNode { connective: Cardinality } => Optional
+    TypeNode { connective: v2.std.node.Cardinality } => Optional
     _ => Required
   }
 }
@@ -927,7 +926,7 @@ fn core_child_lookup(root: Node, marker: CoreEdgeLabel) -> NamedChildLookup {
     TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
     TypeNode { connective: Disj } => NamedChildMissing
     TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
     ComputationNode { behavior: _ } => NamedChildMissing
   }
@@ -943,7 +942,7 @@ fn labeled_child_lookup(root: Node, label: EdgeLabel) -> NamedChildLookup {
     TypeNode { connective: Atom { identity: _ } } => NamedChildMissing
     TypeNode { connective: Disj } => NamedChildMissing
     TypeNode { connective: Arrow } => NamedChildMissing
-    TypeNode { connective: Cardinality } => NamedChildMissing
+    TypeNode { connective: v2.std.node.Cardinality } => NamedChildMissing
     TypeNode { connective: Instantiation } => NamedChildMissing
     ComputationNode { behavior: _ } => NamedChildMissing
   }
@@ -1130,7 +1129,7 @@ fn conj_children_optional(n: Node) -> Optional<List<Edge>> {
     TypeNode { connective: Atom { identity: _ } } => Absent
     TypeNode { connective: Disj } => Absent
     TypeNode { connective: Arrow } => Absent
-    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: v2.std.node.Cardinality } => Absent
     TypeNode { connective: Instantiation } => Absent
     ComputationNode { behavior: _ } => Absent
   }
