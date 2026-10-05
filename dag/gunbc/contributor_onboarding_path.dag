@@ -111,11 +111,12 @@ type OnboardingBlocker
 
 // THE ORDINAL IS AN Int, AND THAT IS A CORRECTION RATHER THAN A PREFERENCE (review 64609).
 // It was first declared `std.nat` `Nat` -- `CommutativeSemiring<Magnitude>` -- and rendered with
-// `nat_to_decimal_string`, whose parameter is `v2.std.nat.Nat`, the Peano `Zero | Succ`
+// `integer_nat_to_decimal_string` (then in `v2.std.integer`, since moved to `std.nat` as
+// `nat_to_decimal_string` by gunbc#13436), whose parameter was `v2.std.nat.Nat`, the Peano `Zero | Succ`
 // coproduct. Two materially different types sharing one spelling is the DESIGN section 3 meaning
 // fork, and this instance is invisible exactly where it is authored: under the interpreter's
 // numeric grounding the projection rendered 1 through 10 correctly, while the emitted closure
-// refuses it. `v2.std.integer` `int_to_decimal_string` records that same class as already
+// refuses it. `std.integer` `int_to_decimal_string` records that same class as already
 // repaired for two Int-valued callers, so re-introducing it would have been a silent regression of
 // that fix. Every other `dag/gunbc` caller consumes the Int renderer; this one now does too.
 //
