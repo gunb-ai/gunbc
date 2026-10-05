@@ -13482,7 +13482,7 @@ mod changed_witness_projection_tests {
     /// planning declines it (`DeclinedNoCiWetLane`), so it has no terminal row and must refuse as
     /// unreached. `m.old` is rostered and untouched, and `m.heavy` is a new row that passed.
     #[test]
-    fn a_new_cost_row_planning_declined_is_refused_as_unreached() {
+    fn cost_debt_row_admitted_but_planning_declined_is_refused_as_unreached() {
         let refused = cost_debt_verdict_refusals(
             &ids(&["m.wet", "m.heavy", "m.ordinary"]),
             &ids(&["m.wet", "m.heavy", "m.old"]),
