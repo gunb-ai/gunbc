@@ -403,7 +403,24 @@ test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
 // rendered unit), and an unrelated crash -- no transaction start -- meets the limit unchanged.
 
 fn reset_then_start(unit: String, indent: String) -> String {
-  join([indent, "systemctl reset-failed ", unit, "\n", indent, "systemctl restart ", unit], "")
+  join([indent, "if systemctl list-units --all --plain --no-legend --full ", unit, " | awk '$1 == \"", unit, "\" && $2 == \"loaded\"' | grep -q .; then systemctl reset-failed ", unit, "; fi\n", indent, "systemctl restart ", unit], "")
+}
+
+// THE SECOND RED (run 37254736596): an UNCONDITIONAL reset-failed refused on srv6 because the launch
+// mode had stopped the declared incumbent and systemd had unloaded it ('Unit ... not loaded'), and under
+// set -e that stopped both the apply and the rollback. The clear is conditioned on the unit being
+// LOADED -- the only state in which a start-limit counter exists -- never on is-failed (a cleanly
+// stopped unit is inactive and its counter still refuses), and never tolerated with `|| true`.
+test fn w_the_start_limit_clear_is_conditioned_on_a_loaded_unit_and_nothing_else() -> Bool {
+  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
+  let scripts = [
+    spark_native_rollback_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_host_apply_script(unit_name: unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name),
+  ]
+  all(scripts, t => !string_contains(s: t, pattern: "\nsystemctl reset-failed ")
+    && !string_contains(s: t, pattern: "\n  systemctl reset-failed ")
+    && !string_contains(s: t, pattern: "is-failed")
+    && !string_contains(s: t, pattern: "reset-failed gunbc-glm53-group-a-rank.service || true"))
 }
 
 test fn w_the_restore_clears_the_start_limit_immediately_before_its_own_start() -> Bool {

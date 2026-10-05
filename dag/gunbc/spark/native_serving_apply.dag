@@ -139,6 +139,24 @@ data spark_native_apply_attempt_raw: String = "spark-native-apply"
 // routes on how a remote step is expressed, which is the DESIGN section 3 fork this PR spent its
 // length removing from the launch. That is the reason this change declares the marker rather than
 // rewriting the bodies: the rewrite belongs with the pair route, not beside it.
+
+// THE TRANSACTION'S DELIBERATE START CLEARS THE UNIT'S START-LIMIT COUNTER, AND ONLY A LOADED UNIT HAS
+// ONE. systemd keys StartLimitBurst on the unit name, so a restore under the same name inside the
+// interval is refused unless the counter is cleared (run 37241423753). But the counter lives on the
+// LOADED unit object: a unit the launch mode stopped as the declared incumbent is garbage-collected
+// once inactive, and `systemctl reset-failed` on it is an error ('Unit ... not loaded'), which under
+// set -e stopped both the apply and the rollback on srv6 in run 37254736596. An unloaded unit carries
+// no counter, so there is nothing to clear -- that is the exact condition, not a tolerance: the clear
+// runs iff list-units reports the unit loaded, and any error from reset-failed on a loaded unit still
+// stops the script. `is-failed` is NOT the condition: a cleanly stopped unit is inactive, not failed,
+// and its counter still refuses the next start (that was the original incident).
+fn spark_native_clear_start_limit(unit_name: NonEmptyStr, indent: String) -> String {
+  let u = unit_name as String
+  join([
+    indent, "if systemctl list-units --all --plain --no-legend --full ", u, " | awk '$1 == \"", u, "\" && $2 == \"loaded\"' | grep -q .; then systemctl reset-failed ", u, "; fi\n",
+  ], "")
+}
+
 fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr, unit_text: String, container_name: NonEmptyStr) -> String {
   let ctr = container_name as String
   join([
@@ -150,7 +168,7 @@ fn spark_native_host_apply_script(unit_name: NonEmptyStr, log_path: NonEmptyStr,
     "if docker container inspect ", ctr, " >/dev/null 2>&1; then docker update --restart=no ", ctr, " >/dev/null; fi\n",
     "systemctl enable ", unit_name as String, " >/dev/null 2>&1\n",
     ": > ", log_path as String, "\n",
-    "systemctl reset-failed ", unit_name as String, "\n",
+    spark_native_clear_start_limit(unit_name: unit_name, indent: ""),
     "systemctl restart ", unit_name as String, "; echo restarted\n",
     "for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60; do if grep -q \"distributed_init_method=tcp\" ", log_path as String, " 2>/dev/null; then echo rendezvous-entered; break; fi; sleep 5; done\n",
     "grep -q \"distributed_init_method=tcp\" ", log_path as String, "\n",
@@ -840,7 +858,7 @@ fn spark_native_rollback_script(unit_name: NonEmptyStr, transaction_id: String, 
     "if [ -f ", u, spark_native_incumbent_suffix, " ]; then\n",
     "  mv -f ", u, spark_native_incumbent_suffix, " ", u, "\n",
     "  systemctl daemon-reload\n",
-    "  systemctl reset-failed ", unit_name as String, "\n",
+    spark_native_clear_start_limit(unit_name: unit_name, indent: "  "),
     "  systemctl restart ", unit_name as String, "\n",
     "  rm -f ", u, spark_native_absent_marker_suffix, "\n",
     "  mv -f ", u, spark_native_fence_suffix, " ", u, spark_native_unresolved_rollback_suffix, "\n",
