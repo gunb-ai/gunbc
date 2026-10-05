@@ -69,3 +69,25 @@ fn tar_create_from_list_command(archive: String, from_directory: String, member_
 fn tar_list_command(archive: String) -> ArgvCommand {
   argv_command(program: tar_program(), arguments: ["-tf", archive])
 }
+
+// CREATE FROM TWO MEMBER LISTS, EACH READ RELATIVE TO ITS OWN DIRECTORY, INTO ONE ARCHIVE. GNU tar
+// applies -C to every member named after it, including members read from a -T file ("Changing the
+// Working Directory" in the GNU tar manual), so the second list's members are taken from the second
+// directory under the SAME member names the list spells. That is how a staged tree stands in for
+// paths of the first: a member staged at <second>/<path> is archived as <path>. The flags are
+// tar_create_from_list_command's, with the same reason for each.
+fn tar_create_from_two_lists_command(archive: String, first_directory: String, first_list: String, second_directory: String, second_list: String) -> ArgvCommand {
+  argv_command(
+    program: tar_program(),
+    arguments: ["-cf", archive, "--no-recursion", "--verbatim-files-from", "-C", first_directory, "-T", first_list, "-C", second_directory, "-T", second_list],
+  )
+}
+
+// LIST AN ARCHIVE'S MEMBERS WITH THEIR SIZES: `--list --verbose --numeric-owner --full-time
+// --quoting-style=literal`. Each line is the type-and-mode word, uid/gid, the size in bytes, the
+// date, the time, then the member name unescaped (GNU tar manual, "The Verbose Listing" and
+// "Quoting Member Names"); numeric ids and full time keep each of the five leading fields a single
+// word, so the name is whatever follows the fifth.
+fn tar_list_sizes_command(archive: String) -> ArgvCommand {
+  argv_command(program: tar_program(), arguments: ["--list", "--verbose", "--numeric-owner", "--full-time", "--quoting-style=literal", "-f", archive])
+}

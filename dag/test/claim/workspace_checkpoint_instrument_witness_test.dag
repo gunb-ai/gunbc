@@ -24,12 +24,13 @@ import gunbc.auth.access_token_source { WorkloadIdentityToken }
 import gunbc.fabric_storage_r2_head { R2HeadCredential, r2_head_binding, R2HeadCasNotGrounded, R2HeadAdvanceKnown, R2HeadAdvancedTo, R2HeadStagingCustody }
 import gunbc.fabric.workspace_source {
   WorkspaceSourceRoot, workspace_credential_exclusions, workspace_exclusions, workspace_path_exclusion, workspace_source_tally,
-  workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded,
+  workspace_pack_readback, WorkspacePackClean, WorkspacePackCarriesExcluded, WorkspacePackPlaceholderAbsent, WorkspacePackPlaceholderSizeDiffers,
+  WorkspaceTranscriptPlaceholder, workspace_transcript_caveat,
 }
 import gunbc.fabric.workspace_checkpoint_instrument {
   workspace_snapshot_capability, WorkspaceSnapshotBtrfs, WorkspaceSnapshotAbsent, WorkspaceSnapshotUnobserved,
   WorkspaceMeasuredPart, PartMeasured, PartUnmeasured, workspace_bound_verdict, BoundHolds, BoundExceeded, BoundUndecided,
-  workspace_quota_verdict, QuotaHolds, QuotaExceeded,
+  workspace_quota_verdict, QuotaHolds, QuotaExceeded, workspace_draft_verdict_lines, workspace_draft_numbers,
   workspace_instrument_commit, InstrumentCommitCasNotGrounded,
   WorkspaceCustody, workspace_custody_clean, workspace_custody_of_head_advance, workspace_exit_with_custody,
   WorkspaceRestoredFile, workspace_restore_compare, RestoreByteEqual, RestoreMissingFile, RestoreExtraFile, RestoreBytesDiffer, RestoreCarriesUncommittedChunk,
@@ -180,21 +181,85 @@ test fn the_tally_admits_only_unexcluded_non_build_files() -> Bool {
     && map(t.excluded_credential_members, m => m as String) == ["home/u/gunbc/.env", "home/u/gunbc/keys/id_rsa"]
     && t.excluded_transcripts == 2 && measure_count(m: t.excluded_transcript_bytes) == 5700
     && t.build_output == 1 && t.unparsed == []
+    && map(t.transcript_placeholders, p => join([p.member as String, "=", to_string(measure_count(m: p.size))], "")) == ["home/u/gunbc/projects/p/0d3a.jsonl=5000", "home/u/gunbc/history.jsonl=700"]
+}
+
+// A CREDENTIAL NEVER GETS A PLACEHOLDER, NOT EVEN ONE THAT ALSO LOOKS LIKE A TRANSCRIPT: credentials
+// are matched first, and only the TranscriptExclusion class mints a placeholder. A transcript
+// symlink carries no content to stand in for, so it gets none either.
+test fn a_credential_class_member_never_gets_a_placeholder() -> Bool {
+  let listing = join([
+    "f\t600\t.credentials.json\t\t450",
+    "f\t600\tprojects/p/.env\t\t30",
+    "f\t600\tprojects/p/id_rsa.jsonl\t\t0",
+    "f\t600\tprojects/.ssh/k.jsonl\t\t80",
+    "l\t777\tprojects/p/link.jsonl\tother.jsonl\t11",
+    "f\t644\tprojects/p/s.jsonl\t\t9",
+  ], "\n")
+  let t = workspace_source_tally(root: tally_root, exclusions: workspace_exclusions(), listing: listing)
+  t.excluded_credentials == 3
+    && map(t.transcript_placeholders, p => p.member as String) == ["home/u/gunbc/projects/p/id_rsa.jsonl", "home/u/gunbc/projects/p/s.jsonl"]
+    && t.excluded_transcripts == 3
+}
+
+data readback_placeholder: WorkspaceTranscriptPlaceholder = WorkspaceTranscriptPlaceholder { member: "home/u/.claude/projects/p/s 1.jsonl", size: byte_size(count: 5000) }
+
+data readback_names: String = "home/u/gunbc/README.md\nhome/u/.claude/projects/p/s 1.jsonl\n"
+
+fn readback_sizes(placeholder_bytes: String) -> String {
+  join([
+    "-rw-r--r-- 1000/1000       120 2026-10-05 12:00:01 home/u/gunbc/README.md",
+    join(["-rw-r--r-- 1000/1000 ", placeholder_bytes, " 2026-10-05 12:00:02 home/u/.claude/projects/p/s 1.jsonl"], ""),
+    "",
+  ], "\n")
 }
 
 // THE PACK READBACK'S RED: an archive that carries a credential refuses the upload, whatever list
 // built it.
 test fn an_archive_carrying_a_credential_refuses_the_upload() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n") {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [], archive_listing: "home/u/gunbc/README.md\nsession-home/.claude/.credentials.json\n", size_listing: "") {
     WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "session-home/.claude/.credentials.json" && (x.spelling as String) == "~/.claude/.credentials.json"
     WorkspacePackClean { members: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
   }
 }
 
-test fn a_clean_archive_reads_back_its_member_count() -> Bool {
-  match workspace_pack_readback(exclusions: workspace_exclusions(), archive_listing: "home/u/gunbc/README.md\nhome/u/gunbc/src/a.rs\n") {
+// A TRANSCRIPT NAME WITH NO PLANNED PLACEHOLDER IS REAL CONTENT AND REFUSES.
+test fn an_archived_transcript_without_a_placeholder_refuses_the_upload() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "5000")) {
+    WorkspacePackCarriesExcluded { member: m, by: x } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl" && (x.spelling as String) == "projects/**/*.jsonl"
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+  }
+}
+
+// THE PLACEHOLDER'S RED: archived at any size but its planned one, the upload refuses.
+test fn a_placeholder_whose_size_differs_refuses_the_upload() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "4999")) {
+    WorkspacePackPlaceholderSizeDiffers { member: m, planned: p, archived: a } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl" && measure_count(m: p) == 5000 && measure_count(m: a) == 4999
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+  }
+}
+
+test fn a_planned_placeholder_missing_from_the_archive_refuses_the_upload() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: "home/u/gunbc/README.md\n", size_listing: "-rw-r--r-- 1000/1000 120 2026-10-05 12:00:01 home/u/gunbc/README.md\n") {
+    WorkspacePackPlaceholderAbsent { member: m } => (m as String) == "home/u/.claude/projects/p/s 1.jsonl"
+    WorkspacePackClean { members: _ } => false
+    WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
+  }
+}
+
+test fn a_clean_archive_with_its_placeholder_at_size_reads_back_its_member_count() -> Bool {
+  match workspace_pack_readback(exclusions: workspace_exclusions(), placeholders: [readback_placeholder], archive_listing: readback_names, size_listing: readback_sizes(placeholder_bytes: "5000")) {
     WorkspacePackClean { members: n } => n == 2
     WorkspacePackCarriesExcluded { member: _, by: _ } => false
+    WorkspacePackPlaceholderAbsent { member: _ } => false
+    WorkspacePackPlaceholderSizeDiffers { member: _, planned: _, archived: _ } => false
   }
 }
 
@@ -222,6 +287,20 @@ test fn measured_parts_over_the_bound_exceed_it_whatever_is_missing() -> Bool {
     BoundHolds { total: _, bound: _ } => false
     BoundUndecided { measured: _, bound: _, missing: _ } => false
   }
+}
+
+// WHILE THE SUBJECT IS A STATIC TREE WITH SYNTHETIC TRANSCRIPTS, THE 10 s / 60 s VERDICTS ARE
+// WITHHELD -- even when every measured part is far under both bounds, no bound line says it holds --
+// and the quota decides over the static size, labelled static.
+test fn the_draft_time_verdicts_are_withheld_and_the_quota_is_static() -> Bool {
+  let fast = [PartMeasured { label: "snapshot", elapsed: ms(n: 40) }, PartMeasured { label: "upload", elapsed: ms(n: 900) }, PartMeasured { label: "commit", elapsed: ms(n: 20) }]
+  let block = workspace_draft_verdict_lines(snapshot_parts: fast, scan_parts: fast, static_size: Present { value: byte_size(count: 1600000000) }, n: workspace_draft_numbers)
+  let lines = split(block, separator: "\n")
+  string_contains(s: block, pattern: workspace_transcript_caveat as String)
+    && length(filter(lines, l => string_contains(s: l, pattern: "=withheld: churn not measured"))) == 4
+    && length(filter(lines, l => string_contains(s: l, pattern: "=holds") || string_contains(s: l, pattern: "=exceeded") || string_contains(s: l, pattern: "=undecided"))) == 1
+    && string_contains(s: block, pattern: "quota_static=holds bytes=1600000000")
+    && (workspace_transcript_caveat as String) == "transcript content synthetic, sizes preserved, static tree; NOT a 10 s / 60 s verdict"
 }
 
 test fn the_quota_verdict_compares_bytes_to_the_quota() -> Bool {

@@ -106,6 +106,8 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_extract_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_list_command"),
     decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_create_from_two_lists_command"),
+    decl_ref(module_path: "extdeps.tools.tar", decl_name: "tar_list_sizes_command"),
     decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_create_command"),
     decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_snapshot_read_only_command"),
     decl_ref(module_path: "extdeps.tools.btrfs_progs", decl_name: "btrfs_subvolume_delete_command"),
