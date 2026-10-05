@@ -713,6 +713,59 @@ pub(crate) fn floor_diff_comparison_readout() -> Result<FreezeBaselineComparison
     }
 }
 
+/// THE FLOOR RUN'S BASE TREE, resolved at most once per run and lent to every base-tree reader.
+/// `gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`:
+/// the interface planner applied the merge-base arm while the unimported-bare-provider roster gate
+/// and the cost-debt edit budget each read the base TIP, so on a branch behind main a row main
+/// retired after the branch point read as this change's edit. The repair is not a merge-base call
+/// at each site -- that leaves N relation choices to drift -- but one window, resolved by
+/// `FreezeBaselineComparison::resolve_window`, that every reader receives. Lazy because a local
+/// run without a diff baseline never needs a base side, and a refusal is held so every reader
+/// reports the same cause rather than re-asking the resolver.
+pub(crate) struct FloorBaseTree {
+    window:
+        std::cell::OnceCell<Result<(FreezeBaselineComparison, ResolvedComparisonWindow), String>>,
+}
+
+impl FloorBaseTree {
+    pub(crate) fn unresolved() -> Self {
+        Self {
+            window: std::cell::OnceCell::new(),
+        }
+    }
+
+    fn window(&self) -> Result<&(FreezeBaselineComparison, ResolvedComparisonWindow), String> {
+        self.window
+            .get_or_init(|| {
+                let comparison = floor_diff_comparison_readout()?;
+                let window = comparison.resolve_window(&process_workspace_root())?;
+                Ok((comparison, window))
+            })
+            .as_ref()
+            .map_err(Clone::clone)
+    }
+
+    /// The commit whose tree is the base side of this run's comparison.
+    pub(crate) fn commit(&self) -> Result<&str, String> {
+        Ok(self.window()?.1.base_tree.as_str())
+    }
+
+    /// The resolved head commit of this run's comparison.
+    pub(crate) fn head(&self) -> Result<&str, String> {
+        Ok(self.window()?.1.head.as_str())
+    }
+
+    /// The base REF and the base-tree commit, for a located line. Never a tree route.
+    pub(crate) fn located(&self) -> Result<String, String> {
+        let (comparison, window) = self.window()?;
+        Ok(format!(
+            "base_ref={} base_tree={}",
+            comparison.base_ref(),
+            window.base_tree
+        ))
+    }
+}
+
 pub(crate) fn floor_diff_baseline_readout() -> Result<(String, String), String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
@@ -894,16 +947,19 @@ pub(crate) fn cost_debt_changed_witness_ceilings(
 /// One file's content at the resolved diff base (`v2.workflow.floor_diff_observe`
 /// `floor_run_base_file_read`): `Ok(None)` when the base does not carry the path, `Err` when the
 /// listing or show refused -- a refusal is never read as an absent or empty file.
-pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String> {
+pub(crate) fn floor_base_file_read(
+    base_tree: &FloorBaseTree,
+    path: &str,
+) -> Result<Option<String>, String> {
     use v1_interpreter::Value;
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("path".to_string()), str_value(path)),
     ];
     let result =
@@ -942,13 +998,14 @@ pub(crate) fn floor_base_file_read(path: &str) -> Result<Option<String>, String>
 /// Authority: `v2.workflow.floor_diff_observe` `floor_run_base_test_decl_census`. A refused
 /// census is an observation failure and never becomes an empty map.
 pub(crate) fn floor_base_test_decl_census(
+    base_tree: &FloorBaseTree,
     paths: &[String],
 ) -> Result<std::collections::HashMap<String, HashSet<String>>, String> {
     use v1_interpreter::Value;
     if paths.is_empty() {
         return Ok(std::collections::HashMap::new());
     }
-    let comparison = floor_diff_comparison_readout()?;
+    let base = base_tree.commit()?;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
@@ -956,7 +1013,7 @@ pub(crate) fn floor_base_test_decl_census(
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let path_values: Vec<Value> = paths.iter().map(|p| str_value(p.clone())).collect();
     let args = [
-        (Some("base".to_string()), str_value(comparison.base())),
+        (Some("base".to_string()), str_value(base)),
         (Some("paths".to_string()), list_value_from_vec(path_values)),
     ];
     let result = v1_interpreter::run_in_context_with_args(
@@ -1497,6 +1554,7 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// the `changed_witness_identities` wrapper above it (already callerless on `main`) are deleted
 /// here rather than left for that later consolidation.
 fn changed_and_enrolled_witness_identities_with_index(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
@@ -1512,6 +1570,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     // THE SAME DIFF every projection below reads, so the rule and the planned subject cannot
     // describe different changes.
     unimported_bare_provider_gate(
+        base_tree,
         index,
         source_roots,
         &changed_paths,
@@ -1530,7 +1589,7 @@ fn changed_and_enrolled_witness_identities_with_index(
     }
     let dag_path_list: Vec<String> = dag_paths.into_iter().collect();
     floor_seam("diff-base-decl-census");
-    let base_test_decl_names = floor_base_test_decl_census(&dag_path_list)?;
+    let base_test_decl_names = floor_base_test_decl_census(base_tree, &dag_path_list)?;
     floor_seam("diff-edits");
     let edits = floor_diff_edits_from_line_ranges(
         index,
@@ -1587,7 +1646,8 @@ fn changed_and_enrolled_witness_identities_with_index(
     floor_seam("interface-consumer-planning");
     let touched_declarations =
         declaration_seeds_from_touched_declarations(&root, &edits.touched_declarations)?;
-    let interface_consumers = interface_consumer_planning(planning_index, &touched_declarations)?;
+    let interface_consumers =
+        interface_consumer_planning(base_tree, planning_index, &touched_declarations)?;
     // THE FIFTH PROJECTION IS THE DIFF'S PATHS THEMSELVES, for the checker-input rule
     // (`v2.workflow.floor_subject_seed` `checker_subject_rule`): a changed non-.dag path is
     // structural-empty for the .dag frontier above and still an input to every Strict verdict
@@ -1703,6 +1763,7 @@ pub(crate) fn declaration_seeds_from_touched_declarations(
 /// rebuilt. A floor invoked without it on a CI commit is refused below rather than planned
 /// blind; a local run without a diff baseline never reaches here.
 fn interface_consumer_planning(
+    base_tree: &FloorBaseTree,
     planning_index: Option<&crate::cli_run::declaration_index::DeclarationIndex>,
     touched_declarations: &std::collections::BTreeSet<(String, String)>,
 ) -> Result<InterfaceConsumerPlanning, String> {
@@ -1721,15 +1782,8 @@ fn interface_consumer_planning(
     // direct comparison at the base ref itself -- the same relation the affected-set diff was
     // taken under, so the interface delta and the line-range attribution describe one change.
     let workspace = process_workspace_root();
-    let (base_commit, head_commit) = match floor_diff_comparison_readout()? {
-        FreezeBaselineComparison::Direct { base, head, .. } => (base, head),
-        FreezeBaselineComparison::MergeBase { base, head, .. } => {
-            let merge_base = git_stdout(&workspace, &["merge-base", &base, &head])?;
-            (merge_base, head)
-        }
-    };
-    let base_commit = git_stdout(&workspace, &["rev-parse", &base_commit])?;
-    let head_commit = git_stdout(&workspace, &["rev-parse", &head_commit])?;
+    let base_commit = base_tree.commit()?.to_string();
+    let head_commit = base_tree.head()?.to_string();
     match reconstruct_base_index(&workspace, &base_commit, &head_commit, head_index)? {
         BaselineReconstruction::NoSubject { head } => {
             Ok(InterfaceConsumerPlanning::NoSubject { head })
@@ -2567,6 +2621,7 @@ fn unimported_bare_provider_standing_refusals(
 /// that is decided from the diff's own added paths, never from a failed base read. Every refusal is
 /// reported before the line stops.
 pub(crate) fn unimported_bare_provider_gate(
+    base_tree: &FloorBaseTree,
     index: &MultiEntryIndex,
     source_roots: &[String],
     changed_paths: &[String],
@@ -2597,7 +2652,8 @@ pub(crate) fn unimported_bare_provider_gate(
                 head.rows.len()
             );
         } else {
-            let base = floor_diff_comparison_readout()?.base().to_string();
+            let base = base_tree.commit()?.to_string();
+            let located = base_tree.located()?;
             let base_source = unimported_bare_provider_roster_source_at_base(source_roots, &base)?;
             let base_reading = unimported_bare_provider_base_reading(&base_source)?;
             let base_coherence = head.refusals(
@@ -2609,7 +2665,7 @@ pub(crate) fn unimported_bare_provider_gate(
                 .chain(head.judge_edit(&base_reading, &head)?)
             {
                 refusals.push(format!(
-                    "{ROUTE} cause=UnimportedBareProvider {r} base={base}"
+                    "{ROUTE} cause=UnimportedBareProvider {r} {located}"
                 ));
             }
         }
@@ -6872,6 +6928,8 @@ pub fn run_required_floor(
     // that ancestor. The entry index one line above was already shared for exactly this reason --
     // the corpus read simply never was.
     let floor_corpus = crate::cli_run::read_source_corpus_once(source_roots);
+    // ONE BASE TREE FOR THE RUN (`FloorBaseTree`): every base-side read below takes this commit.
+    let floor_base_tree = FloorBaseTree::unresolved();
     // ONE DERIVATION, CONSUMED FOUR WAYS. The same diff observation supplies changed-witness
     // identities, newly enrolled identities, the compile-subject modules of
     // `touched_entry_files`, and the match-bearing consumers of every coproduct whose arm set
@@ -6879,6 +6937,7 @@ pub fn run_required_floor(
     // over which identities this run promised to execute.
     let (changed_witnesses, newly_enrolled_witnesses, compile_subject, diff_paths) =
         match changed_and_enrolled_witness_identities_with_index(
+            &floor_base_tree,
             &gate_entry_index,
             source_roots,
             planning_index.as_ref(),
@@ -7132,9 +7191,9 @@ pub fn run_required_floor(
                 .iter()
                 .any(|m| m == "gunbc.non_fold_residue") =>
         {
-            crate::cli_run::non_fold_residue_changed_row_subjects().map_err(|e| {
-                format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}")
-            })?
+            crate::cli_run::non_fold_residue_changed_row_subjects(&floor_base_tree).map_err(
+                |e| format!("REQUIRED-FLOOR REFUSAL cause=NonFoldResidueRosterBaseUnreadable {e}"),
+            )?
         }
         _ => Vec::new(),
     };
@@ -8610,7 +8669,7 @@ pub fn run_required_floor(
                 } else if grandfathered_roster.contains(&identity) {
                     grandfathered_eval_step_budget
                 } else if cost_debt_roster.contains(&identity) {
-                    let base = floor_diff_comparison_readout()?.base().to_string();
+                    let base = floor_base_tree.commit()?.to_string();
                     let rel_path = normalize_repo_path(&workspace_relative_repo_path(&file.path));
                     if file_cost_debt_ceilings.is_none() {
                         let head_source = std::fs::read_to_string(&file.path).map_err(|e| {
@@ -12008,6 +12067,141 @@ mod pure_producer_share_tests {
                     .to_string()
             ]
             );
+        });
+    }
+
+    /// THE BASE TREE IS THE DEPARTURE POINT, for the roster edit judgment
+    /// (`gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`).
+    /// A real history: the branch departs at P, main then moves a retirement the branch never
+    /// touched. The merge-base window reads P and the branch's untouched row is not this change's
+    /// edit; the TIP, which is what the gate read before `FloorBaseTree`, attributes main's own
+    /// later edit to the branch -- asserted as the executed contrast. The positive control is a
+    /// branch that really rewrites the retirement: it still refuses through the same window.
+    #[test]
+    fn roster_edit_is_judged_at_the_merge_base_not_the_base_tip() {
+        crate::cli_run::on_live_pool_thread(|| {
+            let root = process_workspace_root();
+            let roots: Vec<String> = ["dag", "src/v2"]
+                .iter()
+                .map(|r| root.join(r).to_string_lossy().to_string())
+                .collect();
+            let judge = UnimportedBareProviderRosterReading::head(&roots).expect("head roster");
+            let roster_head = std::fs::read_to_string(root.join(UNIMPORTED_BARE_PROVIDER_ROSTER))
+                .expect("roster source")
+                .split("data unimported_bare_provider_dispositions:")
+                .next()
+                .expect("roster head")
+                .to_string();
+            let roster = |standing: &str| {
+                format!(
+                    "{roster_head}data unimported_bare_provider_dispositions: \
+                     List<UnimportedBareProviderDisposition> = [\n  UnimportedBareProviderDisposition \
+                     {{ file: \"dag/a.dag\", name: \"f\", standing: {standing} }},\n]\n"
+                )
+            };
+            let fixed = "Retired { cause: ImportsFixed }";
+            let deleted = "Retired { cause: FileDeleted }";
+
+            let dir = std::env::temp_dir().join(format!(
+                "gunbc-floor-base-tree-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .expect("clock")
+                    .as_nanos()
+            ));
+            let path = dir.join(UNIMPORTED_BARE_PROVIDER_ROSTER);
+            std::fs::create_dir_all(path.parent().expect("roster parent")).expect("mkdir");
+            let git = |args: &[&str]| -> String {
+                let out = std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(&dir)
+                    .output()
+                    .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+                assert!(
+                    out.status.success(),
+                    "git {args:?}: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                String::from_utf8_lossy(&out.stdout).trim().to_string()
+            };
+            let commit = |standing: &str, msg: &str| {
+                std::fs::write(&path, roster(standing)).expect("write roster");
+                git(&["add", "-A"]);
+                git(&["commit", "--quiet", "-m", msg]);
+                git(&["rev-parse", "HEAD"])
+            };
+            git(&["init", "--quiet", "--initial-branch", "main", "."]);
+            git(&["config", "user.email", "fixture@gunbc.invalid"]);
+            git(&["config", "user.name", "fixture"]);
+            let departure = commit(fixed, "P: the row is retired ImportsFixed");
+            git(&["checkout", "--quiet", "-b", "subject"]);
+            std::fs::write(dir.join("unrelated.txt"), "the branch's own change\n").expect("write");
+            git(&["add", "-A"]);
+            git(&[
+                "commit",
+                "--quiet",
+                "-m",
+                "H: touches nothing in the roster",
+            ]);
+            let untouched_head = git(&["rev-parse", "HEAD"]);
+            git(&["checkout", "--quiet", "main"]);
+            let tip = commit(
+                deleted,
+                "C: main moves the retirement after the branch point",
+            );
+            git(&["checkout", "--quiet", "subject"]);
+
+            let read_at = |rev: &str| {
+                let src = git(&["show", &format!("{rev}:{UNIMPORTED_BARE_PROVIDER_ROSTER}")]);
+                unimported_bare_provider_base_reading(&(src + "\n")).expect("lone roster")
+            };
+            let window = |head: &str| {
+                FreezeBaselineComparison::MergeBase {
+                    base: "main".to_string(),
+                    head: head.to_string(),
+                    kind: "MergeTargetBaseline".to_string(),
+                }
+                .resolve_window(&dir)
+                .expect("merge-base window")
+            };
+
+            // RED (before the window): the tip reads main's later edit as this change's.
+            let head_reading = read_at(&untouched_head);
+            assert_eq!(
+                judge.judge_edit(&read_at(&tip), &head_reading).expect("verdict"),
+                vec![
+                    "RosterRetirementChanged dag/a.dag#f (Retired FileDeleted -> Retired ImportsFixed)"
+                        .to_string()
+                ],
+                "the base tip attributes main's own later retirement edit to the branch"
+            );
+            // THE WALL: the window's base tree is the departure point, and nothing refuses.
+            let resolved = window(&untouched_head);
+            assert_eq!(resolved.base_tree, departure);
+            assert_eq!(resolved.head, untouched_head);
+            assert_eq!(
+                judge
+                    .judge_edit(&read_at(&resolved.base_tree), &head_reading)
+                    .expect("verdict"),
+                Vec::<String>::new(),
+                "a row main retired after the branch point is not this change's edit"
+            );
+
+            // POSITIVE CONTROL: the branch really rewrites the retirement, and still refuses.
+            let edited_head = commit("ActiveDebt", "H2: the branch un-retires the row");
+            let resolved = window(&edited_head);
+            assert_eq!(resolved.base_tree, departure);
+            assert_eq!(
+                judge
+                    .judge_edit(&read_at(&resolved.base_tree), &read_at(&edited_head))
+                    .expect("verdict"),
+                vec![
+                    "RosterRetirementChanged dag/a.dag#f (Retired ImportsFixed -> ActiveDebt)"
+                        .to_string()
+                ]
+            );
+            std::fs::remove_dir_all(&dir).ok();
         });
     }
 

@@ -533,8 +533,9 @@ pub(crate) fn non_fold_residue_classify_row_subject(
 /// The subjects of every roster row the diff added or deleted, read at the floor's resolved diff
 /// base and classified by exact path. Refuses when the base roster cannot be read.
 pub(crate) fn non_fold_residue_changed_row_subjects(
+    base_tree: &crate::cli_run::required_floor_runner::FloorBaseTree,
 ) -> Result<Vec<NonFoldResidueRowSubject>, String> {
-    let base_rows = match floor_base_file_read(NON_FOLD_RESIDUE_AUTHORITY_REL)? {
+    let base_rows = match floor_base_file_read(base_tree, NON_FOLD_RESIDUE_AUTHORITY_REL)? {
         None => Vec::new(),
         Some(content) => {
             non_fold_residue_units_from_module_source(NON_FOLD_RESIDUE_AUTHORITY_REL, &content)

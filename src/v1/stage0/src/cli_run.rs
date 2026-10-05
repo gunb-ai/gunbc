@@ -25027,11 +25027,87 @@ pub enum FreezeBaselineComparison {
     },
 }
 
+/// THE TWO COMMITS A BASE-TREE READER MAY TAKE, resolved from a `FreezeBaselineComparison` by
+/// `resolve_window` and by nothing else. `base_tree` is the commit whose TREE is the base side of
+/// the comparison: the base ref itself under two-dot, the departure point under merge-base. Every
+/// reader of a base-side file takes this commit, so no reader can choose a relation for itself --
+/// the defect `gunbc.recurring_failure_mode` `a_roster_edit_judged_against_the_base_tip_not_the_merge_base`
+/// records, where two readers took the base TIP while a third applied the merge-base arm and a
+/// roster row main retired after the branch point read as this change's edit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedComparisonWindow {
+    pub base_tree: String,
+    pub head: String,
+}
+
 impl FreezeBaselineComparison {
-    fn base(&self) -> &str {
+    /// The base REF as the authority named it. For printing and locating only: it is not a tree.
+    /// A reader that needs base-side content takes `resolve_window`'s `base_tree`, because under
+    /// merge-base mode this ref's tree carries every change the base made after the head departed.
+    pub(crate) fn base_ref(&self) -> &str {
         match self {
             Self::Direct { base, .. } | Self::MergeBase { base, .. } => base,
         }
+    }
+
+    /// THE BASE COMMIT, with the relation applied -- the one place the arm is read for a tree.
+    /// Two-dot compares the exact base; merge-base compares the commit the head departed from.
+    /// The match may never grow a default: imposing merge-base on a two-dot arm passes growth on a
+    /// rewritten push, and reading the tip on a merge-base arm attributes the base's own later
+    /// edits to the change. Each refusal carries a typed cause and never degrades to a ref.
+    pub(crate) fn resolve_window(
+        &self,
+        root: &std::path::Path,
+    ) -> Result<ResolvedComparisonWindow, String> {
+        let run = |args: &[&str]| -> Result<std::process::Output, String> {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .map_err(|e| format!("git {args:?}: {e}"))
+        };
+        let resolve = |rev: &str, role: &str| -> Result<String, String> {
+            let out = run(&[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("{rev}^{{commit}}"),
+            ])?;
+            if !out.status.success() {
+                return Err(format!(
+                    "cause=FreezeBaselineUnobservable {role}={rev} — one endpoint of the \
+                     comparison could not be read, so the base side is unobservable. \
+                     Could-not-read and permits-this are different states and this refuses \
+                     rather than conflating them. Fetch the ref, or set GUNBC_CI_DIFF_BASE to a \
+                     resolvable rev."
+                ));
+            }
+            Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        };
+        let base = self.base_ref();
+        let base_commit = resolve(base, "base")?;
+        let head = resolve(self.head(), "head")?;
+        let base_tree = match self {
+            Self::Direct { .. } => base_commit,
+            Self::MergeBase { .. } => {
+                let merge_base = run(&["merge-base", &base_commit, &head])?;
+                let fork_point = String::from_utf8_lossy(&merge_base.stdout)
+                    .trim()
+                    .to_string();
+                if !merge_base.status.success() || fork_point.is_empty() {
+                    return Err(format!(
+                        "cause=FreezeBaselineUnrelatedHistory base={base} — this comparison is \
+                         merge-base mode, so the base side is the commit the head DEPARTED from, \
+                         and git merge-base named no common ancestor. No-common-ancestor and \
+                         permits-this are different states and this refuses rather than \
+                         conflating them. (Under two-dot mode the same history is directly \
+                         comparable and does NOT reach here.)"
+                    ));
+                }
+                fork_point
+            }
+        };
+        Ok(ResolvedComparisonWindow { base_tree, head })
     }
 
     fn head(&self) -> &str {
@@ -25064,7 +25140,7 @@ pub fn collect_frozen_path_deferral_additions_for(
     let located = |msg: String| -> String {
         format!(
             "{msg} (comparison base={} head={} kind={} mode={})",
-            comparison.base(),
+            comparison.base_ref(),
             comparison.head(),
             comparison.kind(),
             match comparison {
@@ -25073,59 +25149,15 @@ pub fn collect_frozen_path_deferral_additions_for(
             }
         )
     };
-    let base = comparison.base();
-    let resolve = |rev: &str, role: &str| -> Result<String, String> {
-        let out = run(&[
-            "rev-parse",
-            "--verify",
-            "--quiet",
-            &format!("{rev}^{{commit}}"),
-        ])?;
-        if !out.status.success() {
-            return Err(located(format!(
-                "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnobservable {role}={rev} — the \
-                 frozen path-deferral roster is a monotone debt contract and one endpoint of its \
-                 comparison could not be read, so growth cannot be ruled out. Could-not-read and \
-                 permits-this are different states and this arm refuses rather than conflating \
-                 them. Fetch the ref, or set GUNBC_CI_DIFF_BASE to a resolvable rev."
-            )));
-        }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    };
-    let base_commit = resolve(base, "base")?;
-    let head_commit = resolve(comparison.head(), "head")?;
-
-    // THE BASELINE COMMIT, and the whole content of the relation half: two-dot compares the exact
-    // base, merge-base compares the departure point. Choosing one for both is a fork of the
-    // authority's own decision, and the direction it fails matters — imposing merge-base on a
-    // two-dot arm passes growth (a fail-open), so this match may never grow a default.
-    let baseline_commit = match comparison {
-        FreezeBaselineComparison::Direct { .. } => base_commit,
-        FreezeBaselineComparison::MergeBase { .. } => {
-            let merge_base = run(&["merge-base", &base_commit, &head_commit])?;
-            if !merge_base.status.success() {
-                return Err(located(format!(
-                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
-                     this comparison is merge-base mode, so the roster is monotone against the \
-                     commit the head DEPARTED from, and git merge-base found no common ancestor. \
-                     No-common-ancestor and permits-this are different states and this arm refuses \
-                     rather than conflating them. (Under two-dot mode the same history is directly \
-                     comparable and does NOT reach here.)"
-                )));
-            }
-            let fork_point = String::from_utf8_lossy(&merge_base.stdout)
-                .trim()
-                .to_string();
-            if fork_point.is_empty() {
-                return Err(located(format!(
-                    "WITNESS ADMISSION REFUSAL cause=FreezeBaselineUnrelatedHistory base={base} — \
-                     git merge-base succeeded but named no commit, so the baseline is unobservable \
-                     and growth cannot be ruled out."
-                )));
-            }
-            fork_point
-        }
-    };
+    let base = comparison.base_ref();
+    // THE BASELINE COMMIT is the window's base tree: the relation is applied once, by the
+    // comparison itself, for this gate and every floor base-tree reader alike.
+    let ResolvedComparisonWindow {
+        base_tree: baseline_commit,
+        head: head_commit,
+    } = comparison
+        .resolve_window(root)
+        .map_err(|cause| located(format!("WITNESS ADMISSION REFUSAL {cause} (frozen path-deferral roster: a monotone debt contract, so growth cannot be ruled out)")))?;
 
     // THE CURRENT SIDE IS THE SELECTED HEAD, not an ambient one, and this runs BEFORE any arm that
     // can permit. Reading the live filesystem keeps an uncommitted local roster edit in scope (the
