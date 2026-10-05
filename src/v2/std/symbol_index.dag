@@ -17,6 +17,7 @@ import v2.std.collection {
   empty_map,
   map_get,
   map_insert,
+  map_contains_key,
   map_lookup
 }
 import std.optional {
@@ -89,6 +90,7 @@ type SymbolIndex {
   declared_type_params: Map<QualifiedName, List<Symbol>>
   declared_resources: Map<QualifiedName, ResourceDeclared>
   namespace_bodies: Map<QualifiedName, NamespaceBodyDeclared>
+  module_roots: Map<QualifiedName, ModuleRootDeclared>
 }
 
 // WHICH KIND OF DECLARED PAYLOAD A PATH DENOTES, stored as the map's value so the map cannot hold a
@@ -125,6 +127,15 @@ type ResourceDeclared {}
 // service spine. General lexical ascent is XL-5's namespace cut; this boundary is scoped to the spine.
 type NamespaceBodyDeclared {}
 
+// A PATH THAT IS A MODULE'S OWN ROOT, stored as the map's value for the reason ResourceDeclared is.
+// Written by v2.compiler.symbol_index_fill for every module it fills; read by
+// symbol_index_lexical_collect, which STOPS ASCENDING there (operator ruling 2026-10-04: no
+// shadowing, a module sees only its own declarations and its own imports). Without it the walk
+// continued into an ancestor module's position, so `extdeps.bmc.access` saw every import and
+// declaration of `extdeps.bmc` -- a leak, and the source of most of R1 in
+// docs/plans/native-resolve-frontier-root-causes.md.
+type ModuleRootDeclared {}
+
 fn empty_symbol_index() -> SymbolIndex {
   SymbolIndex {
     entries: empty_map(),
@@ -134,7 +145,8 @@ fn empty_symbol_index() -> SymbolIndex {
     renaming_aliases: empty_map(),
     declared_type_params: empty_map(),
     declared_resources: empty_map(),
-    namespace_bodies: empty_map()
+    namespace_bodies: empty_map(),
+    module_roots: empty_map()
   }
 }
 
@@ -213,7 +225,8 @@ fn symbol_index_track_global_bare(
               renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
-              namespace_bodies: index.namespace_bodies
+              namespace_bodies: index.namespace_bodies,
+              module_roots: index.module_roots
             }
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
             if existing_path == qualified_path && existing == resolved {
@@ -233,7 +246,8 @@ fn symbol_index_track_global_bare(
                 renaming_aliases: index.renaming_aliases,
                 declared_type_params: index.declared_type_params,
                 declared_resources: index.declared_resources,
-                namespace_bodies: index.namespace_bodies
+                namespace_bodies: index.namespace_bodies,
+                module_roots: index.module_roots
               }
             }
           Absent =>
@@ -249,7 +263,8 @@ fn symbol_index_track_global_bare(
               renaming_aliases: index.renaming_aliases,
               declared_type_params: index.declared_type_params,
               declared_resources: index.declared_resources,
-              namespace_bodies: index.namespace_bodies
+              namespace_bodies: index.namespace_bodies,
+              module_roots: index.module_roots
             }
         }
         Rejected { diagnostics: _ } => index
@@ -280,7 +295,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
     },
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
-    namespace_bodies: index.namespace_bodies
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
   }
   symbol_index_track_global_bare(
     index: with_entry,
@@ -310,7 +326,8 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
-    namespace_bodies: index.namespace_bodies
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
   }
 }
 
@@ -341,7 +358,8 @@ fn symbol_index_mark_declared_resource(index: SymbolIndex, qualified_path: Quali
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
     declared_resources: map_insert(m: index.declared_resources, key: qualified_path, value: ResourceDeclared {}),
-    namespace_bodies: index.namespace_bodies
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
   }
 }
 
@@ -354,22 +372,35 @@ fn symbol_index_mark_namespace_body(index: SymbolIndex, qualified_path: Qualifie
     renaming_aliases: index.renaming_aliases,
     declared_type_params: index.declared_type_params,
     declared_resources: index.declared_resources,
-    namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {})
+    namespace_bodies: map_insert(m: index.namespace_bodies, key: qualified_path, value: NamespaceBodyDeclared {}),
+    module_roots: index.module_roots
   }
+}
+
+fn symbol_index_mark_module_root(index: SymbolIndex, qualified_path: QualifiedName) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    bound_declarings: index.bound_declarings,
+    declared_payloads: index.declared_payloads,
+    renaming_aliases: index.renaming_aliases,
+    declared_type_params: index.declared_type_params,
+    declared_resources: index.declared_resources,
+    namespace_bodies: index.namespace_bodies,
+    module_roots: map_insert(m: index.module_roots, key: qualified_path, value: ModuleRootDeclared {})
+  }
+}
+
+fn symbol_index_is_module_root_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
+  map_contains_key(m: index.module_roots, key: qualified_path)
 }
 
 fn symbol_index_binds_namespace_body_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.namespace_bodies, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  map_contains_key(m: index.namespace_bodies, key: qualified_path)
 }
 
 fn symbol_index_declares_resource_at(index: SymbolIndex, qualified_path: QualifiedName) -> Bool {
-  match map_lookup(m: index.declared_resources, key: qualified_path) {
-    Present { value: _ } => true
-    Absent => false
-  }
+  map_contains_key(m: index.declared_resources, key: qualified_path)
 }
 
 fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: QualifiedName, params: List<Symbol>) -> SymbolIndex {
@@ -381,7 +412,8 @@ fn symbol_index_mark_declared_type_params(index: SymbolIndex, qualified_path: Qu
     renaming_aliases: index.renaming_aliases,
     declared_type_params: map_insert(m: index.declared_type_params, key: qualified_path, value: params),
     declared_resources: index.declared_resources,
-    namespace_bodies: index.namespace_bodies
+    namespace_bodies: index.namespace_bodies,
+    module_roots: index.module_roots
   }
 }
 
@@ -501,7 +533,8 @@ fn symbol_index_bind_at(
       renaming_aliases: index.renaming_aliases,
       declared_type_params: index.declared_type_params,
       declared_resources: index.declared_resources,
-      namespace_bodies: index.namespace_bodies
+      namespace_bodies: index.namespace_bodies,
+      module_roots: index.module_roots
     }
     if is_empty(xs: prior) {
       SymbolIndex {
@@ -512,7 +545,8 @@ fn symbol_index_bind_at(
         renaming_aliases: recorded.renaming_aliases,
         declared_type_params: recorded.declared_type_params,
         declared_resources: recorded.declared_resources,
-        namespace_bodies: recorded.namespace_bodies
+        namespace_bodies: recorded.namespace_bodies,
+        module_roots: recorded.module_roots
       }
     } else {
       recorded
@@ -580,6 +614,7 @@ fn symbol_index_candidates_at(
 // ancestor's import of it, or an import plus the ancestor that declares it -- is one candidate.
 // Distinct declarations under one name stay distinct and the selection still refuses them as
 // ambiguous: this is identity, never first-wins or a preference order.
+// A MODULE ROOT ENDS THE WALK (ModuleRootDeclared): nothing above the referencing module is in scope.
 // A SERVICE NAMESPACE IS A LOOKUP BOUNDARY (symbol_index_binds_namespace_body_at): a position that binds
 // one contributes no candidates, and a candidate that binds one is never an answer, so from inside
 // `shell.Find.Run` neither a sibling service `Env` nor the prefix `shell` binds bare. The walk still
@@ -605,7 +640,7 @@ fn symbol_index_lexical_collect(
       }
     )
   }
-  if is_empty(xs: position) {
+  if is_empty(xs: position) || symbol_index_is_module_root_at(index: index, qualified_path: position) {
     with_current
   } else {
     symbol_index_lexical_collect(

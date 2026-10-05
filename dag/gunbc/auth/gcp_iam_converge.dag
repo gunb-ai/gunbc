@@ -14,21 +14,22 @@ import extdeps.cloud.gcp.iam {
   GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
   reconcile_gcp_policy, gcp_policy_from_wire, gcp_cell_in, gcp_policy_cells,
 }
-import extdeps.transports.rest { RestOutcome, RestStatusRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloud.gcp.secret_manager
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_ref { gcp_secret_resource_by_number }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number, federated_service_account_member, github_wif_issuer_uri }
-import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells }
+import gunbc.auth.gcp_secret_access { SecretAccessGrant, secret_access_desired_cells, GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
 import gunbc.auth.heal_publisher_provision {
   DedicatedFederation, FederationClassification, FederationClassified, FederationUnclassified,
   heal_publisher_dedicated_federation, private_heal_publisher_dedicated_federation, impersonation_cell, observe_and_classify,
-  rest_ok, rest_refusal_text, outcome_is_not_found,
+  rest_refusal_text, outcome_is_not_found,
 }
 import gunbc.namecheap.federation_provision { namecheap_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation_provision { boot_dedicated_federation }
 import gunbc.auth.managed_host_boot_federation { pinned_version_accessor_grant_for, provisioned_boot_federations }
 import gunbc.auth.approval_request_submission { approval_submission_mac_key_secret_ref }
+import gunbc.cloudflare.r2_mint_secret_access { r2_mint_custody_grants }
 import gunbc.auth.consent_preimage { consent_field, consent_list_field }
 import std.list { distinct_by_key, duplicated_by_key, list_member }
 import gunbc.auth.gcp_iam_converge_federation {
@@ -282,9 +283,56 @@ fn binding_key(b: ResourceLocalBinding) -> String {
   concat(concat(b.resource, " "), iam_converge_role_id(r: b.role))
 }
 
+// ── Grant sets: secret cells for an EXISTING member, with no federation of their own ─────────
+// A target above brings its own pool and account, and its grants name that account. A grant set
+// names no federation: its cells are granted to the fleet convergence principal, resolved by
+// gunbc.auth.gcp_secret_access grant_member_resolution exactly as the operator-session ensure
+// resolved it, so moving a cell here changes WHO GRANTS it (iam-converge, under the estate's one
+// approval) and never who holds it. Its secrets are created bare by the bootstrap
+// (gunbc.auth.gcp_iam_bootstrap) before any plan sees them, so a plan meeting an absent one refuses
+// rather than creating it, and iam-converge holds no secretmanager.secrets.create.
+type GrantSet {
+  label: String
+  grants: List<SecretAccessGrant>
+}
+
+data gcp_iam_converge_grant_sets: List<GrantSet> = [
+  GrantSet { label: "r2 mint custody cells", grants: r2_mint_custody_grants() },
+]
+
+// ONE SECRET CARRIES SEVERAL CELLS (viewer, versionAdder, accessor), so a grant set is planned and
+// read per SECRET: one policy reading and one policy add for each, carrying every cell it owes.
+fn grant_set_secrets(g: GrantSet) -> List<NonEmptyStr> {
+  map(distinct_by_key(xs: g.grants, key: x => x.target.secret as String), x => x.target.secret)
+}
+
+// THE POPULATION THE BOOTSTRAP CREATES AND BINDS, derived from the grant sets and never listed twice.
+fn gcp_iam_converge_grant_set_secrets() -> List<NonEmptyStr> {
+  map(
+    distinct_by_key(xs: flat_map(gcp_iam_converge_grant_sets, g => grant_set_secrets(g: g)), key: x => x as String),
+    x => x,
+  )
+}
+
+// ON A GRANT-SET SECRET iam-converge GRANTS AND NEVER READS OR WRITES THE PAYLOAD. The project deny
+// policy forbids these (iam_converge_denied_permissions, in their deny-API spelling); this is their
+// IAM-permission spelling, which the bootstrap readback expects denied and the bootstrap probe
+// expects unheld on every grant-set secret.
+data grant_set_payload_permissions: List<String> = ["secretmanager.versions.access", "secretmanager.versions.add"]
+
+fn grant_set_bindings() -> List<ResourceLocalBinding> {
+  map(gcp_iam_converge_grant_set_secrets(), id => ResourceLocalBinding {
+    resource: gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id),
+    role: ConvergeSecretPolicyRole,
+  })
+}
+
 fn iam_converge_bindings() -> List<ResourceLocalBinding> {
   distinct_by_key(
-    xs: concat([ResourceLocalBinding { resource: project_resource(), role: ConvergeCreateRole }], flat_map(gcp_iam_converge_targets, f => federation_bindings(f: f))),
+    xs: concat(
+      concat([ResourceLocalBinding { resource: project_resource(), role: ConvergeCreateRole }], flat_map(gcp_iam_converge_targets, f => federation_bindings(f: f))),
+      grant_set_bindings(),
+    ),
     key: b => binding_key(b: b),
   )
 }
@@ -324,7 +372,8 @@ fn iam_converge_bootstrap_readback() -> List<ReachProbe> {
       ExpectDenied { resource: pool_resource(pool_id: gcp_iam_observe_dedicated_federation().pool_id), permission: "iam.workloadIdentityPoolProviders.create" },
       ExpectDenied { resource: service_account_resource(email: iam_converge_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
       ExpectDenied { resource: service_account_resource(email: iam_observe_service_account), permission: "iam.serviceAccounts.setIamPolicy" },
-    ],
+    ] + flat_map(gcp_iam_converge_grant_set_secrets(), id => map(grant_set_payload_permissions, p =>
+      ExpectDenied { resource: gcp_secret_resource_by_number(project_number: fleet_secrets_project_number, secret: id), permission: p })),
   )
 }
 
@@ -497,6 +546,52 @@ fn plan_dedicated_federation(
         }
       }
   }
+}
+
+// ONE READING PER SECRET OF A GRANT SET, carried with its secret for the same reason
+// GrantPolicyReading carries its grant.
+type SecretPolicyReading {
+  secret: NonEmptyStr
+  reading: PolicyReading
+}
+
+// THE GRANT SET'S PLAN IS PURE, like a target's: the readings must cover exactly its secrets, the
+// member must resolve, and every grant must be in the fleet project. An absent secret refuses.
+fn plan_grant_set(g: GrantSet, member: GrantMemberResolution, secret_policies: List<SecretPolicyReading>) -> GcpIamPlan {
+  let secrets = grant_set_secrets(g: g)
+  match member {
+    GrantMemberUnresolved { cause: c } => GcpIamRefused { target: g.label, reasons: [c] }
+    GrantMemberResolved { member: m } =>
+      if !same_key_set(a: map(secrets, x => x as String), b: map(secret_policies, x => x.secret as String)) {
+        GcpIamRefused { target: g.label, reasons: ["the secret policy readings are not exactly the grant set's secrets"] }
+      } else if !all(g.grants, x => grant_in_fleet_project(g: x)) {
+        GcpIamRefused { target: g.label, reasons: [concat("a declared grant names a secret outside the fleet project ", fleet_secrets_project_id as String)] }
+      } else {
+        let deltas = map(secret_policies, sp => policy_delta(
+          subject: SecretPolicy { secret: sp.secret },
+          desired: flat_map(filter(g.grants, x => (x.target.secret as String) == (sp.secret as String)), x => secret_access_desired_cells(member: m, grant: x)),
+          reading: sp.reading,
+          absent_admitted: false,
+        ))
+        let refusals = delta_refusals(ds: deltas)
+        if refusals.length() > 0 {
+          GcpIamRefused { target: g.label, reasons: refusals }
+        } else {
+          let effects = delta_effects(ds: deltas)
+          if effects.length() == 0 { GcpIamNoop { target: g.label } } else { GcpIamApply { diff: GcpIamDiff { target: g.label, effects: effects } } }
+        }
+      }
+  }
+}
+
+// EVERY DIFF IS EXECUTED BY LABEL, so a label naming both a target and a grant set would let one be
+// executed as the other. The estate refuses that before planning anything.
+fn gcp_iam_estate_labels() -> List<String> {
+  concat(map(gcp_iam_converge_targets, f => f.label), map(gcp_iam_converge_grant_sets, g => g.label))
+}
+
+fn gcp_iam_estate_labels_unique() -> Bool {
+  duplicated_by_key(xs: gcp_iam_estate_labels(), key: x => x).length() == 0
 }
 
 // ── The estate: every declared target, one diff, one approval ──────────────────────────────
@@ -682,27 +777,27 @@ fn gcp_iam_converge_request(d: GcpIamEstateDiff, attempt: AttemptIdentity) -> Gc
 }
 
 // ── Observation (effectful; the plan above is the pure half) ────────────────────────────────
-fn read_account_policy(f: DedicatedFederation, token: Secret) -> PolicyReading
-{
-  let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: f.service_account)
-  if rest_ok(o: r.outcome) {
-    PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
-  } else if outcome_is_not_found(o: r.outcome) {
+fn policy_reading_of_refusal(refusal: RestRefusal) -> PolicyReading {
+  if outcome_is_not_found(o: refusal) {
     PolicyResourceAbsent
   } else {
-    PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) }
+    PolicyUnreadable { cause: rest_refusal_text(o: refusal) }
+  }
+}
+
+fn read_account_policy(f: DedicatedFederation, token: Secret) -> PolicyReading
+{
+  match gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: f.service_account) {
+    RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+    RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
   }
 }
 
 fn read_secret_policy(g: SecretAccessGrant, token: Secret) -> PolicyReading
 {
-  let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: g.target.secret)
-  if rest_ok(o: r.outcome) {
-    PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
-  } else if outcome_is_not_found(o: r.outcome) {
-    PolicyResourceAbsent
-  } else {
-    PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) }
+  match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: g.target.secret) {
+    RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+    RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
   }
 }
 
@@ -716,9 +811,26 @@ fn observe_and_plan(f: DedicatedFederation, token: Secret) -> GcpIamPlan
   )
 }
 
+fn read_named_secret_policy(secret: NonEmptyStr, token: Secret) -> SecretPolicyReading
+{
+  SecretPolicyReading { secret: secret, reading: policy_subject_reading(s: SecretPolicy { secret: secret }, token: token) }
+}
+
+fn observe_and_plan_grant_set(g: GrantSet, token: Secret) -> GcpIamPlan
+{
+  plan_grant_set(g: g, member: grant_member_resolution(), secret_policies: map(grant_set_secrets(g: g), x => read_named_secret_policy(secret: x, token: token)))
+}
+
 fn observe_and_plan_estate(token: Secret) -> GcpIamEstatePlan
 {
-  plan_estate(plans: map(gcp_iam_converge_targets, f => observe_and_plan(f: f, token: token)))
+  if !gcp_iam_estate_labels_unique() {
+    GcpIamEstateRefused { reasons: ["a target and a grant set share a label, so a diff could execute as the other"] }
+  } else {
+    plan_estate(plans: concat(
+      map(gcp_iam_converge_targets, f => observe_and_plan(f: f, token: token)),
+      map(gcp_iam_converge_grant_sets, g => observe_and_plan_grant_set(g: g, token: token)),
+    ))
+  }
 }
 
 // ── Execution: exactly the approved effects, under their approved preconditions ─────────────
@@ -738,18 +850,16 @@ fn observe_and_plan_estate(token: Secret) -> GcpIamEstatePlan
 fn policy_subject_reading(s: PolicySubject, token: Secret) -> PolicyReading
 {
   match s {
-    ServiceAccountPolicy { email: e } => {
-      let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e)
-      if rest_ok(o: r.outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) } }
-      else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
-      else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
-    }
-    SecretPolicy { secret: n } => {
-      let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n)
-      if rest_ok(o: r.outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) } }
-      else if outcome_is_not_found(o: r.outcome) { PolicyResourceAbsent }
-      else { PolicyUnreadable { cause: rest_refusal_text(o: r.outcome) } }
-    }
+    ServiceAccountPolicy { email: e } =>
+      match gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e) {
+        RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
+      }
+    SecretPolicy { secret: n } =>
+      match gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n) {
+        RestAnswered { answer: r } => PolicyObserved { policy: gcp_policy_from_wire(bindings: r.bindings, etag: r.etag, version: r.version) }
+        RestRefused { refusal } => policy_reading_of_refusal(refusal: refusal)
+      }
   }
 }
 
@@ -760,16 +870,16 @@ type PolicyWrite
 fn policy_subject_write(s: PolicySubject, policy: GcpPolicy, token: Secret) -> PolicyWrite
 {
   match s {
-    ServiceAccountPolicy { email: e } => {
-      let w = gcp.IamAdmin.SetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e, policy: policy)
-      if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
-      else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
-    }
-    SecretPolicy { secret: n } => {
-      let w = gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n, policy: policy)
-      if rest_ok(o: w.outcome) { PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) } }
-      else { PolicyWriteRefused { cause: rest_refusal_text(o: w.outcome) } }
-    }
+    ServiceAccountPolicy { email: e } =>
+      match gcp.IamAdmin.SetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: e, policy: policy) {
+        RestAnswered { answer: w } => PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) }
+        RestRefused { refusal } => PolicyWriteRefused { cause: rest_refusal_text(o: refusal) }
+      }
+    SecretPolicy { secret: n } =>
+      match gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: n, policy: policy) {
+        RestAnswered { answer: w } => PolicyWritten { returned: gcp_policy_from_wire(bindings: w.bindings, etag: w.etag, version: w.version) }
+        RestRefused { refusal } => PolicyWriteRefused { cause: rest_refusal_text(o: refusal) }
+      }
   }
 }
 
@@ -824,9 +934,8 @@ fn execute_policy_add(s: PolicySubject, approved_etag: String, cells: List<GcpIa
   }
 }
 
-fn create_refusal(subject: String, o: RestOutcome) -> String {
-  if rest_ok(o: o) { "" }
-  else if match o { RestOk => false  RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
+fn create_refusal(subject: String, o: RestRefusal) -> String {
+  if match o { RestStatusRefused { status: st, body: _ } => (st as Int) == 409  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false } { join([subject, " appeared after consent; nothing further applied"], "") }
   else { join([subject, ": ", rest_refusal_text(o: o)], "") }
 }
 
@@ -834,11 +943,20 @@ fn execute_create(e: GcpIamEffect, token: Secret) -> String
 {
   match e {
     CreatePool { pool_id: p, display_name: n } =>
-      create_refusal(subject: concat("pool ", p as String), o: gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, display_name: n).outcome)
+      match gcp.IamAdmin.CreateWorkloadIdentityPool(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, display_name: n) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("pool ", p as String), o: refusal)
+      }
     CreateProvider { pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c } =>
-      create_refusal(subject: concat("provider ", v as String), o: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr).outcome)
+      match gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(access_token: token, project_id: fleet_secrets_project_id, pool_id: p, provider_id: v, issuer_uri: i, attribute_mapping: m, attribute_condition: c as NonEmptyStr) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("provider ", v as String), o: refusal)
+      }
     CreateServiceAccount { account_id: a, display_name: n } =>
-      create_refusal(subject: concat("service account ", a as String), o: gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: a, display_name: n).outcome)
+      match gcp.IamAdmin.CreateServiceAccount(access_token: token, project_id: fleet_secrets_project_id, account_id: a, display_name: n) {
+        RestAnswered { answer: _ } => ""
+        RestRefused { refusal } => create_refusal(subject: concat("service account ", a as String), o: refusal)
+      }
     AddPolicyCells { subject: _, observed_etag: _, cells: _ } => ""
   }
 }
@@ -881,14 +999,37 @@ fn target_by_label(label: String) -> DedicatedFederation? {
   filter(gcp_iam_converge_targets, f => f.label == label).first()
 }
 
+fn grant_set_by_label(label: String) -> GrantSet? {
+  filter(gcp_iam_converge_grant_sets, g => g.label == label).first()
+}
+
+// A GRANT SET'S DIFF IS POLICY ADDS ONLY: its plan never proposes a create, so an approved create
+// under its label is a diff this model did not author, and it refuses before anything is applied.
+fn execute_grant_set_diff(d: GcpIamDiff, token: Secret) -> String
+{
+  if any(d.effects, e => is_create(e: e)) {
+    return concat(d.target, ": a grant set's approved diff carries a create, which its plan never proposes -- nothing applied")
+  }
+  let granted = first_refusal(xs: d.effects, run: e => match e {
+    AddPolicyCells { subject: sj, observed_etag: t, cells: cs } => execute_policy_add(s: sj, approved_etag: t, cells: cs, token: token)
+    CreatePool { pool_id: _, display_name: _ } => "a create reached the policy pass"
+    CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => "a create reached the policy pass"
+    CreateServiceAccount { account_id: _, display_name: _ } => "a create reached the policy pass"
+  })
+  if granted == "" { "" } else { join([d.target, ": ", granted], "") }
+}
+
 // THE APPROVED ESTATE, target by target in the approved order; the first refusal stops it.
 fn execute_approved_estate(d: GcpIamEstateDiff, token: Secret) -> String
 {
   fold(d.diffs, init: "", f: (acc, t) =>
     if acc != "" { acc } else {
       match target_by_label(label: t.target) {
-        Absent => concat(t.target, ": the approved target is not a declared target")
         Present { value: f } => execute_target_diff(f: f, d: t, token: token)
+        Absent => match grant_set_by_label(label: t.target) {
+          Present { value: _ } => execute_grant_set_diff(d: t, token: token)
+          Absent => concat(t.target, ": the approved target is not a declared target or grant set")
+        }
       }
     }
   )

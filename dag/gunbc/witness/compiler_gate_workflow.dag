@@ -2,8 +2,8 @@ module gunbc.compiler_gate_workflow
 
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
-// lanes the `witnesses` aggregate reads -- `floor` and `generated` -- run on the fleet, and so does
-// the aggregate. The one lane that blocks nothing, `emit-build`, stays on `ubuntu-24.04-arm`.
+// lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
+// and so does the aggregate.
 //
 // THE HOSTED UNIT-TEST LANE IS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
 // `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
@@ -28,11 +28,14 @@ module gunbc.compiler_gate_workflow
 // compiler_gate_merge_path_runs_on_the_fleet refuses emission of a workflow in which a blocking
 // lane or the aggregate runs hosted.
 //
-// WHY `emit-build` STAYS HOSTED. It is not read by the required context, so it cannot delay a
-// landing, and its two compilations would roughly double the fleet slot-minutes a push costs,
-// which is the cost the history below moved off the fleet. Its flip trigger
-// (compiler_gate_lane_rows) states that turning it blocking moves it onto the fleet in the same
-// change.
+// `emit-build` BLOCKS, ON THE FLEET (operator sign-off 2026-10-02, given to the N7 manager as step
+// 10 of the advisory program). It stayed hosted and announced while its only obstacle was the fleet
+// claim its two compilations make on every pull request and merge_group; the operator agreed that
+// cost, so its lane row is LaneBlocks and the job runs on the fleet runner with the fleet lanes'
+// fork guard and skippable-on-fork arm. The roster did not grow: the job already existed, and only
+// its standing and runner changed. It runs BESIDE `floor` rather than after it, so on the hosted
+// runs before this change (whose emit-build wall was below the floor's) it adds no wall to a
+// landing; the fleet wall is read from this lane's own runs, not restated here.
 //
 // SUPERSESSION CANCELS FLEET JOBS, AND THIS RULING DID NOT START THAT. The concurrency policy
 // cancels a running pull-request run on the next push, and the history below justified that by the
@@ -79,7 +82,7 @@ import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, UsesStep, RunStep,
   WorkflowPermissions, PermRead,
-  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression, Ubuntu2404Arm,
+  RunnerSpec, HostedRunner, SelfHosted, RunsOnExpression,
   github_event_name_pull_request,
   github_event_name_merge_group
 }
@@ -168,8 +171,9 @@ import gunbc.emitted_subject_build_gate {
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch, required_ci_contract_epoch_env_key }
 
 // THE HOSTED BUILD PRELUDE. It was the `compiler` lane's whole job until the 2026-09-28 ruling deleted
-// that lane (see the header); emit-build still needs the `gunbc` binary on its hosted runner, so the
-// prelude outlived the lane that named it.
+// that lane (see the header); gunbc.instrument_dispatch_workflow still builds `gunbc` on a hosted
+// runner through it, so the prelude outlived the lane that named it. emit-build left it on
+// 2026-10-02 for the fleet prelude over the same bins.
 data compiler_gate_required_bins: List<String> = ["gunbc"]
 data compiler_gate_build_step_name: String = "Build the compiler"
 
@@ -435,13 +439,22 @@ fn compiler_gate_drift_step() -> Step {
   }
 }
 
-// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, BOTH GENERATIONS DEEP. Operator decision
-// msg_6e36a6a2 (2026-09-23) put this step on the merge queue, superseding msg_4a9045fc's
-// generation-1-only ruling and msg_f1ade7cf-77e4-4896-a8b3-476747692c37's ~20 min pricing; operator
-// ruling 2026-09-28 keeps its depth and widens its events (below).
+// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, ONE GENERATION DEEP. Operator decision
+// msg_6e36a6a2 (2026-09-23) put this step on the merge queue at two generations, superseding
+// msg_4a9045fc's generation-1-only ruling; operator ruling 2026-09-28 widened its events (below);
+// operator ruling 2026-10-04 ("we don't need to run multiple times - we are not that particular
+// about determinism in v1 anymore") cut it back to one generation.
+//
+// WHAT THE STEP ASSERTS, in one sentence: the committed mirrors equal ONE emission of the current
+// .dag sources by the seed built from those committed mirrors. The ruling waives DETERMINISM, which
+// is all the deleted second generation could see -- it re-emitted with the same binary. It does
+// not waive CONVERGENCE, and the one-generation assertion still holds it: the seed this lane runs
+// is built from the committed mirrors, so mirrors emitted by a binary that predates a change to the
+// emitter's own closure (infer, emit_rust) do not equal what this seed emits, and the step refuses.
+// An author changing that closure therefore still owes a second ROUND (rebuild from the installed
+// mirrors, emit again) before the step admits; an author changing anything else owes one.
 // The drift step above reads gunbc.generated_artifact alone; the ~158 compile_stage0 mirrors are
-// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase (first generation) and
-// the RegenFixedPoint phase (second generation against the first's receipt) -- and no job had run
+// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase -- and no job had run
 // that lane since #11742, so std_measure.rs drifted onto main under a green required run
 // (gunbc#12067) and more mirrors had drifted by the time this step first executed.
 //
@@ -449,7 +462,7 @@ fn compiler_gate_drift_step() -> Step {
 // partition (gunbc.witness_floor_workflow build_lane_run_script over gunbc.fabric_witness_run
 // build_lane_run_command), never by this YAML. Measured on the fleet (run 35890770775, after
 // #12100 removed the field-name re-export leak that had inflated generation 1 to 30 min): the
-// whole lane, both generations, took 22.5 min, and the floor job ~58 min against
+// whole lane, then two generations deep, took 22.5 min, and the floor job ~58 min against
 // compiler_gate_floor_timeout_minutes.
 //
 // A STEP ON ITS OWN JOB, BESIDE THE FLOOR -- operator ruling 2026-09-27, which supersedes the
@@ -473,13 +486,9 @@ fn compiler_gate_drift_step() -> Step {
 // `!cancelled()` rather than the default success(): an earlier red step, such as the lint, must not
 // disarm this check (see witness_floor_workflow's measured correction).
 //
-// gunbc.rung_drop.floor_cut_regen_second_generation_agreement IS NOT RETIRED BY THIS STEP. Its
-// trigger is second-generation refusal for EVERY phase that regenerates a committed population,
-// shown by a red on a generation-unstable fixture under this execution model. RegenFixedPoint
-// compares a second generation for the stage0 mirror population only (it reads
-// target/stage0-regen-receipt.json); the registry-rostered projections have no second
-// generation, and no unstable fixture has been run.
-data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+// gunbc.rung_drop.floor_cut_regen_second_generation_agreement STANDS, and since 2026-10-04 no
+// required phase compares a second generation for any population.
+data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match one emission by this seed: required CI build lane"
 data compiler_gate_stage0_regen_step_id: String = "stage0_regen"
 
 // NO EVENT CLAUSE, which is the ruling rather than an omission: the step runs wherever the job does,
@@ -604,6 +613,8 @@ fn compiler_gate_candidate_upload_step() -> Step {
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
   concat(compiler_gate_fleet_prelude_bound_steps_around_build(
+    bins: witness_floor_required_bins,
+    build_step_name: compiler_gate_floor_build_step_name,
     before_build: compiler_gate_candidate_key_bound_steps(),
     after_build: compiler_gate_candidate_pack_bound_steps(),
   ), concat([
@@ -620,10 +631,18 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
 // build step keeps its id, build_witness_fold, in both jobs because every downstream condition in
 // each job reads that id; step ids are per job, so the two never collide.
 fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
-  compiler_gate_fleet_prelude_bound_steps_around_build(before_build: [], after_build: [])
+  compiler_gate_fleet_prelude_bound_steps_around_build(
+    bins: witness_floor_required_bins,
+    build_step_name: compiler_gate_floor_build_step_name,
+    before_build: [],
+    after_build: [],
+  )
 }
 
-fn compiler_gate_fleet_prelude_bound_steps_around_build(before_build: List<CompilerGateBoundStep>, after_build: List<CompilerGateBoundStep>) -> List<CompilerGateBoundStep> {
+// emit-build needs only `gunbc` (its instruments run through `gunbc test`), so it takes the same
+// prelude over its own binaries rather than a copy of it; the floor adds its candidate-key and
+// candidate-pack steps around the same build.
+fn compiler_gate_fleet_prelude_bound_steps_around_build(bins: List<String>, build_step_name: String, before_build: List<CompilerGateBoundStep>, after_build: List<CompilerGateBoundStep>) -> List<CompilerGateBoundStep> {
   concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_checkout_step(),
@@ -648,11 +667,11 @@ fn compiler_gate_fleet_prelude_bound_steps_around_build(before_build: List<Compi
   ], concat(before_build, concat([
     CompilerGateBoundStep {
       step: witness_floor_build_step(
-        step_name: compiler_gate_floor_build_step_name,
-        build_script: repo_self_build_command(bins: witness_floor_required_bins),
+        step_name: build_step_name,
+        build_script: repo_self_build_command(bins: bins),
       ),
       role: consumes_only(capabilities: [CargoCapability]),
-      step_name: compiler_gate_floor_build_step_name,
+      step_name: build_step_name,
     },
   ], concat(after_build, [
     CompilerGateBoundStep {
@@ -918,16 +937,15 @@ fn compiler_gate_generated_job() -> Job {
 // own question. The seed build is established by the fleet lanes' prelude (the `compiler` lane that
 // first carried it was deleted on 2026-09-28), and this lane establishes something else: that the
 // seed can EMIT two v2 closures and that the EMITTED crates compile. The two fail for different
-// causes and a reader must see which. And the only lanes that build this tree today are the fleet's
-// two blocking lanes, where these two compilations would put a non-blocking verdict's wall on the
-// merge path. The prelude is paid twice and that is the price; see the runner note below for why it
-// is a price worth paying here and would not be on the fleet.
+// causes and a reader must see which. As its own job it runs BESIDE the floor, so its wall overlaps
+// the floor's instead of adding to it; on `floor` or `generated` it would add in series. The
+// prelude is paid once more per run and that is the price.
 //
-// A HOSTED RUNNER, so this is not the standing claim on a paid runner that closed the job roster on
-// 2026-09-04, and -- since the 2026-09-28 ruling -- not a dependence of the merge path on the hosted
-// pool, because the lane blocks nothing (compiler_gate_lane_rows). `ubuntu-24.04-arm` is free on a
-// public repository and joins no host jobserver, so a superseded pull-request run is cancelled
-// rather than holding fleet capacity and leaks no ctrl-jobserver permit. THE WALL IS MEASURED ON THIS RUNNER CLASS BY THIS LANE'S OWN RUNS and is
+// THE FLEET RUNNER, because the lane blocks (compiler_gate_lane_rows) and a blocking lane may not
+// run hosted (compiler_gate_merge_path_runs_on_the_fleet). That makes it a standing claim on the
+// fleet for every pull request and merge_group, which the operator signed off on 2026-10-02. It
+// inherits the fleet lanes' exposure the header names: a superseded pull-request run is cancelled,
+// and fleet_compile_cancellation_standing still reads NotSafe. THE WALL IS MEASURED ON THIS RUNNER CLASS BY THIS LANE'S OWN RUNS and is
 // not restated here (DESIGN section 6: name the instrument, never transcribe its output) -- the
 // producer is the `emit-build` job of any run of this workflow, and the two instrument steps carry
 // one label each so the split between the two compilations is readable from the step timings
@@ -937,8 +955,7 @@ data compiler_gate_emit_build_job_id: String = "emit-build"
 // THE TIMEOUT IS A BOUND, NOT A BUDGET, and it is deliberately well above the measured wall: a
 // timeout that trims a slow-but-honest run converts a subject verdict into silence on the required
 // context, which is the failure `required_lanes_aggregate_job_condition` spends its whole comment
-// on one module over. What keeps the lane cheap is the hosted runner and supersession, not this
-// number.
+// on one module over.
 data compiler_gate_emit_build_timeout_minutes: Int = 90
 
 // ONE STEP PER SUBJECT, EACH WITH ITS OWN ID. `witness_floor_build_step` cannot be reused: it binds
@@ -1016,12 +1033,12 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
   })
 }
 
-// THE PRELUDE IS THE HOSTED BUILD PRELUDE, WORD FOR WORD -- the deleted `compiler` lane's whole job --
-// because the subject steps need exactly what it provides: an isolated toolchain home, a pinned
-// default, and the `gunbc` binary the instruments are invoked through.
+// THE PRELUDE IS THE FLEET PRELUDE over `gunbc` alone, because the subject steps need exactly what it
+// provides on the fleet: the judged checkout, an isolated toolchain home (and the guard requiring
+// it), a pinned default, and the `gunbc` binary the instruments are invoked through.
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_hosted_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+    concat(compiler_gate_fleet_prelude_bound_steps_around_build(bins: compiler_gate_required_bins, build_step_name: compiler_gate_build_step_name, before_build: [], after_build: []), compiler_gate_emit_build_subject_bound_steps()),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -1045,13 +1062,17 @@ fn compiler_gate_emit_build_job() -> Job {
   Job {
     id: compiler_gate_emit_build_job_id,
     name: none,
-    runner: HostedRunner { label: Ubuntu2404Arm },
+    runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }),
     needs: [],
-    env: none,
+    env: Present {
+      value: [
+        kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
+      ]
+    },
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: compiler_gate_floor_job_condition() },
     timeout_minutes: Present { value: compiler_gate_emit_build_timeout_minutes },
     continue_on_error: none,
     concurrency: none,
@@ -1206,7 +1227,7 @@ fn compiler_gate_fork_line(row: CompilerGateLaneRow) -> String {
         "; then if [ \"$SAME_REPO\" = false ] && [ ", compiler_gate_var_read(row: row), " = skipped ]",
         "; then echo \"::notice::", n, "\"",
         "; else echo \"::error::", e, " (", compiler_gate_var_report(row: row),
-        "), so this head carries no witnesses fold and no generated-artifact verdict\"; exit 1; fi; fi"
+        "), so this head carries no verdict from that lane\"; exit 1; fi; fi"
       ], "")
   }
 }
@@ -1317,11 +1338,10 @@ fn compiler_gate_aggregate_job() -> Job {
 // forgetting an edge -- silently, with a green gate.
 //
 // WHY THE ANSWER IS NOT "EVERY JOB MUST BE NEEDED". A lane that runs and does not block is a
-// LEGITIMATE INTERIM, and this change is standing in it: `emit-build` reds on every head until
-// the emitter's import gap is fixed on main, so requiring it today stops the merge queue for a
-// defect it did not introduce. The operator ruling (v2 foundation manager, 2026-09-22) is to land
-// the job PRESENT and NOT BLOCKING and flip it in a one-line follow-up once main's self-host
-// builds. The defect is not that such a lane exists; it is that its non-blocking standing was
+// LEGITIMATE INTERIM: `emit-build` stood in it from 2026-09-22 (operator ruling, v2 foundation
+// manager: land it PRESENT and NOT BLOCKING while main could not self-host) until 2026-10-02, when
+// the operator signed off its fleet claim and its row became LaneBlocks. No lane stands in it today;
+// the arm is kept because the next lane to land may need it. The defect is not that such a lane exists; it is that its non-blocking standing was
 // INFERRABLE FROM AN ABSENCE, where a forgotten edge and a deliberate interim are the same bytes.
 //
 // So the standing is DECLARED and it carries the trigger that retires it -- and, since review
@@ -1347,7 +1367,7 @@ type CompilerGateLaneStanding
 // no generated-artifact verdict for that head, and saying so is a notice rather than a refusal.
 // Carrying that as a row field is what lets the whole script be derived; carrying it as a
 // hand-written fourth line is what let the script drift from the roster. Since the 2026-09-28 ruling
-// every blocking lane is a fleet lane, so today only the announced hosted lanes carry GateArmStrict,
+// every blocking lane is a fleet lane, so today no live row carries GateArmStrict (emit-build left it when it moved),
 // and a hosted lane cannot turn blocking without moving (compiler_gate_merge_path_runs_on_the_fleet).
 type CompilerGateArm
   = GateArmStrict
@@ -1365,9 +1385,10 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
     CompilerGateLaneRow {
       job_id: compiler_gate_emit_build_job_id,
       var_name: "EMIT_BUILD",
-      arm: GateArmStrict,
-      standing: LaneAnnouncedNotBlocking {
-        flip_trigger: "OPERATOR SIGN-OFF ON THE FLEET RUNNER CLAIM. The self-host closure builds on main -- the E0573 standing is retired (gunbc.emitted_subject_build_gate emit_build_standing = EmitBuildExpectedGreen; hosted emit-build green on main c39426540c, run 36580079634) -- so what now keeps this lane non-blocking is not a red but the runner: a blocking lane may not run hosted (operator ruling 2026-09-28, compiler_gate_merge_path_runs_on_the_fleet), and moving these two compilations onto the fleet is a standing claim on it for every pull request and merge_group that the job-roster rule gives to the operator. Sufficient for: the operator agreeing the fleet cost of this job, measured from a green wall of this lane. At that point this row becomes LaneBlocks, the aggregate gains the needs edge and the variable, and the job moves onto the fleet runner with the fleet lanes' fork guard and arm, in one change."
+      standing: LaneBlocks,
+      arm: GateArmSkippableOnFork {
+        notice: "the emit-build lane is skipped for a fork pull request: no self-host or native-CLI emission verdict for this head",
+        unobserved_error: "the emit-build lane produced no success"
       }
     },
     CompilerGateLaneRow {

@@ -20,7 +20,13 @@ import v2.std.node { Node, NodeFold, TypeNode, Atom, Arrow, ComputationNode, Tra
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.collection { list_at_optional }
-import v2.std.qualified_name { QualifiedName, declaration_reference_path_optional }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, parameter_reference_node }
+import v2.test.lens_common.infer_fixture { ClaimParam, ClaimRecord, claim_callable_arrow, claim_int_literal, claim_minted, claim_minted_atom, claim_record_declaration, claim_resolved_call_tree }
+import v2.test.lens_common.resolve_fixture { ClaimLoweredModule, ClaimLoweredParam, claim_lowered_atom, claim_lowered_function, claim_lowered_record, claim_resolve_lowered }
+import v2.std.symbol_index { symbol_index_insert }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.diagnostic { outcome_accepted }
+import v2.std.node { Authored, Edge, Positional }
 
 // THE REFERENCE-EVIDENCE BOUNDARY. A reference to a corpus declaration reaches
 // v2.compiler.infer's `infer_node_facts` as a declaration-reference Conj. No arm handles it: it falls
@@ -40,32 +46,27 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_path_optiona
 // occurrence, not to a declaring path, so `infer_parameter_scope_search` answers a different question
 // and is not replaced here. The refinement rows in v2.test.claim.body_cast_node are its standing
 // control and they pass on this base.
-// WHY EVERY ROW HERE EXECUTES THE WHOLE FRONT END, AND WHY THAT IS NOT CONVERTED AWAY. DESIGN
-// section 3's witness rule says a claim's inputs belong at the boundary it discriminates, as supplied
-// values, and the rows below supply none: each assembles authored text, resolves it and infers over it.
-// That was interrogated row by row against the rule rather than defended by habit, and the reason it
-// stands is the one DESIGN section 4b states for the top rung -- ASK WHETHER THE CHECK'S RED IS
-// AUTHORABLE BEFORE WRITING THE CHECK.
+// WHICH ROWS EXECUTE THE WHOLE FRONT END, AND WHY THE REST DO NOT (DESIGN section 3's witness rule,
+// applied row by row under gunbc#12506's restructure). A row's inputs belong at the ONE interface it
+// discriminates, as supplied values, and a row reaching through lowering and resolve to ask infer a question
+// paid 140-610k eval steps -- almost all of it lowering, which is linear in source text -- against a 72.3k
+// new-witness margin. So:
+//   * rows whose subject is INFER (or eval) take a resolved tree built by v2.test.lens_common.infer_fixture
+//     from the production constructors;
+//   * rows whose subject is RESOLVE take lowered modules into real resolve (v2.test.lens_common.resolve_fixture),
+//     or, where a whole two-module resolve is itself over the margin, the one resolve function the subject is
+//     (resolve_dotted_path_reading, closure_declarations_demand);
+//   * a property spanning resolve -> infer is SPLIT at that boundary, the resolve row asserting real resolve's
+//     output EQUALS a named value and the infer row taking exactly that value, so the join is entailed.
 //
-// THE SUBJECT OF THESE ROWS IS WHAT RESOLVE AND INFER PRODUCE FOR AUTHORED TEXT, not what one
-// downstream function answers for a shape. Every row asks whether a reference or a call GROUNDS, and
-// what it grounds to -- facts about the resolved-declaration index the front end mints and about the
-// declared-return spelling lowering leaves behind. Against a supplied index and supplied facts each of
-// those answers is a restatement of the fixture, so the row's red would not be authorable: it would
-// become a decoration, which DESIGN says is worse than an absent check because it will be cited as
-// coverage. The two same-leaf rows make this sharpest -- a hand-built index picks the declaration the
-// author intended, which is exactly the selection under test.
+// THE OBJECTION THIS BLOCK USED TO RECORD -- that against a supplied index each answer restates the fixture,
+// so the red is unauthorable -- is answered by where each supply stops: the supplied value is the input of
+// the judged stage, never its answer, and the judged stage runs for real. Where the supplied value is a stage's
+// OUTPUT (the named shapes of the split rows), a resolve row proves the real producer emits exactly it.
 //
-// SO THESE ROWS ARE THE EXECUTION OF THE REAL PATH -- the second half of the same rule, which forbids
-// supplying inputs anywhere if it removes the last execution of the producer. Deleting resolve's
-// projection lowering, or infer's declared-field read, must make a control here fail, and does.
-//
-// WHAT WOULD ACTUALLY MOVE THEIR COST is not a narrower claim but a provider for the demand: their
-// nullary source producers are pure functions of module-constant text, which is the shape
-// v2.workflow.floor_pure_producer_share serves across claims for hundreds of peer fixtures. gunbc#12506's
-// floor measured every row here past the new-witness enrolment margin, so each fixture's front end is now
-// one nullary producer listed there WARM (dre_reading, below): the demand is paid once per fixture, not
-// once per row, and no input is supplied, so the rows remain the real path's execution.
+// AND THE REAL PATH STILL RUNS. The rows over authored source that several rows read (shared across them by
+// declared demand, v2.workflow.floor_pure_producer_share) are this file's inhabitance for the boundaries the
+// supplied rows start from: deleting resolve's lowering of the shape, or infer's read of it, reds them.
 data dre_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^declaration_reference_evidence_artifact,
@@ -185,6 +186,37 @@ fn dre_reading(o: Outcome<ResolvedTree>, wanted: Symbol) -> DreReading {
   }
 }
 
+// SUPPLIED AT INFER'S BOUNDARY (DESIGN section 3). The rows that read these ask what infer establishes about
+// ONE call to ONE declaration whose shape is given -- a Bool return, an argument the declared parameter does
+// not admit, a parameter type that names nothing -- and none of them is about how authored text reaches that
+// shape. Assembling source for each cost 270-350k eval steps (gunbc#12506's floor), nearly all of it
+// lowering. The tree is v2.test.lens_common.infer_fixture claim_resolved_call_tree, built by the production
+// constructors; infer is the REAL producer, so each row keeps its red. The real-path rows over authored
+// source (dre_reference_reading, read by the reference and named-call rows) are the inhabitance this file
+// owes for that boundary.
+fn dre_int_type() -> Node {
+  claim_minted_atom(identity: ^dag_binding_type_int, n: 3)
+}
+
+fn dre_only_arg(type_node: Node) -> List<ClaimParam> {
+  [ClaimParam { name: ^only_arg, type_node: type_node }]
+}
+
+fn dre_supplied_reading(callee: Symbol, params: List<ClaimParam>, codomain: Node, body: Node, actual: Node) -> DreReading {
+  dre_reading(
+    o: outcome_accepted(value: claim_resolved_call_tree(
+      callee_path: [^p, callee],
+      callee: callee,
+      params: params,
+      codomain: codomain,
+      body: body,
+      actuals: [Edge { label: Authored { name: ^only_arg }, target: actual }],
+      reference_site: 21
+    )),
+    wanted: callee
+  )
+}
+
 fn dre_labels_are_exactly(labels: Optional<List<Symbol>>, wanted: Symbol) -> Bool {
   match labels {
     Absent => false
@@ -216,12 +248,136 @@ test fn dre_a_reference_grounds_to_its_declarations_contract_holds() -> Bool {
 // `consumer` denotes p.shared. A leaf-keyed lookup can answer either; the declaring path answers only
 // one. This control is SPECIFIED but not yet QUALIFIED as an identity-collapse detector: that claim
 // requires the forced-collapse mutation to turn it red, which is exercised separately.
-fn dre_same_leaf_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn shared(alpha: Int) -> Int {\n  alpha\n}\n\ntype Wrap {\n  shared: Int\n}\n\nfn consumer(y: Int) -> Int {\n  shared(alpha: y)\n}\n")
+// SPLIT AT RESOLVE -> INFER, BOUND BY ONE NAMED VALUE (DESIGN section 3; operator ruling on this lane). The
+// property spans two stages: RESOLVE picks which declaration the use of `shared` denotes, and INFER grounds
+// the use to that declaration's contract. Executing both over authored text cost 409k eval steps, and even
+// resolve plus infer over a supplied lowered module is ~115k, so the claim is split at the stage boundary,
+// and the two halves are joined by dre_same_leaf_resolved, a NAMED resolved shape:
+//   * the resolve row runs REAL resolve over the supplied lowered module and asserts its output EQUALS that
+//     named shape where infer reads it -- the use's declaring path, and the declarations indexed at p.shared
+//     and p.Wrap -- compared structurally, provenance aside (v2.compiler.infer
+//     infer_type_equal_ignoring_provenance);
+//   * the infer row runs REAL infer over EXACTLY that named shape and asserts the use grounds to alpha.
+// So the resolve row proves the producer emits the shape, the infer row proves the consumer handles it, and
+// the join is entailed rather than designed: a supplied shape that drifted from resolve's output reds the
+// resolve row. Each half has its own red: a resolve that picked p.Wrap.shared fails the path equality, and
+// an infer that read by leaf fails the label read.
+fn dre_lowered_same_leaf_module() -> ClaimLoweredModule {
+  ClaimLoweredModule {
+    module: [^p],
+    members: [
+      Edge {
+        label: Authored { name: ^shared },
+        target: claim_lowered_function(
+          site: 20,
+          params: [ClaimLoweredParam { name: ^alpha, type_node: claim_lowered_atom(identity: ^Int, n: 21) }],
+          codomain: claim_lowered_atom(identity: ^Int, n: 22),
+          body: claim_lowered_atom(identity: ^alpha, n: 23)
+        )
+      },
+      Edge { label: Authored { name: ^Wrap }, target: claim_lowered_record(fields: [ClaimLoweredParam { name: ^shared, type_node: claim_lowered_atom(identity: ^Int, n: 11) }], site: 10) },
+      Edge {
+        label: Authored { name: ^consumer },
+        target: claim_lowered_function(
+          site: 30,
+          params: [ClaimLoweredParam { name: ^y, type_node: claim_lowered_atom(identity: ^Int, n: 31) }],
+          codomain: claim_lowered_atom(identity: ^Int, n: 32),
+          body: Node {
+            kind: ComputationNode { behavior: Transform },
+            children: [
+              Edge { label: Positional, target: claim_lowered_atom(identity: ^shared, n: 33) },
+              Edge { label: Authored { name: ^alpha }, target: claim_lowered_atom(identity: ^y, n: 34) }
+            ],
+            occurrence_id: OccurrenceSynthetic
+          }
+        )
+      }
+    ],
+    records: [^Wrap],
+    imports: []
+  }
+}
+
+// THE NAMED RESOLVED SHAPE BOTH HALVES SHARE: `shared` as resolve emits it (its parameter use a parameter
+// reference, its types the canonical bindings), Wrap as a record whose field `shared` is an Int, and one call
+// to p.shared.
+fn dre_same_leaf_shared_declaration() -> Node {
+  claim_callable_arrow(
+    site: 1,
+    params: dre_only_alpha(),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^shared, ^alpha], occurrence_id: claim_minted(n: 4))
+  )
+}
+
+fn dre_only_alpha() -> List<ClaimParam> {
+  [ClaimParam { name: ^alpha, type_node: dre_int_type() }]
+}
+
+fn dre_same_leaf_wrap_declaration() -> Node {
+  claim_record_declaration(r: ClaimRecord { path: [^p, ^Wrap], fields: [ClaimParam { name: ^shared, type_node: dre_int_type() }], site: 40 })
+}
+
+fn dre_same_leaf_resolved() -> ResolvedTree {
+  let call = claim_resolved_call_tree(
+    callee_path: [^p, ^shared],
+    callee: ^shared,
+    params: dre_only_alpha(),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^shared, ^alpha], occurrence_id: claim_minted(n: 4)),
+    actuals: [Edge { label: Authored { name: ^alpha }, target: claim_int_literal(lexeme: "3", n: 23) }],
+    reference_site: 21
+  )
+  ResolvedTree {
+    root: call.root,
+    symbol_index: call.symbol_index,
+    resolved_declarations: symbol_index_insert(index: call.resolved_declarations, qualified_path: [^p, ^Wrap], resolved: dre_same_leaf_wrap_declaration()),
+    lexical_bindings: call.lexical_bindings,
+    unavailable_providers: call.unavailable_providers
+  }
+}
+
+fn dre_declared_equal(a: ResolvedTree, b: ResolvedTree, path: QualifiedName) -> Bool {
+  match symbol_index_lookup(index: a.resolved_declarations, qualified_path: path) {
+    Absent => false
+    Present { value: x } =>
+      match symbol_index_lookup(index: b.resolved_declarations, qualified_path: path) {
+        Absent => false
+        Present { value: y } => infer_type_equal_ignoring_provenance(a: x, b: y)
+      }
+  }
+}
+
+// The use's declaring path: exactly one use of `shared` in the resolved root, read through the production
+// reader v2.std.qualified_name declaration_reference_path_optional.
+fn dre_single_use_path(root: Node, wanted: Symbol) -> Optional<QualifiedName> {
+  match dre_uses_of(root: root, wanted: wanted) {
+    Cons { head: use_node, tail: rest } =>
+      match rest {
+        Empty => declaration_reference_path_optional(node: use_node)
+        Cons { head: _, tail: _ } => optional_absent()
+      }
+    Empty => optional_absent()
+  }
+}
+
+fn dre_same_leaf_resolve_matches_the_named_shape() -> Bool {
+  match claim_resolve_lowered(modules: [dre_lowered_same_leaf_module()], subject: [^p]) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      (dre_single_use_path(root: real.root, wanted: ^shared) == optional_present(value: [^p, ^shared]))
+        && (dre_single_use_path(root: dre_same_leaf_resolved().root, wanted: ^shared) == optional_present(value: [^p, ^shared]))
+        && dre_declared_equal(a: real, b: dre_same_leaf_resolved(), path: [^p, ^shared])
+        && dre_declared_equal(a: real, b: dre_same_leaf_resolved(), path: [^p, ^Wrap])
+  }
+}
+
+test fn dre_a_same_leaf_reference_resolves_to_its_own_declaration_holds() -> Bool {
+  dre_same_leaf_resolve_matches_the_named_shape()
 }
 
 fn dre_same_leaf_reading() -> DreReading {
-  dre_reading(o: dre_same_leaf_source(), wanted: ^shared)
+  dre_reading(o: outcome_accepted(value: dre_same_leaf_resolved()), wanted: ^shared)
 }
 
 test fn dre_a_same_leaf_reference_gets_its_own_declarations_contract_holds() -> Bool {
@@ -266,9 +422,6 @@ test fn dre_a_named_call_is_grounded_holds() -> Bool {
 // callee's value -- not that equality types. An Int-returning call compared with `==` would couple this
 // first execution proof to the equality operation, which has its own typing rule and its own unproven
 // standing; a Bool-returning call is its own assertion.
-fn dre_execution_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn truth(only_arg: Int) -> Bool {\n  true\n}\n\nfn consumer(y: Int) -> Bool {\n  truth(only_arg: y)\n}\n")
-}
 
 // A BOOL-RETURNING CALL DOES NOT GROUND, AND THAT IS A SEPARATE BOUNDARY FROM THIS REPAIR. Measured
 // three ways on this base: an Int-returning call grounds; a Bool-returning call with a literal body
@@ -279,7 +432,13 @@ fn dre_execution_source() -> Outcome<ResolvedTree> {
 // and NOT diagnosed further here: which binding symbol a Bool return actually carries is the next
 // question, and answering it is a separate change from this one.
 fn dre_execution_reading() -> DreReading {
-  dre_reading(o: dre_execution_source(), wanted: ^truth)
+  dre_supplied_reading(
+    callee: ^truth,
+    params: dre_only_arg(type_node: dre_int_type()),
+    codomain: claim_minted_atom(identity: ^bool_node_symbol, n: 2),
+    body: claim_minted_atom(identity: ^dag_token_kw_true, n: 4),
+    actual: claim_int_literal(lexeme: "3", n: 23)
+  )
 }
 
 test fn dre_a_named_call_to_a_bool_fn_is_grounded_holds() -> Bool {
@@ -320,7 +479,7 @@ fn dre_first_application_for(n: Node, wanted: Symbol) -> Optional<Node> {
 
 
 // Bool param AND Bool return, body is the parameter -- the same shape as the working Int case, so the
-// only variable against dre_execution_source is the literal body.
+// only variable against the bool-fn row's callee (dre_execution_reading) is the literal body.
 fn dre_bool_param_source() -> Outcome<ResolvedTree> {
   dre_assemble(src: "module p\n\nfn truth(only_arg: Bool) -> Bool {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Bool {\n  truth(only_arg: y)\n}\n")
 }
@@ -412,33 +571,46 @@ fn dre_file(src: String, id: Symbol) -> DagSourceReadWitness {
 // UNRESOLVED SIGNATURE: readable shape, unavailable type evidence. The parameter's declared type names
 // nothing, so the signature's structure reads while its meaning does not. A permissive fallback would
 // ground this; it must stay underived.
-fn dre_unresolved_signature_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn opaque(only_arg: Nonexistent) -> Int {\n  1\n}\n\nfn consumer(y: Int) -> Int {\n  opaque(only_arg: y)\n}\n")
-}
 
 fn dre_unresolved_signature_reading() -> DreReading {
-  dre_reading(o: dre_unresolved_signature_source(), wanted: ^opaque)
+  dre_supplied_reading(
+    callee: ^opaque,
+    params: dre_only_arg(type_node: declaration_reference_node(qn: [^p, ^Nonexistent], occurrence_id: claim_minted(n: 3))),
+    codomain: dre_int_type(),
+    body: claim_int_literal(lexeme: "1", n: 4),
+    actual: claim_int_literal(lexeme: "3", n: 23)
+  )
 }
 
+// THE REFUSAL IS INFER'S, AND THE ROW NOW SAYS SO. Over authored source this program refused at RESOLVE
+// (resolve_reason_unbound_symbol on `Nonexistent`), so infer never saw it and the row was green whatever
+// infer would have done -- a vacuous red. Supplied at infer's boundary, a signature whose parameter type is
+// a reference naming no declaration reaches infer, and infer refuses rather than grounding it; the row
+// asserts that route as well as the absent contract.
 test fn dre_an_unresolved_signature_does_not_ground_holds() -> Bool {
   match dre_unresolved_signature_reading().domain_labels {
-    Absent => true
+    Absent => dre_unresolved_signature_reading().infer_refuses
     Present { value: _ } => false
   }
 }
 
 // INVALID ARGUMENT: a Bool passed where the declared parameter is Int. The call must not ground on a
 // contract its argument does not satisfy.
-fn dre_invalid_argument_source() -> Outcome<ResolvedTree> {
-  dre_assemble(src: "module p\n\nfn wants_int(only_arg: Int) -> Int {\n  only_arg\n}\n\nfn consumer(y: Bool) -> Int {\n  wants_int(only_arg: y)\n}\n")
-}
 
 fn dre_invalid_argument_reading() -> DreReading {
-  dre_reading(o: dre_invalid_argument_source(), wanted: ^wants_int)
+  dre_supplied_reading(
+    callee: ^wants_int,
+    params: dre_only_arg(type_node: dre_int_type()),
+    codomain: dre_int_type(),
+    body: parameter_reference_node(qn: [^p, ^wants_int, ^only_arg], occurrence_id: claim_minted(n: 4)),
+    actual: claim_minted_atom(identity: ^dag_token_kw_true, n: 23)
+  )
 }
 
+// AND THE REFUSAL IS INFER'S, as it is on the real path over authored source: the row asserts the route,
+// so a tree that stopped reaching infer cannot hold it.
 test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
-  dre_invalid_argument_reading().call_grounded == false
+  (dre_invalid_argument_reading().call_grounded == false) && dre_invalid_argument_reading().infer_refuses
 }
 
 // IMPORTED REFERENCE, AND THE QUALIFIED IDENTITY DISCRIMINATOR. The same mechanism across a module
@@ -453,9 +625,9 @@ test fn dre_an_invalid_argument_call_does_not_ground_holds() -> Bool {
 fn dre_imported_reference_source() -> Outcome<ResolvedTree> {
   assemble_program_from_ingest(
     ingest: Cons {
-      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n", id: ^dre_imported_lib_cu),
+      head: dre_file(src: "module m.lib\n\nfn helper(only_arg: Int) -> Int {\n  only_arg\n}\n\ntype Leg {\n  target: Int\n}\n", id: ^dre_imported_lib_cu),
       tail: Cons {
-        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n", id: ^dre_imported_app_cu),
+        head: dre_file(src: "module m.app\n\nimport m.lib { helper }\n\nfn consumer(y: Int) -> Int {\n  helper(only_arg: y)\n}\n\nfn read(l: m.lib.Leg) -> Int {\n  l.target\n}\n", id: ^dre_imported_app_cu),
         tail: Empty
       }
     },
@@ -496,8 +668,39 @@ fn dre_imported_reference_reading() -> DreReading {
   dre_reading(o: dre_imported_reference_source(), wanted: ^helper)
 }
 
+// THE SOLE REAL TWO-MODULE ROUTE, AND IT ASSERTS THE ROUTE (operator ruling on this lane). Every other
+// cross-module row in this repository's witness lanes for gunbc#12506 is now supplied at one narrow resolve
+// function -- v2.compiler.resolve resolve_dotted_path_reading for a qualified declaration path, and
+// v2.compiler.name_resolve closure_declarations_demand for what the closure index carries -- and this row is
+// the one place authored text reaches both through the whole front end. So beside the grounded call it
+// asserts that its real program PASSED THROUGH each:
+//   * the qualified parameter type `m.lib.Leg` resolved to a DECLARATION REFERENCE to m.lib.Leg (the
+//     declaration arm of resolve_dotted_path_reading; a projection reading would mint no such reference);
+//   * the resolved-declaration index carries m.lib.Leg, a declaration of a module that is not the subject,
+//     which only the closure index supplies -- and it carries it EQUAL, provenance aside, to the record
+//     v2.test.lens_common.infer_fixture claim_record_declaration builds. That is the constructor every supplied
+//     record in the split rows is built with, so this is where the named shapes are bound, once, to what real
+//     resolve produces from authored source.
+// It is a declared preparation-fill debt row (v2.workflow.floor_pure_producer_share), because a real
+// two-module front end is inherently over the margin and this row is its only execution.
+fn dre_imported_route_passes_both_narrow_functions() -> Bool {
+  match dre_imported_reference_source() {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: real, diagnostics: _ } =>
+      (dre_single_use_path(root: real.root, wanted: ^Leg) == optional_present(value: [^m, ^lib, ^Leg]))
+        && match symbol_index_lookup(index: real.resolved_declarations, qualified_path: [^m, ^lib, ^Leg]) {
+          Absent => false
+          Present { value: indexed } =>
+            infer_type_equal_ignoring_provenance(
+              a: indexed,
+              b: claim_record_declaration(r: ClaimRecord { path: [^m, ^lib, ^Leg], fields: [ClaimParam { name: ^target, type_node: dre_int_type() }], site: 40 })
+            )
+        }
+  }
+}
+
 test fn dre_an_imported_reference_grounds_through_the_closure_index_holds() -> Bool {
-  dre_imported_reference_reading().call_grounded
+  dre_imported_reference_reading().call_grounded && dre_imported_route_passes_both_narrow_functions()
 }
 
 // THE ASYMMETRY THE TWO REFUSAL ROWS ABOVE DEPEND ON, MEASURED RATHER THAN ASSERTED. A declared `Int`

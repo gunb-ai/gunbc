@@ -1,6 +1,6 @@
 module extdeps.memory.types
 
-import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count }
+import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count, byte_size }
 import std.types { Bool, Int, NonEmptyStr }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }

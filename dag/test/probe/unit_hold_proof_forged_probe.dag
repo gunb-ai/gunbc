@@ -16,13 +16,15 @@ import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_boot_under_live_uni
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_param5, mtcollins1_boot_chassis_power }
 import gunbc.managed_host_unit_hold { unit_hold_acquire }
 import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_drive_handoff, mtcollins1_cdrom_selection }
-import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_attach_diskless_image }
+import gunbc.machine_intake_megarac_boot_media_attach { megarac_attach_boot_image, MegaRacIpmiReadBound }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
 import gunbc.runner_browser_toolchain { RunnerBrowserToolchainResolution, BrowserToolchainUnresolved }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { MediaAttachNotAttempted }
 import gunbc.machine_intake_oob_boot_handoff { oob_boot_handoff, oob_power_action_after_confirmed_selection, oob_power_actuate_and_read_back, OobPowerUp }
 import gunbc.machine_intake_megarac_media_attach { MegaRacObserve, megarac_attach_remote_image }
-import gunbc.machine_intake_mtcollins1_media_attach { mtcollins1_media_share, mtcollins1_observe_presentation }
+import gunbc.machine_intake_mtcollins1_boot_run { mtcollins1_media_share }
+import gunbc.machine_intake_megarac_boot_media_attach { megarac_observe_boot_presentation }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_capability_row, mtcollins1_access_observation, mtcollins1_endpoint, mtcollins1_firmware }
 
 // The subject a forged proof names is a parameter: an AdmittedUnitHoldSubject cannot be authored here
@@ -42,7 +44,7 @@ fn power_cycle_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject) -> S
 }
 
 fn attach_through_the_wrapper_from_outside(s: AdmittedUnitHoldSubject) -> String {
-  let _x = mtcollins1_attach_diskless_image(proof: forged_proof(s: s), subject: mtcollins1_boot_subject(execution_revision: "0000000000000000000000000000000000000000"), password_file: "/tmp/pw", attempt: "forged")
+  let _x = megarac_attach_boot_image(proof: forged_proof(s: s), image_name: "x.iso", image_sha256: "00", share: mtcollins1_media_share, replaceable_seeded_stem: "x", bound: MegaRacIpmiReadBound { deadline: mtcollins1_boot_ipmi_read_deadline, kill_after: mtcollins1_boot_ipmi_kill_after }, password_file: "/tmp/pw", attempt: "forged")
   ""
 }
 
@@ -84,7 +86,7 @@ fn bundle_chassis_read_from_outside_the_hold() -> String {
 // THE GATED HANDOFF IS SEALED TO THE ACTUATION: an outside caller cannot reach the boot-device and
 // power handoff even with a media record in hand.
 fn observe_presentation_from_outside(s: AdmittedUnitHoldSubject) -> String {
-  let _x = mtcollins1_observe_presentation(proof: forged_proof(s: s), image_name: "x.iso", password_file: "/tmp/pw", attempt: "forged", look: "outside")
+  let _x = megarac_observe_boot_presentation(proof: forged_proof(s: s), image_name: "x.iso", share: mtcollins1_media_share, password_file: "/tmp/pw", attempt: "forged", look: "outside")
   ""
 }
 

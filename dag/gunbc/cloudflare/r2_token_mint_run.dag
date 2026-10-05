@@ -11,7 +11,8 @@ import std.human_intervention {
 import std.decl_ref { decl_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused,
+  RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
   mutation_status_is_commit_ambiguous,
 }
 import extdeps.cloudflare.account_api_tokens
@@ -122,7 +123,7 @@ import std.algebra { trim }
 // through gunbc.secret_provision, and pinned the origin read credential to the verified version.
 // Nested Create projections use JSON-pointer slashes (result/id), matching AccessVersion's
 // payload/data, because a dotted path is a single JSON-pointer key and was why the first live
-// Create looked like RestOk with a null status.
+// Create looked like an answered success with a null status.
 //
 // THE ATTEMPT GRAIN WAS THE THIRD CREATE. THREE Creates ran. The first two reached
 // Cloudflare under the dotted-path decoder, minted live tokens whose values this process did not
@@ -131,7 +132,7 @@ import std.algebra { trim }
 // mint is 3f43e1c7f8fbcfc97139cb5d9dc4e984. Those identities are named here because the PR body must
 // not be the only record of what the account saw; they are not re-derived by comparing them to
 // themselves in a witness. The instrument is gunbc.cloudflare.r2_token_mint_run run / List /
-// revoke_unheld_object_read_token. Those were not commit-ambiguous HTTP arms; they were RestOk with
+// revoke_unheld_object_read_token. Those were not commit-ambiguous HTTP arms; they were answered successes with
 // unread fields. A retry into a 5xx/timeout was not done. The class is
 // gunbc.recurring_failure_mode.json_pointer_dot_spelling_reads_nested_fields_as_absent.
 //
@@ -302,10 +303,10 @@ fn r2_mint_container_admission(standing: R2MintCustodyContainerStanding) -> R2Mi
 
 // THE CONTAINER IS ENSURED BY THE MINT FLOW: OBSERVED, AND CREATED WHEN ABSENT (operator direction,
 // 2026-09-19). The create runs BEFORE the Cloudflare Create, so a refused or ambiguous create spends
-// nothing at Cloudflare. Whether it succeeds is a fact about the RUNNING identity, not a choice made
-// here: an operator identity holds project-wide secrets.create and converges in one run; the fleet
-// convergence identity holds only per-secret cells and is refused, and the refusal names the
-// project-level permission it lacks rather than widening that identity. An ambiguous create is not
+// nothing at Cloudflare. Every custody container is created bare by the bootstrap
+// (gunbc.auth.gcp_iam_bootstrap, over gunbc.auth.gcp_iam_converge gcp_iam_converge_grant_sets), so a
+// federated run observes it present; the create arm is the refusal for an identity without the
+// project-level permission, which no recurring identity holds (operator decision 2026-10-04, B'). An ambiguous create is not
 // retried (gunbc.secret_provision_actuator SecretCreationOutcome: a later GET cannot establish
 // absence).
 data r2_mint_container_create_permission: NonEmptyStr = "secretmanager.secrets.create"
@@ -364,7 +365,7 @@ fn ensure_r2_mint_custody_container(
                 cause as String,
                 "); creating a secret needs the PROJECT-level permission ",
                 r2_mint_container_create_permission as String,
-                ", which the fleet convergence identity deliberately does not hold -- it carries per-secret cells only",
+                ", which no recurring identity holds; the bootstrap creates custody containers (gunbc.auth.gcp_iam_bootstrap iam_bootstrap_apply), so declare this secret in a gcp_iam_converge grant set and re-run it",
               ], "") as NonEmptyStr,
             ),
           }
@@ -600,18 +601,19 @@ fn list_account_tokens(
   bootstrap: Secret,
   account_id: CloudflareAccountId,
 ) -> R2AccountTokenListing {
-  let listed = cloudflare.AccountTokens.List(
+  match cloudflare.AccountTokens.List(
     auth_token: bootstrap,
     account_id: account_id as String,
-  )
-  match listed.outcome {
-    RestStatusRefused { status: _, body: body } =>
-      R2AccountTokenListRefused { cause: concat("TOKEN LIST REFUSED: ", body) as NonEmptyStr }
-    RestTransportRefused { cause: cause } =>
-      R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
-    RestBodyUndecodable { status: _, cause: cause } =>
-      R2AccountTokenListRefused { cause: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
-    RestOk =>
+  ) {
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: _, body: body } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST REFUSED: ", body) as NonEmptyStr }
+      RestTransportRefused { cause: cause } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST GOT NO RESPONSE: ", cause as String) as NonEmptyStr }
+      RestBodyUndecodable { status: _, cause: cause } =>
+        R2AccountTokenListRefused { cause: concat("TOKEN LIST BODY DID NOT DECODE: ", cause as String) as NonEmptyStr }
+    }
+    RestAnswered { answer: listed } =>
       R2AccountTokensListed { tokens: listed.tokens }
   }
 }
@@ -643,8 +645,8 @@ fn origin_read_pin_is_exact(origin: R2OriginStanding) -> Bool {
 //
 // THE TRANSPORT OUTCOME IS READ RATHER THAN INFERRED. A non-idempotent create whose answer was lost
 // may already have minted a token, so "the service refused" and "the outcome is unknown" have
-// opposite remedies and neither may be reported as the other. That distinction is why this change
-// added outcome: RestOutcome to the operation; without it a 5xx and a refusal were the same silence.
+// opposite remedies and neither may be reported as the other. The operation's RestRefused arm carries
+// that distinction: a refused status, a missing response and an undecodable body are separate refusals.
 //
 // THE 5xx SPLIT IS CONSUMED, NOT RESTATED. gunbc.secret_provision_actuator already owns
 // mutation_status_is_commit_ambiguous and states why the boundary sits at 500: a 4xx is a decision
@@ -670,40 +672,41 @@ fn mint_r2_origin_token(
   request: CreateAccountTokenRequest,
   bootstrap: Secret,
 ) -> R2TokenMintOutcome {
-  let created = cloudflare.AccountTokens.Create(
+  match cloudflare.AccountTokens.Create(
     auth_token: bootstrap,
     account_id: account_id as String,
     name: request.name,
     policies: request.policies,
     not_before: request.not_before,
     expires_on: request.expires_on,
-  )
-  match created.outcome {
-    RestStatusRefused { status: status, body: body } =>
-      if mutation_status_is_commit_ambiguous(status: status) {
+  ) {
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: status, body: body } =>
+        if mutation_status_is_commit_ambiguous(status: status) {
+          R2TokenMintOutcomeUnknown {
+            cause: concat(
+              "AccountTokens.Create answered with a server-error status, which does not establish that the mutation did not commit; a token may exist on the account whose value -- returned once -- was never read: ",
+              body) as NonEmptyStr,
+          }
+        } else {
+          R2TokenMintRefused {
+            cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
+          }
+        }
+      RestTransportRefused { cause: cause } =>
         R2TokenMintOutcomeUnknown {
           cause: concat(
-            "AccountTokens.Create answered with a server-error status, which does not establish that the mutation did not commit; a token may exist on the account whose value -- returned once -- was never read: ",
-            body) as NonEmptyStr,
+            "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
+            cause as String) as NonEmptyStr,
         }
-      } else {
-        R2TokenMintRefused {
-          cause: concat("Cloudflare refused the token create: ", body) as NonEmptyStr,
+      RestBodyUndecodable { status: _, cause: cause } =>
+        R2TokenMintOutcomeUnknown {
+          cause: concat(
+            "AccountTokens.Create answered with a body this client could not decode, so the outcome is unread rather than known and the value -- returned once -- may be lost: ",
+            cause as String) as NonEmptyStr,
         }
-      }
-    RestTransportRefused { cause: cause } =>
-      R2TokenMintOutcomeUnknown {
-        cause: concat(
-          "no response arrived for AccountTokens.Create, so a token may exist on the account with nobody holding its value; reconcile by listing the account's tokens rather than creating again: ",
-          cause as String) as NonEmptyStr,
-      }
-    RestBodyUndecodable { status: _, cause: cause } =>
-      R2TokenMintOutcomeUnknown {
-        cause: concat(
-          "AccountTokens.Create answered with a body this client could not decode, so the outcome is unread rather than known and the value -- returned once -- may be lost: ",
-          cause as String) as NonEmptyStr,
-      }
-    RestOk =>
+    }
+    RestAnswered { answer: created } =>
       match created_account_token_from_create_response(
         response: CreatedAccountTokenCreateResponse {
           id: created.id,
@@ -925,13 +928,12 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
                   "ORIGIN READ CREDENTIAL IS PINNED TO AN EXACT VERSION, NOTHING REVOKED: the named object-read token is the held mint ",
                   token_id))
               } else {
-                let deleted = cloudflare.AccountTokens.Delete(
+                match cloudflare.AccountTokens.Delete(
                   auth_token: bootstrap,
                   account_id: account_id as String,
                   token_id: token_id,
-                )
-                match deleted.outcome {
-                  RestStatusRefused { status: status, body: body } =>
+                ) {
+                  RestRefused { refusal: RestStatusRefused { status: status, body: body } } =>
                     if mutation_status_is_commit_ambiguous(status: status) {
                       exit_failure(reason: concat(
                         "REVOKE OUTCOME UNKNOWN, AND THIS RUN WILL NOT DELETE AGAIN: ",
@@ -939,15 +941,15 @@ fn revoke_unheld_object_read_token() -> ProcessExit {
                     } else {
                       exit_failure(reason: concat("REVOKE REFUSED: ", body))
                     }
-                  RestTransportRefused { cause: cause } =>
+                  RestRefused { refusal: RestTransportRefused { cause: cause } } =>
                     exit_failure(reason: concat(
                       "REVOKE GOT NO RESPONSE, AND THIS RUN WILL NOT DELETE AGAIN: ",
                       cause as String))
-                  RestBodyUndecodable { status: _, cause: cause } =>
+                  RestRefused { refusal: RestBodyUndecodable { status: _, cause: cause } } =>
                     exit_failure(reason: concat(
                       "REVOKE BODY DID NOT DECODE, AND THIS RUN WILL NOT DELETE AGAIN: ",
                       cause as String))
-                  RestOk =>
+                  RestAnswered { answer: deleted } =>
                     if deleted.success == false {
                       exit_failure(reason: concat(
                         "REVOKE REPORTED HTTP SUCCESS WITH success=false, SO THE TOKEN MAY STILL EXIST: ",

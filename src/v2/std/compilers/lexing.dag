@@ -425,6 +425,14 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
 // classes it lexes by character classes or literals (an identifier, an int literal), which are also
 // token classes (lex_rule_set_token_class_member) and name operands. Whether a pattern IS a keyword
 // is asked through the pattern's one fold, fold_lex_pattern, not a second matcher over LexPattern.
+// Every STRUCTURAL question about a pattern goes through that fold. The one sanctioned direct walk
+// is v2.compiler.tokenize lex_match_pattern, which runs a pattern against input. Matching threads a
+// cursor through the children (a sequence's right part starts where its left part stopped, a choice
+// tries its right part only when the left refuses, a repeat re-runs its element at each new cursor),
+// and a catamorphism can produce such an input-dependent answer only as a closure per sub-pattern.
+// Matchers must stay data so a compiled rule set is portable and can be served across claims
+// (dag_prepared_lex). A new LexPattern variant cannot be missed by that walk: its match over the
+// closed coproduct refuses at compile time as non-exhaustive.
 fn lex_pattern_is_keyword(pattern: LexPattern) -> Bool {
   fold_lex_pattern(
     pattern: pattern,

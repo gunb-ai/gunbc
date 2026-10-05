@@ -20,14 +20,15 @@ import extdeps.github.actions_jit_runner {
   JitConfigCreatedBody, jit_config_mint_outcome, jit_config_created_status, jit_runner_label_wire,
 }
 import extdeps.transports.rest {
-  RestOutcome, RestMutationExchange, RestReadExchange, classify_rest_outcome, RestExchangePerformance,
-  RestExchangeSucceeded, RestExchangeStatusRefused,
+  RestResult, RestAnswered, RestRefused,
+  RestMutationExchange, classify_rest_refusal, RestExchangeRefusal,
+  RestExchangeStatusRefused,
 }
 import gunbc.fleet.org_actions_inspection { RunnerGroupListDecode, read_runner_groups }
 import extdeps.github.app
 import extdeps.github.actions_jit_runner
 import extdeps.github.actions_self_hosted_runners
-import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire }
+import extdeps.github.actions_self_hosted_runners { OrganizationRunnerListWire, OrganizationRunnerDeletedBody }
 import gunbc.auth.github_apps { DeclaredGitHubApp, gunbai_ci_declared }
 import extdeps.github.app { GitHubAppInstallationId }
 import gunbc.runner.runner_jit_perform {
@@ -57,10 +58,10 @@ import std.optional { Absent, Present }
 // the realization gunbc.runner.runner_jit_perform's old transport frontier asked for, and it is
 // consumed by NO production route in this change: the caller is the per-attempt lifecycle controller
 // (gunbc.runner_microvm VmmUnderLifecycleController), which is another lane's to land, and the floor
-// job does not select the microVM path. Its witnesses supply RestOutcomes and establish the
+// job does not select the microVM path. Its witnesses supply RestResults and establish the
 // decision, never that GitHub has minted through it. The same holds for
 // gunbc.runner_attempt_launch stage_bootstrap_device. The trigger is the CAPABILITY, not an import.
-data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestOutcomes, nor by an import of these functions." as NonEmptyStr)
+data jit_mint_lifecycle_controller_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "NAMED CONSUMER: the per-attempt lifecycle controller (gunbc.runner_microvm VmmUnderLifecycleController) calling gunbc.github_effect_perform perform_organization_jit_mint and gunbc.runner_attempt_launch stage_bootstrap_device on a host. TRIGGER: one attempt on srv1 mints through it with the controller-custodied App key, stages exactly one device, and a runner registers under the attempt's unit name, with a receipt. SUFFICIENT FOR deleting this row. NOT satisfied by a witness over supplied RestResults, nor by an import of these functions." as NonEmptyStr)
 
 // THE KEY THE MINT SIGNS WITH IS ONE MODELED PATH, NOT A CALLER PARAMETER. It is deliberately NOT
 // gunbc.runner_unit_file runner_host_app_pem_path: that file is owned by the runner user, which is
@@ -104,7 +105,7 @@ type JitMintPerformance
   | JitMintAppKeyNotCustodied { app: DeclaredGitHubApp }
   | JitMintClockUnread { detail: String }
   | JitMintAppJwtUnsigned { detail: String }
-  | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangePerformance }
+  | JitMintStepNotSucceeded { step: JitMintStep, performance: RestExchangeRefusal }
   | JitMintTokenForAnotherInstallation { app: DeclaredGitHubApp, installation: GitHubAppInstallationId }
 
 fn app_jwt_for(dispatch_app_id: Int, key: JwsSigningKeyRef, now_epoch_secs: EpochSecs) -> JitMintAppJwt {
@@ -133,17 +134,16 @@ type JitMintAppJwt
   | AppJwtUnsigned { detail: String }
 
 // THE GENERATE STEP'S ANSWER, DECIDED WITHOUT I/O so the decision is witnessable on supplied
-// RestOutcomes (DESIGN §3: a witness discriminates at one interface). A 2xx decodes through the
+// RestResults (DESIGN §3: a witness discriminates at one interface). A 2xx decodes through the
 // same jit_config_mint_outcome every status goes through, so an empty blob under 201 is still
 // refused there; a non-2xx the remote DECIDED is a JitConfigMintOutcome refusal; an answer that
 // never arrived is commit-ambiguous and is NOT reported as a refusal.
 fn jit_mint_performance_of_generate(
   dispatch: JitMintDispatch,
-  outcome: RestOutcome,
-  created: JitConfigCreatedBody,
+  outcome: RestResult<JitConfigCreatedBody>,
 ) -> JitMintPerformance {
-  match classify_rest_outcome(standing: RestMutationExchange { rest: outcome }) {
-    RestExchangeSucceeded =>
+  match outcome {
+    RestAnswered { answer: created } =>
       JitMintReceived {
         delivery: receive_jit_mint(
           dispatch: dispatch,
@@ -155,14 +155,17 @@ fn jit_mint_performance_of_generate(
           ),
         ),
       }
-    RestExchangeStatusRefused { status: s, body: b } =>
-      JitMintReceived {
-        delivery: receive_jit_mint(
-          dispatch: dispatch,
-          outcome: jit_config_mint_outcome(status: s, encoded: "", runner_id: 0, error_body: b),
-        ),
+    RestRefused { refusal } =>
+      match classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }) {
+        RestExchangeStatusRefused { status: s, body: b } =>
+          JitMintReceived {
+            delivery: receive_jit_mint(
+              dispatch: dispatch,
+              outcome: jit_config_mint_outcome(status: s, encoded: "", runner_id: 0, error_body: b),
+            ),
+          }
+        other => JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: other }
       }
-    other => JitMintStepNotSucceeded { step: GenerateJitConfigStep, performance: other }
   }
 }
 
@@ -193,20 +196,21 @@ fn mint_controller_installation_token(installation: GitHubAppInstallationId) -> 
     ClockUnixMillisObserved { millis: ms } =>
       match app_jwt_for(dispatch_app_id: lifecycle_controller_app.app_id.value, key: lifecycle_controller_app_key, now_epoch_secs: epoch_secs_of_millis(millis: ms)) {
         AppJwtUnsigned { detail: d } => ControllerTokenNotMinted { performance: JitMintAppJwtUnsigned { detail: d } }
-        AppJwtSigned { jwt: jwt } => {
-          let token = github.AppInstallationAccessTokens.Create(
+        AppJwtSigned { jwt: jwt } =>
+          match github.AppInstallationAccessTokens.Create(
             app_jwt: jwt as Secret,
             installation_id: installation.value,
-          )
-          match classify_rest_outcome(standing: RestMutationExchange { rest: token.outcome }) {
-            RestExchangeSucceeded => ControllerTokenMinted { token: ControllerInstallationToken {
+          ) {
+            RestAnswered { answer } => ControllerTokenMinted { token: ControllerInstallationToken {
               app: lifecycle_controller_app,
               installation: installation,
-              token: token.token,
+              token: answer.token,
             } }
-            other => ControllerTokenNotMinted { performance: JitMintStepNotSucceeded { step: InstallationAccessTokenStep, performance: other } }
+            RestRefused { refusal } => ControllerTokenNotMinted { performance: JitMintStepNotSucceeded {
+              step: InstallationAccessTokenStep,
+              performance: classify_rest_refusal(standing: RestMutationExchange { refusal: refusal }),
+            } }
           }
-        }
       }
   }
 }
@@ -245,18 +249,19 @@ fn perform_organization_jit_mint(dispatch: JitMintDispatch, token: ControllerIns
       if app != token.app || installation != token.installation {
         JitMintTokenForAnotherInstallation { app: token.app, installation: token.installation }
       } else {
-        let minted = github.ActionsJitRunners.GenerateOrganizationJitConfig(
-          installation_token: token.token,
-          org: organization.login,
-          name: request.name.value,
-          runner_group_id: request.runner_group_id.value,
-          labels: map(request.labels, l => jit_runner_label_wire(l: l)),
-          work_folder: request.work_folder.value,
-        )
         jit_mint_performance_of_generate(
           dispatch: dispatch,
-          outcome: minted.outcome,
-          created: minted.result,
+          outcome: match github.ActionsJitRunners.GenerateOrganizationJitConfig(
+            installation_token: token.token,
+            org: organization.login,
+            name: request.name.value,
+            runner_group_id: request.runner_group_id.value,
+            labels: map(request.labels, l => jit_runner_label_wire(l: l)),
+            work_folder: request.work_folder.value,
+          ) {
+            RestAnswered { answer } => RestAnswered { answer: answer.result }
+            RestRefused { refusal } => RestRefused { refusal: refusal }
+          },
         )
       }
   }
@@ -284,8 +289,7 @@ type OrganizationRunnerListRead sole_constructor {
   name: NonEmptyStr
   app: DeclaredGitHubApp
   installation: GitHubAppInstallationId
-  performance: RestExchangePerformance
-  body: OrganizationRunnerListWire
+  listing: RestResult<OrganizationRunnerListWire>
 }
 
 fn list_runners_by_name_with(token: ControllerInstallationToken, organization: NonEmptyStr, name: NonEmptyStr) -> OrganizationRunnerListRead
@@ -297,12 +301,19 @@ fn list_runners_by_name_with(token: ControllerInstallationToken, organization: N
     name: name,
     app: token.app,
     installation: token.installation,
-    performance: classify_rest_outcome(standing: RestReadExchange { rest: listed.outcome }), body: listed.result }
+    listing: match listed {
+      RestAnswered { answer } => RestAnswered { answer: answer.result }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
+  }
 }
 
-fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_id: Int) -> RestExchangePerformance
+fn delete_runner_with(token: ControllerInstallationToken, organization: NonEmptyStr, runner_id: Int) -> RestResult<OrganizationRunnerDeletedBody>
   uses net: Network
 {
   let deleted = github.ActionsSelfHostedRunners.DeleteOrganizationRunner(installation_token: token.token, org: organization, runner_id: runner_id)
-  classify_rest_outcome(standing: RestMutationExchange { rest: deleted.outcome })
+  match deleted {
+    RestAnswered { answer } => RestAnswered { answer: answer.result }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  }
 }

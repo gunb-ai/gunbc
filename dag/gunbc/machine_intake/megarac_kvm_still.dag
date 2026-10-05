@@ -1,10 +1,10 @@
-module gunbc.machine_intake_mtcollins1_kvm_still
+module gunbc.machine_intake_megarac_kvm_still
 
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
 import std.checked_arithmetic { checked_int_to_nat }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
@@ -18,9 +18,10 @@ import gunbc.machine_intake_megarac_ui_features { megarac_ui_features }
 import extdeps.bmc.megarac {
   megarac_ui_features_json,
   ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
-  ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing, megarac_firmware_0_32,
+  ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing,
 }
-import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
 import gunbc.clock_read { clock_now_probed_at_or_unknown }
 import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
 import std.optional { Present, Absent }
@@ -47,10 +48,11 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 // boot records beside its own verdict; nothing here can change an attempt's outcome, and the boot
 // run binds no decision to a still.
 
-// THE FIRMWARE THE CAPTURE IS KEYED TO. mtcollins1's controller served the 0.32 UI whose bundles
-// the route is recovered from (gunbc.machine_intake_megarac_served_ui_catalog_observation, and the
-// 2026-09-27 probe cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute).
-data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
+// THE CONTROLLER IS AN ADMITTED MEGARAC HOST (gunbc.megarac_managed_host AdmittedMegaRacHost, operation
+// MegaRacKvmCanvasStill): its endpoint, account and firmware come off one managed host's binding, and
+// the admission refuses a controller that is not MegaRAC, is unobserved, or reports a build the
+// screen-capture route and the viewer feature list were never read on. The firmware the capture is
+// keyed to is that observed firmware, never a unit constant.
 
 // THE TOOLCHAIN IS RESOLVED, NEVER ASSUMED. gunbc.runner_browser_toolchain places the pinned node,
 // Playwright and Chromium on the fleet runners through its own converge, and hands a consumer a
@@ -120,19 +122,19 @@ data mtcollins1_bmc_firmware: BmcFirmwareReleaseIdentity = megarac_firmware_0_32
 // grammar -- the same standing as gunbc.machine_intake_sol_hold's bash hold, marked the same way.
 // ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_d5eebfff,
 // default-approved on recommendation A, 2026-09-28 -- not an explicit operator ruling.
-data mtcollins1_kvm_observer_script_scaffold: Disposition = Scaffold {
+data megarac_kvm_observer_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.machine_intake_mtcollins1_kvm_still",
-    decl_name: "mtcollins1_kvm_observer_script_dissolution_trigger",
+    module_path: "gunbc.machine_intake_megarac_kvm_still",
+    decl_name: "megarac_kvm_observer_script_dissolution_trigger",
     field: WholeDeclaration
   }
 }
 
-data mtcollins1_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer LaunchObserver -- the held MegaRAC H5 viewer is a node -e script string launched as a bash background hold. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO DRIVE THE MegaRAC H5 VIEWER AND READ ITS CANVAS -- navigate and evaluate in page, observe the /kvm WebSocket open and close, read canvas#kvm as image/jpeg on cadence and on trigger, and release the web session on every reachable exit -- held by a typed process-hold realization. An artifact that covers only part of that (navigation without WebSocket lifecycle, or a canvas read without the guaranteed release) does not retire it. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
+data megarac_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer LaunchObserver -- the held MegaRAC H5 viewer is a node -e script string launched as a bash background hold. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO DRIVE THE MegaRAC H5 VIEWER AND READ ITS CANVAS -- navigate and evaluate in page, observe the /kvm WebSocket open and close, read canvas#kvm as image/jpeg on cadence and on trigger, and release the web session on every reachable exit -- held by a typed process-hold realization. An artifact that covers only part of that (navigation without WebSocket lifecycle, or a canvas read without the guaranteed release) does not retire it. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
 
 // THE OBSERVER'S JOURNAL VOCABULARY IS DECLARED HERE ONCE. The observer script receives it as the
-// EV (event) and CA (cause) constants mtcollins1_kvm_observer_vocabulary_js renders from these rows,
+// EV (event) and CA (cause) constants megarac_kvm_observer_vocabulary_js renders from these rows,
 // and kvm_journal_event / kvm_refusal_of / kvm_acquisition_cause_of read the journal against the same
 // rows -- so the words the observer writes and the words the boot parses cannot drift apart.
 type KvmJournalWord {
@@ -239,13 +241,13 @@ fn kvm_journal_words_js(name: String, words: List<KvmJournalWord>) -> String {
   concat(concat(concat("const ", name), "=\{"), concat(join(map(words, w => concat(concat(w.id, ":'"), concat(w.word, "'"))), ","), "};"))
 }
 
-fn mtcollins1_kvm_observer_vocabulary_js() -> String {
+fn megarac_kvm_observer_vocabulary_js() -> String {
   concat(concat(kvm_journal_words_js(name: "EV", words: kvm_journal_event_words), kvm_journal_words_js(name: "CA", words: kvm_journal_cause_words)), kvm_journal_words_js(name: "RS", words: kvm_journal_result_words))
 }
 
-data mtcollins1_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule,featuresFile]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,api=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;let nav=0,phase='launch';async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&api&&token)\{try\{const r=await api.delete(base+'/api/session',\{headers:\{'X-CSRFTOKEN':token}});rel=r.ok()?RS.released:RS.httpPrefix+r.status()}catch(e)\{rel=RS.releaseFailed+' detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel=RS.loginUnobserved} else\{rel=RS.noSession} j(EV.sessionRelease,'result='+rel); let closed=RS.closed;try\{if(browser)await browser.close();else closed=RS.noBrowser}catch(e)\{closed=RS.closeFailed+' detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});api=ctx.request;page=await ctx.newPage();  page.on('framenavigated',f=>\{if(f===page.mainFrame())\{nav+=1;j(EV.navigated,'seq='+nav+' phase='+phase+' url='+JSON.stringify(f.url()))}});  page.on('console',m=>\{const l=m.type();if(l==='error'||l==='warning')j(EV.pageConsole,'phase='+phase+' level='+l+' detail='+JSON.stringify(one(m.text())))});  page.on('pageerror',e=>\{j(EV.pageError,'phase='+phase+' detail='+JSON.stringify(one(e)))});  const expectedHost=new URL(base).host;  login='unobserved';  const lr=await api.post(base+'/api/session',\{form:\{username:user,password:pw}});let lb=null;try\{lb=await lr.json()}catch(e)\{}const reply=\{status:lr.status(),b:lb};  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  let feats='';if(featuresFile)\{try\{feats=fs.readFileSync(featuresFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.featuresUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)}} await ctx.addInitScript(([h,b,u,f])=>\{if(location.host!==h)return;if(f)sessionStorage.setItem('features',f);sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[expectedHost,reply.b,user,feats]);  const sa=await(await api.get(base+'/api/settings/services',\{headers:\{'X-CSRFTOKEN':token}})).json();const kr=Array.isArray(sa)?sa.find(s=>s.service_name==='kvm'):null;const seat=kr?kr.viewer_count:null;  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  phase='viewer';await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  phase='held';let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
+data megarac_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule,featuresFile]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,api=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;let nav=0,phase='launch';async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&api&&token)\{try\{const r=await api.delete(base+'/api/session',\{headers:\{'X-CSRFTOKEN':token}});rel=r.ok()?RS.released:RS.httpPrefix+r.status()}catch(e)\{rel=RS.releaseFailed+' detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel=RS.loginUnobserved} else\{rel=RS.noSession} j(EV.sessionRelease,'result='+rel); let closed=RS.closed;try\{if(browser)await browser.close();else closed=RS.noBrowser}catch(e)\{closed=RS.closeFailed+' detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});api=ctx.request;page=await ctx.newPage();  page.on('framenavigated',f=>\{if(f===page.mainFrame())\{nav+=1;j(EV.navigated,'seq='+nav+' phase='+phase+' url='+JSON.stringify(f.url()))}});  page.on('console',m=>\{const l=m.type();if(l==='error'||l==='warning')j(EV.pageConsole,'phase='+phase+' level='+l+' detail='+JSON.stringify(one(m.text())))});  page.on('pageerror',e=>\{j(EV.pageError,'phase='+phase+' detail='+JSON.stringify(one(e)))});  const expectedHost=new URL(base).host;  login='unobserved';  const lr=await api.post(base+'/api/session',\{form:\{username:user,password:pw}});let lb=null;try\{lb=await lr.json()}catch(e)\{}const reply=\{status:lr.status(),b:lb};  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  let feats='';if(featuresFile)\{try\{feats=fs.readFileSync(featuresFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.featuresUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)}} await ctx.addInitScript(([h,b,u,f])=>\{if(location.host!==h)return;if(f)sessionStorage.setItem('features',f);sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[expectedHost,reply.b,user,feats]);  const sa=await(await api.get(base+'/api/settings/services',\{headers:\{'X-CSRFTOKEN':token}})).json();const kr=Array.isArray(sa)?sa.find(s=>s.service_name==='kvm'):null;const seat=kr?kr.viewer_count:null;  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  phase='viewer';await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  phase='held';let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
 
-data mtcollins1_kvm_observer_script: String = concat(mtcollins1_kvm_observer_vocabulary_js(), mtcollins1_kvm_observer_script_body)
+data megarac_kvm_observer_script: String = concat(megarac_kvm_observer_vocabulary_js(), megarac_kvm_observer_script_body)
 
 // THE LAUNCH is gunbc.owned_process's: the toolchain's node command in the background, its output in
 // observer.log beside the journal, its holder recorded as "<pid> <starttime>" in observer.pid, and its
@@ -254,12 +256,12 @@ data mtcollins1_kvm_observer_script: String = concat(mtcollins1_kvm_observer_voc
 // THE BOUNDS. A periodic still every cadence, at most periodic_limit of them; the boot waits at most
 // establish_wait for the observer to say established or refused, at most trigger_wait for a
 // triggered still to be journalled, and at most stop_wait for the stopped line before the release.
-data mtcollins1_kvm_observer_cadence: Second = second(count: 60)
-data mtcollins1_kvm_observer_periodic_limit: Int = 30
-data mtcollins1_kvm_observer_frame_wait: Second = second(count: 30)
-data mtcollins1_kvm_observer_establish_wait: Second = second(count: 45)
-data mtcollins1_kvm_observer_trigger_wait: Second = second(count: 15)
-data mtcollins1_kvm_observer_stop_wait: Second = second(count: 10)
+data megarac_kvm_observer_cadence: Second = second(count: 60)
+data megarac_kvm_observer_periodic_limit: Int = 30
+data megarac_kvm_observer_frame_wait: Second = second(count: 30)
+data megarac_kvm_observer_establish_wait: Second = second(count: 45)
+data megarac_kvm_observer_trigger_wait: Second = second(count: 15)
+data megarac_kvm_observer_stop_wait: Second = second(count: 10)
 
 // The journal is polled once a second, so a wait is spent as that many polls.
 fn kvm_polls_within(wait: Second) -> Int {
@@ -268,19 +270,12 @@ fn kvm_polls_within(wait: Second) -> Int {
 
 // The owned release that follows a stop wait with no stopped line: TERM, a two-second grace, KILL and
 // the confirming reads (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script), rounded up.
-data mtcollins1_kvm_observer_release_allowance: Second = second(count: 5)
+data megarac_kvm_observer_release_allowance: Second = second(count: 5)
 
 // What the boot step's timeout must carry for the observer: the establishment wait, the terminal
 // trigger wait, the stop wait and the owned release, all paid in the actuation.
-fn mtcollins1_kvm_still_allowance() -> Second {
-  second(count: second_count(s: mtcollins1_kvm_observer_establish_wait) + second_count(s: mtcollins1_kvm_observer_trigger_wait) + second_count(s: mtcollins1_kvm_observer_stop_wait) + second_count(s: mtcollins1_kvm_observer_release_allowance))
-}
-
-// THE OBSERVER'S DIRECTORY, one per attempt, under the boot's retained prefix so the upload that
-// carries the diagnostics carries the journal and every still
-// (gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle mtcollins1_boot_retained_artifact_prefix).
-fn mtcollins1_kvm_observer_dir(attempt: String) -> String {
-  concat("artifacts/mtcollins1-boot-kvm-", attempt)
+fn megarac_kvm_still_allowance() -> Second {
+  second(count: second_count(s: megarac_kvm_observer_establish_wait) + second_count(s: megarac_kvm_observer_trigger_wait) + second_count(s: megarac_kvm_observer_stop_wait) + second_count(s: megarac_kvm_observer_release_allowance))
 }
 
 // ── THE JOURNAL, READ ────────────────────────────────────────────────────────────────────────────
@@ -856,15 +851,23 @@ fn kvm_await_standing(dir: String, subject: KvmObserverSubject, remaining: Int) 
   }
 }
 
-// START, BEFORE THE HANDOFF. Firmware standing first: an uncatalogued firmware is not driven.
-fn mtcollins1_kvm_observer_start(
-  firmware: BmcFirmwareReleaseIdentity,
-  bmc_host: NonEmptyStr,
-  username: NonEmptyStr,
+// START, BEFORE THE HANDOFF. The carrier must have been admitted for this operation: a MegaRAC host
+// admitted for virtual media is not thereby admitted for the viewer. The observer's directory is the
+// caller's -- it is where the caller retains the journal and stills -- and is passed in.
+fn megarac_kvm_observer_start(
+  host: AdmittedMegaRacHost,
+  dir: String,
   password_file: String,
   toolchain: RunnerBrowserToolchainResolution,
   attempt: String,
 ) -> KvmObserverStart {
+  match host.operation {
+    MegaRacKvmCanvasStill => {}
+    MegaRacVirtualMediaAttach => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+    MegaRacSdrSocketNaming => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+  }
+  let firmware = host.firmware
+  let bmc_host = host.binding.observation.endpoint.host
   match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
     ScreenCaptureFirmwareUncatalogued { firmware: _ } => KvmObserverNotStarted { reason: "the BMC firmware is not catalogued for screen capture; no viewer was driven" }
     ScreenCaptureFactKnown { firmware: _, standing: s } =>
@@ -872,12 +875,13 @@ fn mtcollins1_kvm_observer_start(
         ScreenCaptureClientSideOnly =>
           if password_file == "" { KvmObserverNotStarted { reason: "no BMC credential path is bound, so no viewer login was attempted" } }
           else if attempt == "" { KvmObserverNotStarted { reason: "no attempt identity is bound, so the observer could not be named for it" } }
+          else if dir == "" { KvmObserverNotStarted { reason: "no observer directory is bound, so the journal would have nowhere to be retained" } }
           else {
             match toolchain {
               BrowserToolchainReady { location: loc, standing: _ } =>
                 match megarac_ui_features(firmware: firmware) {
                   Absent => KvmObserverNotStarted { reason: "no viewer feature list is observed for this firmware (gunbc.machine_intake_megarac_ui_features megarac_ui_features), and the viewer's KVM view reads it unguarded; no viewer was driven" }
-                  Present { value: names } => kvm_observer_launch(base_url: concat("https://", bmc_host as String), host: bmc_host as String, username: username, password_file: password_file, toolchain: loc, attempt: attempt, features_json: megarac_ui_features_json(names: names))
+                  Present { value: names } => kvm_observer_launch(dir: dir, base_url: concat("https://", bmc_host as String), host: bmc_host as String, username: host.binding.account, password_file: password_file, toolchain: loc, attempt: attempt, features_json: megarac_ui_features_json(names: names))
                 }
               BrowserToolchainNotReady { standing: st } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is not ready: ", runner_browser_toolchain_standing_text(s: st)) as NonEmptyStr }
               BrowserToolchainUnresolved { cause: c } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is unresolved: ", c) as NonEmptyStr }
@@ -890,8 +894,11 @@ fn mtcollins1_kvm_observer_start(
 
 // THE LAUNCH OVER A BASE URL. The boot passes https://<bmc>; the protocol controls pass a local
 // transport. `host` is the host:port the established line must name.
-fn kvm_observer_launch(base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart {
-  let dir = mtcollins1_kvm_observer_dir(attempt: attempt)
+fn kvm_observer_launch(dir: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "megarac_kvm_observer_start"),
+  ]
+{
   let made = shell.Mkdir.Parents(path: dir as FilePath)
   if !made.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
@@ -904,7 +911,12 @@ fn kvm_observer_launch(base_url: String, host: String, username: NonEmptyStr, pa
 // reads the journal, stills and triggers from and writes the stop request to. A relative directory
 // passed as both working directory and operand would be resolved twice -- <dir>/<dir>/journal -- and the
 // boot and the observer would address different files.
-fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart {
+fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_launch"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_protocol_launch"),
+  ]
+{
   let resolved = shell.Path.Canonical(path: dir_given as FilePath)
   if !resolved.success {
     return KvmObserverNotStarted { reason: concat("the observer directory could not be resolved: ", concat(dir_given, concat(": ", trim(s: resolved.stderr)))) as NonEmptyStr }
@@ -917,12 +929,12 @@ fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, use
   let node = runner_browser_toolchain_node_command(
     location: toolchain,
     directory: dir,
-    script: mtcollins1_kvm_observer_script,
+    script: megarac_kvm_observer_script,
     operands: [
       base_url, username as String, password_file, dir, attempt,
-      to_string(millisecond_count(m: second_to_millisecond(s: mtcollins1_kvm_observer_cadence)) as Int),
-      to_string(millisecond_count(m: second_to_millisecond(s: mtcollins1_kvm_observer_frame_wait)) as Int),
-      to_string(mtcollins1_kvm_observer_periodic_limit),
+      to_string(millisecond_count(m: second_to_millisecond(s: megarac_kvm_observer_cadence)) as Int),
+      to_string(millisecond_count(m: second_to_millisecond(s: megarac_kvm_observer_frame_wait)) as Int),
+      to_string(megarac_kvm_observer_periodic_limit),
       toolchain.playwright_module as String,
       if features_json == "" { "" } else { features_path },
     ],
@@ -932,8 +944,22 @@ fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, use
     return KvmObserverNotStarted { reason: concat("the observer launch failed: ", trim(s: launched.transport_stderr)) as NonEmptyStr }
   }
   let subject = KvmObserverSubject { host: host, attempt: attempt }
-  let standing = kvm_await_standing(dir: dir, subject: subject, remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_establish_wait))
+  let standing = kvm_await_standing(dir: dir, subject: subject, remaining: kvm_polls_within(wait: megarac_kvm_observer_establish_wait))
   KvmObserverStarted { dir: dir as NonEmptyStr, subject: subject, standing: standing, checked_at: clock_now_probed_at_or_unknown() }
+}
+
+// THE PROTOCOL TESTS' LAUNCH, AND ONLY THEIRS. The production launch takes its endpoint and account
+// from an admitted MegaRAC carrier (megarac_kvm_observer_start) and is sealed to it; the protocol
+// witnesses drive the same observer against a local transport they stand up themselves, which has no
+// managed host behind it. This facade is the one door for that, admitted to those witness functions by
+// name, so no production caller reaches the launcher with a raw host and account.
+fn kvm_observer_protocol_launch(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "rig_with"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "a_relative_observer_directory_is_resolved_once"),
+  ]
+{
+  kvm_observer_launch_in(dir_given: dir_given, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt, features_json: features_json)
 }
 
 // A TRIGGER: one file the observer consumes and answers with one still or one acquisition failure,
@@ -1047,16 +1073,16 @@ fn kvm_browser_close_of(result: String) -> KvmBrowserClose {
 // timestamped stop request, the bounded wait for the observer's stopped line, then the owned-process
 // release -- always attempted and observed, so an observer that journalled "stopped" but is still
 // running is still released -- and the final reading.
-fn mtcollins1_kvm_observer_finish(start: KvmObserverStart, attempt: String, terminal_order: Int) -> KvmObserverRecord {
+fn megarac_kvm_observer_finish(start: KvmObserverStart, attempt: String, terminal_order: Int) -> KvmObserverRecord {
   match start {
     KvmObserverNotStarted { reason: r } => kvm_observer_record_not_started(attempt: attempt, reason: r)
     KvmObserverStarted { dir: d_, subject: _, standing: _, checked_at: _ } => {
       let d = d_ as String
       let asked = kvm_observer_trigger(start: start, order: terminal_order, reason: "terminal-verdict")
       let terminal = if asked {
-        match kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_trigger_wait)) {
+        match kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: kvm_polls_within(wait: megarac_kvm_observer_trigger_wait)) {
           Present { value: l } => KvmTerminalStillAnswered { line: l }
-          Absent => KvmTerminalStillUnanswered { waited: mtcollins1_kvm_observer_trigger_wait }
+          Absent => KvmTerminalStillUnanswered { waited: megarac_kvm_observer_trigger_wait }
         }
       } else {
         KvmTerminalStillNotAsked { reason: kvm_standing_text(s: kvm_observer_standing_now(start: start)) }
@@ -1070,7 +1096,7 @@ fn mtcollins1_kvm_observer_finish(start: KvmObserverStart, attempt: String, term
       let requested_at = clock_now_probed_at_or_unknown()
       let _teardown_event = Filesystem.Write(path: concat(d, "/workflow"), content: concat("gunbc-workflow: observer stop requested at=", concat(requested_at as String, "\n")))
       let _stop = Filesystem.Write(path: concat(d, "/stop"), content: "")
-      let stopped = kvm_await_stopped(dir: d, remaining: kvm_polls_within(wait: mtcollins1_kvm_observer_stop_wait))
+      let stopped = kvm_await_stopped(dir: d, remaining: kvm_polls_within(wait: megarac_kvm_observer_stop_wait))
       let process = owned_process_release(pid_path: concat(d, "/observer.pid"))
       let journal = kvm_journal_read_at(dir: d)
       let events = kvm_journal_events_of(read: journal)
@@ -1080,7 +1106,7 @@ fn mtcollins1_kvm_observer_finish(start: KvmObserverStart, attempt: String, term
         journal: journal,
         events: events,
         stills: kvm_hash_stills(dir: d, events: events),
-        gaps: kvm_still_gaps(events: events, cadence: mtcollins1_kvm_observer_cadence, observed_until: clock_now_probed_at_or_unknown() as String),
+        gaps: kvm_still_gaps(events: events, cadence: megarac_kvm_observer_cadence, observed_until: clock_now_probed_at_or_unknown() as String),
         teardown: KvmTeardownRecorded {
           terminal: terminal,
           snapshot: snapshot,

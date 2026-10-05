@@ -147,24 +147,18 @@ data xl2_native_requalification_walls: List<Xl2NativeRequalificationWall> = [
 // references, none at a header segment. Counted where the census has the atoms:
 // v2.compiler.reference_conservation header_channel.
 //
-// NESTING-SCOPED REFERENCES SURVIVE THE STRIP, UNCOUNTED. Measured on the same composition: a
-// module declared as v2.xl2_control_provider.shadow resolves the provider's function with its
-// import stripped, because nesting under a namespace grants that namespace's scope. Such a
-// reference is invisible to this census exactly as a kernel canonical one is -- no residual row
-// is not evidence the cut covers it. It is carried UNCOUNTED for the same reason: the resolved arm
-// keeps no resolved tree to count from, so counting it needs the census to carry which scope
-// resolved each reference, which is the trigger for adding a count here. OPEN QUESTION, not
-// answered by this row: whether the root-authority cut (XL-6) is meant to keep nesting-granted
-// scope; if it is not, these references become residual and this arm dissolves.
+// NESTING GRANTS NO SCOPE (operator ruling 2026-10-04: a module sees only its own declarations and
+// its own imports), so a module nested under a provider's namespace leaves a residual row like any
+// other when its import is stripped. The NestingScopedReferencesUncounted arm that carried those
+// references uncounted dissolved by its own stated condition ("if it is not, these references
+// become residual and this arm dissolves"); the nesting control now asserts the residual row.
 type Xl2ExcludedPopulation
   = Xl2KernelCanonicalReferencesUncounted
   | HeaderSegmentsNotRefusalSites
-  | NestingScopedReferencesUncounted
 
 data xl2_excluded_populations: List<Xl2ExcludedPopulation> = [
   Xl2KernelCanonicalReferencesUncounted,
-  HeaderSegmentsNotRefusalSites,
-  NestingScopedReferencesUncounted
+  HeaderSegmentsNotRefusalSites
 ]
 
 type Xl2RehearsalRun

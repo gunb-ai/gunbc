@@ -133,7 +133,7 @@ fn ndp_universe_module(module: String, path: Symbol, declaration: String) -> Nat
 // ONE NULLARY PRODUCER, FORCED ONCE, for the reason v2.test.claim.native_census.whole_tree_census_resolve
 // gives on its own producer: the floor builds a fresh evaluation frame per claim, and every claim
 // here inspects one row of a value that costs one whole-ingest front end plus four resolves to
-// build. Enrolled WARM in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm;
+// build. Shared by v2.workflow.floor_pure_producer_share derive_cross_claim_share;
 // the stored value is four NativeLaneModuleResolution arms carrying rows, diagnostics, symbols
 // and nodes -- no closures, no resolution context -- so it is portable across claim frames.
 type NdpResolutions

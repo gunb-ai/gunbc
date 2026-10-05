@@ -66,13 +66,15 @@ import v2.compiler.native_test_vocabulary {
   native_test_refused_located, NativeTestRefused,
   NativeTestStage, NativeTestStageContext, NativeTestStagePrepare, NativeTestStageEntry,
   NativeTestStageEval,
-  NativeTestFileRefusal
+  NativeTestFileRefusal,
+  FileRefusalLink,
+  FileRefusalAtWholeFile
 }
 import std.optional { Absent, Optional, Present, optional_present, optional_absent }
 import v2.std.diagnostic {
   Accepted, Outcome, Rejected, invariant_port_locus, Diagnostic, NonEmptyDiagnostics, Unavailable, ExternalContractUnknown
 }
-import std.algebra { Cons }
+import std.algebra { Cons, FreeSemigroup }
 import v2.std.algebra { fold_list, length }
 import v2.std.node { Symbol }
 import v2.std.integer { Int }
@@ -128,8 +130,16 @@ fn refused_row(
   }
 }
 
+// A refusal whose chain heads with `head` and ends at `fatal`; one link when they are the same.
 fn file_refusal_row(path: Symbol, head: Symbol, fatal: Symbol) -> NativeTestFileRefusal {
-  NativeTestFileRefusal { path: path, module: optional_absent(), head_reason: head, fatal_reason: fatal, chain: [] }
+  NativeTestFileRefusal {
+    path: path,
+    module: optional_absent(),
+    chain: FreeSemigroup {
+      head: FileRefusalLink { reason: head, at: FileRefusalAtWholeFile },
+      tail: if head == fatal { [] } else { [FileRefusalLink { reason: fatal, at: FileRefusalAtWholeFile }] }
+    }
+  }
 }
 
 // The emitted build as the lane records it on a clean run: cargo's argv, the denial set by the
