@@ -492,9 +492,13 @@ type ArmTierSupply {
 // extdeps.vllm.engine_args, and no two-tier host has a launch route. Its consumer is the first launch
 // on a host with a coherent-link tier (the GH200 lane), which is the trigger. Until then,
 // test.claim.spark.arm_memory_tier_witness exercises it with supplied values.
-type ArmCheckpointTierSplit {
-  device_residency: ArmComponentBound
-  host_residency: ArmComponentBound
+// SEALED, AND RETURNED AS A PLACEMENT. The split's two residencies leave this fold already paired
+// with their tiers, as the held share (GPU-local) and one further share (coherent-link). A caller
+// takes the placement whole and cannot re-pair a bound with the other tier through this API.
+// Re-pairing would mean hand-authoring a different placement, which is a supplied value like any
+// other and outside what this fold vouches for.
+type ArmCheckpointTierSplit sole_constructor {
+  placement: ArmComponentPlacement
 }
 
 // The split is priced only from an ESTABLISHED engine law, one minted from a reading of the UVA
@@ -507,6 +511,49 @@ type ArmCheckpointTierSplitMint
   | ArmCheckpointTierSplitRefused { cause: NonEmptyStr }
 
 fn checkpoint_tier_split(
+  standing: VllmWeightOffloadSplitStanding,
+  device_tier: SystemMemoryComponent,
+  host_tier: SystemMemoryComponent,
+  checkpoint_bytes: ByteSize,
+  offloaded_layers: Nat,
+  offloaded_bytes_per_layer: ByteSize,
+  how: NonEmptyStr,
+) -> ArmCheckpointTierSplitMint {
+  match split_tier_roles_refusal(device_tier: device_tier, host_tier: host_tier) {
+    Present { value: c } => ArmCheckpointTierSplitRefused { cause: c }
+    Absent => checkpoint_tier_split_over_roles(
+      standing: standing, device_tier: device_tier, host_tier: host_tier, checkpoint_bytes: checkpoint_bytes,
+      offloaded_layers: offloaded_layers, offloaded_bytes_per_layer: offloaded_bytes_per_layer, how: how)
+  }
+}
+
+// THE TWO TIERS PLAY FIXED ROLES. The device tier must be memory the GPU reaches directly, and the
+// host tier must be memory it reaches across the coherent link. Both must be memories of one system,
+// which also makes them distinct, since one system never reaches two memories the same way. Swapped
+// or mismatched tiers refuse here, before any bytes are paired with them.
+fn split_tier_roles_refusal(device_tier: SystemMemoryComponent, host_tier: SystemMemoryComponent) -> NonEmptyStr? {
+  let device_ok = match device_tier.addressability {
+    GpuAddressesDirectly => true
+    GpuAndCpuShareOnePool => false
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => false
+  }
+  let host_ok = match host_tier.addressability {
+    GpuAddressesAcrossCoherentLink { per_direction: _ } => true
+    GpuAddressesDirectly => false
+    GpuAndCpuShareOnePool => false
+  }
+  if !device_ok {
+    Present { value: join(["the split's device tier ", system_memory_component_wire(c: device_tier) as String, " is not memory the GPU reaches directly"], "") as NonEmptyStr }
+  } else if !host_ok {
+    Present { value: join(["the split's host tier ", system_memory_component_wire(c: host_tier) as String, " is not memory the GPU reaches across a coherent link"], "") as NonEmptyStr }
+  } else if !((device_tier.system as String) == (host_tier.system as String)) {
+    Present { value: "the split's two tiers are memories of different systems" as NonEmptyStr }
+  } else {
+    none
+  }
+}
+
+fn checkpoint_tier_split_over_roles(
   standing: VllmWeightOffloadSplitStanding,
   device_tier: SystemMemoryComponent,
   host_tier: SystemMemoryComponent,
@@ -552,16 +599,22 @@ fn checkpoint_tier_split_under_law(
     }
   } else {
     let device = total - host + device_copies * per_layer
-    ArmCheckpointTierSplitReady { split: ArmCheckpointTierSplit {
-      device_residency: ComponentBoundExact {
-        bytes: byte_size(count: device),
-        how: join(["checkpoint bytes left on tier ", system_memory_component_wire(c: device_tier) as String, " plus the engine's device copies of offloaded parameters, by the split law: ", how as String], "") as NonEmptyStr,
+    ArmCheckpointTierSplitReady { split: ArmCheckpointTierSplit { placement: ArmComponentPlacement {
+      held: ArmTierShare {
+        tier: device_tier,
+        bound: ComponentBoundExact {
+          bytes: byte_size(count: device),
+          how: join(["checkpoint bytes left on the GPU-local tier plus the engine's device copies of offloaded parameters, by the split law: ", how as String], "") as NonEmptyStr,
+        },
       },
-      host_residency: ComponentBoundExact {
-        bytes: byte_size(count: host),
-        how: join(["checkpoint bytes moved to tier ", system_memory_component_wire(c: host_tier) as String, ", by the split law: ", how as String], "") as NonEmptyStr,
-      },
-    } }
+      also: [ArmTierShare {
+        tier: host_tier,
+        bound: ComponentBoundExact {
+          bytes: byte_size(count: host),
+          how: join(["checkpoint bytes moved to the coherent-link tier, by the split law: ", how as String], "") as NonEmptyStr,
+        },
+      }],
+    } } }
   }
 }
 
