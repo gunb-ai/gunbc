@@ -33,11 +33,14 @@ The four classes:
    If nothing states it and nothing consumes it, it is (d).
 3. **(b) is a discipline, not a refuge.** Class (b) only applies when the
    semantics are recorded somewhere nameable — if no source can be cited
-   because no source exists, the row is (c) or (d), not (b). On this frontier,
-   every row that first looked like (b) turned out to be (a) (the semantics
-   have an RFC or vendor owner) once the owner question was asked seriously.
-   A near-empty (b) is the expected outcome, and that is load-bearing: it means
-   "shared but uncitable" should be *reclassified*, never settled as (b).
+   because no source exists, the row is (c) or (d), not (b). In the twelve-row
+   sample below, every row that first looked like (b) turned out to be (a)
+   (the semantics have an RFC or vendor owner) once the owner question was
+   asked seriously. That is a sample observation, not a prediction about the
+   frontier: twelve hand-picked disputed rows cannot establish that (b) is
+   rare in general. What the sample does establish is the procedure: when a
+   row looks like (b), the next step is to hunt for the recording source, and
+   if none exists the row is reclassified — never settled as (b) by default.
 4. **Misfile test (the recurring review failure).** A citation can be live and
    real and still not own the declaration. The subject has to BE the cited
    surface, field-for-field. The four observed misfile shapes, each a real
@@ -60,13 +63,13 @@ mixing, unconsumed islands, and a multi-module upstream family.
 Category (a). Owner: Google's API design docs, the `google.rpc.Code` table
 (current anchor `cloud.google.com/apis/design/errors#http_mapping`). The type
 is a clean transcription of that enumeration; nothing is added and nothing
-reshaped. Verified: no production consumer — the only reference outside the
-module is its own grounding witness test. **What scoping would fix:** the
-ledger row leaves the frontier on an honest basis. **What it would not fix:**
-consumption — unconsumed is a separate DESIGN 3c finding, noted beside the row,
-not a scope objection. The placement gate should accept "faithful but
-unconsumed" with the note; the census is the instrument that tracks islands,
-not the gate.
+reshaped. No production consumer — grep-grade only: the sole reference outside
+the module is its own grounding witness test. **What scoping would NOT fix,
+and what DESIGN 3c forbids:** under 3c a declaration nothing consumes is red
+however well modelled, so this row is a delete-or-name-a-consumer decision,
+not a scope. The transcription's faithfulness only matters if a consumer
+appears or the row is re-homed; the census is the instrument that tracks the
+island, not the placement gate.
 
 **2. `docker/cli.dag` — `DockerCreateSpec` and its flag types.**
 Category (a). Owner: Docker's CLI reference, the `docker container create`
@@ -75,11 +78,12 @@ page (the module's anchor). `DockerRestartPolicy`, `DockerNamespaceMode`,
 the cited page's own surface, and the page is the tool's own reference, not a
 standard the tool implements. This is the counter-example to the
 tool-CLI-citing-standard misfile: a tool surface is (a) when the citation is
-the tool's authority. Verified: production consumers exist (`dag/gunbc/spark/*`
-serving modules). **What scoping would fix:** retires the row and grounds the
-spark consumers' vocabulary in a live page. **What it would not fix:** nothing
-known — but the field-for-field diff against the create page must still be run
-before scoping; that is the standing lesson.
+the tool's authority. Production consumers exist (grep-grade: `DockerCreateSpec`
+appears in `dag/gunbc/spark/*` serving modules and `docker/container_inspect.dag`).
+**What scoping would fix:** retires the row and grounds the spark consumers'
+vocabulary in a live page. **What it would not fix:** nothing known — but the
+field-for-field diff against the create page must still be run before scoping;
+that is the standing lesson.
 
 **3. The `github/*` family (19 frontier rows, one upstream).**
 Category (a) as a family with a per-row condition. Owner: docs.github.com's
@@ -87,18 +91,20 @@ REST reference — one upstream, many surfaces. The family rule from batch 5:
 two modules of one upstream is fine; the condition is that each module's
 anchor cites the specific REST page for ITS surface (the `Gist` module scoped
 in #13258 passes this way; `GitHubErrorShape` failed it when its locator
-redirected to generic getting-started material). **What bulk-scoping the
-family would fix:** ~19 rows retire on one consistent rule. **What it would
-not fix:** rows in the family whose page has moved (the errors shape) stay
-pulled — a family is not a batch guarantee; each row still needs its live,
-specific page.
+redirected to generic getting-started material). **The per-row rule, not a
+batch template:** placement batches are paused, and nothing here proposes
+restarting one; the family rule is that each of the 19 rows is decided
+separately — same upstream, but each row still needs its own live, specific
+page and its own field-for-field diff before any scope. A family only means
+you do not have to re-litigate who the upstream is per row.
 
 **4. `crypto/hash.dag` — the algorithm side (`HashAlgorithm`, `Digest`,
 SHA-256/512 per FIPS 180-4).**
 Category (a) — half of a mixed module. Owner: NIST FIPS 180-4 (the anchor).
 The algorithm types are the standard's own surface. The other half is (c): the
 module's shell-verifier note binds `sha256sum(1)` with two production
-consumers (sccache pin, live-deploy verification) — a tool realization the
+consumers (grep-grade: the sccache pin and live-deploy verification paths name
+the verifier) — a tool realization the
 standard does not state, which is why the #13189 review pulled the `Sha256Sum`
 scope. **What a split would fix:** the algorithm side scopes cleanly against
 FIPS; the shell-verify side stops borrowing the standard's authority.
@@ -111,8 +117,9 @@ way — the split is honest bookkeeping, not behavior.
 Category (c). Owner: this repo — the dispatch algebra over file ops, systemctl,
 busctl, jq, mkdir/rm/cp, sleep is OUR vocabulary of what a BMC operation is.
 The busctl man page (the anchor) owns only busctl's argv semantics, and the
-#13110 review pulled the row for exactly this. Verified: consumed by
-`openbmc_fan_control` and `openbmc_password_ssh_transport` — real internal
+#13110 review pulled the row for exactly this. Consumed internally
+(grep-grade: `openbmc_fan_control` and `openbmc_password_ssh_transport` name
+it) — real internal
 consumers, so deletion is wrong. **What re-homing the algebra to the product
 layer would fix:** the frontier row leaves because the module stops claiming to
 be extdeps at all. **What it would not fix:** the internal consumers keep
@@ -146,7 +153,8 @@ is a live alternative to re-homing; that call belongs to the operator.
 Category (c). Owner: this repo's serializer policy — choosing which dialect's
 spellings to emit over CommonMark 0.31.2 and GFM extensions (tables, task
 lists) is a product decision; no single upstream owns "both dialects at once."
-Verified: consumed by `truth_table_projection` and markdown tests — real
+Consumed (grep-grade: `truth_table_projection` and the markdown tests name
+the spellings) — real
 consumers. **What re-classification would fix:** the row stops asking for a
 citation that cannot exist. **What it would not fix:** the serializer behavior,
 which is fine and consumed.
@@ -168,9 +176,12 @@ section 11. The scheme dispatches `semver_identity_compare` — lexical, not
 precedence — so the citation attests a decision rule the code does not
 implement: the recurring failure mode filed as
 `a_citation_attests_a_decision_rule_the_code_does_not_implement` (#13235). The
-type family (`SemVerVersion` and friends) is a clean (a) transcription of the
-spec's syntax; the scheme row is product policy (which comparison this repo
-uses for identity). **What fixing the comparison would fix:** the defect, and
+type family (`SemVerVersion` and friends) LOOKS like an (a) transcription of
+the spec's syntax, but that reading is unverified field-for-field — no
+diff against semver.org's grammar was run for this document, so the family's
+(a) status is a hypothesis, not a finding; the scheme row is product policy
+(which comparison this repo
+uses for identity), and that part is the dispute this document asserts. **What fixing the comparison would fix:** the defect, and
 then the scheme could honestly cite precedence. **What it would not fix:**
 whether a version scheme — a product choice — belongs in extdeps at all.
 
@@ -180,7 +191,9 @@ whether a version scheme — a product choice — belongs in extdeps at all.
 The census (2026-08-22, re-derived 08-26) classifies this module
 STILL-UNCONSUMED, and the disposition held it only on a weak
 "named somewhere" ground. Chasing the deletion found a surface the census's
-mention scan and every path grep miss: `src/v1/stage0/src/cli_run/external_authority.rs:211`
+mention scan and every path grep miss: in
+`src/v1/stage0/src/cli_run/external_authority.rs`, the function
+`external_authority_is_clean_tree_roster_excluded_for_module_path` (line 211)
 excludes `module_path.ends_with(".mock_corpus")` from the live-anchor walk —
 compiled code keyed to a NAME CONVENTION, not to this module's identity. The
 module is also typed `PublishedMockCase` data under `std.hermetic_replay`, and
@@ -192,24 +205,27 @@ after a **convention-pattern scan of compiled code** (`ends_with(...)` /
 lane's checklist, because it is identity-grade evidence the current census
 does not collect. **What deleting one member would fix:** nothing that
 matters — the walk degrades by one excluded path; the corpus itself is
-unreferenced today. **What it would not fix:** the misfiling; the correct
+unreferenced today by every surface scanned (grep-grade only, which is
+exactly the grade this case proves insufficient). **What it would not fix:** the misfiling; the correct
 disposition for the mock-corpus family is re-homing to the fixture namespace
 the v1 code already recognizes (`extdeps.fixture.`), which is a namespace move
 and needs the operator's one decision. No deletion is shipped in this PR.
 
 **12. `dag/extdeps/docker/container_stats.dag` — unconsumed AND unfaithful.**
-Category (c)-leaning (d)-adjacent; the row is mid-flight (re-added to the
-frontier by the queued #13304 pullback). Verified: no production caller; the
+Category (c)-leaning (d)-adjacent; the row is back on the frontier (returned
+by the merged #13304 pullback). No production caller (grep-grade: the review
+on #13304 confirmed it independently); the
 module adds a repo-authored `cpu_percent` field and reshapes `networks`, so it
 is not the Engine API's stats payload field-for-field. Owner of the real
 surface: Docker's Engine API stats reference. **What deleting the module would
 fix:** one fewer false-claim-shaped artifact; the row leaves the frontier.
 **What it would not fix:** nothing consumes it, so nothing breaks — but
-deleting also discards a half-faithful transcription whose repair (drop
-`cpu_percent`, restore the API shapes, diff field-for-field, then scope with
-"no consumer") is cheaper than re-authoring. Recommendation: repair-then-scope,
-not delete; delete is for (d) rows with nothing worth keeping, which this one
-arguably is not.
+deleting discards a half-faithful transcription. Under DESIGN 3c the
+dispositions are the same as case 1: name a consumer or delete. If a consumer
+is wanted, the repair (drop `cpu_percent`, restore the API shapes, diff
+field-for-field) comes first; scoping only becomes available once the
+module is consumed, and the "repair-then-scope" order alone would still leave
+an unconsumed red.
 
 ## What this changes for bulk work
 
@@ -227,18 +243,25 @@ arguably is not.
    reachability walk AND a convention-pattern scan of compiled code over
    module-path names. The second is new, cheap, and would have caught the
    mock_corpus hold honestly.
-4. **Unconsumed ≠ delete, and unconsumed ≠ unscopeable.** (a) rows that
-   nothing consumes scope with a "no consumer" note and appear in the census's
-   island tracking; deletion is only for rows whose content is not worth
-   keeping. This calibration came from the manager and holds in all twelve
-   cases.
+4. **Unconsumed is a delete-or-name-a-consumer decision, not a scope.**
+   DESIGN 3c: a declaration nothing consumes is red however well modelled, so
+   an unconsumed (a) row is not made scopeable by its faithfulness — the
+   options are to name a consumer (then scope) or to delete. In this sample
+   that lands on cases 1 and 12: case 1 is a strong delete-or-consume
+   candidate (clean transcription, zero consumers), case 12 is a plain delete
+   unless a consumer is wanted and the transcription is repaired first.
 
 ## Verification status of this document
 
-Every consumption claim above was re-verified on this branch by tree-wide
-search at symbol and module-path grain (the greps are noted per case), and the
-mock_corpus finding is quoted from
-`src/v1/stage0/src/cli_run/external_authority.rs:211`. The census numbers are
+Every consumption and no-consumption claim above is **grep-grade**: each was
+re-checked on this branch by tree-wide search at symbol and module-path grain
+(the greps are noted per case), and none is presented as identity-verified.
+Case 11 is the proof that this grade has a known hole — a convention-keyed
+surface in compiled code
+(`external_authority_is_clean_tree_roster_excluded_for_module_path`,
+`src/v1/stage0/src/cli_run/external_authority.rs` line 211) that no path grep
+sees — so any deletion decision needs the identity-grade instruments named in
+point 3, not these greps. The census numbers are
 its own (2026-08-22 / re-derived 2026-08-26) and carry that clock. No code, no
 tsv, and no roster is changed by this PR; it is a classification document, and
 bulk work waits on the operator's ruling on it.
