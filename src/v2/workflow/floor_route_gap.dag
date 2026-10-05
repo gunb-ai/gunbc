@@ -476,16 +476,6 @@ fn floor_route_gap_chunk_03() -> List<String> {
 
 fn floor_route_gap_expectation_chunk_00() -> List<FloorRouteGapExpectation> {
   Cons {
-    // THE ADMISSION CONTROL (route-gap dormancy receipt, docs/plans/
-    // route-gap-dormant-observation.md): this row is a FIXTURE, not a measured gap. Its
-    // module sits outside the required gate, so the gate-bounded fold never loads it; the
-    // required floor must surface it per identity with ground=outside_required_gate as a
-    // typed, located disposition (MEASUREMENT) instead of a bare count, and refuse the run
-    // outright if the identity ever stops resolving. It rides the roster only while the
-    // dormancy follow-up named in the finding is open; if the gate ever admits the module
-    // first, this row reds as stale, which is the register working as designed.
-    head: FloorRouteGapExpectation { identity: "test.claim.route_gap_dormancy_receipt_test.route_gap_dormancy_receipt_holds", operation: "Write", ground: NoMockResponse {} },
-    tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.artifact_store_fs_witness.artifact_fs_roundtrip_holds", operation: "Write", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.artifact_store_fs_witness.artifact_fs_delete_then_misses_holds", operation: "Write", ground: NoMockResponse {} },
@@ -530,7 +520,6 @@ fn floor_route_gap_expectation_chunk_00() -> List<FloorRouteGapExpectation> {
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.codex_supervised_turn_wet_witness_test.wet_finish_observe_toolchain_only", operation: "Check", ground: NoMockResponse {} },
     tail: Empty {}
-  }
   }
   }
   }
