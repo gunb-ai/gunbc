@@ -1,0 +1,1263 @@
+module gunbc.roadmap_surface_style
+import gunbc.design.typography { interface_text_decls, InterfaceProse, InterfaceBody, InterfaceLabel, InterfaceMetadata, InterfaceHeading, InterfaceSectionHeading }
+import gunbc.roadmap_component { roadmap_row_height }
+import extdeps.google.issue_tracker { issue_results_columns, IssueResultsColumn, IssueColumnPriority, IssueColumnTitle, IssueColumnAssignee, IssueColumnStatus, IssueColumnLastModified }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, WithinSubject, PseudoElementOfSubject, OnHover, OnFocusVisible, respond_fast, decl }
+import extdeps.languages.css.selectors { RawSelector }
+import extdeps.languages.css.properties { CustomProperty, AlignItems, Background, Border, BorderBottom, BorderLeft, BorderRadius, BoxShadow, Color, Cursor, Display, Fill, Flex, FlexDirection, FlexWrap, FontFamily, FontSize, FontWeight, Gap, GridColumn, GridTemplateColumns, Height, Inset, JustifyContent, LetterSpacing, LineHeight, ListStyle, Margin, MarginBottom, MarginLeft, MarginRight, MarginTop, MaxWidth, MinHeight, MinWidth, Opacity, Outline, Overflow, Padding, PaddingLeft, Position, Stroke, TextDecoration, TextTransform, Transform, WhiteSpace, Width, RawProperty }
+import gunbc.design.scale { scale_var, scale_pair, scale_triple, scale_border, height_control, control_geometry, CompactChoice, RichIdentity, space_0, space_1, space_2, space_4, space_6, space_8, space_12, space_16, space_24, text_11, text_12, text_13, text_14, text_15, text_18, font_sans, font_mono, radius_surface, radius_999, border_1, border_2, width_status, height_compact_face }
+import gunbc.design.theme { role_decl, TextRole, TextDimRole, SurfaceRole, CanvasRole, FocusRole }
+
+// Local control geometry needs wider priority badges and an intrinsic modified heading.
+// App ordering is distinct from the observed upstream roster. Header, rows and tracks share it.
+fn workspace_issue_columns() -> List<IssueResultsColumn> {
+  sort_by(issue_results_columns, c => match c.kind {
+    IssueColumnPriority => 0 IssueColumnTitle => 1 IssueColumnStatus => 2
+    IssueColumnAssignee => 3 IssueColumnLastModified => 4
+  })
+}
+fn workspace_issue_tracks() -> String {
+  join(map(workspace_issue_columns(), c => match c.kind {
+    IssueColumnPriority => "minmax(6ch, max-content)"
+    IssueColumnLastModified => "max-content"
+    IssueColumnTitle => "minmax(0, 1fr)"
+    IssueColumnAssignee => "minmax(18ch, 26ch)"
+    IssueColumnStatus => "minmax(12ch, max-content)"
+  }), " ")
+}
+
+fn roadmap_surface_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: RawSelector { text: ".roadmap" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Padding, value: "var(--space-24)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".hardware-detail" }, decls: [
+      role_decl(prop: Color, r: TextDimRole),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    StaticRule { selector: RawSelector { text: ".fleet-capacity-panel" }, decls: [
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_16)),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".daily-workspace" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Padding, value: scale_pair(a: space_12, b: space_24))
+    ] },
+    StaticRule { selector: RawSelector { text: ".workspace-toolbar" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_pair(a: space_4, b: space_12))
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-hidden-summary" }, decls: concat([
+      role_decl(prop: Color, r: TextDimRole)
+    ], interface_text_decls(role: InterfaceMetadata)) },
+    StaticRule { selector: RawSelector { text: ".issue-sort-undo[hidden], .issue-sort-status:empty" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-controls" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Flex, value: "1 1 40ch"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: scale_var(t: space_6)),
+      decl(prop: FlexWrap, value: "wrap")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-sort-settings" }, decls: [
+      decl(prop: Display, value: "flex"), decl(prop: AlignItems, value: "center"), decl(prop: FlexWrap, value: "wrap"), decl(prop: Gap, value: scale_var(t: space_6)),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-view-save-status" }, decls: concat([
+      role_decl(prop: Color, r: TextDimRole),
+    ], interface_text_decls(role: InterfaceMetadata)) },
+    StaticRule { selector: RawSelector { text: ".issue-search" }, decls: concat([
+      role_decl(prop: Color, r: TextRole),
+      role_decl(prop: Background, r: SurfaceRole),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Padding, value: scale_pair(a: space_4, b: space_12)),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Flex, value: "1 1 30ch"),
+      decl(prop: MinWidth, value: "0")
+    ], interface_text_decls(role: InterfaceBody)) },
+    StaticRule { selector: RawSelector { text: ".issue-table-scroll" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      role_decl(prop: Background, r: SurfaceRole)
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-table" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: workspace_issue_tracks()),
+      decl(prop: Gap, value: scale_var(t: space_0)),
+      decl(prop: AlignItems, value: "stretch"),
+      decl(prop: MinWidth, value: "65ch")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-cell-status" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-cell-priority" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: MinWidth, value: scale_var(t: height_compact_face)),
+      decl(prop: Height, value: scale_var(t: height_compact_face)),
+      decl(prop: LineHeight, value: "1"),
+      decl(prop: FontSize, value: scale_var(t: text_12)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      role_decl(prop: Color, r: TextDimRole)
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"0\"]" }, decls: [
+      decl(prop: Color, value: "var(--surface)"),
+      decl(prop: Background, value: "var(--issue-error)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-priority[data-priority=\"1\"]" }, decls: [
+      decl(prop: Color, value: "var(--issue-error)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-empty" }, decls: [
+      decl(prop: Display, value: "none"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: GridColumn, value: "1 / -1"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Padding, value: "var(--space-20)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-body" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-24)"),
+      decl(prop: AlignItems, value: "flex-start"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-panels" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Flex, value: "3 1 50ch"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Width, value: "auto"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: Flex, value: "0 1 34ch"),
+      decl(prop: MinWidth, value: "min(100%, 28ch)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: Gap, value: "var(--space-6)"),
+      decl(prop: Background, value: "var(--surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-deps-section" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: MarginBottom, value: "var(--space-12)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: RawProperty { name: "padding-top" }, value: "var(--space-16)"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Padding, value: "var(--space-24)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail-head" }, decls: [
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: MarginBottom, value: "var(--space-8)"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Display, value: "block"),
+      decl(prop: RawProperty { name: "padding-bottom" }, value: "var(--space-16)"),
+      decl(prop: BorderBottom, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail-title" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: "var(--text-24)"),
+      decl(prop: LineHeight, value: "1.35"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: FontWeight, value: "500")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tabs" }, decls: [
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: MarginBottom, value: "var(--space-12)"),
+      decl(prop: RawProperty { name: "padding-bottom" }, value: "var(--space-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-field" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: scale_var(t: space_8)),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-field-label" }, decls: [
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+      decl(prop: Flex, value: "none"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: scale_var(t: text_11)),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-field-value" }, decls: [
+      decl(prop: Flex, value: "1"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-action" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font)"),
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Padding, value: scale_pair(a: space_1, b: space_8)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "transparent")),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: BorderRadius, value: "var(--radius-surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignment-notice" }, decls: [
+      decl(prop: Position, value: "fixed"), decl(prop: RawProperty { name: "bottom" }, value: scale_var(t: space_24)), decl(prop: RawProperty { name: "left" }, value: "50%"),
+      decl(prop: Transform, value: "translateX(-50%)"), decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-profile)"),
+      decl(prop: MaxWidth, value: "calc(100% - var(--space-24))"), decl(prop: Padding, value: scale_pair(a: space_8, b: space_16)), decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Color, value: "var(--status-blocked-ink)"), decl(prop: Background, value: "color-mix(in srgb, var(--status-blocked-ink) 12%, var(--surface))"),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--status-blocked-ink)")),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-input" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Border, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Flex, value: "1"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Width, value: "100%"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-submit" }, decls: [
+      decl(prop: MarginTop, value: "var(--space-8)"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
+      decl(prop: Width, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-comment-submit" }, decls: [
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-16)"),
+      decl(prop: MarginTop, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-suggestions" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-event-history" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-event-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: BorderBottom, value: scale_border(w: border_1, color_var: "var(--issue-border)")),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-event-author" }, decls: [
+      decl(prop: Color, value: "var(--issue-action-hover)"),
+      decl(prop: MinWidth, value: scale_var(t: width_status)),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-event-at" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-description" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-comment" }, decls: [
+      decl(prop: Padding, value: "var(--space-20) 0"),
+      decl(prop: BorderBottom, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: Gap, value: "var(--space-12)"),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif"),
+      decl(prop: LetterSpacing, value: "normal")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-comment-main" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: scale_var(t: space_2)),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: Flex, value: "1")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-comment-head" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-12)"),
+      decl(prop: MarginBottom, value: "var(--space-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-comment-body" }, decls: concat([
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ], interface_text_decls(role: InterfaceProse)) },
+    StaticRule { selector: RawSelector { text: ".issue-comment-form" }, decls: concat([
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Position, value: "relative"),
+      decl(prop: Margin, value: "var(--space-12) 0 0"),
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+    ], interface_text_decls(role: InterfaceProse)) },
+    StaticRule { selector: RawSelector { text: ".issue-comment-input" }, decls: [
+      decl(prop: FontSize, value: scale_var(t: text_13)),
+      decl(prop: BorderRadius, value: scale_var(t: radius_surface)),
+      decl(prop: Width, value: "100%"),
+      decl(prop: MinHeight, value: "calc(var(--h-control) * 3)"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: Background, value: "var(--canvas)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui), sans-serif")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-empty" }, decls: [
+      decl(prop: Margin, value: "var(--space-24) 0"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-tree" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Margin, value: "var(--space-16) 0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-current" }, decls: [
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: MarginLeft, value: "0"),
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "var(--space-16) minmax(0, 1fr)"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 9%, var(--surface))"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: FontWeight, value: "500")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-children" }, decls: [
+      decl(prop: MarginTop, value: "var(--space-4)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-tree .issue-graph-node" }, decls: [
+      decl(prop: Border, value: "0"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "var(--space-16) minmax(0, 1fr) auto"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Padding, value: "var(--space-8)"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: FontSize, value: "var(--text-13)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-tree .issue-graph-state" }, decls: [
+      decl(prop: MarginLeft, value: "auto"),
+      decl(prop: WhiteSpace, value: "nowrap"),
+      decl(prop: FontSize, value: "var(--text-11)")
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-dag" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Margin, value: "var(--space-16) 0"),
+      decl(prop: Overflow, value: "hidden")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-rail" }, decls: [
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "0"),
+      decl(prop: RawProperty { name: "top" }, value: "0"),
+      decl(prop: Width, value: "var(--dag-rail-width)"),
+      decl(prop: Height, value: "100%"),
+      decl(prop: RawProperty { name: "pointer-events" }, value: "none"),
+      decl(prop: RawProperty { name: "z-index" }, value: "1")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Height, value: "var(--dag-row-height)"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12) var(--space-8) calc(var(--dag-rail-width) + var(--space-8))"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-dag-row" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-dag-row" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)"),
+      decl(prop: RawProperty { name: "outline-offset" }, value: "calc(0em - var(--space-2))")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-row[data-current=\"1\"]" }, decls: [
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 9%, var(--surface))")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"open\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--figure)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"open\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--figure)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"selected\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--status-assigned-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"selected\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--status-assigned-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"done\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"unknown\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"done\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"unknown\"]" }, decls: [
+      decl(prop: CustomProperty { name: "dag-ink" }, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-edge" }, decls: [
+      decl(prop: Fill, value: "none"),
+      decl(prop: Stroke, value: "var(--dag-ink)"),
+      decl(prop: RawProperty { name: "stroke-width" }, value: "4"),
+      decl(prop: RawProperty { name: "stroke-linecap" }, value: "round")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-arrow" }, decls: [
+      decl(prop: Fill, value: "var(--dag-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-core" }, decls: [
+      decl(prop: Fill, value: "var(--dag-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-ring" }, decls: [
+      decl(prop: Fill, value: "var(--surface)"),
+      decl(prop: Stroke, value: "var(--dag-ink)"),
+      decl(prop: RawProperty { name: "stroke-width" }, value: "3")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-halo" }, decls: [
+      decl(prop: Fill, value: "var(--dag-ink)"),
+      decl(prop: Opacity, value: "0.15")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-point text" }, decls: [
+      decl(prop: Fill, value: "var(--dag-ink)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: FontWeight, value: "700")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"unknown\"] .issue-dag-ring" }, decls: [
+      decl(prop: RawProperty { name: "stroke-dasharray" }, value: "3 4")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag [data-state=\"unknown\"] .issue-dag-edge" }, decls: [
+      decl(prop: RawProperty { name: "stroke-dasharray" }, value: "3 4")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-role" }, decls: [
+      decl(prop: Color, value: "var(--dag-ink)"),
+      decl(prop: FontSize, value: "var(--text-11)"),
+      decl(prop: FontWeight, value: "600")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-label" }, decls: [
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.4"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Display, value: "-webkit-box"),
+      decl(prop: RawProperty { name: "-webkit-box-orient" }, value: "vertical"),
+      decl(prop: RawProperty { name: "-webkit-line-clamp" }, value: "2"),
+      decl(prop: Overflow, value: "hidden"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-status" }, decls: [
+      decl(prop: FontSize, value: "var(--text-11)"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: TextTransform, value: "capitalize")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-row[data-state=\"done\"] .issue-dag-label" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-16)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key span" }, decls: [
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Gap, value: "var(--space-6)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key span::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Width, value: "var(--space-8)"),
+      decl(prop: Height, value: "var(--space-8)"),
+      decl(prop: BorderRadius, value: "var(--radius-999)"),
+      decl(prop: Background, value: "var(--dag-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-key [data-state=\"unknown\"]::before" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Border, value: "var(--border-1) dashed var(--dag-ink)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-aggregate" }, decls: [
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Margin, value: "var(--space-12) 0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Color, value: "var(--figure)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster > summary" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Margin, value: "0"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: Gap, value: "var(--space-16)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster-count" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: Width, value: "calc(var(--space-24) * 2)"),
+      decl(prop: Height, value: "calc(var(--space-24) * 2)"),
+      decl(prop: RawProperty { name: "flex-shrink" }, value: "0"),
+      decl(prop: Border, value: "var(--border-2) solid var(--figure)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Color, value: "var(--figure)"),
+      decl(prop: FontSize, value: "var(--text-18)"),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: BoxShadow, value: "var(--space-4) var(--space-4) 0 var(--issue-bg-hover)"),
+      decl(prop: RawProperty { name: "z-index" }, value: "1")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster-copy" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-4)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster-copy small" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: "var(--text-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "calc(var(--space-24) + var(--space-16))"),
+      decl(prop: RawProperty { name: "top" }, value: "calc(var(--space-24) + var(--space-16))"),
+      decl(prop: RawProperty { name: "bottom" }, value: "0"),
+      decl(prop: Width, value: "var(--border-2)"),
+      decl(prop: Background, value: "var(--figure)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster[data-direction=\"downstream\"]::before" }, decls: [
+      decl(prop: RawProperty { name: "top" }, value: "0"),
+      decl(prop: RawProperty { name: "bottom" }, value: "calc(var(--space-24) + var(--space-16))")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-cluster-branches" }, decls: [
+      decl(prop: MarginLeft, value: "calc(var(--space-24) + var(--space-16))"),
+      decl(prop: PaddingLeft, value: "var(--space-24)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-branch-node" }, decls: [
+      decl(prop: Position, value: "relative")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-branch-node::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "calc(0em - var(--space-24))"),
+      decl(prop: RawProperty { name: "top" }, value: "0"),
+      decl(prop: Width, value: "calc(var(--space-24) * 2)"),
+      decl(prop: Height, value: "var(--space-24)"),
+      decl(prop: BorderLeft, value: "var(--border-2) solid var(--dag-ink)"),
+      decl(prop: BorderBottom, value: "var(--border-2) solid var(--dag-ink)"),
+      decl(prop: RawProperty { name: "border-bottom-left-radius" }, value: "var(--radius-surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-branch-node::after" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "var(--space-16)"),
+      decl(prop: RawProperty { name: "top" }, value: "var(--space-16)"),
+      decl(prop: Width, value: "var(--space-16)"),
+      decl(prop: Height, value: "var(--space-16)"),
+      decl(prop: Border, value: "var(--border-2) solid var(--dag-ink)"),
+      decl(prop: BorderRadius, value: "var(--radius-999)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: RawProperty { name: "pointer-events" }, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-aggregate .issue-dag-row" }, decls: [
+      decl(prop: Height, value: "auto"),
+      decl(prop: MinHeight, value: "calc(var(--space-24) * 3)"),
+      decl(prop: Padding, value: "var(--space-12) var(--space-16) var(--space-12) calc(var(--space-24) * 2)"),
+      decl(prop: JustifyContent, value: "flex-start")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-selected-anchor" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Padding, value: "var(--space-16) 0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-selected-anchor::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "calc(var(--space-24) + var(--space-16))"),
+      decl(prop: RawProperty { name: "top" }, value: "0"),
+      decl(prop: Height, value: "calc(var(--space-24) * 2)"),
+      decl(prop: Width, value: "var(--border-2)"),
+      decl(prop: Background, value: "var(--figure)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-selected-anchor:has(+ .issue-dag-cluster)::before" }, decls: [
+      decl(prop: Height, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-selected-anchor::after" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "left" }, value: "calc(var(--space-24) + var(--space-4))"),
+      decl(prop: Width, value: "var(--space-24)"),
+      decl(prop: Height, value: "var(--space-24)"),
+      decl(prop: Border, value: "var(--border-2) solid var(--status-assigned-ink)"),
+      decl(prop: BorderRadius, value: "var(--radius-999)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: RawProperty { name: "top" }, value: "var(--h-compact-face)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-aggregate .issue-dag-selected-anchor .issue-dag-row" }, decls: [
+      decl(prop: PaddingLeft, value: "calc(var(--space-24) * 3 + var(--space-8))")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-12)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-section" }, decls: [
+      decl(prop: Margin, value: "0"),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-details" }, decls: [
+      decl(prop: Margin, value: "var(--space-12) 0"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-updates" }, decls: [
+      decl(prop: Margin, value: "0"),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-heading" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Margin, value: "0 0 var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-updates-head" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font-heading)"),
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: Margin, value: "0 0 var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-details > summary" }, decls: [
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-12)"),
+      decl(prop: MinHeight, value: "var(--h-control)"),
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: Gap, value: "var(--space-12)"),
+      decl(prop: Background, value: "var(--canvas)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-authored-details[open] > summary" }, decls: [
+      decl(prop: MarginBottom, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-field" }, decls: concat([
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-4)"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: MinWidth, value: "0"),
+    ], interface_text_decls(role: InterfaceProse)) },
+    StaticRule { selector: RawSelector { text: ".ticket-field + .ticket-field" }, decls: [
+      decl(prop: RawProperty { name: "border-top" }, value: "var(--border-1) solid var(--issue-border)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-field-label" }, decls: [
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-field-value" }, decls: [
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-field-value > p" }, decls: [
+      decl(prop: Margin, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-field-code" }, decls: [
+      decl(prop: FontFamily, value: "var(--font-mono)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: LineHeight, value: "1.45"),
+      decl(prop: WhiteSpace, value: "pre-wrap"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: Border, value: "0"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: Margin, value: "0"),
+      decl(prop: MaxWidth, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".ticket-update" }, decls: concat([
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ], interface_text_decls(role: InterfaceProse)) },
+    StaticRule { selector: RawSelector { text: ".ticket-update-date" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: MarginRight, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail-title p" }, decls: [
+      decl(prop: Margin, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dependency-graph > h2" }, decls: [
+      decl(prop: Margin, value: "0 0 var(--space-8)"),
+      decl(prop: FontSize, value: "var(--text-14)"),
+      decl(prop: FontWeight, value: "500")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-legend" }, decls: [
+      decl(prop: Margin, value: "var(--space-8) 0"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-membership" }, decls: [
+      decl(prop: MarginTop, value: "var(--space-16)"),
+      decl(prop: RawProperty { name: "border-top" }, value: "var(--border-1) dashed var(--issue-border)"),
+      decl(prop: RawProperty { name: "padding-top" }, value: "var(--space-16)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work" }, decls: [
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: Background, value: "var(--surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .session-facts" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .activity-detail" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .activity-throughput" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .activity-evidence-row" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .activity-obligation" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Padding, value: "var(--space-8) 0"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".panel-work .activity-located-reason" }, decls: [
+      decl(prop: FontFamily, value: "var(--issue-font, system-ui)"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.5"),
+      decl(prop: Border, value: "0"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: Margin, value: "var(--space-8) 0"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: Color, value: "var(--issue-text)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".sandbox" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Padding, value: "var(--space-24)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tab" }, decls: [
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Padding, value: "var(--space-8) var(--space-16)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: FontSize, value: "var(--text-14)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dependency-graph" }, decls: [
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: MarginBottom, value: "var(--space-12)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-description-body" }, decls: concat([
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ], interface_text_decls(role: InterfaceProse)) },
+    StaticRule { selector: RawSelector { text: ".issue-field-row" }, decls: [
+      decl(prop: MarginBottom, value: "var(--space-8)"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".fleet-hardware-panel" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".repo-atlas" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-panel-empty" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Padding, value: "var(--space-20)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-status-detail summary" }, decls: [
+      decl(prop: Cursor, value: "pointer"),
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-8)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Background, value: "transparent")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-status-facts" }, decls: [
+      decl(prop: Padding, value: "var(--space-12) 0"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: LineHeight, value: "1.6")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-status-facts dt" }, decls: [
+      decl(prop: FontWeight, value: "600"),
+      decl(prop: MarginTop, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-status-facts dd" }, decls: [
+      decl(prop: Margin, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-wrap" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Width, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-link-graph" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-16)"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: Padding, value: "var(--space-16) 0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-column" }, decls: [
+      decl(prop: Flex, value: "1 1 20ch"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-node" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Padding, value: "var(--space-12)"),
+      decl(prop: MarginBottom, value: "var(--space-8)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: TextDecoration, value: "none"),
+      decl(prop: Color, value: "var(--issue-action-hover)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-node[data-complete=\"1\"]" }, decls: [
+      decl(prop: Opacity, value: "0.55")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-node[data-current=\"1\"]" }, decls: [
+      decl(prop: Border, value: "var(--border-2) solid var(--issue-action)"),
+      decl(prop: FontWeight, value: "600")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich .issue-assign-name" }, decls: [
+      decl(prop: FontWeight, value: "600")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich .issue-assign-email" }, decls: [
+      decl(prop: GridColumn, value: "2"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".site-choice-rich .issue-assign-kind" }, decls: [
+      decl(prop: GridColumn, value: "2"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-detail-head .issue-id" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: MarginBottom, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tabs .chip" }, decls: [
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: TextTransform, value: "none"),
+      decl(prop: Padding, value: "0 var(--space-16)"),
+      decl(prop: MinHeight, value: scale_var(t: height_control)),
+      decl(prop: Border, value: "0"),
+      decl(prop: BorderRadius, value: "var(--radius-999)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: Position, value: "relative"),
+      decl(prop: RawProperty { name: "isolation" }, value: "isolate"),
+      decl(prop: Display, value: "inline-flex"),
+      decl(prop: AlignItems, value: "center"),
+      decl(prop: JustifyContent, value: "center"),
+      decl(prop: LineHeight, value: "1.5")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tabs .chip::before" }, decls: [
+      decl(prop: RawProperty { name: "content" }, value: "\"\""),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: Inset, value: "var(--space-4) 0"),
+      decl(prop: BorderRadius, value: "inherit"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: RawProperty { name: "z-index" }, value: "-1"),
+      decl(prop: RawProperty { name: "pointer-events" }, value: "none")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-tabs .chip" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Color, value: "var(--issue-text)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-tabs .chip" }, shape: PseudoElementOfSubject { name: "before" }, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-border)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tabs .chip.chip-on" }, decls: [
+      decl(prop: Color, value: "var(--surface)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-tabs .chip.chip-on::before" }, decls: [
+      decl(prop: Background, value: "var(--issue-action-hover)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-tabs .chip" }, shape: SelfResponse, trigger: OnFocusVisible, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Outline, value: "var(--border-2) solid var(--focus)"),
+      decl(prop: RawProperty { name: "outline-offset" }, value: "var(--space-2)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-mention-options" }, decls: [
+      decl(prop: RawProperty { name: "top" }, value: "auto"),
+      decl(prop: RawProperty { name: "bottom" }, value: scale_var(t: height_control)),
+      decl(prop: RawProperty { name: "left" }, value: "var(--space-20)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-mention" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: Display, value: "inline-block"),
+      decl(prop: Color, value: "var(--issue-action-hover)"),
+      decl(prop: Background, value: "var(--issue-bg-hover)"),
+      decl(prop: Padding, value: "0 var(--space-4)"),
+      decl(prop: BorderRadius, value: "var(--space-4)"),
+      decl(prop: Cursor, value: "default")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-profile-card" }, decls: [
+      decl(prop: Display, value: "none"),
+      decl(prop: Position, value: "absolute"),
+      decl(prop: RawProperty { name: "z-index" }, value: "var(--layer-profile)"),
+      decl(prop: RawProperty { name: "top" }, value: "100%"),
+      decl(prop: RawProperty { name: "left" }, value: "0"),
+      decl(prop: MinWidth, value: "24ch"),
+      decl(prop: MaxWidth, value: "min(32ch, 75vw)"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-mention" }, shape: WithinSubject { target: ".issue-profile-card" }, trigger: OnHover, transition_props: "opacity", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-mention:focus .issue-profile-card" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-mention:focus-within .issue-profile-card" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-profile-card small" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-state" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: MarginTop, value: "var(--space-4)"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-branch" }, decls: [
+      decl(prop: BorderLeft, value: "var(--border-2) solid var(--issue-action)"),
+      decl(prop: PaddingLeft, value: "var(--space-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-membership .issue-graph-branch" }, decls: [
+      decl(prop: RawProperty { name: "border-left-style" }, value: "dashed"),
+      decl(prop: RawProperty { name: "border-left-color" }, value: "var(--issue-border)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-graph-column h3" }, decls: [
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-text-dim)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assign-form .site-choice-list" }, decls: [
+      decl(prop: RawProperty { name: "top" }, value: "100%"),
+      decl(prop: RawProperty { name: "right" }, value: "0"),
+      decl(prop: RawProperty { name: "left" }, value: "auto"),
+      decl(prop: MinWidth, value: "min(32ch, 85vw)"),
+      decl(prop: Width, value: "100%")
+    ] },
+    StaticRule { selector: RawSelector { text: ".instrument-cell" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere")
+    ] },
+    StaticRule { selector: RawSelector { text: ".instrument-row" }, decls: [
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".instrument-sandbox" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: RawProperty { name: "overflow-x" }, value: "auto")
+    ] },
+    StaticRule { selector: RawSelector { text: ".project-suite-member" }, decls: [
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Padding, value: "var(--space-16)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: MarginBottom, value: "var(--space-8)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".project-suite-members" }, decls: [
+      decl(prop: Padding, value: "0")
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-membership-children > summary::after" }, decls: [
+      decl(prop: Margin, value: "0"),
+      decl(prop: Transform, value: "rotate(45deg)")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-membership-tree .issue-graph-node" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-icon" }, decls: [
+      decl(prop: Width, value: "var(--space-16)"),
+      decl(prop: Height, value: "var(--space-16)"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: RawProperty { name: "flex-shrink" }, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-dag-empty:empty" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-subtree[data-has-parent=\"1\"]" }, decls: [
+      decl(prop: MarginLeft, value: "var(--space-16)"),
+      decl(prop: PaddingLeft, value: "var(--space-16)"),
+      decl(prop: BorderLeft, value: "var(--border-1) solid var(--issue-border)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-selected-mark" }, decls: [
+      decl(prop: Width, value: "var(--space-12)"),
+      decl(prop: Height, value: "var(--space-12)"),
+      decl(prop: BorderRadius, value: "var(--radius-999)"),
+      decl(prop: Border, value: "var(--border-2) solid var(--status-assigned-ink)"),
+      decl(prop: Background, value: "var(--surface)"),
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-membership-children[open] > summary::after" }, decls: [
+      decl(prop: Transform, value: "rotate(225deg)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure" }, decls: [
+      decl(prop: Width, value: "100%"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure > summary" }, decls: [
+      decl(prop: Padding, value: "var(--space-4)"),
+      decl(prop: Gap, value: "var(--space-12)"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: MinWidth, value: "0")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-assignee-disclosure > summary" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "var(--issue-bg-hover)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure > summary .site-avatar" }, decls: [
+      decl(prop: Width, value: "var(--h-compact-face)"),
+      decl(prop: Height, value: "var(--h-compact-face)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: RawProperty { name: "flex-shrink" }, value: "0")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignee-identity" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: FontSize, value: "var(--text-13)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-assignee-disclosure[open] > summary" }, decls: [
+      decl(prop: Display, value: "none")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-children > summary.issue-membership-current" }, decls: [
+      decl(prop: GridTemplateColumns, value: "var(--space-16) minmax(0, 1fr) auto var(--space-12)"),
+      decl(prop: Width, value: "100%")
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-membership-children > summary.issue-membership-current" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color, color, outline-color", timing: respond_fast, base_decls: [], response_decls: [
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 15%, var(--surface))")
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-membership-count" }, decls: [
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+      decl(prop: FontSize, value: "var(--text-12)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field" }, decls: [
+      decl(prop: Display, value: "grid"),
+      decl(prop: GridTemplateColumns, value: "10ch minmax(0, 1fr)"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: AlignItems, value: "baseline"),
+      decl(prop: FontSize, value: "var(--text-13)")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field:has(details)" }, decls: [
+      decl(prop: AlignItems, value: "center")
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail .issue-field-label" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: FontFamily, value: "var(--font-sans)"),
+      decl(prop: FontSize, value: "var(--text-12)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-rail .issue-assignee-disclosure > summary" }, decls: [
+      decl(prop: Padding, value: "var(--space-4) 0"),
+      decl(prop: Gap, value: "var(--space-8)")
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-rail .issue-status-detail > summary" }, decls: [
+      decl(prop: Position, value: "relative"),
+      decl(prop: RawProperty { name: "isolation" }, value: "isolate"),
+      decl(prop: Background, value: "transparent"),
+      decl(prop: Padding, value: "var(--space-4) 0"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: MinHeight, value: "var(--h-control)"),
+    ] },
+
+    StaticRule { selector: RawSelector { text: ".issue-reading-surface" }, decls: [
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: Padding, value: "var(--space-20)"),
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: MinWidth, value: "0"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-reading-surface .issue-comments" }, decls: [
+      decl(prop: RawProperty { name: "border-top" }, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: RawProperty { name: "padding-top" }, value: "var(--space-16)"),
+      decl(prop: MarginTop, value: "var(--space-16)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-breadcrumb" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: FontSize, value: "var(--text-13)"),
+      decl(prop: MarginBottom, value: "var(--space-8)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-disclosure" }, decls: [
+      decl(prop: MaxWidth, value: "100%"),
+      decl(prop: Width, value: "fit-content"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-disclosure > summary" }, decls: [
+      decl(prop: Background, value: "var(--surface)"),
+      decl(prop: Border, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: Padding, value: "var(--space-4) var(--space-12)"),
+      decl(prop: FlexWrap, value: "wrap"),
+      decl(prop: Gap, value: "var(--space-8)"),
+      decl(prop: Width, value: "fit-content"),
+      decl(prop: MaxWidth, value: "100%"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-label" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+      decl(prop: Color, value: "var(--issue-text-dim)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-label + .issue-path-label" }, decls: [
+      decl(prop: BorderLeft, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: PaddingLeft, value: "var(--space-8)"),
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-tree, .issue-path-tree ol" }, decls: [
+      decl(prop: ListStyle, value: "none"),
+      decl(prop: Margin, value: "var(--space-8) 0 0"),
+      decl(prop: Padding, value: "0"),
+      decl(prop: MaxWidth, value: "var(--measure-prose)"),
+      decl(prop: Display, value: "flex"),
+      decl(prop: FlexDirection, value: "column"),
+      decl(prop: Gap, value: "var(--space-4)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-tree li" }, decls: [
+      decl(prop: MinWidth, value: "0"),
+      decl(prop: RawProperty { name: "overflow-wrap" }, value: "anywhere"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-tree a, .issue-path-tree .issue-breadcrumb-here" }, decls: [
+      decl(prop: Display, value: "block"),
+      decl(prop: Padding, value: "var(--space-8) var(--space-12)"),
+      decl(prop: BorderRadius, value: "var(--radius-surface)"),
+      decl(prop: TextDecoration, value: "none"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-tree .issue-breadcrumb-here" }, decls: [
+      decl(prop: Background, value: "color-mix(in srgb, var(--status-assigned-ink) 9%, var(--surface))"),
+      decl(prop: FontWeight, value: "500"),
+      decl(prop: Color, value: "var(--issue-text)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-path-tree ol" }, decls: [
+      decl(prop: MarginLeft, value: "var(--space-16)"),
+      decl(prop: BorderLeft, value: "var(--border-1) solid var(--issue-border)"),
+      decl(prop: PaddingLeft, value: "var(--space-8)"),
+    ] },
+    StaticRule { selector: RawSelector { text: ".issue-membership-children > .issue-membership-list" }, decls: [
+      decl(prop: Margin, value: "var(--space-8) 0 0 var(--space-16)"),
+      decl(prop: PaddingLeft, value: "var(--space-12)"),
+      decl(prop: BorderLeft, value: "var(--border-1) solid var(--issue-border)"),
+    ] },
+    ResponseRule { subject: RawSelector { text: ".issue-path-tree a" }, shape: SelfResponse, trigger: OnHover, transition_props: "background-color", timing: respond_fast, base_decls: [], response_decls: [decl(prop: Background, value: "var(--canvas)")] },
+  ]
+}

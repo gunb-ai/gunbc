@@ -38,13 +38,9 @@ import gunbc.roadmap_interaction {
   detent_rest, detent_hover, detent_pressed, detent_requested, detent_accepted,
 }
 import gunbc.roadmap_style { roadmap_css, roadmap_rules }
-import gunbc.roadmap_component {
-  dispatch_client_js_source, sound_toggle_class,
-  dispatch_class_requested, dispatch_class_ok,
-  dispatch_ack_prefix, dispatch_ack_word,
-  sound_toggle_label_on, sound_toggle_label_off,
-}
-import gunbc.roadmap_page { roadmap_header, roadmap_page_for_authority }
+import gunbc.roadmap_component { dispatch_client_js_source, dispatch_class_requested, dispatch_class_ok, dispatch_ack_prefix, dispatch_ack_word }
+import gunbc.site.controls { sound_toggle_class, sound_toggle_label_on, sound_toggle_label_off }
+import gunbc.site.document { site_header, sound_toggle_control }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -276,7 +272,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
     Element { tag: t, attributes: a, children: _ } =>
       t == "button"
         && fold(a, init: false, f: (found, at) =>
-          found || (at.name == "class" && at.value == sound_toggle_class))
+          found || (at.name == "class" && any(split(s: at.value, delimiter: " "), token => token == sound_toggle_class)))
     FragmentText { content: _ } => false
     RawNode { content: _ } => false
   }
@@ -304,8 +300,8 @@ fn header_has_sound_toggle(h: Fragment) -> Bool {
 }
 
 test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
-  header_has_sound_toggle(h: roadmap_header(page: "roadmap"))
-    && header_has_sound_toggle(h: roadmap_header(page: "daily workspace"))
+  header_has_sound_toggle(h: site_header(page: "roadmap"))
+    && header_has_sound_toggle(h: site_header(page: "daily workspace"))
 }
 
 test fn witness_sound_toggle_scan_discriminates() -> Bool {
@@ -347,10 +343,18 @@ test fn witness_sound_toggle_scan_discriminates() -> Bool {
 // program may paint it.
 
 test fn witness_sound_toggle_label_is_painted_by_the_program_not_the_markup() -> Bool {
-  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+  match try_serialize_html_source(node: sound_toggle_control()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      string_contains(s: h, pattern: join(["<button class=\"", sound_toggle_class, "\" type=\"button\">sound</button>"], ""))
+      fragment_is_sound_toggle(c: sound_toggle_control())
+        && string_contains(s: h, pattern: ">sound</button>")
         && !string_contains(s: h, pattern: sound_toggle_label_on)
+        && !string_contains(s: h, pattern: sound_toggle_label_off)
   }
+}
+
+// Shared geometry classes do not hide the control; partial class names do not identify it.
+test fn sound_toggle_recognition_uses_class_tokens() -> Bool {
+  fragment_is_sound_toggle(c: Element { tag: "button", attributes: [attr(name: "class", value: concat("site-button-compact ", sound_toggle_class))], children: [] })
+    && !fragment_is_sound_toggle(c: Element { tag: "button", attributes: [attr(name: "class", value: concat(sound_toggle_class, "-other"))], children: [] })
 }
