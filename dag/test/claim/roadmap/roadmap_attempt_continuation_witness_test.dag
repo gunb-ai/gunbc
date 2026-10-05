@@ -87,7 +87,7 @@ fn failed_prior() -> PriorAttemptFacts {
   )
 }
 
-test fn no_prior_attempt_starts_fresh() -> Bool {
+test fn no_prior_attempt_starts_fresh() -> Bool  {
   match continuation_decision(prior: none, prior_turn: ContinuationTurnAbsent) {
     ContinuationSpawnFresh { reason: _ } => true
     _ => false
@@ -96,7 +96,7 @@ test fn no_prior_attempt_starts_fresh() -> Bool {
 
 // DISCRIMINATING: a failed verdict on a terminal prior continues on the prior's branch at turn 2 and
 // the brief prefix carries the verdict; a green verdict on the same prior starts fresh.
-test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief() -> Bool {
+test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_brief() -> Bool  {
   match continuation_decision(prior: Present { value: failed_prior() }, prior_turn: ContinuationTurnAbsent) {
     ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
@@ -107,7 +107,7 @@ test fn a_failed_verdict_continues_on_the_prior_branch_with_the_verdict_in_the_b
   }
 }
 
-test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool {
+test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool  {
   let green = pri(
     capture: ready_capture(),
     verdict: SupervisorVerdictAbsent,
@@ -123,7 +123,7 @@ test fn a_fully_approved_lineage_is_complete_and_spawns_nothing() -> Bool {
 
 // DISCRIMINATING: a green verification hands the decision to the review. Changes requested continues
 // with the reviewer's reasons in the brief; a pending review holds rather than spawning anything.
-test fn a_green_verification_with_changes_requested_continues_and_a_pending_review_holds() -> Bool {
+test fn a_green_verification_with_changes_requested_continues_and_a_pending_review_holds() -> Bool  {
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
   let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified,
     review: Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentFailed, detail: "dag/a.dag: the arm is missing" } }, goal_audit: none)
@@ -143,7 +143,7 @@ test fn a_green_verification_with_changes_requested_continues_and_a_pending_revi
 // DISCRIMINATING: at the cap the decision ESCALATES to the derived supervisor rather than
 // refusing (the cap is a cadence, not a failure), and an unreadable turn file still refuses
 // rather than being read as 1.
-test fn the_turn_cap_escalates_and_an_unreadable_turn_still_refuses() -> Bool {
+test fn the_turn_cap_escalates_and_an_unreadable_turn_still_refuses() -> Bool  {
   let at_cap = continuation_decision(
     prior: Present { value: failed_prior() },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -167,7 +167,7 @@ test fn the_turn_cap_escalates_and_an_unreadable_turn_still_refuses() -> Bool {
 
 // DISCRIMINATING: an approved review hands the decision to the goal audit; changes requested there
 // continue with the auditor's reasons, and a pending audit holds.
-test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_holds() -> Bool {
+test fn an_approved_review_with_audit_changes_continues_and_a_pending_audit_holds() -> Bool  {
   let verified = Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "2 validations" } }
   let approved = Present { value: WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "all approved" } }
   let changes = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: verified, review: approved,
@@ -208,7 +208,7 @@ fn blocked_prior() -> PriorAttemptFacts {
 
 // DISCRIMINATING: a terminal prior whose capture declares blocked continues on the prior branch at
 // the next turn with the worker's explanation leading the brief -- never a fresh start from base.
-test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool {
+test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool  {
   match continuation_decision(prior: Present { value: blocked_prior() }, prior_turn: ContinuationTurnAbsent) {
     ContinuationSpawnFromPrior { origin } =>
       attempt_origin_turn(origin: origin) == 2
@@ -221,7 +221,7 @@ test fn a_blocked_submission_continues_with_its_explanation_carried() -> Bool {
 
 // DISCRIMINATING: needs-context is the same unfinished shape with the worker's own account, and
 // continues the same way.
-test fn a_needs_context_submission_continues_with_its_explanation_carried() -> Bool {
+test fn a_needs_context_submission_continues_with_its_explanation_carried() -> Bool  {
   let p = declared_prior(readiness_explanation: WorkerSubmission {
     readiness: SubmissionNeedsContext,
     explanation: "the contract does not say which artifact the lane renders",
@@ -238,7 +238,7 @@ test fn a_needs_context_submission_continues_with_its_explanation_carried() -> B
 
 // DISCRIMINATING: a terminal prior with no capture at its head yielded -- the belt's commit was
 // preservation only -- and the next turn continues from the prior branch to finish and submit.
-test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
+test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool  {
   let p = pri(
     capture: CaptureAbsent,
     verdict: SupervisorVerdictAbsent,
@@ -259,7 +259,7 @@ test fn a_yielded_prior_continues_with_the_yield_reason_carried() -> Bool {
 // decision HOLDS (the belt owes the verification, no spawn of any kind) and NEVER routes to
 // SpawnFromPrior past an unjudged candidate, so a fabricated ready submission cannot route a
 // lineage around the verify gate.
-test fn a_ready_candidate_holds_for_verification_and_never_continues() -> Bool {
+test fn a_ready_candidate_holds_for_verification_and_never_continues() -> Bool  {
   let p = declared_prior(readiness_explanation: WorkerSubmission {
     readiness: SubmissionReady,
     explanation: "implemented the change and ran the acceptance route",
@@ -274,7 +274,7 @@ test fn a_ready_candidate_holds_for_verification_and_never_continues() -> Bool {
 // DISCRIMINATING: the capture arm pays the same cap cadence and the same refusal as a failed
 // verdict -- a blocked lineage at the cap escalates with its stall named, and an unreadable turn
 // file is never guessed as turn 1.
-test fn a_blocked_submission_at_the_cap_escalates_and_an_unreadable_turn_refuses() -> Bool {
+test fn a_blocked_submission_at_the_cap_escalates_and_an_unreadable_turn_refuses() -> Bool  {
   let at_cap = continuation_decision(
     prior: Present { value: blocked_prior() },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -297,7 +297,7 @@ test fn a_blocked_submission_at_the_cap_escalates_and_an_unreadable_turn_refuses
 
 // DISCRIMINATING: a capture that cannot be established is refused, never read as a yield and
 // never as a candidate -- the decision does not guess over possibly-committed work.
-test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
+test fn an_unreadable_capture_refuses_with_its_reason() -> Bool  {
   let p = pri(
     capture: CaptureUnreadable { reason: "the capture record does not decode" },
     verdict: SupervisorVerdictAbsent,
@@ -315,7 +315,7 @@ test fn an_unreadable_capture_refuses_with_its_reason() -> Bool {
 // ladder, cadence point 2): the ask caps the answer at three sentences carried in the submission's
 // explanation, and a named drift routes to the supervisor path rather than reading as failure. L0
 // stays a pointer -- the load phase carries the principles' text, the preamble names their home.
-test fn the_alignment_ask_is_bounded_and_names_the_drift_route() -> Bool {
+test fn the_alignment_ask_is_bounded_and_names_the_drift_route() -> Bool  {
   string_contains(s: continuation_alignment_ask, pattern: "at most three sentences")
     && string_contains(s: continuation_alignment_ask, pattern: "submission's explanation")
     && string_contains(s: continuation_alignment_ask, pattern: "routes to the supervisor path")
@@ -351,7 +351,7 @@ fn nominal_receipt(turn: Int) -> SupervisorVerdictObservation {
 // THE TARGET IS DERIVED FROM THE DECOMPOSITION DAG: a leaf escalates to its arc's supervisor, a
 // project-of-one leaf to its own node's supervisor, a root arc (standalone with members) to the
 // top, and an ambiguous membership derives nothing at all.
-test fn the_escalation_target_is_derived_never_rostered() -> Bool {
+test fn the_escalation_target_is_derived_never_rostered() -> Bool  {
   match supervisor_target_for(node_id: "leaf", memberships: [te(child: "arc", parent: "leaf")]) {
     Present { value: SupervisorForNode { node_id } } =>
       node_id == "arc"
@@ -373,7 +373,7 @@ test fn the_escalation_target_is_derived_never_rostered() -> Bool {
 
 // THE CAPPED LINEAGE ESCALATES TO ITS ARC'S SUPERVISOR with the whole checkpoint named -- never a
 // refusal, never a fresh start.
-test fn a_capped_lineage_escalates_to_the_derived_supervisor() -> Bool {
+test fn a_capped_lineage_escalates_to_the_derived_supervisor() -> Bool  {
   match continuation_decision(prior: Present { value: capped_prior(verdict: SupervisorVerdictAbsent) }, prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap }) {
     ContinuationEscalate { escalation } =>
       escalation.node_id == "n1"
@@ -391,7 +391,7 @@ test fn a_capped_lineage_escalates_to_the_derived_supervisor() -> Bool {
 // A NOMINAL VERDICT FOR THIS TURN RENEWS THE LINEAGE EXACTLY ONCE, on the supervisor's stated
 // evidence: the continuation runs at the next turn from the prior branch with the basis leading
 // the brief.
-test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Bool {
+test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Bool  {
   match continuation_decision(
     prior: Present { value: capped_prior(verdict: nominal_receipt(turn: continuation_turn_cap)) },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -408,7 +408,7 @@ test fn a_nominal_verdict_for_this_turn_issues_the_renewed_continuation() -> Boo
 // RED CONTROL: a Nominal verdict bound to a DIFFERENT turn authorizes nothing -- the route reads
 // the receipt's adjudicated turn, never the label, so a stale or fabricated Nominal escalates
 // rather than issuing a continuation.
-test fn a_nominal_verdict_for_another_turn_does_not_continue() -> Bool {
+test fn a_nominal_verdict_for_another_turn_does_not_continue() -> Bool  {
   match continuation_decision(
     prior: Present { value: capped_prior(verdict: nominal_receipt(turn: 1)) },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -421,7 +421,7 @@ test fn a_nominal_verdict_for_another_turn_does_not_continue() -> Bool {
 
 // PLANDEFECT AND STUCK ARE TERMINAL TYPED STATES OF THEIR OWN -- surfaced as themselves, never
 // spelled "failed": a budget spent is not a task failed.
-test fn plan_defect_and_stuck_verdicts_are_terminal_typed_states() -> Bool {
+test fn plan_defect_and_stuck_verdicts_are_terminal_typed_states() -> Bool  {
   let defect = continuation_decision(
     prior: Present { value: capped_prior(verdict: SupervisorVerdictBound { receipt: SupervisorVerdictReceipt { attempt_key: "a1", adjudicated_turn: continuation_turn_cap, verdict: VerdictPlanDefect { defect: "the brief scopes four files as one edit" } } }) },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -443,7 +443,7 @@ test fn plan_defect_and_stuck_verdicts_are_terminal_typed_states() -> Bool {
 
 // AN UNDECODABLE VERDICT REFUSES, never guessed: the decision does not invent an adjudication over
 // a lineage it cannot read.
-test fn an_unreadable_supervisor_verdict_refuses() -> Bool {
+test fn an_unreadable_supervisor_verdict_refuses() -> Bool  {
   match continuation_decision(
     prior: Present { value: capped_prior(verdict: SupervisorVerdictUnreadable { reason: "the verdict does not decode" }) },
     prior_turn: ContinuationTurnKnown { turn: continuation_turn_cap },
@@ -456,7 +456,7 @@ test fn an_unreadable_supervisor_verdict_refuses() -> Bool {
 // THE RECEIPT CODEC ROUND TRIPS, and the schema wall refuses a document that is not exactly this
 // shape -- the same discipline the submission artifact carries, because both are consumed by a
 // decision that must never guess.
-test fn the_verdict_receipt_round_trips_and_the_schema_wall_holds() -> Bool {
+test fn the_verdict_receipt_round_trips_and_the_schema_wall_holds() -> Bool  {
   let receipt = SupervisorVerdictReceipt {
     attempt_key: "a1",
     adjudicated_turn: 3,
@@ -502,7 +502,7 @@ fn running_prior() -> PriorAttemptFacts {
 
 // AN ACTIVE WORKER IS A HOLD, the repair's core: before it answered Fresh and the belt spawned a
 // second lineage beside the live one. No spawn arm is reachable from a running worker.
-test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
+test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool  {
   match continuation_decision(prior: Present { value: running_prior() }, prior_turn: ContinuationTurnAbsent) {
     ContinuationHold { reason } => string_contains(s: reason, pattern: "has not ended")
     _ => false
@@ -513,7 +513,7 @@ test fn a_running_worker_holds_and_never_spawns_fresh() -> Bool {
 // belt's outstanding obligation, not a spawn's business; a refused verification is an environment
 // fact and the obligation stays outstanding with the retry named; a stopped segment is a state
 // verification does not inhabit and refuses.
-test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool {
+test fn verification_owed_pending_active_hold_and_refused_retries_while_stopped_refuses() -> Bool  {
   let owed = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: none, review: none, goal_audit: none)
   let pending = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "awaiting" } }, review: none, goal_audit: none)
   let active = pri(capture: ready_capture(), verdict: SupervisorVerdictAbsent, verification: Present { value: WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentActive, detail: "running" } }, review: none, goal_audit: none)

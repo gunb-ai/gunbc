@@ -43,19 +43,19 @@ data k1: String = "1111111111111111"
 
 data k2: String = "2222222222222222"
 
-test fn a_historical_attempts_records_name_its_own_directory() -> Bool {
+test fn a_historical_attempts_records_name_its_own_directory() -> Bool  {
   let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let dir = join(["/", node, "-a", k1, "/"], "")
   p.admission.contains(dir) && p.events.contains(dir) && p.spawn_failure.contains(dir)
 }
 
-test fn two_attempts_of_one_node_never_share_a_record_path() -> Bool {
+test fn two_attempts_of_one_node_never_share_a_record_path() -> Bool  {
   let a = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let b = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k2)
   a.admission != b.admission && a.events != b.events && a.spawn_failure != b.spawn_failure
 }
 
-test fn a_historical_attempt_never_reads_through_the_current_projection() -> Bool {
+test fn a_historical_attempt_never_reads_through_the_current_projection() -> Bool  {
   let p = belt_attempt_record_paths(instance: instance(), node_id: node as RoadmapNodeId, attempt_key: k1)
   let nid = node as RoadmapNodeId
   p.admission != dispatch_current_attempt_admission_path_for_instance(instance: instance(), node_id: nid)

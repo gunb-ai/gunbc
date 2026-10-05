@@ -108,7 +108,7 @@ fn is_refused(r: DogfoodStartRecord) -> Bool {
 
 // DISCRIMINATING RED: an instance whose attempt-state root was never converged refuses -- the store
 // does not create its root, and the recorder does not either -- and the refusal fails the tick.
-test fn an_unconverged_store_root_refuses_the_start_record() -> Bool {
+test fn an_unconverged_store_root_refuses_the_start_record() -> Bool  {
   let r = dogfood_start_record_for_instance(instance: fresh_instance(tag: "unconverged"))
   is_refused(r: r)
     && (match belt_start_record_exit(start: r) { ExitSuccess => false  ExitFailure { code: _, reason: _ } => true })
@@ -116,7 +116,7 @@ test fn an_unconverged_store_root_refuses_the_start_record() -> Bool {
 
 // THE FRESH-ROOT CONTROL: once the deployment's root exists, the empty slot reads absent, no attempt
 // is complete, nothing is written, and the tick's tail stays successful.
-test fn a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds() -> Bool {
+test fn a_converged_fresh_root_reads_absent_and_the_tick_tail_succeeds() -> Bool  {
   let instance = converge_root(instance: fresh_instance(tag: "fresh"))
   let r = dogfood_start_record_for_instance(instance: instance)
   (match r { DogfoodStartNoCompleteAttempt => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartAlreadyRecorded => false  DogfoodStartRefused { reason: _ } => false })
@@ -142,7 +142,7 @@ fn plant(root: NonEmptyStr, bytes: String) -> Bool {
 
 // A VALID RECEIPT IN THE SLOT is read as recorded: the recorder stops without rewriting it, and the
 // acceptance read holds.
-test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
+test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool  {
   let instance = converge_root(instance: fresh_instance(tag: "recorded"))
   plant_launch(instance: instance)
     && plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
@@ -152,7 +152,7 @@ test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
 
 // AN INVALID RECEIPT IN THE SLOT IS NOT A START: the recorder refuses rather than reporting a
 // recorded start, and the acceptance read does not hold.
-test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded() -> Bool {
+test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded() -> Bool  {
   let instance = converge_root(instance: fresh_instance(tag: "invalid"))
   plant(root: dogfood_start_store_root(instance: instance), bytes: "{\"schema\": \"dogfood-start-receipt/v3\", \"attempt_key\": \"fabricated\"}")
     && is_refused(r: dogfood_start_record_for_instance(instance: instance))
@@ -162,7 +162,7 @@ test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded()
 // EVIDENCE FROM ANOTHER INSTANCE IS NOT THIS INSTANCE'S START: a receipt whose pinned service evidence
 // names another instance, copied into this instance's slot, is refused by the recorder and does not
 // satisfy the acceptance read, even though node and attempt match.
-test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bool {
+test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bool  {
   let instance = converge_root(instance: fresh_instance(tag: "foreign"))
   plant_launch(instance: instance)
     && plant(root: dogfood_start_store_root(instance: instance), bytes: wire_for(pr: "4242", instance_id: "some-other-instance"))

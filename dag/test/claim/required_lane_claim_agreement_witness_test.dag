@@ -62,7 +62,7 @@ data projected_ledgers: List<ProjectedDocument> = [
 // RED. A document making the standing negation about a lane the roster carries must refuse, and
 // must refuse WITH THE SITE NAMED -- a bare `false` would tell a maintainer that something in three
 // ledgers is wrong and nothing about which sentence.
-test fn w_a_stale_claim_about_a_rostered_lane_refuses_and_names_the_document() -> Bool {
+test fn w_a_stale_claim_about_a_rostered_lane_refuses_and_names_the_document() -> Bool  {
   match required_lane_claim_agreement_check(
     documents: stale_claim_fixture_documents,
     job_ids: stale_claim_fixture_rostered_job_ids
@@ -79,7 +79,7 @@ test fn w_a_stale_claim_about_a_rostered_lane_refuses_and_names_the_document() -
 // negation about an unrostered lane and a true mention of a rostered one; if either is refused the
 // check is a phrase blacklist rather than a disagreement between two authorities, and it would fire
 // on correct documentation.
-test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool {
+test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool  {
   match required_lane_claim_agreement_check(
     documents: stale_claim_fixture_documents,
     job_ids: stale_claim_fixture_rostered_job_ids
@@ -94,7 +94,7 @@ test fn w_a_true_negation_and_a_bare_mention_are_not_refused() -> Bool {
 // them by having nothing to check -- green forever, carrying no information. This row fails in that
 // case. It asserts membership at IDENTITY grain and not by count, because a count equality against
 // a literal measured from this same tree is the change detector DESIGN section 5 refuses.
-test fn w_the_live_roster_is_read_and_carries_both_lanes() -> Bool {
+test fn w_the_live_roster_is_read_and_carries_both_lanes() -> Bool  {
   count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-build" }) == 1
     && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "required-witnesses-floor" }) == 1
     && count_where(xs: rostered_job_ids, predicate: fn(id) { id == "rust-unit-tests" }) == 0
@@ -103,7 +103,7 @@ test fn w_the_live_roster_is_read_and_carries_both_lanes() -> Bool {
 // CONTROL C, the other half of non-vacuity: the ledgers must have been PROJECTED, not arrive empty.
 // A serializer returning "" would make the wall below green against every roster. Grounded in the
 // documents' own required structure rather than in a length literal.
-test fn w_the_ledgers_are_projected_and_not_empty() -> Bool {
+test fn w_the_ledgers_are_projected_and_not_empty() -> Bool  {
   count_where(xs: projected_ledgers, predicate: fn(d) {
     string_contains(s: d.text, pattern: "# gunbc")
   }) == 3
@@ -113,7 +113,7 @@ test fn w_the_ledgers_are_projected_and_not_empty() -> Bool {
 
 // The live claim. Every lane the roster declares required, against every ledger this repository
 // projects. This is the row gunbc#10078 would have reddened.
-test fn w_no_projected_ledger_denies_a_lane_the_roster_requires() -> Bool {
+test fn w_no_projected_ledger_denies_a_lane_the_roster_requires() -> Bool  {
   match required_lane_claim_agreement_check(
     documents: projected_ledgers,
     job_ids: rostered_job_ids

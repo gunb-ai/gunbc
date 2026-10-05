@@ -159,7 +159,7 @@ fn is_identity_join(expected: List<String>, lowered: List<String>) -> Bool {
     && all(lowered, l => occurrences(wires: expected, wire: l) == 1)
 }
 
-test fn lowering_covers_patches_and_append_runs_as_an_identity_join() -> Bool {
+test fn lowering_covers_patches_and_append_runs_as_an_identity_join() -> Bool  {
   let b = w_full_plan()
   match lower_write_plan(bound: b) {
     WritePlanLowered { ranges: rs } =>
@@ -170,7 +170,7 @@ test fn lowering_covers_patches_and_append_runs_as_an_identity_join() -> Bool {
   }
 }
 
-test fn the_identity_join_rejects_a_dropped_and_a_duplicated_range() -> Bool {
+test fn the_identity_join_rejects_a_dropped_and_a_duplicated_range() -> Bool  {
   let e = ["a", "b", "c"]
   !is_identity_join(expected: e, lowered: ["a", "b"])
     && !is_identity_join(expected: e, lowered: ["a", "b", "b"])
@@ -215,7 +215,7 @@ fn sole_refusal(b: TabBoundWritePlan) -> WritePlanRefusal? {
 
 // A malformed run refuses the WHOLE plan; the well-formed patch beside it is not lowered on its
 // own, because a partial lowering is a dropped range wearing a success arm.
-test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool {
+test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool  {
   let b = bound(
     tab: "Review",
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")],
@@ -224,7 +224,7 @@ test fn lowering_refuses_a_run_whose_cells_do_not_fit_its_span() -> Bool {
   sole_refusal_tag(b: b) == "append:L3:A4:C4:width-2-of-3"
 }
 
-test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
+test fn lowering_refuses_a_run_off_its_listing_row() -> Bool  {
   let b = bound(
     tab: "Review",
     patches: [],
@@ -233,7 +233,7 @@ test fn lowering_refuses_a_run_off_its_listing_row() -> Bool {
   sole_refusal_tag(b: b) == "append:L3:A5:B5:off-row-4"
 }
 
-test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
+test fn lowering_refuses_a_run_spanning_two_rows() -> Bool  {
   let two_rows = A1RowSpan { start: cell(letter: "A", row: 4), end: cell(letter: "B", row: 5) }
   let b = bound(
     tab: "Review",
@@ -243,11 +243,11 @@ test fn lowering_refuses_a_run_spanning_two_rows() -> Bool {
   sole_refusal_tag(b: b) == "append:L3:A4:B5:not-one-row"
 }
 
-test fn lowering_refuses_an_empty_plan_rather_than_building_a_zero_range_batch() -> Bool {
+test fn lowering_refuses_an_empty_plan_rather_than_building_a_zero_range_batch() -> Bool  {
   sole_refusal_tag(b: bound(tab: "Review", patches: [], appends: [])) == "empty"
 }
 
-test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool {
+test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool  {
   let b = bound(tab: "Bob's", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
   sole_refusal_tag(b: b) == "tab:Bob's"
 }
@@ -255,7 +255,7 @@ test fn lowering_refuses_a_tab_title_it_cannot_qualify() -> Bool {
 // THE TITLE GOES THROUGH THE A1 CODEC, NOT A CONCAT. A space-titled tab lowers to a QUOTED range
 // ('Buyer Review'!B2); a raw concat would send Buyer Review!B2, which Sheets reads as a different
 // range or refuses. The refusal for an apostrophe title above is the codec's, carried by name.
-test fn a_space_titled_tab_lowers_to_a_quoted_range() -> Bool {
+test fn a_space_titled_tab_lowers_to_a_quoted_range() -> Bool  {
   let b = bound(tab: "Buyer Review", patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha")], appends: [])
   match lower_write_plan(bound: b) {
     WritePlanLowered { ranges: rs } =>
@@ -269,7 +269,7 @@ test fn a_space_titled_tab_lowers_to_a_quoted_range() -> Bool {
 
 // One tab, one refusal: a four-range plan on an apostrophe title reports the codec's refusal once,
 // not once per range, and lowers nothing.
-test fn an_unencodable_title_is_refused_once_for_the_whole_plan() -> Bool {
+test fn an_unencodable_title_is_refused_once_for_the_whole_plan() -> Bool  {
   let b = bound(
     tab: "Bob's",
     patches: [patch(listing_id: "L1", letter: "B", row: 2, value: "alpha"), patch(listing_id: "L2", letter: "B", row: 3, value: "beta")],
@@ -280,17 +280,17 @@ test fn an_unencodable_title_is_refused_once_for_the_whole_plan() -> Bool {
 
 // COORDINATES ARE CHECKED, NOT TRUSTED. A patch at AA2 or B0, or an append on row 0, names no cell
 // Sheets has; each refuses the whole plan before any request is built.
-test fn lowering_refuses_a_patch_at_an_unreadable_column() -> Bool {
+test fn lowering_refuses_a_patch_at_an_unreadable_column() -> Bool  {
   let b = bound(tab: "Review", patches: [patch(listing_id: "L1", letter: "AA", row: 2, value: "alpha")], appends: [])
   sole_refusal_tag(b: b) == "patch:L1:AA2:column-unreadable"
 }
 
-test fn lowering_refuses_a_patch_below_row_one() -> Bool {
+test fn lowering_refuses_a_patch_below_row_one() -> Bool  {
   let b = bound(tab: "Review", patches: [patch(listing_id: "L1", letter: "B", row: 0, value: "alpha")], appends: [])
   sole_refusal_tag(b: b) == "patch:L1:B0:row-below-origin"
 }
 
-test fn lowering_refuses_an_append_below_row_one() -> Bool {
+test fn lowering_refuses_an_append_below_row_one() -> Bool  {
   let b = bound(
     tab: "Review",
     patches: [],
@@ -299,7 +299,7 @@ test fn lowering_refuses_an_append_below_row_one() -> Bool {
   sole_refusal_tag(b: b) == "append:L3:A0:C0:row-below-origin"
 }
 
-test fn a_malformed_patch_refuses_the_whole_plan_beside_a_good_append() -> Bool {
+test fn a_malformed_patch_refuses_the_whole_plan_beside_a_good_append() -> Bool  {
   let b = bound(
     tab: "Review",
     patches: [patch(listing_id: "L1", letter: "B", row: 0, value: "alpha")],
@@ -312,7 +312,7 @@ test fn a_malformed_patch_refuses_the_whole_plan_beside_a_good_append() -> Bool 
 }
 
 // Every defect is reported, not the first: a plan with two malformed runs names both.
-test fn lowering_reports_every_refusal_it_found() -> Bool {
+test fn lowering_reports_every_refusal_it_found() -> Bool  {
   let b = bound(
     tab: "Review",
     patches: [],
@@ -329,7 +329,7 @@ test fn lowering_reports_every_refusal_it_found() -> Bool {
 
 // THE BATCH REQUEST CARRIES ALL RANGES IN ONE CALL, asserted on the request built: one record,
 // one data list, every lowered range in it, RAW as the input option.
-test fn batch_request_carries_every_range_of_the_plan_in_one_call() -> Bool {
+test fn batch_request_carries_every_range_of_the_plan_in_one_call() -> Bool  {
   let b = w_full_plan()
   match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: b) {
     BatchRequestBuilt { request: req } =>
@@ -344,7 +344,7 @@ test fn batch_request_carries_every_range_of_the_plan_in_one_call() -> Bool {
   }
 }
 
-test fn batch_request_is_not_built_from_an_unlowerable_plan() -> Bool {
+test fn batch_request_is_not_built_from_an_unlowerable_plan() -> Bool  {
   match batch_values_request(spreadsheet_id: "sheet-1" as NonEmptyStr, bound: bound(tab: "Review", patches: [], appends: [])) {
     BatchRequestBuilt { request: _ } => false
     BatchRequestUnlowerable { refusals: rs } => count(rs) == 1
@@ -422,7 +422,7 @@ fn not_issued() -> BatchNonCommitStanding {
   BatchNotIssued { refusals: [EmptyWritePlan] }
 }
 
-test fn the_fixture_readback_classifies_as_converged() -> Bool {
+test fn the_fixture_readback_classifies_as_converged() -> Bool  {
   match w_assess(rows: converged_rows()) {
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: ReviewSheetConverged } => true
     ReviewSheetProjectionClassified { observed: _, tab: _, classification: _ } => false
@@ -431,7 +431,7 @@ test fn the_fixture_readback_classifies_as_converged() -> Bool {
   }
 }
 
-test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool {
+test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool  {
   match review_sheet_write_receipt(commit: committed(), readback_assessment: w_assess(rows: converged_rows())) {
     WriteVerifiedConverged { commit: c, observed: o } =>
       count(o.rows) == 2
@@ -447,7 +447,7 @@ test fn a_converged_readback_after_a_committed_write_is_verified() -> Bool {
 // A readback missing one range -- the L2 row never landed -- is UNVERIFIED and carries the
 // assessment: the residual plan says which listing is still owed an append. Per-range readback of
 // the ranges that were sent could not have said this.
-test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
+test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool  {
   match review_sheet_write_receipt(
     commit: committed(),
     readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "alpha")]),
@@ -477,7 +477,7 @@ test fn a_readback_missing_a_range_is_unverified_with_the_assessment() -> Bool {
 
 // A readback whose cell holds a value the plan did not choose is a conflict, and a conflict is
 // not convergence even after a committed write.
-test fn a_conflicting_readback_is_unverified() -> Bool {
+test fn a_conflicting_readback_is_unverified() -> Bool  {
   match review_sheet_write_receipt(
     commit: committed(),
     readback_assessment: w_assess(rows: [observed_row(listing_id: "L1", title: "someone else's title"), observed_row(listing_id: "L2", title: "beta")]),
@@ -494,7 +494,7 @@ test fn a_conflicting_readback_is_unverified() -> Bool {
   }
 }
 
-test fn a_rejected_readback_is_unverified_not_a_success() -> Bool {
+test fn a_rejected_readback_is_unverified_not_a_success() -> Bool  {
   match review_sheet_write_receipt(
     commit: committed(),
     readback_assessment: ReviewSheetReadbackRejected { reason: "values.get refused with status 429" as NonEmptyStr },
@@ -509,7 +509,7 @@ test fn a_rejected_readback_is_unverified_not_a_success() -> Bool {
 
 // COMMIT-AMBIGUOUS PLUS A CONVERGED READBACK IS A SUCCESS, and the ambiguity stays in the receipt:
 // the sheet is what the projection says, and the receipt still says the remote never confirmed it.
-test fn an_ambiguous_commit_with_a_converged_readback_is_verified_and_keeps_the_ambiguity() -> Bool {
+test fn an_ambiguous_commit_with_a_converged_readback_is_verified_and_keeps_the_ambiguity() -> Bool  {
   match review_sheet_write_receipt(commit: ambiguous(), readback_assessment: w_assess(rows: converged_rows())) {
     WriteVerifiedConverged { commit: BatchCommitAmbiguous { detail: d }, observed: _ } =>
       (d as String) == "no response arrived for a mutation"
@@ -544,19 +544,19 @@ fn dispatch_tag(d: WriteDispatch) -> String {
   }
 }
 
-test fn a_committed_write_owes_a_readback() -> Bool {
+test fn a_committed_write_owes_a_readback() -> Bool  {
   dispatch_tag(d: write_dispatch(standing: BatchMayHaveCommitted { commit: committed() })) == "readback-owed:committed"
 }
 
-test fn an_ambiguous_write_owes_a_readback_exactly_as_a_committed_one() -> Bool {
+test fn an_ambiguous_write_owes_a_readback_exactly_as_a_committed_one() -> Bool  {
   dispatch_tag(d: write_dispatch(standing: BatchMayHaveCommitted { commit: ambiguous() })) == "readback-owed:ambiguous"
 }
 
-test fn a_refused_write_is_settled_not_committed_without_a_readback() -> Bool {
+test fn a_refused_write_is_settled_not_committed_without_a_readback() -> Bool  {
   dispatch_tag(d: write_dispatch(standing: BatchDidNotCommit { cause: refused() })) == "settled:not-committed:refused-400"
 }
 
-test fn a_not_issued_write_is_settled_not_committed_without_a_readback() -> Bool {
+test fn a_not_issued_write_is_settled_not_committed_without_a_readback() -> Bool  {
   dispatch_tag(d: write_dispatch(standing: BatchDidNotCommit { cause: not_issued() })) == "settled:not-committed:not-issued-1"
 }
 
@@ -581,10 +581,10 @@ data outside_caller_of_the_wire_fn_source: String = "module probe_batch_wire_out
 
 data outside_caller_of_the_plan_fn_source: String = "module probe_batch_plan_outside_caller\nimport std.types { NonEmptyStr }\nimport std.resources { Network }\nimport gunbc.review_sheet_sheets { TabBoundWritePlan }\nimport gunbc.review_sheet_batch_actuator { BatchMutationStanding, perform_batch_write }\nfn probe_plan(spreadsheet_id: NonEmptyStr, bound: TabBoundWritePlan) -> BatchMutationStanding uses net: Network {\n  perform_batch_write(spreadsheet_id: spreadsheet_id, bound: bound)\n}\n"
 
-test fn an_outside_module_calling_the_wire_fn_is_refused_at_that_callee() -> Bool {
+test fn an_outside_module_calling_the_wire_fn_is_refused_at_that_callee() -> Bool  {
   seal_refusals_at_wire_fn(source: outside_caller_of_the_wire_fn_source) >= 1
 }
 
-test fn an_outside_module_calling_the_plan_fn_is_not_refused() -> Bool {
+test fn an_outside_module_calling_the_plan_fn_is_not_refused() -> Bool  {
   seal_refusals_at_wire_fn(source: outside_caller_of_the_plan_fn_source) == 0
 }

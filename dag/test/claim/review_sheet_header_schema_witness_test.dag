@@ -120,7 +120,7 @@ fn two_columns_named_listing() -> ReviewSheetSchema {
   }
 }
 
-test fn two_columns_with_one_name_are_refused_naming_the_name() -> Bool {
+test fn two_columns_with_one_name_are_refused_naming_the_name() -> Bool  {
   let v = validate_header_schema(schema: two_columns_named_listing())
   !is_validated(v: v)
     && refused_name(v: v) == "Listing"
@@ -136,7 +136,7 @@ fn operator_identity_schema() -> ReviewSheetSchema {
   }
 }
 
-test fn an_identity_column_declared_operator_entered_is_refused_naming_it() -> Bool {
+test fn an_identity_column_declared_operator_entered_is_refused_naming_it() -> Bool  {
   let v = validate_header_schema(schema: operator_identity_schema())
   !is_validated(v: v)
     && refused_name(v: v) == "Decision"
@@ -157,7 +157,7 @@ fn identity_in_columns_schema() -> ReviewSheetSchema {
   }
 }
 
-test fn an_identity_that_is_one_of_the_columns_renders_once_in_place() -> Bool {
+test fn an_identity_that_is_one_of_the_columns_renders_once_in_place() -> Bool  {
   rendered(v: validate_header_schema(schema: identity_in_columns_schema()))
     == "Rank|Repository|Owner|Standing"
 }
@@ -173,20 +173,20 @@ fn identity_outside_columns_schema() -> ReviewSheetSchema {
   }
 }
 
-test fn an_identity_outside_the_columns_is_prepended_to_the_header_row() -> Bool {
+test fn an_identity_outside_the_columns_is_prepended_to_the_header_row() -> Bool  {
   rendered(v: validate_header_schema(schema: identity_outside_columns_schema()))
     == "Listing|Title|Standing|Decision"
 }
 
 // -- the production schemas -----------------------------------------------------------
 
-test fn the_public_production_schema_validates() -> Bool {
+test fn the_public_production_schema_validates() -> Bool  {
   is_validated(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
 }
 
 // The live ci_prospect header row, asserted by name and in order. This is the row the sheet already
 // carries: an identity prepended ahead of it would be both a duplicate "Repository" and a reorder.
-test fn the_ci_prospect_header_row_is_its_column_roster_in_order() -> Bool {
+test fn the_ci_prospect_header_row_is_its_column_roster_in_order() -> Bool  {
   rendered(v: validate_header_schema(schema: ci_prospect_sheet_schema()))
     == "Rank|Repository|Owner|Standing|Runner-min/day|Runs/day|Median min|p90 min|Success %|Linux %|Provider|Stars|Language|Why|URL|Decision|Note"
 }
@@ -202,7 +202,7 @@ fn validated_or_fail(s: ReviewSheetSchema) -> Int {
 
 // count(schema.columns) is 3 for this schema and the header row is 4 wide. A band sized to the
 // roster would stop before "Decision".
-test fn the_header_extent_counts_the_prepended_identity() -> Bool {
+test fn the_header_extent_counts_the_prepended_identity() -> Bool  {
   let s = identity_outside_columns_schema()
   validated_or_fail(s: s) == 4 && count(s.columns) == 3
 }
@@ -220,7 +220,7 @@ fn standing_at(s: ReviewSheetSchema) -> Int {
 
 // Standing is at roster position 1 and at header position 2, because the identity is prepended. The
 // roster answer would have coloured "Title".
-test fn the_standing_column_is_at_its_header_position_not_its_roster_position() -> Bool {
+test fn the_standing_column_is_at_its_header_position_not_its_roster_position() -> Bool  {
   standing_at(s: identity_outside_columns_schema()) == 2
     && standing_at(s: identity_in_columns_schema()) == 3
 }
@@ -247,7 +247,7 @@ fn unreadable_reason(c: ReviewSheetClassification) -> String {
 // The sheet handed in here carries EXACTLY the headers the malformed schema names, so nothing about
 // the observed row is wrong: the refusal is the schema's, and it is reached before the observed
 // headers are folded at all.
-test fn the_classifier_refuses_a_duplicate_column_schema_over_a_matching_sheet() -> Bool {
+test fn the_classifier_refuses_a_duplicate_column_schema_over_a_matching_sheet() -> Bool  {
   unreadable_reason(c: classify_review_sheet(
     observed: sheet_of(headers: ["Item", "Listing"]),
     projection: projection_of(s: two_columns_named_listing()),
@@ -258,7 +258,7 @@ test fn the_classifier_refuses_a_duplicate_column_schema_over_a_matching_sheet()
 // The positive control for the arm above: the same fold over a valid schema does NOT report the
 // schema refusal, so the red on the duplicate is the schema wall and not the classifier refusing
 // everything.
-test fn the_classifier_admits_the_valid_shape_it_refused_one_name_away() -> Bool {
+test fn the_classifier_admits_the_valid_shape_it_refused_one_name_away() -> Bool  {
   unreadable_reason(c: classify_review_sheet(
     observed: sheet_of(headers: ["Listing", "Title", "Standing", "Decision"]),
     projection: projection_of(s: identity_outside_columns_schema()),
@@ -286,7 +286,7 @@ fn probe_source(name: String) -> String {
 // could not run.
 data harness_control_source: String = "module probe_review_sheet_header_harness_control\nimport std.types { Int }\nimport gunbc.review_sheet_projection { ci_prospect_sheet_schema }\nfn columns() -> Int { count(ci_prospect_sheet_schema().columns) }\n"
 
-test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
+test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool  {
   total_blocking_count_for(source: harness_control_source) == 0
 }
 
@@ -295,7 +295,7 @@ test fn the_harness_runs_and_a_clean_source_is_clean() -> Bool {
 // validated_header_schema helper would have handed a foreign caller (review 68430). A single
 // refusal would satisfy a >= 1 assertion while the second forgery compiled, which is the shape of
 // evidence that let the helper through in the first place.
-test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool {
+test fn a_validated_header_schema_cannot_be_authored_outside_the_mint() -> Bool  {
   blocking_subject_count_for(
     source: probe_source(name: "review_sheet_validated_header_schema_forged_probe"),
     wanted_class: "SoleConstructorViolation",

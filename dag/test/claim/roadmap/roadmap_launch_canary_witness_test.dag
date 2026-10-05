@@ -202,12 +202,12 @@ fn blocked_exactly_by(doc: RoadmapDocument, id: RoadmapNodeId, blocker: String) 
 }
 
 // Exit receipt: the parent is Ready in the synthetic graph.
-test fn witness_canary_parent_ready() -> Bool {
+test fn witness_canary_parent_ready() -> Bool  {
   is_ready(doc: canary_graph(), id: roadmap_launch_canary_parent_node_id())
 }
 
 // Exit receipt: the child is blocked, and its one blocker is the exact parent identity.
-test fn witness_canary_child_blocked_by_exact_parent() -> Bool {
+test fn witness_canary_child_blocked_by_exact_parent() -> Bool  {
   blocked_exactly_by(
     doc: canary_graph(),
     id: roadmap_launch_canary_child_node_id(),
@@ -216,7 +216,7 @@ test fn witness_canary_child_blocked_by_exact_parent() -> Bool {
 }
 
 // The acceptance event is what unlocks the child: parent accepted -> child Ready, parent Done.
-test fn witness_canary_child_ready_after_parent_accepted() -> Bool {
+test fn witness_canary_child_ready_after_parent_accepted() -> Bool  {
   let doc = canary_graph_parent_accepted()
   let frontier = spawn_frontier(doc: doc, merged: [])
   is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
@@ -282,7 +282,7 @@ fn child_blocked_under(parent: RoadmapNode) -> Bool {
 
 // State 2 of 3 (RLM-6 falsifier at the model grain): merged-but-unaccepted parent is in Review,
 // does not close the dependency, and the child stays blocked by it.
-test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool {
+test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool  {
   let parent = canary_parent_derivable(signoff: Unsigned)
   lifecycle_is_review(l: work_lifecycle(rn: parent, merged: [1]))
     && !node_closes_dependency(n: parent)
@@ -291,7 +291,7 @@ test fn witness_canary_merged_unaccepted_parent_keeps_child_blocked() -> Bool {
 
 // Negative control for the merge evidence: the same fixture with an empty merged roster is Open,
 // so the review conjunct above is discriminating, not a restatement of "unsigned blocks".
-test fn control_unmerged_parent_is_open_not_review() -> Bool {
+test fn control_unmerged_parent_is_open_not_review() -> Bool  {
   let parent = canary_parent_derivable(signoff: Unsigned)
   lifecycle_is_open(l: work_lifecycle(rn: parent, merged: []))
     && !lifecycle_is_review(l: work_lifecycle(rn: parent, merged: []))
@@ -301,7 +301,7 @@ test fn control_unmerged_parent_is_open_not_review() -> Bool {
 
 // State 3 of 3: the accepted signoff is what closes the dependency -- Done, and the child Ready --
 // while the merge roster alone (state 2) never did.
-test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
+test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool  {
   let open = canary_parent_derivable(signoff: Unsigned)
   let accepted = canary_parent_derivable(signoff: accepted_signoff())
   lifecycle_is_open(l: work_lifecycle(rn: open, merged: []))
@@ -318,7 +318,7 @@ test fn witness_canary_three_lifecycle_states_are_distinct() -> Bool {
 
 // Falsifier (a): delete the dependency edge -> the child no longer produces the blocked decision.
 // Enrolled as the control that shows the edge is load-bearing in the derivation the page consumes.
-test fn falsifier_deleting_edge_changes_child_decision() -> Bool {
+test fn falsifier_deleting_edge_changes_child_decision() -> Bool  {
   let doc = canary_graph_without_edge()
   !blocked_exactly_by(doc: doc, id: roadmap_launch_canary_child_node_id(), blocker: roadmap_launch_canary_parent_id as String)
     && is_ready(doc: doc, id: roadmap_launch_canary_child_node_id())
@@ -326,7 +326,7 @@ test fn falsifier_deleting_edge_changes_child_decision() -> Bool {
 }
 
 // Falsifier (b): a different blocker identity is refused by the exact-identity join.
-test fn falsifier_wrong_blocker_identity_refused() -> Bool {
+test fn falsifier_wrong_blocker_identity_refused() -> Bool  {
   !blocked_exactly_by(
     doc: canary_graph(),
     id: roadmap_launch_canary_child_node_id(),
@@ -344,16 +344,16 @@ test fn falsifier_wrong_blocker_identity_refused() -> Bool {
 // Over the PREDICATE with a literal input, never the live sentinel row: at RLM-5 the canary attempt
 // flips that row, and a floor witness reading it would red the very PR the MVP exists to publish.
 // "Red on base" as a fact about the committed row belongs only to the pinned oracle.
-test fn witness_oracle_red_on_pending_sentinel() -> Bool {
+test fn witness_oracle_red_on_pending_sentinel() -> Bool  {
   !roadmap_launch_canary_sentinel_completed(value: join(["pending:", roadmap_launch_canary_nonce as String], ""))
 }
 
-test fn witness_oracle_green_on_exact_authorized_mutation() -> Bool {
+test fn witness_oracle_green_on_exact_authorized_mutation() -> Bool  {
   roadmap_launch_canary_sentinel_completed(value: join(["completed:", roadmap_launch_canary_nonce as String], ""))
     && roadmap_launch_canary_sentinel_completed(value: roadmap_launch_canary_expected_sentinel())
 }
 
-test fn falsifier_oracle_red_on_wrong_or_missing_nonce() -> Bool {
+test fn falsifier_oracle_red_on_wrong_or_missing_nonce() -> Bool  {
   !roadmap_launch_canary_sentinel_completed(value: "completed:")
     && !roadmap_launch_canary_sentinel_completed(value: "completed")
     && !roadmap_launch_canary_sentinel_completed(value: "completed:WRONGNONCE")
@@ -363,7 +363,7 @@ test fn falsifier_oracle_red_on_wrong_or_missing_nonce() -> Bool {
 }
 
 // The contract closes and its oracle is pinnable at exactly the declared entry and function.
-test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
+test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool  {
   let contract = roadmap_launch_canary_execution_contract()
   let scopes = validation_oracle_scopes(contract: contract)
   match contract_closure(contract: contract) {
@@ -385,7 +385,7 @@ test fn witness_canary_contract_closes_with_pinnable_oracle() -> Bool {
 // refuses the contract -- but READINESS has one answer (gunbc.roadmap.roadmap_readiness): the page
 // renders it not ready with exactly the contract missing, and the launch admission refuses with the
 // same missing fact before any environment probe. Two producers, one verdict.
-test fn finding_unspecified_contract_is_on_the_frontier_but_not_ready() -> Bool {
+test fn finding_unspecified_contract_is_on_the_frontier_but_not_ready() -> Bool  {
   let unbound = canary_node(
     identity: roadmap_launch_canary_child_identity,
     id: roadmap_launch_canary_child_node_id(),

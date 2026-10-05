@@ -108,7 +108,7 @@ fn fixture_stale(change: String, expected: NonEmptyStr) -> Bool {
   }
 }
 
-test fn unchanged_subject_admits() -> Bool {
+test fn unchanged_subject_admits() -> Bool  {
   match fixture_admission(change: "unchanged") {
     AttemptSubjectRefused { node: _, cause: _ } => false
     AttemptSubjectAdmitted { subject } =>
@@ -120,7 +120,7 @@ test fn unchanged_subject_admits() -> Bool {
   }
 }
 
-test fn sha256_admits_without_becoming_sha1() -> Bool {
+test fn sha256_admits_without_becoming_sha1() -> Bool  {
   match fixture_admission(change: "sha256") {
     AttemptSubjectRefused { node: _, cause: _ } => false
     AttemptSubjectAdmitted { subject } =>
@@ -131,7 +131,7 @@ test fn sha256_admits_without_becoming_sha1() -> Bool {
   }
 }
 
-test fn moved_standing_refuses_the_join() -> Bool {
+test fn moved_standing_refuses_the_join() -> Bool  {
   match fixture_admission(change: "unchanged") {
     AttemptSubjectRefused { node: _, cause: _ } => false
     AttemptSubjectAdmitted { subject: green } =>
@@ -145,7 +145,7 @@ test fn moved_standing_refuses_the_join() -> Bool {
   }
 }
 
-test fn each_other_sealed_axis_moves_identity_and_refuses() -> Bool {
+test fn each_other_sealed_axis_moves_identity_and_refuses() -> Bool  {
   fixture_stale(change: "node", expected: "node")
     && fixture_stale(change: "destination", expected: "destination")
     && fixture_stale(change: "branch", expected: "destination")
@@ -156,19 +156,19 @@ test fn each_other_sealed_axis_moves_identity_and_refuses() -> Bool {
     && fixture_stale(change: "source_roots", expected: "source_roots")
 }
 
-test fn changed_validations_moves_identity_and_refuses() -> Bool {
+test fn changed_validations_moves_identity_and_refuses() -> Bool  {
   fixture_stale(change: "validations", expected: "validations")
 }
 
-test fn changed_path_scope_moves_identity_and_refuses() -> Bool {
+test fn changed_path_scope_moves_identity_and_refuses() -> Bool  {
   fixture_stale(change: "path_scope", expected: "path_scope")
 }
 
-test fn changed_extra_capabilities_moves_identity_and_refuses() -> Bool {
+test fn changed_extra_capabilities_moves_identity_and_refuses() -> Bool  {
   fixture_stale(change: "extra_capabilities", expected: "extra_capabilities")
 }
 
-test fn missing_inputs_refuse_at_the_node_and_field() -> Bool {
+test fn missing_inputs_refuse_at_the_node_and_field() -> Bool  {
   fixture_missing(change: "missing_base", expected: "base_revision")
     && fixture_missing(change: "invalid_base", expected: "base_revision")
     && fixture_missing(change: "missing_public", expected: "public_revision")
@@ -176,7 +176,7 @@ test fn missing_inputs_refuse_at_the_node_and_field() -> Bool {
     && fixture_missing(change: "missing_execution", expected: "execution_contract")
 }
 
-test fn unobserved_destination_never_defaults_to_gunbc() -> Bool {
+test fn unobserved_destination_never_defaults_to_gunbc() -> Bool  {
   all(["missing_destination", "missing_privacy", "missing_branch", "empty_branch"], change =>
     match fixture_admission(change: change) {
       AttemptSubjectAdmitted { subject: _ } => false
@@ -188,7 +188,7 @@ test fn unobserved_destination_never_defaults_to_gunbc() -> Bool {
     })
 }
 
-test fn missing_current_standing_refuses_the_join() -> Bool {
+test fn missing_current_standing_refuses_the_join() -> Bool  {
   match fixture_admission(change: "unchanged") {
     AttemptSubjectRefused { node: _, cause: _ } => false
     AttemptSubjectAdmitted { subject } =>
@@ -255,7 +255,7 @@ fn raw_revision_refuses(text: String, public: Bool) -> Bool {
   }
 }
 
-test fn raw_digest_paths_refuse_at_mint_and_join() -> Bool {
+test fn raw_digest_paths_refuse_at_mint_and_join() -> Bool  {
   all([
     "x",
     "gggggggggggggggggggggggggggggggggggggggg",

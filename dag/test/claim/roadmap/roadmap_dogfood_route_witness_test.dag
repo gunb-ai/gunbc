@@ -106,7 +106,7 @@ fn wires(stages: List<DogfoodStage>) -> String {
 
 // ── EACH READER POPULATES ONLY ITS OWN STAGE, FROM ITS OWN RECORD ──
 
-test fn the_submission_reader_carries_the_captures_head_and_digest() -> Bool {
+test fn the_submission_reader_carries_the_captures_head_and_digest() -> Bool  {
   (match dogfood_submission_reading(attempt_key: "k1", capture: capture_at(h: head)) {
     SubmissionEstablished { evidence } => evidence.head_sha == head && evidence.attempt_key == "k1" && evidence.digest != ""
     SubmissionGap { gap: _ } => false
@@ -121,7 +121,7 @@ test fn the_submission_reader_carries_the_captures_head_and_digest() -> Bool {
     })
 }
 
-test fn the_review_reader_names_node_at_head_and_only_establishes_when_approved() -> Bool {
+test fn the_review_reader_names_node_at_head_and_only_establishes_when_approved() -> Bool  {
   (match dogfood_review_reading(node_id: "n1", head_sha: head, report: review_at(complete: true)) {
     ReviewEstablished { evidence } => evidence.subject == join(["n1@", head], "") && evidence.plan_revision == "plan-r1"
     ReviewGap { gap: _ } => false
@@ -134,7 +134,7 @@ test fn the_review_reader_names_node_at_head_and_only_establishes_when_approved(
 
 // The publication receipt is the publish module's own encoding, read back through its own
 // evidence check: a bound pull request at the submission's head establishes the stage.
-test fn a_receipt_binding_a_pull_request_at_the_submissions_head_establishes_publication() -> Bool {
+test fn a_receipt_binding_a_pull_request_at_the_submissions_head_establishes_publication() -> Bool  {
   match dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: head) }) {
     PublicationEstablished { evidence } => evidence.pr_number == 4242 && evidence.head_sha == head
     PublicationGap { gap: _ } => false
@@ -142,14 +142,14 @@ test fn a_receipt_binding_a_pull_request_at_the_submissions_head_establishes_pub
 }
 
 // CAUSAL BINDING: a publication about another head than the one submitted and reviewed refuses.
-test fn a_publication_for_another_head_refuses() -> Bool {
+test fn a_publication_for_another_head_refuses() -> Bool  {
   match dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: other_head) }, evidence_source: ReceiptSourcePresent { text: bound_receipt_text(h: other_head) }) {
     PublicationGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }
     PublicationEstablished { evidence: _ } => false
   }
 }
 
-test fn no_publication_receipt_yet_is_owed() -> Bool {
+test fn no_publication_receipt_yet_is_owed() -> Bool  {
   match dogfood_publication_reading(head_sha: head, subject: PublicationSubjectObserved { subject: subject_at(h: head) }, evidence_source: ReceiptSourceAbsent) {
     PublicationGap { gap } => match gap { StageOwed { owed_by: _ } => true  StageRefused { reason: _ } => false }
     PublicationEstablished { evidence: _ } => false
@@ -194,7 +194,7 @@ fn cleanup_refused(r: CleanupReading) -> Bool {
   match r { CleanupGap { gap } => match gap { StageRefused { reason: _ } => true  StageOwed { owed_by: _ } => false }  CleanupEstablished { evidence: _ } => false }
 }
 
-test fn a_recorded_grant_establishes_placement_with_its_identity_and_fence() -> Bool {
+test fn a_recorded_grant_establishes_placement_with_its_identity_and_fence() -> Bool  {
   match dogfood_placement_grant_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: SessionReleaseNotRecorded { path: "/s/x" })) {
     PlacementGrantEstablished { evidence } => evidence.grant_identity == "evt-7" && evidence.fence_generation == 7 && evidence.host == "srv2" && evidence.unit == "gunbc-session-n1-k1"
     PlacementGrantGap { gap: _ } => false
@@ -202,7 +202,7 @@ test fn a_recorded_grant_establishes_placement_with_its_identity_and_fence() -> 
 }
 
 // Absent: no slot, or a slot with no grant written, is owed; foreign or unreadable refuses.
-test fn an_absent_foreign_or_unreadable_placement_is_not_a_grant() -> Bool {
+test fn an_absent_foreign_or_unreadable_placement_is_not_a_grant() -> Bool  {
   grant_owed(r: dogfood_placement_grant_reading(p: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" }))
     && grant_owed(r: dogfood_placement_grant_reading(p: observed(grant: SessionGrantNotRecorded { path: "/s/r" }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
     && grant_refused(r: dogfood_placement_grant_reading(p: SessionPlacementForeign { unit: "gunbc-session-n1-k1", detail: "the slot belongs to n2:k2" }))
@@ -210,7 +210,7 @@ test fn an_absent_foreign_or_unreadable_placement_is_not_a_grant() -> Bool {
     && grant_refused(r: dogfood_placement_grant_reading(p: observed(grant: SessionGrantForeign { path: "/s/r", detail: "host srv9" }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
 }
 
-test fn a_release_bound_to_the_recorded_grant_establishes_cleanup() -> Bool {
+test fn a_release_bound_to_the_recorded_grant_establishes_cleanup() -> Bool  {
   match dogfood_cleanup_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: released())) {
     CleanupEstablished { evidence } => evidence.grant_identity == "evt-7" && evidence.fence_generation == 7 && evidence.outcome == "released"
     CleanupGap { gap: _ } => false
@@ -219,7 +219,7 @@ test fn a_release_bound_to_the_recorded_grant_establishes_cleanup() -> Bool {
 
 // A release with no recorded grant binds to no hold; an unreleased hold is owed; a refused release
 // or an unreadable placement refuses.
-test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool {
+test fn cleanup_needs_a_settled_release_of_a_recorded_grant() -> Bool  {
   cleanup_owed(r: dogfood_cleanup_reading(p: observed(grant: SessionGrantNotRecorded { path: "/s/r" }, returned: released())))
     && cleanup_owed(r: dogfood_cleanup_reading(p: observed(grant: SessionGrantRecorded { record: placement_record() }, returned: SessionReleaseNotRecorded { path: "/s/x" })))
     && cleanup_owed(r: dogfood_cleanup_reading(p: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" }))
@@ -268,7 +268,7 @@ fn fn_complete(c: DogfoodCarried?) -> String {
   }
 }
 
-test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool {
+test fn a_cleanup_of_another_grant_does_not_carry_completion() -> Bool  {
   let a = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-7", fence: 7) }, returned: released())
   let b = observed(grant: SessionGrantRecorded { record: placement_with(grant: "evt-9", fence: 9) }, returned: released())
   let complete = fn_complete(c: dogfood_route_carried(r: all_readings(placement: a, returned_of: a)))
@@ -304,7 +304,7 @@ fn established_three() -> DogfoodStageReadings {
 
 // Every producer that exists today established -- submission, review, publication, and G5's grant
 // and release -- and still not complete: the stages with no producer are owed, in route order.
-test fn every_existing_producer_established_is_still_incomplete_with_the_rest_named() -> Bool {
+test fn every_existing_producer_established_is_still_incomplete_with_the_rest_named() -> Bool  {
   match dogfood_route_receipt(node_id: "n1", attempt_key: "k1", r: established_three()) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed, refused } =>
       wires(stages: owed) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
@@ -313,7 +313,7 @@ test fn every_existing_producer_established_is_still_incomplete_with_the_rest_na
   }
 }
 
-test fn a_refused_publication_is_named_as_refused() -> Bool {
+test fn a_refused_publication_is_named_as_refused() -> Bool  {
   let r = readings_with(
     s: dogfood_submission_reading(attempt_key: "k1", capture: capture_at(h: head)),
     r: dogfood_review_reading(node_id: "n1", head_sha: head, report: review_at(complete: true)),
@@ -381,18 +381,18 @@ fn decodes(text: String) -> Bool {
   }
 }
 
-test fn a_complete_start_receipt_decodes() -> Bool {
+test fn a_complete_start_receipt_decodes() -> Bool  {
   decodes(text: good())
 }
 
 // Positive control for the fragment the side chat named: schema plus attempt key alone is NOT a start.
-test fn a_same_schema_fragment_is_not_a_start() -> Bool {
+test fn a_same_schema_fragment_is_not_a_start() -> Bool  {
   !decodes(text: "{\"schema\": \"dogfood-start-receipt/v3\", \"attempt_key\": \"fabricated\"}")
     && !decodes(text: "{\"schema\": \"something-else/v1\", \"attempt_key\": \"k1\"}")
     && !decodes(text: "not json")
 }
 
-test fn cross_field_disagreement_is_not_a_start() -> Bool {
+test fn cross_field_disagreement_is_not_a_start() -> Bool  {
   !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n2@", head], ""), pr: "4242", when: "2026-10-03T07:00:00Z"))
     && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", other_head], ""), pr: "4242", when: "2026-10-03T07:00:00Z"))
     && !decodes(text: payload(node: "n1", attempt: "k1", h: "not-a-sha", subject: "n1@not-a-sha", pr: "4242", when: "2026-10-03T07:00:00Z"))
@@ -401,13 +401,13 @@ test fn cross_field_disagreement_is_not_a_start() -> Bool {
 }
 
 // A refused clock reading is never a start time, nor is any non-canonical instant.
-test fn an_invalid_or_refused_time_is_not_a_start() -> Bool {
+test fn an_invalid_or_refused_time_is_not_a_start() -> Bool  {
   !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: "clock observation refused"))
     && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: ""))
     && !decodes(text: payload(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: "4242", when: "2026-10-03 07:00:00"))
 }
 
-test fn a_decoded_receipt_round_trips_through_the_encoder() -> Bool {
+test fn a_decoded_receipt_round_trips_through_the_encoder() -> Bool  {
   match dogfood_start_receipt_decode(payload: good()) {
     StartReceiptInvalid { reason: _ } => false
     StartReceiptDecoded { receipt } =>
@@ -427,7 +427,7 @@ test fn a_decoded_receipt_round_trips_through_the_encoder() -> Bool {
 // Candidate discovery precedes the clock: with no candidate the answer is NoCandidate whatever the
 // clock says; with a candidate, an unavailable or non-canonical clock refuses and only a canonical
 // instant timestamps.
-test fn no_candidate_is_no_candidate_whatever_the_clock() -> Bool {
+test fn no_candidate_is_no_candidate_whatever_the_clock() -> Bool  {
   (match dogfood_start_step(candidate: none, clock: none) {
     StartNoCandidate => true
     StartClockRefused { reason: _ } => false
@@ -439,7 +439,7 @@ test fn no_candidate_is_no_candidate_whatever_the_clock() -> Bool {
   })
 }
 
-test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
+test fn a_candidate_with_no_usable_clock_refuses() -> Bool  {
   (match dogfood_start_step(candidate: Present { value: "k1" }, clock: none) {
     StartClockRefused { reason: _ } => true
     StartNoCandidate => false
@@ -458,7 +458,7 @@ test fn a_candidate_with_no_usable_clock_refuses() -> Bool {
 // While any stage has no producer, the recorder answers NoCompleteAttempt without scanning history:
 // the stages it reads are the same record the fold reads, and they are exactly the fold's owed set
 // when every existing producer is established (the claim above).
-test fn the_unproduced_stages_are_the_six_owed_in_route_order() -> Bool {
+test fn the_unproduced_stages_are_the_six_owed_in_route_order() -> Bool  {
   wires(stages: dogfood_unproduced_stages(u: dogfood_unproduced)) == "request,immutable-subject,shared-computation,isolated-execution,metering,result-returned"
 }
 
@@ -476,7 +476,7 @@ fn service_receipt_for(node: String, placement: SessionPlacementObservation) -> 
 
 // The receipt pins the evidence through the evidence module's snapshot: a refused field gives no
 // snapshot, so no candidate; the population and order are that module's (its own witness holds them).
-test fn a_refused_service_evidence_field_gives_no_snapshot() -> Bool {
+test fn a_refused_service_evidence_field_gives_no_snapshot() -> Bool  {
   match service_evidence_snapshot_of_receipt(r: service_receipt_for(node: "n1", placement: SessionPlacementUnreadable { unit: "gunbc-session-n1-k1", detail: "torn" })) {
     SnapshotInvalid { reason: _ } => true
     SnapshotDecoded { snapshot: _ } => false
@@ -489,23 +489,23 @@ fn pinned(ev_wire: String, ev_digest: String) -> Bool {
   decodes(text: payload_with(node: "n1", attempt: "k1", h: head, subject: join(["n1@", head], ""), pr: 4242, when: "2026-10-03T07:00:00Z", ev_wire: ev_wire, ev_digest: ev_digest))
 }
 
-test fn a_digest_other_than_the_pinned_wires_is_not_a_start() -> Bool {
+test fn a_digest_other_than_the_pinned_wires_is_not_a_start() -> Bool  {
   !pinned(ev_wire: evidence_wire(node: "n1"), ev_digest: "sed1")
 }
 
-test fn evidence_naming_another_node_is_not_a_start() -> Bool {
+test fn evidence_naming_another_node_is_not_a_start() -> Bool  {
   let foreign = evidence_wire(node: "n2")
   !pinned(ev_wire: foreign, ev_digest: digest_of(wire: foreign))
 }
 
-test fn a_partial_evidence_wire_is_not_a_start() -> Bool {
+test fn a_partial_evidence_wire_is_not_a_start() -> Bool  {
   !pinned(ev_wire: "{\"schema\": \"service-evidence-receipt/v2\", \"fields\": []}", ev_digest: "x")
 }
 
 // THE OCCUPIED SLOT, ONE JUDGMENT: the recorder's first read and its lost-race read both report an
 // occupied slot through dogfood_occupied_slot_record, so a winner whose evidence is not bound to this
 // instance's attempt refuses on either path rather than reading as already recorded.
-test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
+test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool  {
   (match dogfood_occupied_slot_record(defect: Present { value: "the pinned evidence names another instance" }) { DogfoodStartRefused { reason: _ } => true  DogfoodStartAlreadyRecorded => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
     && (match dogfood_occupied_slot_record(defect: none) { DogfoodStartAlreadyRecorded => true  DogfoodStartRefused { reason: _ } => false  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false })
 }
@@ -515,7 +515,7 @@ test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
 // The served observation is written before the recorder runs by a match in the tick's production
 // tail (gunbc.roadmap_belt_tick_cli belt_run_once_cli), not by this mapping; this claims only what a
 // recorder outcome does to the tick's exit once the observation is written.
-test fn only_a_refused_start_fails_the_tick() -> Bool {
+test fn only_a_refused_start_fails_the_tick() -> Bool  {
   (match belt_start_record_exit(start: DogfoodStartNoCompleteAttempt) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
     && (match belt_start_record_exit(start: DogfoodStartAlreadyRecorded) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })
     && (match belt_start_record_exit(start: DogfoodStartRecorded { receipt: "{}" }) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false })

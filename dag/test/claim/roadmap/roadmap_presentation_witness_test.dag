@@ -137,7 +137,7 @@ fn fx_specimen_activity() -> ActivityView {
 // asserts a scalar ('43%') has no arm that could produce it — the discriminating assertions below
 // fail if the consequence, the next obligation, or the derived count is dropped.
 
-test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Bool {
+test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Bool  {
   match fx_specimen_activity() {
     ActiveWork { summary, obligations: _, remaining_obligation_count: remaining, current_activity: _, attention, evidence: _ } =>
       summary == "Agent turn completed; the retained session is no longer running · Verification next · 4 remaining"
@@ -151,7 +151,7 @@ test fn witness_specimen_summary_states_consequence_and_next_obligation() -> Boo
   }
 }
 
-test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
+test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool  {
   match fx_specimen_activity() {
     ActiveWork { summary: _, obligations, remaining_obligation_count: _, current_activity: _, attention: _, evidence } =>
       count(evidence) == 3
@@ -167,7 +167,7 @@ test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
   }
 }
 
-test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
+test fn witness_agent_running_reads_as_working_not_completed() -> Bool  {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
     WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
@@ -197,7 +197,7 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
 // (here short) reason as the located reason behind the disclosure, and rank a failed segment as
 // anomalous ActiveWork — distinct states with distinct remedies, and a refused ledger outranks a
 // failed one because the refusal names an evidence gap the failure count cannot explain.
-test fn witness_refused_segment_projects_located_reason() -> Bool {
+test fn witness_refused_segment_projects_located_reason() -> Bool  {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
     WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
@@ -220,7 +220,7 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
   }
 }
 
-test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
+test fn witness_failed_segment_is_anomalous_active_work() -> Bool  {
   let segments = [
     WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
   ]
@@ -247,7 +247,7 @@ test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
 // recompose-and-reparse round trip ('**headline** — brief' then split at punctuation) it would come
 // back truncated at its own dash. The legacy residue is asserted separately on an AuthoredLine,
 // where the lead heuristic is the declared residue of this projection.
-test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
+test fn witness_ticket_headline_survives_own_punctuation() -> Bool  {
   let t = gunbc.roadmap_authority.fields(
     headline: "Close the wall — phase 2. Cleanly",
     boundary: "brief text",
@@ -260,13 +260,13 @@ test fn witness_ticket_headline_survives_own_punctuation() -> Bool {
   row_headline(line: rn.line) == "Close the wall — phase 2. Cleanly"
 }
 
-test fn witness_legacy_line_keeps_lead_residue() -> Bool {
+test fn witness_legacy_line_keeps_lead_residue() -> Bool  {
   legacy_lead(full: "lead claim — trailing brief") == "lead claim"
     && legacy_lead(full: "First sentence. Second sentence") == "First sentence"
     && legacy_lead(full: "no separator at all") == "no separator at all"
 }
 
-test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
+test fn witness_summary_is_absent_until_typed_source_exists() -> Bool  {
   let rn = fx_authored(identity: "rnfx_A2PRES0000000000000002", id: "a2-sum", done: false, content: "content — with dash")
   match row_summary(line: rn.line) {
     Absent => true
@@ -283,7 +283,7 @@ test fn witness_summary_is_absent_until_typed_source_exists() -> Bool {
 // and the second witness fails; if terminal collapsed into active the third witness's CompletedWork
 // arm never matches.
 
-test fn witness_no_attempt_projects_zero_furniture() -> Bool {
+test fn witness_no_attempt_projects_zero_furniture() -> Bool  {
   match activity_view_of(facts: NoActiveAttempt) {
     NoActiveWork => true
     ActiveWork { summary: _, obligations: _, remaining_obligation_count: _, current_activity: _, attention: _, evidence: _ } => false
@@ -294,7 +294,7 @@ test fn witness_no_attempt_projects_zero_furniture() -> Bool {
   }
 }
 
-test fn witness_unobservable_preserves_located_reason() -> Bool {
+test fn witness_unobservable_preserves_located_reason() -> Bool  {
   match activity_view_of(facts: AttemptUnobservable { reason: "attempt state file unreadable: permission denied" }) {
     ActivityUnobservable { reason } => reason == "attempt state file unreadable: permission denied"
     NoActiveWork => false
@@ -305,7 +305,7 @@ test fn witness_unobservable_preserves_located_reason() -> Bool {
   }
 }
 
-test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
+test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool  {
   let segments = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
     WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
@@ -343,7 +343,7 @@ fn fx_blocked() -> LaunchAdmission {
 // Available AND Primary; a refused row's dispatch is Unavailable and Secondary, carrying the
 // refusal's wire label and reason -- there is no override arm left to render a blocked row as
 // operable.
-test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
+test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool  {
   let ready_view = action_view(lifecycle: OpenLifecycle, admission: fx_admitted(node_id: "a2-row"))
   let blocked_view = action_view(lifecycle: OpenLifecycle, admission: fx_blocked())
   let ready_ok = match ready_view.primary_action {
@@ -366,7 +366,7 @@ test fn witness_admitted_dispatch_is_primary_refused_is_unavailable() -> Bool {
   ready_ok && blocked_primary_empty && blocked_unavailable
 }
 
-test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
+test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool  {
   count(dispatch_action(lifecycle: DoneLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
     && count(dispatch_action(lifecycle: SupersededLifecycle, admission: fx_admitted(node_id: "a2-row"))) == 0
 }
@@ -381,7 +381,7 @@ test fn witness_done_and_superseded_rows_offer_no_dispatch() -> Bool {
 // The RED: the deleted arm — action_view over any activity yields no ClearSessionAction — is
 // asserted directly, so reintroducing the fabrication reds.
 
-test fn witness_session_action_derives_from_observed_admission() -> Bool {
+test fn witness_session_action_derives_from_observed_admission() -> Bool  {
   let allowed = session_action_view(cleanup_action: "clear", cleanup_allowed: true, cleanup_detail: "only retained tmux session metadata will be removed")
   let disallowed = session_action_view(cleanup_action: "clear", cleanup_allowed: false, cleanup_detail: "pane still running")
   let absent = session_action_view(cleanup_action: "", cleanup_allowed: false, cleanup_detail: "")
@@ -415,7 +415,7 @@ fn action_view_has_no_clear(v: ActionView) -> Bool {
       acc || match a.kind { ClearSessionAction => true DispatchAction => false })
 }
 
-test fn witness_action_view_never_fabricates_cleanup() -> Bool {
+test fn witness_action_view_never_fabricates_cleanup() -> Bool  {
   action_view_has_no_clear(v: action_view(lifecycle: OpenLifecycle, admission: fx_admitted(node_id: "a2-row")))
     && action_view_has_no_clear(v: action_view(lifecycle: OpenLifecycle, admission: fx_blocked()))
     && action_view_has_no_clear(v: action_view(lifecycle: ReviewLifecycle, admission: fx_blocked()))
@@ -426,7 +426,7 @@ test fn witness_action_view_never_fabricates_cleanup() -> Bool {
 // prose authority. Both strings are now decided here and the witness pins them, including the
 // empty-process-detail arm (no dangling separator).
 
-test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
+test fn witness_session_facts_line_and_detail_are_decided() -> Bool  {
   let v = session_facts_view(
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     process_detail: "exit=0 last-command=codex",
@@ -458,7 +458,7 @@ test fn witness_session_facts_line_and_detail_are_decided() -> Bool {
 // artifacts never accept (roadmap_acceptance_boundary_note); an accepting signoff is done; a
 // superseded line outranks everything and carries its forwarding pointer.
 
-test fn witness_lifecycle_axes_discriminate() -> Bool {
+test fn witness_lifecycle_axes_discriminate() -> Bool  {
   let open_node = fx_authored(identity: "rnfx_A2PRES0000000000000003", id: "a2-open", done: false, content: "open work")
   let done_line_node = fx_authored(identity: "rnfx_A2PRES0000000000000004", id: "a2-review", done: true, content: "review work")
   let signed_node = fx_sign(rn: open_node, s: fx_signed(
@@ -525,7 +525,7 @@ fn fx_row(activity: ActivityView) -> WorkRowView {
   }
 }
 
-test fn witness_work_row_view_composes_from_fixture() -> Bool {
+test fn witness_work_row_view_composes_from_fixture() -> Bool  {
   let row = fx_row(activity: NoActiveWork)
   row.headline == "row headline"
     && row.node_id == "a2-row"
@@ -556,7 +556,7 @@ test fn witness_work_row_view_composes_from_fixture() -> Bool {
 // CARRYING that blocker as its one missing fact; an unsized row that supplies no dispatch facts is
 // NotReady on each of them (never conflated with a blocked one -- it has no blocker to fabricate);
 // a superseded line is Superseded whatever else holds.
-test fn witness_scheduling_projects_typed_positions() -> Bool {
+test fn witness_scheduling_projects_typed_positions() -> Bool  {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
   let child = match nodes.first() { Present { value: rn } => rn Absent => fx_authored(identity: "rnfx_A2PRES0000000000000010", id: "a2-x", done: false, content: "x") }
@@ -577,7 +577,7 @@ test fn witness_scheduling_projects_typed_positions() -> Bool {
 // The blocker is visible IN THE BAR (2026-09-21 redesign): every upcoming row's signal names its
 // specific blockers — including the single-blocker case the retired title-adjacent line used to
 // leave to the tree's nesting. A ready row's signal is its next action instead.
-test fn witness_bar_signal_names_blockers_for_upcoming_rows() -> Bool {
+test fn witness_bar_signal_names_blockers_for_upcoming_rows() -> Bool  {
   let bar_two = task_bar_view_of(view: fx_row(activity: NoActiveWork), observation: ObservationsNominal)
   let single_nodes = [
     fx_sized(id: "hier-single-child", content: "single blocked row"),
@@ -619,7 +619,7 @@ fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
   }))
 }
 
-test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
+test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool  {
   let active_row = fx_row(activity: fx_specimen_activity())
   let idle_row = fx_row(activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [idle_row, active_row], edges: [], program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: []))
@@ -674,7 +674,7 @@ fn fx_family_members() -> List<WorkFamilyMemberFact> {
   ]
 }
 
-test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
+test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool  {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
   let lookalike = fx_family_member_row(node_id: "solo", headline: join([fx_family_claim(), " for: Unlisted"], ""), activity: NoActiveWork)
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
@@ -702,7 +702,7 @@ test fn witness_family_claim_stated_once_rows_carry_subject() -> Bool {
     }))
 }
 
-test fn witness_family_membership_is_typed_not_parsed() -> Bool {
+test fn witness_family_membership_is_typed_not_parsed() -> Bool  {
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m2], edges: [], program: none, observation: ObservationsNominal,
     families: fx_family_decls(), members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
@@ -714,7 +714,7 @@ test fn witness_family_membership_is_typed_not_parsed() -> Bool {
   }))
 }
 
-test fn witness_active_family_member_leaves_group() -> Bool {
+test fn witness_active_family_member_leaves_group() -> Bool  {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: fx_specimen_activity())
   let m2 = fx_family_member_row(node_id: "cc-b", headline: "Write the closing check for: Beta subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m1, m2], edges: [], program: none, observation: ObservationsNominal,
@@ -735,7 +735,7 @@ test fn witness_active_family_member_leaves_group() -> Bool {
     }))
 }
 
-test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
+test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool  {
   let m1 = fx_family_member_row(node_id: "cc-a", headline: "Write the closing check for: Alpha subject", activity: NoActiveWork)
   let ws = daily_workspace_view(rows: [m1], edges: [], program: none, observation: ObservationsNominal,
     families: [], members: fx_family_members(), memberships: fixture_nesting_relation(edges: []))
@@ -754,7 +754,7 @@ test fn witness_undeclared_family_member_stays_ungrouped_row() -> Bool {
 // node class still carry the state), and every departing lifecycle derives chip-shown. A future
 // lifecycle arm added without a chip decision fails compile at the match, not silently.
 
-test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
+test fn witness_lifecycle_chip_only_when_discriminating() -> Bool  {
   !lifecycle_chip_renders(l: OpenLifecycle)
     && lifecycle_chip_renders(l: ReviewLifecycle)
     && lifecycle_chip_renders(l: DoneLifecycle)
@@ -767,7 +767,7 @@ test fn witness_lifecycle_chip_only_when_discriminating() -> Bool {
 // never covered (a live attempt's narration must survive a broken observation channel claim), and
 // with a nominal workspace observation a row-specific unobservable reason narrates on its own row
 // (coverage false).
-test fn witness_workspace_impact_narrates_once() -> Bool {
+test fn witness_workspace_impact_narrates_once() -> Bool  {
   let impact = observation_impact_view(workflow_refused: Present { value: "GET /workflow.json refused: connection refused" })
   let nominal = observation_impact_view(workflow_refused: none)
   let impact_ok = match impact {
@@ -817,7 +817,7 @@ fn fx_uniform_review_detail() -> String {
 // The 98-file dump: bounded to count + first excerpt-budget entries + the pointer; the 4th entry
 // and the tail never reach the surface. RED: a renderer passing the payload through keeps
 // lane-4/lane-98 present and the first assertion fails.
-test fn witness_bounded_dump_renders_count_excerpt_and_pointer() -> Bool {
+test fn witness_bounded_dump_renders_count_excerpt_and_pointer() -> Bool  {
   let bounded = workflow_segment_detail_bounded(detail: join(fx_dump_lines(n: 98), "\n"))
   string_contains(s: bounded, pattern: "95 more of 98")
     && string_contains(s: bounded, pattern: "full list in the attempt receipt artifact")
@@ -829,14 +829,14 @@ test fn witness_bounded_dump_renders_count_excerpt_and_pointer() -> Bool {
 
 // The passthrough arm is the control for the bound's discriminating direction: an ordinary
 // one-sentence reason renders untouched, so the bound cannot be satisfied by truncating everything.
-test fn witness_short_detail_passes_the_bound_untouched() -> Bool {
+test fn witness_short_detail_passes_the_bound_untouched() -> Bool  {
   workflow_segment_detail_bounded(detail: "turn.completed with process unobserved: no exit was established")
     == "turn.completed with process unobserved: no exit was established"
 }
 
 // Fourteen identical lane failures aggregate to one uniform claim; mixed messages do not —
 // non-uniformity is information the label may not erase.
-test fn witness_uniform_lane_failures_aggregate() -> Bool {
+test fn witness_uniform_lane_failures_aggregate() -> Bool  {
   match activity_uniform_lane_summary(detail: fx_uniform_review_detail()) {
     Present { value: aggregate } =>
       aggregate == "14/14 lanes — reviewer exited 1 without a verdict"
@@ -844,7 +844,7 @@ test fn witness_uniform_lane_failures_aggregate() -> Bool {
   }
 }
 
-test fn witness_mixed_lane_failures_do_not_aggregate() -> Bool {
+test fn witness_mixed_lane_failures_do_not_aggregate() -> Bool  {
   match activity_uniform_lane_summary(detail: join([
     "minimize-redundancy: reviewer exited 1 without a verdict",
     "single-authority: changes requested — drop the second authority",
@@ -859,7 +859,7 @@ test fn witness_mixed_lane_failures_do_not_aggregate() -> Bool {
 // The refused Review lane end to end: the surface label is the state word plus the aggregate — no
 // criterion key, no raw enumeration — and the located reason behind the disclosure is itself
 // bounded (first three lanes + the count + the pointer).
-test fn witness_refused_review_lane_labels_and_bounds() -> Bool {
+test fn witness_refused_review_lane_labels_and_bounds() -> Bool  {
   match activity_view_from_parts(
     segments: [
       WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentRefused, detail: fx_uniform_review_detail() },
@@ -887,7 +887,7 @@ test fn witness_refused_review_lane_labels_and_bounds() -> Bool {
 // Staleness is a revision comparison, both honest arms included: a readable launch revision that
 // differs from the deployed head is stale; the same revision is not; an unreadable launch record
 // (empty observation) dims nothing; and an unobservable current revision dims nothing at all.
-test fn witness_stale_attempt_nodes_compares_revisions() -> Bool {
+test fn witness_stale_attempt_nodes_compares_revisions() -> Bool  {
   let observations = [
     AttemptRevisionObservation { node_id: "n-stale", launch_revision_hex: "aaaa" },
     AttemptRevisionObservation { node_id: "n-current", launch_revision_hex: "bbbb" },
@@ -1005,7 +1005,7 @@ fn fx_project_tree(rows: List<WorkRowView>, edges: List<RoadmapEdge>, node_id: S
 // THE DIRECTION WALL: the project's display children are the rows in the PARENT position of its
 // edges (its prerequisites), in edge declaration order; the prerequisite rows own no tree of their
 // own. An inversion of this derivation reds every conjunct.
-test fn witness_project_tasks_are_prerequisites() -> Bool {
+test fn witness_project_tasks_are_prerequisites() -> Bool  {
   let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let edges = fx_hier_edges()
   map(project_task_rows(rows: rows, edges: edges, members: [], node_id: "hier-project", memberships: membership_index(memberships: fixture_nesting_relation(edges: edges))), r => r.node_id)
@@ -1021,7 +1021,7 @@ test fn witness_project_tasks_are_prerequisites() -> Bool {
 // would report 3 of 4 here; the correct answer is 2 of 4. The project itself is upcoming (two
 // unmet prerequisites) and carries its four tasks nested in edge declaration order; the bands the
 // tasks left behind are empty because every one of them renders exactly once, inside the tree.
-test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
+test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool  {
   let rows = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let edges = fx_hier_edges()
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1051,7 +1051,7 @@ test fn witness_project_progress_counts_accepted_or_superseded_only() -> Bool {
 // other task — the project root joins the Active band because its subtree carries live work,
 // renders there as ONE grouped project row (auto-open by the live-subtree pulse), and every
 // rendered input row appears in the composed workspace exactly once, in its nested position.
-test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
+test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool  {
   let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let edges = fx_hier_edges()
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1082,7 +1082,7 @@ test fn witness_workspace_nesting_loses_no_node_and_duplicates_none() -> Bool {
 // shape), while an idle sibling stays in its scheduling band — the band's membership is root-grain:
 // the active row's own position is top-level because nothing nests it, not because it was pulled
 // out of a tree.
-test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
+test fn witness_projectless_active_row_renders_flat_in_active() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-solo-active", content: "solo live row"),
     fx_sized(id: "hier-solo-idle", content: "solo idle row"),
@@ -1115,7 +1115,7 @@ test fn witness_projectless_active_row_renders_flat_in_active() -> Bool {
 }
 
 // Blocker declaration order cannot choose ownership. Only the independent nesting does.
-test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
+test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool  {
   let nodes = [fx_sized(id: "hier-p1", content: "project one"), fx_sized(id: "hier-p2", content: "project two"), fx_sized(id: "hier-shared", content: "shared prerequisite")]
   let edges = [gunbc.roadmap_authority.edge(child: "hier-p2", parent: "hier-shared"), gunbc.roadmap_authority.edge(child: "hier-p1", parent: "hier-shared")]
   let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "hier-shared", project: "hier-p1", contribution: "fixture contribution" }]
@@ -1131,7 +1131,7 @@ test fn witness_shared_prerequisite_uses_only_authored_nesting() -> Bool {
 // live attempt (whether that descendant renders nested or surfaced to the Active band) or a
 // non-routine event-log standing (the motion states — here in_progress), and stays collapsed when
 // every subtask is quiet. NodeOpen is the routine default and never opens anything.
-test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
+test fn witness_project_auto_open_follows_subtree_pulse() -> Bool  {
   let edges = fx_hier_edges()
   let live = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let standing = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: Present { value: NodeInProgress { by: EventPrincipalAuthenticated { ref: fabric_workflow_principal }, last_note: "working" as NonEmptyStr } })
@@ -1151,7 +1151,7 @@ test fn witness_project_auto_open_follows_subtree_pulse() -> Bool {
 // carrying the topmost identity, the swallowed intermediates as its chain, and the chain end's
 // tasks as its entries. The whole chain renders exactly once (chain members are accounted in
 // project_tree_row_ids), and the depth the entries sit at is one below the top row.
-test fn witness_single_child_chain_collapses() -> Bool {
+test fn witness_single_child_chain_collapses() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-chain-a", content: "chain top"),
     fx_sized(id: "hier-chain-b", content: "chain mid"),
@@ -1193,7 +1193,7 @@ test fn witness_single_child_chain_collapses() -> Bool {
 // MULTI-CHILD PROJECTS NEVER COLLAPSE: with two display children the recursion keeps its nested
 // project arm — the intermediate renders as ProjectNested one level deeper with its own tree, its
 // own (empty) chain, and its own entries.
-test fn witness_multi_child_project_never_collapses() -> Bool {
+test fn witness_multi_child_project_never_collapses() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-multi-a", content: "top project"),
     fx_sized(id: "hier-multi-b", content: "mid project"),
@@ -1237,7 +1237,7 @@ test fn witness_multi_child_project_never_collapses() -> Bool {
 // CHAIN-END COUNTING: the collapsed top row's k of n is the chain END's display children — the
 // shell chain's shape, where the residue-zero row counts the arc's tasks (here one done task and
 // one open task of two), not the intermediates.
-test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
+test fn witness_chain_end_tasks_count_in_top_row() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-cc-r", content: "residue analogue"),
     fx_sized(id: "hier-cc-g", content: "gate analogue"),
@@ -1281,7 +1281,7 @@ test fn witness_chain_end_tasks_count_in_top_row() -> Bool {
 
 // A shared prerequisite nests only under its authored owner. Other dependents retain a
 // blocking link, but neither count it as their child nor claim an empty owned-task denominator.
-test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
+test fn witness_shared_project_child_collapses_only_under_owner() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-sp-p1", content: "project one"),
     fx_sized(id: "hier-sp-p2", content: "project two"),
@@ -1321,7 +1321,7 @@ test fn witness_shared_project_child_collapses_only_under_owner() -> Bool {
 // rows, so a family member that is also a project's prerequisite stays in its family group —
 // never nested, never counted, never duplicated — and the would-be project renders as an ordinary
 // flat row.
-test fn witness_family_member_never_nests() -> Bool {
+test fn witness_family_member_never_nests() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-fam-project", content: "family-adjacent project"),
     fx_sized(id: "hier-fam-task", content: "family member task"),
@@ -1401,7 +1401,7 @@ fn fx_failed_activity() -> ActivityView {
   )
 }
 
-test fn witness_activity_line_classification_is_typed() -> Bool {
+test fn witness_activity_line_classification_is_typed() -> Bool  {
   activity_line_class_key(c: activity_line_class_of_round(k: ReadRound)) == "read"
     && activity_line_class_key(c: activity_line_class_of_round(k: WriteRound)) == "write"
     && activity_line_class_key(c: activity_line_class_of_round(k: ReasonRound)) == "provider-call"
@@ -1418,7 +1418,7 @@ test fn witness_activity_line_classification_is_typed() -> Bool {
 // The refused and completed arms carry their obligation roster (the hero stage strip reads it):
 // the refused strip shows WHICH segment is red, the completed strip reads all-done. Constructed
 // before this increment they had no segments field, and the strip had nothing to paint.
-test fn witness_refused_and_completed_arms_carry_the_roster() -> Bool {
+test fn witness_refused_and_completed_arms_carry_the_roster() -> Bool  {
   match fx_refused_activity() {
     ActiveWorkRefused { summary: _, located_reason: _, evidence: _, obligations } =>
       count(obligations) == 2
@@ -1448,7 +1448,7 @@ test fn witness_refused_and_completed_arms_carry_the_roster() -> Bool {
 // (anomalous) attempt flags; the same tree quiet or green does not. The erred row itself keeps the
 // attention law and surfaces in the Active band — the flag is derived over display children,
 // whether or not they render nested.
-test fn witness_project_red_flag_derives_from_decided_states() -> Bool {
+test fn witness_project_red_flag_derives_from_decided_states() -> Bool  {
   let edges = fx_hier_edges()
   let rows_ok = fx_hier_rows(activity_for_open: NoActiveWork, standing_for_open: none)
   let rows_refused = fx_hier_rows(activity_for_open: fx_refused_activity(), standing_for_open: none)
@@ -1466,7 +1466,7 @@ test fn witness_project_red_flag_derives_from_decided_states() -> Bool {
 // The wire carries the DECIDED summary class so the client paints it verbatim (the single
 // projection authority's wire half): refused flags error-refusal, completed reads done, a routine
 // active attempt stays neutral.
-test fn witness_wire_carries_decided_summary_class() -> Bool {
+test fn witness_wire_carries_decided_summary_class() -> Bool  {
   string_contains(s: serialize_json(v: activity_view_json_value(view: fx_refused_activity())), pattern: "\"summary_class\": \"error-refusal\"")
     && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_completed_activity())), pattern: "\"summary_class\": \"done\"")
     && string_contains(s: serialize_json(v: activity_view_json_value(view: fx_specimen_activity())), pattern: "\"summary_class\": \"neutral\"")
@@ -1497,7 +1497,7 @@ fn fx_hier_view_stale(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<Roa
     profiles: [])
 }
 
-test fn witness_bar_content_per_situation_class() -> Bool {
+test fn witness_bar_content_per_situation_class() -> Bool  {
   let underway_nodes = fx_row_nodes()
   let underway = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_specimen_activity(), standing: none)
   let refused = fx_hier_view(rn: first(underway_nodes).value, nodes: underway_nodes, edges: fx_row_edges(), merged: [], activity: fx_refused_activity(), standing: none)
@@ -1537,7 +1537,7 @@ test fn witness_bar_content_per_situation_class() -> Bool {
 // still reads pending in the signal: worker termination completes nothing (completion is the
 // reconciliation's contract over segment states). No arm computes a percentage — stage_count_label
 // is a named count over decided states, witnessed here in both its shapes.
-test fn witness_bar_never_fills_from_time_or_termination() -> Bool {
+test fn witness_bar_never_fills_from_time_or_termination() -> Bool  {
   let nodes = fx_row_nodes()
   let edges = fx_row_edges()
   let idle_with_rounds = work_row_view(
@@ -1569,7 +1569,7 @@ test fn witness_bar_never_fills_from_time_or_termination() -> Bool {
 // dependency LINK on this row (never a nested member or part of its progress denominator); the
 // owner's tree keeps the member. fleet-closed-loop-converge's link to shell-gate-migration is the
 // live shape this fixture models.
-test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
+test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-sp-p1", content: "project one"),
     fx_sized(id: "hier-sp-p2", content: "project two"),
@@ -1596,7 +1596,7 @@ test fn witness_non_primary_child_is_a_link_not_a_member() -> Bool {
 // searchable table — every rendered issue exactly once, including rows the tree nests and
 // projects the tree collapses. The table is the forest ENUMERATED, not a second derivation:
 // same rows, same order, one place each.
-test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool {
+test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool  {
   let rows = fx_hier_rows(activity_for_open: fx_specimen_activity(), standing_for_open: none)
   let edges = fx_hier_edges()
   let ws = daily_workspace_view(rows: rows, edges: edges, program: none, observation: ObservationsNominal, families: [], members: [], memberships: fixture_nesting_relation(edges: edges))
@@ -1609,7 +1609,7 @@ test fn witness_issue_table_flattens_every_rendered_row_once() -> Bool {
 
 // Collapsed chain members are issues too: swallowed in the tree, flat in the table — each
 // exactly once in each view's enumeration.
-test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
+test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool  {
   let nodes = [
     fx_sized(id: "hier-chain-a", content: "chain top"),
     fx_sized(id: "hier-chain-b", content: "chain mid"),
@@ -1633,7 +1633,7 @@ test fn witness_issue_table_carries_collapsed_chain_members_flat() -> Bool {
 // ONLY the unmet parents — a done parent has closed its edge and must not read as an obstruction.
 // The met-parent half of the claim is the discriminating red: listing it would contradict the
 // bar's "blocked on" signal, which derives from the same scheduling_blockers seam.
-test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
+test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool  {
   let signed_parent = fx_sign(
     rn: fx_sized(id: "lnk-done", content: "closed parent"),
     s: fx_signed(
@@ -1667,7 +1667,7 @@ test fn witness_issue_link_panel_blocks_children_and_unmet_parents() -> Bool {
 // refused ledger renders no rows at all — absence earns no furniture. The first round has no
 // predecessor epoch, so the clocked segments carry steps 2..4; newest first reads 4,3,2 — the
 // strip's own segment authority, reversed.
-test fn witness_issue_work_history_is_newest_first() -> Bool {
+test fn witness_issue_work_history_is_newest_first() -> Bool  {
   let ledger = RoundsObserved { rounds: [
     RoundObservation { step: 1, input_tokens: 0, output_tokens: 10, epoch_ms: 0, files_changed: none, tool_calls: none },
     RoundObservation { step: 2, input_tokens: 0, output_tokens: 20, epoch_ms: 5000, files_changed: Present { value: 1 }, tool_calls: Present { value: 0 } },
@@ -1706,7 +1706,7 @@ fn fx_explanation_view(scheduling: WorkScheduling, activity: ActivityView) -> Wo
   }
 }
 
-test fn witness_issue_status_label_present_tense_cases() -> Bool {
+test fn witness_issue_status_label_present_tense_cases() -> Bool  {
   issue_status_label(view: fx_explanation_view(scheduling: SchedulingReady, activity: NoActiveWork)) == "Ready"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapDependencies { blockers: ["a", "b"] }] }, activity: NoActiveWork)) == "Blocked"
     && issue_status_label(view: fx_explanation_view(scheduling: SchedulingNotReady { missing: [GapCentering] }, activity: NoActiveWork)) == "Blocked"
@@ -1725,7 +1725,7 @@ test fn witness_issue_status_label_present_tense_cases() -> Bool {
 
 // A pending stage NAMES what it waits on (never a bare "pending"), and settled states keep their
 // own key; with no unsettled position ahead, the pending label stays honest as "pending".
-test fn witness_pending_stage_names_what_it_waits_on() -> Bool {
+test fn witness_pending_stage_names_what_it_waits_on() -> Bool  {
   let roster = [
     WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
     WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
@@ -1827,7 +1827,7 @@ fn fx_aln_rooted_memberships() -> List<gunbc.roadmap_nesting.RoadmapMembership> 
 // attribute; the task crumb is the current page and renders as PLAIN TEXT (no /issue/ self-link
 // anywhere in the nav); the root-principles pointer contributes no crumb at all. A crumb folded
 // out of the raw memberships, a leaf-first order, or a partial path reds every conjunct.
-test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool {
+test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool  {
   let resolution = fx_aln_resolution(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
   let structural = match issue_breadcrumb_of(resolution: resolution) {
     IssueBreadcrumbPath { crumbs } =>
@@ -1871,7 +1871,7 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_suite_links() -> Bool
 // THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's breadcrumb renders "project path
 // unavailable: " plus the typed reason, and NOT ONE crumb of the walked prefix -- no /project/
 // link, no headline text. Rendering the prefix as if it were a path is the red this control pins.
-test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
+test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool  {
   let nodes = [fx_aln_ticket(id: "hier-aln-lone", headline: "Lone headline", brief: "Lone boundary")]
   let resolution = fx_aln_resolution(task: "hier-aln-lone", memberships: [], nodes: nodes)
   match issue_breadcrumb_of(resolution: resolution) {
@@ -1894,7 +1894,7 @@ test fn witness_issue_breadcrumb_refusal_renders_no_partial_path() -> Bool {
 // row when one exists and spelling the raw id when none does, and the row links to the member's
 // /issue/ page. The heading projection reads ticket rows only: the authored (non-ticket) member
 // row has no headline, while the ticket project row does.
-test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool {
+test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool  {
   let memberships = [
     gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
     gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
@@ -1928,7 +1928,7 @@ test fn witness_project_suite_lists_exactly_the_direct_members() -> Bool {
 // sorts AFTER that member even when authored BEFORE it -- authored order [m2, m1] with the edge
 // making m1 a prerequisite of m2 renders m1 first; with no in-set edges at all the authored order
 // stands. A declaration-order listing reds the first conjunct.
-test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool {
+test fn witness_project_suite_topological_layering_orders_prereq_first() -> Bool  {
   let memberships = [
     gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m2", project: "hier-suite-proj", contribution: "c2" },
     gunbc.roadmap_nesting.RoadmapMembership { member: "hier-suite-m1", project: "hier-suite-proj", contribution: "c1" },
@@ -1950,7 +1950,7 @@ fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Lis
 // breadcrumb (over every declared node) showed the root. The declared membership decides the
 // relation: the parent is titled from member_titles when the plan omits it, spelled by its id when
 // no title exists anywhere, and absent only for a node that is a member of nothing.
-test fn witness_issue_link_panel_parent_follows_membership_not_the_plan_rows() -> Bool {
+test fn witness_issue_link_panel_parent_follows_membership_not_the_plan_rows() -> Bool  {
   let member = fx_sized(id: "pm-member", content: "the member")
   let root = fx_sized(id: "pm-root", content: "the root program")
   let nesting = [gunbc.roadmap_nesting.RoadmapMembership { member: "pm-member", project: "pm-root", contribution: "fixture contribution" }]
@@ -1990,7 +1990,7 @@ fn fx_visibility_row(scheduling: WorkScheduling, activity: ActivityView, node_id
   }
 }
 
-test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
+test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool  {
   let not_ready = SchedulingNotReady { missing: [GapCentering] }
   let memberships = [gunbc.roadmap_nesting.RoadmapMembership { member: "vis-member", project: "vis-project", contribution: "fixture contribution" }]
   row_is_shown(row: fx_visibility_row(scheduling: SchedulingReady, activity: NoActiveWork, node_id: "vis-ready-leaf"), memberships: memberships)
@@ -2001,7 +2001,7 @@ test fn witness_page_hides_a_not_ready_leaf_and_nothing_in_progress() -> Bool {
 
 
 // Compact display preserves full authoritative path data and never repeats a lone ancestor.
-test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool {
+test fn issue_path_compacts_only_display_and_omits_current_title() -> Bool  {
   issue_breadcrumb_short_label(label: "Short title") == "Short title"
     && issue_breadcrumb_short_label(label: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == "abcdefghijklmnopqrstuvwxyzA…MNOPQRSTUVWXYZ"
     && issue_breadcrumb_compact_labels(crumbs: []) == []

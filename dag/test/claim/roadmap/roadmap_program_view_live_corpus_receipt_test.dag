@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // excluded from per-PR discovery. Business algebra stays on planted fixtures in
 // test.claim.roadmap_program_view_witness.
 
-test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool {
+test fn live_roadmap_program_view_corpus_projection_receipt() -> Bool  {
   match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>

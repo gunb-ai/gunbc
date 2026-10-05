@@ -116,7 +116,7 @@ fn observed_compiles_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 }
 
 // GREEN: both compile and the projection reports `marker` on observed.
-test fn resolved_rust_fn_projection_reports_present_parameter() -> Bool {
+test fn resolved_rust_fn_projection_reports_present_parameter() -> Bool  {
   let o = run_with_marker()
   observed_compiles_clean(o) && observed_has_marker(o)
 }
@@ -124,7 +124,7 @@ test fn resolved_rust_fn_projection_reports_present_parameter() -> Bool {
 // RED CONTROL: the sibling fixture also compiles clean, and the projection reports the parameter
 // ABSENT. If this ever goes green while the with-marker arm is green, the projection has stopped
 // discriminating and every consumer citing it is citing a decoration.
-test fn resolved_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool {
+test fn resolved_rust_fn_projection_reports_absent_parameter_on_clean_sibling() -> Bool  {
   let o = run_without_marker()
   observed_compiles_clean(o) && observed_lacks_marker(o)
 }

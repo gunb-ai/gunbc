@@ -9,7 +9,7 @@ fn ready_submission() -> WorkerSubmission {
   WorkerSubmission { readiness: SubmissionReady, explanation: "done", limitations: "none" }
 }
 
-test fn a_terminal_worktree_without_a_submission_is_a_checkpoint_not_a_candidate() -> Bool {
+test fn a_terminal_worktree_without_a_submission_is_a_checkpoint_not_a_candidate() -> Bool  {
   match belt_commit_decision(
     provider: ProviderCompleted { activity: "done" },
     node_id: "n1",
@@ -24,7 +24,7 @@ test fn a_terminal_worktree_without_a_submission_is_a_checkpoint_not_a_candidate
   }
 }
 
-test fn a_budget_spent_worktree_without_a_submission_is_preserved_as_a_checkpoint() -> Bool {
+test fn a_budget_spent_worktree_without_a_submission_is_preserved_as_a_checkpoint() -> Bool  {
   match belt_commit_decision(
     provider: ProviderBudgetSpent { activity: "stopped", detail: "" },
     node_id: "n1",
@@ -42,7 +42,7 @@ test fn a_budget_spent_worktree_without_a_submission_is_preserved_as_a_checkpoin
   }
 }
 
-test fn a_fresh_ready_submission_makes_the_commit_a_candidate() -> Bool {
+test fn a_fresh_ready_submission_makes_the_commit_a_candidate() -> Bool  {
   match belt_commit_decision(
     provider: ProviderCompleted { activity: "done" },
     node_id: "n1",
@@ -57,7 +57,7 @@ test fn a_fresh_ready_submission_makes_the_commit_a_candidate() -> Bool {
   }
 }
 
-test fn an_undecodable_submission_is_not_a_declaration() -> Bool {
+test fn an_undecodable_submission_is_not_a_declaration() -> Bool  {
   match belt_commit_decision(
     provider: ProviderCompleted { activity: "done" },
     node_id: "n1",
@@ -72,7 +72,7 @@ test fn an_undecodable_submission_is_not_a_declaration() -> Bool {
   }
 }
 
-test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool {
+test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool  {
   match belt_commit_decision(
     provider: ProviderCompleted { activity: "done" },
     node_id: "n1",
@@ -87,7 +87,7 @@ test fn commit_is_not_needed_for_a_completed_clean_worktree() -> Bool {
   }
 }
 
-test fn commit_is_not_needed_while_the_provider_runs() -> Bool {
+test fn commit_is_not_needed_while_the_provider_runs() -> Bool  {
   match belt_commit_decision(
     provider: ProviderRunning { activity: "x" },
     node_id: "n1",
@@ -102,7 +102,7 @@ test fn commit_is_not_needed_while_the_provider_runs() -> Bool {
   }
 }
 
-test fn a_failed_provider_with_a_dirty_worktree_and_no_submission_still_checkpoints() -> Bool {
+test fn a_failed_provider_with_a_dirty_worktree_and_no_submission_still_checkpoints() -> Bool  {
   match belt_commit_decision(provider: ProviderFailed { activity: "agent turn failed", detail: "step budget exhausted" }, node_id: "n1", attempt_key: "abc", entries_nul: " M a.dag\0", submission: SubmissionAbsent, captures: []) {
     CheckpointCommitNeeded { message, note: _ } => message as String == "dispatch checkpoint: n1 aabc"
     CandidateCommitNeeded { message: _, submission: _, digest: _ } => false

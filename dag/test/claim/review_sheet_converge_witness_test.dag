@@ -319,7 +319,7 @@ fn assess_2b(requested: SheetA1Range, range: ValueRange) -> ReviewSheetEnsureAss
   )
 }
 
-test fn assess_refuses_each_request_shape_under_its_own_cause() -> Bool {
+test fn assess_refuses_each_request_shape_under_its_own_cause() -> Bool  {
   let good = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]])
   assessment_tag(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:bounded"
     && assessment_tag(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: good)) == "request:column-bounded"
@@ -338,7 +338,7 @@ fn request_cause_range_wire(a: ReviewSheetEnsureAssessment) -> String {
   }
 }
 
-test fn assess_carries_the_whole_refused_range_not_only_its_tab() -> Bool {
+test fn assess_carries_the_whole_refused_range_not_only_its_tab() -> Bool  {
   let empty = w_value_range(rows: [])
   request_cause_range_wire(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: empty))
     == "bounded:'Review'!A1:E9"
@@ -357,7 +357,7 @@ fn rendered_request_refusal(requested: SheetA1Range) -> String {
   }
 }
 
-test fn the_request_refusal_reason_renders_the_range_it_refused_for_both_walls() -> Bool {
+test fn the_request_refusal_reason_renders_the_range_it_refused_for_both_walls() -> Bool  {
   let bounded = rendered_request_refusal(requested: w_bounded_request(tab: "Review" as NonEmptyStr))
   let column = rendered_request_refusal(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr))
   string_contains(s: bounded, pattern: "'Review'!A1:E9")
@@ -375,21 +375,21 @@ fn w_malformed_readback() -> ValueRange {
   }
 }
 
-test fn the_request_wall_preempts_a_readback_that_cannot_parse() -> Bool {
+test fn the_request_wall_preempts_a_readback_that_cannot_parse() -> Bool  {
   let bad = w_malformed_readback()
   assessment_tag(a: assess_2b(requested: w_bounded_request(tab: "Review" as NonEmptyStr), range: bad)) == "request:bounded"
     && assessment_tag(a: assess_2b(requested: w_column_bounded_request(tab: "Review" as NonEmptyStr), range: bad)) == "request:column-bounded"
     && assessment_tag(a: assess_2b(requested: w_open_request(tab: "Review" as NonEmptyStr), range: bad)) == "readback"
 }
 
-test fn assess_refuses_a_foreign_readback_tab() -> Bool {
+test fn assess_refuses_a_foreign_readback_tab() -> Bool  {
   assessment_tag(a: assess_2b(
     requested: w_open_request(tab: "Other" as NonEmptyStr),
     range: w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]]),
   )) == "readback"
 }
 
-test fn decide_applies_policy_and_assess_never_does() -> Bool {
+test fn decide_applies_policy_and_assess_never_does() -> Bool  {
   let needs_write = assess_2b(
     requested: w_open_request(tab: "Review" as NonEmptyStr),
     range: w_value_range(rows: []),
@@ -447,7 +447,7 @@ fn decision_wire_2b(d: UpsertDecision<TabBoundWritePlan>) -> String {
   }
 }
 
-test fn the_decision_encoding_separates_values_a_delimiter_join_would_merge() -> Bool {
+test fn the_decision_encoding_separates_values_a_delimiter_join_would_merge() -> Bool  {
   lp_list(xs: ["a,b", "c"]) != lp_list(xs: ["a", "b,c"])
     && lp_list(xs: ["a", "b"]) != lp_list(xs: ["ab"])
     && lp_list(xs: [lp_list(xs: ["a"]), "b"]) != lp_list(xs: ["a", lp_list(xs: ["b"])])
@@ -466,7 +466,7 @@ fn ensure_equals_composition(policy: EnsurePolicy, requested: SheetA1Range, rang
   ))
 }
 
-test fn ensure_is_exactly_decide_of_assess_on_every_arm() -> Bool {
+test fn ensure_is_exactly_decide_of_assess_on_every_arm() -> Bool  {
   let review = "Review" as NonEmptyStr
   let empty = w_value_range(rows: [])
   let converged = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "", ""]])
@@ -491,7 +491,7 @@ fn w_patch_readback() -> ValueRange {
   w_value_range(rows: [["L1", "", w_standing_observed(), "", ""]])
 }
 
-test fn the_equivalence_matrix_reaches_a_patch_producing_plan() -> Bool {
+test fn the_equivalence_matrix_reaches_a_patch_producing_plan() -> Bool  {
   match review_sheet_ensure_decide(
     policy: EnsureMayApply,
     assessment: assess_2b(requested: w_open_request(tab: "Review" as NonEmptyStr), range: w_patch_readback()),
@@ -502,7 +502,7 @@ test fn the_equivalence_matrix_reaches_a_patch_producing_plan() -> Bool {
   }
 }
 
-test fn the_equivalence_comparator_actually_reaches_conflict_and_unreadable() -> Bool {
+test fn the_equivalence_comparator_actually_reaches_conflict_and_unreadable() -> Bool  {
   let review = "Review" as NonEmptyStr
   let conflicted = w_value_range(rows: [["L1", "hand-edited", w_standing_observed(), "", ""]])
   let unreadable = w_value_range(rows: [
@@ -526,7 +526,7 @@ fn classification_tag(a: ReviewSheetEnsureAssessment) -> String {
   }
 }
 
-test fn converge_twice_unchanged_is_noop() -> Bool {
+test fn converge_twice_unchanged_is_noop() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -546,7 +546,7 @@ test fn converge_twice_unchanged_is_noop() -> Bool {
   }
 }
 
-test fn converge_preserves_populated_human_column() -> Bool {
+test fn converge_preserves_populated_human_column() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -572,7 +572,7 @@ test fn converge_preserves_populated_human_column() -> Bool {
   }
 }
 
-test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> Bool {
+test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -594,7 +594,7 @@ test fn converge_over_hand_edited_derived_cell_refuses_and_names_the_cell() -> B
   }
 }
 
-test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
+test fn resorted_sheet_does_not_move_a_judgement() -> Bool  {
   let projection = w_projection(rows: [
     w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
     w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
@@ -647,7 +647,7 @@ test fn resorted_sheet_does_not_move_a_judgement() -> Bool {
   }
 }
 
-test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
+test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
@@ -678,7 +678,7 @@ test fn listing_gone_with_judgement_is_retained_and_marked() -> Bool {
   }
 }
 
-test fn derived_payload_erasure_blanks_derived_keeps_judgement_and_listing_gone() -> Bool {
+test fn derived_payload_erasure_blanks_derived_keeps_judgement_and_listing_gone() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
@@ -720,7 +720,7 @@ test fn derived_payload_erasure_blanks_derived_keeps_judgement_and_listing_gone(
   }
 }
 
-test fn derived_payload_erasure_refuses_while_listing_still_projected() -> Bool {
+test fn derived_payload_erasure_refuses_while_listing_still_projected() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -741,7 +741,7 @@ test fn derived_payload_erasure_refuses_while_listing_still_projected() -> Bool 
   }
 }
 
-test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool {
+test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
@@ -762,7 +762,7 @@ test fn derived_payload_erasure_refuses_until_standing_is_listing_gone() -> Bool
   }
 }
 
-test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is_not_gone() -> Bool {
+test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is_not_gone() -> Bool  {
   let projection = ReviewSheetProjection { schema: w_schema_no_derived(), rows: [] }
   let observed = w_observed(
     headers: ["listing_id", "standing", "judgement"],
@@ -783,7 +783,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_standing_is
   }
 }
 
-test fn derived_payload_erasure_refuses_without_derived_columns_while_still_projected() -> Bool {
+test fn derived_payload_erasure_refuses_without_derived_columns_while_still_projected() -> Bool  {
   let projection = ReviewSheetProjection {
     schema: w_schema_no_derived(),
     rows: [ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] }],
@@ -807,7 +807,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_while_still_proj
   }
 }
 
-test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_authorized_otherwise() -> Bool {
+test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_authorized_otherwise() -> Bool  {
   let projection = ReviewSheetProjection { schema: w_schema_no_derived(), rows: [] }
   let observed = w_observed(
     headers: ["listing_id", "standing", "judgement"],
@@ -828,7 +828,7 @@ test fn derived_payload_erasure_refuses_without_derived_columns_when_gone_and_au
   }
 }
 
-test fn derived_payload_erasure_refuses_listing_not_on_sheet() -> Bool {
+test fn derived_payload_erasure_refuses_listing_not_on_sheet() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(headers: w_headers(), rows: [])
   match classify_review_sheet(
@@ -845,7 +845,7 @@ test fn derived_payload_erasure_refuses_listing_not_on_sheet() -> Bool {
   }
 }
 
-test fn derived_payload_erasure_already_empty_derived_is_converged() -> Bool {
+test fn derived_payload_erasure_already_empty_derived_is_converged() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
@@ -863,7 +863,7 @@ test fn derived_payload_erasure_already_empty_derived_is_converged() -> Bool {
   }
 }
 
-test fn derived_payload_erasure_duplicate_listing_is_unreadable() -> Bool {
+test fn derived_payload_erasure_duplicate_listing_is_unreadable() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: w_headers(),
@@ -885,7 +885,7 @@ test fn derived_payload_erasure_duplicate_listing_is_unreadable() -> Bool {
   }
 }
 
-test fn ensure_with_erasure_applies_blank_derived() -> Bool {
+test fn ensure_with_erasure_applies_blank_derived() -> Bool  {
   let projection = w_projection(rows: [])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_gone(), "buy"]])
   match review_sheet_ensure(
@@ -913,7 +913,7 @@ test fn ensure_with_erasure_applies_blank_derived() -> Bool {
   }
 }
 
-test fn ensure_with_erasure_refuses_while_still_projected() -> Bool {
+test fn ensure_with_erasure_refuses_while_still_projected() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
   match review_sheet_ensure(
@@ -932,7 +932,7 @@ test fn ensure_with_erasure_refuses_while_still_projected() -> Bool {
   }
 }
 
-test fn gone_listing_with_derived_payload_still_restores_when_it_returns() -> Bool {
+test fn gone_listing_with_derived_payload_still_restores_when_it_returns() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -957,7 +957,7 @@ test fn gone_listing_with_derived_payload_still_restores_when_it_returns() -> Bo
   }
 }
 
-test fn applied_erasure_mark_does_not_restore_derived_when_the_listing_returns() -> Bool {
+test fn applied_erasure_mark_does_not_restore_derived_when_the_listing_returns() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -987,7 +987,7 @@ test fn applied_erasure_mark_does_not_restore_derived_when_the_listing_returns()
   }
 }
 
-test fn derived_payload_erasure_refuses_without_erasure_mark_column() -> Bool {
+test fn derived_payload_erasure_refuses_without_erasure_mark_column() -> Bool  {
   let projection = ReviewSheetProjection { schema: w_schema_without_erasure_mark(), rows: [] }
   let observed = w_observed(
     headers: ["listing_id", "title", "standing", "judgement"],
@@ -1008,7 +1008,7 @@ test fn derived_payload_erasure_refuses_without_erasure_mark_column() -> Bool {
   }
 }
 
-test fn derived_payload_erasure_refuses_when_standing_header_is_missing() -> Bool {
+test fn derived_payload_erasure_refuses_when_standing_header_is_missing() -> Bool  {
   let projection = w_projection(rows: [])
   let observed = w_observed(
     headers: ["listing_id", "title", "judgement", "erasure"],
@@ -1028,7 +1028,7 @@ test fn derived_payload_erasure_refuses_when_standing_header_is_missing() -> Boo
   }
 }
 
-test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
+test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
   match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
@@ -1051,7 +1051,7 @@ test fn readback_apply_qualifies_once_on_the_value_range_fold() -> Bool {
   }
 }
 
-test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
+test fn ensure_write_ranges_use_the_readback_tab() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = ValueRange {
     range: "OtherTab!A1:D",
@@ -1072,7 +1072,7 @@ test fn ensure_write_ranges_use_the_readback_tab() -> Bool {
   }
 }
 
-test fn ensure_over_unchanged_readback_is_noop() -> Bool {
+test fn ensure_over_unchanged_readback_is_noop() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), "buy"]])
   match review_sheet_ensure(policy: EnsureMayApply, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
@@ -1087,7 +1087,7 @@ test fn ensure_over_unchanged_readback_is_noop() -> Bool {
   }
 }
 
-test fn observe_only_does_not_emit_a_write_plan() -> Bool {
+test fn observe_only_does_not_emit_a_write_plan() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = w_value_range(rows: [["L1", "", w_standing_observed(), ""]])
   match review_sheet_ensure(policy: EnsureObserveOnly, requested: w_open_request(tab: "Review" as NonEmptyStr), range: range, projection: projection, erasures: []) {
@@ -1097,7 +1097,7 @@ test fn observe_only_does_not_emit_a_write_plan() -> Bool {
   }
 }
 
-test fn column_major_readback_refuses() -> Bool {
+test fn column_major_readback_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = ValueRange {
     range: "Review!A1:E",
@@ -1111,7 +1111,7 @@ test fn column_major_readback_refuses() -> Bool {
   }
 }
 
-test fn foreign_major_dimension_refuses() -> Bool {
+test fn foreign_major_dimension_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = ValueRange {
     range: "Review!A1:E",
@@ -1125,7 +1125,7 @@ test fn foreign_major_dimension_refuses() -> Bool {
   }
 }
 
-test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
+test fn value_range_readback_is_identity_keyed_not_positional() -> Bool  {
   let projection = w_projection(rows: [
     w_row(listing_id: "L1" as NonEmptyStr, title: "alpha"),
     w_row(listing_id: "L2" as NonEmptyStr, title: "beta"),
@@ -1156,7 +1156,7 @@ test fn value_range_readback_is_identity_keyed_not_positional() -> Bool {
   }
 }
 
-test fn readback_not_a1_anchored_refuses() -> Bool {
+test fn readback_not_a1_anchored_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = ValueRange {
     range: "Review!B2:E200",
@@ -1170,7 +1170,7 @@ test fn readback_not_a1_anchored_refuses() -> Bool {
   }
 }
 
-test fn unqualified_readback_range_refuses() -> Bool {
+test fn unqualified_readback_range_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = ValueRange {
     range: "A1:D4",
@@ -1184,7 +1184,7 @@ test fn unqualified_readback_range_refuses() -> Bool {
   }
 }
 
-test fn bounded_get_values_request_refuses() -> Bool {
+test fn bounded_get_values_request_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), ""]])
   match review_sheet_ensure(
@@ -1211,7 +1211,7 @@ test fn bounded_get_values_request_refuses() -> Bool {
   }
 }
 
-test fn column_bounded_get_values_request_refuses() -> Bool {
+test fn column_bounded_get_values_request_refuses() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let range = w_value_range(rows: [["L1", "alpha", w_standing_observed(), ""]])
   match review_sheet_ensure(
@@ -1235,7 +1235,7 @@ test fn column_bounded_get_values_request_refuses() -> Bool {
   }
 }
 
-test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
+test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "Widget")])
   let range = ValueRange {
     range: "Review!A1:D1000",
@@ -1262,7 +1262,7 @@ test fn grid_resolved_response_range_is_not_a_truncated_request() -> Bool {
   }
 }
 
-test fn standing_is_a_sum_projected_at_emit() -> Bool {
+test fn standing_is_a_sum_projected_at_emit() -> Bool  {
   match read_listing_standing(cell: listing_standing_label(state: StandingObserved)) {
     StandingKnown { state: s } => match s {
       StandingObserved => match read_listing_standing(cell: listing_standing_label(state: StandingGone)) {
@@ -1284,7 +1284,7 @@ test fn standing_is_a_sum_projected_at_emit() -> Bool {
   }
 }
 
-test fn duplicate_header_refuses_rather_than_last_wins() -> Bool {
+test fn duplicate_header_refuses_rather_than_last_wins() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: ["listing_id", "title", "standing", "judgement", "erasure", "title"],
@@ -1309,7 +1309,7 @@ fn rendered(cause: ReviewCellConflictCause) -> String {
   }) as String
 }
 
-test fn conflict_reason_renders_the_located_facts_and_names_which_cause() -> Bool {
+test fn conflict_reason_renders_the_located_facts_and_names_which_cause() -> Bool  {
   let occupied = rendered(cause: DerivedFieldOccupied { observed: "hand-edited", desired: "alpha" })
   let standing = rendered(cause: ListingStandingForeignValue { raw: "Obsered" })
   let mark = rendered(cause: DerivedErasureMarkForeignValue { raw: "Aplied" })
@@ -1337,7 +1337,7 @@ fn conflict_cause_tag(c: ReviewSheetClassification) -> String {
   }
 }
 
-test fn the_three_conflict_causes_are_distinguishable_from_each_other() -> Bool {
+test fn the_three_conflict_causes_are_distinguishable_from_each_other() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let occupied = classify_review_sheet(
     observed: w_observed(headers: w_headers(), rows: [["L1", "hand-edited", w_standing_observed(), "", ""]]),
@@ -1359,7 +1359,7 @@ test fn the_three_conflict_causes_are_distinguishable_from_each_other() -> Bool 
     && conflict_cause_tag(c: mark) == "mark"
 }
 
-test fn the_erasure_mark_conflict_carries_its_observed_token_and_location() -> Bool {
+test fn the_erasure_mark_conflict_carries_its_observed_token_and_location() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   match classify_review_sheet(
     observed: w_observed(headers: w_headers(), rows: [["L1", "alpha", w_standing_observed(), "", "Aplied"]]),
@@ -1381,7 +1381,7 @@ test fn the_erasure_mark_conflict_carries_its_observed_token_and_location() -> B
   }
 }
 
-test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
+test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L1" as NonEmptyStr, title: "alpha")])
   let observed = w_observed(
     headers: w_headers(),
@@ -1403,7 +1403,7 @@ test fn foreign_standing_cell_refuses_and_names_the_cell() -> Bool {
   }
 }
 
-test fn a1_column_past_z_has_no_letter() -> Bool {
+test fn a1_column_past_z_has_no_letter() -> Bool  {
   match a1_column_letter(index: 0) {
     Present { value: a } =>
       a == "A"
@@ -1420,7 +1420,7 @@ test fn a1_column_past_z_has_no_letter() -> Bool {
   }
 }
 
-test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool {
+test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool  {
   let schema = ReviewSheetSchema {
     identity_column: "listing_id" as NonEmptyStr,
     columns: map(a1_column_letters, n => ReviewColumn {
@@ -1451,7 +1451,7 @@ test fn a_twenty_seventh_column_refuses_rather_than_writing_a_fake_a1() -> Bool 
   }
 }
 
-test fn absent_listing_appends_a_located_row() -> Bool {
+test fn absent_listing_appends_a_located_row() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "beta")])
   let observed = w_observed(headers: w_headers(), rows: [])
   match classify_review_sheet(observed: observed, projection: projection, erasures: []) {
@@ -1510,7 +1510,7 @@ test fn absent_listing_appends_a_located_row() -> Bool {
   }
 }
 
-test fn append_follows_observed_header_order_not_schema_order() -> Bool {
+test fn append_follows_observed_header_order_not_schema_order() -> Bool  {
   let projection = w_projection(rows: [w_row(listing_id: "L2" as NonEmptyStr, title: "alpha")])
   let headers = ["listing_id", "standing", "title", "judgement", "erasure"]
   let observed = w_observed(headers: headers, rows: [])
@@ -1573,7 +1573,7 @@ test fn append_follows_observed_header_order_not_schema_order() -> Bool {
   }
 }
 
-test fn append_over_populated_operator_cell_refuses() -> Bool {
+test fn append_over_populated_operator_cell_refuses() -> Bool  {
   let observed = w_observed(
     headers: w_headers(),
     rows: [["L1", "alpha", w_standing_observed(), "buy"]],
@@ -1597,7 +1597,7 @@ test fn append_over_populated_operator_cell_refuses() -> Bool {
   }
 }
 
-test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool {
+test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool  {
   let projection = w_projection(rows: [
     ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
   ])
@@ -1616,7 +1616,7 @@ test fn omitted_derived_column_on_blank_sheet_refuses_rather_than_noop() -> Bool
   }
 }
 
-test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
+test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool  {
   let projection = w_projection(rows: [
     ProjectionRow { listing_id: "L1" as NonEmptyStr, derived: [] },
   ])
@@ -1634,7 +1634,7 @@ test fn omitted_derived_column_on_populated_sheet_is_not_a_conflict() -> Bool {
   }
 }
 
-test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
+test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool  {
   match live_sheets_transport_frontier {
     Scaffold { dissolves_to: RealizationDispatch, bind: b } =>
       (b.module_path as String) == "gunbc.review_sheet_sheets"
@@ -1733,7 +1733,7 @@ test fn live_transport_frontiers_are_scaffold_not_terminal() -> Bool {
     }
 }
 
-test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool {
+test fn sheets_published_mock_corpus_covers_get_and_batch_update() -> Bool  {
   match sheets_published_mock_corpus |> first {
     Present { value: get } =>
       get.operation_key == "sheets.Spreadsheets.GetValues"
@@ -1827,7 +1827,7 @@ fn w_observed_disabled() -> ServiceEnablementObservation {
 // the operator creates that project by hand. The proposition worth keeping across that move is
 // the one in the name -- the committed project and writer are not the secrets-project defaults --
 // so it is asserted against the SELECTED arm rather than deleted with the unresolved one.
-test fn committed_project_and_writer_are_selected_not_secrets_defaults() -> Bool {
+test fn committed_project_and_writer_are_selected_not_secrets_defaults() -> Bool  {
   match fleet_review_sheet_operator_admission() {
     ReviewSheetOperatorRefused { reason: r } =>
       string_contains(s: r as String, pattern: "unobserved")
@@ -1863,7 +1863,7 @@ test fn committed_project_and_writer_are_selected_not_secrets_defaults() -> Bool
 // Still the point of this witness: the admission reads the estate's home and keeps no second
 // standing of its own. With the home selected, "follows the estate" means it carries the estate's
 // project into its refusal rather than answering about some project of its own.
-test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool {
+test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bool  {
   match sheets_calling_home() {
     SheetsCallingHomeUnresolved {
       refused_api_surface_project: _,
@@ -1898,7 +1898,7 @@ test fn fleet_admission_is_the_estate_calling_home_not_a_second_standing() -> Bo
   }
 }
 
-test fn desired_enabled_observed_disabled_is_apply() -> Bool {
+test fn desired_enabled_observed_disabled_is_apply() -> Bool  {
   match decide_service_enablement(
     policy: EnsureMayApply,
     desired: sheets_api_desired_enablement(project: w_fixture_project()),
@@ -1912,7 +1912,7 @@ test fn desired_enabled_observed_disabled_is_apply() -> Bool {
   }
 }
 
-test fn enablement_observe_only_refuses_disabled_instead_of_applying() -> Bool {
+test fn enablement_observe_only_refuses_disabled_instead_of_applying() -> Bool  {
   match decide_service_enablement(
     policy: EnsureObserveOnly,
     desired: sheets_api_desired_enablement(project: w_fixture_project()),
@@ -1925,7 +1925,7 @@ test fn enablement_observe_only_refuses_disabled_instead_of_applying() -> Bool {
   }
 }
 
-test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> Bool {
+test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -1947,7 +1947,7 @@ test fn admit_observe_only_refuses_disabled_api_instead_of_needing_enable() -> B
   }
 }
 
-test fn enablement_converge_never_disables() -> Bool {
+test fn enablement_converge_never_disables() -> Bool  {
   match decide_service_enablement(
     policy: EnsureMayApply,
     desired: ServiceDesiredDisabled {
@@ -1967,7 +1967,7 @@ test fn enablement_converge_never_disables() -> Bool {
 // The wall this witness is: no path reaches Admitted before the project is real. Selecting a home
 // moved the blocking reason from the estate to the unobserved enablement; it must not have moved
 // the admission any closer to admitting.
-test fn fleet_admission_does_not_admit_while_enablement_is_unobserved() -> Bool {
+test fn fleet_admission_does_not_admit_while_enablement_is_unobserved() -> Bool  {
   match fleet_review_sheet_operator_admission() {
     ReviewSheetOperatorRefused { reason: r } =>
       string_contains(s: r as String, pattern: "unobserved")
@@ -1978,7 +1978,7 @@ test fn fleet_admission_does_not_admit_while_enablement_is_unobserved() -> Bool 
   }
 }
 
-test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> Bool {
+test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -2001,7 +2001,7 @@ test fn discharged_iam_with_disabled_api_needs_enable_not_a_console_click() -> B
   }
 }
 
-test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool {
+test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -2029,7 +2029,7 @@ test fn undeclared_spreadsheet_is_fleet_once_create_not_a_caller_string() -> Boo
   }
 }
 
-test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
+test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2066,7 +2066,7 @@ test fn sharing_is_device_once_editor_with_the_declared_writer() -> Bool {
   }
 }
 
-test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool {
+test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   let share = share_intervention_for_spreadsheet(
     spreadsheet: SpreadsheetIdentified { spreadsheet_id: id, owner: "operator" as NonEmptyStr },
@@ -2077,7 +2077,7 @@ test fn identified_spreadsheet_share_uses_that_id_not_a_placeholder() -> Bool {
     && !string_contains(s: share.identity as String, pattern: "unidentified")
 }
 
-test fn awaiting_creation_does_not_mint_an_unidentified_share_id() -> Bool {
+test fn awaiting_creation_does_not_mint_an_unidentified_share_id() -> Bool  {
   !string_contains(
     s: share_intervention_for_spreadsheet(
       spreadsheet: SpreadsheetAwaitingCreation,
@@ -2087,7 +2087,7 @@ test fn awaiting_creation_does_not_mint_an_unidentified_share_id() -> Bool {
   )
 }
 
-test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
+test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool  {
   match service_enablement_from_state_wire(
     project: w_fixture_project(),
     service_id: sheets_serviceusage_api_id,
@@ -2101,7 +2101,7 @@ test fn enablement_state_wire_enabled_is_not_unobserved() -> Bool {
   }
 }
 
-test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
+test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool  {
   match service_enablement_from_state_wire(
     project: w_fixture_project(),
     service_id: sheets_serviceusage_api_id,
@@ -2115,7 +2115,7 @@ test fn enablement_state_wire_disabled_is_not_unobserved() -> Bool {
   }
 }
 
-test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() -> Bool {
+test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() -> Bool  {
   match service_enablement_from_state_wire(
     project: w_fixture_project(),
     service_id: sheets_serviceusage_api_id,
@@ -2158,7 +2158,7 @@ test fn unspecified_or_unknown_serviceusage_state_is_foreign_not_unobserved() ->
   }
 }
 
-test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
+test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool  {
   match serviceusage_enable_iam_grant_intervention(project: w_fixture_project(), writer: w_fixture_writer()).frequency {
     FleetOnce =>
       string_contains(
@@ -2179,7 +2179,7 @@ test fn iam_grant_is_fleet_once_per_project_not_per_api() -> Bool {
   }
 }
 
-test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool {
+test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool  {
   match gcp_fleet_secrets_wif_binding_intervention().completion_evidence {
     NoDischargeSiteModeled =>
       match w_discharged_iam().completion_evidence {
@@ -2190,7 +2190,7 @@ test fn fleet_secrets_wif_binding_is_still_undischarged() -> Bool {
   }
 }
 
-test fn judgement_failures_are_unreadable_not_blank() -> Bool {
+test fn judgement_failures_are_unreadable_not_blank() -> Bool  {
   let observed = w_observed(headers: w_headers(), rows: [["L1", "alpha", w_standing_observed(), "buy"]])
   match judgement_for_listing(
     observed: observed,
@@ -2237,7 +2237,7 @@ test fn judgement_failures_are_unreadable_not_blank() -> Bool {
   }
 }
 
-test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool {
+test fn judgement_for_duplicate_listing_rows_is_unreadable() -> Bool  {
   match judgement_for_listing(
     observed: w_observed(
       headers: w_headers(),
@@ -2268,7 +2268,7 @@ fn w_generic_operator_schema() -> ReviewSheetSchema {
   }
 }
 
-test fn classify_review_sheet_append_does_not_write_operator_columns() -> Bool {
+test fn classify_review_sheet_append_does_not_write_operator_columns() -> Bool  {
   let schema = w_generic_operator_schema()
   let projection = ReviewSheetProjection {
     schema: schema,
@@ -2295,7 +2295,7 @@ test fn classify_review_sheet_append_does_not_write_operator_columns() -> Bool {
   }
 }
 
-test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
+test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -2322,7 +2322,7 @@ test fn discharged_share_for_another_spreadsheet_does_not_admit() -> Bool {
   }
 }
 
-test fn discharged_share_for_another_writer_does_not_admit() -> Bool {
+test fn discharged_share_for_another_writer_does_not_admit() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   let other = spreadsheet_share_intervention(
     spreadsheet_id: id,
@@ -2362,7 +2362,7 @@ test fn discharged_share_for_another_writer_does_not_admit() -> Bool {
   }
 }
 
-test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
+test fn discharged_share_admits_the_identified_spreadsheet() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2384,7 +2384,7 @@ test fn discharged_share_admits_the_identified_spreadsheet() -> Bool {
   }
 }
 
-test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
+test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2409,7 +2409,7 @@ test fn enabled_api_does_not_demand_serviceusage_enable_iam() -> Bool {
   }
 }
 
-test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
+test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -2437,7 +2437,7 @@ test fn disabled_api_awaits_serviceusage_enable_iam_before_enable() -> Bool {
   }
 }
 
-test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
+test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool  {
   match admit_review_sheet_operator(
     project: w_fixture_project(),
     writer: w_fixture_writer(),
@@ -2464,7 +2464,7 @@ test fn discharged_iam_for_another_project_does_not_need_enable() -> Bool {
   }
 }
 
-test fn unread_workspace_sharing_policy_refuses() -> Bool {
+test fn unread_workspace_sharing_policy_refuses() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2487,7 +2487,7 @@ test fn unread_workspace_sharing_policy_refuses() -> Bool {
   }
 }
 
-test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
+test fn domain_policy_forbidding_sa_share_refuses() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2510,7 +2510,7 @@ test fn domain_policy_forbidding_sa_share_refuses() -> Bool {
   }
 }
 
-test fn admitted_admission_opens_live_access() -> Bool {
+test fn admitted_admission_opens_live_access() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   let admission = admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2545,7 +2545,7 @@ test fn admitted_admission_opens_live_access() -> Bool {
 // fixture, so every one of them agreed with the broken validator. This claim supplies the
 // mismatch on purpose: a discharged FILE share under a SHARED DRIVE residency is not the access
 // step that residency requires, and admitting it would be admitting the wrong human action.
-test fn a_file_share_does_not_admit_a_shared_drive_residency() -> Bool {
+test fn a_file_share_does_not_admit_a_shared_drive_residency() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2569,7 +2569,7 @@ test fn a_file_share_does_not_admit_a_shared_drive_residency() -> Bool {
 
 // AND THE POSITIVE CONTROL, so the row above cannot be satisfied by a validator that refuses
 // everything: the shared-drive residency admits when the MEMBER step is the discharged one.
-test fn a_discharged_drive_membership_admits_a_shared_drive_residency() -> Bool {
+test fn a_discharged_drive_membership_admits_a_shared_drive_residency() -> Bool  {
   let id = "sheet-abc" as NonEmptyStr
   match admit_review_sheet_operator(
     project: w_fixture_project(),
@@ -2635,7 +2635,7 @@ fn w_discharged_drive_member() -> HumanIntervention {
 // THE SHARING READING IS A TRANSCRIBED OBSERVATION AND ITS PROVENANCE IS THE EVIDENCE. A policy
 // reading with no read date and no named source is an assertion about a Workspace console someone
 // looked at once; these three fields are what make it checkable by a second reader.
-test fn workspace_sharing_reading_carries_its_provenance() -> Bool {
+test fn workspace_sharing_reading_carries_its_provenance() -> Bool  {
   match buyer_review_workspace_domain_sharing() {
     DomainSharingAllowsServiceAccountShare =>
       (buyer_review_workspace_sharing_reading.read_on as String) == "2026-09-11"
@@ -2654,7 +2654,7 @@ test fn workspace_sharing_reading_carries_its_provenance() -> Bool {
 
 // THE TENANCY IS WORKSPACE, NOT A PLAIN ACCOUNT, and the difference decides which admission path
 // runs: a plain account never consults a domain sharing policy at all.
-test fn fleet_account_tenancy_is_a_workspace_domain() -> Bool {
+test fn fleet_account_tenancy_is_a_workspace_domain() -> Bool  {
   match buyer_review_account_tenancy {
     ReviewSheetWorkspaceDomain => true
     ReviewSheetPlainGoogleAccount => false
@@ -2665,7 +2665,7 @@ test fn fleet_account_tenancy_is_a_workspace_domain() -> Bool {
 // THE BUYER SPREADSHEET IS STILL AWAITING CREATION, which is what keeps the identified-spreadsheet
 // arm of the admission unreached. A test that assumed an identified sheet would be asserting a
 // state the fleet has never been in.
-test fn buyer_review_spreadsheet_is_still_awaiting_creation() -> Bool {
+test fn buyer_review_spreadsheet_is_still_awaiting_creation() -> Bool  {
   match buyer_review_spreadsheet {
     SpreadsheetAwaitingCreation => true
     SpreadsheetIdentified { spreadsheet_id: _, owner: _ } => false
@@ -2680,7 +2680,7 @@ test fn buyer_review_spreadsheet_is_still_awaiting_creation() -> Bool {
 // standing rather than a supplied admission, does not open live access. The sibling at
 // live_access_opens_for_an_admitted_fleet drives the same fold from an ADMITTED admission, so
 // between them the open and closed directions are both executed.
-test fn fleet_live_access_is_not_open() -> Bool {
+test fn fleet_live_access_is_not_open() -> Bool  {
   match review_sheet_live_access(
     credential: SecretRef {
       project: "custody-only",

@@ -125,14 +125,14 @@ fn f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
 }
 
 // GREEN: depth-3 service chain compiles and f0 carries the propagated service parameter.
-test fn shallow_service_chain_f0_carries_leaf_service_parameter() -> Bool {
+test fn shallow_service_chain_f0_carries_leaf_service_parameter() -> Bool  {
   let o = run_shallow_service_chain()
   compiles_clean(o) && f0_has_setsw_probe(o)
 }
 
 // RED CONTROL: identical call shape with no service. f0 must NOT report setsw_probe. If this
 // greens while the chain arm is green, the projection has stopped discriminating service params.
-test fn no_service_sibling_f0_lacks_service_parameter() -> Bool {
+test fn no_service_sibling_f0_lacks_service_parameter() -> Bool  {
   let o = run_no_service_sibling()
   compiles_clean(o) && f0_lacks_setsw_probe(o)
 }
@@ -204,13 +204,13 @@ fn top_f0_lacks_setsw_probe(o: MultiModuleCompileFixtureOutcome) -> Bool {
 }
 
 // GREEN: the service parameter crosses two module boundaries and reaches the top row.
-test fn cross_module_service_chain_top_carries_leaf_service_parameter() -> Bool {
+test fn cross_module_service_chain_top_carries_leaf_service_parameter() -> Bool  {
   let o = run_cross_module_service_chain()
   compiles_clean(o) && top_f0_has_setsw_probe(o)
 }
 
 // RED CONTROL: identical module shape and identical call graph, service removed at the leaf.
-test fn cross_module_no_service_sibling_top_lacks_service_parameter() -> Bool {
+test fn cross_module_no_service_sibling_top_lacks_service_parameter() -> Bool  {
   let o = run_cross_module_no_service_sibling()
   compiles_clean(o) && top_f0_lacks_setsw_probe(o)
 }

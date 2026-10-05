@@ -83,7 +83,7 @@ fn denied_observation() -> RestExchangeObservation {
   }
 }
 
-test fn rest_status_and_body_are_persistable() -> Bool {
+test fn rest_status_and_body_are_persistable() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Observe", observation: denied_observation())]),
     subject: fn(_scope) { test.RestReplay.Observe() }
@@ -98,7 +98,7 @@ test fn rest_status_and_body_are_persistable() -> Bool {
   }
 }
 
-test fn rest_success_projects_rest_ok() -> Bool {
+test fn rest_success_projects_rest_ok() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -119,7 +119,7 @@ test fn rest_success_projects_rest_ok() -> Bool {
   }
 }
 
-test fn rest_operation_without_outcome_still_refuses() -> Bool {
+test fn rest_operation_without_outcome_still_refuses() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Legacy", observation: denied_observation())]),
     subject: fn(_scope) { test.RestReplay.Legacy() }
@@ -131,7 +131,7 @@ test fn rest_operation_without_outcome_still_refuses() -> Bool {
   }
 }
 
-test fn rest_transport_failure_is_persistable() -> Bool {
+test fn rest_transport_failure_is_persistable() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -149,7 +149,7 @@ test fn rest_transport_failure_is_persistable() -> Bool {
   }
 }
 
-test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
+test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -171,7 +171,7 @@ test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
   }
 }
 
-test fn rest_replay_missing_fixture_refuses_without_network_fallback() -> Bool {
+test fn rest_replay_missing_fixture_refuses_without_network_fallback() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: []),
     subject: fn(_scope) { test.RestReplay.Observe() }
@@ -186,7 +186,7 @@ test fn rest_replay_missing_fixture_refuses_without_network_fallback() -> Bool {
   }
 }
 
-test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool {
+test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool  {
   let fixture = fixture_for(operation: "Observe", observation: denied_observation())
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture, fixture]),
@@ -202,7 +202,7 @@ test fn rest_replay_duplicate_exact_fixture_refuses() -> Bool {
   }
 }
 
-test fn rest_replay_sibling_operation_fixture_cannot_satisfy_subject() -> Bool {
+test fn rest_replay_sibling_operation_fixture_cannot_satisfy_subject() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Sibling", observation: denied_observation())]),
     subject: fn(_scope) { test.RestReplay.Observe() }
@@ -217,7 +217,7 @@ test fn rest_replay_sibling_operation_fixture_cannot_satisfy_subject() -> Bool {
   }
 }
 
-test fn rest_root_array_200_inhabits_list_payload() -> Bool {
+test fn rest_root_array_200_inhabits_list_payload() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootArray",
@@ -238,7 +238,7 @@ test fn rest_root_array_200_inhabits_list_payload() -> Bool {
   }
 }
 
-test fn rest_root_file_200_inhabits_object_payload() -> Bool {
+test fn rest_root_file_200_inhabits_object_payload() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootFile",
@@ -259,7 +259,7 @@ test fn rest_root_file_200_inhabits_object_payload() -> Bool {
   }
 }
 
-test fn rest_root_page_200_inhabits_object_payload() -> Bool {
+test fn rest_root_page_200_inhabits_object_payload() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootPage",
@@ -280,7 +280,7 @@ test fn rest_root_page_200_inhabits_object_payload() -> Bool {
   }
 }
 
-test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bool {
+test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootArray",
@@ -303,7 +303,7 @@ test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bo
   }
 }
 
-test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> Bool {
+test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -326,7 +326,7 @@ test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> 
   }
 }
 
-test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
+test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "OptionalObserve",
@@ -347,7 +347,7 @@ test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
   }
 }
 
-test fn rest_replay_binding_does_not_escape_its_frame() -> Bool {
+test fn rest_replay_binding_does_not_escape_its_frame() -> Bool  {
   let inside = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: []),
     subject: fn(_scope) { witness_evaluation_frame_active() }
@@ -388,7 +388,7 @@ fn run_list_frame(body: String) -> WitnessEvaluationFrame<Unit> {
   ])
 }
 
-test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool {
+test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool  {
   match evaluate_in_witness_frame(frame: run_list_frame(body: decoded_run_list_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
     WitnessReturned { value } => match value.observed {
       RestOk => first_run_completed_successfully(runs: value.runs)
@@ -399,7 +399,7 @@ test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool {
   }
 }
 
-test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool {
+test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool  {
   match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
     WitnessReturned { value } => match value.observed {
       RestBodyUndecodable { status, cause } =>
@@ -414,7 +414,7 @@ test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool {
 }
 
 // Without an outcome field the same refusal is a loud evaluation failure, never a returned value.
-test fn an_unknown_spelling_without_an_outcome_field_refuses_the_evaluation() -> Bool {
+test fn an_unknown_spelling_without_an_outcome_field_refuses_the_evaluation() -> Bool  {
   match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPageLegacy() }) {
     WitnessReturned { value: _ } => false
     WitnessRefused { diagnostic } =>
@@ -426,7 +426,7 @@ test fn an_unknown_spelling_without_an_outcome_field_refuses_the_evaluation() ->
 // NO LENIENT ARM FOR AN UNDECLARED SPELLING. The string "Alpha" is exactly an arm's authored name,
 // so a decoder that guessed AsAuthored would accept it; the coproduct has no contract and its module
 // declares no wire_contract, so it refuses.
-test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match() -> Bool {
+test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_match() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootUncontracted",
@@ -449,7 +449,7 @@ test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_matc
 // response_format_variant_silently_read_as_json). RED before the fix: the interpreter read
 // response_format only as a string literal, so `response_format: Text` fell back to Json and this
 // plain-text body answered RestBodyUndecodable at status 200.
-test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool {
+test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "TextBody",
@@ -470,7 +470,7 @@ test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool {
 // ANY OTHER SPELLING REFUSES. The quoted string is the one that used to be the only working
 // spelling in the interpreter and was read as Json by emitted code; now neither realization
 // can take it, and the interpreter says so instead of guessing.
-test fn an_unrecognized_response_format_refuses_rather_than_defaulting_to_json() -> Bool {
+test fn an_unrecognized_response_format_refuses_rather_than_defaulting_to_json() -> Bool  {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "FormatUnrecognized",

@@ -110,7 +110,7 @@ fn mutate_scratch(s: ScratchRepository, body: String) -> Bool {
   ).success
 }
 
-test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree() -> Bool {
+test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
     Absent => false
     Present { value: s } => {
@@ -121,7 +121,7 @@ test fn detached_primary_transition_executes_and_preserves_packed_loose_refs_and
   }
 }
 
-test fn already_at_candidate_repairs_a_stale_index() -> Bool {
+test fn already_at_candidate_repairs_a_stale_index() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: true, racing_fetch: false) {
     Absent => false
     Present { value: s } => {
@@ -132,7 +132,7 @@ test fn already_at_candidate_repairs_a_stale_index() -> Bool {
   }
 }
 
-test fn cas_race_is_observed_after_fetch() -> Bool {
+test fn cas_race_is_observed_after_fetch() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: true) {
     Absent => false
     Present { value: s } => {
@@ -143,7 +143,7 @@ test fn cas_race_is_observed_after_fetch() -> Bool {
   }
 }
 
-test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool {
+test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool  {
   match scratch_repository(index_lock: true, already_candidate: false, racing_fetch: false) {
     Absent => false
     Present { value: s } => {
@@ -154,7 +154,7 @@ test fn reset_refusal_after_successful_cas_is_nonzero() -> Bool {
   }
 }
 
-test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
+test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
     Absent => false
     Present { value: s } => {
@@ -166,7 +166,7 @@ test fn unreadable_head_refuses_before_fetch_or_mutation() -> Bool {
   }
 }
 
-test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
+test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
     Absent => false
     Present { value: s } => {
@@ -178,7 +178,7 @@ test fn undecodable_worktree_roster_refuses_before_mutation() -> Bool {
   }
 }
 
-test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool {
+test fn wrong_primary_standing_refuses_from_gits_roster() -> Bool  {
   match scratch_repository(index_lock: false, already_candidate: false, racing_fetch: false) {
     Absent => false
     Present { value: s } => {

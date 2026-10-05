@@ -68,7 +68,7 @@ fn observed_head() -> WorktreeHeadObservation {
   worktree_head_observation_of(outcome: ExecOk { stdout: (dest_head as String) })
 }
 
-test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
+test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool  {
   let node = node_with_repo(id: "private-dest-node", repo: "example/other")
   match belt_publication_subject_for_node(
     node: node,
@@ -84,7 +84,7 @@ test fn a_non_public_destination_does_not_publish_to_gunbc() -> Bool {
   }
 }
 
-test fn a_named_destination_is_not_known_public() -> Bool {
+test fn a_named_destination_is_not_known_public() -> Bool  {
   let node = node_with_repo(id: "private-dest-node", repo: "example/other")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
@@ -103,7 +103,7 @@ test fn a_named_destination_is_not_known_public() -> Bool {
   }
 }
 
-test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool {
+test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool  {
   let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
@@ -123,7 +123,7 @@ test fn spawn_origin_json_records_known_public_gunbc_from_the_standing() -> Bool
   }
 }
 
-test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc() -> Bool {
+test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc() -> Bool  {
   let node = node_with_repo(id: "private-dest-node", repo: "example/other")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
@@ -143,7 +143,7 @@ test fn spawn_origin_json_records_a_named_destination_as_not_known_public_gunbc(
   }
 }
 
-test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool {
+test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool  {
   let origin = DispatchSpawnOrigin {
     identity: DestinationIdentity {
       owner: "example",
@@ -162,7 +162,7 @@ test fn spawn_origin_json_escapes_a_quote_in_the_repository_name() -> Bool {
     && !wire.contains("\"default_branch\":")
 }
 
-test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool {
+test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug() -> Bool  {
   let node = node_with_repo(id: "private-dest-node", repo: "example/other")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
@@ -179,7 +179,7 @@ test fn a_named_destination_does_not_claim_privacy_or_default_branch_from_a_slug
   }
 }
 
-test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
+test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool  {
   let node = node_with_repo(id: "public-dest-node", repo: "gunbc")
   match node_dispatch_destination(node: node) {
     DispatchDestinationMissing { reason: _ } => false
@@ -209,7 +209,7 @@ test fn a_public_gunbc_node_still_publishes_to_gunbc() -> Bool {
   }
 }
 
-test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool {
+test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool  {
   match attempt_paths_admitted(
     scope: PathsAllowed {
       prefixes: ["dag/gunbc/roadmap/" as FilePath],
@@ -221,7 +221,7 @@ test fn allowed_paths_refuse_a_touched_path_outside_the_prefixes() -> Bool {
   }
 }
 
-test fn allowed_paths_do_not_admit_a_sibling_that_only_shares_a_string_prefix() -> Bool {
+test fn allowed_paths_do_not_admit_a_sibling_that_only_shares_a_string_prefix() -> Bool  {
   match attempt_paths_admitted(
     scope: PathsAllowed {
       prefixes: ["dag/foo" as FilePath],
@@ -233,7 +233,7 @@ test fn allowed_paths_do_not_admit_a_sibling_that_only_shares_a_string_prefix() 
   }
 }
 
-test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool {
+test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool  {
   match attempt_paths_admitted(
     scope: PathsAllowed {
       prefixes: ["dag/foo" as FilePath],
@@ -245,7 +245,7 @@ test fn allowed_paths_admit_a_path_under_the_prefix_directory() -> Bool {
   }
 }
 
-test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
+test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool  {
   match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
     ContractNotAgentWork { mode: OperatorExclusiveMode } =>
       non_agent_work_mode_label(mode: OperatorExclusiveMode) == "operator-exclusive"
@@ -256,7 +256,7 @@ test fn operator_exclusive_refuses_as_mode_not_contract_unspecified() -> Bool {
   }
 }
 
-test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
+test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool  {
   match contract_closure(contract: NotAgentWork { mode: ExternalLeadMode }) {
     ContractNotAgentWork { mode: ExternalLeadMode } =>
       match contract_closure(contract: NotAgentWork { mode: CalendarObservationMode }) {
@@ -273,7 +273,7 @@ test fn external_lead_and_calendar_refuse_as_their_own_modes() -> Bool {
   }
 }
 
-test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool {
+test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool  {
   match contract_closure(contract: ExecutionContractUnspecified) {
     ContractDeclaresNoValidation =>
       match contract_closure(contract: NotAgentWork { mode: OperatorExclusiveMode }) {
@@ -289,14 +289,14 @@ test fn unspecified_is_still_a_different_cause_from_operator_exclusive() -> Bool
   }
 }
 
-test fn private_layout_validation_composes_both_roots() -> Bool {
+test fn private_layout_validation_composes_both_roots() -> Bool  {
   let args = claim_source_root_args(
     layout: PinnedPublicPlusLocalRoot { public_prefix: "public" as NonEmptyStr },
   )
   join(args, " ") == "--source-root public/dag --source-root public/src/v2 --source-root dag"
 }
 
-test fn public_layout_validation_stays_two_roots() -> Bool {
+test fn public_layout_validation_stays_two_roots() -> Bool  {
   join(claim_source_root_args(layout: PublicWorktreeLayout), " ")
     == "--source-root dag --source-root src/v2"
 }
@@ -315,7 +315,7 @@ fn pin_witness_claim_contract() -> WorkItemExecutionContract {
   )
 }
 
-test fn a_declared_oracle_absent_from_the_named_tree_is_incomplete_standing() -> Bool {
+test fn a_declared_oracle_absent_from_the_named_tree_is_incomplete_standing() -> Bool  {
   let tree = "/attempt-worktree"
   match belt_spawn_oracle_pin_standing(
     contract: pin_witness_claim_contract(),
@@ -333,7 +333,7 @@ test fn a_declared_oracle_absent_from_the_named_tree_is_incomplete_standing() ->
   }
 }
 
-test fn a_found_oracle_still_admits_spawn() -> Bool {
+test fn a_found_oracle_still_admits_spawn() -> Bool  {
   match belt_spawn_oracle_pin_standing(
     contract: pin_witness_claim_contract(),
     observations: [
@@ -349,7 +349,7 @@ test fn a_found_oracle_still_admits_spawn() -> Bool {
   }
 }
 
-test fn a_contract_with_no_pinnable_oracle_still_admits_spawn() -> Bool {
+test fn a_contract_with_no_pinnable_oracle_still_admits_spawn() -> Bool  {
   match belt_spawn_oracle_pin_standing(
     contract: ExecutionContract {
       validations: [CargoFmtValidation],

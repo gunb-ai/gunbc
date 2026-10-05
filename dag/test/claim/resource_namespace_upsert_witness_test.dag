@@ -15,7 +15,7 @@ data nbd_proxy_scope: ProcessPortScope = ProcessPortScope {
   expected_process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
 }
 
-test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
+test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool  {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
     obs: PortObserved {
@@ -31,7 +31,7 @@ test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
   }
 }
 
-test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
+test fn stale_matching_process_on_10809_drains_then_starts() -> Bool  {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
     obs: PortObservedStaleExpected {
@@ -51,7 +51,7 @@ test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
   }
 }
 
-test fn expected_process_on_10809_is_converged_noop() -> Bool {
+test fn expected_process_on_10809_is_converged_noop() -> Bool  {
   match classify_process_port_upsert(
     scope: nbd_proxy_scope,
     obs: PortObserved {
@@ -66,7 +66,7 @@ test fn expected_process_on_10809_is_converged_noop() -> Bool {
   }
 }
 
-test fn outside_namespace_chmod_is_refused() -> Bool {
+test fn outside_namespace_chmod_is_refused() -> Bool  {
   let outside = "/etc/passwd" as NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: outside)
     && match classify_file_access_upsert(scope: remaster_work_scope, obs: PathOutsideNamespace) {
@@ -75,17 +75,17 @@ test fn outside_namespace_chmod_is_refused() -> Bool {
     }
 }
 
-test fn substring_trap_path_fails_prefix_containment() -> Bool {
+test fn substring_trap_path_fails_prefix_containment() -> Bool  {
   let trap = "/attacker/tmp/gunbc-remaster-work/x" as NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: trap)
 }
 
-test fn dotdot_path_rejected_by_containment() -> Bool {
+test fn dotdot_path_rejected_by_containment() -> Bool  {
   let escape = "/tmp/gunbc-remaster-work/../etc/passwd" as NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: escape)
 }
 
-test fn readonly_within_namespace_plans_chmod() -> Bool {
+test fn readonly_within_namespace_plans_chmod() -> Bool  {
   match classify_file_access_upsert(scope: remaster_work_scope, obs: ReadOnlyWithinNamespace) {
     UpsertClassification {
       verdict: Drifted,
@@ -95,14 +95,14 @@ test fn readonly_within_namespace_plans_chmod() -> Bool {
   }
 }
 
-test fn writable_within_namespace_is_converged_noop() -> Bool {
+test fn writable_within_namespace_is_converged_noop() -> Bool  {
   match classify_file_access_upsert(scope: remaster_work_scope, obs: WritableWithinNamespace) {
     UpsertClassification { verdict: Converged, decision: Noop } => true
     _ => false
   }
 }
 
-test fn drifted_seeded_iso_is_drifted_not_converged() -> Bool {
+test fn drifted_seeded_iso_is_drifted_not_converged() -> Bool  {
   match classify_seeded_install_media(obs: MediaDrifted) {
     Drifted => match classify_seeded_install_media(obs: MediaConverged) {
       Converged => true
@@ -114,7 +114,7 @@ test fn drifted_seeded_iso_is_drifted_not_converged() -> Bool {
   }
 }
 
-test fn converged_seeded_iso_is_not_drifted() -> Bool {
+test fn converged_seeded_iso_is_not_drifted() -> Bool  {
   match classify_seeded_install_media(obs: MediaConverged) {
     Converged => match classify_seeded_install_media_upsert(obs: MediaConverged) {
       UpsertClassification { verdict: _, decision: Noop } => true
@@ -124,7 +124,7 @@ test fn converged_seeded_iso_is_not_drifted() -> Bool {
   }
 }
 
-test fn absent_seeded_iso_plans_replace() -> Bool {
+test fn absent_seeded_iso_plans_replace() -> Bool  {
   match classify_seeded_install_media_upsert(obs: MediaAbsent) {
     UpsertClassification {
       verdict: Absent,
@@ -134,7 +134,7 @@ test fn absent_seeded_iso_plans_replace() -> Bool {
   }
 }
 
-test fn drifted_seeded_iso_plans_remaster_not_drain() -> Bool {
+test fn drifted_seeded_iso_plans_remaster_not_drain() -> Bool  {
   match classify_seeded_install_media_upsert(obs: MediaDrifted) {
     UpsertClassification {
       verdict: Drifted,

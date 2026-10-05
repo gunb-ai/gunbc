@@ -320,20 +320,20 @@ fn red_ticket(done: Bool) -> RoadmapItem {
   }
 }
 
-test fn witness_declared_graph_has_justified_size() -> Bool {
+test fn witness_declared_graph_has_justified_size() -> Bool  {
   count(nodes()) > 0 && count(edges()) > 0
     && count(active_nodes()) > 0 && count(active_edges()) > 0
 }
 
-test fn witness_declared_node_ids_are_unique() -> Bool {
+test fn witness_declared_node_ids_are_unique() -> Bool  {
   all(nodes(), n => id_count(id: n.node) == 1)
 }
 
-test fn witness_every_edge_endpoint_exists() -> Bool {
+test fn witness_every_edge_endpoint_exists() -> Bool  {
   all(edges(), e => id_exists(id: e.child) && id_exists(id: e.parent))
 }
 
-test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
+test fn witness_declared_graph_is_mechanically_acyclic() -> Bool  {
   all(edges(), e => !(e.parent == e.child))
     && !graph_has_multi_node_scc(names: node_names(), graph: mechanical_graph())
 }
@@ -342,13 +342,13 @@ test fn witness_declared_graph_is_mechanically_acyclic() -> Bool {
 // sized row is sized for this repository with manual acceptance, and an unsized row is simply not
 // ready (gunbc.roadmap.roadmap_readiness). The one superseded history row carries no ticket and is
 // outside this population by construction of its line.
-test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool {
+test fn witness_every_declared_row_is_complete_unsigned_ticket() -> Bool  {
   all(nodes() |> filter(n => match line_ticket(item: n.line) { Present { value: _ } => true  Absent => false }), n => active_node_admissible(n: n))
 }
 
 data live_state_count_transcription_note: String = "NO LIVE-STATE COUNT PINS IN THIS FILE, deliberately, and the deleted ones are named so the class does not creep back. Removed: `count(accepted) == 8` here, and `\"63 declared · 8 accepted · 55 active\"` in test.claim.long.roadmap_page_witness. Both TRANSCRIBED a number nobody decided — they mirrored whatever the live authority happened to hold, so authoring any correct roadmap row redded them (observed twice; the second was PR #7463, whose only content was two new rows). A pin like that reports 'the roadmap changed', which is not a defect, while the reviewer's habit becomes editing the number to match — a check satisfied by editing the declaration, which DESIGN §5 names as the tell that validation stood where construction was available. THE DISTINCTION THAT DECIDES WHETHER A COUNT MAY STAY: does the number come from a fixture the test CONSTRUCTS, or from live corpus state? test.claim.roadmap_altitude_witness renders `doc_html(nodes: [done_signed_node(), open_node()])` and asserts `1 open · 1 done` — that is the renderer computing from two known inputs, so it is a specification and it stays; deleting it would remove real coverage. Same for the observation render witnesses over replayed fixture blocks, and for structural counts that encode a design fact rather than a population (two workflow lamps, three static routes). WHAT SURVIVED THE DELETION HERE, and why nothing was lost: this witness's actual invariant is the RELATIONSHIP `count(active_nodes()) == count(nodes()) - count(accepted)`, which is magnitude-independent and still asserted; the eight per-id acceptance assertions also stay, because they pin WHICH acceptances exist and a dropped one is real history loss (scm_prerequisite_acceptance_note). Only the magnitude went. Replacing it with `string_contains(page, roadmap_counts_label())` was considered and rejected as the vacuous form — both sides derive from the same function, so it asserts the page contains what the page computed (operator ruling 2026-07-30: no vacuous or tautological testing)."
 
-test fn witness_active_set_is_declared_minus_accepted() -> Bool {
+test fn witness_active_set_is_declared_minus_accepted() -> Bool  {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
@@ -373,7 +373,7 @@ test fn witness_active_set_is_declared_minus_accepted() -> Bool {
   }
 }
 
-test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
+test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool  {
   match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: receipts } =>
@@ -390,7 +390,7 @@ test fn witness_acceptance_receipts_are_valid_and_unique() -> Bool {
   }
 }
 
-test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bool {
+test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bool  {
   let victims = declared_node(id: "entry-graph-union-construction")
   count(victims) == 1
     && all(victims, n =>
@@ -405,7 +405,7 @@ test fn witness_live_receipt_on_superseded_line_refuses_with_typed_cause() -> Bo
     )
 }
 
-test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool {
+test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool  {
   !active_id_exists(id: tnid(s: "entry-graph-union-construction"))
     && match live_withheld_node_ids() {
       Absent => false
@@ -414,7 +414,7 @@ test fn witness_superseded_revocation_does_not_reopen_active_frontier() -> Bool 
     }
 }
 
-test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
+test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool  {
   let prior = live_acceptance_event_history()
   match project_live_acceptance_receipts(history: prior) {
     LiveAcceptanceReceiptsReplayRefused => false
@@ -446,7 +446,7 @@ test fn witness_reopen_revocation_returns_node_to_active_frontier() -> Bool {
   }
 }
 
-test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool {
+test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> Bool  {
   match remains_superseded_revocations_join(
     history: live_acceptance_event_history(),
     nodes: declared_roadmap_nodes(),
@@ -468,7 +468,7 @@ test fn witness_live_remains_superseded_revocations_join_superseded_lines() -> B
   }
 }
 
-test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
+test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool  {
   let victims = declared_node(id: "namespace-occurrence-transport")
   let prior = live_acceptance_event_history()
   match project_live_acceptance_receipts(history: prior) {
@@ -509,7 +509,7 @@ test fn witness_remains_superseded_revocation_on_ticket_line_refuses() -> Bool {
   }
 }
 
-test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool {
+test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bool  {
   match remains_superseded_revocations_join(
     history: [
       AcceptanceRevoked {
@@ -533,7 +533,7 @@ test fn witness_remains_superseded_revocation_on_undeclared_node_refuses() -> Bo
   }
 }
 
-test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Bool {
+test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Bool  {
   match join_remains_superseded_to_declared_line(
     node: tnid(s: "red-fixture"),
     nodes: [
@@ -549,7 +549,7 @@ test fn witness_ambiguous_declared_node_refuses_remains_superseded_join() -> Boo
   }
 }
 
-test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
+test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool  {
   match frontier_sets_projection(history: RoadmapAcceptanceEventHistoryLoaded { events: [
     AcceptanceRevoked {
       exact_prior_receipt: receipt_fixture(
@@ -568,7 +568,7 @@ test fn witness_orphan_reopen_revocation_refuses_frontier_sets() -> Bool {
   }
 }
 
-test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool {
+test fn witness_record_after_remains_superseded_on_superseded_line_refuses_frontier_sets() -> Bool  {
   let prior = live_acceptance_event_history()
   match first(
     prior |> filter(e =>
@@ -597,7 +597,7 @@ test fn witness_record_after_remains_superseded_on_superseded_line_refuses_front
   }
 }
 
-test fn witness_accepted_parents_precede_dependents() -> Bool {
+test fn witness_accepted_parents_precede_dependents() -> Bool  {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
@@ -605,7 +605,7 @@ test fn witness_accepted_parents_precede_dependents() -> Bool {
   }
 }
 
-test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
+test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool  {
   let victims = declared_node(id: "namespace-occurrence-transport")
   count(victims) == 1
     && all(victims, n => !node_accepted(
@@ -614,7 +614,7 @@ test fn witness_stale_criteria_digest_refuses_acceptance() -> Bool {
     ))
 }
 
-test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
+test fn witness_duplicate_receipts_refuse_acceptance() -> Bool  {
   match roadmap_acceptance_receipts(history: roadmap_acceptance_event_history_load()) {
     RoadmapAcceptanceReceiptsProjectionRefused { detail: _ } => false
     RoadmapAcceptanceReceiptsProjected { receipts: all_receipts } => {
@@ -628,14 +628,14 @@ test fn witness_duplicate_receipts_refuse_acceptance() -> Bool {
   }
 }
 
-test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool {
+test fn witness_unexecuted_or_undelivered_evidence_refuses_acceptance() -> Bool  {
   let victims = declared_node(id: "namespace-occurrence-transport")
   count(victims) == 1
     && all(victims, n => !node_accepted(receipts: [evidenceless_receipt_fixture(rn: n)], rn: n))
     && all(victims, n => !node_accepted(receipts: [undelivered_receipt_fixture(rn: n)], rn: n))
 }
 
-test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
+test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool  {
   let ghost = receipt_fixture(node: "no-such-roadmap-node", digest: tchash(s: "0000000000000000"))
   all(nodes(), n => !node_accepted(receipts: [ghost], rn: n))
 }
@@ -649,7 +649,7 @@ fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
   }
 }
 
-test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
+test fn witness_vanished_receipt_without_revocation_refuses() -> Bool  {
   let prior = live_acceptance_event_history()
   let current = prior
     |> filter(e =>
@@ -661,7 +661,7 @@ test fn witness_vanished_receipt_without_revocation_refuses() -> Bool {
   !acceptance_history_extends_prior(prior: prior, current: current)
 }
 
-test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
+test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool  {
   let prior = live_acceptance_event_history()
   match project_live_acceptance_receipts(history: prior) {
     LiveAcceptanceReceiptsReplayRefused => false
@@ -687,7 +687,7 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   }
 }
 
-test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
+test fn witness_accepted_parent_discharges_active_dependency() -> Bool  {
   let act = active_edges()
   !(act |> any(e => e.child == "namespace-binding-kernel" && e.parent == "namespace-occurrence-transport"))
     && !(act |> any(e => e.child == "pderive-static-supplemental-contract" && e.parent == "pderive-typesafe-nullary-reflection"))
@@ -710,7 +710,7 @@ fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
   count(matches) == 1 && all(matches, s => s.node == node && id_exists(id: s.node))
 }
 
-test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
+test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool  {
   let specs = v1_exit_finish_lines()
   count(specs) == 4
     && all(specs, s => id_exists(id: s.node))
@@ -724,11 +724,11 @@ test fn witness_exit_model_finish_lines_bind_declared_terminals() -> Bool {
     }
 }
 
-test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool {
+test fn witness_completed_ticket_cannot_reenter_active_graph() -> Bool  {
   !active_node_admissible(n: red_fixture(line: red_ticket(done: true), signoff: Unsigned))
 }
 
-test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
+test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool  {
   !active_node_admissible(n: red_fixture(
     line: red_ticket(done: false),
     signoff: SignedOff {
@@ -740,7 +740,7 @@ test fn witness_accepted_ticket_cannot_reenter_active_graph() -> Bool {
   ))
 }
 
-test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
+test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool  {
   !active_node_admissible(n: red_fixture(
     line: SupersededLine { by: "replacement", content: "retired history" },
     signoff: Unsigned,
@@ -759,7 +759,7 @@ test fn witness_superseded_row_cannot_reenter_active_graph() -> Bool {
 // Dated status notes belong on a ticket's updates thread (gunbc.roadmap_authority updated), so the
 // thread is not what this claims is absent; what must never appear is execution state written into
 // the ticket's standing fields.
-test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
+test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool  {
   all(nodes() |> filter(n => match line_ticket(item: n.line) { Present { value: _ } => true  Absent => false }), n => match n.line {
     TicketLine { done: _, ticket } =>
       ticket.authored_on == ""
@@ -775,7 +775,7 @@ test fn witness_authority_contains_no_mutable_execution_ledger() -> Bool {
 // declaration-identity switch-over (XL-6's construction) absorbing canonical binding and the
 // bound-only consumers, the import-list decision after it, the rival-mechanism deletion after the
 // switch-over, the waves and seed retirement, and the grammar deletion last.
-test fn witness_namespace_chain_is_explicit() -> Bool {
+test fn witness_namespace_chain_is_explicit() -> Bool  {
   edge_exists(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport")
     && edge_exists(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel")
     && edge_exists(child: "namespace-ambiguity-discharge", parent: "namespace-reference-derived-closure")
@@ -790,7 +790,7 @@ test fn witness_namespace_chain_is_explicit() -> Bool {
     && !id_exists(id: "namespace-bound-only-consumers")
 }
 
-test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool {
+test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool  {
     edge_exists(child: "pderive-static-supplemental-contract", parent: "pderive-typesafe-nullary-reflection")
     && edge_exists(child: "pderive-source-slot-binding", parent: "pderive-static-supplemental-contract")
     && edge_exists(child: "pderive-source-slot-binding", parent: "declaration-identity-switchover")
@@ -799,13 +799,13 @@ test fn witness_pderive_chain_and_namespace_prerequisite_are_explicit() -> Bool 
     && !id_exists(id: "pderive-error-movement-receipt")
 }
 
-test fn witness_second_generation_gates_the_native_bootstrap() -> Bool {
+test fn witness_second_generation_gates_the_native_bootstrap() -> Bool  {
     edge_exists(child: "v2-emitter-native-bootstrap", parent: "second-generation")
     && !edge_exists(child: "v2-emitter-native-bootstrap", parent: "v2-emitter-native-crate-partition")
     && edge_exists(child: "second-generation", parent: "v2-emitter-native-crate-partition")
 }
 
-test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool {
+test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() -> Bool  {
     edge_exists(child: "v2-emitter-direct-rust-door", parent: "v2-emitter-producer-provenance")
     && edge_exists(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-emitter-direct-rust-door")
     && edge_exists(child: "v2-emitter-first-behavioral-module", parent: "v2-emitter-production-compatible-corpus-module")
@@ -821,7 +821,7 @@ test fn witness_new_generator_precedes_fixed_point_and_old_generator_deletion() 
 
 // The scoped-run bridge's justification moved off the deleted roadmap row into its own seed-growth
 // module; it still routes its dissolution to a declared lane.
-test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
+test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool  {
   let j = observation_scoped_run_seed_growth_justification()
   j.owning_dissolution_lane == "v1-hand-queue-drain"
     && j.current_boundary == "dag/gunbc/observation_seed_render.dag; dag/test/claim/observation_seed_scoped_run_witness_test.dag; src/v1/stage0/src/cli_run.rs; src/v1/stage0/src/v1_interpreter.rs; src/v1/stage0/tests/scoped_run_observation.rs"
@@ -832,7 +832,7 @@ test fn witness_scoped_run_seed_growth_is_bounded_and_routed() -> Bool {
     && !id_exists(id: "observation-scoped-run-seed-growth-justification")
 }
 
-test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
+test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool  {
   edge_exists(child: "v1-interpreter-quarantine", parent: "native-production-admission")
     && !edge_exists(child: "v1-interpreter-quarantine", parent: "v1-hand-queue-drain")
     && edge_exists(child: "v1-interpreter-delete", parent: "v1-interpreter-quarantine")
@@ -853,14 +853,14 @@ test fn witness_v1_exit_fan_in_matches_finish_line_split() -> Bool {
 // The grammar goes last (XL-7 after XL-6, which runs after seed retirement), so the import deletion
 // no longer gates the zero-hand-maintained-Rust terminal: that edge would close a cycle with the
 // seed retirement the namespace cutover now waits on.
-test fn witness_import_deletion_follows_the_namespace_cutover() -> Bool {
+test fn witness_import_deletion_follows_the_namespace_cutover() -> Bool  {
   id_exists(id: "namespace-import-deletion")
     && active_id_exists(id: "namespace-import-deletion")
     && edge_exists(child: "namespace-import-deletion", parent: "namespace-legacy-choice-retirement")
     && !edge_exists(child: "v1-zero-hand-maintained-rust", parent: "namespace-import-deletion")
 }
 
-test fn witness_shell_batch_chain_is_explicit() -> Bool {
+test fn witness_shell_batch_chain_is_explicit() -> Bool  {
   edge_exists(child: "shell-typed-invocation", parent: "shell-dag-cron-entry-line-builder")
     && edge_exists(child: "shell-typed-invocation", parent: "shell-dag-live-deploy-restart-tailscale")
     && !id_exists(id: "shell-effectplan-to-bash")
@@ -871,7 +871,7 @@ test fn witness_shell_batch_chain_is_explicit() -> Bool {
 // The accepted SCM sequence stays declared as receipt-bearing history after the 2026-09-30 cut
 // removed the native-SCM program and its open P1 slice: every accepted row is still declared and
 // inactive, and nothing open is left in the family.
-test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool {
+test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool  {
   match live_accepted_node_ids() {
     Absent => false
     Present { value: accepted } =>
@@ -884,7 +884,7 @@ test fn witness_accepted_scm_sequence_remains_declared_history() -> Bool {
   }
 }
 
-test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool {
+test fn witness_namespace_reference_derived_closure_has_discriminating_contract() -> Bool  {
   match bound_execution_contract_for(id: "namespace-reference-derived-closure") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
@@ -902,7 +902,7 @@ test fn witness_namespace_reference_derived_closure_has_discriminating_contract(
   }
 }
 
-test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool {
+test fn witness_v2_emitter_direct_rust_door_has_discriminating_contract() -> Bool  {
   match bound_execution_contract_for(id: "v2-emitter-direct-rust-door") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
@@ -947,7 +947,7 @@ fn projected_row_is_active(n: RoadmapNode) -> Bool {
 
 // The former markdown claim's text clause, split off because it is independent of which rows are
 // active: no projected row's line and no preamble paragraph carries an operator TODO.
-test fn witness_projection_carries_no_operator_todo() -> Bool {
+test fn witness_projection_carries_no_operator_todo() -> Bool  {
   match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted: _, withheld: _ } =>
@@ -971,7 +971,7 @@ fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
   }
 }
 
-test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
+test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool  {
   match bound_execution_contract_for(id: "shell-typed-invocation") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
@@ -979,7 +979,7 @@ test fn witness_shell_typed_invocation_carries_a_real_contract() -> Bool {
   }
 }
 
-test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
+test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool  {
   let caps = dispatch_required_capabilities(
     contract: bound_execution_contract_for(id: "shell-typed-invocation"),
   )
@@ -987,7 +987,7 @@ test fn witness_bound_contract_joins_platform_and_task_capabilities() -> Bool {
     && any(caps, c => execution_capability_label(capability: c) == "gunbc-claim-runner")
 }
 
-test fn witness_every_binding_carries_a_validation() -> Bool {
+test fn witness_every_binding_carries_a_validation() -> Bool  {
   all(
     nodes() |> filter(n => match n.execution {
         ExecutionContractUnspecified => false
@@ -1002,7 +1002,7 @@ test fn witness_every_binding_carries_a_validation() -> Bool {
   )
 }
 
-test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
+test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool  {
   match bound_execution_contract_for(id: "v1-test-migration") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities, path_scope: _, source_roots: _ } =>
@@ -1020,7 +1020,7 @@ test fn witness_v1_test_migration_contract_names_retention_wall() -> Bool {
   }
 }
 
-test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
+test fn witness_bound_pair_covers_both_verify_directions() -> Bool  {
   match bound_execution_contract_for(id: "observation-raw-print-retirement") {
     ExecutionContractUnspecified => false
     ExecutionContract { validations, extra_capabilities: _, path_scope: _, source_roots: _ } => count(validations) == 1
@@ -1035,15 +1035,15 @@ test fn witness_bound_pair_covers_both_verify_directions() -> Bool {
 
 data rendered_containment_witness_note: String = "RENDERED NODES ARE DECLARED OR DERIVED — the wall against a second roadmap universe. The 2026-07-31 operator verdict on gunbc#7489 found a section rendering nodes from a section-local list that never entered declared_roadmap_nodes(): those nodes bypassed acceptance receipts, active-set derivation, and every witness in this file, while looking exactly like roadmap rows on the page. The first claim runs the containment predicate over BOTH real documents (the focus-independent authority view and the focused ROADMAP.md view — a ghost hidden by focus in one can render in the other). The second is the RED: a synthetic document carrying one undeclared node must count exactly one ghost, proving the predicate discriminates rather than vacuously passing whatever renders."
 
-test fn witness_ghost_node_outside_authority_is_counted() -> Bool {
+test fn witness_ghost_node_outside_authority_is_counted() -> Bool  {
   roadmap_ghost_node_red_probe_count() == 1
 }
 
-test fn witness_altered_copy_of_declared_node_is_counted() -> Bool {
+test fn witness_altered_copy_of_declared_node_is_counted() -> Bool  {
   roadmap_altered_copy_red_probe_count() == 1
 }
 
-test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool {
+test fn witness_projected_dependency_edges_include_closing_contract_projection() -> Bool  {
   match closing_contract_task_edges_projection() {
     ClosingContractTaskEdgesProjected { edges: closing_edges } =>
       match projected_roadmap_dependency_edges_projection() {
@@ -1057,13 +1057,13 @@ test fn witness_projected_dependency_edges_include_closing_contract_projection()
   }
 }
 
-test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Bool {
+test fn witness_fleet_state_frontier_authority_is_host_converge_carrier() -> Bool  {
   node_has_carrier_path(path: "dag/gunbc/host/host_converge.dag")
     && !node_has_carrier_path(path: "docs/plans/host-converge-inventory.md")
     && string_length(s: filesystem_read(path: "dag/gunbc/host/host_converge.dag").content) > 0
 }
 
-test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
+test fn witness_projected_dependency_edges_include_active_edges() -> Bool  {
   match frontier_sets_projection(history: roadmap_acceptance_event_history_load()) {
     FrontierSetsProjected { accepted: accepted, withheld: withheld } =>
       match projected_roadmap_dependency_edges_projection() {
@@ -1083,7 +1083,7 @@ test fn witness_projected_dependency_edges_include_active_edges() -> Bool {
 
 // ONE NULLARY PRODUCER, ENROLLED WARM (v2.workflow.floor_pure_producer_share): the verdict projects
 // the live roadmap twice, more than one claim's new-witness budget, so the claim reads it stored.
-test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> Bool {
+test fn witness_withheld_sized_subject_does_not_mint_closing_contract_task() -> Bool  {
   withheld_sized_subject_verdict()
 }
 
@@ -1126,7 +1126,7 @@ fn projected_document_carries(ids: Map<String, Bool>, id: String) -> Bool {
   match map_lookup(m: ids, key: id) { Present { value: _ } => true  Absent => false }
 }
 
-test fn witness_authority_document_carries_every_active_declared_row() -> Bool {
+test fn witness_authority_document_carries_every_active_declared_row() -> Bool  {
   match roadmap_authority_projection(history: roadmap_acceptance_event_history_load()) {
     RoadmapAuthorityProjectionRefused { detail: _ } => false
     RoadmapAuthorityProjected { doc: d, accepted, withheld } => {

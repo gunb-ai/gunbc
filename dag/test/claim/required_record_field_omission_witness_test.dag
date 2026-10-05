@@ -43,7 +43,7 @@ fn required_record_fields_supplied_run() -> MultiModuleCompileFixtureOutcome {
   )
 }
 
-test fn omitted_required_record_field_refuses() -> Bool {
+test fn omitted_required_record_field_refuses() -> Bool  {
   match required_record_field_omission_run() {
     FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
       let blocking = fixture_blocking_rows(rows)
@@ -63,7 +63,7 @@ test fn omitted_required_record_field_refuses() -> Bool {
   }
 }
 
-test fn complete_required_record_literal_accepts() -> Bool {
+test fn complete_required_record_literal_accepts() -> Bool  {
   match required_record_fields_supplied_run() {
     FixtureCompileCompleted { module_count: _, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: source_digest, compiler_digest: compiler_digest } =>
       count(rows) == 0

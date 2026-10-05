@@ -25,7 +25,7 @@ fn self_claimed(node: RoadmapNodeId, author: String, at: String) -> RoadmapEvent
 
 // The carrier's layout is a function of the instance roots: the worktree hangs under the instance
 // root, events are addressed by node and content id, and the push refspec names one branch both ways.
-test fn the_layout_addresses_events_by_node_and_id_under_the_instance_root() -> Bool {
+test fn the_layout_addresses_events_by_node_and_id_under_the_instance_root() -> Bool  {
   let l = roadmap_event_carrier_layout(repo_root: "/repo" as FilePath, instance_root: "/inst" as FilePath, git_program: "/usr/bin/git", directory_program: "/usr/bin/install")
   let node = "demo-node" as RoadmapNodeId
   let env = self_claimed(node: node, author: "s1", at: "t")
@@ -39,7 +39,7 @@ test fn the_layout_addresses_events_by_node_and_id_under_the_instance_root() -> 
 // DISCRIMINATING: no files is the empty set (a node nobody touched); an unreadable file refuses the
 // whole read naming the read step; an undecodable file refuses naming the decode step rather than
 // dropping the bad file; a well-formed file decodes. All over constructed reads, no filesystem.
-test fn an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read() -> Bool {
+test fn an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read() -> Bool  {
   let node = "demo-node" as RoadmapNodeId
   let good = roadmap_event_wire_text(env: self_claimed(node: node, author: "s1", at: "t"))
   let empty = roadmap_events_decode_reads(node: node, reads: [])
@@ -55,7 +55,7 @@ test fn an_empty_node_reads_as_no_events_and_a_bad_file_refuses_the_read() -> Bo
 // THE ALL-EVENTS COMPOSITION (the recents feed's carrier): per-node reads concatenate with every
 // envelope kept, in node order; the first refusal refuses the whole read, named by node and step —
 // one damaged directory never silently narrows the population.
-test fn the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole() -> Bool {
+test fn the_all_events_read_concatenates_and_the_first_refusal_refuses_the_whole() -> Bool  {
   let n1 = "node-one" as RoadmapNodeId
   let n2 = "node-two" as RoadmapNodeId
   let a = self_claimed(node: n1, author: "s1", at: "t1")
@@ -85,7 +85,7 @@ fn progress_on(node: RoadmapNodeId, parent: RoadmapEventId?, note: String, at: S
 // git said -- the red is that arm answering SnapshotClosed. A removal that succeeded is
 // SnapshotClosed. Only the failed standing has a sentence, and the sentence names the worktree;
 // closed and never-opened have none, so a list of standings yields exactly its failures.
-test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -> Bool {
+test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -> Bool  {
   let private = roadmap_event_carrier_layout(repo_root: "/repo" as FilePath, instance_root: "/tmp/tmp.snap" as FilePath, git_program: "/usr/bin/git", directory_program: "/usr/bin/install")
   let failed = carrier_snapshot_close_of(layout: private, removal: CarrierExecFailed { exit_code: 128, stderr: "fatal: validation failed, cannot remove working tree\n" })
   let closed = carrier_snapshot_close_of(layout: private, removal: CarrierExecOk { stdout: "" })
@@ -109,7 +109,7 @@ test fn a_failed_snapshot_removal_is_its_own_standing_and_names_the_worktree() -
 // A REPORT STATES THE LEAK AFTER ITS OWN ANSWER AND IS OTHERWISE UNTOUCHED: with a closed snapshot
 // the text is returned exactly; with a failed one the same text comes first and the worktree is
 // named after it. The red is a report that reads the same either way.
-test fn a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it() -> Bool {
+test fn a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it() -> Bool  {
   let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.leak" as FilePath, exit_code: 1, stderr: "busy" }
   let said = carrier_report_with_snapshot_close(text: "demo-node: open (0 events)", close: leaked)
   carrier_report_with_snapshot_close(text: "demo-node: open (0 events)", close: SnapshotClosed) == "demo-node: open (0 events)"
@@ -123,7 +123,7 @@ test fn a_report_keeps_its_answer_and_states_a_leaked_snapshot_after_it() -> Boo
 // snapshot was left behind -- the red is a nonzero exit telling the caller its event was not
 // recorded. A refusal keeps its code and its own reason first and gains the leak after it -- the
 // red is a refusal that reads the same whether or not a worktree leaked.
-test fn the_record_exit_keeps_a_success_and_states_a_leak_on_a_refusal() -> Bool {
+test fn the_record_exit_keeps_a_success_and_states_a_leak_on_a_refusal() -> Bool  {
   let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.leak" as FilePath, exit_code: 1, stderr: "busy" }
   let recorded = match roadmap_event_record_exit(exit: ExitSuccess, closes: [SnapshotClosed, leaked]) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
   let refused = match roadmap_event_record_exit(exit: ExitFailure { code: 1, reason: "append refused at revision-conflict" }, closes: [SnapshotClosed, leaked]) {
@@ -145,7 +145,7 @@ test fn the_record_exit_keeps_a_success_and_states_a_leak_on_a_refusal() -> Bool
 // positive controls: a linear history has no unordered reason and admits an event on its head, and
 // an event naming a stale parent on it is refused by the revision check. The record entry's
 // refusal carries the authority's own sentence.
-test fn an_append_is_refused_on_a_history_the_order_authority_cannot_order() -> Bool {
+test fn an_append_is_refused_on_a_history_the_order_authority_cannot_order() -> Bool  {
   let node = "demo-node" as RoadmapNodeId
   let e1 = self_claimed(node: node, author: "s1", at: "t1")
   let e2 = roadmap_event_envelope(e: progress_on(node: node, parent: Present { value: e1.id }, note: "a", at: "t2"))

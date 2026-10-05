@@ -4,7 +4,7 @@ import std.types { Bool }
 import gunbc.roadmap_fleet_components { fleet_component_hosts, fleet_components }
 import extdeps.google.issue_tracker { browse_component_tree }
 
-test fn w_fleet_component_tree_hosts_and_arms() -> Bool {
+test fn w_fleet_component_tree_hosts_and_arms() -> Bool  {
   count(fleet_components()) == 20
     && count(fleet_component_hosts) == 12
     && (match (filter(fleet_components(), c => c.path == ["srv11", "serving", "group-b"])).first() {
@@ -14,7 +14,7 @@ test fn w_fleet_component_tree_hosts_and_arms() -> Bool {
     && count(filter(fleet_components(), c => count(c.path) == 3)) == 8
 }
 
-test fn w_browse_components_derives_the_tree() -> Bool {
+test fn w_browse_components_derives_the_tree() -> Bool  {
   let tree = browse_component_tree(components: fleet_components())
   count(tree) == 20
     && (match tree.first() {

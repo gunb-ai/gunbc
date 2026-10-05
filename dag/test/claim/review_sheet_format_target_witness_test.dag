@@ -124,7 +124,7 @@ fn plan_sheet_ids_with(sheet_id: Int, title: String, validated: ValidatedHeaderS
 // EVERY REQUEST, NOT ONE OF THEM. The freeze, the header band and the five conditional rules are
 // seven separate batchUpdates and each carries its own sheetId, so a mutation that reverts ONE of
 // them to the constant is exactly the defect a claim over a single request would miss.
-test fn every_batch_update_request_in_the_plan_addresses_the_located_sheet_id() -> Bool {
+test fn every_batch_update_request_in_the_plan_addresses_the_located_sheet_id() -> Bool  {
   plan_sheet_ids_for(sheet_id: witness_located_sheet_id, title: "Prospects 2026")
     == [
       witness_located_sheet_id, witness_located_sheet_id, witness_located_sheet_id,
@@ -144,7 +144,7 @@ test fn every_batch_update_request_in_the_plan_addresses_the_located_sheet_id() 
 // a declaration whose only consumer is the claim about its own absence is the DESIGN section 3c
 // dangling shape -- the same rule this change applied to itself for format_plan_sheet_ids. The
 // discriminating power is unchanged: zero is what the removed assumption yielded.
-test fn the_witness_sheet_id_is_not_the_first_sheet_index_the_formatter_used_to_address() -> Bool {
+test fn the_witness_sheet_id_is_not_the_first_sheet_index_the_formatter_used_to_address() -> Bool  {
   (witness_located_sheet_id == 0) == false
 }
 
@@ -152,7 +152,7 @@ test fn the_witness_sheet_id_is_not_the_first_sheet_index_the_formatter_used_to_
 // which gunbc.review_sheet_sheets a1_readback_standing refuses in as many words -- and the
 // formatter's readback was sending one. A readback that inspects a different tab from the one the
 // writes address is not evidence about the writes at all.
-test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
+test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool  {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects2026") {
     TabLocated { tab: t } =>
       match review_sheet_header_range(tab: t) {
@@ -171,7 +171,7 @@ test fn the_header_read_range_is_qualified_by_the_located_tab_title() -> Bool {
 // supported (DESIGN section 4d) and the claim was pinning the over-prohibition in place. Both are
 // replaced by the real behaviour: extdeps.google.sheets a1_range_encode wraps the title and the
 // range is usable. A claim is not owed its old verdict when the world it described has changed.
-test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bool {
+test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bool  {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Prospects 2026") {
     TabLocated { tab: t } =>
       match review_sheet_header_range(tab: t) {
@@ -189,7 +189,7 @@ test fn a_title_with_a_space_is_quoted_by_the_codec_rather_than_declined() -> Bo
 // is TranscribedUncited and names the live read that would settle it -- so the encoder declines
 // rather than guessing a doubling rule, and the formatter carries that refusal out with the
 // codec's own text instead of substituting its own account of why.
-test fn a_title_with_an_apostrophe_declines_the_range_rather_than_guessing_an_escape() -> Bool {
+test fn a_title_with_an_apostrophe_declines_the_range_rather_than_guessing_an_escape() -> Bool  {
   match located_tab_for_witness(sheet_id: witness_located_sheet_id, title: "Jon's Data") {
     TabLocated { tab: t } =>
       match review_sheet_header_range(tab: t) {
@@ -231,7 +231,7 @@ fn read_of(sheets_read: List<SheetsSheetRead>) -> SpreadsheetRead {
 
 // (a) THE DECODE FINDS THE LOCATED TAB, and it is asked for a non-zero id beside a zero one so a
 // selector that still answered "the first sheet" would pick the wrong record and fail here.
-test fn the_readback_selects_the_sheet_carrying_the_located_id_not_the_first_one() -> Bool {
+test fn the_readback_selects_the_sheet_carrying_the_located_id_not_the_first_one() -> Bool  {
   match located_sheet(
     read: read_of(sheets_read: [sheet_with_properties(sheet_id: 0), sheet_with_properties(sheet_id: 918273645)]),
     sheet_id: 918273645,
@@ -253,7 +253,7 @@ test fn the_readback_selects_the_sheet_carrying_the_located_id_not_the_first_one
 // produced. The arm itself is correct -- an unread sheet may not be adopted -- and the defect was
 // that the REQUEST guaranteed this arm for every tab. Asserting it here pins the decode's honest
 // behaviour so the mask claims below carry the whole weight of the repair.
-test fn a_response_with_no_properties_locates_no_sheet_rather_than_defaulting_to_the_first() -> Bool {
+test fn a_response_with_no_properties_locates_no_sheet_rather_than_defaulting_to_the_first() -> Bool  {
   match located_sheet(
     read: read_of(sheets_read: [SheetsSheetRead { properties: none, data: none, conditionalFormats: none }]),
     sheet_id: 918273645,
@@ -267,7 +267,7 @@ test fn a_response_with_no_properties_locates_no_sheet_rather_than_defaulting_to
 // the defect, and it is an identity join rather than a spelling check: the masks are composed
 // from extdeps.google.sheets sheets_field_sheet_id and this asserts that same row is present in
 // each, so a mask narrowed back to its old spelling reddens here.
-test fn both_readback_masks_request_the_sheet_id_the_selector_keys_on() -> Bool {
+test fn both_readback_masks_request_the_sheet_id_the_selector_keys_on() -> Bool  {
   string_contains(s: review_sheet_format_grid_field_mask, pattern: sheets_field_sheet_id)
     && string_contains(s: review_sheet_format_meta_field_mask, pattern: sheets_field_sheet_id)
 }
@@ -294,7 +294,7 @@ fn sheet_with_omitted_id() -> SheetsSheetRead {
   }
 }
 
-test fn a_tab_zero_workbook_whose_response_omits_the_sheet_id_is_still_located() -> Bool {
+test fn a_tab_zero_workbook_whose_response_omits_the_sheet_id_is_still_located() -> Bool  {
   match located_sheet(read: read_of(sheets_read: [sheet_with_omitted_id()]), sheet_id: 0) {
     Absent => false
     Present { value: sheet } =>
@@ -309,7 +309,7 @@ test fn a_tab_zero_workbook_whose_response_omits_the_sheet_id_is_still_located()
 // anything": a workbook whose response omitted the id is tab zero, so a selector looking for a
 // non-zero located tab must NOT adopt it. Without this, widening the absent arm to satisfy the
 // claim above would silently reinstate take-the-first for every tab.
-test fn an_omitted_sheet_id_does_not_match_a_non_zero_located_tab() -> Bool {
+test fn an_omitted_sheet_id_does_not_match_a_non_zero_located_tab() -> Bool  {
   match located_sheet(read: read_of(sheets_read: [sheet_with_omitted_id()]), sheet_id: 918273645) {
     Absent => true
     Present { value: _ } => false

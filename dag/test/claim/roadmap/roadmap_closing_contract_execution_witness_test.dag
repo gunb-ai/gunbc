@@ -37,7 +37,7 @@ data planted_pass_fixture: String = "module test.planted.closing_contract_pass_f
 
 import std.types { Bool }
 
-test fn planted_pass_holds() -> Bool {
+test fn planted_pass_holds() -> Bool  {
   true
 }
 "
@@ -46,7 +46,7 @@ data planted_failing_fixture: String = "module test.planted.closing_contract_fai
 
 import std.types { Bool }
 
-test fn planted_failing_holds() -> Bool {
+test fn planted_failing_holds() -> Bool  {
   false
 }
 "
@@ -59,7 +59,7 @@ data planted_unresolvable_fixture: String = "module test.planted.closing_contrac
 import std.types { Bool }
 import gunbc.ci_gate { HostLoad, gate_verdict }
 
-test fn planted_unresolvable_holds() -> Bool {
+test fn planted_unresolvable_holds() -> Bool  {
   true
 }
 "
@@ -119,7 +119,7 @@ fn run_planted(
 // its own evidence. The runner is resolved through the same default the production predicate
 // uses, so these claims also inhabit the runner-resolution path by hand.
 
-test fn a_planted_witness_that_resolves_and_passes_executes_green() -> Bool {
+test fn a_planted_witness_that_resolves_and_passes_executes_green() -> Bool  {
   let root = git.Inspect.Toplevel().path
   match closing_contract_default_runner(root: root) {
     ClosingContractRunnerUnavailable { detail: _ } => false
@@ -141,7 +141,7 @@ test fn a_planted_witness_that_resolves_and_passes_executes_green() -> Bool {
   }
 }
 
-test fn a_planted_witness_with_unresolvable_imports_refuses_as_resolve() -> Bool {
+test fn a_planted_witness_with_unresolvable_imports_refuses_as_resolve() -> Bool  {
   let root = git.Inspect.Toplevel().path
   match closing_contract_default_runner(root: root) {
     ClosingContractRunnerUnavailable { detail: _ } => false
@@ -164,7 +164,7 @@ test fn a_planted_witness_with_unresolvable_imports_refuses_as_resolve() -> Bool
   }
 }
 
-test fn a_planted_witness_whose_arm_fails_refuses_as_failed() -> Bool {
+test fn a_planted_witness_whose_arm_fails_refuses_as_failed() -> Bool  {
   let root = git.Inspect.Toplevel().path
   match closing_contract_default_runner(root: root) {
     ClosingContractRunnerUnavailable { detail: _ } => false

@@ -12,35 +12,35 @@ fn refuses_to_compile(source: String, path: String) -> Bool {
   !compile_dag_rust_emit_check(source, path, [], [])
 }
 
-test fn w_untyped_let_newline_before_initializer_test() -> Bool {
+test fn w_untyped_let_newline_before_initializer_test() -> Bool  {
   parses_clean(
     "module untyped_let_newline\nfn demo() -> Int {\n  let x =\n    1\n  x\n}\n",
     "src/untyped_let_newline.rs"
   )
 }
 
-test fn w_typed_let_newline_before_initializer_test() -> Bool {
+test fn w_typed_let_newline_before_initializer_test() -> Bool  {
   parses_clean(
     "module typed_let_newline\nfn demo() -> Int {\n  let x: Int =\n    1\n  x\n}\n",
     "src/typed_let_newline.rs"
   )
 }
 
-test fn w_return_newline_before_expression_test() -> Bool {
+test fn w_return_newline_before_expression_test() -> Bool  {
   parses_clean(
     "module return_newline\nfn demo() -> Int {\n  return\n    1\n}\n",
     "src/return_newline.rs"
   )
 }
 
-test fn w_for_newline_before_collection_test() -> Bool {
+test fn w_for_newline_before_collection_test() -> Bool  {
   parses_clean(
     "module for_newline\nfn demo() -> String {\n  for ch in\n    \"abc\" { ch }\n}\n",
     "src/for_newline.rs"
   )
 }
 
-test fn w_statement_boundary_after_complete_initializer_test() -> Bool {
+test fn w_statement_boundary_after_complete_initializer_test() -> Bool  {
   parses_clean(
     "module let_statement_boundary\nfn demo() -> Int {\n  let x = 1\n  let y = 2\n  y\n}\n",
     "src/let_statement_boundary.rs"
@@ -54,21 +54,21 @@ test fn w_statement_boundary_after_complete_initializer_test() -> Bool {
 // sibling arm's positive result already rules that class of failure out for
 // the same source shape.
 
-test fn w_untyped_let_newline_then_rbrace_refuses_test() -> Bool {
+test fn w_untyped_let_newline_then_rbrace_refuses_test() -> Bool  {
   refuses_to_compile(
     "module untyped_let_newline_rbrace\nfn demo() -> Int {\n  let x =\n}\n",
     "src/untyped_let_newline_rbrace.rs"
   )
 }
 
-test fn w_return_newline_then_rbrace_refuses_test() -> Bool {
+test fn w_return_newline_then_rbrace_refuses_test() -> Bool  {
   refuses_to_compile(
     "module return_newline_rbrace\nfn demo() -> Int {\n  return\n}\n",
     "src/return_newline_rbrace.rs"
   )
 }
 
-test fn w_for_newline_then_block_without_collection_refuses_test() -> Bool {
+test fn w_for_newline_then_block_without_collection_refuses_test() -> Bool  {
   refuses_to_compile(
     "module for_newline_missing_collection\nfn demo() -> List<String> {\n  for x in\n  { x }\n}\n",
     "src/for_newline_missing_collection.rs"

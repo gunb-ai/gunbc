@@ -86,7 +86,7 @@ fn w_unknown_visibility() -> LegacySearchVisibilityBasis {
 // marker. That is NOT a converged single lineage -- it is a found file whose sibling cannot be ruled
 // out, and reporting it as converged is what let a duplicate be adopted while the original went
 // dark.
-test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unresolved() -> Bool {
+test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unresolved() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
@@ -105,7 +105,7 @@ test fn an_empty_legacy_search_under_unknown_visibility_leaves_the_extent_unreso
 // THE CONTROL, without which the wall above would have closed the ordinary steady state. With a
 // visibility basis that IS established, the same empty search is a real absence and the found file
 // is the single lineage.
-test fn a_current_hit_with_an_operator_absence_declaration_is_a_single_lineage() -> Bool {
+test fn a_current_hit_with_an_operator_absence_declaration_is_a_single_lineage() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
@@ -123,7 +123,7 @@ test fn a_current_hit_with_an_operator_absence_declaration_is_a_single_lineage()
 // A POSITIVE FIND PROVES VISIBILITY FOR THAT OBSERVATION AND CANNOT BE REUSED. Offered as the basis
 // for an observation that found NOTHING, it establishes nothing at all -- the arm exists so a
 // producer cannot carry one run's positive find forward as a standing licence.
-test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool {
+test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
@@ -140,7 +140,7 @@ test fn a_positive_find_basis_does_not_license_a_later_empty_search() -> Bool {
 }
 
 // TWO LINEAGES OBSERVED. Both ids travel, because an operator settling this needs them both.
-test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool {
+test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
@@ -163,7 +163,7 @@ test fn a_current_hit_beside_a_different_legacy_find_is_a_conflict() -> Bool {
 
 // ONE FILE CARRYING BOTH MARKERS IS ONE LINEAGE, which is the steady state after any completed
 // migration and must not read as a conflict.
-test fn one_file_under_both_markers_is_a_single_lineage() -> Bool {
+test fn one_file_under_both_markers_is_a_single_lineage() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "same" as NonEmptyStr },
@@ -180,7 +180,7 @@ test fn one_file_under_both_markers_is_a_single_lineage() -> Bool {
 
 // THE ORIGINAL INCIDENT'S RECOVERABLE SHAPE: no current-marked file, a legacy one found. That file
 // IS the sheet, carrying only the old marker.
-test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool {
+test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetAbsent,
@@ -197,7 +197,7 @@ test fn no_current_file_beside_a_legacy_find_is_a_legacy_only_lineage() -> Bool 
 
 // NEITHER MARKER FINDS ANYTHING AND VISIBILITY IS UNKNOWN: unreadable, never absent. This is the arm
 // a create would be authorized from, so it is the one that must not widen.
-test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bool {
+test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetAbsent,
@@ -215,7 +215,7 @@ test fn neither_marker_under_unknown_visibility_is_unreadable_not_absent() -> Bo
 // THE CONTROL FOR THE CREATE PATH. An operator declaring the legacy extent empty is a fact a human
 // can know, and it does make absence real -- so the identity can still be Absent and a create can
 // still be authorized downstream. Without this, the wall above would have closed bootstrap.
-test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool {
+test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetAbsent,
@@ -236,7 +236,7 @@ test fn neither_marker_with_an_operator_absence_declaration_is_absent() -> Bool 
 // A DECLARATION FOR ANOTHER SUBJECT ESTABLISHES NOTHING HERE, and this is why the subject is carried
 // in content rather than implied by the declaration file's path. A globally named file that outlives
 // its drive or its marker generation would otherwise keep unlocking decisions it was never about.
-test fn evidence_naming_another_subject_is_unreadable() -> Bool {
+test fn evidence_naming_another_subject_is_unreadable() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetAbsent,
@@ -260,7 +260,7 @@ test fn evidence_naming_another_subject_is_unreadable() -> Bool {
 // deleted, because a walk cannot stay total across a record that this module itself says will grow.
 // What remains testable -- and what actually matters -- is that a subject differing in ONE field is
 // rejected by the join, whichever field it is.
-test fn a_subject_differing_only_in_the_superseded_field_is_unreadable() -> Bool {
+test fn a_subject_differing_only_in_the_superseded_field_is_unreadable() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetAbsent,
@@ -289,7 +289,7 @@ test fn a_subject_differing_only_in_the_superseded_field_is_unreadable() -> Bool
 // revision made the selection an arm of LegacyExtentEvidence and derived a lineage from it --
 // selecting A beside a current hit on A became SingleLineage(A). That does not follow: selecting A
 // says which file the operator selected, never that an invisible B does not exist.
-test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
+test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool  {
   let selection = LegacyFileSelection {
     subject: w_subject(),
     file_id: "current-A" as NonEmptyStr,
@@ -312,7 +312,7 @@ test fn a_selection_does_not_resolve_an_unresolved_extent() -> Bool {
 
 // PROVENANCE LIVES ON THE STANDING ITSELF, where no terminal arm can lose it by being threaded
 // wrong -- which is how three arms lost it in an earlier shape.
-test fn an_unresolved_standing_still_carries_its_typed_evidence() -> Bool {
+test fn an_unresolved_standing_still_carries_its_typed_evidence() -> Bool  {
   let standing = review_sheet_identity_standing(
     subject: w_subject(),
     current: SheetObservedOne { file_id: "current-A" as NonEmptyStr },
@@ -325,7 +325,7 @@ test fn an_unresolved_standing_still_carries_its_typed_evidence() -> Bool {
   }
 }
 
-test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
+test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool  {
   let standing = review_sheet_identity_standing(
     subject: w_subject(),
     current: SheetAbsent,
@@ -339,7 +339,7 @@ test fn a_standing_carries_the_subject_it_was_asked_about() -> Bool {
 // current-hit fold, again in the current-absence fold, and partially a third time in a file-id
 // extractor that dropped the visibility basis -- so a later edit could tighten one path and not the
 // other, with no claim positioned to catch the divergence.
-test fn an_operator_absence_declaration_settles_the_extent() -> Bool {
+test fn an_operator_absence_declaration_settles_the_extent() -> Bool  {
   match legacy_extent_verdict(evidence: w_operator_says_empty()) {
     LegacyExtentSettledEmpty => true
     LegacyExtentUnsettled { cause: _ } => false
@@ -347,7 +347,7 @@ test fn an_operator_absence_declaration_settles_the_extent() -> Bool {
   }
 }
 
-test fn an_empty_legacy_search_under_unknown_visibility_is_unsettled() -> Bool {
+test fn an_empty_legacy_search_under_unknown_visibility_is_unsettled() -> Bool  {
   match legacy_extent_verdict(evidence: w_search(o: SheetAbsent, v: w_unknown_visibility())) {
     LegacyExtentUnsettled { cause: _ } => true
     LegacyExtentSettledEmpty => false
@@ -357,7 +357,7 @@ test fn an_empty_legacy_search_under_unknown_visibility_is_unsettled() -> Bool {
 
 // A POSITIVE FIND NEEDS NO VISIBILITY ARGUMENT AT ALL -- seeing the file IS the proof it was
 // visible -- so the verdict reports it found regardless of the basis offered.
-test fn a_legacy_find_is_found_whatever_basis_is_offered() -> Bool {
+test fn a_legacy_find_is_found_whatever_basis_is_offered() -> Bool  {
   match legacy_extent_verdict(
     evidence: w_search(o: SheetObservedOne { file_id: "legacy-B" as NonEmptyStr }, v: w_unknown_visibility()),
   ) {
@@ -373,7 +373,7 @@ test fn a_legacy_find_is_found_whatever_basis_is_offered() -> Bool {
 // operator reading a conflict could not tell "there is definitely nothing on the old marker" from
 // "the old marker could not be read". These two claims are the same current-side duplication under
 // the two legacy verdicts, and they must not agree.
-test fn a_current_duplication_beside_an_unsettled_legacy_side_says_so() -> Bool {
+test fn a_current_duplication_beside_an_unsettled_legacy_side_says_so() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetDuplicated { file_ids: ["dup-A", "dup-B"] },
@@ -394,7 +394,7 @@ test fn a_current_duplication_beside_an_unsettled_legacy_side_says_so() -> Bool 
   }
 }
 
-test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_instead() -> Bool {
+test fn a_current_duplication_beside_a_settled_empty_legacy_side_says_that_instead() -> Bool  {
   match review_sheet_identity_standing_disposition(
     subject: w_subject(),
     current: SheetDuplicated { file_ids: ["dup-A", "dup-B"] },

@@ -88,7 +88,7 @@ import extdeps.languages.json.emit { serialize_json }
 // executable keeps the count at 16 by displacing something else, so the literal alone cannot see
 // it; asserting the binary is NOT required states the precondition/product distinction directly.
 
-test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
+test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let local = "/tmp/dashboard-source.bundle" as FilePath
   let staged = "/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0/inbox/source.bundle" as FilePath
@@ -145,7 +145,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
     ]
 }
 
-test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
+test fn dashboard_local_origin_ref_translation_is_exact() -> Bool  {
   let origin = "/instance/origin.git" as FilePath
   let bundle = "/instance/inbox/source.bundle" as FilePath
   shape_git_init_bare_argv(path: origin) == ["init", "--bare", "/instance/origin.git"]
@@ -184,7 +184,7 @@ test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
     ]
 }
 
-test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
+test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_instance_provider_executable(instance: lab) {
     Absent => false
@@ -240,7 +240,7 @@ test fn dashboard_provider_runtime_and_auth_share_one_state_binding() -> Bool {
 // therefore gating a path no sanctioned caller runs, and it passed only because usrmerge makes
 // both resolve. Both sites now read the authority, so this literal is the one independent
 // statement of the value left, and it reds if that authority moves without anyone looking here.
-test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool {
+test fn dashboard_target_preflight_derives_dispatch_platform_dependencies() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let required = dashboard_required_target_executables(instance: lab)
   all(
@@ -281,7 +281,7 @@ fn health_result(body: String) -> DashboardExecResult {
   DashboardExecResult { success: true, stdout: body, stderr: "" }
 }
 
-test fn dashboard_health_requires_intended_instance_identity() -> Bool {
+test fn dashboard_health_requires_intended_instance_identity() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let live = srv1_live_dashboard_instance()
   let mentions_lab_id_in_a_nested_value = join([
@@ -305,7 +305,7 @@ test fn dashboard_health_requires_intended_instance_identity() -> Bool {
     )
 }
 
-test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
+test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let rows = dashboard_instance_provision_plan_rows(instance: lab)
   count(rows) == 18
@@ -324,7 +324,7 @@ test fn dashboard_plan_is_end_to_end_and_production_disjoint() -> Bool {
     && lab.listen_port != srv1_live_dashboard_instance().listen_port
 }
 
-test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool {
+test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool  {
   let result = DashboardApplyRefused {
     instance_id: "srv1-lab-codex-feedback-v0",
     step: "verify-provider-auth",
@@ -344,7 +344,7 @@ test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool {
     && string_contains(s: wire, pattern: "\"success\": false")
 }
 
-test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
+test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let dirty = dashboard_source_preflight_decision(
     instance: lab,
@@ -520,7 +520,7 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
 // realistic transport failure rather than a placeholder, because the failure mode being guarded is
 // an unreachable host being described as a permissions problem on a directory.
 
-test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
+test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   let ready = dashboard_bootstrap_preflight_decision(
     instance: lab,
@@ -567,7 +567,7 @@ test fn dashboard_bootstrap_parent_writability_is_a_preflight_fact() -> Bool {
 }
 
 // THE ROOT PROBE HAS THE SAME THREE ANSWERS, and it is the one whose collapse chose the WRONG PATH rather than the wrong verdict. Which directory is the bootstrap parent depends on whether the instance root exists — present means bootstrap into the root itself, absent means bootstrap into the provisioning parent — so a refused root observation does not merely lose a fact, it makes the subsequent question meaningless. The predecessor answered false and proceeded to describe the provisioning parent, which is a claim about a directory selected on evidence that was never gathered.\n\nThe claim asserts the refusal names the instance root, because that is the path whose observation actually failed.
-test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
+test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool  {
   let lab = srv1_lab_dashboard_instance()
   match dashboard_bootstrap_preflight_decision(
     instance: lab,
@@ -603,7 +603,7 @@ fn witness_reading_read() -> DashboardProductionReading {
   }
 }
 
-test fn production_reading_never_equates_absent_with_observed() -> Bool {
+test fn production_reading_never_equates_absent_with_observed() -> Bool  {
   let read = witness_reading_read()
   let unpeered = ProductionUnpeered { host: "srv2" as NonEmptyStr }
   dashboard_production_readings_equal(before: read, after: read)
@@ -616,7 +616,7 @@ test fn production_reading_never_equates_absent_with_observed() -> Bool {
     )
 }
 
-test fn unpeered_host_refuses_nothing_and_reads_nothing() -> Bool {
+test fn unpeered_host_refuses_nothing_and_reads_nothing() -> Bool  {
   !dashboard_production_reading_refused(reading: dashboard_production_read(peer: witness_unpeered()))
     && string_contains(
       s: dashboard_production_reading_detail(
@@ -626,7 +626,7 @@ test fn unpeered_host_refuses_nothing_and_reads_nothing() -> Bool {
     )
 }
 
-test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool {
+test fn peer_isolation_still_requires_the_instance_to_own_its_paths() -> Bool  {
   dashboard_peer_isolation_ok(
     instance: srv1_lab_dashboard_instance(),
     peer: witness_peered(),

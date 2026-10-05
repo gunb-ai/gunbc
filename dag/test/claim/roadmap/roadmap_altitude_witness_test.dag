@@ -41,7 +41,7 @@ fn density_key(d: RowDensity) -> String {
   }
 }
 
-test fn altitude_status_derivation_holds() -> Bool {
+test fn altitude_status_derivation_holds() -> Bool  {
   return attention_key(a: status_attention(status: "done")) == "routine"
     && attention_key(a: status_attention(status: "superseded")) == "routine"
     && attention_key(a: status_attention(status: "open")) == "working"
@@ -49,7 +49,7 @@ test fn altitude_status_derivation_holds() -> Bool {
     && attention_key(a: status_attention(status: "zombie")) == "anomaly"
 }
 
-test fn altitude_band_derivation_holds() -> Bool {
+test fn altitude_band_derivation_holds() -> Bool  {
   return band_expands(band_key: "fail")
     && band_expands(band_key: "loud")
     && !band_expands(band_key: "ok")
@@ -61,7 +61,7 @@ test fn altitude_band_derivation_holds() -> Bool {
     && density_key(d: attention_density(a: RowAnomaly)) == "expands"
 }
 
-test fn altitude_counts_wire_holds() -> Bool {
+test fn altitude_counts_wire_holds() -> Bool  {
   let c = section_counts(statuses: ["open", "open", "review", "done", "weird"])
   return section_counts_wire(c: c) == "2 open · 1 review · 1 done · 1 unknown"
     && section_counts_wire(c: section_counts(statuses: ["done"])) == "1 done"
@@ -111,27 +111,27 @@ fn open_node() -> RoadmapNode {
 // agreeing with the sign-off discipline rather than a coincidence. Routine therefore requires the
 // signed fixture.
 
-test fn altitude_routine_section_folds() -> Bool {
+test fn altitude_routine_section_folds() -> Bool  {
   let folded = doc_html(nodes: [done_signed_node()])
   return string_contains(s: folded, pattern: "<details class=\"section-fold\">")
     && !string_contains(s: folded, pattern: "<details class=\"section-fold\" open=\"\">")
     && string_contains(s: folded, pattern: "1 done")
 }
 
-test fn altitude_working_member_holds_section_open() -> Bool {
+test fn altitude_working_member_holds_section_open() -> Bool  {
   let held = doc_html(nodes: [done_signed_node(), open_node()])
   return string_contains(s: held, pattern: "<details class=\"section-fold\" open=\"\">")
     && string_contains(s: held, pattern: "1 open · 1 done")
 }
 
 // The client chain proven derived, both directions: the derived key set is exactly the anomaly bands (order from the wire rows), the emitted asset carries the chain over those keys plus the disclosure flip, and the negative arm pins that no non-expanding band appears in an expand test — the exact defect a hand-authored chain would plant.
-test fn altitude_expand_keys_derive_from_the_law() -> Bool {
+test fn altitude_expand_keys_derive_from_the_law() -> Bool  {
   let keys = dispatch_expand_band_keys()
   return count(keys) == 2
     && all(keys, k => band_expands(band_key: k))
 }
 
-test fn altitude_client_carries_the_derived_chain() -> Bool {
+test fn altitude_client_carries_the_derived_chain() -> Bool  {
   let js = dispatch_client_js_source()
   return string_contains(s: js, pattern: "const expandRow = false || band === 'fail' || band === 'loud';")
     && string_contains(s: js, pattern: "details.item-detail")
