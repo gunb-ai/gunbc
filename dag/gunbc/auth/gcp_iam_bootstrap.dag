@@ -1,0 +1,1027 @@
+module gunbc.auth.gcp_iam_bootstrap
+
+import std.types { String, NonEmptyStr, Secret, List, Bool, Int, path_segment_is_safe, Timestamp }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_listing_names_entry }
+import std.list { distinct_by_key }
+import extdeps.google.userinfo
+import extdeps.auth.oidc { OidcStandardClaims }
+import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.iam_deny
+import extdeps.cloud.gcp.serviceusage { gcp_service_usage_state_from_wire, ServiceUsageStateEnabled, ServiceUsageStateDisabled }
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.iam {
+  GcpPolicy, GcpBinding, IamCondition, GcpIamBindingCell, GcpIamOwnedCellUniverse,
+  gcp_cells_bindings, gcp_policy_from_wire, gcp_policy_cells, gcp_cell_in, reconcile_gcp_policy,
+  GcpPolicyAlreadyConverged, GcpPolicyDeltaRequired, GcpPolicyRepresentationLossy,
+}
+import extdeps.transports.rest { RestOutcome, RestStatusRefused }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.auth.access_token_source { read_supplied_access_token, SuppliedTokenReady, SuppliedTokenUnavailable }
+import gunbc.auth.github_gcp_federation { fleet_secrets_project_id, fleet_secrets_project_number }
+import gunbc.secret_provision_actuator {
+  observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretObservationOutcome, SecretContainerCreation,
+  SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown,
+}
+import gunbc.auth.gcp_iam_converge { gcp_iam_observe_dedicated_federation, gcp_iam_converge_targets, gcp_iam_converge_grant_set_secrets, grant_set_payload_permissions, iam_converge_service_account, iam_observe_service_account, iam_converge_denied_permissions, same_key_set, cell_preimage, observe_and_plan_estate, GcpIamEstateRefused, GcpIamEstateNoop, GcpIamEstateApply, PolicyReading, PolicyObserved, PolicyResourceAbsent, PolicyUnreadable }
+import gunbc.auth.heal_publisher_provision {
+  DedicatedFederation, observe_and_classify, create_absent_subjects, federation_fully_present,
+  FederationClassified, FederationUnclassified, rest_ok, rest_refusal_text, outcome_is_not_found,
+}
+import gunbc.auth.gcp_iam_bootstrap_model {
+  IamBootstrapRole, BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_name, iam_bootstrap_role_id, iam_bootstrap_role_permissions, iam_bootstrap_role_matches,
+  IamBootstrapResource, BootstrapProject, BootstrapPool, BootstrapAccount, BootstrapSecret, IamBootstrapBinding,
+  iam_bootstrap_resource_key, iam_bootstrap_capability_bindings, iam_bootstrap_trust_bindings,
+  iam_bootstrap_apply_federation, iam_bootstrap_deny_policy_id, iam_bootstrap_attachment_point,
+  iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+}
+
+import gunbc.auth.gcp_iam_bootstrap_authority {
+  bootstrap_operator_matches, iam_bootstrap_operator_member, iam_bootstrap_operator_subject,
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_dependency_plan,
+  BootstrapAuthorityIntent, bootstrap_authority_intent_valid, bootstrap_authority_may_grant,
+  bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_action,
+  AuthorityAbsent, AuthorityPresent, AuthorityUnreadable, PublishAuthority, UseAuthority,
+  RemoveAuthority, AuthoritySettled, AuthorityRefused,
+}
+import gunbc.auth.approval_gate { approval_instant_now }
+import std.measure { second }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+
+// Operator-authorized initial setup. This entry does not forge an app approval or workflow
+// identity. Its credential is never a fallback in the ongoing approval-gated job.
+// Trust is last. Existing mismatched roles, providers and deny policies refuse instead of being
+// adopted or patched; existing foreign policy cells are preserved through the shared reconciler.
+type IamBootstrapStage = BootstrapServices | BootstrapIdentities | BootstrapRoles | BootstrapDeny | BootstrapAuthorityCleanup | BootstrapCapabilities | BootstrapProbeAuthority | BootstrapPrivilegeReadback | BootstrapProbeCleanup | BootstrapWorkflowTrust
+
+data iam_bootstrap_stages: List<IamBootstrapStage> = [BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup, BootstrapWorkflowTrust]
+
+type IamBootstrapProgress { completed: List<IamBootstrapStage>, refusal: String }
+
+fn iam_bootstrap_stage_admitted(stage: IamBootstrapStage, completed: List<IamBootstrapStage>) -> Bool {
+  let required = match stage {
+    BootstrapServices => []
+    BootstrapIdentities => [BootstrapServices]
+    BootstrapRoles => [BootstrapIdentities]
+    BootstrapDeny => [BootstrapIdentities]
+    BootstrapAuthorityCleanup => [BootstrapDeny]
+    BootstrapCapabilities => [BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup]
+    BootstrapProbeAuthority => [BootstrapCapabilities]
+    BootstrapPrivilegeReadback => [BootstrapCapabilities, BootstrapProbeAuthority]
+    BootstrapProbeCleanup => [BootstrapProbeAuthority]
+    BootstrapWorkflowTrust => [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback, BootstrapProbeCleanup]
+  }
+  all(required, prerequisite => any(completed, done => done == prerequisite))
+}
+
+fn iam_bootstrap_stage_wire(stage: IamBootstrapStage) -> String {
+  match stage { BootstrapServices => "services" BootstrapIdentities => "identities" BootstrapRoles => "roles" BootstrapDeny => "deny" BootstrapAuthorityCleanup => "authority-cleanup" BootstrapCapabilities => "capabilities" BootstrapProbeAuthority => "probe-authority" BootstrapProbeCleanup => "probe-cleanup" BootstrapPrivilegeReadback => "privilege-readback" BootstrapWorkflowTrust => "workflow-trust" }
+}
+
+fn iam_bootstrap_plan() -> CliWireResponse {
+  let federation = gcp_iam_observe_dedicated_federation()
+  let boundary = [
+    concat("project ", fleet_secrets_project_id as String),
+    concat("workflow provider ", federation.provider_id as String),
+    concat("workflow condition ", federation.attribute_condition),
+    concat("workflow principal set ", federation.principal_set),
+    concat("deny policy ", iam_bootstrap_deny_policy_id as String),
+    concat("deny principal serviceAccount:", iam_converge_service_account as String),
+    concat("deny permissions ", join(iam_converge_denied_permissions, ",")),
+    "Target bootstrap creates only bare pools/accounts; target providers and workload trust remain approval-gated.",
+    concat("Grant-set secrets created bare (no version) when absent; their accessor cells remain approval-gated: ", join(map(gcp_iam_converge_grant_set_secrets(), x => x as String), ",")),
+    bootstrap_authority_dependency_plan(),
+    concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
+    "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
+    "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
+    concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
+  ]
+  let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))
+  let cells = map(iam_bootstrap_capability_bindings() + iam_bootstrap_trust_bindings(), b => join([
+    "binding ", iam_bootstrap_resource_key(resource: b.resource), " ", cell_preimage(c: b.cell),
+  ], ""))
+  CliWirePrintable { bytes: join(["Bootstrap stages: ", join(map(iam_bootstrap_stages, s => iam_bootstrap_stage_wire(stage: s)), " -> "), "\n", join(boundary + roles + cells, "\n")], ""),
+    exit: if iam_bootstrap_model_admitted() { ExitSuccess } else { exit_failure(reason: "bootstrap model does not preserve the declared trust boundary") } }
+}
+
+fn iam_bootstrap_ensure_identity(f: DedicatedFederation, own_trust: Bool, token: Secret) -> String {
+  let before = observe_and_classify(f: f, token: token)
+  match before {
+    FederationUnclassified { reasons } => join(reasons, "; ")
+    FederationClassified { create_pool, create_provider, create_account } => {
+      let created = create_absent_subjects(f: f, token: token, c: FederationClassified {
+        create_pool: create_pool, create_provider: own_trust && create_provider, create_account: create_account })
+      if created != "" { created } else {
+        let after = observe_and_classify(f: f, token: token)
+        match after {
+          FederationUnclassified { reasons } => join(reasons, "; ")
+          FederationClassified { create_pool: pool_missing, create_provider: _, create_account: account_missing } =>
+            if pool_missing || account_missing || (own_trust && !federation_fully_present(c: after)) {
+              concat(f.label, ": named creation is not yet established by readback; no rights granted")
+            } else { "" }
+        }
+      }
+    }
+  }
+}
+
+// A GRANT SET'S SECRET IS CREATED BARE HERE, as a target's pool and account are, so iam-converge's
+// per-secret policy role has a resource to be bound on and no recurring identity needs the
+// project-level secretmanager.secrets.create. Bare means no version: the container carries no
+// payload until the mint flow adds one.
+//
+// A CREATE IS JOURNALED ACROSS RUNS, with the election pattern this module already uses for the
+// temporary authority and the pool initialization (iam_authority_record, iam_authority_pin,
+// WriteCreateNew under target/). A GET that answers 404 after an ambiguous create does not establish
+// absence (gunbc.secret_provision_actuator SecretContainerCreation), so the fact that a create may
+// have committed must outlive the run that issued it. Per secret and operation (the bootstrap
+// receipt) the journal holds an election written BEFORE CreateSecret, then exactly one of:
+//   closed   -- the container was observed present (after a definite create, or later);
+//   refused  -- the service definitely refused; a new operation may elect again;
+//   disposed -- an explicit operator disposition (iam_bootstrap_custody_create_dispose).
+// An election with none of these is UNRESOLVED and blocks every later automatic create of that
+// secret, even when a later GET answers absent; observing the container present settles it.
+type CustodyContainerObservation = CustodyObservedPresent | CustodyObservedAbsent | CustodyObservationRefused { cause: String }
+
+type CustodyContainerCreateOutcome = CustodyCreated | CustodyCreateRefused { cause: String } | CustodyCreateOutcomeUnknown { cause: String }
+
+type CustodyCreateJournal = CustodyJournalRead { unresolved: List<String> } | CustodyJournalUnreadable { cause: String }
+
+type CustodyContainerStep
+  = CustodyContainerLeave
+  | CustodyContainerSettle { operations: List<String> }
+  | CustodyContainerCreateBare
+  | CustodyContainerRefuse { reason: String }
+
+type CustodyAfterCreate = CustodyReadBack | CustodyCreateRefusedDefinitely { reason: String } | CustodyCreateStops { reason: String }
+
+type CustodyJournalMark = CustodyMarkElected | CustodyMarkClosed | CustodyMarkRefused | CustodyMarkDisposed
+
+// A Secret Manager id admits only letters, digits, '-' and '_', so the '.' around it makes one
+// secret's journal prefix never a prefix of another's.
+fn custody_journal_prefix(secret: NonEmptyStr) -> String {
+  join(["gcp-iam-custody-create.", secret as String, "."], "")
+}
+
+fn custody_journal_mark_suffix(mark: CustodyJournalMark) -> String {
+  match mark { CustodyMarkElected => "-elected.txt"  CustodyMarkClosed => "-closed.txt"  CustodyMarkRefused => "-refused.txt"  CustodyMarkDisposed => "-disposed.txt" }
+}
+
+fn custody_journal_name(secret: NonEmptyStr, operation: String, mark: CustodyJournalMark) -> String {
+  join([custody_journal_prefix(secret: secret), operation, custody_journal_mark_suffix(mark: mark)], "")
+}
+
+fn custody_journal_wire(secret: NonEmptyStr, operation: String) -> String {
+  join([fleet_secrets_project_id as String, "\n", iam_bootstrap_resource_key(resource: BootstrapSecret { secret: secret }), "\n", operation, "\n"], "")
+}
+
+// THE LISTING ONLY DISCOVERS CANDIDATE OPERATIONS: every operation with any mark of this secret. No
+// mark is believed from its name; each is read below.
+fn custody_candidate_operations(secret: NonEmptyStr, listing: String) -> List<String> {
+  let prefix = custody_journal_prefix(secret: secret)
+  let found = flat_map(split(s: listing, delimiter: "\n"), n => if !starts_with(s: n, prefix: prefix) { [] } else {
+    flat_map([CustodyMarkElected, CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed], m => {
+      let suffix = custody_journal_mark_suffix(mark: m)
+      if ends_with(s: n, suffix: suffix) { [substring(s: n, start: string_length(s: prefix), end: string_length(s: n) - string_length(s: suffix))] } else { [] }
+    })
+  })
+  distinct_by_key(xs: found, key: x => x)
+}
+
+// ONE OPERATION'S MARKS AS READ, each through iam_authority_record, as the authority journal reads its.
+type CustodyOperationRecords {
+  operation: String
+  elected: IamAuthorityRecord
+  closed: IamAuthorityRecord
+  refused: IamAuthorityRecord
+  disposed: IamAuthorityRecord
+}
+
+// A MARK COUNTS ONLY WHEN ITS BYTES ARE THIS SECRET'S AND OPERATION'S WIRE. A marker interrupted after
+// WriteCreateNew, corrupt, or restored from elsewhere is not a resolution: it makes the journal
+// unreadable, which refuses, rather than settling an election and admitting a re-create.
+fn custody_record_valid(record: IamAuthorityRecord, wire: String) -> Bool {
+  iam_authority_record_matches(record: record, wire: wire)
+}
+
+fn custody_journal_of(secret: NonEmptyStr, records: List<CustodyOperationRecords>) -> CustodyCreateJournal {
+  let invalid = filter(records, r => {
+    let wire = custody_journal_wire(secret: secret, operation: r.operation)
+    let marks = [r.elected, r.closed, r.refused, r.disposed]
+    !path_segment_is_safe(raw: r.operation)
+      || !all(marks, m => custody_record_valid(record: m, wire: wire))
+      || (!iam_authority_record_present(record: r.elected) && any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m)))
+  })
+  if count(invalid) > 0 {
+    CustodyJournalUnreadable { cause: join(["create journal records are unreadable, carry other bytes, or close an election that is absent: ", join(map(invalid, r => r.operation), ",")], "") }
+  } else {
+    CustodyJournalRead { unresolved: map(filter(records, r => iam_authority_record_present(record: r.elected)
+      && !any([r.closed, r.refused, r.disposed], m => iam_authority_record_present(record: m))), r => r.operation) }
+  }
+}
+
+fn custody_container_step(secret: NonEmptyStr, o: CustodyContainerObservation, journal: CustodyCreateJournal) -> CustodyContainerStep {
+  match journal {
+    CustodyJournalUnreadable { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the create journal is unreadable, so an earlier ambiguous create cannot be excluded: ", cause], "") }
+    CustodyJournalRead { unresolved } => match o {
+      CustodyObservationRefused { cause } => CustodyContainerRefuse { reason: join([secret as String, ": the container could not be observed: ", cause], "") }
+      CustodyObservedPresent => if count(unresolved) == 0 { CustodyContainerLeave } else { CustodyContainerSettle { operations: unresolved } }
+      CustodyObservedAbsent => if count(unresolved) == 0 { CustodyContainerCreateBare } else {
+        CustodyContainerRefuse { reason: join([secret as String, ": an earlier create is unresolved (", join(unresolved, ","), "), and absence after an ambiguous create is not evidence; no automatic create until the container is observed or the operator disposes it (iam_bootstrap_custody_create_dispose)"], "") }
+      }
+    }
+  }
+}
+
+fn custody_after_create(secret: NonEmptyStr, c: CustodyContainerCreateOutcome) -> CustodyAfterCreate {
+  match c {
+    CustodyCreated => CustodyReadBack
+    CustodyCreateRefused { cause } => CustodyCreateRefusedDefinitely { reason: join([secret as String, ": bare container creation refused: ", cause], "") }
+    CustodyCreateOutcomeUnknown { cause } => CustodyCreateStops { reason: join([secret as String, ": bare container creation outcome unknown; its election stays unresolved and blocks every later automatic create: ", cause], "") }
+  }
+}
+
+fn custody_observation_of(o: SecretObservationOutcome) -> CustodyContainerObservation {
+  match o {
+    SecretContainerObserved { container: _ } => CustodyObservedPresent
+    SecretContainerAbsent { project: _, secret_id: _ } => CustodyObservedAbsent
+    SecretObservationRefused { cause } => CustodyObservationRefused { cause: cause as String }
+  }
+}
+
+fn custody_create_outcome_of(c: SecretContainerCreation) -> CustodyContainerCreateOutcome {
+  match c {
+    SecretContainerCreated { container: _ } => CustodyCreated
+    SecretContainerCreationRefused { cause } => CustodyCreateRefused { cause: cause as String }
+    SecretContainerCreationOutcomeUnknown { cause } => CustodyCreateOutcomeUnknown { cause: cause as String }
+  }
+}
+
+fn custody_journal_read(secret: NonEmptyStr) -> CustodyCreateJournal {
+  let listed = Filesystem.List(path: "target")
+  if !listed.success { CustodyJournalUnreadable { cause: "target/ could not be listed" } }
+  else { custody_journal_of(secret: secret, records: map(custody_candidate_operations(secret: secret, listing: listed.entries), op => CustodyOperationRecords {
+    operation: op,
+    elected: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)),
+    closed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkClosed)),
+    refused: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkRefused)),
+    disposed: iam_authority_record(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkDisposed)),
+  })) }
+}
+
+fn custody_journal_close(secret: NonEmptyStr, operations: List<String>) -> String {
+  fold(operations, init: "", f: (prior, op) => if prior != "" { prior }
+    else if iam_authority_pin(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkClosed), wire: custody_journal_wire(secret: secret, operation: op)) { "" }
+    else { join([secret as String, ": observed present but the closing journal mark for ", op, " could not be recorded"], "") })
+}
+
+fn iam_bootstrap_ensure_custody_container(secret: NonEmptyStr, token: Secret) -> String {
+  let op = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
+  if !path_segment_is_safe(raw: op) { "custody container creation needs the safe bootstrap receipt as its operation identity" }
+  else { match custody_container_step(secret: secret, o: custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token)), journal: custody_journal_read(secret: secret)) {
+    CustodyContainerLeave => ""
+    CustodyContainerSettle { operations } => custody_journal_close(secret: secret, operations: operations)
+    CustodyContainerRefuse { reason } => reason
+    CustodyContainerCreateBare =>
+      if !Filesystem.WriteCreateNew(path: concat("target/", custody_journal_name(secret: secret, operation: op, mark: CustodyMarkElected)), content: custody_journal_wire(secret: secret, operation: op)).success {
+        concat(secret as String, ": the create election could not be recorded or was already taken by this operation; no create issued")
+      } else { match custody_after_create(secret: secret, c: custody_create_outcome_of(c: create_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token))) {
+        CustodyCreateStops { reason } => reason
+        CustodyCreateRefusedDefinitely { reason } =>
+          if iam_authority_pin(name: custody_journal_name(secret: secret, operation: op, mark: CustodyMarkRefused), wire: custody_journal_wire(secret: secret, operation: op)) { reason }
+          else { concat(reason, "; the refusal could not be journaled, so the election stays unresolved") }
+        CustodyReadBack =>
+          match custody_observation_of(o: observe_secret_container(project: fleet_secrets_project_id, secret_id: secret, token: token)) {
+            CustodyObservedPresent => custody_journal_close(secret: secret, operations: [op])
+            CustodyObservedAbsent => concat(secret as String, ": created but not yet visible on readback; the election stays unresolved and no rights are granted")
+            CustodyObservationRefused { cause } => join([secret as String, ": created but readback refused; the election stays unresolved: ", cause], "")
+          }
+      } }
+  } }
+}
+
+// THE ONLY RETIREMENT OF AN UNRESOLVED CREATE THAT NO OBSERVATION SETTLES: an operator names the
+// secret and the operation, having established out of band that the create did not commit. It
+// refuses for a secret outside the grant sets, an unsafe operation, an election that does not exist,
+// or one already closed, refused or disposed.
+fn iam_bootstrap_custody_create_dispose() -> ProcessExit {
+  let secret = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_SECRET")
+  let op = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_CUSTODY_OPERATION")
+  match filter(gcp_iam_converge_grant_set_secrets(), x => (x as String) == secret).first() {
+    Absent => exit_failure(reason: "the named secret is not a grant-set custody secret")
+    Present { value: s } => if !path_segment_is_safe(raw: op) { exit_failure(reason: "the operation identity is not a safe receipt") }
+      else { match custody_journal_read(secret: s) {
+        CustodyJournalUnreadable { cause } => exit_failure(reason: cause)
+        CustodyJournalRead { unresolved } => if !any(unresolved, x => x == op) { exit_failure(reason: "no unresolved create election exists for that secret and operation") }
+          else if iam_authority_pin(name: custody_journal_name(secret: s, operation: op, mark: CustodyMarkDisposed), wire: custody_journal_wire(secret: s, operation: op)) { ExitSuccess }
+          else { exit_failure(reason: "the disposition could not be recorded") }
+      } }
+  }
+}
+
+fn iam_bootstrap_ensure_role(role: IamBootstrapRole, token: Secret) -> String {
+  let seen = gcp.IamAdmin.GetProjectRole(access_token: token, project_id: fleet_secrets_project_id, role_id: iam_bootstrap_role_id(role: role))
+  if rest_ok(o: seen.outcome) {
+    if iam_bootstrap_role_matches(role: role, name: seen.name, permissions: seen.included_permissions, stage: seen.stage, deleted: seen.deleted) { "" }
+    else { concat(iam_bootstrap_role_name(role: role) as String, ": existing role differs; no automatic privilege expansion or adoption") }
+  } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+  else {
+    let made = gcp.IamAdmin.CreateProjectRole(access_token: token, project_id: fleet_secrets_project_id,
+      role_id: iam_bootstrap_role_id(role: role), title: iam_bootstrap_role_id(role: role), permissions: iam_bootstrap_role_permissions(role: role))
+    if !rest_ok(o: made.outcome) { rest_refusal_text(o: made.outcome) }
+    else {
+      let check = gcp.IamAdmin.GetProjectRole(access_token: token, project_id: fleet_secrets_project_id, role_id: iam_bootstrap_role_id(role: role))
+      if rest_ok(o: check.outcome) && iam_bootstrap_role_matches(role: role, name: check.name, permissions: check.included_permissions, stage: check.stage, deleted: check.deleted) { "" }
+      else { concat(iam_bootstrap_role_name(role: role) as String, ": created role did not read back exactly; no rights granted") }
+    }
+  }
+}
+
+fn iam_bootstrap_ensure_deny(token: Secret) -> String {
+  iam_bootstrap_ensure_deny_bounded(token: token, remaining: 0)
+}
+
+fn iam_bootstrap_ensure_deny_bounded(token: Secret, remaining: Int) -> String {
+  let seen = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
+  if rest_ok(o: seen.outcome) {
+    if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing bootstrap deny policy differs; refusing to weaken or adopt it" }
+  } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+  else {
+    if remaining > 0 && !iam_bootstrap_current_authority_live() { "authority deadline or clock does not admit another deny installation attempt" }
+    else {
+      let made = gcp.IamDeny.CreatePolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id, rules: iam_bootstrap_deny_rules())
+      if !rest_ok(o: made.outcome) {
+        if bootstrap_deny_retry_admitted(outcome: made.outcome, remaining: remaining, live: iam_bootstrap_current_authority_live()) {
+          if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
+            iam_bootstrap_ensure_deny_bounded(token: token, remaining: remaining - 1)
+          } else { "deny authority propagation wait failed" }
+        } else { rest_refusal_text(o: made.outcome) }
+      } else { iam_bootstrap_deny_creation_readback(token: token, remaining: 6) }
+    }
+  }
+}
+
+fn iam_bootstrap_policy_reading(outcome: RestOutcome, bindings: List<GcpBinding>?, etag: String, version: Int?) -> PolicyReading {
+  if rest_ok(o: outcome) { PolicyObserved { policy: gcp_policy_from_wire(bindings: bindings, etag: etag, version: version) } }
+  else if outcome_is_not_found(o: outcome) { PolicyResourceAbsent }
+  else { PolicyUnreadable { cause: rest_refusal_text(o: outcome) } }
+}
+
+// Preserve a successful but unfenced pool read as an explicit unmet dependency.
+// Transport failure and resource absence keep their original standing.
+fn iam_bootstrap_pool_policy_reading(outcome: RestOutcome, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> PolicyReading {
+  if !rest_ok(o: outcome) { iam_bootstrap_policy_reading(outcome: outcome, bindings: bindings, etag: "", version: version) }
+  else { match etag {
+    Present { value: revision } => if revision != "" {
+      iam_bootstrap_policy_reading(outcome: outcome, bindings: bindings, etag: revision, version: version)
+    } else { PolicyUnreadable { cause: "pool policy publication prerequisite unmet: successful read has no concurrency token; unconditional replacement is not admitted" } }
+    Absent => PolicyUnreadable { cause: "pool policy publication prerequisite unmet: successful read has no concurrency token; unconditional replacement is not admitted" }
+  } }
+}
+
+fn iam_bootstrap_read_policy(resource: IamBootstrapResource, token: Secret) -> PolicyReading {
+  match resource {
+    BootstrapProject => {
+      let r = gcp.ResourceManager.GetIamPolicy(access_token: token, project_id: fleet_secrets_project_id)
+      iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+    }
+    BootstrapPool { pool } => {
+      let r = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
+      if (match r.audit_configs { Absent => false Present { value: rows } => count(rows) != 0 }) {
+        PolicyUnreadable { cause: "pool policy audit configuration is outside bootstrap representation; no replacement" }
+      } else { iam_bootstrap_pool_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version) }
+    }
+    BootstrapAccount { account } => {
+      let r = gcp.IamAdmin.GetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: account)
+      iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+    }
+    BootstrapSecret { secret } => {
+      let r = gcp.SecretManager.GetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: secret)
+      iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+    }
+  }
+}
+
+fn iam_bootstrap_write_policy(resource: IamBootstrapResource, policy: GcpPolicy, token: Secret) -> RestOutcome {
+  match resource {
+    BootstrapProject => gcp.ResourceManager.SetIamPolicy(access_token: token, project_id: fleet_secrets_project_id, policy: policy).outcome
+    BootstrapPool { pool } => gcp.IamAdmin.SetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool, policy: policy).outcome
+    BootstrapAccount { account } => gcp.IamAdmin.SetServiceAccountIamPolicy(access_token: token, project_id: fleet_secrets_project_id, service_account: account, policy: policy).outcome
+    BootstrapSecret { secret } => gcp.SecretManager.SetSecretIamPolicy(access_token: token, project_id: fleet_secrets_project_id, secret: secret, policy: policy).outcome
+  }
+}
+
+fn iam_bootstrap_ensure_binding(binding: IamBootstrapBinding, token: Secret) -> String {
+  let prerequisite = match binding.resource {
+    BootstrapPool { pool } => iam_bootstrap_initialize_pool_policy(pool: pool, token: token)
+    BootstrapProject => ""
+    BootstrapAccount { account: _ } => ""
+    BootstrapSecret { secret: _ } => ""
+  }
+  if prerequisite != "" { prerequisite } else { iam_bootstrap_ensure_fenced_binding(binding: binding, token: token) }
+}
+
+fn iam_bootstrap_ensure_fenced_binding(binding: IamBootstrapBinding, token: Secret) -> String {
+  match iam_bootstrap_read_policy(resource: binding.resource, token: token) {
+    PolicyResourceAbsent => concat(iam_bootstrap_resource_key(resource: binding.resource), ": binding subject absent")
+    PolicyUnreadable { cause } => cause
+    PolicyObserved { policy: before } => match reconcile_gcp_policy(observed: before, desired_owned: [binding.cell], owned_universe: GcpIamOwnedCellUniverse { cells: [binding.cell] }) {
+      GcpPolicyRepresentationLossy { conditional_roles: _ } => "policy representation loses conditions; refusing write"
+      GcpPolicyAlreadyConverged { policy: _ } => ""
+      GcpPolicyDeltaRequired { policy: after, added: _, removed, preserved: _ } => if count(removed) != 0 || before.etag == "" {
+        "bootstrap policy addition needs a nonempty etag and may remove no cells"
+      } else {
+        let changed = iam_bootstrap_write_policy(resource: binding.resource, policy: after, token: token)
+        if !rest_ok(o: changed) { rest_refusal_text(o: changed) }
+        else { match iam_bootstrap_read_policy(resource: binding.resource, token: token) {
+          PolicyObserved { policy: checked } => if gcp_cell_in(c: binding.cell, xs: gcp_policy_cells(p: checked)) { "" } else { "policy write answered but the desired binding is absent on readback" }
+          PolicyResourceAbsent => "policy write answered but independent readback is unavailable"
+          PolicyUnreadable { cause: _ } => "policy write answered but independent readback is unavailable"
+        } }
+      }
+    }
+  }
+}
+
+fn iam_bootstrap_execute_stage(stage: IamBootstrapStage, token: Secret) -> String {
+  match stage {
+    BootstrapServices => fold(iam_bootstrap_required_services, init: "", f: (prior, api) => if prior != "" { prior } else { iam_bootstrap_ensure_service(service: api, token: token) })
+    BootstrapIdentities => {
+      let own = fold([gcp_iam_observe_dedicated_federation(), iam_bootstrap_apply_federation()], init: "", f: (prior, f) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: true, token: token) })
+      let targets = if own != "" { own } else { fold(gcp_iam_converge_targets, init: "", f: (prior, f) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_identity(f: f, own_trust: false, token: token) }) }
+      if targets != "" { targets } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+        if prior != "" { prior } else { iam_bootstrap_ensure_custody_container(secret: secret, token: token) }) }
+    }
+    BootstrapRoles => fold(iam_bootstrap_roles, init: "", f: (prior, role) => if prior != "" { prior } else { iam_bootstrap_ensure_role(role: role, token: token) })
+    BootstrapDeny => {
+      let seen = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
+      if rest_ok(o: seen.outcome) {
+        if iam_bootstrap_deny_matches(rules: seen.rules) { "" } else { "existing deny policy differs; no authority granted" }
+      } else if !outcome_is_not_found(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+      else {
+        let authority = iam_bootstrap_authority_converge(token: token, withdrawing: false)
+        if authority != "" { authority } else { iam_bootstrap_ensure_deny_bounded(token: token, remaining: 30) }
+      }
+    }
+    BootstrapAuthorityCleanup => iam_bootstrap_authority_converge(token: token, withdrawing: true)
+    BootstrapCapabilities => fold(iam_bootstrap_capability_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) })
+    BootstrapProbeAuthority => iam_bootstrap_probe_authority_converge(token: token, withdrawing: false)
+    BootstrapPrivilegeReadback => iam_bootstrap_privilege_readback(token: token)
+    BootstrapProbeCleanup => iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
+    BootstrapWorkflowTrust => {
+      let guarded = iam_bootstrap_ensure_deny(token: token)
+      if guarded != "" { guarded } else { fold(iam_bootstrap_trust_bindings(), init: "", f: (prior, binding) => if prior != "" { prior } else { iam_bootstrap_ensure_binding(binding: binding, token: token) }) }
+    }
+  }
+}
+
+// A create-only local receipt starts before cloud effects. Each stage has its own receipt; a
+// process loss leaves its started record visible. Named creates and etag-fenced additions can be
+// re-observed under a new receipt identity, never silently counted as completed from an exit code.
+fn iam_bootstrap_apply() -> ProcessExit {
+  let receipt = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_RECEIPT")
+  if !path_segment_is_safe(raw: receipt) || !iam_bootstrap_model_admitted() { exit_failure(reason: "bootstrap requires a safe receipt identity and an admitted model") }
+  else { match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
+    SuppliedTokenReady { token } => {
+      let started = Filesystem.WriteCreateNew(path: concat("target/gcp-iam-bootstrap-", receipt, "-started.txt"), content: "operator bootstrap started; not a convergence receipt\n")
+      if !started.success { exit_failure(reason: "bootstrap receipt already exists or cannot be recorded; nothing applied") }
+      else {
+        let result = fold(iam_bootstrap_stages, init: IamBootstrapProgress { completed: [], refusal: "" }, f: (prior, stage) =>
+          if prior.refusal != "" { prior }
+          else if !iam_bootstrap_stage_admitted(stage: stage, completed: prior.completed) {
+            IamBootstrapProgress { completed: prior.completed, refusal: "bootstrap stage prerequisites are not established; no further effects" }
+          } else {
+            let outcome = iam_bootstrap_execute_stage(stage: stage, token: token)
+            let saved = Filesystem.WriteCreateNew(path: concat("target/gcp-iam-bootstrap-", receipt, "-", iam_bootstrap_stage_wire(stage: stage), ".txt"),
+              content: if outcome == "" { "stage checks completed; see the stage authority for configuration/probe scope\n" } else { concat("refused: ", outcome) })
+            if !saved.success { IamBootstrapProgress { completed: prior.completed, refusal: "stage receipt failed; inspect cloud state before another attempt" } }
+            else if outcome != "" { IamBootstrapProgress { completed: prior.completed, refusal: outcome } }
+            else { IamBootstrapProgress { completed: prior.completed + [stage], refusal: "" } }
+          })
+        let probe_cleanup = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
+        let deny_cleanup = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+        let cleanup = concat(probe_cleanup, if probe_cleanup != "" && deny_cleanup != "" { "; " } else { "" }, deny_cleanup)
+        if result.refusal == "" && cleanup == "" { ExitSuccess }
+        else { exit_failure(reason: concat(result.refusal, if cleanup == "" { "" } else { concat("; authority cleanup outstanding: ", cleanup) })) }
+      }
+    }
+  } }
+}
+
+// Permission-test answers are diagnostic, not an authorization oracle. Missing permissions do
+// not prove absence. These probes run only after the named resources and policies read back;
+// both positive and negative expectations must match, and real authenticated reads follow.
+type IamBootstrapProbe = IamBootstrapProbeRead { permissions: List<String> } | IamBootstrapProbeUnreadable { reason: String }
+
+fn iam_bootstrap_probe_result(outcome: RestOutcome, permissions: List<String>?) -> IamBootstrapProbe {
+  if rest_ok(o: outcome) { IamBootstrapProbeRead { permissions: match permissions { Present { value } => value Absent => [] } } }
+  else { IamBootstrapProbeUnreadable { reason: rest_refusal_text(o: outcome) } }
+}
+
+fn iam_bootstrap_probe(resource: IamBootstrapResource, permissions: List<String>, token: Secret) -> IamBootstrapProbe {
+  match resource {
+    BootstrapProject => {
+      let r = gcp.ResourceManager.TestIamPermissions(access_token: token, project_id: fleet_secrets_project_id, permissions: permissions)
+      iam_bootstrap_probe_result(outcome: r.outcome, permissions: r.permissions)
+    }
+    BootstrapPool { pool } => {
+      let r = gcp.IamAdmin.TestWorkloadIdentityPoolIamPermissions(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool, permissions: permissions)
+      iam_bootstrap_probe_result(outcome: r.outcome, permissions: r.permissions)
+    }
+    BootstrapAccount { account } => {
+      let r = gcp.IamAdmin.TestServiceAccountIamPermissions(access_token: token, project_id: fleet_secrets_project_id, service_account: account, permissions: permissions)
+      iam_bootstrap_probe_result(outcome: r.outcome, permissions: r.permissions)
+    }
+    BootstrapSecret { secret } => {
+      let r = gcp.SecretManager.TestSecretIamPermissions(access_token: token, project_id: fleet_secrets_project_id, secret: secret, permissions: permissions)
+      iam_bootstrap_probe_result(outcome: r.outcome, permissions: r.permissions)
+    }
+  }
+}
+
+fn iam_bootstrap_check_probe(resource: IamBootstrapResource, requested: List<String>, expected: List<String>, token: Secret) -> String {
+  match iam_bootstrap_probe(resource: resource, permissions: requested, token: token) {
+    IamBootstrapProbeUnreadable { reason } => reason
+    IamBootstrapProbeRead { permissions } => if same_key_set(a: permissions, b: expected) { "" }
+      else { concat(iam_bootstrap_resource_key(resource: resource), ": permission probe differs from the declared expectation") }
+  }
+}
+
+fn iam_bootstrap_positive_probes(token: Secret) -> String {
+  fold(filter(iam_bootstrap_capability_bindings(), b => b.cell.member == concat("serviceAccount:", iam_converge_service_account as String)), init: "", f: (prior, binding) => {
+    if prior != "" { prior } else { match filter(iam_bootstrap_roles, role => (iam_bootstrap_role_name(role: role) as String) == binding.cell.role).first() {
+      Absent => "apply binding has no declared custom role"
+      Present { value: role } => iam_bootstrap_check_probe(resource: binding.resource, requested: iam_bootstrap_role_permissions(role: role), expected: iam_bootstrap_role_permissions(role: role), token: token)
+    } }
+  })
+}
+
+fn iam_bootstrap_negative_probes(token: Secret) -> String {
+  let accounts = fold([iam_observe_service_account, iam_converge_service_account], init: "", f: (prior, account) =>
+    if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapAccount { account: account }, requested: ["iam.serviceAccounts.setIamPolicy"], expected: [], token: token) })
+  let pool = if accounts != "" { accounts } else {
+    iam_bootstrap_check_probe(resource: BootstrapPool { pool: gcp_iam_observe_dedicated_federation().pool_id }, requested: ["iam.workloadIdentityPoolProviders.create"], expected: [], token: token)
+  }
+  if pool != "" { pool } else { fold(gcp_iam_converge_grant_set_secrets(), init: "", f: (prior, secret) =>
+    if prior != "" { prior } else { iam_bootstrap_check_probe(resource: BootstrapSecret { secret: secret }, requested: grant_set_payload_permissions, expected: [], token: token) }) }
+}
+
+fn iam_bootstrap_is_forbidden(outcome: RestOutcome) -> Bool {
+  match outcome { RestStatusRefused { status, body: _ } => (status as Int) == 403  RestOk => false  RestTransportRefused { cause: _ } => false  RestBodyUndecodable { status: _, cause: _ } => false }
+}
+
+// Readback uses a temporary, exact-account token permission for the verified operator.
+// Its grant is retired before workflow trust; no signing permission or account key is added.
+fn iam_bootstrap_privilege_readback(token: Secret) -> String {
+  match iam_bootstrap_probe_token(token: token, account: iam_converge_service_account, remaining: 85) {
+    BootstrapProbeTokenRefused { reason } => concat("apply-account readback credential unavailable; workflow trust withheld: ", reason)
+    BootstrapProbeTokenReady { access_token: apply_token } => {
+      let positive = iam_bootstrap_positive_probes(token: apply_token)
+      if positive != "" { positive } else {
+        let negative = iam_bootstrap_negative_probes(token: apply_token)
+        if negative != "" { negative } else {
+          match iam_bootstrap_probe_token(token: token, account: iam_observe_service_account, remaining: 85) {
+            BootstrapProbeTokenRefused { reason } => concat("observer readback credential unavailable; workflow trust withheld: ", reason)
+            BootstrapProbeTokenReady { access_token: observer_token } => match observe_and_plan_estate(token: observer_token) {
+              GcpIamEstateRefused { reasons } => concat("observer cannot establish the declared estate: ", join(reasons, "; "))
+              GcpIamEstateNoop => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+              GcpIamEstateApply { diff: _ } => iam_bootstrap_observer_secret_readback(observer_token: observer_token, apply_token: apply_token)
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The observer reads its pinned approval-submission credential and the apply account is refused it.
+fn iam_bootstrap_observer_secret_readback(observer_token: Secret, apply_token: Secret) -> String {
+  fold(gcp_iam_observe_dedicated_federation().secret_grants, init: "", f: (prior, grant) => if prior != "" { prior } else {
+    let permitted = gcp.SecretManager.AccessVersion(access_token: observer_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
+    if !rest_ok(o: permitted.outcome) { "observer cannot read its pinned approval-submission credential" }
+    else {
+      let denied = gcp.SecretManager.AccessVersion(access_token: apply_token, project_id: grant.target.project, secret: grant.target.secret, version: grant.target.version)
+      if iam_bootstrap_is_forbidden(outcome: denied.outcome) { "" } else { "apply account did not receive exact HTTP 403 for the known readable approval credential; workflow trust withheld" }
+    }
+  })
+}
+
+type IamBootstrapProbeToken = BootstrapProbeTokenReady { access_token: Secret } | BootstrapProbeTokenRefused { reason: String }
+
+// Permission propagation may lag readback. Retry only explicit permission refusals,
+// within both a bounded count and the original absolute authority deadline.
+fn iam_bootstrap_probe_token(token: Secret, account: ServiceAccountEmail, remaining: Int) -> IamBootstrapProbeToken {
+  let generated = gcp.IAM.GenerateAccessToken(access_token: token, target_sa: account, lifetime: "600s")
+  if rest_ok(o: generated.outcome) { BootstrapProbeTokenReady { access_token: generated.access_token } }
+  else {
+    let intent = BootstrapAuthorityIntent { operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
+      expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp }
+    let live = match approval_instant_now() { Absent => false Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) }
+    if bootstrap_deny_retry_admitted(outcome: generated.outcome, remaining: remaining, live: live) {
+      if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
+        iam_bootstrap_probe_token(token: token, account: account, remaining: remaining - 1)
+      } else { BootstrapProbeTokenRefused { reason: "probe permission propagation wait failed" } }
+    } else { BootstrapProbeTokenRefused { reason: rest_refusal_text(o: generated.outcome) } }
+  }
+}
+
+// These local bootstrap records are durable before effects and stay outside the cloud authority
+// they establish. They must travel with recovery. Read failure is never treated as absence.
+type IamAuthorityRecord = AuthorityRecordAbsent | AuthorityRecordPresent { bytes: String } | AuthorityRecordRefused
+
+fn iam_authority_record(name: String) -> IamAuthorityRecord {
+  let listed = Filesystem.List(path: "target")
+  if !listed.success { AuthorityRecordRefused } else {
+    let read = Filesystem.Read(path: concat("target/", name))
+    let present = filesystem_listing_names_entry(listing: listed.entries, name: name)
+    if present && read.success { AuthorityRecordPresent { bytes: read.content } }
+    else if !present && !read.success { AuthorityRecordAbsent }
+    else { AuthorityRecordRefused }
+  }
+}
+
+fn iam_authority_record_matches(record: IamAuthorityRecord, wire: String) -> Bool {
+  match record { AuthorityRecordAbsent => true AuthorityRecordPresent { bytes } => bytes == wire AuthorityRecordRefused => false }
+}
+
+// A reading that is not an observed policy carries no revision; absent and unreadable are one case here.
+fn iam_bootstrap_observed_policy(reading: PolicyReading) -> GcpPolicy? {
+  match reading { PolicyObserved { policy } => Present { value: policy }  PolicyResourceAbsent => none  PolicyUnreadable { cause: _ } => none }
+}
+
+fn iam_authority_record_present(record: IamAuthorityRecord) -> Bool {
+  match record { AuthorityRecordPresent { bytes: _ } => true  AuthorityRecordAbsent => false  AuthorityRecordRefused => false }
+}
+
+fn iam_authority_pin(name: String, wire: String) -> Bool {
+  let saved = Filesystem.WriteCreateNew(path: concat("target/", name), content: wire)
+  if saved.success { true } else { match iam_authority_record(name: name) {
+    AuthorityRecordPresent { bytes } => bytes == wire
+    AuthorityRecordAbsent => false
+    AuthorityRecordRefused => false
+  } }
+}
+
+// The fixed subject comes from the operator's explicit authorization; only operation identity
+// and absolute deadline are inputs. They are pinned before publication and cannot drift on retry.
+fn iam_bootstrap_authority_converge(token: Secret, withdrawing: Bool) -> String {
+  let operation = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID")
+  let expiry = actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT")
+  if operation == "" && expiry == "" {
+    if withdrawing { "" } else { "dependency unsatisfied: temporary deny administration needs an authority operation ID and absolute expiry; verified organization IAM write authority is its prerequisite" }
+  } else {
+    let intent = BootstrapAuthorityIntent { operation: operation, expires_at: expiry as Timestamp }
+    if !bootstrap_authority_intent_valid(intent: intent) { "authority intent has an invalid operation identity or UTC deadline" }
+    else {
+      let actor = if withdrawing { "" } else { iam_bootstrap_operator_readback(token: token) }
+      if actor != "" { actor } else {
+        let ancestry = if withdrawing { "" } else { iam_bootstrap_authority_ancestry(token: token) }
+        if ancestry != "" { ancestry } else { iam_bootstrap_authority_reconcile(intent: intent, token: token, withdrawing: withdrawing) }
+      }
+    }
+  }
+}
+
+fn iam_bootstrap_authority_reconcile(intent: BootstrapAuthorityIntent, token: Secret, withdrawing: Bool) -> String {
+  iam_bootstrap_cell_authority_reconcile(intent: intent, stem: concat("gcp-iam-authority-", intent.operation),
+    wire: bootstrap_authority_intent_wire(intent: intent), cell: bootstrap_authority_cell(intent: intent),
+    resource: BootstrapOrganizationAuthority, token: token, withdrawing: withdrawing)
+}
+
+type IamBootstrapAuthorityResource = BootstrapOrganizationAuthority | BootstrapAccountAuthority { resource: IamBootstrapResource }
+
+fn iam_bootstrap_authority_resource_read(resource: IamBootstrapAuthorityResource, token: Secret) -> PolicyReading {
+  match resource {
+    BootstrapOrganizationAuthority => iam_bootstrap_organization_policy_read(token: token)
+    BootstrapAccountAuthority { resource: account } => iam_bootstrap_read_policy(resource: account, token: token)
+  }
+}
+
+fn iam_bootstrap_authority_resource_write(resource: IamBootstrapAuthorityResource, policy: GcpPolicy, token: Secret) -> RestOutcome {
+  match resource {
+    BootstrapOrganizationAuthority => gcp.ResourceManager.SetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization, policy: policy).outcome
+    BootstrapAccountAuthority { resource: account } => iam_bootstrap_write_policy(resource: account, policy: policy, token: token)
+  }
+}
+
+// Deny administration and probe access share one election, deadline, CAS and cleanup protocol.
+fn iam_bootstrap_cell_authority_reconcile(intent: BootstrapAuthorityIntent, stem: String, wire: String,
+  cell: GcpIamBindingCell, resource: IamBootstrapAuthorityResource, token: Secret, withdrawing: Bool) -> String {
+  let intent_name = concat(stem, "-intent.txt")
+  let elected_name = concat(stem, "-publication-elected.txt")
+  let closed_name = concat(stem, "-publication-closed.txt")
+  let retired_name = concat(stem, "-retired.txt")
+  let intent_record = iam_authority_record(name: intent_name)
+  let elected_record = iam_authority_record(name: elected_name)
+  let closed_record = iam_authority_record(name: closed_name)
+  let retired_record = iam_authority_record(name: retired_name)
+  if !all([intent_record, elected_record, closed_record, retired_record], r => iam_authority_record_matches(record: r, wire: wire)) {
+    "authority journal unreadable or intent changed; no authority effects"
+  } else {
+    let owned = iam_authority_record_present(record: intent_record)
+    let elected = iam_authority_record_present(record: elected_record)
+    let closed = iam_authority_record_present(record: closed_record)
+    let retired = iam_authority_record_present(record: retired_record)
+    if !owned && (elected || closed || retired) { "authority intent missing beside publication history; recovery evidence unavailable" }
+    else { match iam_bootstrap_authority_resource_read(resource: resource, token: token) {
+      PolicyObserved { policy } => {
+        let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy))
+        if !owned && present { "existing authority cell has no ownership journal; refusing adoption or removal" }
+        else if !owned && withdrawing { "" }
+        else if !owned && !iam_authority_pin(name: intent_name, wire: wire) { "authority intent could not be durably pinned" }
+        else {
+          let live = match approval_instant_now() { Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) Absent => false }
+          let action = bootstrap_authority_action(observed: if present { AuthorityPresent } else { AuthorityAbsent },
+            publication_elected: elected, publication_closed: closed, retired: retired, withdrawing: withdrawing, live: live)
+          match action {
+            AuthorityRefused => "authority dependency unresolved: expired, unowned, or publication may still commit; no grant retry or renewal"
+            AuthoritySettled => if withdrawing && iam_authority_pin(name: retired_name, wire: wire) { "" }
+              else { "authority operation is retired; a new authorized intent is required to grant again" }
+            UseAuthority => if iam_authority_pin(name: closed_name, wire: wire) { "" } else { "authority publication readback could not be recorded" }
+            PublishAuthority => iam_bootstrap_authority_policy_change(cell: cell, wire: wire, resource: resource, before: policy, removing: false, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+            RemoveAuthority => if !iam_authority_pin(name: closed_name, wire: wire) { "authority readback could not be recorded before cleanup" }
+              else {
+                let removed = iam_bootstrap_authority_policy_change(cell: cell, wire: wire, resource: resource, before: policy, removing: true, token: token, elected_name: elected_name, closed_name: closed_name, retired_name: retired_name)
+                if removed != "" || withdrawing { removed } else { "expired or retired authority cleaned up; no use admitted" }
+              }
+          }
+        }
+      }
+      PolicyUnreadable { cause } => concat("authority IAM read dependency unresolved: ", cause)
+      PolicyResourceAbsent => "authority policy resource absent; no authority change attempted"
+    } }
+  }
+}
+
+// Both publication and retirement use the existing cell reconciler and its etag. The owned
+// universe is exactly this conditioned cell; pre-existing unconditional or unrelated grants survive.
+fn iam_bootstrap_authority_policy_change(cell: GcpIamBindingCell, wire: String, resource: IamBootstrapAuthorityResource, before: GcpPolicy, removing: Bool, token: Secret, elected_name: String, closed_name: String, retired_name: String) -> String {
+  match reconcile_gcp_policy(observed: before, desired_owned: if removing { [] } else { [cell] }, owned_universe: GcpIamOwnedCellUniverse { cells: [cell] }) {
+    GcpPolicyRepresentationLossy { conditional_roles: _ } => "authority policy loses conditions; authority change refused"
+    GcpPolicyAlreadyConverged { policy: _ } => "authority policy moved before the intended change; reconverge"
+    GcpPolicyDeltaRequired { policy: after, added: _, removed: _, preserved: _ } => if before.etag == "" { "authority mutation requires an etag" }
+    else {
+      let elected = if removing { true } else { Filesystem.WriteCreateNew(path: concat("target/", elected_name), content: wire).success }
+      if !elected { "authority publication already elected or election unreadable; reread, never issue a second grant" }
+      else {
+      let changed = iam_bootstrap_authority_resource_write(resource: resource, policy: after, token: token)
+      if !rest_ok(o: changed) {
+        let terminal_refusal = if !removing && bootstrap_authority_publication_refused(outcome: changed) { iam_authority_pin(name: closed_name, wire: wire) } else { false }
+        concat(if terminal_refusal { "authority IAM writer dependency refused without publication: " } else { "authority mutation not established; recovery remains owed: " }, rest_refusal_text(o: changed))
+      } else if !removing && !iam_authority_pin(name: closed_name, wire: wire) { "acknowledged authority publication could not be recorded; recovery remains owed" }
+      else { match iam_bootstrap_authority_resource_read(resource: resource, token: token) {
+        PolicyObserved { policy: checked } => {
+          let present = gcp_cell_in(c: cell, xs: gcp_policy_cells(p: checked))
+          if present == removing { "authority mutation lacks the required independent readback" }
+          else if !iam_authority_pin(name: if removing { retired_name } else { closed_name }, wire: wire) { "authority readback receipt failed; reconverge from journal" }
+          else { "" }
+        }
+        PolicyResourceAbsent => "authority mutation answered but policy readback is unavailable; recovery remains owed"
+        PolicyUnreadable { cause: _ } => "authority mutation answered but policy readback is unavailable; recovery remains owed"
+      } }
+      }
+    }
+  }
+}
+
+// Recovery can withdraw the exact owned grant without rerunning identities, deny installation,
+// or workload provisioning. Expired grants still require this physical policy cleanup.
+fn iam_bootstrap_authority_cleanup() -> ProcessExit {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
+    SuppliedTokenReady { token } => {
+      let result = iam_bootstrap_authority_converge(token: token, withdrawing: true)
+      if result == "" { ExitSuccess } else { exit_failure(reason: result) }
+    }
+  }
+}
+
+
+fn iam_bootstrap_organization_policy_read(token: Secret) -> PolicyReading {
+  let r = gcp.ResourceManager.GetOrganizationIamPolicy(access_token: token, organization: iam_bootstrap_authority_organization)
+  iam_bootstrap_policy_reading(outcome: r.outcome, bindings: r.bindings, etag: r.etag, version: r.version)
+}
+
+fn iam_bootstrap_authority_ancestry(token: Secret) -> String {
+  let p = gcp.ResourceManager.GetProject(access_token: token, project_id: fleet_secrets_project_id)
+  if !rest_ok(o: p.outcome) { concat("project ancestry unreadable: ", rest_refusal_text(o: p.outcome)) }
+  else if p.project_id != fleet_secrets_project_id || p.resource_name != concat("projects/", fleet_secrets_project_number) || p.state != "ACTIVE" {
+    "project ancestry subject or active state differs; no authority grant"
+  } else { match p.parent {
+    Absent => "project has no organization ancestor; organization attachment is an unresolved dependency, not an instruction to move it"
+    Present { value: parent } => iam_bootstrap_follow_parent(parent: parent, visited: [], remaining: 12, token: token)
+  } }
+}
+
+fn iam_bootstrap_follow_parent(parent: String, visited: List<String>, remaining: Int, token: Secret) -> String {
+  if remaining <= 0 || any(visited, p => p == parent) { "ancestry traversal incomplete or cyclic; no authority grant" }
+  else if bootstrap_parent_name_valid(name: parent, kind: "organizations") {
+    if parent == (iam_bootstrap_authority_organization as String) { "" } else { "project organization differs from the pinned authority subject" }
+  } else if bootstrap_parent_name_valid(name: parent, kind: "folders") {
+    let f = gcp.ResourceManager.GetFolder(access_token: token, folder: parent as NonEmptyStr)
+    if !rest_ok(o: f.outcome) { concat("folder ancestry unreadable: ", rest_refusal_text(o: f.outcome)) }
+    else if f.name != parent || f.state != "ACTIVE" { "folder ancestry subject or active state differs" }
+    else { iam_bootstrap_follow_parent(parent: f.parent, visited: visited + [parent], remaining: remaining - 1, token: token) }
+  } else { "invalid ancestry resource name; no authority grant" }
+}
+
+
+fn iam_bootstrap_current_authority_live() -> Bool {
+  let intent = BootstrapAuthorityIntent {
+    operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID"),
+    expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT") as Timestamp,
+  }
+  match approval_instant_now() { Present { value: now } => bootstrap_authority_may_grant(intent: intent, now: now) Absent => false }
+}
+
+// An accepted asynchronous create is followed only by bounded reads, never another create.
+fn iam_bootstrap_deny_creation_readback(token: Secret, remaining: Int) -> String {
+  let check = gcp.IamDeny.GetPolicy(access_token: token, attachment_point: iam_bootstrap_attachment_point(), policy_id: iam_bootstrap_deny_policy_id)
+  if rest_ok(o: check.outcome) {
+    if iam_bootstrap_deny_matches(rules: check.rules) { "" } else { "created deny policy differs; no capabilities granted" }
+  } else if outcome_is_not_found(o: check.outcome) && remaining > 0 {
+    if sleep_delay_seconds_second_carrier_projection(duration: second(count: 10)) {
+      iam_bootstrap_deny_creation_readback(token: token, remaining: remaining - 1)
+    } else { "deny creation readback wait failed" }
+  } else { concat("deny creation accepted but exact readback is not established: ", rest_refusal_text(o: check.outcome)) }
+}
+
+
+fn iam_bootstrap_operator_readback(token: Secret) -> String {
+  let actor = google.OidcUserInfo.Get(access_token: token)
+  if !rest_ok(o: actor.outcome) { concat("bootstrap operator identity unreadable: ", rest_refusal_text(o: actor.outcome)) }
+  else if bootstrap_operator_matches(subject: actor.subject, claims: OidcStandardClaims { email: actor.email, email_verified: actor.email_verified, name: none }) { "" }
+  else { "bootstrap credential is not the admitted Google subject with its pinned verified IAM email; no grant" }
+}
+
+
+// The operator confirmed exclusive pool-policy writers on 2026-09-29. This one-off
+// initialization is not CAS. Its journal must stay in this same recovery workspace;
+// ambiguous outcomes never authorize another unconditional request.
+data iam_bootstrap_pool_window: String = "exclusive-pool-policy-initialization-20260929"
+
+fn iam_bootstrap_pool_initial_cells(pool: NonEmptyStr) -> List<GcpIamBindingCell> {
+  map(filter(iam_bootstrap_capability_bindings(), binding => binding.resource == BootstrapPool { pool: pool }), binding => binding.cell)
+}
+
+fn iam_bootstrap_pool_seedable(audit_configured: Bool, bindings: List<GcpBinding>?, etag: String?, version: Int?) -> Bool {
+  !audit_configured && (match bindings { Absent => true Present { value: rows } => count(rows) == 0 })
+    && (match etag { Absent => true Present { value: revision } => revision == "" })
+    && (match version { Absent => true Present { value: number } => number == 0 || number == 1 || number == 3 })
+}
+
+fn iam_bootstrap_pool_initialized(policy: GcpPolicy, cells: List<GcpIamBindingCell>) -> Bool {
+  policy.etag != "" && count(cells) > 0
+    && count(gcp_policy_cells(p: policy)) == count(cells)
+    && all(cells, cell => gcp_cell_in(c: cell, xs: gcp_policy_cells(p: policy)))
+}
+
+fn iam_bootstrap_initialize_pool_policy(pool: NonEmptyStr, token: Secret) -> String {
+  let cells = iam_bootstrap_pool_initial_cells(pool: pool)
+  let name = concat("gcp-iam-pool-initialization-", pool as String)
+  let wire = concat(iam_bootstrap_pool_window, "\n", iam_bootstrap_resource_key(resource: BootstrapPool { pool: pool }), "\n", join(map(cells, cell => cell_preimage(c: cell)), "\n"))
+  let elected = iam_authority_record(name: concat(name, "-elected.txt"))
+  let closed = iam_authority_record(name: concat(name, "-closed.txt"))
+  if !path_segment_is_safe(raw: pool as String) || count(cells) == 0 { "pool is outside the declared bootstrap capability roster" }
+  else if !iam_authority_record_matches(record: elected, wire: wire) || !iam_authority_record_matches(record: closed, wire: wire) {
+    "pool initialization journal is unreadable or differs; retain the recovery obligation"
+  } else {
+    let read = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
+    if !rest_ok(o: read.outcome) { rest_refusal_text(o: read.outcome) }
+    else if (match read.audit_configs { Absent => false Present { value: rows } => count(rows) != 0 }) {
+      "pool policy audit configuration is outside bootstrap representation; no replacement"
+    } else { match iam_bootstrap_observed_policy(reading: iam_bootstrap_pool_policy_reading(outcome: read.outcome, bindings: read.bindings, etag: read.etag, version: read.version)) {
+      Present { value: policy } => if !iam_authority_record_present(record: elected) || iam_authority_record_present(record: closed) { "" }
+        else if iam_bootstrap_pool_initialized(policy: policy, cells: cells) {
+          if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed; recover before continuing" }
+        } else { "unresolved initial pool write differs from readback; do not apply later policy changes" }
+      Absent => if iam_authority_record_present(record: elected) || iam_authority_record_present(record: closed) {
+        "initial pool publication is unresolved or its revision disappeared; no unconditional retry"
+      } else if !iam_bootstrap_pool_seedable(audit_configured: false, bindings: read.bindings, etag: read.etag, version: read.version) {
+        "unfenced pool policy is not empty; no initialization admitted"
+      } else if actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_POOL_WINDOW") != iam_bootstrap_pool_window {
+        "empty pool initialization requires the operator-confirmed exclusive maintenance window"
+      } else {
+        let actor = iam_bootstrap_operator_readback(token: token)
+        if actor != "" { actor } else {
+          let election = Filesystem.WriteCreateNew(path: concat("target/", name, "-elected.txt"), content: wire)
+          if !election.success { "pool initialization election lost or unreadable; recover without another write" }
+          else {
+            let changed = gcp.IamAdmin.SetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool,
+              policy: GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "", version: 3 })
+            if !rest_ok(o: changed.outcome) { concat("initial pool publication requires readback recovery; no unconditional retry: ", rest_refusal_text(o: changed.outcome)) }
+            else {
+              let checked = gcp.IamAdmin.GetWorkloadIdentityPoolIamPolicy(access_token: token, project_id: fleet_secrets_project_id, pool_id: pool)
+              match iam_bootstrap_pool_policy_reading(outcome: checked.outcome, bindings: checked.bindings, etag: checked.etag, version: checked.version) {
+                PolicyObserved { policy } => if iam_bootstrap_pool_initialized(policy: policy, cells: cells) {
+                  if iam_authority_pin(name: concat(name, "-closed.txt"), wire: wire) { "" } else { "pool initialized but completion journal failed" }
+                } else { "pool initialization readback differs; workflow trust withheld" }
+                PolicyResourceAbsent => "pool initialization readback lacks its policy revision; workflow trust withheld"
+                PolicyUnreadable { cause: _ } => "pool initialization readback lacks its policy revision; workflow trust withheld"
+              }
+            }
+          }
+        }
+      }
+    } }
+  }
+}
+
+
+fn iam_bootstrap_probe_cell(intent: BootstrapAuthorityIntent) -> GcpIamBindingCell {
+  GcpIamBindingCell { role: iam_bootstrap_role_name(role: BootstrapProbeToken) as String,
+    member: iam_bootstrap_operator_member, condition: Present { value: IamCondition {
+      title: concat("gunbc-bootstrap-probe-", intent.operation),
+      description: Present { value: "Temporary exact-account bootstrap readback; physical cleanup required after expiry." },
+      expression: concat("request.time < timestamp('", intent.expires_at as String, "')"),
+    } } }
+}
+
+fn iam_bootstrap_probe_authority_converge(token: Secret, withdrawing: Bool) -> String {
+  let intent = BootstrapAuthorityIntent {
+    operation: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_ID"),
+    expires_at: actions_variable_trimmed(name: "GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT") as Timestamp,
+  }
+  if intent.operation == "" && intent.expires_at == "" {
+    if withdrawing { "" } else { "probe token authority requires a pinned operation identity and absolute expiry" }
+  } else if !bootstrap_authority_intent_valid(intent: intent) { "probe authority intent is invalid" }
+  else {
+    let actor = if withdrawing { "" } else { iam_bootstrap_operator_readback(token: token) }
+    if actor != "" { actor } else {
+      fold([iam_converge_service_account, iam_observe_service_account], init: "", f: (prior, account) => {
+        let cell = iam_bootstrap_probe_cell(intent: intent)
+        let subject = BootstrapAccount { account: account }
+        let result = if prior != "" && !withdrawing { prior } else {
+          iam_bootstrap_cell_authority_reconcile(intent: intent,
+            stem: concat("gcp-iam-probe-", intent.operation, "-", account as String),
+            wire: concat(iam_bootstrap_resource_key(resource: subject), ";", cell_preimage(c: cell)),
+            cell: cell, resource: BootstrapAccountAuthority { resource: subject }, token: token, withdrawing: withdrawing)
+        }
+        if prior == "" { result } else if result == "" || result == prior { prior } else { concat(prior, "; ", result) }
+      })
+    }
+  }
+}
+
+fn iam_bootstrap_probe_cleanup() -> ProcessExit {
+  match read_supplied_access_token() {
+    SuppliedTokenUnavailable { cause } => exit_failure(reason: cause as String)
+    SuppliedTokenReady { token } => {
+      let result = iam_bootstrap_probe_authority_converge(token: token, withdrawing: true)
+      if result == "" { ExitSuccess } else { exit_failure(reason: result) }
+    }
+  }
+}
+
+
+// These API consumers are the existing bootstrap/approval operations, not every GCP API.
+data iam_bootstrap_required_services: List<String> = [
+  "iam.googleapis.com", "iamcredentials.googleapis.com", "cloudresourcemanager.googleapis.com",
+  "secretmanager.googleapis.com", "sts.googleapis.com",
+]
+
+fn iam_bootstrap_service_enabled(name: String, state: String, service: String) -> Bool {
+  name == concat("projects/", fleet_secrets_project_number, "/services/", service)
+    && (match gcp_service_usage_state_from_wire(raw: state) { Present { value: st } => match st { ServiceUsageStateEnabled => true  ServiceUsageStateDisabled => false  ServiceUsageStateUnspecified => false }  Absent => false })
+}
+
+fn iam_bootstrap_ensure_service(service: String, token: Secret) -> String {
+  if !any(iam_bootstrap_required_services, declared => declared == service) { "service is outside bootstrap dependencies" }
+  else {
+    let seen = gcp.ServiceUsage.GetService(access_token: token, project_id: fleet_secrets_project_id, service_id: service)
+    if !rest_ok(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+    else if iam_bootstrap_service_enabled(name: seen.name, state: seen.state, service: service) { "" }
+    else if seen.name != concat("projects/", fleet_secrets_project_number, "/services/", service) { "service observation belongs to another project or API" }
+    else {
+      let unknown = "API enablement observation is unknown; no mutation admitted"
+      match gcp_service_usage_state_from_wire(raw: seen.state) {
+        Present { value: st } => match st {
+          ServiceUsageStateDisabled => {
+            let accepted = gcp.ServiceUsage.BatchEnableServices(access_token: token, project_id: fleet_secrets_project_id, service_ids: [service])
+            if !rest_ok(o: accepted.outcome) { rest_refusal_text(o: accepted.outcome) }
+            else { iam_bootstrap_service_readback(service: service, token: token, remaining: 25) }
+          }
+          ServiceUsageStateEnabled => unknown
+          ServiceUsageStateUnspecified => unknown
+        }
+        Absent => unknown
+      }
+    }
+  }
+}
+
+// An accepted long-running operation is not readiness. Poll only GetService.
+fn iam_bootstrap_service_readback(service: String, token: Secret, remaining: Int) -> String {
+  let seen = gcp.ServiceUsage.GetService(access_token: token, project_id: fleet_secrets_project_id, service_id: service)
+  if !rest_ok(o: seen.outcome) { rest_refusal_text(o: seen.outcome) }
+  else if iam_bootstrap_service_enabled(name: seen.name, state: seen.state, service: service) { "" }
+  else if remaining <= 1 { concat("API enablement accepted but readiness remains unestablished: ", service) }
+  else if sleep_delay_seconds_second_carrier_projection(duration: second(count: 5)) {
+    iam_bootstrap_service_readback(service: service, token: token, remaining: remaining - 1)
+  } else { "API enablement readback wait failed" }
+}

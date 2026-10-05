@@ -341,11 +341,11 @@ test fn w_a_phantom_type_argument_with_identical_representation_is_still_separat
 // with no exception for the ones whose number is small. Review 62112, claude/opus.
 data refinement_baseline_source: String = "module probe_refinement_baseline\nimport std.types { NonEmptyStr, Int }\nfn takes_non_empty(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { 0 }\n"
 
-data probe_exact_refinement_source: String = "module probe_exact_refinement\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_x: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host(s: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host(s: probe_host_x) }\n"
+data probe_exact_refinement_source: String = "module probe_exact_refinement\nimport std.types { NonEmptyStr, Int }\nimport product.host_identity { HostIdentity }\ndata probe_host_x: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host(s: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host(s: probe_host_x) }\n"
 
-data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.types { Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host_y: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host2(x: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host2(x: probe_host_y) }\n"
+data probe_exact_brand_source: String = "module probe_exact_brand\nimport std.types { Int }\nimport product.host_identity { HostIdentity }\ndata probe_host_y: HostIdentity = \"srv1\" as HostIdentity\nfn takes_host2(x: HostIdentity) -> Int { 1 }\nfn probe() -> Int { takes_host2(x: probe_host_y) }\n"
 
-data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.placement_supply { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
+data refinement_widening_source: String = "module probe_refinement_widening\nimport std.types { NonEmptyStr, Int }\nimport product.host_identity { HostIdentity }\ndata probe_host: HostIdentity = \"srv1\" as HostIdentity\nfn takes_base(s: NonEmptyStr) -> Int { 1 }\nfn probe() -> Int { takes_base(s: probe_host) }\n"
 
 test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
   violation_count(source: refinement_widening_source, wanted: "DeclaredTypeNotInhabited")
@@ -377,7 +377,7 @@ test fn w_a_branded_refinement_at_its_own_declared_base_inhabits() -> Bool {
 // would not establish refused at a formal parameter. This fixture puts it at the DIRECT CALL
 // ARGUMENT seam and it refuses there -- `type mismatch: expected 'Product(PhysicalAssetIdentity)',
 // got 'Product(HostIdentity)'`. So this relation's abstention is a delegation and not a hole.
-data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { HostIdentity, PhysicalAssetIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
+data brand_horizontal_at_argument_source: String = "module probe_brand_horizontal_at_argument\nimport std.types { Int }\nimport product.placement_supply { PhysicalAssetIdentity }\nimport product.host_identity { HostIdentity }\ndata probe_host2: HostIdentity = \"srv1\" as HostIdentity\nfn takes_asset(x: PhysicalAssetIdentity) -> Int { 1 }\nfn probe() -> Int { takes_asset(x: probe_host2) }\n"
 
 test fn w_two_distinct_brands_over_one_base_are_not_refused_twice() -> Bool {
   violation_count(source: brand_horizontal_at_argument_source, wanted: "DeclaredTypeNotInhabited")
@@ -471,9 +471,9 @@ test fn w_a_bare_literal_at_a_refinement_formal_declines_and_a_cast_one_does_not
 // formal reaches no refusal at this seam. Class, mechanism, the both-sides attribution
 // measurement and the capability-grain trigger are the row's, not this file's:
 // gunbc.recurring_failure_mode.absence_classifier_default_bucket. Enrolled ExpectAssertionFalse.
-data disjoint_refinement_at_product_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_host_d) }\n"
+data disjoint_refinement_at_product_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.host_identity { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_host_d) }\n"
 
-data disjoint_partner_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.placement_supply { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
+data disjoint_partner_source: String = "module probe_disjoint_refinement_at_product\nimport std.types { Int, String }\nimport product.host_identity { HostIdentity }\ntype Box { v: String }\ndata probe_host_d: HostIdentity = \"srv1\" as HostIdentity\ndata probe_box_d: Box = Box { v: \"x\" }\nfn takes_box(b: Box) -> Int { 1 }\nfn probe() -> Int { takes_box(b: probe_box_d) }\n"
 
 test fn w_a_branded_refinement_at_an_unrelated_product_formal_still_refuses() -> Bool {
   violation_count(source: disjoint_refinement_at_product_source, wanted: "DeclaredTypeNotInhabited")

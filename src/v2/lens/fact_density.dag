@@ -6,6 +6,8 @@ import v2.lens.common.construction_justification { ConstructionJustification }
 
 import v2.std.witness { Holds }
 import v2.std.diagnostic { outcome_accepted, outcome_rejected, node_locus }
+import std.constructors { Cardinality }
+import v2.lens.common.construction_justification { ConstructionJustification }
 
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
@@ -42,7 +44,11 @@ fn density_fact(named_facts: Nat) -> SourceSpecReadFact {
 fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   match c {
     Atom { identity: id } => symbol_is_kernel_ambient(s: id)
-    _ => false
+    Conj => false
+    Disj => false
+    Arrow => false
+    Cardinality => false
+    Instantiation => false
   }
 }
 

@@ -96,6 +96,7 @@ fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
     KeywordAsPathSegment => false
     LetInExpressionDropped => false
     DeclarationMarkerNotTest => false
+    TokenStartsNotIncreasing => false
   }
 }
 

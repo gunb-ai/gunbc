@@ -1,0 +1,108 @@
+module gunbc.machine_intake_bmc_rotation_route_evidence
+
+import std.types { NonEmptyStr, String }
+import std.content_hash { Sha256Hash }
+import std.content_hash { sha256_hex_digest }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import extdeps.bmc.access_profile { SurfaceManagerIdentity }
+import extdeps.network.ipv4 { render_ipv4_address }
+import gunbc.machine_intake_receipt { EvidenceRef }
+import gunbc.machine_intake_bmc_first_contact_standing { FamilyObserved, FamilyUnobserved }
+import gunbc.machine_intake_bmc_firmware_family_discriminator { discriminate_family, family_standing_from_discrimination }
+import gunbc.machine_intake_mtjade1_factory_network {
+  ObservedBmcNetwork, BmcNetworkObservedStatic, BmcNetworkObservedDhcpLease, BmcNetworkUnobserved,
+}
+import gunbc.machine_intake_mtjade1_access_observation {
+  RecordedManagerIdentityObservation, RecordedManagerDecoded, RecordedManagerRefused,
+  read_mtjade1_recorded_manager_identity,
+}
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
+import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_evidence }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding, HistoricalRotationRouteObservation, IpmiSetUserPassword, ObservedSurfaceRead,
+  rotation_route_from_committed_execution, redfish_account_password_write,
+}
+
+// THE ROTATION ROUTE STANDING OF EACH CONTROLLER THIS FLEET HAS EVIDENCE FOR, derived from that
+// evidence and nothing wider (docs/plans/managed-host-untangle.md, cut O1a). One function per unit,
+// each reading only its own unit's committed receipts. A unit with no row has no route standing.
+
+// MTCOLLINS1 (192.168.1.228, AMI MegaRAC 0.32): GROUNDED BY AN EXECUTED REQUEST. Step (c) of the
+// committed transcript set user 3's password with the IPMI Set User Password command, after the
+// store round-trip, and the controller answered "Set User Password command successful"; step (d)
+// then authenticated as that user over IPMI and the web API at the same address. The request and
+// its response are both recorded in that one transcript, so both receipts name it: the transcript
+// is the request receipt and the response receipt, at its committed digest. It is consumed for the
+// same rotation by gunbc.machine_intake_mtcollins1_bmc_secure_observation as RotationApplied.
+fn mtcollins1_rotation_route_standing() -> BmcRotationRouteStanding {
+  rotation_route_from_committed_execution(
+    endpoint: mtcollins1_endpoint,
+    firmware: mtcollins1_firmware,
+    request: IpmiSetUserPassword { user: 3 },
+    request_receipt: mtcollins1_user3_route_evidence,
+    response_receipt: mtcollins1_user3_route_evidence,
+  )
+}
+
+// MTJADE1: A HISTORICAL OBSERVATION, NOT A STANDING. The committed Redfish GET
+// /redfish/v1/Managers/Self was read on 2026-10-03 at the controller's FACTORY address 10.0.7.2; the
+// controller has since been moved to DHCP, so that address is not its current endpoint and a standing
+// keyed on it would describe a controller nobody can reach there. The read proves a Redfish Manager
+// surface at the build it reports, and proves no AccountService write and no IPMI user-management
+// request. So this module states only what the capture is entitled to: a historical route
+// observation naming the observed surface, the address and build it was read at, and the Redfish
+// account write that makes it worth qualifying. mtjade1's CURRENT standing is not minted here: the
+// AccessDiscover step of gunbc.machine_intake_arrival_converge (cut O1c-1) mints it, inside the step,
+// from the 2026-10-04 read at the controller's current endpoint, joined to this unit by its observed
+// BMC link. A capture that does not decode, does not bind to this unit's observed link, or does not
+// discriminate a family yields no observation rather than a stand-in.
+fn mtjade1_observed_endpoint(network: ObservedBmcNetwork) -> BmcControllerEndpoint? {
+  match network {
+    BmcNetworkObservedStatic { address: a, prefix: _, gateway: _, link: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
+    BmcNetworkObservedDhcpLease { address: a, prefix: _, basis: _ } => Present { value: BmcControllerEndpoint { host: render_ipv4_address(addr: a) } }
+    BmcNetworkUnobserved { discriminator: _ } => none
+  }
+}
+
+fn manager_read_receipt(read: RecordedManagerIdentityObservation) -> EvidenceRef? {
+  match sha256_hex_digest(hex: read.capture_sha256 as String) {
+    Absent => none
+    Present { value: d } => Present { value: EvidenceRef { label: read.capture_path, digest: Sha256Hash(d) } }
+  }
+}
+
+fn historical_route_observation_from_manager_read(read: RecordedManagerIdentityObservation) -> HistoricalRotationRouteObservation? {
+  match read.decoded {
+    RecordedManagerRefused { gap: _ } => none
+    RecordedManagerDecoded { observation: o } =>
+      match family_standing_from_discrimination(discrimination: discriminate_family(observation: o)) {
+        FamilyUnobserved { discriminator: _ } => none
+        FamilyObserved { family: f } =>
+          if length(o.firmware_version) == 0 {
+            none
+          } else {
+            match mtjade1_observed_endpoint(network: read.endpoint) {
+              Absent => none
+              Present { value: endpoint } =>
+                match manager_read_receipt(read: read) {
+                  Absent => none
+                  Present { value: receipt } =>
+                    Present {
+                      value: HistoricalRotationRouteObservation {
+                        observed_endpoint: endpoint,
+                        firmware: bmc_firmware_release_identity_of_wire(family: f, wire: o.firmware_version as NonEmptyStr),
+                        request: redfish_account_password_write(),
+                        evidence: ObservedSurfaceRead { surface: SurfaceManagerIdentity, receipt: receipt },
+                      },
+                    }
+                }
+            }
+          }
+      }
+  }
+}
+
+fn mtjade1_historical_rotation_route_observation() -> HistoricalRotationRouteObservation? uses fs: std.resources.Filesystem {
+  historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity())
+}

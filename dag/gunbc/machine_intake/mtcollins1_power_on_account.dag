@@ -26,7 +26,7 @@ import gunbc.machine_intake_pre_os_bringup_verdict {
   SelWindowEvent, BootRestart, FirmwareProgressRecord, OemTimestamped, OtherStandardEvent,
   firmware_console_report, FirmwareConsoleReport, NoTerminalStated, UndecodedErrorCodesOnly, FirmwareErrorStatementUnrecognized, TrainingRefusedByFirmware,
 }
-import gunbc.machine_intake_mtcollins1_smpro_observation { SmproProbeOutcome, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, mtcollins1_smpro_socket_records, outcome_socket }
+import gunbc.machine_intake_ampere_smpro_observation { SmproProbeOutcome, SmproPassObservation, SmproSocketRecords, SmproRecordSet, smpro_socket_word, smpro_outcome_word, smpro_socket_records, outcome_socket }
 import extdeps.ampere.smpro_internal_error {
   SmproInternalRecord, SmproProcessor, SmproProcessorSmpro, SmproProcessorPmpro,
   SmproRecordGate, PendingAndDecoded, NotPending, GpiUnavailable, PendingWithClearOrMissingType, TypePresentWithoutPending,
@@ -125,7 +125,7 @@ type FirmwareReadbackRow {
 }
 
 type FirmwareReadbacks
-  = FirmwareReadBeforeActuation { rows: List<FirmwareReadbackRow> }
+  = FirmwareReadBeforeActuation { attempt: NonEmptyStr, source: NonEmptyStr, rows: List<FirmwareReadbackRow> }
   | FirmwareReadbacksNotRecorded { reason: NonEmptyStr }
 
 // THE EXPECTED TOPOLOGY THIS ATTEMPT IS JUDGED AGAINST, recorded for the attempt or not at all: a
@@ -177,9 +177,11 @@ type PowerOnHandoff
   = HandoffPoweredOn
   | HandoffNotConfirmed { reason: NonEmptyStr }
 
+// One SMpro pass as read: the observation keeps the subject (host, controller, site) its outcomes
+// were read for (gunbc.machine_intake_ampere_smpro_observation SmproPassObservation).
 type SmproPassEvidence {
   label: NonEmptyStr
-  outcomes: List<SmproProbeOutcome>
+  observation: SmproPassObservation
 }
 
 // WHAT ONE CONSOLE SPAN STATED, by the owning readers run over that span's lines alone (the bundle runs
@@ -228,7 +230,7 @@ type BmcWatchdogDisposition
   | WatchdogUnobserved { reason: NonEmptyStr }
 
 // THE ANOMALIES THE BMC'S OWN VIEW REPORTS. Each is decided by the module that owns its reading
-// (the sensor rule in gunbc.machine_intake_mtcollins1_bmc_sensor_observation mtcollins1_sensor_anomalies;
+// (the sensor rule in gunbc.machine_intake_megarac_sensor_observation megarac_sensor_anomalies;
 // the inventory and SEL rules in the bundle) and only placed here.
 type BmcAnomaly
   = ProcessorMissingOnExpectedSocket { socket: Int }
@@ -434,8 +436,8 @@ fn register_word(outcomes: List<SmproProbeOutcome>, socket: Int, register: NonEm
 }
 
 fn socket_progress(pass: SmproPassEvidence, socket: Int) -> SocketProgressAccount {
-  let cur = register_word(outcomes: pass.outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
-  let rep = register_word(outcomes: pass.outcomes, socket: socket, register: smpro_bootstage_reg.name)
+  let cur = register_word(outcomes: pass.observation.outcomes, socket: socket, register: smpro_cur_bootstage_reg.name)
+  let rep = register_word(outcomes: pass.observation.outcomes, socket: socket, register: smpro_bootstage_reg.name)
   SocketProgressAccount { pass: pass.label, socket: socket, reading: match cur {
     Absent => ProgressNotRead { reason: "CUR_BOOTSTAGE was not read in this pass" }
     Present { value: c } => match rep {
@@ -525,11 +527,11 @@ type SocketRecordsAccount {
 // THE SOCKETS A PASS PROBED, from its own outcomes: the probe plan's targets, never an expectation.
 fn pass_sockets(p: SmproPassEvidence) -> List<Int> {
   let none_yet: List<Int> = []
-  fold(map(p.outcomes, o => outcome_socket(o: o)), init: none_yet, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
+  fold(map(p.observation.outcomes, o => outcome_socket(o: o)), init: none_yet, f: (acc, k) => if any(acc, j => j == k) { acc } else { concat(acc, [k]) })
 }
 
 fn socket_records(e: PowerOnEvidence) -> List<SocketRecordsAccount> {
-  flat_map(e.smpro, p => map(pass_sockets(p: p), k => SocketRecordsAccount { pass: p.label, records: mtcollins1_smpro_socket_records(outcomes: p.outcomes, socket: k) }))
+  flat_map(e.smpro, p => map(pass_sockets(p: p), k => SocketRecordsAccount { pass: p.label, records: smpro_socket_records(outcomes: p.observation.outcomes, socket: k) }))
 }
 
 fn record_set_stated(pass: NonEmptyStr, socket: Int, processor: SmproProcessor, rs: SmproRecordSet) -> List<LocatedError> {
@@ -985,7 +987,7 @@ fn configuration_questions(c: AttemptConfigurationReceipt) -> List<OpenQuestion>
   concat(match c.applied { StimulusAppliedByReceipt { receipt: _, attested_by: _ } => [] StimulusApplicationNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredStimulus } }] },
   concat(population_question(r: c.cpus, field: ConfiguredCpuPopulation),
   concat(population_question(r: c.dimms, field: ConfiguredDimmPopulation),
-    match c.firmware { FirmwareReadBeforeActuation { rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
+    match c.firmware { FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
 }
 
 fn population_question<T>(r: PopulationReading<T>, field: ConfigurationField) -> List<OpenQuestion> {

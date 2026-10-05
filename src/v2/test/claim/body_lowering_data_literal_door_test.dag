@@ -18,7 +18,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // claim normalizes the same source through the same v2 pipeline, interpreted, and asserts it is admitted
 // with its arrow body present -- the data declaration lowered to its nullary member.
 //
-// The parse and normalize are one nullary producer enrolled WARM in v2.workflow.floor_pure_producer_share:
+// The parse and normalize are one nullary producer, filled in preparation under the single-claim fill
+// debt of v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt:
 // a whole-grammar parse plus normalize is past one claim's budget, and the claim reads the result.
 
 data door_data_literal_source: String = "module fixture.native_cli_door.door_probe\n\ndata native_cli_door_probe_value: Int = 606060\n"

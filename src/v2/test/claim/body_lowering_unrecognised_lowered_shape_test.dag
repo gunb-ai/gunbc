@@ -188,8 +188,9 @@ test fn a_literal_token_carrying_a_foreign_edge_refuses() -> Bool {
 // RED if the postfix arm of body_lower_reduce_emitted stops sealing: the atom then reads as a raw leaf.
 data ulsh_route_source: String = "module ulsh_route\n\ndata ulsh_value: Int = ulsh_name\n"
 
-// THE PARSE IS ONE NULLARY PRODUCER, enrolled WARM in v2.workflow.floor_pure_producer_share, as the
-// door claim's is (v2.test.claim.body_lowering_data_literal_door door_data_literal_normalized). The
+// THE PARSE IS ONE NULLARY PRODUCER, filled in preparation under the single-claim fill debt of
+// v2.workflow.floor_pure_producer_share floor_single_claim_fill_debt, as the door claim's is
+// (v2.test.claim.body_lowering_data_literal_door door_data_literal_normalized). The
 // route claim reads the postfix node it yields; building the language model, tokenizing and parsing
 // inside the claim cost 399ms against a 302ms enrolment margin on the merge-group floor. It parses
 // through the shared prepared grammar (g_tokenize_parse), the same route the door claim reads.

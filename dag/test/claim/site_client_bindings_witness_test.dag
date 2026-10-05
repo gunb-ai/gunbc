@@ -1,0 +1,52 @@
+module test.claim.site_client_bindings_witness
+
+import extdeps.languages.typescript.program {
+  TsProgram, ts_const, ts_ident, ts_lit_str, ts_call, ts_arrow, ts_block,
+  ts_expr_stmt, ts_member, ts_for_of, ts_try,
+}
+import gunbc.site.client_bindings { client_program_free_names }
+
+// The allocation failure's missing application binding, plus its discriminating repair.
+test fn missing_session_reader_is_reported() -> Bool {
+  let names = client_program_free_names(program: TsProgram {
+    ts_nocheck: false, header_lines: [], statements: [
+      ts_const(name: "account", value: ts_call(callee: ts_ident(name: "gunbcSessionRead"), args: [])),
+    ],
+  }, platform_names: [])
+  names == ["gunbcSessionRead"]
+}
+
+test fn bound_session_reader_and_property_names_are_not_free() -> Bool {
+  client_program_free_names(program: TsProgram {
+    ts_nocheck: false, header_lines: [], statements: [
+      ts_const(name: "gunbcSessionRead", value: ts_arrow(params: [], body: ts_block(stmts: []))),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcSessionRead"), args: [])),
+      ts_expr_stmt(expr: ts_member(object: ts_ident(name: "document"), property: "notAnIdentifierReference")),
+    ],
+  }, platform_names: ["document"]) == []
+}
+
+test fn closure_parameters_and_later_lexical_bindings_resolve() -> Bool {
+  client_program_free_names(program: TsProgram {
+    ts_nocheck: false, header_lines: [], statements: [
+      ts_const(name: "callback", value: ts_arrow(params: ["event"], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_ident(name: "event")),
+        ts_expr_stmt(expr: ts_ident(name: "later")),
+      ]))),
+      ts_const(name: "later", value: ts_lit_str(value: "ready")),
+    ],
+  }, platform_names: []) == []
+}
+
+test fn nested_bindings_do_not_escape_their_scopes() -> Bool {
+  client_program_free_names(program: TsProgram {
+    ts_nocheck: false, header_lines: [], statements: [
+      ts_block(stmts: [ts_const(name: "inside", value: ts_lit_str(value: "local"))]),
+      ts_for_of(var_name: "item", iterable: ts_ident(name: "items"), body: ts_block(stmts: [ts_expr_stmt(expr: ts_ident(name: "item"))])),
+      ts_try(body: ts_block(stmts: []), catch_param: "error", handler: ts_block(stmts: [ts_expr_stmt(expr: ts_ident(name: "error"))])),
+      ts_expr_stmt(expr: ts_ident(name: "inside")),
+      ts_expr_stmt(expr: ts_ident(name: "item")),
+      ts_expr_stmt(expr: ts_ident(name: "error")),
+    ],
+  }, platform_names: ["items"]) == ["inside", "item", "error"]
+}

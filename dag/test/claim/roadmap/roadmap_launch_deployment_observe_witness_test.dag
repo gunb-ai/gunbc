@@ -14,6 +14,7 @@ fn fixture_v4_tick() -> BeltTickReceipt {
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRecorded,
     publish_pass: BeltPassRecorded,
+    metering_pass: BeltPassRecorded,
   }
 }
 
