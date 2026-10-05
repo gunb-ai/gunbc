@@ -117,8 +117,9 @@ data spark_grant_install_receipt_path: String = "target/spark-grant-install-rece
 // would be the absorbing fallback: it cannot tell a host that needs one grant from a host we could
 // not read at all, and it would rewrite a correct drop-in on every run so no receipt could ever say
 // nothing was needed.
-// WHAT HAPPENED TO THE RETIRED SHARED DROP-IN on this run (gunbc.spark.managed_grant_reconcile
-// spark_retired_dropin_removal_decision decides; this records the effect and its readback).
+// WHAT HAPPENED TO THE RETIRED SHARED DROP-IN on this run (spark_retired_dropin_converge decides,
+// through gunbc.spark.grant_privileged_operation admit_retired_dropin_removal; this records the effect
+// and its readback).
 type SparkRetiredDropinStanding
   = RetiredDropinAbsent
   | RetiredDropinRemovalWithheldOnRun { cause: NonEmptyStr }
