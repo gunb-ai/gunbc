@@ -2807,20 +2807,17 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["census-infer".to_string()];
     args.extend(source_roots.iter().cloned());
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
     let stdout = String::from_utf8(output.stdout).map_err(|cause| {
         format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
     })?;
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    print!("{stdout}");
     decode_native_census_output(&stdout, output.status.code())
 }
 
@@ -2857,6 +2854,48 @@ fn host_memory_budget_receipt_line(
             format!("[v2-native-census] host_memory_budget source=unreadable reason=\"{reason}\"")
         }
     }
+}
+
+/// THE CHILD'S STREAMS, RELAYED AS IT WRITES THEM AND STILL COLLECTED WHOLE. `Command::output()`
+/// forwarded nothing until the child exited, so a multi-hour census was silent throughout and a
+/// cancelled run lost every row it had already printed (run 37229309848: 3h48m, empty stdout).
+/// Here each stream is drained by its own thread and written through to this process's stream
+/// as it arrives; the bytes are also kept, so the returned `Output` is the one `output()` would
+/// have returned and every verdict decoded from it is unchanged. Transport only, not semantics.
+fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process::Output> {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    fn relay<R: Read, W: Write>(mut from: R, mut to: W) -> std::io::Result<Vec<u8>> {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = from.read(&mut buf)?;
+            if n == 0 {
+                return Ok(kept);
+            }
+            kept.extend_from_slice(&buf[..n]);
+            // A closed relay target must not cost the collected bytes the verdict is decoded from.
+            let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());
+        }
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let child_stdout = child.stdout.take().expect("stdout was piped");
+    let child_stderr = child.stderr.take().expect("stderr was piped");
+    let stderr_relay = std::thread::spawn(move || relay(child_stderr, std::io::stderr()));
+    let stdout = relay(child_stdout, std::io::stdout());
+    let stderr = stderr_relay
+        .join()
+        .map_err(|_| std::io::Error::other("stderr relay thread panicked"))?;
+    let status = child.wait()?;
+    Ok(std::process::Output {
+        status,
+        stdout: stdout?,
+        stderr: stderr?,
+    })
 }
 
 /// The census-infer stdout, decoded. Only the terminal's counts are carried out, but the
@@ -4158,6 +4197,66 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
         ));
+    }
+}
+
+#[cfg(test)]
+mod run_relaying_as_it_runs_tests {
+    use super::run_relaying_as_it_runs;
+    use std::process::Command;
+
+    fn specimen() -> Command {
+        let mut c = Command::new("sh");
+        c.args([
+            "-c",
+            "i=0; while [ $i -lt 2000 ]; do echo \"row $i\"; echo \"[progress] $i\" >&2; i=$((i+1)); done; printf tail; exit 3",
+        ]);
+        c
+    }
+
+    // THE RELAY CHANGES TRANSPORT, NOT THE VERDICT: the collected streams and the status are the
+    // ones `Command::output()` returns for the same child, byte for byte.
+    #[test]
+    fn relayed_output_equals_collected_output() {
+        let collected = specimen().output().expect("spawn");
+        let relayed = run_relaying_as_it_runs(specimen()).expect("spawn");
+        assert_eq!(relayed.status.code(), Some(3));
+        assert_eq!(relayed.status.code(), collected.status.code());
+        assert_eq!(relayed.stdout, collected.stdout);
+        assert_eq!(relayed.stderr, collected.stderr);
+    }
+
+    // THE CENSUS VERDICT IS UNCHANGED: a census stdout relayed through the child decodes to the
+    // same counts as the same bytes decoded directly.
+    #[test]
+    fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
+        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let mut c = Command::new("printf");
+        c.arg("%s").arg(out);
+        let relayed = run_relaying_as_it_runs(c).expect("spawn");
+        let relayed_stdout = String::from_utf8(relayed.stdout).expect("utf8");
+        assert_eq!(relayed_stdout, out);
+        let direct = super::decode_native_census_output(out, Some(0));
+        let via = super::decode_native_census_output(&relayed_stdout, relayed.status.code());
+        assert_eq!(
+            direct.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            )),
+            via.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            ))
+        );
+        assert!(direct.is_ok(), "the specimen census must decode");
     }
 }
 
