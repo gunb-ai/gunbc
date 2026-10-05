@@ -56,8 +56,9 @@ import gunbc.auth.approval_gate {
 // Common start boundary for WIF and explicit operator authentication. Authentication
 // alone grants no start. Approval binds device, bytes, version, feed and attempt; the
 // fixed host claim is keyed by that approval, and is retained on every outcome.
-fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> AuthorizationRequest<String>? {
-  let subject = serialize_json(v: json_object(members: [
+// Canonical approval subject; identity hashing consumes these exact serialized bytes.
+fn print_subject(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> String {
+  serialize_json(v: json_object(members: [
     json_kv(key: "printer", value: json_string(s: printer as String)),
     json_kv(key: "project_sha256", value: json_string(s: digest)),
     json_kv(key: "credential_version", value: json_string(s: version)),
@@ -65,6 +66,10 @@ fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String
     json_kv(key: "bed_clear_attestation", value: json_string(s: "operator confirms bed clear at approval")),
     json_kv(key: "attempt", value: json_string(s: attempt)),
   ]))
+}
+
+fn print_request(printer: PhysicalAssetIdentity, digest: String, version: String, attempt: String) -> AuthorizationRequest<String>? {
+  let subject = print_subject(printer: printer, digest: digest, version: version, attempt: attempt)
   match sha256_hex_digest(hex: sha256_hex(message: bytes_octets(b: utf8_encode_bytes(s: subject)))) {
     Absent => none
     Present { value: hash } => Present { value: AuthorizationRequest {

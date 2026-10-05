@@ -10,24 +10,18 @@ import extdeps.tools.mosquitto_pub { mosquitto_pub_help_observation_admitted }
 
 
 import std.types { Bool,String }
-import gunbc.fleet.printer_operator_approval { print_request, report_allows_start, start_claim_path }
+import gunbc.fleet.printer_operator_approval { print_subject, report_allows_start, start_claim_path }
 import gunbc.fleet_asset_identity { printer_01, printer_02 }
 
-test fn approval_changes_with_device_bytes_version_or_attempt() -> Bool {
-  let base = print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")
+test fn approval_subject_changes_with_device_bytes_version_or_attempt() -> Bool {
+  let base = print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a")
   let variants = [
-    print_request(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a"),
-    print_request(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a"),
-    print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a"),
-    print_request(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b"),
+    print_subject(printer: printer_02, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", version: "1", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "2", attempt: "batch-a"),
+    print_subject(printer: printer_01, digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", version: "1", attempt: "batch-b"),
   ]
-  match base {
-    Absent => false
-    Present { value: original } => all(variants, v => match v {
-      Absent => false
-      Present { value: changed } => original.escalation_id != changed.escalation_id
-    })
-  }
+  all(variants, changed => base != changed)
 }
 
 test fn completed_or_idle_job_needs_nonblocking_error() -> Bool {
@@ -60,8 +54,8 @@ test fn partial_telemetry_does_not_count_as_a_complete_observation() -> Bool {
 }
 
 test fn durable_claim_is_bound_to_approval_identity() -> Bool {
- let r=print_request(printer:printer_01,digest:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",version:"1",attempt:"attempt-a")
- match r { Absent=>false Present {value:q}=>
-  start_claim_path(escalation_id:q.escalation_id)==concat(concat("/var/lib/gunbc/printer-starts/",q.escalation_id as String),".claimed") &&
-  start_claim_path(escalation_id:q.escalation_id)!=start_claim_path(escalation_id:"printer-start-different") }
+ // Path ownership is independent of the request's cryptographic construction.
+ // Supplied approval identities must stay in the fixed durable claim directory.
+ start_claim_path(escalation_id:"printer-start-a")=="/var/lib/gunbc/printer-starts/printer-start-a.claimed" &&
+ start_claim_path(escalation_id:"printer-start-a")!=start_claim_path(escalation_id:"printer-start-b")
 }

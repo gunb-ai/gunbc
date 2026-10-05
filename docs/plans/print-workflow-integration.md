@@ -104,7 +104,7 @@ IDs to get past a refusal. Partial acceptance and replacement demands remain CAS
 
 ## Validation
 
-`test.claim.printer_batch_workflow_validation.validate_preparation` executes the archive/G-code positive and negative controls and calls
+`test.claim.printer_batch_workflow_validation.validate_preparation` first checks real approval-request construction (including SHA-256, input binding and the durable claim path), executes the archive/G-code positive and negative controls, and calls
 the production entrypoint with `mode=prepare`. It cannot start a printer. The controls
 include extra plates, wrong membership, scaled objects, bad checksums, out-of-bed XY/Z,
 forbidden support, leading-dot motion words and full-circle arcs.
@@ -117,3 +117,10 @@ for the exact exercised source and artifact digests; CI is a separate gate.
 Boundary tests run individually through the witness runner. The original aggregate
 wrapper was rejected by the current compiler because tests cannot call other tests;
 it was removed without removing any of the individual boundary tests.
+
+The fast floor checks canonical approval serialization and claim-path ownership at
+those interfaces. The real cryptographic construction is retained in
+`printer_batch_workflow_validation.validate_approval_identity`, also consumed by
+`validate_preparation`; it is integration validation, not a fast-floor verdict.
+Plan admission rules each have their own counterexample and witness. This keeps
+all rejection cases while avoiding one cumulative budget for unrelated cases.
