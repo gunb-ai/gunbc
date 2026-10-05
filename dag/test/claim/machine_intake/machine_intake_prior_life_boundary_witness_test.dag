@@ -113,6 +113,35 @@ fn dry_world(bmc: BmcWorld, store: DryArchiveStore) -> DryPriorLifeWorld {
   DryPriorLifeWorld { bmc: bmc, store: store, read_at_millis: t_read_p, write_returned_at_millis: t_returned_p }
 }
 
+// THE SMALLEST WORLD THE ROUTE CLAIMS ARCHIVE: every surface modeled, so all eight carriers are
+// captured (an empty log is a capture, an unmodeled one a gap), and ONE SEL record, so the baseline
+// cursor the route asserts is a real position read from a real record rather than a degenerate empty
+// one. The encoder's cost is linear in the population (measured: about 720 eval steps per SEL record
+// at 1, 20 and 80 records), so the route claims shrink their input rather than the encoder; the
+// payload's fidelity over richer populations is this module's own subject.
+data one_sel_record: List<BmcSelRecord> = [
+  BmcSelRecord { id_hex: "1", date: "01/01/2026", time: "00:00:01", sensor: "Power Unit", event: "AC lost", state: "Asserted" },
+]
+
+data empty_surfaces: BmcRecordSurfaces = BmcRecordSurfaces {
+  manager_date_time: Present { value: "2026-10-05T12:00:00+00:00" },
+  log_services: Present { value: [] },
+  account_events: Present { value: [] },
+  virtual_media: Present { value: [] },
+  sensors: Present { value: [] },
+}
+
+fn prior_life_minimal_dry_world() -> DryPriorLifeWorld {
+  let w = bmc_world(power: BmcPowerOn)
+  let with_sel = BmcWorld {
+    power: w.power, pending: w.pending, fired: w.fired, boot_override: w.boot_override, sel: one_sel_record,
+    sol_session_open: w.sol_session_open, cycle_off_interval: w.cycle_off_interval,
+    host_booted_at: w.host_booted_at, booted_via_override: w.booted_via_override, sol_drop_after_boot: w.sol_drop_after_boot,
+    web: w.web, ipmi_users: w.ipmi_users, ipmi_user_access: w.ipmi_user_access, record_surfaces: empty_surfaces,
+  }
+  dry_world(bmc: with_sel, store: empty_store)
+}
+
 // The full dry world the arrival route claim archives: every surface modeled, a store that keeps writes,
 // and a write that returns in two seconds.
 fn prior_life_full_dry_world() -> DryPriorLifeWorld {

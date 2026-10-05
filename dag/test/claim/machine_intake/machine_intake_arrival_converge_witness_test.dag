@@ -44,10 +44,10 @@ import gunbc.fleet.convergence_fold {
 import gunbc.machine_intake_prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
   mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
-  prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive,
+  prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive, baseline_cursor_sel_final_record,
 }
 import std.content_hash { content_hash_equal }
-import test.claim.machine_intake_prior_life_boundary_witness { prior_life_full_dry_world }
+import test.claim.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
@@ -153,7 +153,7 @@ data expected_mtjade1_firmware: FirmwareManifest = FirmwareManifest {
 
 // THE PRIOR-LIFE ARCHIVE AS THE ROUTE REACHED IT: written by this run within its leg's deadline, read
 // back independently, its boundary the uncleared baseline-cursor arm with the cursor naming this
-// archive, consuming exactly this run's IdentityBindProvisional instance for this unit, from the DRY
+// archive and the one SEL record the world holds, consuming exactly this run's IdentityBindProvisional instance for this unit, from the DRY
 // realization and no other.
 fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
   match s {
@@ -165,7 +165,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
               && ((prior_life_receipt_consumed_identity(r: p).run as NonEmptyStr) as String) == "o1c1-witness-run-a"
               && ((prior_life_receipt_consumed_identity(r: p).subject as NonEmptyStr) as String) == "mtjade1"
               && (match prior_life_receipt_application(r: p) { ArchiveWritten { write: _, within: _ } => true  _ => false })
-              && (match prior_life_receipt_boundary(r: p) { LogsArchivedWithBaselineCursor { cursor: c } => content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: p))) })
+              && (match prior_life_receipt_boundary(r: p) { LogsArchivedWithBaselineCursor { cursor: c } => content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: p))) && baseline_cursor_sel_final_record(c: c) == Present { value: "1" } })
               && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
           AccessDiscoverReceipt { receipt: _ } => false
           IdentityBindReceipt { receipt: _ } => false
@@ -184,7 +184,7 @@ fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalSte
 // intake attempt. Then PriorLifeBoundary archives the dry world under the Mt. Jade policy row through
 // the real route -- the IdentityBindProvisional receipt this run minted, not a supplied subject.
 test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> Bool {
-  match converge_mtjade1_arrival_prefix(run: run_a, prior_life: prior_life_full_dry_world()) {
+  match converge_mtjade1_arrival_prefix(run: run_a, prior_life: prior_life_minimal_dry_world()) {
     ArrivalRunFolded { verdict: v } =>
       match v {
         RunConverged { run: r } =>
@@ -205,7 +205,7 @@ test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> B
 // PriorLifeBoundary instance, which records the write as written-but-not-read-back. Same real route,
 // the store the only difference.
 test fn w_a_lost_archive_write_leaves_the_run_incomplete_at_prior_life_boundary() -> Bool {
-  let full = prior_life_full_dry_world()
+  let full = prior_life_minimal_dry_world()
   let losing = DryPriorLifeWorld { bmc: full.bmc, store: DryArchiveStore { objects: [], behaviour: DryArchiveStoreLosesWrites }, read_at_millis: full.read_at_millis, write_returned_at_millis: full.write_returned_at_millis }
   match converge_mtjade1_arrival_prefix(run: run_a, prior_life: losing) {
     ArrivalRunFolded { verdict: v } =>
@@ -563,7 +563,7 @@ test fn w_prior_life_boundary_refuses_an_identity_receipt_from_another_run() -> 
         Present { value: r } =>
           match r {
             IdentityBindReceipt { receipt: identity_b } => {
-              let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> = prior_life_boundary(key: step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key), identity: identity_b, platform: mt_jade_platform_ref, world: prior_life_full_dry_world())
+              let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> = prior_life_boundary(key: step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key), identity: identity_b, platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world())
               let refusal: ArrivalStepRefusal? = step_outcome_refusal(outcome: outcome)
               match refusal {
                 Present { value: c } => match c { PriorLifeIdentityForAnotherInstance { identity: k } => ((k.run as NonEmptyStr) as String) == "o1c1-witness-run-b"  _ => false }
@@ -602,7 +602,7 @@ test fn w_access_discover_refuses_a_read_bound_to_another_unit() -> Bool {
 // unit it is not bound to, refuses AccessDiscover; IdentityBindProvisional and PriorLifeBoundary are
 // then never executed and are NotReached, each blocked by that AccessDiscover instance.
 test fn w_a_refused_access_leaves_identity_bind_not_reached_blocked_by_it() -> Bool {
-  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_full_dry_world() }) {
+  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_minimal_dry_world() }) {
     ArrivalRunFolded { verdict: v } => match v {
       RunStopped { ledger: l, at: at } =>
         declaration_ref_eq(a: at.step_identity, b: access_discover_step_ref)
