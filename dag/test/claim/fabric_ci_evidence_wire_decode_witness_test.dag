@@ -1,6 +1,7 @@
 module test.claim.fabric_ci_evidence_wire_decode_witness
 
 import std.types { Bool, NonEmptyStr }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.unicode.scalar { SurrogateCodePoint, CodePointOutOfRange }
 import tools.fabric_ci_evidence {
   FabricCiEvidenceDecoded, FabricCiEvidenceUndecodable, FabricCiWordNotScalar,
