@@ -83,3 +83,10 @@ fn prepare(cad:String,plan:PlatePreparation,output:String,appimage:String,machin
   other=>other
  }
 }
+
+// Read an existing immutable archive through the same process observer as admission.
+// Retrospective evidence never authorizes a start or rewrites an original receipt.
+fn observe_process_batch(projects_json:String,output:String) -> ProcessExit {
+ if !starts_with(s:output,prefix:"/") || !shell.Mkdir.Parents(path:output as FilePath).success {return exit_failure(reason:"Observation output must be an absolute writable directory")}
+ run_kernel(script:concat(output,"/process-reader.py"),call:join(["\nprojects=json.loads(",literal(s:projects_json),")\nassert isinstance(projects,list) and projects and all(isinstance(p,str) and p for p in projects)\nfor project in projects:\n    report=observe_archived_process(project)\n    (pathlib.Path(",literal(s:output),")/(report['project_sha256']+'.process.json')).open('x').write(json.dumps(report,indent=2)+'\\n')\n"],""))
+}

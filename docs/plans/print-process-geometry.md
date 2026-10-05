@@ -17,6 +17,50 @@ Preserving a print plane does not prove adhesion or stiffness. A future generic 
 
 A printer reporting completion still requires physical inspection. The current state/error telemetry cannot reliably detect spaghetti. Failure records retain observations separately from causal hypotheses and do not infer successful output from error code zero.
 
+## Retraction, travel and cooling evidence
+
+Preparation now preserves the complete `Metadata/project_settings.config` as
+`sliced_project_settings` in its receipt. These are the slicer's raw authored keys
+and values, including `nil` filament overrides; an absent key stays absent. This
+does not invent defaults or implement a second profile-inheritance resolver.
+Retraction settings remain profile facts, not newly imposed product overrides.
+
+`product.printing.deposited_geometry.toolpaths` (the generated adapter function)
+also emits `process_observation`. Each slicer-marked layer records negative-E
+moves, retraction episodes, retracted/recovered filament, retracting XY moves,
+nonextruding XY moves and chord distance, deposition runs after travel, deposited
+Z bounds, and functional object labels. An episode starts when negative E creates
+a previously absent recovery debt; split wipe moves therefore need not be counted
+as separate retractions. Recovery debt survives layer boundaries and G92 resets.
+G10/G11 commands are counted separately, without assuming firmware retraction
+distances. Observation starts at the first `CHANGE_LAYER` marker with zero known
+debt; startup extrusion is outside its scope.
+
+The parser shares its coordinate/extrusion state and deposited-arc geometry with
+the existing bounds reader. It does not run a second interpretation of G-code.
+Its commanded-motion seconds sum path length / modal feed, including deposited
+arcs and extrusion-only moves. Unknown feed or unhandled travel-arc lengths are
+counted as unestimated moves. Acceleration, firmware limits, waits, dwell, and
+synchronization are excluded: this is a comparison proxy, not actual layer time
+or a claim that cooling targets were achieved. Measured and slicer-per-layer time
+remain explicitly unavailable.
+
+Object labels do not identify individual geometric islands. A deposition run
+after travel is evidence of an interruption, not an island count. Positive E
+with XY motion follows the existing commanded-deposition convention, including
+any recovery combined with motion; it is not a physical extrusion measurement.
+No red/green stringing or stability threshold is introduced by these observations.
+
+`product.printed_chassis.print_preparation.observe_process_batch` accepts a JSON
+list of archived project paths and a fresh output directory. It uses the same
+archive-integrity checks and process observer as preparation, writes reports
+named by project SHA-256, and never authorizes printing or overwrites a prior
+receipt. This is the retrospective route for comparing failure and recovery jobs.
+The integration controls in `test.claim.print_preparation_kernel_validation`
+exercise both admission and retrospective output, raw settings preservation,
+relative/absolute E, G92, split wipes, cross-layer recovery, modal feed, full-circle
+arc timing, unavailable feed, and firmware-command reporting.
+
 ## Recovery plate plan
 
 `artifacts/printing/fan-recovery-2026-10-05/plan.json` assigns only M140 to printer-01 and G140 to printer-02, each flat on its own plate. The four reported intact printer-01 pieces are not duplicated. The generated readbacks provide actual height, material, duration and support use before these plates reach approval.
