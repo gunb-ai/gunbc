@@ -1,5 +1,6 @@
 module test.claim.pr_containment_disposition_witness
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, Int, String, List }
 import tools.pr_containment_instrument {
   AddedLine,
@@ -375,6 +376,6 @@ test fn an_unreadable_file_refuses_every_later_file() -> Bool {
 // empty path a member of every base tree, which is the one key `map_contains_key` must never
 // answer true for by accident.
 test fn the_base_path_set_drops_the_trailing_empty_member() -> Bool {
-  let s = base_path_set(paths_nul: concat("a.dag", concat(from_code_point(0), concat("b.dag", from_code_point(0)))))
+  let s = base_path_set(paths_nul: concat("a.dag", concat(char_text(c: 0), concat("b.dag", char_text(c: 0)))))
   map_contains_key(s, "a.dag") && map_contains_key(s, "b.dag") && !map_contains_key(s, "")
 }

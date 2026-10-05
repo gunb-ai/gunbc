@@ -58,6 +58,7 @@ import test.claim.git_upstream_model_witness {
   git_fixture_repository,
 }
 import std.bytes { utf8_encode_bytes }
+import std.unicode.scalar { char_text }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -114,10 +115,16 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
         GitR0LiveFixtureExecutionRefused { diagnostic: "cleanup-refused" }
       }
     } else {
-      let raw_name = concat(from_code_point(255), ".dag")
+      // A NON-ASCII, VALID UTF-8 name, and only that: U+00FF reaches the disk as the octets C3 BF
+      // because extdeps.filesystem's path carrier is String. This fixture never exercised a
+      // non-UTF-8 path (it used to be spelled as if it did); real non-UTF-8 octets are held by
+      // test.claim.git_upstream_model_witness witness_git_ls_tree_z_preserves_non_utf8_path_octets,
+      // and the missing filesystem round-trip is gunbc.recurring_failure_mode
+      // non_utf8_path_fixture_spelled_through_a_string_path_carrier.
+      let non_ascii_name = concat(char_text(c: 255), ".dag")
       let readme_path = concat(fixture.path, "/readme")
       let run_path = concat(fixture.path, "/run")
-      let raw_path = concat(fixture.path, concat("/", raw_name))
+      let non_ascii_path = concat(fixture.path, concat("/", non_ascii_name))
       let src_path = concat(fixture.path, "/src")
       let src_keep_path = concat(src_path, "/keep")
       let sha256_source_path = concat(sha256_fixture.path, "/source")
@@ -130,7 +137,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       )
       let readme_written = Filesystem.Write(path: readme_path, content: "source")
       let run_written = Filesystem.Write(path: run_path, content: "run")
-      let raw_written = Filesystem.Write(path: raw_path, content: "source")
+      let non_ascii_written = Filesystem.Write(path: non_ascii_path, content: "source")
       let src_created = shell.Mkdir.Parents(path: src_path)
       let src_keep_written = Filesystem.Write(path: src_keep_path, content: "")
       let run_executable = gunbc.WitnessBin.Run(
@@ -148,7 +155,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let added = gunbc.WitnessBin.Run(
         workdir: fixture.path,
         bin_path: "git",
-        args: ["add", "--", "readme", "run", "link", "src/keep", raw_name],
+        args: ["add", "--", "readme", "run", "link", "src/keep", non_ascii_name],
         expect: ExpectSuccess,
       )
       let regular_oid = gunbc.WitnessBin.Run(
@@ -447,7 +454,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let executable_is_executable = shell.Test.IsExecutable(path: run_path)
       let readme_read_back = Filesystem.Read(path: readme_path)
       let run_read_back = Filesystem.Read(path: run_path)
-      let raw_read_back = Filesystem.Read(path: raw_path)
+      let non_ascii_read_back = Filesystem.Read(path: non_ascii_path)
       let src_keep_read_back = Filesystem.Read(path: src_keep_path)
 
       let cleaned_fixture = shell.Remove.RecursiveForce(path: fixture.path)
@@ -456,7 +463,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
       let all_operations_succeeded = initialized.success
           && readme_written.success
           && run_written.success
-          && raw_written.success
+          && non_ascii_written.success
           && src_created.success
           && src_keep_written.success
           && run_executable.success
@@ -498,7 +505,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && executable_is_executable.executable
           && readme_read_back.success
           && run_read_back.success
-          && raw_read_back.success
+          && non_ascii_read_back.success
           && src_keep_read_back.success
           && cleaned_fixture.success
           && cleaned_sha256.success
@@ -528,11 +535,11 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
           && trim(s: head_read_back.stdout) == "refs/heads/main"
           && trim(s: tag_type.stdout) == "tag"
           && string_contains(s: git_version.stdout, pattern: "git version ")
-          && string_contains(s: paths.stdout, pattern: raw_name)
+          && string_contains(s: paths.stdout, pattern: non_ascii_name)
           && trim(s: link_target.stdout) == "readme"
           && readme_read_back.content == "source"
           && run_read_back.content == "run"
-          && raw_read_back.content == "source"
+          && non_ascii_read_back.content == "source"
           && src_keep_read_back.content == ""
 
       if all_operations_succeeded
@@ -614,7 +621,7 @@ fn git_r0_typed_execution_read_back() -> GitR0LiveFixtureOutcome {
                               path: path_non_ascii,
                               executable: false,
                               content: utf8_encode_bytes(
-                                s: raw_read_back.content,
+                                s: non_ascii_read_back.content,
                               ),
                             },
                             GitWorktreeRegular {

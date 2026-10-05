@@ -1,5 +1,6 @@
 module test.claim.serving.serving_front_door_witness_test
 
+import std.unicode.scalar { char_text }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List, EpochSecs, Secret }
@@ -320,7 +321,7 @@ test fn a_permit_whose_protocol_was_rewritten_after_signing_is_refused_by_the_ma
 // signing input A and B share every byte; under the length-prefixed one they do not, so a tag over A
 // cannot authenticate B.
 test fn two_claim_sets_that_collide_under_a_separator_join_sign_apart() -> Bool {
-  let sep = from_code_point(cp: 31)
+  let sep = char_text(c: 31)
   let c = claims_on(launch: group_b_launch, group_wire: "group-b")
   let a = ServingSeatPermitClaims {
     protocol: c.protocol, group: c.group, partition: c.partition, class: c.class,

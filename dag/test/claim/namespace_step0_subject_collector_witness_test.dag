@@ -1,5 +1,6 @@
 module test.claim.namespace_step0_subject_collector_witness
 
+import std.unicode.scalar { char_text }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
@@ -156,16 +157,16 @@ fn paths_contain(xs: List<String>, want: String) -> Bool {
 // producing a wider "subject" under the manifest's name.
 test fn the_subject_filter_takes_dag_sources_under_the_contract_roots_only() -> Bool {
   let blob = concat(
-    concat("dag/std/types.dag", from_code_point(0)),
+    concat("dag/std/types.dag", char_text(c: 0)),
     concat(
-      concat("src/v2/std/algebra.dag", from_code_point(0)),
+      concat("src/v2/std/algebra.dag", char_text(c: 0)),
       concat(
-        concat("src/v1/02_parse.dag", from_code_point(0)),
+        concat("src/v1/02_parse.dag", char_text(c: 0)),
         concat(
-          concat("README.md", from_code_point(0)),
+          concat("README.md", char_text(c: 0)),
           concat(
-            concat("src/v1/stage0/src/lib.rs", from_code_point(0)),
-            concat("docs/plans/namespace-cut-replacement-plan.md", from_code_point(0))
+            concat("src/v1/stage0/src/lib.rs", char_text(c: 0)),
+            concat("docs/plans/namespace-cut-replacement-plan.md", char_text(c: 0))
           )
         )
       )
@@ -249,7 +250,7 @@ test fn a_declared_root_with_no_members_refuses_rather_than_narrowing_the_subjec
 // than being skipped -- a skipped record is an entry the collector never enumerated, which is the
 // empty-observation narrow one layer below the vector.
 test fn a_tree_record_decodes_into_mode_kind_object_and_path() -> Bool {
-  match step0_decode_tree_entry(record: concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), "dag/std/types.dag"))) {
+  match step0_decode_tree_entry(record: concat("100644 blob 1111111111111111111111111111111111111111", concat(char_text(c: 9), "dag/std/types.dag"))) {
     Step0TreeEntryUndecodable { record: _ } => false
     Step0TreeEntryDecoded { entry: entry } =>
       entry.mode == "100644"
@@ -379,11 +380,11 @@ test fn an_outside_module_calling_a_public_collector_fn_is_not_refused() -> Bool
 // corpus has no such file today and that is not the boundary that decides: the RED is authorable
 // as a fixture, so the wall is owed.
 fn tabbed_path() -> String {
-  concat("dag/a", concat(from_code_point(9), "b.dag"))
+  concat("dag/a", concat(char_text(c: 9), "b.dag"))
 }
 
 fn tabbed_record() -> String {
-  concat("100644 blob 1111111111111111111111111111111111111111", concat(from_code_point(9), tabbed_path()))
+  concat("100644 blob 1111111111111111111111111111111111111111", concat(char_text(c: 9), tabbed_path()))
 }
 
 test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bool {
@@ -396,7 +397,7 @@ test fn a_pathname_containing_a_tab_decodes_whole_rather_than_truncating() -> Bo
 
 test fn a_pathname_containing_a_tab_stays_in_the_subject() -> Bool {
   paths_contain(
-    xs: step0_subject_paths_at(paths_nul: concat(tabbed_path(), from_code_point(0))),
+    xs: step0_subject_paths_at(paths_nul: concat(tabbed_path(), char_text(c: 0))),
     want: tabbed_path()
   )
 }
