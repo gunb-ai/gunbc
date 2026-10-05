@@ -3,7 +3,16 @@ module v2.lens.argv_word_construction
 import extdeps.filesystem.filesystem_io { Filesystem, filesystem_read_outcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import v2.compiler.parse { grammar_validate_for_parse, parse_production }
 import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { dag_language_model }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_emitted_identity_optional,
+  parse_production_captured_child_optional,
+  parse_subtree_find_production_captured,
+  ParseSubtreeFound,
+  ParseSubtreeAbsent,
+  dag_surface_kw_then_ident_from_captured,
+  dag_surface_kw_then_ident_rest_from_captured
+}
 import v2.lens.common.source_analysis_standing {
   LanguageGrammarRejected,
   LanguageGrammarUnavailable,
@@ -16,7 +25,10 @@ import v2.lens.common.source_analysis_standing {
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { Disposition, Scaffold }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.node { Node, Atom, TypeNode, symbol_lexeme }
+import std.decl_ref { decl_ref }
+import v2.std.node { Node, symbol_lexeme, node_subtree_nodes }
+import v2.std.node_query { find_named_child }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.algebra { contains, fold_list, length, list_reverse }
 import v2.std.integer { Int, integer_int_to_decimal_string }
@@ -37,31 +49,39 @@ import v2.std.optional { Absent, Optional, Present }
 // and word-list declarations, where `extdeps.exec.command`'s `ArgvCommand` (sole constructor,
 // admitted builders only) is the typed form the corpus already owns.
 //
-// IT READS THE RAW PARSE TREE, NEVER THE NORMALIZED ONE — the same standing as
-// v2.lens.text_string_importer_census (whose walk mechanics this lens reuses rather than mints a
-// parallel seam; DESIGN 3b). The walk is a pure fold over the pre-order atom stream of
-// `v2.extdeps.languages.dag`'s own grammar: no host builtin was added, no normalized artifact is
-// consulted, and nothing here can change what the corpus compiles to.
+// IT READS THE RAW PARSE TREE AS A TREE (DESIGN 6), never a normalized artifact and never a
+// flattened atom stream: declaration parts are parent/child edges read by SYMBOL. Productions are
+// matched by emitted identity (parse_production_emitted_identity_optional), declaration parts are
+// read through the grammar's named edges (find_named_child on ^dag_surface_data_decl_name/_type/
+// _expr, exactly the edges v2.extdeps.languages.dag emit_data_decl_emitted_node builds) and
+// through the compiler's own spine decode for fn decls (kw-then-ident for the name, the same
+// four-rights walk v2.compiler.body_lowering_fold body_lower_fn_decl_return_clause_optional uses
+// for the return clause), and a subtree's spellings are collected as atom identities over
+// v2.std.node node_subtree_nodes. No host builtin was added, and nothing here can change what the
+// corpus compiles to.
 //
-// POPULATION, at identity grain (module_file, decl, decl_kind):
-//   (a) builds argv words from string-literal flags: a declaration whose body/value spells a
-//       string literal whose content starts with "-" (a flag word: "--unit=", "--wait", "--",
-//       "-"...);
-//   (b) returns or accepts List<String> argv where ArgvCommand exists: a fn whose declared return
-//       spells List<String>, or that accepts a List<String> parameter in an argv position (the
-//       parameter's name is in argv_position_names, reviewed against the committed roster);
-//   and, for data declarations only, the List<String> word lists that ARE argv vocabulary (flag
-//       words among their literal elements, or an argv-named flagless list) — classified as their
-//       own kind in the same roster; a List<String> data decl is a ceiling, not a member.
+// POPULATION, at identity grain (module_file, decl, decl_kind), split COUNTED vs CANDIDATE
+// (classification by position, per the parent's correction of 2026-10-04):
+//   COUNTED fn rows: a fn (or test fn) that accepts a List<String>-typed parameter or declares a
+//       List<String> return — a word list crossing the builder boundary where ArgvCommand exists
+//       — together with the "-"-prefixed string literals in its own body (flags glued at an argv
+//       position);
+//   COUNTED data rows: a List<String> data declaration whose "-"-prefixed literal elements reach
+//       an argv position INSIDE THE SAME MODULE (its name appears in the body of a fn this lens
+//       already counted as argv-typed);
+//   CANDIDATE rows (reported, never counted as debt): the same prefix matches without position
+//       evidence — a List<String> data declaration with "-"-prefixed elements whose name never
+//       reaches an in-module argv-typed fn, or a "-"-prefixed literal in a fn that accepts and
+//       returns no word list (bullet text, diff markers, prose).
 //
 // SITE CLASS: modules under dag/extdeps are extdeps interface builders; modules under dag/gunbc
 // are workflow call sites. Both classes carry the same debt; only the paying shapes differ.
 //
 // THE ROSTER THAT MAY ONLY SHRINK is committed in dag.gunbc.instruments.argv_word_construction_census
-// and joined through argv_word_construction_gates below: a row whose site no longer resolves
-// refuses the census (pay the debt, delete the row, same change); a live member without a row
-// refuses the census (new string-built argv is refused — adopt the typed form; DESIGN 5: the
-// instrument joins at identity grain, a count is not an oracle).
+// and joined through argv_word_construction_gates below: a COUNTED row whose site no longer
+// resolves refuses the census (pay the debt, delete the row, same change); a live COUNTED member
+// without a row refuses the census (new string-built argv is refused — adopt the typed form;
+// DESIGN 5: the instrument joins at identity grain, a count is not an oracle).
 
 data argv_word_construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
@@ -81,33 +101,16 @@ type ArgvWordsDeclKind
   = FnDecl
   | DataDecl
 
-// A string-literal flag word spelled under a declaration, attributed at flush time.
-type FlagWord {
-  decl: String
-  decl_kind: ArgvWordsDeclKind
-  word: String
-}
-
-// A parameter whose spelled type was read, with the declaration it belongs to.
-type ParamType {
-  decl: String
-  param: String
-  spelling: String
-}
-
-// A declared fn return, read at the atom that opens the body (the arrow's spelling flushes there).
-type ReturnHead {
-  decl: String
-  spelling: String
-}
-
-// Everything the walk read about one declaration, before classification.
+// Everything the tree read about one declaration, before classification.
 type ArgvWordsFact {
   decl: String
   decl_kind: ArgvWordsDeclKind
+  counted: Bool
   flag_words: List<String>
+  candidates: List<String>
   return_spelling: String
-  argv_params: List<String>
+  returns_argv_words: Bool
+  list_string_params: Int
   list_string_data: Bool
 }
 
@@ -117,9 +120,11 @@ type ArgvWordsSite {
   decl: String
   decl_kind: ArgvWordsDeclKind
   site_class: ArgvWordsSiteClass
+  counted: Bool
   flag_words: List<String>
+  candidates: List<String>
   returns_argv_words: Bool
-  argv_word_params: List<String>
+  list_string_params: Int
   list_string_data: Bool
 }
 
@@ -131,447 +136,383 @@ type ArgvWordsSites
   = ArgvWordsSitesEstablished { sites: List<ArgvWordsSite> }
   | ArgvWordsSitesRefused { reason: String }
 
-// ------------------------------------------------------------------ the walk
+// ------------------------------------------------------------------ the tree readers
 
-// A pending type spelling: a parameter's type, a declared return (after an arrow), or a
-// declaration annotation. Generic arguments are carried while the window is open so that
-// List<String> spells in full (the text-string census walks spell heads only; the argv census
-// must tell List<String> from List<Int>).
-type SpellingKind
-  = SpellingNone
-  | SpellingOfParameter
-  | SpellingOfArrow
-  | SpellingOfAnnotation
-
-type Walk {
-  w1: String
-  w2: String
-  w3: String
-  w4: String
-  w5: String
-  decl: String
-  pending_decl_name: Bool
-  pending_decl_is_fn: Bool
-  decl_is_fn: Bool
-  pending_literal: String
-  flag_words: FreeMonoid<FlagWord>
-  pending_param: String
-  pending_kind: SpellingKind
-  pending_segments: FreeMonoid<String>
-  generic_depth: Int
-  generic_tokens: FreeMonoid<String>
-  param_types: FreeMonoid<ParamType>
-  arrow_spelling: String
-  return_spelling: String
-  return_heads: FreeMonoid<ReturnHead>
-  annotation_spelling: String
-  data_list_string: FreeMonoid<String>
+// A production match is a SYMBOL match, never a string compare.
+fn node_production_is(node: Node, want: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == want
+    Absent => false
+  }
 }
 
-fn walk_start() -> Walk {
-  Walk {
-    w1: "",
-    w2: "",
-    w3: "",
-    w4: "",
-    w5: "",
-    decl: "",
-    pending_decl_name: false,
-    pending_decl_is_fn: false,
-    decl_is_fn: false,
-    pending_literal: "",
-    flag_words: Empty,
-    pending_param: "",
-    pending_kind: SpellingNone,
-    pending_segments: Empty,
-    generic_depth: 0,
-    generic_tokens: Empty,
-    param_types: Empty,
-    arrow_spelling: "",
-    return_spelling: "",
-    return_heads: Empty,
-    annotation_spelling: "",
-    data_list_string: Empty
+// A node's own atom identity (the spelling an identifier or a string literal carries).
+fn node_atom_lexeme(node: Node) -> Optional<String> {
+  match node_atom_identity_optional(node: node) {
+    Present { value: sym } => Present { value: symbol_lexeme(sym: sym) }
+    Absent => Absent
   }
+}
+
+// Every atom identity in one subtree, in document order.
+fn subtree_atom_symbols(n: Node) -> List<Symbol> {
+  fold_list(xs: node_subtree_nodes(root: n), empty: Empty, cons: fn(acc, node) {
+    match node_atom_identity_optional(node: node) {
+      Present { value: sym } => Cons { head: sym, tail: acc }
+      Absent => acc
+    }
+  })
+}
+
+fn atoms_contain_symbol(atoms: List<Symbol>, want: Symbol) -> Bool {
+  fold_list(xs: atoms, empty: false, cons: fn(acc, s) { acc || (s == want) })
+}
+
+// List<String>, read from the type's own atoms: the head and the element type, whatever the
+// bracket spellings. A deeper element List<List<String>> still contains both, and is still a
+// word list at an argv position.
+fn type_atoms_list_string(atoms: List<Symbol>) -> Bool {
+  atoms_contain_symbol(atoms: atoms, want: ^List) && atoms_contain_symbol(atoms: atoms, want: ^String)
+}
+
+fn distinct_strings(xs: List<String>) -> List<String> {
+  fold_list(xs: xs, empty: Empty, cons: fn(acc, s) {
+    if contains(xs: acc, item: s, eq: str_eq_fn) { acc } else { Cons { head: s, tail: acc } }
+  })
 }
 
 fn str_eq_fn(a: String, b: String) -> Bool {
   a == b
 }
 
-fn member(xs: FreeMonoid<String>, x: String) -> Bool {
-  contains(xs: xs, item: x, eq: str_eq_fn)
-}
-
-fn is_production_or_token(x: String) -> Bool {
-  starts_with(s: x, prefix: "dag_")
-}
-
-fn is_identifier(x: String) -> Bool {
-  !is_production_or_token(x: x) && !(x == "")
-}
-
-fn is_decl_production(x: String) -> Bool {
-  (x == "dag_surface_fn_decl")
-  || (x == "dag_surface_test_fn_decl")
-  || (x == "dag_surface_data_decl")
-  || (x == "dag_surface_type_decl")
-  || (x == "dag_surface_alias_decl")
-  || (x == "dag_surface_port_decl")
-  || (x == "dag_surface_invariant_decl")
-  || (x == "dag_surface_subject_decl")
-  || (x == "dag_surface_grammar_decl")
-  || (x == "dag_surface_rule_decl")
-}
-
-fn is_fn_decl_production(x: String) -> Bool {
-  (x == "dag_surface_fn_decl") || (x == "dag_surface_test_fn_decl")
-}
-
-fn is_string_literal_token(x: String) -> Bool {
-  x == "dag_token_string_literal"
-}
-
-fn is_type_head(w: Walk, x: String) -> Bool {
-  is_identifier(x: x) && (w.w1 == "dag_surface_qualified_name") && (w.w2 == "dag_surface_type_expr")
-}
-
-fn is_param_type_head(w: Walk, x: String) -> Bool {
-  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_lparen") || (w.w5 == "dag_token_comma") || (w.w5 == "dag_surface_param_list"))
-}
-
-fn is_annotation_type_head(w: Walk, x: String) -> Bool {
-  is_type_head(w: w, x: x) && (w.w3 == "dag_token_colon") && ((w.w5 == "dag_token_kw_let") || (w.w5 == "dag_token_kw_data"))
-}
-
-fn is_arrow_type_head(w: Walk, x: String) -> Bool {
-  is_type_head(w: w, x: x) && (w.w3 == "dag_token_arrow")
-}
-
-fn next_decl(w: Walk, x: String) -> String {
-  if x == "dag_surface_top_level_item" { "" } else if w.pending_decl_name && is_identifier(x: x) { x } else { w.decl }
-}
-
-fn next_pending_decl_name(w: Walk, x: String) -> Bool {
-  if x == "dag_surface_top_level_item" { false } else if is_decl_production(x: w.w1) { true } else if is_identifier(x: x) { false } else { w.pending_decl_name }
-}
-
-fn next_pending_decl_is_fn(w: Walk, x: String) -> Bool {
-  if x == "dag_surface_top_level_item" { false } else if is_fn_decl_production(x: x) { true } else if is_decl_production(x: x) { false } else { w.pending_decl_is_fn }
-}
-
-fn next_decl_is_fn(w: Walk, x: String) -> Bool {
-  if x == "dag_surface_top_level_item" { false } else if w.pending_decl_name && is_identifier(x: x) { w.pending_decl_is_fn } else { w.decl_is_fn }
-}
-
-fn decl_kind_of(is_fn: Bool) -> ArgvWordsDeclKind {
-  match is_fn {
-    true => FnDecl
-    false => DataDecl
-  }
-}
-
-// A string literal's CONTENT atom arrives directly after the dag_token_string_literal token; it is
-// the one non-production atom the walk must not read as an identifier. It parks in pending_literal
-// and flushes at the next atom, attributed to the declaration open at flush time.
-fn next_pending_literal(w: Walk, x: String) -> String {
-  if is_string_literal_token(x: x) { "" } else if !(w.pending_literal == "") { w.pending_literal } else { "" }
-}
-
-fn parks_literal(w: Walk, x: String) -> Bool {
-  is_string_literal_token(x: w.w1) && !is_production_or_token(x: x)
-}
-
-fn next_flag_words(w: Walk, x: String) -> FreeMonoid<FlagWord> {
-  let flushed = if (w.pending_literal == "") || x == "" { Empty } else if starts_with(s: w.pending_literal, prefix: "-") {
-    Cons { head: FlagWord { decl: w.decl, decl_kind: decl_kind_of(is_fn: w.decl_is_fn), word: w.pending_literal }, tail: Empty }
-  } else { Empty }
-  if x == "" { w.flag_words } else { fold_list(xs: flushed, empty: w.flag_words, cons: fn(acc, f) { Cons { head: f, tail: acc } }) }
-}
-
-fn starts_pending_spelling(w: Walk, x: String) -> Bool {
-  is_param_type_head(w: w, x: x) || is_annotation_type_head(w: w, x: x) || is_arrow_type_head(w: w, x: x)
-}
-
-// A pending spelling continues through a dotted name and, while a generic window is open, through
-// the identifiers, commas and the closing angle bracket of its argument list.
-fn continues_pending(w: Walk, x: String) -> Bool {
-  if w.pending_param == "" {
-    false
-  } else if x == "dag_token_dot" {
-    true
-  } else if x == "dag_token_lt" {
-    true
-  } else if (w.generic_depth > 0) && ((x == "dag_token_comma") || (x == "dag_token_gt") || is_identifier(x: x)) {
-    true
-  } else {
-    is_identifier(x: x) && (w.w1 == "dag_token_dot")
-  }
-}
-
-fn flushes_pending(w: Walk, x: String) -> Bool {
-  !(w.pending_param == "") && !continues_pending(w: w, x: x)
-}
-
-fn next_pending_param(w: Walk, x: String) -> String {
-  if is_arrow_type_head(w: w, x: x) { "->" } else if starts_pending_spelling(w: w, x: x) { w.w4 } else if continues_pending(w: w, x: x) { w.pending_param } else { "" }
-}
-
-fn next_pending_kind(w: Walk, x: String) -> SpellingKind {
-  if is_param_type_head(w: w, x: x) { SpellingOfParameter } else if is_annotation_type_head(w: w, x: x) { SpellingOfAnnotation } else if is_arrow_type_head(w: w, x: x) { SpellingOfArrow } else { w.pending_kind }
-}
-
-fn next_pending_segments(w: Walk, x: String) -> FreeMonoid<String> {
-  if starts_pending_spelling(w: w, x: x) {
-    Cons { head: x, tail: Empty }
-  } else if continues_pending(w: w, x: x) && (x == "dag_token_lt") {
-    w.pending_segments
-  } else if continues_pending(w: w, x: x) && is_identifier(x: x) && (w.generic_depth > 0) {
-    w.pending_segments
-  } else if continues_pending(w: w, x: x) && is_identifier(x: x) {
-    Cons { head: x, tail: w.pending_segments }
-  } else if continues_pending(w: w, x: x) {
-    w.pending_segments
-  } else {
-    Empty
-  }
-}
-
-fn next_generic_depth(w: Walk, x: String) -> Int {
-  if !(w.pending_param == "") && (x == "dag_token_lt") {
-    1
-  } else if (w.generic_depth > 0) && (x == "dag_token_gt") {
-    0
-  } else {
-    w.generic_depth
-  }
-}
-
-fn next_generic_tokens(w: Walk, x: String) -> FreeMonoid<String> {
-  if (w.generic_depth > 0) && ((x == "dag_token_comma") || is_identifier(x: x)) {
-    Cons { head: x, tail: w.generic_tokens }
-  } else if !(w.pending_param == "") && (x == "dag_token_lt") {
-    Empty
-  } else {
-    w.generic_tokens
-  }
-}
-
-fn dotted(segments_reversed: FreeMonoid<String>) -> String {
-  fold_list(xs: list_reverse(xs: segments_reversed), empty: "", cons: fn(acc, s) { if acc == "" { s } else { concat(concat(acc, "."), s) } })
-}
-
-fn generic_spelling(tokens_reversed: FreeMonoid<String>) -> String {
-  fold_list(xs: list_reverse(xs: tokens_reversed), empty: "", cons: fn(acc, t) { if acc == "" { t } else { concat(concat(acc, ","), t) } })
-}
-
-fn flushed_spelling(w: Walk) -> String {
-  let head = dotted(segments_reversed: w.pending_segments)
-  if w.generic_depth > 0 {
-    concat(concat(head, "<"), concat(generic_spelling(tokens_reversed: w.generic_tokens), ">"))
-  } else {
-    head
-  }
-}
-
-fn next_param_types(w: Walk, x: String) -> FreeMonoid<ParamType> {
-  match w.pending_kind {
-    SpellingOfParameter =>
-      if flushes_pending(w: w, x: x) { Cons { head: ParamType { decl: w.decl, param: w.pending_param, spelling: flushed_spelling(w: w) }, tail: w.param_types } } else { w.param_types }
-    _ => w.param_types
-  }
-}
-
-fn next_arrow_spelling(w: Walk, x: String) -> String {
-  match w.pending_kind {
-    SpellingOfArrow => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.arrow_spelling }
-    _ => w.arrow_spelling
-  }
-}
-
-fn next_annotation_spelling(w: Walk, x: String) -> String {
-  match w.pending_kind {
-    SpellingOfAnnotation => if flushes_pending(w: w, x: x) { flushed_spelling(w: w) } else { w.annotation_spelling }
-    _ => w.annotation_spelling
-  }
-}
-
-// The declared return of the fn whose body is open: the arrow's spelling flushes on the very atom
-// that opens the body, so it is read as of this atom.
-fn next_return_heads(w: Walk, x: String) -> FreeMonoid<ReturnHead> {
-  if (x == "dag_surface_fn_body") && (w.return_spelling == "") {
-    Cons { head: ReturnHead { decl: w.decl, spelling: next_arrow_spelling(w: w, x: x) }, tail: w.return_heads }
-  } else {
-    w.return_heads
-  }
-}
-
-fn next_return_spelling(w: Walk, x: String) -> String {
-  if x == "dag_surface_top_level_item" { "" } else if (x == "dag_surface_fn_body") && (w.return_spelling == "") { next_arrow_spelling(w: w, x: x) } else { w.return_spelling }
-}
-
-// A List<String> DATA DECLARATION: the annotation's spelling flushes on the equals sign that opens
-// its value.
-fn next_data_list_string(w: Walk, x: String) -> FreeMonoid<String> {
-  if (x == "dag_token_eq") && !(w.decl == "") && (flushed_spelling(w: w) == "List<String>") {
-    Cons { head: w.decl, tail: w.data_list_string }
-  } else {
-    w.data_list_string
-  }
-}
-
-fn walk_step(w: Walk, x: String) -> Walk {
-  Walk {
-    w1: x,
-    w2: w.w1,
-    w3: w.w2,
-    w4: w.w3,
-    w5: w.w4,
-    decl: next_decl(w: w, x: x),
-    pending_decl_name: next_pending_decl_name(w: w, x: x),
-    pending_decl_is_fn: next_pending_decl_is_fn(w: w, x: x),
-    decl_is_fn: next_decl_is_fn(w: w, x: x),
-    pending_literal: if parks_literal(w: w, x: x) { x } else { next_pending_literal(w: w, x: x) },
-    flag_words: if parks_literal(w: w, x: x) { next_flag_words(w: w, x: "") } else { next_flag_words(w: w, x: x) },
-    pending_param: next_pending_param(w: w, x: x),
-    pending_kind: next_pending_kind(w: w, x: x),
-    pending_segments: next_pending_segments(w: w, x: x),
-    generic_depth: next_generic_depth(w: w, x: x),
-    generic_tokens: next_generic_tokens(w: w, x: x),
-    param_types: next_param_types(w: w, x: x),
-    arrow_spelling: next_arrow_spelling(w: w, x: x),
-    return_spelling: next_return_spelling(w: w, x: x),
-    return_heads: next_return_heads(w: w, x: x),
-    annotation_spelling: next_annotation_spelling(w: w, x: x),
-    data_list_string: next_data_list_string(w: w, x: x)
-  }
-}
-
-// The end of the stream closes the last declaration: the parked literal, if any, flushes.
-fn finish_walk(w: Walk) -> Walk {
-  walk_step(w: walk_step(w: w, x: "dag_surface_end_of_stream"), x: "dag_surface_top_level_item")
-}
-
-fn walk_positioned(atoms: FreeMonoid<PositionedAtom>) -> Walk {
-  finish_walk(w: fold_list(xs: atoms, empty: walk_start(), cons: fn(w, a) { walk_step(w: w, x: a.lexeme) }))
-}
-
-fn walk_atoms(atoms: FreeMonoid<String>) -> Walk {
-  walk_positioned(atoms: fold_list(xs: list_reverse(xs: atoms), empty: Empty, cons: fn(acc, x) { Cons { head: PositionedAtom { lexeme: x }, tail: acc } }))
-}
-
-type PositionedAtom {
-  lexeme: String
-}
-
-// The pre-order atom stream, built by prepending and reversed once (linear).
-fn atoms_reversed(n: Node, acc: FreeMonoid<PositionedAtom>) -> FreeMonoid<PositionedAtom> {
-  let here = match n.kind {
-    TypeNode { connective: c } => match c {
-      Atom { identity: i } => Cons { head: PositionedAtom { lexeme: symbol_lexeme(sym: i) }, tail: acc }
-      _ => acc
+// The "-"-prefixed string-literal contents in one subtree: flag words and their cousins. The
+// arrow token's spelling ("->") is excluded, and so are the grammar's own class-marker atoms
+// (dag_token_* / dag_surface_*), which are production identities rather than source strings.
+fn flag_contents_of_atoms(atoms: List<Symbol>) -> List<String> {
+  distinct_strings(fold_list(xs: list_reverse(xs: atoms), empty: Empty, cons: fn(acc, s) {
+    let lex = symbol_lexeme(sym: s)
+    if starts_with(s: lex, prefix: "-") && !(lex == "->") && !starts_with(s: lex, prefix: "dag_") {
+      Cons { head: lex, tail: acc }
+    } else {
+      acc
     }
-    _ => acc
-  }
-  fold(n.children, init: here, f: fn(a, e) { atoms_reversed(n: e.target, acc: a) })
+  }))
 }
 
-fn walk_tree(root: Node) -> Walk {
-  walk_positioned(atoms: list_reverse(xs: atoms_reversed(n: root, acc: Empty)))
+// A type spelling rebuilt from its own atoms, for the receipt column.
+fn type_spelling(atoms: List<Symbol>) -> String {
+  fold_list(xs: list_reverse(xs: atoms), empty: "", cons: fn(acc, s) { concat(acc, symbol_lexeme(sym: s)) })
 }
 
-// ------------------------------------------------------------------ facts of a walked module
-
-fn flag_words_of(walked: Walk, decl: String, kind: ArgvWordsDeclKind) -> List<String> {
-  let reversed = fold_list(xs: walked.flag_words, empty: Empty, cons: fn(acc, f) {
-    if (f.decl == decl) && decl_kind_matches(a: f.decl_kind, b: kind) { Cons { head: f.word, tail: acc } } else { acc }
-  })
-  fold_list(xs: list_reverse(xs: reversed), empty: Empty, cons: fn(acc, w) { if contains(xs: acc, item: w, eq: str_eq_fn) { acc } else { Cons { head: w, tail: acc } } })
-}
-
-fn decl_kind_matches(a: ArgvWordsDeclKind, b: ArgvWordsDeclKind) -> Bool {
-  match a {
-    FnDecl => match b { FnDecl => true, DataDecl => false }
-    DataDecl => match b { FnDecl => false, DataDecl => true }
+// A sequence node's right member, through the grammar's own projections, with the optional
+// wrappers the parser leaves in place unwrapped (the compiler's body_lower spine decode).
+fn deep_unwrap_optional(node: Node) -> Node {
+  match find_named_child(root: node, name: ^grammar_optional_element_node_projection) {
+    Accepted { value: child, diagnostics: _ } => deep_unwrap_optional(node: child)
+    Rejected { diagnostics: _ } => node
   }
 }
 
-fn argv_params_of(walked: Walk, decl: String) -> List<String> {
-  let reversed = fold_list(xs: walked.param_types, empty: Empty, cons: fn(acc, p) {
-    if (p.decl == decl) && (p.spelling == "List<String>") && member(xs: argv_position_name_rows, x: p.param) { Cons { head: p.param, tail: acc } } else { acc }
-  })
-  fold_list(xs: list_reverse(xs: reversed), empty: Empty, cons: fn(acc, p) { if contains(xs: acc, item: p, eq: str_eq_fn) { acc } else { Cons { head: p, tail: acc } } })
+fn sequence_pair_optional(node: Node) -> Optional<SequencePair> {
+  let unwrapped = deep_unwrap_optional(node: node)
+  match find_named_child(root: unwrapped, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: left, diagnostics: _ } =>
+      match find_named_child(root: unwrapped, name: ^grammar_sequence_right_node_projection) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: right, diagnostics: _ } => Present { value: SequencePair { left: left, right: right } }
+      }
+  }
 }
 
-fn return_spelling_of(walked: Walk, decl: String) -> String {
-  fold_list(xs: walked.return_heads, empty: "", cons: fn(acc, r) { if r.decl == decl { r.spelling } else { acc } })
+type SequencePair {
+  left: Node
+  right: Node
 }
 
-fn is_list_string_data(walked: Walk, decl: String) -> Bool {
-  member(xs: walked.data_list_string, x: decl)
+fn spine_right(node: Node) -> Optional<Node> {
+  match sequence_pair_optional(node: node) {
+    Present { value: pair } => Present { value: pair.right }
+    Absent => Absent
+  }
 }
 
-fn distinct_decls(xs: FreeMonoid<String>) -> List<String> {
-  let reversed = fold_list(xs: xs, empty: Empty, cons: fn(acc, d) { if member(xs: acc, x: d) { acc } else { Cons { head: d, tail: acc } } })
-  list_to_string_list(reversed)
+// THE FN DECL NAME: the kw-then-ident decode the compiler itself uses (a test fn carries one more
+// keyword, so its name sits one spine step deeper).
+fn fn_decl_name(decl: Node, is_test: Bool) -> Optional<Symbol> {
+  match parse_production_captured_child_optional(node: decl) {
+    Absent => Absent
+    Present { value: captured } =>
+      match is_test {
+        false => dag_surface_kw_then_ident_from_captured(captured: captured)
+        true =>
+          match dag_surface_kw_then_ident_rest_from_captured(captured: captured) {
+            Absent => Absent
+            Present { value: after_test_kw } => dag_surface_kw_then_ident_from_captured(captured: after_test_kw)
+          }
+      }
+  }
 }
 
-fn list_to_string_list(m: FreeMonoid<String>) -> List<String> {
-  fold_list(xs: list_reverse(xs: m), empty: Empty, cons: fn(acc, s) { Cons { head: s, tail: acc } })
+// THE RETURN CLAUSE: the same four-rights walk v2.compiler.body_lowering_fold
+// body_lower_fn_decl_return_clause_optional performs — kw_fn, name, generic params, params, then
+// the arrow clause whose left member is the declared return type. Absent when the fn declares no
+// return.
+fn fn_decl_return_type(captured: Node) -> Optional<Node> {
+  match spine_right(node: captured) {
+    Absent => Absent
+    Present { value: after_kw } =>
+      match spine_right(node: after_kw) {
+        Absent => Absent
+        Present { value: after_name } =>
+          match spine_right(node: after_name) {
+            Absent => Absent
+            Present { value: after_generics } =>
+              match spine_right(node: after_generics) {
+                Absent => Absent
+                Present { value: after_params } =>
+                  match sequence_pair_optional(node: after_params) {
+                    Absent => Absent
+                    Present { value: pair } =>
+                      match find_named_child(root: pair.left, name: ^grammar_optional_element_node_projection) {
+                        Accepted { value: inner, diagnostics: _ } => Present { value: inner }
+                        Rejected { diagnostics: _ } => Present { value: pair.left }
+                      }
+                  }
+              }
+          }
+      }
+  }
 }
 
-// The argv positions a List<String> parameter is read at: the names reviewed against the committed
-// roster at baseline. A parameter outside these names is not argv (a layout, a row of labels) and
-// is not a census member by itself. A List<String> spells as a FreeMonoid, so the rows are the set.
-data argv_position_name_rows: List<String> = ["argv", "command_argv", "command", "command_words", "args", "arguments", "words", "property_argv", "wait_argv", "unit_argv", "extra_argv", "flag_words"]
-
-fn argv_named_data_decl(decl: String) -> Bool {
-  ends_with(s: decl, suffix: "_args") || ends_with(s: decl, suffix: "_argv") || ends_with(s: decl, suffix: "_words")
+// The params region: the grammar's own param_list production under the fn capture.
+fn fn_decl_param_list(decl: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_param_list) {
+    ParseSubtreeFound { captured: c } => Present { value: c }
+    ParseSubtreeAbsent => Absent
+  }
 }
 
-fn facts_of(walked: Walk) -> List<ArgvWordsFact> {
-  let fn_decls = distinct_decls(fold_list(xs: walked.return_heads, empty: Empty, cons: fn(acc, r) { Cons { head: r.decl, tail: acc } }))
-  let fns = fold_list(xs: fn_decls, empty: Empty, cons: fn(acc, d) {
-    Cons {
-      head: ArgvWordsFact {
-        decl: d,
-        decl_kind: FnDecl,
-        flag_words: flag_words_of(walked: walked, decl: d, kind: FnDecl),
-        return_spelling: return_spelling_of(walked: walked, decl: d),
-        argv_params: argv_params_of(walked: walked, decl: d),
-        list_string_data: false
-      },
-      tail: acc
+// Every typed parameter under the params capture, as (name, type atoms) pairs. A typed parameter
+// is Seq(binding, Seq(colon, Seq(type, tail))) — the shape dag_grammar_typed_param_head_expr
+// builds — read through the projections, never by token adjacency.
+type ParamRead {
+  name: String
+  type_atoms: List<Symbol>
+}
+
+// The comma list is Seq(item, Seq(Repeat(...), ...)); every typed parameter is a sequence whose
+// LEFT is a binding-name atom and whose spine carries colon then type. Collect over the whole
+// capture subtree: any sequence whose left is an atom and whose right spine carries a colon
+// token immediately followed by a type production is one parameter. The production test on the
+// type side keeps prose sequences out.
+fn typed_params_of_capture(capture: Node, acc: List<ParamRead>) -> List<ParamRead> {
+  fold_list(xs: node_subtree_nodes(root: capture), empty: acc, cons: fn(acc2, node) {
+    match sequence_pair_optional(node: node) {
+      Absent => acc2
+      Present { value: pair } =>
+        match node_atom_identity_optional(node: pair.left) {
+          Absent => acc2
+          Present { value: name_sym } =>
+            match dag_lex_token_symbol(sym: name_sym) {
+              true => acc2
+              false =>
+                match spine_right(node: pair.right) {
+                  Absent => acc2
+                  Present { value: after_colon } =>
+                    match sequence_pair_optional(node: after_colon) {
+                      Absent => acc2
+                      Present { value: type_pair } =>
+                        match node_production_is(node: type_pair.left, want: ^dag_surface_type_expr) {
+                          true => Cons { head: ParamRead { name: symbol_lexeme(sym: name_sym), type_atoms: subtree_atom_symbols(n: type_pair.left) }, tail: acc2 }
+                          false => acc2
+                        }
+                    }
+                }
+            }
+        }
     }
   })
-  let data_decls = distinct_decls(walked.data_list_string)
-  fold_list(xs: data_decls, empty: fns, cons: fn(acc, d) {
-    Cons {
-      head: ArgvWordsFact {
-        decl: d,
-        decl_kind: DataDecl,
-        flag_words: flag_words_of(walked: walked, decl: d, kind: DataDecl),
-        return_spelling: "",
-        argv_params: Empty,
-        list_string_data: true
-      },
-      tail: acc
+}
+
+fn dag_lex_token_symbol(sym: Symbol) -> Bool {
+  let lex = symbol_lexeme(sym: sym)
+  starts_with(s: lex, prefix: "dag_token_") || starts_with(s: lex, prefix: "dag_surface_") || starts_with(s: lex, prefix: "dag_production_")
+}
+
+// ------------------------------------------------------------------ facts from the tree
+
+type DeclBag {
+  data_decls: List<Node>
+  fn_decls: List<Node>
+}
+
+fn decl_bag_merge(a: DeclBag, b: DeclBag) -> DeclBag {
+  DeclBag { data_decls: concat(a.data_decls, b.data_decls), fn_decls: concat(a.fn_decls, b.fn_decls) }
+}
+
+fn decl_bag_of_node(n: Node) -> DeclBag {
+  let is_data = node_production_is(node: n, want: ^dag_surface_data_decl)
+  let is_fn = node_production_is(node: n, want: ^dag_surface_fn_decl)
+  let is_test = node_production_is(node: n, want: ^dag_surface_test_fn_decl)
+  DeclBag {
+    data_decls: if is_data { [n] } else { [] },
+    fn_decls: if is_fn || is_test { [n] } else { [] }
+  }
+}
+
+fn decl_bag_of_tree(root: Node) -> DeclBag {
+  fold_list(xs: node_subtree_nodes(root: root), empty: DeclBag { data_decls: [], fn_decls: [] }, cons: fn(acc, node) {
+    decl_bag_merge(a: acc, b: decl_bag_of_node(n: node))
+  })
+}
+
+fn fact_name(node_name: Optional<Symbol>, fallback: String) -> String {
+  match node_name {
+    Present { value: sym } => symbol_lexeme(sym: sym)
+    Absent => fallback
+  }
+}
+
+fn fn_fact(decl: Node, is_test: Bool) -> Optional<ArgvWordsFact> {
+  let name = fact_name(node_name: fn_decl_name(decl: decl, is_test: is_test), fallback: "<unnamed fn>")
+  let body_atoms = match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_fn_body) {
+    ParseSubtreeFound { captured: c } => subtree_atom_symbols(n: c)
+    ParseSubtreeAbsent => []
+  }
+  let return_atoms = match parse_production_captured_child_optional(node: decl) {
+    Absent => []
+    Present { value: captured } =>
+      match fn_decl_return_type(captured: captured) {
+        Absent => []
+        Present { value: type_node } => subtree_atom_symbols(n: type_node)
+      }
+  }
+  let param_reads = match fn_decl_param_list(decl: decl) {
+    Absent => []
+    Present { value: capture } => typed_params_of_capture(capture: capture, acc: [])
+  }
+  let list_string_params = fold_list(xs: param_reads, empty: 0, cons: fn(acc, p) {
+    if type_atoms_list_string(atoms: p.type_atoms) { acc + 1 } else { acc }
+  })
+  let return_is_list_string = type_atoms_list_string(atoms: return_atoms)
+  let counted = (list_string_params > 0) || return_is_list_string
+  let body_flags = flag_contents_of_atoms(atoms: body_atoms)
+  Present {
+    value: ArgvWordsFact {
+      decl: name,
+      decl_kind: FnDecl,
+      counted: counted,
+      flag_words: if counted { body_flags } else { [] },
+      candidates: if counted { [] } else { body_flags },
+      return_spelling: type_spelling(atoms: return_atoms),
+      returns_argv_words: return_is_list_string,
+      list_string_params: list_string_params,
+      list_string_data: false
+    }
+  }
+}
+
+// Whether a data declaration's name reaches an argv position in this module: its binding symbol
+// appears in the body of a fn this lens counted as argv-typed. In-module evidence only — a
+// cross-module use is invisible to one module's tree and stays a candidate.
+fn data_decl_reaches_argv(name_sym: Symbol, fn_bodies: List<Symbol>) -> Bool {
+  atoms_contain_symbol(atoms: fn_bodies, want: name_sym)
+}
+
+fn data_fact(decl: Node, fn_argv_bodies: List<Symbol>) -> Optional<ArgvWordsFact> {
+  let name_node = match find_named_child(root: decl, name: ^dag_surface_data_decl_name) {
+    Accepted { value: n, diagnostics: _ } => Present { value: n }
+    Rejected { diagnostics: _ } => Absent
+  }
+  let name_sym = match name_node {
+    Absent => Absent
+    Present { value: n } => node_atom_identity_optional(node: n)
+  }
+  let name = fact_name(node_name: name_sym, fallback: "<unnamed data>")
+  let type_atoms = match find_named_child(root: decl, name: ^dag_surface_data_decl_type) {
+    Accepted { value: n, diagnostics: _ } => subtree_atom_symbols(n: n)
+    Rejected { diagnostics: _ } => []
+  }
+  let expr_atoms = match find_named_child(root: decl, name: ^dag_surface_data_decl_expr) {
+    Accepted { value: n, diagnostics: _ } => subtree_atom_symbols(n: n)
+    Rejected { diagnostics: _ } => []
+  }
+  let is_list_string = type_atoms_list_string(atoms: type_atoms)
+  let contents = flag_contents_of_atoms(atoms: expr_atoms)
+  let has_flags = !(length(xs: contents) == 0)
+  let reached = match name_sym {
+    Absent => false
+    Present { value: s } => data_decl_reaches_argv(name_sym: s, fn_bodies: fn_argv_bodies)
+  }
+  let counted = is_list_string && has_flags && reached
+  Present {
+    value: ArgvWordsFact {
+      decl: name,
+      decl_kind: DataDecl,
+      counted: counted,
+      flag_words: if counted { contents } else { [] },
+      candidates: if is_list_string && has_flags && !counted { contents } else { [] },
+      return_spelling: "",
+      returns_argv_words: false,
+      list_string_params: 0,
+      list_string_data: is_list_string
+    }
+  }
+}
+
+// All fn bodies in the module, flattened, for the data-decl reach test: only bodies of fns the
+// lens counts as argv-typed can grant a data declaration an argv position.
+fn argv_typed_fn_bodies(root: Node) -> List<Symbol> {
+  fold_list(xs: decl_bag_of_tree(root: root).fn_decls, empty: Empty, cons: fn(acc, decl) {
+    let is_test = node_production_is(node: decl, want: ^dag_surface_test_fn_decl)
+    let name = fn_decl_name(decl: decl, is_test: is_test)
+    let body_atoms = match parse_subtree_find_production_captured(root: decl, emitted: ^dag_surface_fn_body) {
+      ParseSubtreeFound { captured: c } => subtree_atom_symbols(n: c)
+      ParseSubtreeAbsent => []
+    }
+    let return_atoms = match parse_production_captured_child_optional(node: decl) {
+      Absent => []
+      Present { value: captured } =>
+        match fn_decl_return_type(captured: captured) {
+          Absent => []
+          Present { value: type_node } => subtree_atom_symbols(n: type_node)
+        }
+    }
+    let param_reads = match fn_decl_param_list(decl: decl) {
+      Absent => []
+      Present { value: capture } => typed_params_of_capture(capture: capture, acc: [])
+    }
+    let argv_typed = (fold_list(xs: param_reads, empty: 0, cons: fn(a, p) { if type_atoms_list_string(atoms: p.type_atoms) { a + 1 } else { a } }) > 0) || type_atoms_list_string(atoms: return_atoms)
+    if argv_typed { concat(acc, body_atoms) } else { acc }
+  })
+}
+
+fn facts_of(root: Node) -> List<ArgvWordsFact> {
+  let bag = decl_bag_of_tree(root: root)
+  let fn_argv_bodies = argv_typed_fn_bodies(root: root)
+  let fn_facts = fold_list(xs: bag.fn_decls, empty: Empty, cons: fn(acc, decl) {
+    let is_test = node_production_is(node: decl, want: ^dag_surface_test_fn_decl)
+    match fn_fact(decl: decl, is_test: is_test) {
+      Absent => acc
+      Present { value: f } => Cons { head: f, tail: acc }
+    }
+  })
+  fold_list(xs: bag.data_decls, empty: fn_facts, cons: fn(acc, decl) {
+    match data_fact(decl: decl, fn_argv_bodies: fn_argv_bodies) {
+      Absent => acc
+      Present { value: f } => Cons { head: f, tail: acc }
     }
   })
 }
 
 // ------------------------------------------------------------------ sites
 
+// A fact joins the census when it is debt (counted) or a reported candidate. A data declaration
+// that is a plain word list with no flag vocabulary and no reach is neither: the List<String>
+// population is a ceiling, not the census.
 fn is_census_member(f: ArgvWordsFact) -> Bool {
-  match f.decl_kind {
-    FnDecl =>
-      !(length(xs: f.flag_words) == 0)
-      || (f.return_spelling == "List<String>")
-      || !(length(xs: f.argv_params) == 0)
-    DataDecl =>
-      !(length(xs: f.flag_words) == 0)
-      || argv_named_data_decl(decl: f.decl)
-  }
+  f.counted || !(length(xs: f.candidates) == 0) || (f.decl_kind == FnDecl && f.returns_argv_words) || (f.decl_kind == FnDecl && f.list_string_params > 0)
 }
 
 fn site_class_of(module_file: String) -> Optional<ArgvWordsSiteClass> {
@@ -613,9 +554,11 @@ fn argv_word_construction_sites_of_facts(module_file: String, facts: List<ArgvWo
                 decl: f.decl,
                 decl_kind: f.decl_kind,
                 site_class: sc,
+                counted: f.counted,
                 flag_words: f.flag_words,
-                returns_argv_words: f.return_spelling == "List<String>",
-                argv_word_params: f.argv_params,
+                candidates: f.candidates,
+                returns_argv_words: f.returns_argv_words,
+                list_string_params: f.list_string_params,
                 list_string_data: f.list_string_data
               },
               tail: acc
@@ -669,10 +612,12 @@ fn site_line(s: ArgvWordsSite) -> String {
   let decl = concat(escape_field(s: s.decl), ",")
   let kind = concat(decl_kind_name(k: s.decl_kind), ",")
   let class = concat(site_class_name(c: s.site_class), ",")
+  let counted = concat(bool_word(b: s.counted), ",")
   let flags = concat(join_words(ws: s.flag_words), ",")
+  let cands = concat(join_words(ws: s.candidates), ",")
   let ret = concat(bool_word(b: s.returns_argv_words), ",")
-  let params = concat(join_words(ws: s.argv_word_params), ",")
-  concat(concat(concat(concat(concat(concat(concat(file, decl), kind), class), flags), ret), params), concat(bool_word(b: s.list_string_data), "\n"))
+  let params = concat(integer_int_to_decimal_string(value: s.list_string_params), ",")
+  concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(file, decl), kind), class), counted), flags), cands), ret), params), bool_word(b: s.list_string_data)), "\n")
 }
 
 fn sites_text(sites: List<ArgvWordsSite>) -> String {
@@ -714,9 +659,9 @@ type ArgvWordsModuleStanding
   = ArgvWordsModuleEstablished { path: String, sites: List<ArgvWordsSite> }
   | ArgvWordsModuleRefused { path: String, reason: String }
 
-// The census read of ONE module file, end to end: read, raw parse, walk, facts, sites. The read
-// folds through filesystem_read_outcome (the module's modeled read fold), so refusal and content
-// cannot be conflated at this site.
+// The census read of ONE module file, end to end: read, raw parse, tree query, facts, sites. The
+// read folds through filesystem_read_outcome (the module's modeled read fold), so refusal and
+// content cannot be conflated at this site.
 fn argv_word_construction_module_sites(path: String) -> ArgvWordsModuleStanding {
   let read = Filesystem.Read(path: path)
   match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
@@ -725,7 +670,7 @@ fn argv_word_construction_module_sites(path: String) -> ArgvWordsModuleStanding 
       match raw_tree_of_text(text: text) {
         RawTreeNotEstablished { cause: c } => ArgvWordsModuleRefused { path: path, reason: concat("raw parse not established: ", source_cause_name(c: c)) }
         RawTreeEstablished { root: root } =>
-          match argv_word_construction_sites_of_facts(module_file: path, facts: facts_of(walked: walk_tree(root: root))) {
+          match argv_word_construction_sites_of_facts(module_file: path, facts: facts_of(root: root)) {
             ArgvWordsSitesRefused { reason: r } => ArgvWordsModuleRefused { path: path, reason: r }
             ArgvWordsSitesEstablished { sites: sites } => ArgvWordsModuleEstablished { path: path, sites: sites }
           }
@@ -765,8 +710,9 @@ fn joined(lines_reversed: FreeMonoid<String>) -> String {
 // ------------------------------------------------------------------ the roster gates
 
 // A committed roster row: one census member, at identity grain, with its classification and the
-// disposition note that names what pays it. The roster may only shrink: rows resolve against live
-// sites, live members must be covered, and the population never grows past the committed baseline.
+// disposition note that names what pays it. The roster may only shrink: COUNTED rows resolve
+// against live COUNTED sites, live COUNTED members must be covered, and the population never
+// grows past the committed baseline. Candidate rows are reported, never gated.
 type ArgvWordsRosterRow {
   module_file: String
   decl: String
@@ -776,7 +722,14 @@ type ArgvWordsRosterRow {
 }
 
 fn row_matches_site(r: ArgvWordsRosterRow, s: ArgvWordsSite) -> Bool {
-  (r.module_file == s.module_file) && (r.decl == s.decl) && decl_kind_matches(a: r.decl_kind, b: s.decl_kind)
+  s.counted && (r.module_file == s.module_file) && (r.decl == s.decl) && decl_kind_matches(a: r.decl_kind, b: s.decl_kind)
+}
+
+fn decl_kind_matches(a: ArgvWordsDeclKind, b: ArgvWordsDeclKind) -> Bool {
+  match a {
+    FnDecl => match b { FnDecl => true, DataDecl => false }
+    DataDecl => match b { FnDecl => false, DataDecl => true }
+  }
 }
 
 // Every row must resolve to a live census member: a row whose site was paid without deleting the
@@ -796,7 +749,7 @@ fn argv_word_construction_rows_resolve(live: List<ArgvWordsSite>, roster: List<A
 fn argv_word_construction_census_covers(live: List<ArgvWordsSite>, roster: List<ArgvWordsRosterRow>) -> ProcessExit {
   match fold_list(xs: live, empty: Empty, cons: fn(acc, s) {
     let covered = fold_list(xs: roster, empty: false, cons: fn(acc2, r) { acc2 || row_matches_site(r: r, s: s) })
-    if covered { acc } else { Cons { head: concat(concat(concat(concat("uncovered member: ", s.module_file), " "), s.decl), concat(" (", concat(decl_kind_name(k: s.decl_kind), ") builds argv words without a typed form and without a roster row"))), tail: acc } }
+    if covered || !s.counted { acc } else { Cons { head: concat(concat(concat(concat("uncovered member: ", s.module_file), " "), s.decl), concat(" (", concat(decl_kind_name(k: s.decl_kind), ") builds argv words without a typed form and without a roster row"))), tail: acc } }
   }) {
     Empty => ExitSuccess
     nonempty => exit_failure(reason: joined(lines_reversed: nonempty))
@@ -824,87 +777,4 @@ fn argv_word_construction_gates(live: List<ArgvWordsSite>, roster: List<ArgvWord
     }
     refused => refused
   }
-}
-
-// ── THROWAWAY DIAGNOSTICS (strip before commit) ─────────────────────────────────────────────────
-fn argv_words_diagnostic_stream(path: String) -> List<String> {
-  let read = Filesystem.Read(path: path)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: _ } => ["READ-REFUSED"]
-    FilesystemReadSucceeded { content: text } =>
-      match raw_tree_of_text(text: text) {
-        RawTreeNotEstablished { cause: c } => ["RAW-NOT-ESTABLISHED", source_cause_name(c: c)]
-        RawTreeEstablished { root: root } => fold_list(xs: atoms_reversed(n: root, acc: Empty), empty: Empty, cons: fn(acc, a) { Cons { head: a.lexeme, tail: acc } })
-      }
-  }
-}
-
-fn argv_words_diagnostic_fact_decls(path: String) -> List<String> {
-  let read = Filesystem.Read(path: path)
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadRefused { error: _ } => ["READ-REFUSED"]
-    FilesystemReadSucceeded { content: text } =>
-      match raw_tree_of_text(text: text) {
-        RawTreeNotEstablished { cause: _ } => ["RAW-NOT-ESTABLISHED"]
-        RawTreeEstablished { root: root } =>
-          fold_list(xs: facts_of(walked: walk_tree(root: root)), empty: Empty, cons: fn(acc, f) { Cons { head: f.decl, tail: acc } })
-      }
-  }
-}
-
-// ── THROWAWAY CONTEXT READOUT (strip before commit) ─────────────────────────────────────────────
-// The atom window ENDING at the FIRST occurrence of needle, oldest-first, capped at span — so the
-// classifiers' adjacency guesses are replaced by the observed sequence.
-type CtxFold {
-  buf: List<String>
-  found: List<String>
-  seen: Bool
-}
-
-type CappedFold {
-  kept: List<String>
-  seen: Int
-}
-
-type PairFold {
-  prev: String
-  hit: Bool
-}
-
-fn context_trim_newest(buf: List<String>, keep: Int) -> List<String> {
-  // buf is newest-first; keep only its first `keep` elements (the newest atoms).
-  fold_list(xs: buf, empty: CappedFold { kept: Empty, seen: 0 }, cons: fn(acc, x) {
-    match acc.seen < keep {
-      true => CappedFold { kept: Cons { head: x, tail: acc.kept }, seen: acc.seen + 1 }
-      false => acc
-    }
-  }).kept
-}
-
-fn context_of_atoms(atoms: List<String>, needle: String, span: Int) -> List<String> {
-  fold_list(xs: atoms, empty: CtxFold { buf: Empty, found: Empty, seen: false }, cons: fn(acc, a) {
-    match acc.seen {
-      true => acc
-      false => {
-        let buf2 = context_trim_newest(buf: Cons { head: a, tail: acc.buf }, keep: span)
-        match a == needle {
-          true => CtxFold { buf: buf2, found: list_reverse(xs: buf2), seen: true }
-          false => CtxFold { buf: buf2, found: Empty, seen: false }
-        }
-      }
-    }
-  }).found
-}
-
-fn argv_words_diagnostic_context(path: String, needle: String, span: Int) -> List<String> {
-  context_of_atoms(atoms: argv_words_diagnostic_stream(path: path), needle: needle, span: span)
-}
-
-fn window_has_pair(window: List<String>, x: String, y: String) -> Bool {
-  fold_list(xs: window, empty: PairFold { prev: "", hit: false }, cons: fn(acc, a) {
-    match acc.hit {
-      true => acc
-      false => PairFold { prev: a, hit: (acc.prev == x) && (a == y) }
-    }
-  }).hit
 }

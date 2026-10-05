@@ -79,7 +79,7 @@ test fn census_fixture_route_reads_fn_signals() -> Bool {
   match argv_word_construction_module_sites(path: fixture_path) {
     ArgvWordsModuleEstablished { path: _, sites: sites } =>
       match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_run_with_properties") {
-        Present { value: s } => (s.decl_kind == FnDecl) && (s.returns_argv_words == true) && member_named(xs: s.argv_word_params, x: "property_argv")
+        Present { value: s } => (s.decl_kind == FnDecl) && (s.returns_argv_words == true) && (s.list_string_params == 1)
         Absent => false
       }
       && match argv_word_construction_site_named(sites: sites, module_file: fixture_path, decl: "fixture_transient_unit_argv") {
@@ -145,8 +145,10 @@ fn live_member(path: String, decl: String) -> ArgvWordsSite {
     decl_kind: FnDecl,
     site_class: WorkflowCallSite,
     flag_words: ["--wait"],
+    counted: true,
+    candidates: Empty,
     returns_argv_words: false,
-    argv_word_params: Empty,
+    list_string_params: 0,
     list_string_data: false
   }
 }
