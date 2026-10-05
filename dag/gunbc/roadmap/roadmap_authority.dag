@@ -2273,6 +2273,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "The factory is proven by one request crossing every stage on the real route, not by each stage passing alone."),
     ),
     roadmap_node(
+      identity: "rn_92JGQNTZK8FJC0X8C6AS7HZRYS",
+      id: "serve-held-open-response",
+      owner: "harness",
+      carriers: carrier(path: "dag/extdeps/http/server.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Let the server keep a response open and send events as they happen",
+        boundary: "gunbc serve gains a response kind that stays open and writes a sequence of events, beside today's whole-body response (extdeps.http.server ServeHttpResponse has only body: String). It delivers one attempt's events as read from the fabric's event log (gunbc.fabric_event_log over product.capacity.event_chain), never from a file on the serving host. Prerequisite: worker events are published to that log, which carries only capacity and serving-authority events today. The first consumer is the per-attempt event cursor: the same events the cursor poll returns, delivered as they are appended.",
+        displaced_cost: "Without it, every live view polls and rebuilds its whole answer every two seconds, and a progress view can only be as fresh as its poll.",
+        first_slice: "One held-open route that reads one attempt's events from the fabric from a given cursor and resumes from the last one the client saw.",
+        red_control: "A reconnect with a cursor never repeats or skips an event; a closed client releases the server's resources; a handler that cannot stream refuses instead of buffering silently.",
+        out_of_scope: "No second transport beside the fabric, and no change to what the events are.",
+        handback: "The response kind, the route, and receipts for resume and disconnect."
+      ), on: "2026-10-04", note: "Not yet centered: needs a centering plan: authored 2026-10-04 with no attempts. Owner ruling 2026-10-05: event streaming goes through the fabric, not a tail of a host-local file. Read on that date: gunbc.fabric_event_log is generic over its event payload, but its only payloads are pool, redemption and pair-serving authority events; a worker's events live in a file its attempt owns (gunbc.roadmap_provider_events), so publishing them to the fabric log comes before the first slice.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Live views of working agents need events delivered as they happen, not rebuilt on a timer."),
+    ),
+    roadmap_node(
       identity: "rn_VQ8RGFT438E36PHK9WXJ5TCJMC",
       id: "v2-compiler-live",
       owner: "self-host",
