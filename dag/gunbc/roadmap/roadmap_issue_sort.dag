@@ -14,14 +14,14 @@ fn issue_sort_bind_statements() -> List<TsStmt> {
 [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"), args: [ts_lit_str(value: ".roadmap-frontier")]), property: "forEach"), args: [ts_arrow(params: ["root"], body: ts_block(stmts: [
 ts_const(name: "table", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])),
-ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "table")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "table")), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_const(name: "list", value: ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelector"), args: [ts_lit_str(value: "ul")])),
 ts_const(name: "buttons", value: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "table"), property: "querySelectorAll"), args: [ts_lit_str(value: "[data-sort-key]")])])),
 ts_const(name: "undo", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-undo")])),
 ts_const(name: "status", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-sort-status")])),
-ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "list")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "undo"))), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "status"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "list")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "undo"))), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "status"))), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_const(name: "rows", value: ts_arrow(params: [], body: ts_block(stmts: [
@@ -102,15 +102,15 @@ ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "localAvailable"), op: "=", rig
 ]))),
 ts_const(name: "retry", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: "[data-view-retry]")])),
 ts_const(name: "report", value: ts_arrow(params: ["text"], body: ts_block(stmts: [
-ts_if(cond: ts_ident(name: "saveStatus"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "saveStatus"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "saveStatus"), property: "textContent"), op: "=", right: ts_ident(name: "text")))
 ]), else_stmt: none),
-ts_if(cond: ts_ident(name: "retry"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "retry"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "retry"), property: "hidden"), op: "=", right: ts_binop(left: ts_prefix(op: "!", expr: ts_binop(left: ts_binop(left: ts_ident(name: "account"), op: "&&", right: ts_prefix(op: "!", expr: ts_ident(name: "writable"))), op: "&&", right: ts_ident(name: "loaded"))), op: "||", right: ts_call(callee: ts_member(object: ts_ident(name: "text"), property: "startsWith"), args: [ts_lit_str(value: "Loading")]))))
 ]), else_stmt: none)
 ]))),
 ts_const(name: "flush", value: ts_arrow(params: [], body: ts_block(stmts: [
-ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "writable")), op: "||", right: ts_ident(name: "saving")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "queued"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "writable")), op: "||", right: ts_ident(name: "saving")), op: "||", right: ts_prefix(op: "!", expr: ts_ident(name: "queued"))), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_const(name: "prefs", value: ts_ident(name: "queued")),
@@ -118,7 +118,7 @@ ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "queued"), op: "=", right: ts_i
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "saving"), op: "=", right: ts_ident(name: "true"))),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_lit_str(value: "Saving to account…")])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/preferences/issues"), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST")), ts_field(key: "keepalive", value: ts_ident(name: "true")), ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")), ts_field(key: "headers", value: ts_object(fields: [ts_quoted_field(key: "Content-Type", value: ts_lit_str(value: "application/x-www-form-urlencoded;charset=UTF-8"))])), ts_field(key: "body", value: ts_call(callee: ts_member(object: ts_new(callee: ts_ident(name: "URLSearchParams"), args: [ts_object(fields: [ts_field(key: "csrf", value: ts_ident(name: "csrf")), ts_field(key: "revision", value: ts_call(callee: ts_ident(name: "String"), args: [ts_ident(name: "revision")])), ts_field(key: "preferences", value: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_ident(name: "prefs")]))])]), property: "toString"), args: []))])]), property: "then"), args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "text"), args: []), property: "then"), args: [ts_arrow(params: ["text"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_ident(name: "text")])]) })]))]) })
 ]), else_stmt: none),
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: []) })
@@ -126,9 +126,9 @@ ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "revision"), op: "=", right: ts_member(object: ts_ident(name: "result"), property: "revision"))),
 ts_try(body: ts_block(stmts: [
 ts_const(name: "pending", value: ts_call(callee: ts_ident(name: "readPending"), args: [])),
-ts_if(cond: ts_binop(left: ts_ident(name: "pending"), op: "&&", right: ts_binop(left: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_member(object: ts_ident(name: "pending"), property: "preferences")]), op: "===", right: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_ident(name: "prefs")]))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "pending"), op: "&&", right: ts_binop(left: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_member(object: ts_ident(name: "pending"), property: "preferences")]), op: "===", right: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_ident(name: "prefs")]))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"), args: [ts_binop(left: ts_call(callee: ts_ident(name: "localKey"), args: []), op: "+", right: ts_lit_str(value: ":pending"))]))
-]), else_stmt: Present { value: ts_if(cond: ts_ident(name: "queued"), then: ts_block(stmts: [
+]), else_stmt: Present { value: ts_if(cond: ts_ident(name: "queued"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "markPending"), args: [ts_ident(name: "queued")]))
 ]), else_stmt: none) })
 ]), catch_param: "error", handler: ts_block(stmts: [
@@ -147,14 +147,14 @@ ts_const(name: "persist", value: ts_arrow(params: [], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "edits"), op: "=", right: ts_binop(left: ts_ident(name: "edits"), op: "+", right: ts_lit_num(text: "1")))),
 ts_const(name: "prefs", value: ts_call(callee: ts_ident(name: "snapshot"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "cache"), args: [ts_ident(name: "prefs")])),
-ts_if(cond: ts_ident(name: "account"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "account"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "markPending"), args: [ts_ident(name: "prefs")]))
 ]), else_stmt: none),
-ts_if(cond: ts_binop(left: ts_ident(name: "account"), op: "&&", right: ts_ident(name: "writable")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "account"), op: "&&", right: ts_ident(name: "writable")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "queued"), op: "=", right: ts_ident(name: "prefs"))),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "timer")])),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "timer"), op: "=", right: ts_call(callee: ts_ident(name: "setTimeout"), args: [ts_ident(name: "flush"), ts_lit_num(text: "400")])))
-]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_ident(name: "loaded"), op: "&&", right: ts_prefix(op: "!", expr: ts_ident(name: "account"))), then: ts_block(stmts: [
+]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_ident(name: "loaded"), op: "&&", right: ts_prefix(op: "!", expr: ts_ident(name: "account"))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_cond(test: ts_ident(name: "localAvailable"), consequent: ts_lit_str(value: "Saved in this browser"), alternate: ts_lit_str(value: "Browser storage unavailable; this page only"))]))
 ]), else_stmt: none) })
 ]))),
@@ -167,15 +167,15 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), pro
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "more"), property: "disabled"), op: "=", right: ts_ident(name: "true"))),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Loading issues…"))),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/issues/query"), ts_object(fields: [ts_field(key: "method", value: ts_lit_str(value: "POST")), ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")), ts_field(key: "cache", value: ts_lit_str(value: "no-store")), ts_field(key: "headers", value: ts_object(fields: [ts_quoted_field(key: "Content-Type", value: ts_lit_str(value: "application/x-www-form-urlencoded;charset=UTF-8"))])), ts_field(key: "body", value: ts_call(callee: ts_member(object: ts_new(callee: ts_ident(name: "URLSearchParams"), args: [ts_object(fields: [ts_field(key: "preferences", value: ts_call(callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"), args: [ts_call(callee: ts_ident(name: "snapshot"), args: [])])), ts_field(key: "offset", value: ts_call(callee: ts_ident(name: "String"), args: [ts_cond(test: ts_ident(name: "append"), consequent: ts_ident(name: "nextOffset"), alternate: ts_lit_num(text: "0"))])), ts_field(key: "snapshot", value: ts_cond(test: ts_ident(name: "append"), consequent: ts_ident(name: "snapshotId"), alternate: ts_lit_str(value: "")))])]), property: "toString"), args: []))])]), property: "then"), args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "text"), args: []), property: "then"), args: [ts_arrow(params: ["message"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_ident(name: "message")])]) })]))]) })
 ]), else_stmt: none),
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: []) })
 ]))]), property: "then"), args: [ts_arrow(params: ["result"], body: ts_block(stmts: [
-ts_if(cond: ts_binop(left: ts_ident(name: "serial"), op: "!==", right: ts_ident(name: "requestSerial")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "serial"), op: "!==", right: ts_ident(name: "requestSerial")), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
-ts_if(cond: ts_ident(name: "append"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "append"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "insertAdjacentHTML"), args: [ts_lit_str(value: "beforeend"), ts_member(object: ts_ident(name: "result"), property: "html")]))
 ]), else_stmt: Present { value: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "list"), property: "innerHTML"), op: "=", right: ts_member(object: ts_ident(name: "result"), property: "html")))
@@ -191,12 +191,12 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), pro
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "rows"), args: []), property: "forEach"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "classList"), property: "toggle"), args: [ts_lit_str(value: "issue-focus-selected"), ts_binop(left: ts_prefix(op: "!", expr: ts_prefix(op: "!", expr: ts_ident(name: "project"))), op: "&&", right: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "dataset"), property: "node"), op: "===", right: ts_ident(name: "selected")))]) })]))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "dispatchEvent"), args: [ts_new(callee: ts_ident(name: "CustomEvent"), args: [ts_lit_str(value: "issue-results")])]))
 ]))]), property: "catch"), args: [ts_arrow(params: ["error"], body: ts_block(stmts: [
-ts_if(cond: ts_binop(left: ts_ident(name: "serial"), op: "!==", right: ts_ident(name: "requestSerial")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "serial"), op: "!==", right: ts_ident(name: "requestSerial")), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "setAttribute"), args: [ts_lit_str(value: "aria-busy"), ts_lit_str(value: "false")])),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "more"), property: "disabled"), op: "=", right: ts_ident(name: "false"))),
-ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "append")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "append")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "replaceChildren"), args: [])),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "more"), property: "hidden"), op: "=", right: ts_ident(name: "true")))
 ]), else_stmt: none),
@@ -240,7 +240,7 @@ ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "project"), op: "=", right: ts_
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "selected"), op: "=", right: ts_member(object: ts_ident(name: "prefs"), property: "selected"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "expanded"), op: "=", right: ts_member(object: ts_ident(name: "prefs"), property: "expanded"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_ident(name: "false"))),
-ts_if(cond: ts_ident(name: "search"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "search"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "search"), property: "value"), op: "=", right: ts_member(object: ts_ident(name: "prefs"), property: "query")))
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "history"), property: "length"), op: "=", right: ts_lit_num(text: "0"))),
@@ -257,7 +257,7 @@ ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(n
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelectorAll"), args: [ts_lit_str(value: "[data-band-chip]")]), property: "forEach"), args: [ts_arrow(params: ["option"], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "option"), property: "classList"), property: "toggle"), args: [ts_lit_str(value: "chip-on"), ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "option"), property: "dataset"), property: "bandChip"), op: "===", right: ts_ident(name: "band"))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "option"), property: "setAttribute"), args: [ts_lit_str(value: "aria-selected"), ts_cond(test: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "option"), property: "dataset"), property: "bandChip"), op: "===", right: ts_ident(name: "band")), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false"))])),
-ts_if(cond: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "option"), property: "dataset"), property: "bandChip"), op: "===", right: ts_ident(name: "band")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "option"), property: "dataset"), property: "bandChip"), op: "===", right: ts_ident(name: "band")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "option"), property: "closest"), args: [ts_lit_str(value: "[data-site-choice]")]), property: "querySelector"), args: [ts_lit_str(value: "[data-choice-label]")]), property: "textContent"), op: "=", right: ts_member(object: ts_ident(name: "option"), property: "textContent")))
 ]), else_stmt: none)
 ]))])),
@@ -268,12 +268,12 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "history"), 
 ]))),
 ts_const(name: "restore", value: ts_arrow(params: [], body: ts_block(stmts: [
 ts_const(name: "previous", value: ts_call(callee: ts_member(object: ts_ident(name: "history"), property: "pop"), args: [])),
-ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "previous")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "previous")), then_stmt: ts_block(stmts: [
 ts_return(expr: none)
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "sorts"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "sorts"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "band"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "band"))),
-ts_if(cond: ts_ident(name: "search"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "search"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "search"), property: "value"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "query")))
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "topo"), op: "=", right: ts_member(object: ts_ident(name: "previous"), property: "topo"))),
@@ -285,7 +285,7 @@ ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "persist"), args: [])),
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Previous view restored.")))
 ]))),
 ts_const(name: "focus", value: ts_arrow(params: ["row"], body: ts_block(stmts: [
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "dataset"), property: "project")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "dataset"), property: "project")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "status"), property: "textContent"), op: "=", right: ts_lit_str(value: "Project nesting is ambiguous or cyclic; no project view was selected."))),
 ts_return(expr: none)
 ]), else_stmt: none),
@@ -306,14 +306,14 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "anchor"), p
 ]))),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: ["event"], body: ts_block(stmts: [
 ts_const(name: "row", value: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "event"), property: "target"), property: "closest"), args: [ts_lit_str(value: "li.node")])),
-ts_if(cond: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_ident(name: "row"), op: "&&", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "target"), op: "===", right: ts_ident(name: "row"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "button"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "metaKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "ctrlKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "shiftKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "altKey"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_binop(left: ts_ident(name: "row"), op: "&&", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "target"), op: "===", right: ts_ident(name: "row"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "button"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "metaKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "ctrlKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "shiftKey"))), op: "&&", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "event"), property: "altKey"))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "event"), property: "preventDefault"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "focus"), args: [ts_ident(name: "row")]))
 ]), else_stmt: none)
 ]))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "list"), property: "addEventListener"), args: [ts_lit_str(value: "keydown"), ts_arrow(params: ["event"], body: ts_block(stmts: [
 ts_const(name: "row", value: ts_call(callee: ts_member(object: ts_member(object: ts_ident(name: "event"), property: "target"), property: "closest"), args: [ts_lit_str(value: "li.node")])),
-ts_if(cond: ts_binop(left: ts_binop(left: ts_ident(name: "row"), op: "&&", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "target"), op: "===", right: ts_ident(name: "row"))), op: "&&", right: ts_binop(left: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "key"), op: "===", right: ts_lit_str(value: "Enter")), op: "||", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "key"), op: "===", right: ts_lit_str(value: " ")))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_ident(name: "row"), op: "&&", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "target"), op: "===", right: ts_ident(name: "row"))), op: "&&", right: ts_binop(left: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "key"), op: "===", right: ts_lit_str(value: "Enter")), op: "||", right: ts_binop(left: ts_member(object: ts_ident(name: "event"), property: "key"), op: "===", right: ts_lit_str(value: " ")))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "event"), property: "preventDefault"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "focus"), args: [ts_ident(name: "row")]))
 ]), else_stmt: none)
@@ -341,9 +341,9 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "button"), p
 ts_const(name: "key", value: ts_member(object: ts_member(object: ts_ident(name: "button"), property: "dataset"), property: "sortKey")),
 ts_const(name: "index", value: ts_call(callee: ts_member(object: ts_ident(name: "sorts"), property: "findIndex"), args: [ts_arrow(params: ["term"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_binop(left: ts_index(object: ts_call(callee: ts_member(object: ts_ident(name: "term"), property: "split"), args: [ts_lit_str(value: ":")]), index: ts_lit_num(text: "0")), op: "===", right: ts_ident(name: "key")) })]))])),
 ts_const(name: "next", value: ts_call(callee: ts_member(object: ts_ident(name: "sorts"), property: "slice"), args: [])),
-ts_if(cond: ts_binop(left: ts_ident(name: "index"), op: "<", right: ts_lit_num(text: "0")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "index"), op: "<", right: ts_lit_num(text: "0")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "next"), property: "push"), args: [ts_binop(left: ts_binop(left: ts_ident(name: "key"), op: "+", right: ts_lit_str(value: ":")), op: "+", right: ts_call(callee: ts_ident(name: "firstDirection"), args: [ts_ident(name: "key")]))]))
-]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_index(object: ts_call(callee: ts_member(object: ts_index(object: ts_ident(name: "next"), index: ts_ident(name: "index")), property: "split"), args: [ts_lit_str(value: ":")]), index: ts_lit_num(text: "1")), op: "===", right: ts_call(callee: ts_ident(name: "firstDirection"), args: [ts_ident(name: "key")])), then: ts_block(stmts: [
+]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_index(object: ts_call(callee: ts_member(object: ts_index(object: ts_ident(name: "next"), index: ts_ident(name: "index")), property: "split"), args: [ts_lit_str(value: ":")]), index: ts_lit_num(text: "1")), op: "===", right: ts_call(callee: ts_ident(name: "firstDirection"), args: [ts_ident(name: "key")])), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_index(object: ts_ident(name: "next"), index: ts_ident(name: "index")), op: "=", right: ts_binop(left: ts_ident(name: "key"), op: "+", right: ts_cond(test: ts_binop(left: ts_call(callee: ts_ident(name: "firstDirection"), args: [ts_ident(name: "key")]), op: "===", right: ts_lit_str(value: "asc")), consequent: ts_lit_str(value: ":desc"), alternate: ts_lit_str(value: ":asc")))))
 ]), else_stmt: Present { value: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "next"), property: "splice"), args: [ts_ident(name: "index"), ts_lit_num(text: "1")]))
@@ -360,7 +360,7 @@ ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "persist"), args: []))
 ]))]))
 ]))])),
 ts_const(name: "reset", value: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: "[data-view-reset]")])),
-ts_if(cond: ts_ident(name: "reset"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "reset"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "reset"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "remember"), args: [])),
 ts_const(name: "prior", value: ts_call(callee: ts_member(object: ts_ident(name: "history"), property: "slice"), args: [])),
@@ -370,17 +370,17 @@ ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "persist"), args: []))
 ]))]))
 ]), else_stmt: none),
-ts_if(cond: ts_ident(name: "search"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "search"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "search"), property: "addEventListener"), args: [ts_lit_str(value: "input"), ts_arrow(params: [], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "persist"), args: []))
 ]))]))
 ]), else_stmt: none),
-ts_if(cond: ts_ident(name: "retry"), then: ts_block(stmts: [
+ts_if(cond: ts_ident(name: "retry"), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "retry"), property: "addEventListener"), args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_lit_str(value: "Loading account preferences…")])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/preferences/issues"), ts_object(fields: [ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")), ts_field(key: "cache", value: ts_lit_str(value: "no-store"))])]), property: "then"), args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Account preferences unavailable")])]) })
 ]), else_stmt: none),
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: []) })
@@ -400,43 +400,43 @@ ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_ident(name: "window"), p
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyPreferences"), args: [ts_binop(left: ts_call(callee: ts_ident(name: "readLocal"), args: [ts_ident(name: "anonymousKey")]), op: "||", right: ts_call(callee: ts_ident(name: "defaults"), args: []))])),
 ts_expr_stmt(expr: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"), args: [ts_arrow(params: ["session"], body: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "loaded"), op: "=", right: ts_ident(name: "true"))),
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "authenticated")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "authenticated")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_cond(test: ts_ident(name: "localAvailable"), consequent: ts_lit_str(value: "Saved in this browser"), alternate: ts_lit_str(value: "Browser storage unavailable; this page only"))])),
 ts_return(expr: none)
 ]), else_stmt: none),
-ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "typeof ", expr: ts_member(object: ts_ident(name: "session"), property: "principal")), op: "!==", right: ts_lit_str(value: "string")), op: "||", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "principal"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_prefix(op: "typeof ", expr: ts_member(object: ts_ident(name: "session"), property: "principal")), op: "!==", right: ts_lit_str(value: "string")), op: "||", right: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "session"), property: "principal"))), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Account identity unavailable")])]) })
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "account"), op: "=", right: ts_member(object: ts_ident(name: "session"), property: "principal"))),
 ts_const(name: "observedEdits", value: ts_ident(name: "edits")),
 ts_const(name: "cached", value: ts_call(callee: ts_ident(name: "readLocal"), args: [ts_call(callee: ts_ident(name: "localKey"), args: [])])),
-ts_if(cond: ts_binop(left: ts_ident(name: "cached"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_lit_num(text: "0"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "cached"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_lit_num(text: "0"))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyPreferences"), args: [ts_ident(name: "cached")]))
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_lit_str(value: "Loading account preferences…")])),
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_call(callee: ts_ident(name: "fetch"), args: [ts_lit_str(value: "/preferences/issues"), ts_object(fields: [ts_field(key: "credentials", value: ts_lit_str(value: "same-origin")), ts_field(key: "cache", value: ts_lit_str(value: "no-store"))])]), property: "then"), args: [ts_arrow(params: ["response"], body: ts_block(stmts: [
-ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then: ts_block(stmts: [
+ts_if(cond: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "response"), property: "ok")), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Account preferences unavailable")])]) })
 ]), else_stmt: none),
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "response"), property: "json"), args: []) })
 ]))]), property: "then"), args: [ts_arrow(params: ["context"], body: ts_block(stmts: [
-ts_if(cond: ts_binop(left: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "preferences"), op: "!==", right: ts_ident(name: "null")), op: "&&", right: ts_prefix(op: "!", expr: ts_call(callee: ts_ident(name: "valid"), args: [ts_member(object: ts_ident(name: "context"), property: "preferences")]))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "preferences"), op: "!==", right: ts_ident(name: "null")), op: "&&", right: ts_prefix(op: "!", expr: ts_call(callee: ts_ident(name: "valid"), args: [ts_member(object: ts_ident(name: "context"), property: "preferences")]))), then_stmt: ts_block(stmts: [
 ts_return(expr: Present { value: ts_call(callee: ts_member(object: ts_ident(name: "Promise"), property: "reject"), args: [ts_new(callee: ts_ident(name: "Error"), args: [ts_lit_str(value: "Invalid account preferences")])]) })
 ]), else_stmt: none),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "revision"), op: "=", right: ts_member(object: ts_ident(name: "context"), property: "revision"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "csrf"), op: "=", right: ts_member(object: ts_ident(name: "context"), property: "csrf"))),
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "writable"), op: "=", right: ts_ident(name: "true"))),
 ts_const(name: "pending", value: ts_call(callee: ts_ident(name: "readPending"), args: [])),
-ts_if(cond: ts_binop(left: ts_ident(name: "pending"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_ident(name: "observedEdits"))), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_ident(name: "pending"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_ident(name: "observedEdits"))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyPreferences"), args: [ts_member(object: ts_ident(name: "pending"), property: "preferences")])),
-ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "pending"), property: "revision"), op: "===", right: ts_ident(name: "revision")), then: ts_block(stmts: [
+ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "pending"), property: "revision"), op: "===", right: ts_ident(name: "revision")), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "persist"), args: [])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "flush"), args: []))
 ]), else_stmt: Present { value: ts_block(stmts: [
 ts_expr_stmt(expr: ts_binop(left: ts_ident(name: "writable"), op: "=", right: ts_ident(name: "false"))),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_lit_str(value: "Unsynced browser view; account preferences changed. Save this view to replace them.")]))
 ]) })
-]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "preferences"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_ident(name: "observedEdits"))), then: ts_block(stmts: [
+]), else_stmt: Present { value: ts_if(cond: ts_binop(left: ts_member(object: ts_ident(name: "context"), property: "preferences"), op: "&&", right: ts_binop(left: ts_ident(name: "edits"), op: "===", right: ts_ident(name: "observedEdits"))), then_stmt: ts_block(stmts: [
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyPreferences"), args: [ts_member(object: ts_ident(name: "context"), property: "preferences")])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "cache"), args: [ts_member(object: ts_ident(name: "context"), property: "preferences")])),
 ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "report"), args: [ts_lit_str(value: "Saved to account")]))

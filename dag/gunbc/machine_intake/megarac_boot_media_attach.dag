@@ -7,6 +7,8 @@ import extdeps.bmc.ipmi
 import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
 import std.decl_ref { decl_ref }
 import gunbc.managed_host_unit_hold { UnitHoldProof }
+import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import product.host_identity { host_identity_eq }
 import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
 import gunbc.megarac_operation_standing { MegaRacVirtualMediaAttach }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
@@ -104,14 +106,17 @@ fn megarac_boot_media_cookie_jar(host: AdmittedMegaRacHost, attempt: NonEmptyStr
   join(["/tmp/gunbc-", host.binding.host.host as String, "-megarac-jar-", attempt as String], "") as NonEmptyStr
 }
 
-// THE ONE ROUTE TO A MANAGED HOST'S VIRTUAL MEDIA FOR A BOOT. It takes the unit-hold proof and is sealed
-// to the boot's actuation; the proof is the authorization the scoped approval grant used to be, and the
-// MegaRAC admission is read from the host it holds. Password remains a caller argument
-// (gunbc.machine_intake_mtcollins1_bmc_secure_observation mtcollins1_managed_secret_fetch_frontier).
+// THE ONE ROUTE TO A MANAGED HOST'S VIRTUAL MEDIA FOR A BOOT. It takes the unit-hold proof and the
+// admitted boot subject (gunbc.managed_host_boot AdmittedBootSubject), and is sealed to the boot's
+// actuation. The image it presents and the digest it records are the subject's medium, the one the
+// boot was admitted with and the verdict judges, never a second copy passed beside it; a hold on
+// one host cannot present media for another host's subject; the proof is the authorization the
+// scoped approval grant used to be, and the MegaRAC admission is read from the host it holds.
+// Password remains a caller argument (gunbc.machine_intake_mtcollins1_bmc_secure_observation
+// mtcollins1_managed_secret_fetch_frontier).
 fn megarac_attach_boot_image(
   proof: UnitHoldProof,
-  image_name: NonEmptyStr,
-  image_sha256: NonEmptyStr,
+  subject: AdmittedBootSubject,
   share: MegaRacShareBinding,
   replaceable_seeded_stem: NonEmptyStr,
   bound: MegaRacIpmiReadBound,
@@ -122,10 +127,13 @@ fn megarac_attach_boot_image(
     decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
   ]
 {
+  let image_name = subject.medium.image_name
   match megarac_boot_media_host(proof: proof) {
     MegaRacHostRefused { cause: c } => MediaAttachNotAttempted { reason: concat("media attach: ", megarac_host_refusal_text(cause: c) as String) as NonEmptyStr }
     MegaRacHostAdmitted { host: host } =>
-      if password_file == "" {
+      if !host_identity_eq(a: host.binding.host.host, b: boot_subject_host(subject: subject)) {
+        MediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }
+      } else if password_file == "" {
         MediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
       } else if attempt == "" {
         MediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
@@ -144,8 +152,8 @@ fn megarac_attach_boot_image(
         let power = megarac_power_after_stale_power_off(host: host, before: before, off: off, password_file: password_file as NonEmptyStr, bound: bound)
         MediaAttachAttempted {
           attempt: attempt,
-          medium_image_name: image_name,
-          medium_image_sha256: image_sha256,
+          medium_image_name: subject.medium.image_name,
+          medium_image_sha256: subject.medium.digest,
           power: power,
           stale_power_off: off,
           result: megarac_attach_remote_image(

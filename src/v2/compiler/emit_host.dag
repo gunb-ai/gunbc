@@ -109,7 +109,10 @@ import v2.std.verdict {
 import v2.std.verification {
   test_claim_input,
   EqualsClaim,
-  CompilesClaim
+  CompilesClaim,
+  DiagnosticClaim,
+  StructuralEqualsClaim,
+  RoundTripClaim
 }
 import v2.std.witness { Holds, Violates }
 
@@ -175,7 +178,8 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
-    _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+    Accepted { value: Violates { diagnostic: _ }, diagnostics: Some { diagnostics: _ } } => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
+    Accepted { value: Holds { value: _ }, diagnostics: _ } => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
   }
 }
 
@@ -647,6 +651,13 @@ fn emit_host_no_run_args() -> List<String> {
   []
 }
 
+fn run_test_claim_emit_vs_eval_run_failed(exit: HostExit) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  verdict_run_failed(
+    actual: host_exit_failure_outcome(exit: exit),
+    diagnostic: emit_host_run_failed_diagnostic()
+  )
+}
+
 fn run_test_claim_emit_vs_eval_verdict_from_run(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,
@@ -676,11 +687,8 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
                 diagnostic: diagnostics_fatal(d: ds)
               )
           }
-        _ =>
-          verdict_run_failed(
-            actual: host_exit_failure_outcome(exit: host_receipt.exit),
-            diagnostic: emit_host_run_failed_diagnostic()
-          )
+        Accepted { value: _, diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
+        Rejected { diagnostics: _ } => run_test_claim_emit_vs_eval_run_failed(exit: host_receipt.exit)
       }
     Rejected { diagnostics: ds } =>
       Deferred {
@@ -849,7 +857,9 @@ fn run_test_claim_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 
@@ -883,7 +893,9 @@ fn run_test_claim_from_source_emit_vs_eval(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 
@@ -952,7 +964,9 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
           expected_eval_root: expected_value
         )
       )
-    _ => run_test_claim(subject: subject)
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } => run_test_claim(subject: subject)
+    StructuralEqualsClaim { label: _, anchor: _, lhs: _, rhs: _, classification: _ } => run_test_claim(subject: subject)
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } => run_test_claim(subject: subject)
   }
 }
 
