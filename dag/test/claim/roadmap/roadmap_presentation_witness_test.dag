@@ -1853,8 +1853,6 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links() -> 
         && string_contains(s: h, pattern: "Mid headline")
         && string_contains(s: h, pattern: "Task headline")
         && string_contains(s: h, pattern: "issue-path-tree")
-        && fx_tree_nests_in_order(html: h, outer: "Root headline", inner: "Mid headline")
-        && fx_tree_nests_in_order(html: h, outer: "Mid headline", inner: "Task headline")
         && string_contains(s: h, pattern: "aria-current=\"page\"")
         && string_contains(s: h, pattern: "title=\"gunbc-project-root\"")
         && !string_contains(s: h, pattern: "href=\"/issue/hier-aln-task\"")
@@ -1862,6 +1860,23 @@ test fn witness_issue_breadcrumb_renders_root_to_leaf_with_canonical_links() -> 
         && !string_contains(s: h, pattern: "principles")
   }
   structural && rendered
+}
+
+// THE NESTING ORDER, ALONE: the tree nests one level per chain level with the root outermost and the
+// current node innermost. It is its own claim so that its red names the defect: with the current
+// node drawn outermost, every conjunct of the claim above still holds (each name, link and
+// attribute occurs) and only this one fails. The third conjunct is the relation the pin is about --
+// the current node sits inside the nearest ancestor's list item, not beside or around it.
+test fn witness_issue_breadcrumb_tree_nests_root_outermost_and_current_innermost() -> Bool {
+  let chain = fx_aln_chain(task: "hier-aln-task", memberships: fx_aln_rooted_memberships(), nodes: fx_aln_rooted_nodes())
+  match try_serialize_html_source(node: issue_chain_breadcrumb_node(chain: chain)) {
+    EmitRejected { reason: _ } => false
+    EmitOk { html: h } =>
+      fx_tree_nests_in_order(html: h, outer: "Root headline", inner: "Mid headline")
+        && fx_tree_nests_in_order(html: h, outer: "Mid headline", inner: "Task headline")
+        && !fx_tree_nests_in_order(html: h, outer: "Task headline", inner: "Root headline")
+        && string_contains(s: h, pattern: "Mid headline</a><ol><li><span")
+  }
 }
 
 // THE REFUSAL ARM, NO PARTIAL PATH: an unrooted node's chain is the lineage walk's own refusal, and
