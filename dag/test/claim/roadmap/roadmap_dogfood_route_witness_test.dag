@@ -643,7 +643,7 @@ test fn an_occupied_slot_bound_elsewhere_is_never_already_recorded() -> Bool {
 fn pinned_with(ev: String) -> Bool {
   match service_evidence_snapshot_decode(wire: ev) {
     SnapshotInvalid { reason: _ } => false
-    SnapshotDecoded { snapshot } => dogfood_pinned_g3_g4_defect_of(snapshot: snapshot, pr_url: pr_url, head_sha: head) == ""
+    SnapshotDecoded { snapshot } => match dogfood_pinned_g3_g4_defect_of(snapshot: snapshot, pr_url: pr_url, head_sha: head) { Absent => true  Present { value: _ } => false }
   }
 }
 

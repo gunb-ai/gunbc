@@ -169,7 +169,7 @@ type MeteringEvidence sole_constructor {
   input_tokens: TokenCount
   output_tokens: TokenCount
   seat_time: Second
-  compute: String
+  compute: ComputeUsage
 }
 
 fn dogfood_compute_word(c: ComputeUsage) -> String {
@@ -588,7 +588,7 @@ fn dogfood_metering_reading(m: AttemptMeteringObservation) -> MeteringReading {
             MeteringTokensObserved { value } =>
               match metering_seat_time_total(record: record) {
                 MeteringSeatTimeIncomplete { cause } => MeteringGap { gap: StageRefused { reason: cause } }
-                MeteringSeatTimeObserved { held } => MeteringEstablished { evidence: MeteringEvidence { input_tokens: input, output_tokens: value, seat_time: held, compute: dogfood_compute_word(c: record.compute) } }
+                MeteringSeatTimeObserved { held } => MeteringEstablished { evidence: MeteringEvidence { input_tokens: input, output_tokens: value, seat_time: held, compute: record.compute } }
               }
           }
         }
@@ -685,21 +685,25 @@ type DogfoodStartReceipt sole_constructor {
 // first disagreement.
 // THE PINNED SERVICE EVIDENCE MUST ESTABLISH THE G3 AND G4 STAGES, not merely decode: a Final meter
 // (both token totals and seat time observed) and a published result whose PR and head are the
-// receipt's publication. Empty when they hold; otherwise the first failure.
-fn dogfood_pinned_g3_g4_defect(r: DogfoodStartReceipt) -> String {
+// receipt's publication. None when they hold; otherwise the first failure.
+fn dogfood_pinned_g3_g4_holds(r: DogfoodStartReceipt) -> Bool {
+  match dogfood_pinned_g3_g4_defect(r: r) { Absent => true  Present { value: _ } => false }
+}
+
+fn dogfood_pinned_g3_g4_defect(r: DogfoodStartReceipt) -> String? {
   dogfood_pinned_g3_g4_defect_of(snapshot: r.service_evidence, pr_url: r.pr_url, head_sha: r.head_sha)
 }
 
-fn dogfood_pinned_g3_g4_defect_of(snapshot: ServiceEvidenceSnapshot, pr_url: String, head_sha: String) -> String {
+fn dogfood_pinned_g3_g4_defect_of(snapshot: ServiceEvidenceSnapshot, pr_url: String, head_sha: String) -> String? {
   match service_evidence_snapshot_final_metering(snapshot: snapshot) {
-    Absent => "the pinned service evidence does not establish a Final metering record (execution_time and billable_usage observed)"
+    Absent => Present { value: "the pinned service evidence does not establish a Final metering record (execution_time and billable_usage observed)" }
     Present { value: _ } =>
       match service_evidence_snapshot_published_result(snapshot: snapshot) {
-        Absent => "the pinned service evidence does not establish a published result (failure_attribution and completion_time observed)"
+        Absent => Present { value: "the pinned service evidence does not establish a published result (failure_attribution and completion_time observed)" }
         Present { value: p } =>
-          if p.pr != pr_url { "the pinned result names another pull request than the receipt's publication" }
-          else if p.head != head_sha { "the pinned result names another head than the receipt's submission" }
-          else { "" }
+          if p.pr != pr_url { Present { value: "the pinned result names another pull request than the receipt's publication" } }
+          else if p.head != head_sha { Present { value: "the pinned result names another head than the receipt's submission" } }
+          else { none }
       }
   }
 }
@@ -722,7 +726,7 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
   else if r.result_event == "" { Present { value: "result_event is empty" } }
   else if r.result_claim != r.request_claim { Present { value: "the returned result answers another claim than the pinned request" } }
   else if r.metering_compute == "" { Present { value: "metering_compute is empty" } }
-  else if dogfood_pinned_g3_g4_defect(r: r) != "" { Present { value: dogfood_pinned_g3_g4_defect(r: r) } }
+  else if !dogfood_pinned_g3_g4_holds(r: r) { dogfood_pinned_g3_g4_defect(r: r) }
   else if r.service_evidence.node_id != r.node_id || r.service_evidence.attempt_key != r.attempt_key { Present { value: "the pinned service evidence names another node or attempt" } }
   else if !rfc3339_is_canonically_spelled(value: r.established_at) { Present { value: "established_at is not a canonical RFC 3339 UTC instant" } }
   else { none }
@@ -760,7 +764,7 @@ fn dogfood_start_candidate(v: DogfoodAttemptView, service: ServiceEvidenceReceip
           request_binding_wire: attempt_request_binding_json(binding: RequestClaimBound { claim: request.claim as NonEmptyStr as gunbc.roadmap.roadmap_event_log.RoadmapEventId }),
           result_event: result_returned.event,
           result_claim: result_returned.claim,
-          metering_compute: metering.compute,
+          metering_compute: dogfood_compute_word(c: metering.compute),
           service_evidence: snapshot,
           established_at: established_at,
         }
@@ -997,7 +1001,7 @@ fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: At
             Absent => "the pinned service evidence has no Final metering"
             Present { value: pinned } =>
               if m.input_tokens != pinned.input_tokens || m.output_tokens != pinned.output_tokens || m.seat_time != pinned.seat_time { "the attempt's Final metering totals are not the pinned ones" }
-              else if m.compute != receipt.metering_compute { "the attempt's metering compute standing is not the pinned one" }
+              else if dogfood_compute_word(c: m.compute) != receipt.metering_compute { "the attempt's metering compute standing is not the pinned one" }
               else { "" }
           }
       }
