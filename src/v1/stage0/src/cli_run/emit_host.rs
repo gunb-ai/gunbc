@@ -2947,13 +2947,26 @@ static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(No
 /// union is per run (`run_required_floor` resets it). A later run in the same process whose fixture
 /// compiles all hit the memo would otherwise record nothing and render an empty union green. So a
 /// fill stores its closure's paths under its memo key, and every hit replays them into the union
-/// ([`record_fixture_closure_memo_hit`]). Contents are held once per path, keyed by path; the memo key
-/// carries the prepared inventory digest, so a key can only be hit while the bytes it read are
-/// the bytes on disk.
+/// ([`record_fixture_closure_memo_hit`]). A replay returns exactly the bytes ITS OWN fill read: the
+/// closure is stored as (path, bytes) under the memo key, never looked up by path alone, so a file
+/// that changed between runs cannot be replayed with another fill's bytes (review 76336). Identical
+/// bytes for one path are shared, not copied, through `interned`.
 #[derive(Default)]
 struct FixtureClosureMemoReplay {
-    paths_by_memo_key: std::collections::HashMap<String, Vec<String>>,
-    content_by_path: std::collections::HashMap<String, String>,
+    closure_by_memo_key: std::collections::HashMap<String, Vec<(String, Arc<String>)>>,
+    interned: std::collections::HashMap<String, Vec<Arc<String>>>,
+}
+
+impl FixtureClosureMemoReplay {
+    fn intern(&mut self, path: &str, content: &str) -> Arc<String> {
+        let variants = self.interned.entry(path.to_string()).or_default();
+        if let Some(existing) = variants.iter().find(|v| v.as_str() == content) {
+            return existing.clone();
+        }
+        let fresh = Arc::new(content.to_string());
+        variants.push(fresh.clone());
+        fresh
+    }
 }
 
 static FIXTURE_CLOSURE_MEMO_REPLAY: Mutex<Option<FixtureClosureMemoReplay>> = Mutex::new(None);
@@ -2962,7 +2975,7 @@ thread_local! {
     /// The paths the last [`record_fixture_closure`] on this thread recorded, taken by the memo
     /// wrapper that triggered the fill. Cleared before each fill so a fill that panicked before
     /// resolving cannot inherit an earlier fill's closure.
-    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<Vec<(String, Arc<String>)>>> = const { RefCell::new(None) };
 }
 
 /// Called by a memo wrapper just before it fills.
@@ -2973,7 +2986,7 @@ pub(crate) fn begin_fixture_closure_fill() {
 /// Called by a memo wrapper after it filled `memo_key`: the closure the fill recorded becomes what
 /// a later hit on that key replays.
 pub(crate) fn finish_fixture_closure_fill(memo_key: &str) {
-    let Some(paths) = LAST_RECORDED_FIXTURE_CLOSURE.with(|l| l.borrow_mut().take()) else {
+    let Some(closure) = LAST_RECORDED_FIXTURE_CLOSURE.with(|l| l.borrow_mut().take()) else {
         return;
     };
     let mut guard = FIXTURE_CLOSURE_MEMO_REPLAY
@@ -2981,8 +2994,8 @@ pub(crate) fn finish_fixture_closure_fill(memo_key: &str) {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     guard
         .get_or_insert_with(FixtureClosureMemoReplay::default)
-        .paths_by_memo_key
-        .insert(memo_key.to_string(), paths);
+        .closure_by_memo_key
+        .insert(memo_key.to_string(), closure);
 }
 
 /// A memo hit on `memo_key`: replay the closure its fill recorded into this run's union.
@@ -2993,17 +3006,15 @@ pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
     let Some(replay) = guard.as_ref() else {
         return;
     };
-    let Some(paths) = replay.paths_by_memo_key.get(memo_key) else {
+    let Some(closure) = replay.closure_by_memo_key.get(memo_key) else {
         return;
     };
-    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = paths
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = closure
         .iter()
-        .filter_map(|path| {
-            replay.content_by_path.get(path).map(|content| {
-                Rc::new(v1_compiler_compile::SourceFile {
-                    path: path.clone(),
-                    content: content.clone(),
-                })
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.as_str().to_string(),
             })
         })
         .collect();
@@ -3014,26 +3025,23 @@ pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
 /// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
 /// instruments' uncached paths with the exact source vector they compile.
 pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
-    let paths: Vec<String> = sources
-        .iter()
-        .filter(|source| source.path != FIXTURE_SOURCE_PATH)
-        .map(|source| source.path.clone())
-        .collect();
-    {
+    let closure: Vec<(String, Arc<String>)> = {
         let mut replay = FIXTURE_CLOSURE_MEMO_REPLAY
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let replay = replay.get_or_insert_with(FixtureClosureMemoReplay::default);
-        for source in sources {
-            if source.path != FIXTURE_SOURCE_PATH {
-                replay
-                    .content_by_path
-                    .entry(source.path.clone())
-                    .or_insert_with(|| source.content.clone());
-            }
-        }
-    }
-    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = Some(paths));
+        sources
+            .iter()
+            .filter(|source| source.path != FIXTURE_SOURCE_PATH)
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    replay.intern(&source.path, &source.content),
+                )
+            })
+            .collect()
+    };
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = Some(closure));
     record_into_union(sources, false);
 }
 
@@ -3303,6 +3311,35 @@ mod fixture_closure_union_tests {
         assert_eq!(
             second_run.members.keys().collect::<Vec<_>>(),
             vec!["dag/replay_a.dag"]
+        );
+    }
+
+    /// A FILE THAT CHANGED BETWEEN RUNS: a hit on run 1's key replays run 1's bytes and a fresh fill
+    /// on run 2 records the new bytes, each under its own key. Path-keyed replay would hand the
+    /// second key the first fill's bytes (review 76336).
+    #[test]
+    fn a_replay_returns_its_own_fills_bytes() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v1\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-1");
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v2\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-2");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-bytes-key-2");
+        let run = take_fixture_closure_union();
+        assert!(run.conflicts.is_empty(), "{:?}", run.conflicts);
+        assert_eq!(
+            run.members.get("dag/replay_b.dag").map(String::as_str),
+            Some("module replay_b\n// v2\n")
         );
     }
 
