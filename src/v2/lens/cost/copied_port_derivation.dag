@@ -41,8 +41,13 @@ import v2.std.algebra { CopiedPortFact, fold_list }
 // fires). Unpriceable shapes return Absent — classify_call keeps
 // ^combiner_unregistered_carrier_reaches fail-closed.
 
+// `declaration` is the cited declaration's dotted path when the combiner HAS a .dag declaration, so a
+// QUALIFIED call reaches this citation only by naming that declaration -- never by sharing its leaf
+// (`foreign.list_append` is not std.algebra list_append). Absent where the combiner has no .dag
+// declaration to name (map_merge); a qualified call then reaches no citation at all.
 type CombinerArrowCitation {
   combiner: Symbol
+  declaration: Optional<String>
   arrow: Node
 }
 

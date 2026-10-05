@@ -523,11 +523,13 @@ fn analyze_postfix_projection_call(
 // fold bodies).
 
 // THE OPERATOR OF A LOWERED CALL: its first positional child. A bare callee is an atom and names the
-// combiner; a dotted callee (`helper.step(..)`) lowers to a declaration reference whose LAST segment is
-// the method, the same name the surface arm's projection_method_call_optional reads. Any other operator
-// is Absent, and the caller refuses ^call_head_unreadable when a carrier reaches one of its actuals.
-// Before this the read took the first positional child that HAD an atom identity, so a dotted head was
-// skipped and an argument could stand in as the combiner.
+// combiner. A dotted callee keeps its DECLARATION IDENTITY: it is the cited combiner only when its
+// whole path is that citation's declaration (v2.lens.cost.copied_port_citations
+// copied_port_citation_combiner_for_declaration), and otherwise it is its whole dotted path, which no
+// citation's bare combiner can equal -- so `foreign.list_append` is classified as an unregistered
+// combiner and refuses when the carrier reaches it, instead of borrowing std.algebra list_append's
+// copied-port contract by sharing its leaf. Any other operator is Absent, and the caller refuses
+// ^call_head_unreadable when a carrier reaches one of its actuals.
 fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
   match node.kind {
     ComputationNode { behavior: Transform } =>
@@ -539,7 +541,12 @@ fn lowered_transform_combiner_optional(node: Node) -> Optional<Symbol> {
             Absent =>
               match lowered_callee_path_optional(head: head) {
                 Absent => Absent
-                Present { value: path } => v2.std.qualified_name.qualified_name_last_segment(qn: path)
+                Present { value: path } =>
+                  let dotted = v2.std.qualified_name.qualified_name_to_dotted_string(qn: path)
+                  match v2.lens.cost.copied_port_citations.copied_port_citation_combiner_for_declaration(dotted: dotted) {
+                    Present { value: cited } => optional_present(value: cited)
+                    Absent => optional_present(value: v2.std.node.symbol_intern_lexeme(lexeme: dotted))
+                  }
               }
           }
       }

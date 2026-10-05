@@ -81,6 +81,19 @@ data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<
 
 data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
 
+// THE QUALIFIED-CALLEE IDENTITY SPECIMENS (review on gunbc#13337). A dotted callee may borrow a
+// cited copied-port contract only by NAMING the cited declaration. The same-leaf specimen puts the
+// carrier on the port std.algebra list_append does NOT copy, so a lens that matched by leaf priced
+// `foreign.list_append` as the std combiner and went clean; it must refuse as unregistered. The
+// unrelated-leaf specimen is the control that the refusal is the ordinary unregistered arm, and the
+// fully qualified std.algebra.list_append specimen is the positive: naming the cited declaration still
+// reaches its contract and mints the suspect.
+data same_leaf_foreign_qualifier_snippet: String = "module foreignleaf\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { foreign.list_append(left: acc, right: x) })\n}\n"
+
+data unrelated_leaf_foreign_qualifier_snippet: String = "module foreigngrow\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { foreign.grow(left: acc, right: x) })\n}\n"
+
+data cited_qualified_callee_snippet: String = "module citedqual\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { std.algebra.list_append(left: x, right: acc) })\n}\n"
+
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
@@ -462,4 +475,30 @@ test fn report_counters_state_the_domain() -> Bool {
         let r = v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_report(root: tree)
         (r.folds_seen == 1) && (r.carriers_bound == 0)
     }
+}
+
+// RED before the identity fix: matched by leaf, the call reads as std list_append with the carrier on
+// its uncopied port and no finding is minted.
+test fn same_leaf_foreign_qualifier_does_not_borrow_the_cited_contract() -> Bool {
+  match findings_of(source_text: same_leaf_foreign_qualifier_snippet, file: ^foreignleaf_file) {
+    Absent => false
+    Present { value: fs } =>
+      !v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+        && v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn unrelated_leaf_foreign_qualifier_refuses_unregistered() -> Bool {
+  match findings_of(source_text: unrelated_leaf_foreign_qualifier_snippet, file: ^foreigngrow_file) {
+    Absent => false
+    Present { value: fs } =>
+      v2.lens.complexity_accumulator_copy.analyze.findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn cited_qualified_callee_reaches_its_contract() -> Bool {
+  match findings_of(source_text: cited_qualified_callee_snippet, file: ^citedqual_file) {
+    Absent => false
+    Present { value: fs } => v2.lens.complexity_accumulator_copy.analyze.findings_have_suspect(fs: fs)
+  }
 }

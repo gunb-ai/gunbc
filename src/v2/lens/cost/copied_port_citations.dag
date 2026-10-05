@@ -192,6 +192,7 @@ fn citation_arrow_two_param_loop(
 
 data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_append,
+  declaration: optional_present(value: "std.algebra.list_append"),
   arrow: citation_arrow_two_param_loop(
     left_sym: ^left,
     right_sym: ^right,
@@ -201,6 +202,7 @@ data copied_port_citation_list_append: CombinerArrowCitation = CombinerArrowCita
 
 data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^list_snoc_item,
+  declaration: optional_present(value: "std.algebra.list_snoc_item"),
   arrow: citation_arrow_two_param_loop(
     left_sym: ^xs,
     right_sym: ^item,
@@ -210,6 +212,7 @@ data copied_port_citation_list_snoc_item: CombinerArrowCitation = CombinerArrowC
 
 data copied_port_citation_map_merge: CombinerArrowCitation = CombinerArrowCitation {
   combiner: ^map_merge,
+  declaration: optional_absent(),
   arrow: citation_arrow_two_param_loop(
     left_sym: ^copied_port_citation_map_merge_base,
     right_sym: ^copied_port_citation_map_merge_overlay,
@@ -253,6 +256,26 @@ fn copied_port_citation_arrow_of(combiner: Symbol) -> Optional<Node> {
       match acc {
         Present { value: _ } => acc
         Absent => if cite.combiner == combiner { optional_present(value: cite.arrow) } else { acc }
+      }
+    }
+  )
+}
+
+// THE CITED COMBINER A QUALIFIED CALLEE DENOTES, BY DECLARATION IDENTITY: Present only when the
+// callee's dotted path IS a citation's declaration. A callee that merely shares a cited leaf answers
+// Absent, so it is never priced by another declaration's contract.
+fn copied_port_citation_combiner_for_declaration(dotted: String) -> Optional<Symbol> {
+  fold_list(
+    xs: copied_port_combiner_arrow_citations,
+    empty: optional_absent(),
+    cons: fn(acc, cite) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match cite.declaration {
+            Present { value: d } => if d == dotted { optional_present(value: cite.combiner) } else { acc }
+            Absent => acc
+          }
       }
     }
   )
