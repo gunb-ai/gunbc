@@ -23,6 +23,7 @@ import v2.std.optional { Absent, Optional, Present, optional_absent, optional_pr
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 import extdeps.communication.medium { Lossless, Medium }
+import v2.compiler.native_test_vocabulary { native_test_file_refusal_fatal_reason }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -167,7 +168,7 @@ fn iasl_file_refusal_reason(context: NativeTestContext, unit: Symbol) -> Optiona
     xs: context.file_refusals,
     empty: optional_absent(),
     cons: fn(acc, refusal) {
-      if refusal.path == unit { optional_present(value: refusal.fatal_reason) } else { acc }
+      if refusal.path == unit { optional_present(value: native_test_file_refusal_fatal_reason(fr: refusal)) } else { acc }
     }
   )
 }
