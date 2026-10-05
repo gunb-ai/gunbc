@@ -41,7 +41,7 @@ import std.process { ExitSuccess, ProcessExit, exit_failure }
 data por_pool_roots: List<String> = []
 data por_pool_files: List<String> = ["src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag"]
 
-data por_pair: PorPair = PorPair { left: String, right: String }
+type PorPair = PorPair { left: String, right: String }
 
 fn por_mk_pair(s: String) -> PorPair {
   PorPair { left: trim(s), right: s }
