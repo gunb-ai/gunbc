@@ -119,8 +119,8 @@ use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_env,
-    lookup_emit_type_summary,
+    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
+    empty_type_env, lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
@@ -31088,7 +31088,7 @@ pub fn build_emit_graph_info(
     {
         let init = Rc::new(EmitInfoBuildState {
             type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
-            type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            type_decl_items: crate::v1_compiler_infer_emit_info::empty_type_decl_index(),
             fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
             structural_alias_fn_surface_names: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
             structural_alias_direct_fn_names: v1_rt::rc_empty_set::<String>(),
@@ -31112,6 +31112,7 @@ pub fn build_emit_graph_info(
                         } else {
                             crate::v1_compiler_infer_emit_info::add_emit_item_summary(
                                 inner_state.clone(),
+                                module_name.clone(),
                                 item.clone(),
                                 typed_module.type_env.clone().source_indices.clone(),
                             )
