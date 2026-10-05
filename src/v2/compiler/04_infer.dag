@@ -1259,29 +1259,37 @@ fn infer_projection_receiver(
       match inferred_facts_resolved_type(facts: base_facts) {
         Violates { diagnostic: _ } => ReceiverTypeUnderived
         Holds { value: receiver_type } =>
-          let head_args = infer_type_head_and_args(t: receiver_type)
-          match declaration_reference_path_optional(node: head_args.head) {
-            Absent => ReceiverTypeNotADeclaration
-            Present { value: path } =>
-              match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
-                Absent => ReceiverDeclarationUnavailable { path: path }
-                Present { value: payload } =>
-                  if length(xs: head_args.args) == 0 {
-                    ReceiverPayload { payload: payload, instances: infer_no_type_variable_instances() }
-                  } else {
-                    let params = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: path)
-                    if length(xs: params) != length(xs: head_args.args) {
-                      ReceiverArityMismatch
-                    } else {
-                      ReceiverPayload {
-                        payload: payload,
-                        instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
-                          TypeVariableInstance { binder: p, instance: arg }
-                        })
-                      }
-                    }
-                  }
+          infer_projection_receiver_of_type(receiver_type: receiver_type, declarations: resolved.resolved_declarations)
+      }
+  }
+}
+
+// THE RECEIVER'S DECLARATION AND INSTANTIATION, FROM ITS ESTABLISHED TYPE. A plain declaration
+// reference binds nothing; an application binds the head's declared type parameters to its arguments
+// in declared order. Separate from the facts lookup above so the type-to-payload step is judged on its
+// own inputs.
+fn infer_projection_receiver_of_type(receiver_type: Node, declarations: SymbolIndex) -> ProjectionReceiver {
+  let head_args = infer_type_head_and_args(t: receiver_type)
+  match declaration_reference_path_optional(node: head_args.head) {
+    Absent => ReceiverTypeNotADeclaration
+    Present { value: path } =>
+      match symbol_index_lookup(index: declarations, qualified_path: path) {
+        Absent => ReceiverDeclarationUnavailable { path: path }
+        Present { value: payload } =>
+          if length(xs: head_args.args) == 0 {
+            ReceiverPayload { payload: payload, instances: infer_no_type_variable_instances() }
+          } else {
+            let params = symbol_index_declared_type_params_at(index: declarations, qualified_path: path)
+            if length(xs: params) != length(xs: head_args.args) {
+              ReceiverArityMismatch
+            } else {
+              ReceiverPayload {
+                payload: payload,
+                instances: zip_map(a: params, b: head_args.args, f: fn(p, arg) {
+                  TypeVariableInstance { binder: p, instance: arg }
+                })
               }
+            }
           }
       }
   }
@@ -1680,8 +1688,7 @@ fn infer_arrow_declared_return_type(arrow: Node) -> Optional<Node> {
 // A CALL'S RESULT HAS THE TYPE ITS CALLEE DECLARES, KERNEL OR NOT. infer_arrow_declared_return_type
 // knows only the kernel value types (and Bool by authority), so a callee declared to return a
 // corpus type -- Nat, Outcome<ParseArtifact> -- answered Absent, the call stayed underived, and every
-// declared position it reached accepted it as undecidable (gunbc.recurring_failure_mode
-// call_result_of_a_declared_return_type_unjudged_in_v2_infer). Every other declared type in this
+// declared position it reached accepted it as undecidable. Every other declared type in this
 // stage is already used as written (a parameter's declared node, a lexical binding's instantiated
 // declaration); this reader now does the same. The kernel answer is consulted FIRST, so the Int and
 // Bool paths are byte-identical. Otherwise the declared return node, alias-normalized through the one

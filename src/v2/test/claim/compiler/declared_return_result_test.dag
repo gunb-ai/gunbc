@@ -5,17 +5,26 @@ import v2.compiler.infer {
   infer_application_result_type,
   infer_arrow_declared_return_type,
   infer_projected_field_type,
-  infer_type_equal_ignoring_provenance
+  infer_projection_receiver_of_type,
+  infer_receiver_arity_mismatch_diagnostic,
+  infer_type_equal_ignoring_provenance,
+  ProjectionReceiver,
+  ReceiverArityMismatch,
+  ReceiverDeclarationUnavailable,
+  ReceiverPayload,
+  ReceiverTypeNotADeclaration,
+  ReceiverTypeUnderived
 }
+import v2.std.qualified_name { declaration_reference_node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Instantiation, Node, Positional, Symbol, TypeNode, node_synthetic }
+import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Instantiation, Node, OccurrenceSynthetic, Positional, Symbol, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present }
 import v2.std.algebra { length, list_map }
-import std.algebra { list_snoc_item }
+import std.algebra { Cons, list_snoc_item }
 import std.types { List, String }
-import v2.std.symbol_index { empty_symbol_index }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_mark_declared_type_params }
 import v2.std.type_binder { type_params_edge }
 import std.types { Bool }
 
@@ -23,8 +32,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // SUBJECT: a call's result type when its callee declares a non-kernel return
 // (v2.compiler.infer infer_application_result_type), and a field read off an instantiated generic
-// record (infer_projected_field_type). gunbc.recurring_failure_mode
-// call_result_of_a_declared_return_type_unjudged_in_v2_infer.
+// record (infer_projected_field_type).
 //
 // WITNESS SHAPE (DESIGN section 3, a witness discriminates at one interface): five claims SUPPLY the
 // callee's arrow and the call's instances at the result-type interface, built here, so each judges
@@ -112,6 +120,53 @@ test fn drr_a_generic_record_field_projects_at_its_instantiation() -> Bool {
   let bound = [TypeVariableInstance { binder: ^drr_t, instance: drr_atom(sym: ^drr_tally) }]
   infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: bound), b: drr_atom(sym: ^drr_tally))
     && infer_type_equal_ignoring_provenance(a: infer_projected_field_type(field_type: drr_atom(sym: ^drr_t), instances: []), b: drr_atom(sym: ^drr_t))
+}
+
+// WRONG TYPE-ARGUMENT COUNT: Box declares one type parameter, so a receiver typed Box<Tally, Tally>
+// has no instantiation to read a field at and refuses as an arity mismatch; Box<Tally> reads its payload.
+fn drr_box_path() -> List<Symbol> {
+  [^drr_p, ^drr_box]
+}
+
+fn drr_box_index() -> SymbolIndex {
+  let payload = node_synthetic(kind: TypeNode { connective: Conj }, children: [Edge { label: Authored { name: ^item }, target: drr_atom(sym: ^drr_t) }])
+  symbol_index_mark_declared_type_params(
+    index: symbol_index_insert(index: empty_symbol_index(), qualified_path: drr_box_path(), resolved: payload),
+    qualified_path: drr_box_path(),
+    params: [^drr_t]
+  )
+}
+
+fn drr_box_applied(args: List<Node>) -> Node {
+  let head = declaration_reference_node(qn: drr_box_path(), occurrence_id: OccurrenceSynthetic)
+  node_synthetic(kind: TypeNode { connective: Instantiation }, children: list_map(xs: Cons { head: head, tail: args }, f: fn(n) { drr_positional(target: n) }))
+}
+
+fn drr_is_arity_mismatch(r: ProjectionReceiver) -> Bool {
+  match r {
+    ReceiverArityMismatch => true
+    ReceiverPayload { payload: _, instances: _ } => false
+    ReceiverTypeNotADeclaration => false
+    ReceiverDeclarationUnavailable { path: _ } => false
+    ReceiverTypeUnderived => false
+  }
+}
+
+fn drr_is_payload(r: ProjectionReceiver) -> Bool {
+  match r {
+    ReceiverPayload { payload: _, instances: _ } => true
+    ReceiverArityMismatch => false
+    ReceiverTypeNotADeclaration => false
+    ReceiverDeclarationUnavailable { path: _ } => false
+    ReceiverTypeUnderived => false
+  }
+}
+
+test fn drr_a_wrong_type_argument_count_at_a_generic_record_projection_refuses() -> Bool {
+  let tally = drr_atom(sym: ^drr_tally)
+  drr_is_arity_mismatch(r: infer_projection_receiver_of_type(receiver_type: drr_box_applied(args: [tally, tally]), declarations: drr_box_index()))
+    && drr_is_payload(r: infer_projection_receiver_of_type(receiver_type: drr_box_applied(args: [tally]), declarations: drr_box_index()))
+    && infer_receiver_arity_mismatch_diagnostic(node: tally).reason == ^infer_reason_projection_receiver_type_arity_mismatch
 }
 
 // THE ONE REAL-PATH CLAIM, ASSERTING THE ROUTE. `boxed(1).item` at a Bool parameter refuses as an
