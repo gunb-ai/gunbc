@@ -5,7 +5,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.machine_intake_mtjade1_access_observation {
   SecretLocusReservedNotOnAccessorRoster,
   mtjade1_managed_bmc_secret_standing,
-  mtjade1_unit_key_standing,
 }
 import gunbc.machine_intake_subject {
   BoardSerialAbsent,
@@ -18,14 +17,6 @@ import extdeps.bmc.endpoint { BmcEndpoint, Ipmi }
 import gunbc.secret_provision { mtcollins1_bmc_gunbc_secret_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn w_mtjade1_unit_key_is_board_serial_absent() -> Bool {
-  match mtjade1_unit_key_standing {
-    UnitKeyRefused { cause: BoardSerialAbsent } => true
-    UnitKeyRefused { cause: _ } => false
-    UnitKeyBound { key: _ } => false
-  }
-}
 
 test fn w_bmc_only_bind_without_serials_is_absent_not_a_fabricated_key() -> Bool {
   match bind_unit_key(

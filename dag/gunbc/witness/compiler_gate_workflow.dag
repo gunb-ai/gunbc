@@ -435,13 +435,22 @@ fn compiler_gate_drift_step() -> Step {
   }
 }
 
-// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, BOTH GENERATIONS DEEP. Operator decision
-// msg_6e36a6a2 (2026-09-23) put this step on the merge queue, superseding msg_4a9045fc's
-// generation-1-only ruling and msg_f1ade7cf-77e4-4896-a8b3-476747692c37's ~20 min pricing; operator
-// ruling 2026-09-28 keeps its depth and widens its events (below).
+// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, ONE GENERATION DEEP. Operator decision
+// msg_6e36a6a2 (2026-09-23) put this step on the merge queue at two generations, superseding
+// msg_4a9045fc's generation-1-only ruling; operator ruling 2026-09-28 widened its events (below);
+// operator ruling 2026-10-04 ("we don't need to run multiple times - we are not that particular
+// about determinism in v1 anymore") cut it back to one generation.
+//
+// WHAT THE STEP ASSERTS, in one sentence: the committed mirrors equal ONE emission of the current
+// .dag sources by the seed built from those committed mirrors. The ruling waives DETERMINISM, which
+// is all the deleted second generation could see -- it re-emitted with the same binary. It does
+// not waive CONVERGENCE, and the one-generation assertion still holds it: the seed this lane runs
+// is built from the committed mirrors, so mirrors emitted by a binary that predates a change to the
+// emitter's own closure (infer, emit_rust) do not equal what this seed emits, and the step refuses.
+// An author changing that closure therefore still owes a second ROUND (rebuild from the installed
+// mirrors, emit again) before the step admits; an author changing anything else owes one.
 // The drift step above reads gunbc.generated_artifact alone; the ~158 compile_stage0 mirrors are
-// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase (first generation) and
-// the RegenFixedPoint phase (second generation against the first's receipt) -- and no job had run
+// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase -- and no job had run
 // that lane since #11742, so std_measure.rs drifted onto main under a green required run
 // (gunbc#12067) and more mirrors had drifted by the time this step first executed.
 //
@@ -449,7 +458,7 @@ fn compiler_gate_drift_step() -> Step {
 // partition (gunbc.witness_floor_workflow build_lane_run_script over gunbc.fabric_witness_run
 // build_lane_run_command), never by this YAML. Measured on the fleet (run 35890770775, after
 // #12100 removed the field-name re-export leak that had inflated generation 1 to 30 min): the
-// whole lane, both generations, took 22.5 min, and the floor job ~58 min against
+// whole lane, then two generations deep, took 22.5 min, and the floor job ~58 min against
 // compiler_gate_floor_timeout_minutes.
 //
 // A STEP ON ITS OWN JOB, BESIDE THE FLOOR -- operator ruling 2026-09-27, which supersedes the
@@ -473,13 +482,9 @@ fn compiler_gate_drift_step() -> Step {
 // `!cancelled()` rather than the default success(): an earlier red step, such as the lint, must not
 // disarm this check (see witness_floor_workflow's measured correction).
 //
-// gunbc.rung_drop.floor_cut_regen_second_generation_agreement IS NOT RETIRED BY THIS STEP. Its
-// trigger is second-generation refusal for EVERY phase that regenerates a committed population,
-// shown by a red on a generation-unstable fixture under this execution model. RegenFixedPoint
-// compares a second generation for the stage0 mirror population only (it reads
-// target/stage0-regen-receipt.json); the registry-rostered projections have no second
-// generation, and no unstable fixture has been run.
-data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+// gunbc.rung_drop.floor_cut_regen_second_generation_agreement STANDS, and since 2026-10-04 no
+// required phase compares a second generation for any population.
+data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match one emission by this seed: required CI build lane"
 data compiler_gate_stage0_regen_step_id: String = "stage0_regen"
 
 // NO EVENT CLAUSE, which is the ruling rather than an omission: the step runs wherever the job does,
