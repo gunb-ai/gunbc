@@ -30,10 +30,46 @@ fn blocking(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int 
   }
 }
 
-data control_source: String = "module probe_qualification_delivery_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { BoundJitCredential, JitCredentialDelivery, JitCredentialBoundToAttempt, jit_credential_delivered }\nfn delivered(d: JitCredentialDelivery) -> Bool { jit_credential_delivered(delivery: d) }\n"
+data control_source: String = "module probe_qualification_delivery_control\nimport std.types { Bool }\nimport gunbc.runner.runner_jit_perform { BoundJitCredential, JitCredentialDelivery, JitCredentialBoundToAttempt, jit_credential_delivered, receive_jit_mint }\nimport gunbc.github_effect_perform { jit_mint_performance_of_generate }\nimport gunbc.runner.runner_qualification_dispatch { CollectedQualificationRun }\nfn delivered(d: JitCredentialDelivery) -> Bool { jit_credential_delivered(delivery: d) }\n"
 
+fn blocking_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn probe(name: String) -> CompileDiagnosticCensus {
+  census_of(source: filesystem_read(path: concat(concat("dag/test/probe/", name), ".dag")).content)
+}
+
+// ONE CONTROL FOR EVERY RED BELOW: a source that IMPORTS each sealed name -- the carriers and the two
+// admitted mints -- and calls none of them refuses at none of the walls, so each red is the call or
+// the literal, never the import.
 test fn a_source_that_only_names_the_carrier_forges_nothing() -> Bool {
-  blocking(c: census_of(source: control_source), wanted: "SoleConstructorViolation", subject: "BoundJitCredential") == 0
+  let c = census_of(source: control_source)
+  blocking(c: c, wanted: "SoleConstructorViolation", subject: "BoundJitCredential") == 0
+    && blocking_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// THE REWRAP WITH NO FORGED LITERAL (review 5408711178 item 1): delivery B's credential and runner id
+// handed to receive_jit_mint under dispatch A. Each probe holds ONE route, so its refusal is that
+// route's.
+test fn a_rewrap_through_receive_jit_mint_refuses_at_its_admission() -> Bool {
+  blocking_class(c: probe(name: "qualification_receive_jit_mint_rewrap_probe"), wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn a_supplied_generate_answer_refuses_outside_the_perform_function() -> Bool {
+  blocking_class(c: probe(name: "qualification_generate_answer_rewrap_probe"), wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+// item 2: collecting outside the token join is minting a collection the join never admitted.
+test fn a_collection_minted_outside_the_token_join_refuses_at_the_sealed_carrier() -> Bool {
+  blocking(c: probe(name: "qualification_collection_relabel_probe"), wanted: "SoleConstructorViolation", subject: "CollectedQualificationRun") >= 1
 }
 
 test fn a_rewrapped_delivery_refuses_at_the_sealed_carrier() -> Bool {
