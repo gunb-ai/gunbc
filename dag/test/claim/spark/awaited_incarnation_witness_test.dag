@@ -41,11 +41,11 @@ fn w_decide(stdout: String, expected: AwaitedIncarnation?) -> AwaitedVerdict {
 }
 
 fn w_observed(v: AwaitedVerdict) -> Bool {
-  match v { AwaitedObserved { awaited: _ } => true  AwaitedRefused { host: _, cause: _ } => false  AwaitedLegOutlivedBound { host: _, bound_seconds: _ } => false }
+  match v { AwaitedObserved { awaited: _ } => true  AwaitedRefused { host: _, cause: _ } => false  AwaitedLegOutlivedBound { host: _, bound: _ } => false }
 }
 
 fn w_refused_with(v: AwaitedVerdict, fragment: String) -> Bool {
-  match v { AwaitedObserved { awaited: _ } => false  AwaitedRefused { host: _, cause: c } => string_contains(s: c, pattern: fragment)  AwaitedLegOutlivedBound { host: _, bound_seconds: _ } => false }
+  match v { AwaitedObserved { awaited: _ } => false  AwaitedRefused { host: _, cause: c } => string_contains(s: c, pattern: fragment)  AwaitedLegOutlivedBound { host: _, bound: _ } => false }
 }
 
 // THE POSITIVE CONTROL: the awaited incarnation, before and after a successful probe, before its deadline.
@@ -53,7 +53,7 @@ test fn w_a_success_on_the_awaited_incarnation_before_its_deadline_is_observed()
   match w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 900), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 960)], ""), expected: none) {
     AwaitedObserved { awaited: a } => (a.id as String) == w_a && a.deadline_epoch == w_deadline
     AwaitedRefused { host: _, cause: _ } => false
-    AwaitedLegOutlivedBound { host: _, bound_seconds: _ } => false
+    AwaitedLegOutlivedBound { host: _, bound: _ } => false
   }
 }
 
@@ -89,7 +89,7 @@ test fn w_transport_just_before_the_deadline_leaves_the_front_door_only_what_rem
   let transport = w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 995)], ""), expected: none)
   match transport {
     AwaitedRefused { host: _, cause: _ } => false
-    AwaitedLegOutlivedBound { host: _, bound_seconds: _ } => false
+    AwaitedLegOutlivedBound { host: _, bound: _ } => false
     AwaitedObserved { awaited: a } =>
       w_refused_with(
         v: w_decide(stdout: join([w_header(id: a.id as String, deadline: a.deadline_epoch), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 996), w_poll(before: w_running(id: w_a), ok: false, after: w_running(id: w_a), at: 1011)], ""), expected: Present { value: a }),
