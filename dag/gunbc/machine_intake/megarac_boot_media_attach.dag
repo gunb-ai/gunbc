@@ -1,0 +1,450 @@
+module gunbc.machine_intake_megarac_boot_media_attach
+
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.measure { Second, second, second_count }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+import extdeps.bmc.ipmi
+import extdeps.tools.gnu_coreutils { coreutils_duration_operand }
+import std.decl_ref { decl_ref }
+import gunbc.managed_host_unit_hold { UnitHoldProof }
+import gunbc.managed_host_boot { AdmittedBootSubject, boot_subject_host }
+import product.host_identity { host_identity_eq }
+import gunbc.megarac_managed_host { AdmittedMegaRacHost, MegaRacHostAdmission, MegaRacHostAdmitted, MegaRacHostRefused, admit_megarac_host, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacVirtualMediaAttach }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
+  MediaAttachAttempted,
+  MediaAttachNotAttempted,
+  MtCollins1MediaAttachRecord,
+  media_attach_outcome_reason,
+  session_release_text,
+  StaleMediumPowerOff,
+  StalePowerOffNotNeeded,
+  StalePowerOffObserved,
+  StalePowerOffCommandRefused,
+  StalePowerOffNotObserved,
+}
+import extdeps.bmc.capability { BmcFirmwareReleaseIdentity }
+import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, ChassisPowerRead, ChassisStatusUndecodable, ChassisUnreadable, IpmiChassisPowerDown, chassis_observation, chassis_observation_text, ipmi_chassis_control_verb }
+import gunbc.machine_intake_megarac_media_attach {
+  MegaRacDetachAdmission,
+  MegaRacDetachAdmitted,
+  MegaRacDetachNotAdmitted,
+  MegaRacPresentationEvidence,
+  MegaRacPresentationReady,
+  MegaRacReplacementPolicy,
+  MegaRacConverge,
+  MegaRacObserve,
+  MegaRacAttachResult,
+  MegaRacSessionRefused,
+  SessionReleaseNotAttempted,
+  MegaRacShareBinding,
+  SessionReleased,
+  megarac_attach_remote_image,
+  megarac_presentation_look_allowance,
+  MegaRacPresentationObserved,
+  ShareBound,
+  ConvergeStalePresented,
+  ConvergeStepDetachStale,
+  presented_convergence,
+  presented_media,
+  megarac_convergence_step,
+}
+
+// A MANAGED HOST'S BOOT MEDIUM, PRESENTED BY ITS MEGARAC CONTROLLER (docs/plans/managed-host-untangle.md,
+// cut 3). This is the policy layer above the operation (gunbc.machine_intake_megarac_media_attach
+// megarac_attach_remote_image): the session, the stale-medium power-off, the detach admission and the
+// gate the handoff is behind. It used to be one unit's module with that unit's endpoint, firmware and
+// account written in; none of those is a constant here.
+//
+// THE CONTROLLER IS READ OFF THE HOLD. Every entry takes the unit-hold proof, whose only mint is the live
+// acquire in gunbc.managed_host_unit_hold, and the proof carries the ManagedHost it was acquired for.
+// The MegaRAC admission is minted from THAT host (gunbc.megarac_managed_host admit_megarac_host,
+// operation MegaRacVirtualMediaAttach), never passed beside it, so the endpoint the session opens, the
+// account it logs in with and the firmware its wire is decoded against are one managed host's binding,
+// and that host is the one the caller holds. A host that is not MegaRAC, whose controller is unobserved
+// or not bound, or whose build virtual media was never executed on, is refused here before any request.
+//
+// WHAT THE CALLER STILL SUPPLIES: the image and its digest, the share the controller mounts, the stem
+// of the images this lane may replace, and the IPMI read bound for the controller's chassis reads. Each
+// is the caller's boot fact, not this controller's, so none is read from a unit module here.
+
+// THE MEGARAC ADMISSION FOR VIRTUAL MEDIA, OF THE HOST THE PROOF HOLDS.
+fn megarac_boot_media_host(proof: UnitHoldProof) -> MegaRacHostAdmission {
+  admit_megarac_host(host: proof.subject.host, operation: MegaRacVirtualMediaAttach)
+}
+
+// THE BOUND ON ONE ipmitool READ OF THE CONTROLLER, as `timeout --kill-after` operands.
+type MegaRacIpmiReadBound {
+  deadline: Second
+  kill_after: Second
+}
+
+// THE CHASSIS POWER READ, over the admitted controller only.
+fn megarac_boot_media_chassis_power(host: AdmittedMegaRacHost, password_file: NonEmptyStr, bound: MegaRacIpmiReadBound) -> ChassisPowerObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_power_after_stale_power_off"),
+  ]
+{
+  let r = diagnostic.ipmi.Tool.ChassisStatus(
+    bmc_host: host.binding.observation.endpoint.host,
+    username: host.binding.account,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: bound.deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: bound.kill_after) as NonEmptyStr,
+  )
+  chassis_observation(success: r.success, stdout: r.stdout)
+}
+
+// THE JAR IS ATTEMPT-OWNED, AND A FIXED LITERAL HERE WAS THE DEFECT. extdeps.bmc.megarac's note once
+// claimed that making the jar a parameter meant an attempt owned its own -- it does not: a parameter
+// PERMITS a per-attempt path and the old wrapper passed a constant, so two concurrent attempts shared one
+// bearer file. The host and the attempt identifier are part of the path, so the caller establishes the
+// ownership the operation cannot, and two hosts never share a jar either.
+fn megarac_boot_media_cookie_jar(host: AdmittedMegaRacHost, attempt: NonEmptyStr) -> NonEmptyStr {
+  join(["/tmp/gunbc-", host.binding.host.host as String, "-megarac-jar-", attempt as String], "") as NonEmptyStr
+}
+
+// THE ONE ROUTE TO A MANAGED HOST'S VIRTUAL MEDIA FOR A BOOT. It takes the unit-hold proof and the
+// admitted boot subject (gunbc.managed_host_boot AdmittedBootSubject), and is sealed to the boot's
+// actuation. The image it presents and the digest it records are the subject's medium, the one the
+// boot was admitted with and the verdict judges, never a second copy passed beside it; a hold on
+// one host cannot present media for another host's subject; the proof is the authorization the
+// scoped approval grant used to be, and the MegaRAC admission is read from the host it holds.
+// Password remains a caller argument (gunbc.machine_intake_mtcollins1_bmc_secure_observation
+// mtcollins1_managed_secret_fetch_frontier).
+fn megarac_attach_boot_image(
+  proof: UnitHoldProof,
+  subject: AdmittedBootSubject,
+  share: MegaRacShareBinding,
+  replaceable_seeded_stem: NonEmptyStr,
+  bound: MegaRacIpmiReadBound,
+  password_file: String,
+  attempt: String,
+) -> MtCollins1MediaAttachRecord
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  let image_name = subject.medium.image_name
+  match megarac_boot_media_host(proof: proof) {
+    MegaRacHostRefused { cause: c } => MediaAttachNotAttempted { reason: concat("media attach: ", megarac_host_refusal_text(cause: c) as String) as NonEmptyStr }
+    MegaRacHostAdmitted { host: host } =>
+      if !host_identity_eq(a: host.binding.host.host, b: boot_subject_host(subject: subject)) {
+        MediaAttachNotAttempted { reason: "media attach: the unit hold and the boot subject name different hosts; controller untouched" }
+      } else if password_file == "" {
+        MediaAttachNotAttempted { reason: "no controller password file supplied; refusing before any request" }
+      } else if attempt == "" {
+        MediaAttachNotAttempted { reason: "no attempt identifier supplied; the cookie jar is attempt-owned and a shared jar is what lets two runs consume one session" }
+      } else {
+        let before = megarac_boot_media_chassis_power(host: host, password_file: password_file as NonEmptyStr, bound: bound)
+        let off = megarac_stale_power_off(
+          host: host,
+          before: before,
+          password_file: password_file as NonEmptyStr,
+          attempt: attempt as NonEmptyStr,
+          image_name: image_name,
+          share: share,
+          replaceable_seeded_stem: replaceable_seeded_stem,
+          bound: bound,
+        )
+        let power = megarac_power_after_stale_power_off(host: host, before: before, off: off, password_file: password_file as NonEmptyStr, bound: bound)
+        MediaAttachAttempted {
+          attempt: attempt,
+          medium_image_name: subject.medium.image_name,
+          medium_image_sha256: subject.medium.digest,
+          power: power,
+          stale_power_off: off,
+          result: megarac_attach_remote_image(
+            bmc_host: host.binding.observation.endpoint.host,
+            username: host.binding.account,
+            password_file: password_file as NonEmptyStr,
+            cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: attempt as NonEmptyStr),
+            image_name: image_name,
+            firmware: host.firmware,
+            task: MegaRacConverge {
+              policy: MegaRacReplacementPolicy {
+                replaceable_seeded_stem: replaceable_seeded_stem,
+                detach: megarac_detach_admission_after_power_off(power: power, off: off),
+                share: share,
+              },
+            },
+          ),
+        }
+      }
+  }
+}
+
+// THE DETACH ADMISSION IS ESTABLISHED HERE, from the two facts only this layer holds. The hold: every
+// entry here takes the UnitHoldProof and reads its controller from the host the proof holds, and the
+// generic operation is admit_callers-sealed to this module, so no admission reaches the controller from
+// a caller that does not hold the unit. The power: read over IPMI before the session, and only an
+// observed OFF admits. On, undecodable and unreadable all refuse, because stop-media withdraws the
+// medium a running host reads its root from. Under the hold nothing else may power the unit, which is
+// what lets one reading taken before the session stand for the session. The reading is consumed only
+// if a destructive step is needed: the desired image already presented is a no-op whatever the power.
+fn megarac_detach_admission(power: ChassisPowerObservation) -> MegaRacDetachAdmission {
+  match power {
+    ChassisPowerRead { power_on: on } =>
+      if on {
+        MegaRacDetachNotAdmitted { reason: "the host is powered on; stopping the medium would withdraw what it may be running from" }
+      } else {
+        MegaRacDetachAdmitted
+      }
+    other =>
+      MegaRacDetachNotAdmitted { reason: concat("chassis power was not observed off: ", chassis_observation_text(observation: other)) as NonEmptyStr }
+  }
+}
+
+// A HELD HOST THAT IS ON WITH A STALE CENSUS MEDIUM IS POWERED OFF BEFORE THE MEDIUM IS REPLACED
+// (run 36683309058). The admission above is right to refuse a detach on a running host, and the
+// previous boot leaves the host on (the census image powers off only after its END marker, and a
+// failed or interrupted run does not reach it), so without this arm every re-run after a repin
+// refused until someone powered the unit off out of band. The power-off is the route's own, taken
+// only where the refusal would otherwise be the answer:
+//   - the hold is live: this runs inside megarac_attach_boot_image after its admission, and is
+//     admit_callers-sealed to it, so nothing without the unit's hold reaches the chassis write;
+//   - the host was READ on: unreadable or undecodable is never a licence to act, and the admission
+//     refuses it unchanged; a host read off needs nothing;
+//   - a read-only look (the same session route as megarac_observe_boot_presentation) finds the share
+//     bound, the session released, and a presentation the converge would classify as exactly one
+//     stale census image of the caller's stem AND would detach once admitted -- decided by the
+//     converge's own pure fold (presented_convergence, megarac_convergence_step), not a second
+//     classifier. The desired image presented, nothing presented, a foreign or several images, or an
+//     unreadable document or code never power the host off.
+// The write is IPMI §28.3 power down, read back over §28.2 until observed OFF, and then a FRESH
+// reading is taken and is what the admission receives. A command refused or a read-back that never
+// saw OFF does not admit the detach, whatever the fresh reading would say.
+//
+// POWER DOWN IS NOT ON THE BOOT HANDOFF'S VOCABULARY, ON PURPOSE (gunbc.machine_intake_oob_boot_handoff
+// OobPowerAction, review 5310234917 on gunbc#12247: power down cannot mean a boot handoff). This is a
+// different action for a different purpose -- making a stale medium safe to withdraw -- so it is its
+// own sealed route here, not a widening of that type.
+type StalePowerOffNeed
+  = PowerOffNotNeeded { reason: NonEmptyStr }
+  | PowerOffForStale { stale_image: String }
+
+fn stale_power_off_look_owed(before: ChassisPowerObservation) -> Bool {
+  match before {
+    ChassisPowerRead { power_on: on } => on
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
+  }
+}
+
+// PURE, over one read-only look, so every control is a supplied look rather than a controller.
+fn megarac_stale_power_off_need(look: MegaRacAttachResult, image_name: NonEmptyStr, firmware: BmcFirmwareReleaseIdentity, replaceable_seeded_stem: NonEmptyStr) -> StalePowerOffNeed {
+  match look.session_release {
+    SessionReleased => none
+    other => return PowerOffNotNeeded { reason: concat("the read-only look's session was ", session_release_text(standing: other)) as NonEmptyStr }
+  }
+  return match look.outcome {
+    MegaRacPresentationObserved { share: ShareBound, readiness: _, cd_error: cd, general: _, configurations: c } =>
+      if c.answered == false {
+        PowerOffNotNeeded { reason: "the configurations read did not answer; an unknown medium is never powered off for" }
+      } else {
+        let convergence = presented_convergence(
+          presented: presented_media(body: c.body, image_name: image_name, firmware: firmware),
+          image_name: image_name,
+          replaceable_seeded_stem: replaceable_seeded_stem,
+        )
+        match convergence {
+          ConvergeStalePresented { row: _ } =>
+            match megarac_convergence_step(convergence: convergence, detach: MegaRacDetachAdmitted, configurations: c.body, cd_before: cd) {
+              ConvergeStepDetachStale { row: r } => PowerOffForStale { stale_image: r.image_name }
+              _ => PowerOffNotNeeded { reason: "a stale census image is presented but the converge would not detach it even if admitted" }
+            }
+          _ => PowerOffNotNeeded { reason: "the presentation is not exactly one stale census image of this lane's stem" }
+        }
+      }
+    MegaRacPresentationObserved { share: _, readiness: _, cd_error: _, general: _, configurations: _ } =>
+      PowerOffNotNeeded { reason: "the share binding is not established; the converge refuses before any write" }
+    _ => PowerOffNotNeeded { reason: "the read-only look observed no presentation" }
+  }
+}
+
+// ONE READ-BACK SAMPLE, PURE: only an observed OFF ends the poll.
+fn stale_power_off_observed(sample: ChassisPowerObservation) -> Bool {
+  match sample {
+    ChassisPowerRead { power_on: on } => !on
+    ChassisStatusUndecodable { cause: _ } => false
+    ChassisUnreadable => false
+  }
+}
+
+data megarac_stale_power_off_samples: Int = 12
+
+data megarac_stale_power_off_interval: Second = second(count: 5)
+
+// WHAT THE POWER-OFF ARM MAY SPEND, DERIVED: one look, the power-down command and the fresh reading
+// (each at the caller's IPMI read ceiling), and every read-back sample with its pacing interval.
+fn megarac_stale_power_off_allowance(bound: MegaRacIpmiReadBound) -> Second {
+  let read = (second_count(s: bound.deadline) + second_count(s: bound.kill_after)) as Int
+  second(count: (second_count(s: megarac_presentation_look_allowance()) as Int)
+    + 2 * read
+    + megarac_stale_power_off_samples * (read + (second_count(s: megarac_stale_power_off_interval) as Int)))
+}
+
+fn megarac_stale_power_off(
+  host: AdmittedMegaRacHost,
+  before: ChassisPowerObservation,
+  password_file: NonEmptyStr,
+  attempt: NonEmptyStr,
+  image_name: NonEmptyStr,
+  share: MegaRacShareBinding,
+  replaceable_seeded_stem: NonEmptyStr,
+  bound: MegaRacIpmiReadBound,
+) -> StaleMediumPowerOff
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+  ]
+{
+  if stale_power_off_look_owed(before: before) == false {
+    return StalePowerOffNotNeeded { reason: concat("chassis power before the session: ", chassis_observation_text(observation: before) as String) as NonEmptyStr }
+  }
+  let look = megarac_attach_remote_image(
+    bmc_host: host.binding.observation.endpoint.host,
+    username: host.binding.account,
+    password_file: password_file,
+    cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt as String, "-before-power-off"], "") as NonEmptyStr),
+    image_name: image_name,
+    firmware: host.firmware,
+    task: MegaRacObserve { share: share },
+  )
+  return match megarac_stale_power_off_need(look: look, image_name: image_name, firmware: host.firmware, replaceable_seeded_stem: replaceable_seeded_stem) {
+    PowerOffNotNeeded { reason: r } => StalePowerOffNotNeeded { reason: r }
+    PowerOffForStale { stale_image: stale } => {
+      let control = diagnostic.ipmi.Tool.ChassisPowerControl(
+        bmc_host: host.binding.observation.endpoint.host,
+        username: host.binding.account,
+        password_file: password_file,
+        action: ipmi_chassis_control_verb(action: IpmiChassisPowerDown),
+      )
+      if control.success == false {
+        StalePowerOffCommandRefused { stale_image: stale, before: before }
+      } else {
+        let last = megarac_stale_power_off_poll(host: host, password_file: password_file, bound: bound, remaining: megarac_stale_power_off_samples)
+        if stale_power_off_observed(sample: last) {
+          StalePowerOffObserved { stale_image: stale, before: before }
+        } else {
+          StalePowerOffNotObserved { stale_image: stale, before: before, last: last }
+        }
+      }
+    }
+  }
+}
+
+// THE READ-BACK, BOUNDED; returns the last sample, which is OFF exactly when the poll observed it.
+fn megarac_stale_power_off_poll(host: AdmittedMegaRacHost, password_file: NonEmptyStr, bound: MegaRacIpmiReadBound, remaining: Int) -> ChassisPowerObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_stale_power_off_poll"),
+  ]
+{
+  let _paced = sleep_delay_seconds_second_carrier_projection(duration: megarac_stale_power_off_interval)
+  let sample = megarac_boot_media_chassis_power(host: host, password_file: password_file, bound: bound)
+  if stale_power_off_observed(sample: sample) || remaining <= 1 {
+    sample
+  } else {
+    megarac_stale_power_off_poll(host: host, password_file: password_file, bound: bound, remaining: remaining - 1)
+  }
+}
+
+// THE READING THE ADMISSION RECEIVES: after an observed power-off, a fresh one; otherwise the one
+// taken before the session.
+fn megarac_power_after_stale_power_off(
+  host: AdmittedMegaRacHost,
+  before: ChassisPowerObservation,
+  off: StaleMediumPowerOff,
+  password_file: NonEmptyStr,
+  bound: MegaRacIpmiReadBound,
+) -> ChassisPowerObservation
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
+  ]
+{
+  match off {
+    StalePowerOffObserved { stale_image: _, before: _ } => megarac_boot_media_chassis_power(host: host, password_file: password_file, bound: bound)
+    StalePowerOffNotNeeded { reason: _ } => before
+    StalePowerOffCommandRefused { stale_image: _, before: _ } => before
+    StalePowerOffNotObserved { stale_image: _, before: _, last: _ } => before
+  }
+}
+
+// PURE. A power-off that was attempted and not observed never admits the detach, whatever `power`
+// says; every other arm is the ordinary admission over the reading the attempt took last.
+fn megarac_detach_admission_after_power_off(power: ChassisPowerObservation, off: StaleMediumPowerOff) -> MegaRacDetachAdmission {
+  match off {
+    StalePowerOffCommandRefused { stale_image: i, before: _ } =>
+      MegaRacDetachNotAdmitted { reason: concat("chassis power off to replace the stale image was refused: ", i) as NonEmptyStr }
+    StalePowerOffNotObserved { stale_image: i, before: _, last: l } =>
+      MegaRacDetachNotAdmitted { reason: join(["chassis power off to replace the stale image ", i, " was never observed off; last read ", chassis_observation_text(observation: l) as String], "") as NonEmptyStr }
+    StalePowerOffNotNeeded { reason: _ } => megarac_detach_admission(power: power)
+    StalePowerOffObserved { stale_image: _, before: _ } => megarac_detach_admission(power: power)
+  }
+}
+
+// THE GATE THE HANDOFF IS BEHIND. Only a ready presentation with its session released opens it,
+// and the evidence it opens with is the Started row the readiness fold accepted. Every other arm
+// withholds, with the one reason the bundle also records (media_attach_outcome_reason), so a
+// pending, timed-out or refused presentation can never become a boot-device write or a power action.
+// A LEAKED SESSION WITHHOLDS TOO: the controller's session table is finite and this lane once
+// exhausted it, so an attach that could not release is not a state to boot from.
+type MegaRacBootMediaGate
+  = MediaGateReady { evidence: MegaRacPresentationEvidence }
+  | MediaGateWithheld { reason: NonEmptyStr }
+
+fn megarac_boot_media_gate(record: MtCollins1MediaAttachRecord) -> MegaRacBootMediaGate {
+  match record {
+    MediaAttachNotAttempted { reason: r } => MediaGateWithheld { reason: concat("media attach: ", r as String) as NonEmptyStr }
+    MediaAttachAttempted { attempt: _, medium_image_name: _, medium_image_sha256: _, power: _, stale_power_off: _, result: res } =>
+      match res.outcome {
+        MegaRacPresentationReady { route: _, evidence: e } =>
+          match res.session_release {
+            SessionReleased => MediaGateReady { evidence: e }
+            other => MediaGateWithheld { reason: concat("media attach: the presentation is ready but the session was ", session_release_text(standing: other)) as NonEmptyStr }
+          }
+        other =>
+          match media_attach_outcome_reason(outcome: other) {
+            Present { value: why } => MediaGateWithheld { reason: concat("media attach: ", why) as NonEmptyStr }
+            Absent => MediaGateWithheld { reason: "media attach: the outcome carries no ready presentation" }
+          }
+      }
+  }
+}
+
+// ONE READ-ONLY LOOK AT THE PRESENTATION, under the same hold, for the handoff to consult just before
+// it writes and to record just after. The jar is suffixed per look so two looks in one attempt
+// never share a bearer file.
+fn megarac_observe_boot_presentation(
+  proof: UnitHoldProof,
+  image_name: NonEmptyStr,
+  share: MegaRacShareBinding,
+  password_file: String,
+  attempt: String,
+  look: NonEmptyStr,
+) -> MegaRacAttachResult
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_handoff_when_media_ready"),
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_actuate"),
+  ]
+{
+  match megarac_boot_media_host(proof: proof) {
+    MegaRacHostRefused { cause: c } => MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: concat("media observe: ", megarac_host_refusal_text(cause: c) as String) }, session_release: SessionReleaseNotAttempted, baseline: none }
+    MegaRacHostAdmitted { host: host } =>
+      if password_file == "" || attempt == "" {
+        MegaRacAttachResult { outcome: MegaRacSessionRefused { detail: "no password file or attempt identifier; no request made" }, session_release: SessionReleaseNotAttempted, baseline: none }
+      } else {
+        megarac_attach_remote_image(
+          bmc_host: host.binding.observation.endpoint.host,
+          username: host.binding.account,
+          password_file: password_file as NonEmptyStr,
+          cookie_jar: megarac_boot_media_cookie_jar(host: host, attempt: join([attempt, "-", look as String], "") as NonEmptyStr),
+          image_name: image_name,
+          firmware: host.firmware,
+          task: MegaRacObserve { share: share },
+        )
+      }
+  }
+}

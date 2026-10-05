@@ -1,77 +1,93 @@
 module gunbc.roadmap_allocation_page
+import gunbc.site.document { site_document, site_extend_styles }
+import gunbc.roadmap_allocation_style { allocation_rules }
+import gunbc.site.document { SiteStyles }
 
+import gunbc.roadmap_auth_route_paths { auth_login_route_path }
 import std.types { String, Bool, List }
+import std.measure { ByteSize, measure_count, gibibyte_scale_factor_bytes, minute_count }
 import std.markup { Fragment, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
-import gunbc.roadmap_page { roadmap_header }
 import gunbc.roadmap_allocation_location { allocation_page_path }
-import gunbc.roadmap_allocation_style { allocation_css }
+import gunbc.workspace_allocation { WorkspaceProfile, workspace_profiles, workspace_profile_wire, workspace_profile_vcpus, workspace_profile_memory, workspace_disk_bytes, workspace_lease_bound }
 
 // These are navigation identities, shared by the route and its rendered links.
 
-data allocation_client_path: String = "/allocation-draft.js"
+data allocation_client_path: String = "/allocation-client.js"
 
-// A draft is local UI state. No allocation is admitted or submitted by this page.
-fn allocation_size_field(key: String, label: String, value: String, hint: String) -> Fragment {
+// WHO IS LOOKING decides what the page may carry: a signed-in viewer's synchronizer token rides the
+// page at render, the same seam the issue composer uses, so the client never reads it from elsewhere.
+type AllocationPageViewer
+  = AllocationViewerSignedOut
+  | AllocationViewerSignedIn { csrf: String }
+
+fn allocation_gib_text(size: ByteSize) -> String {
+  concat(to_string(measure_count(size) / gibibyte_scale_factor_bytes()), " GiB")
+}
+
+// Every offered size is a row of gunbc.workspace_allocation workspace_profiles; the radio value is
+// the wire spelling the create route parses, and the label is read from the same profile's grants.
+fn allocation_profile_label(profile: WorkspaceProfile) -> String {
+  join([to_string(workspace_profile_vcpus(profile: profile)), " vCPU · ", allocation_gib_text(size: workspace_profile_memory(profile: profile)), " memory"], "")
+}
+
+fn allocation_profile_choice(profile: WorkspaceProfile, checked: Bool) -> Fragment {
+  let wire = workspace_profile_wire(profile: profile) as String
+  let id = concat("allocation-profile-", wire)
   el_class("div", "allocation-field", [
-    el_attrs("label", [attr(name: "for", value: key)], [txt(label)]),
-    el_attrs("input", [attr(name: "id", value: key), attr(name: "name", value: key),
-      attr(name: "type", value: "number"), attr(name: "min", value: "1"),
-      attr(name: "step", value: "1"), attr(name: "required", value: ""),
-      attr(name: "value", value: value), attr(name: "aria-describedby", value: join([key, "-hint"], ""))], []),
-    el_attrs("small", [attr(name: "id", value: join([key, "-hint"], ""))], [txt(hint)]),
+    el_attrs("input", concat([attr(name: "id", value: id), attr(name: "name", value: "allocation-profile"),
+      attr(name: "type", value: "radio"), attr(name: "value", value: wire)],
+      if checked { [attr(name: "checked", value: "")] } else { [] }), []),
+    el_attrs("label", [attr(name: "for", value: id)], [txt(allocation_profile_label(profile: profile))]),
   ])
 }
 
+fn allocation_profile_choices() -> List<Fragment> {
+  let profiles = workspace_profiles()
+  map(profiles, p => allocation_profile_choice(profile: p, checked: match first(profiles) { Present { value: head } => head == p Absent => false }))
+}
+
+fn allocation_viewer_csrf(viewer: AllocationPageViewer) -> String {
+  match viewer { AllocationViewerSignedOut => "" AllocationViewerSignedIn { csrf } => csrf }
+}
+
+fn allocation_viewer_signed_in(viewer: AllocationPageViewer) -> Bool {
+  match viewer { AllocationViewerSignedOut => false AllocationViewerSignedIn { csrf: _ } => true }
+}
+
 // THE PAGE OVER ITS ROADMAP STYLESHEET, supplied by the caller as roadmap_page_launch_with_stylesheet
-// takes it for the roadmap page: the serve route passes roadmap_css(), and a claim about the draft
-// form, the notice or the response headers -- none of which reads the stylesheet -- supplies its own.
-fn allocation_page_with_stylesheet(signed_in: Bool, roadmap_stylesheet: String) -> Fragment {
-  el_attrs("html", [attr(name: "lang", value: "en")], [
-    el("head", [
-      el_attrs("meta", [attr(name: "charset", value: "utf-8")], []),
-      el_attrs("meta", [attr(name: "name", value: "viewport"), attr(name: "content", value: "width=device-width, initial-scale=1")], []),
-      el("title", [txt("Allocations — gunbc")]),
-      el("style", [txt(roadmap_stylesheet), txt(allocation_css())]),
-    ]),
-    el("body", [
-      roadmap_header(page: "allocations"),
-      el_class("main", "allocation-page", [
+// takes it for the roadmap page: claims about the form supply styles at this interface.
+fn allocation_page_with_stylesheet(viewer: AllocationPageViewer, roadmap_stylesheet: SiteStyles) -> Fragment {
+  let signed_in = allocation_viewer_signed_in(viewer: viewer)
+  site_document(title: "gunbc — allocations", heading: "allocations", styles: site_extend_styles(base: roadmap_stylesheet, rules: allocation_rules()), content: [
+    el_attrs("main", [attr(name: "id", value: "allocation-workspace"), attr(name: "class", value: "allocation-page"),
+      attr(name: "data-csrf", value: allocation_viewer_csrf(viewer: viewer))], [
         el_class("p", "allocation-eyebrow", [txt("COMPUTE / MICROVM")]),
         el("h2", [txt("A workspace on the fleet")]),
-        el_class("p", "allocation-intro", [txt("Choose the resources for your microVM. Placement will select an eligible srv host.")]),
+        el_class("p", "allocation-intro", [txt("Choose a workspace size. Placement selects an eligible srv host; the disk and lease are fixed by policy.")]),
         el_attrs("section", [attr(name: "class", value: "allocation-notice"), attr(name: "aria-label", value: "Availability")],
-          if signed_in { [el("strong", [txt("Allocation requests are not available yet.")]), el("p", [txt("You can prepare a size below. Your draft stays in this page; no resources are reserved.")])] }
-          else { [el("strong", [txt("Sign in to prepare an allocation.")]), el("p", [txt("Allocation requests are not available yet.")])] }),
+          if signed_in { [el("strong", [txt("Requests are decided by the allocation service.")]), el("p", [txt("If it cannot accept a request it says why here, and no workspace is reserved.")])] }
+          else { [el("strong", [txt("Sign in to request a workspace.")]), el_attrs("a", [attr(name: "href", value: auth_login_route_path)], [txt("Sign in with Google")])] }),
         el_class("div", "allocation-layout", [
-          el_attrs("form", [attr(name: "id", value: "allocation-draft"), attr(name: "aria-label", value: "Allocation draft")], [
+          el_attrs("form", [attr(name: "id", value: "allocation-request"), attr(name: "aria-label", value: "Allocation request"), attr(name: "action", value: allocation_page_path)], [
             el_attrs("fieldset", if signed_in { [] } else { [attr(name: "disabled", value: "")] }, [
-              el("legend", [txt("Size your microVM")]),
-              el_class("div", "allocation-fields", [
-                allocation_size_field(key: "allocation-cpu", label: "Virtual CPUs", value: "2", hint: "Requested vCPU count"),
-                allocation_size_field(key: "allocation-memory", label: "Guest memory (GiB)", value: "4", hint: "RAM available inside the VM"),
-                allocation_size_field(key: "allocation-disk", label: "Disk (GiB)", value: "20", hint: "Requested guest disk capacity"),
-                allocation_size_field(key: "allocation-hours", label: "Lifetime (hours)", value: "8", hint: "Requested duration before release"),
+              el("legend", [txt("Workspace size")]),
+              el_class("div", "allocation-fields", allocation_profile_choices()),
+              el("dl", [
+                el("dt", [txt("Disk")]), el("dd", [txt(concat(allocation_gib_text(size: workspace_disk_bytes()), ", discarded on release"))]),
+                el("dt", [txt("Lease")]), el("dd", [txt(join(["Up to ", to_string(minute_count(workspace_lease_bound())), " minutes"], ""))]),
+                el("dt", [txt("Placement")]), el("dd", [txt("Any eligible srv host")]),
               ]),
-              el_class("p", "allocation-muted", [txt("These are draft values, not available-capacity limits. Supported sizes, images, and access options will appear when requests open.")]),
-              el_attrs("button", [attr(name: "type", value: "button"), attr(name: "id", value: "allocation-review")], [txt("Review size")]),
+              el_attrs("button", [attr(name: "type", value: "submit"), attr(name: "id", value: "allocation-create"), attr(name: "aria-describedby", value: "allocation-status")], [txt("Request workspace")]),
+              el_attrs("p", [attr(name: "id", value: "allocation-status"), attr(name: "class", value: "allocation-muted"), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], []),
             ]),
           ]),
-          el_attrs("section", [attr(name: "class", value: "allocation-card"), attr(name: "aria-labelledby", value: "allocation-summary-title")], [
-            el_attrs("h3", [attr(name: "id", value: "allocation-summary-title")], [txt("Your request")]),
-            el_attrs("p", [attr(name: "id", value: "allocation-summary"), attr(name: "role", value: "status"), attr(name: "aria-live", value: "polite")], [txt("Review your size to see a draft summary.")]),
-            el("dl", [el("dt", [txt("Placement")]), el("dd", [txt("Any eligible srv host")]), el("dt", [txt("Availability")]), el("dd", [txt("Not checked")])]),
-            el_attrs("button", [attr(name: "type", value: "button"), attr(name: "disabled", value: ""), attr(name: "aria-describedby", value: "allocation-submit-reason")], [txt("Request allocation")]),
-            el_attrs("p", [attr(name: "id", value: "allocation-submit-reason"), attr(name: "class", value: "allocation-muted")], [txt("Requests will open when the allocation service is connected.")]),
-          ]),
         ]),
-        el_class("section", "allocation-card allocation-connection", [
-          el("h3", [txt("Connection details")]),
-          el("p", [txt("No allocation requested from this page.")]),
-          el_class("p", "allocation-muted", [txt("Once a request is accepted, this page will show its host, convergence status, and connection address when ready.")]),
+        el_attrs("section", [attr(name: "class", value: "allocation-card allocation-connection"), attr(name: "aria-labelledby", value: "allocation-list-title")], [
+          el_attrs("h3", [attr(name: "id", value: "allocation-list-title")], [txt("Your workspaces")]),
+          el_attrs("div", [attr(name: "id", value: "allocation-list")], [el_class("p", "allocation-muted", [txt(if signed_in { "Loading your workspaces…" } else { "Sign in to view your workspaces." })])]),
         ]),
       ]),
-      el_attrs("script", [attr(name: "src", value: allocation_client_path), attr(name: "defer", value: "")], []),
-    ]),
+    el_attrs("script", [attr(name: "src", value: allocation_client_path), attr(name: "defer", value: "")], [])
   ])
 }

@@ -1066,21 +1066,30 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
                 .get("path")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| format!("file refusal carries no path: {line}"))?;
-            let head_reason = refusal
-                .get("head_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no head_reason: {line}"))?;
-            let fatal_reason = refusal
-                .get("fatal_reason")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| format!("file refusal carries no fatal_reason: {line}"))?;
-            // The chain's LAST link is the fatal one (carriage order); a row without a chain, or
-            // with an empty one, refuses rather than printing an unpositioned cause.
-            let fatal_link = refusal
+            // THE CHAIN IS THE ROW (`v2.compiler.native_test_vocabulary` `NativeTestFileRefusal`):
+            // a non-empty `{head, tail}` of links in carriage order, the head first and the fatal
+            // last. The head and fatal reasons are read from it, never from stored copies. A row
+            // without a chain, a head or a tail refuses rather than printing an unpositioned or
+            // invented cause.
+            let chain = refusal
                 .get("chain")
-                .and_then(|v| v.as_array())
-                .and_then(|links| links.last())
                 .ok_or_else(|| format!("file refusal carries no chain: {line}"))?;
+            let head_link = chain
+                .get("head")
+                .ok_or_else(|| format!("file refusal chain carries no head: {line}"))?;
+            let tail = chain
+                .get("tail")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| format!("file refusal chain carries no tail: {line}"))?;
+            let fatal_link = tail.last().unwrap_or(head_link);
+            let link_reason = |link: &serde_json::Value| -> Result<String, String> {
+                link.get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| format!("file refusal link carries no reason: {line}"))
+            };
+            let head_reason = link_reason(head_link)?;
+            let fatal_reason = link_reason(fatal_link)?;
             let fatal_at = file_refusal_at_text(
                 fatal_link
                     .get("at")
@@ -1088,8 +1097,8 @@ fn parse_native_run_output(stdout: &str) -> Result<NativeRunOutput, String> {
             )?;
             file_refusals.push(NativeFileRefusalObserved {
                 path: path.to_string(),
-                head_reason: head_reason.to_string(),
-                fatal_reason: fatal_reason.to_string(),
+                head_reason,
+                fatal_reason,
                 fatal_at,
             });
             continue;
@@ -2507,6 +2516,165 @@ pub fn run_native_claim_program(
     })
 }
 
+/// ONE RUN OF A `std.compiler_entry` `NativeServeDriver` SERVICE, as the observation
+/// `gunbc.native_serve_probe` `native_serve_probe_standing` needs and nothing it decides: the line
+/// the service announced once bound, the bytes each request got back (in request order), and the
+/// status and stderr of a second launch the door must refuse before binding. `refused_status` is
+/// `None` when that launch did not exit by itself within the deadline (it was killed), which the
+/// reader receives as a negative status and so as a start that was not refused.
+pub struct NativeServeProgramRun {
+    pub closure_identity: String,
+    pub binary_identity: String,
+    pub seed_identity: String,
+    pub warning_count: i64,
+    pub announcement: String,
+    pub responses: Vec<String>,
+    pub refused_status: Option<i32>,
+    pub refused_stderr: String,
+    pub stderr: String,
+}
+
+/// How long a launch, an announcement or one exchange may take before the run stops waiting. A
+/// deadline here is the instrument refusing to hang, not a budget the service is judged by.
+const NATIVE_SERVE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn native_serve_launch_args(release_revision: &str) -> Vec<String> {
+    vec![
+        "--host".to_string(),
+        "127.0.0.1".to_string(),
+        "--port".to_string(),
+        "0".to_string(),
+        "--release-revision".to_string(),
+        release_revision.to_string(),
+    ]
+}
+
+/// The launch that must refuse: wait for it to exit by itself, killing it at the deadline.
+fn native_serve_refused_launch(
+    binary: &Path,
+    refused_revision: &str,
+) -> Result<(Option<i32>, String), String> {
+    use std::io::Read;
+    let mut child = Command::new(binary)
+        .args(native_serve_launch_args(refused_revision))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|cause| format!("NATIVE-SERVE REFUSAL cause=SpawnFailed — {cause}"))?;
+    let started = std::time::Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code(),
+            Ok(None) if started.elapsed() < NATIVE_SERVE_DEADLINE => {
+                std::thread::sleep(std::time::Duration::from_millis(20))
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                break None;
+            }
+            Err(cause) => return Err(format!("NATIVE-SERVE REFUSAL cause=WaitFailed — {cause}")),
+        }
+    };
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_string(&mut stderr);
+    }
+    Ok((status, stderr))
+}
+
+/// One request written to a fresh connection, and every byte the service sent before closing it.
+fn native_serve_exchange(address: &str, request: &str) -> String {
+    use std::io::{Read, Write};
+    let mut stream = match std::net::TcpStream::connect(address) {
+        Ok(stream) => stream,
+        Err(cause) => return format!("connect failed: {cause}"),
+    };
+    let _ = stream.set_read_timeout(Some(NATIVE_SERVE_DEADLINE));
+    let _ = stream.set_write_timeout(Some(NATIVE_SERVE_DEADLINE));
+    if let Err(cause) = stream.write_all(request.as_bytes()) {
+        return format!("write failed: {cause}");
+    }
+    let mut bytes = Vec::new();
+    if let Err(cause) = stream.read_to_end(&mut bytes) {
+        return format!("read failed after {} bytes: {cause}", bytes.len());
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// EMIT, BUILD, START AND EXCHANGE WITH ONE `NativeServeDriver` ENTRY. Preparation is the same
+/// `prepare_emitted_compiler_for_entry` every native route uses. The host reads the bound address
+/// off the announcement (the service binds port 0, so the OS chooses and the announcement is the
+/// only place the choice is published) and otherwise carries bytes. A refusal here -- emission,
+/// build, spawn, or no announcement -- is the subject never having been reached.
+pub fn run_native_serve_program(
+    source_roots: &[String],
+    entry: &str,
+    release_revision: &str,
+    refused_revision: &str,
+    requests: &[String],
+) -> Result<NativeServeProgramRun, String> {
+    use std::io::{BufRead, Read};
+    let prepared = prepare_emitted_compiler_for_entry(source_roots, entry)?;
+    eprintln!(
+        "native-serve: {entry} built (closure {}) -- starting {}",
+        prepared.closure_identity,
+        prepared.binary_path.display()
+    );
+    let (refused_status, refused_stderr) =
+        native_serve_refused_launch(&prepared.binary_path, refused_revision)?;
+    let mut child = Command::new(&prepared.binary_path)
+        .args(native_serve_launch_args(release_revision))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|cause| {
+            format!("NATIVE-SERVE REFUSAL cause=SpawnFailed entry={entry} — {cause}")
+        })?;
+    let pipe = child
+        .stderr
+        .take()
+        .ok_or("NATIVE-SERVE REFUSAL cause=NoStderrPipe")?;
+    let (lines, announced) = std::sync::mpsc::channel::<String>();
+    let reader = std::thread::spawn(move || {
+        let mut pipe = std::io::BufReader::new(pipe);
+        let mut first = String::new();
+        let _ = pipe.read_line(&mut first);
+        let _ = lines.send(first.trim_end().to_string());
+        let mut rest = String::new();
+        let _ = pipe.read_to_string(&mut rest);
+        rest
+    });
+    let announcement = announced
+        .recv_timeout(NATIVE_SERVE_DEADLINE)
+        .unwrap_or_default();
+    let address = announcement
+        .strip_prefix("native-serve listening on ")
+        .and_then(|rest| rest.split(' ').next())
+        .map(str::to_string);
+    let responses = match &address {
+        Some(address) => requests
+            .iter()
+            .map(|request| native_serve_exchange(address, request))
+            .collect(),
+        None => Vec::new(),
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+    let stderr = reader.join().unwrap_or_default();
+    Ok(NativeServeProgramRun {
+        closure_identity: prepared.closure_identity,
+        binary_identity: prepared.binary_identity,
+        seed_identity: prepared.seed_identity,
+        warning_count: prepared.build.warning_count,
+        announcement,
+        responses,
+        refused_status,
+        refused_stderr,
+        stderr,
+    })
+}
+
 /// HOW A NATIVE ROUTE RUN ENDED, AS A TYPED VALUE RATHER THAN A SENTENCE A CALLER RE-READS.
 ///
 /// The admission is a BOOLEAN INSIDE THE BINARY (`run.terminal.admitted`, derived with its summary
@@ -2607,21 +2775,60 @@ pub fn run_v2_native_census(source_roots: &[String]) -> Result<NativeCensusRun, 
     let preparation = prepare_emitted_compiler(source_roots)?;
     let mut args = vec!["census-resolve".to_string()];
     args.extend(source_roots.iter().cloned());
-    let output = Command::new(&preparation.binary_path)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            format!(
-                "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
-                preparation.binary_path.display()
-            )
-        })?;
+    let mut command = Command::new(&preparation.binary_path);
+    command.args(&args);
+    let output = run_relaying_as_it_runs(command).map_err(|e| {
+        format!(
+            "V2-NATIVE-CENSUS REFUSAL cause=NativeRunSpawnFailed — spawning {}: {e}",
+            preparation.binary_path.display()
+        )
+    })?;
     let stdout = String::from_utf8(output.stdout).map_err(|cause| {
         format!("V2-NATIVE-CENSUS REFUSAL cause=NativeRunStdoutNotUtf8 — {cause}")
     })?;
-    eprint!("{}", String::from_utf8_lossy(&output.stderr));
-    print!("{stdout}");
     decode_native_census_output(&stdout, output.status.code())
+}
+
+/// THE CHILD'S STREAMS, RELAYED AS IT WRITES THEM AND STILL COLLECTED WHOLE. `Command::output()`
+/// forwarded nothing until the child exited, so a multi-hour census was silent throughout and a
+/// cancelled run lost every row it had already printed (run 37229309848: 3h48m, empty stdout).
+/// Here each stream is drained by its own thread and written through to this process's stream
+/// as it arrives; the bytes are also kept, so the returned `Output` is the one `output()` would
+/// have returned and every verdict decoded from it is unchanged. Transport only, not semantics.
+fn run_relaying_as_it_runs(mut command: Command) -> std::io::Result<std::process::Output> {
+    use std::io::{Read, Write};
+    use std::process::Stdio;
+    fn relay<R: Read, W: Write>(mut from: R, mut to: W) -> std::io::Result<Vec<u8>> {
+        let mut kept = Vec::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = from.read(&mut buf)?;
+            if n == 0 {
+                return Ok(kept);
+            }
+            kept.extend_from_slice(&buf[..n]);
+            // A closed relay target must not cost the collected bytes the verdict is decoded from.
+            let _ = to.write_all(&buf[..n]).and_then(|()| to.flush());
+        }
+    }
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let child_stdout = child.stdout.take().expect("stdout was piped");
+    let child_stderr = child.stderr.take().expect("stderr was piped");
+    let stderr_relay = std::thread::spawn(move || relay(child_stderr, std::io::stderr()));
+    let stdout = relay(child_stdout, std::io::stdout());
+    let stderr = stderr_relay
+        .join()
+        .map_err(|_| std::io::Error::other("stderr relay thread panicked"))?;
+    let status = child.wait()?;
+    Ok(std::process::Output {
+        status,
+        stdout: stdout?,
+        stderr: stderr?,
+    })
 }
 
 /// The census-resolve stdout, decoded. Only the terminal's counts are carried out, but the
@@ -3251,8 +3458,8 @@ mod tests {
     #[test]
     fn terminal_marker_carries_the_refused_admission_summary() {
         let stdout = concat!(
-            "{\"file_refusal\":{\"path\":\"a.dag\",\"head_reason\":\"h\",\"fatal_reason\":\"f\",",
-            "\"chain\":[{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}}]}}\n",
+            "{\"file_refusal\":{\"path\":\"a.dag\",",
+            "\"chain\":{\"head\":{\"reason\":\"f\",\"at\":{\"_variant\":\"FileRefusalAtWholeFile\"}},\"tail\":[]}}}\n",
             "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":3,\"universe\":3,",
             "\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"REFUSED: population_omissions_present\",\"frontier\":\"held\"}\n"
         );
@@ -3274,10 +3481,19 @@ mod tests {
     fn a_file_refusal_row_decodes_its_fatal_line_and_byte_column() {
         let marker = "{\"_terminal\":\"complete\",\"mode\":\"adjudicate\",\"rows\":0,\"universe\":0,\"file_refusals\":1,\"advised_files\":0,\"admitted\":false,\"summary\":\"s\",\"frontier\":\"held\"}";
         let located = format!(
-            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"head_reason\":\"parse_grammar_choice_overlap_residue\",\"fatal_reason\":\"parse_g0_tokens_remain\",\"chain\":[{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}\n{marker}\n"
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"module\":{{\"_variant\":\"Absent\"}},\"chain\":{{\"head\":{{\"reason\":\"parse_grammar_choice_overlap_residue\",\"at\":{{\"_variant\":\"FileRefusalAtInvariant\",\"invariant\":\"grammar_choice_overlap\"}}}},\"tail\":[{{\"reason\":\"parse_g0_tokens_remain\",\"at\":{{\"_variant\":\"FileRefusalAtLine\",\"line\":12,\"byte_column\":{{\"value\":5}}}}}}]}}}}}}\n{marker}\n"
         );
         let parsed = parse_native_run_output(&located).expect("a located row parses");
         assert_eq!(parsed.file_refusals[0].fatal_at, "12:5");
+        // Both reasons are DERIVED from the chain: the head link's and the last link's.
+        assert_eq!(
+            parsed.file_refusals[0].head_reason,
+            "parse_grammar_choice_overlap_residue"
+        );
+        assert_eq!(
+            parsed.file_refusals[0].fatal_reason,
+            "parse_g0_tokens_remain"
+        );
         assert!(native_file_refusal_summary(&parsed.file_refusals)
             .contains("refused a.dag at=12:5 fatal=parse_g0_tokens_remain"));
         // The pre-chain row shape: three symbols, no position. It must refuse, not print a cause
@@ -3293,6 +3509,16 @@ mod tests {
             Ok(_) => panic!("a row with no chain must refuse"),
         };
         assert!(cause.contains("carries no chain"), "got: {cause}");
+        // A chain with no head refuses: the row is non-empty by construction, so a missing head is
+        // a producer or decoder defect, never a refusal with no cause.
+        let headless = format!(
+            "{{\"file_refusal\":{{\"path\":\"a.dag\",\"chain\":{{\"tail\":[]}}}}}}\n{marker}\n"
+        );
+        let cause = match parse_native_run_output(&headless) {
+            Err(cause) => cause,
+            Ok(_) => panic!("a chain with no head must refuse"),
+        };
+        assert!(cause.contains("carries no head"), "got: {cause}");
         // An arm the vocabulary does not declare is a decoder refusal, never a blank position.
         assert!(file_refusal_at_text(&serde_json::json!({"_variant": "Somewhere"})).is_err());
     }
@@ -3842,6 +4068,66 @@ mod cli_emit_probe_tests {
             )),
             CliEmitProbeVerdict::StdoutNotEmpty { .. }
         ));
+    }
+}
+
+#[cfg(test)]
+mod run_relaying_as_it_runs_tests {
+    use super::run_relaying_as_it_runs;
+    use std::process::Command;
+
+    fn specimen() -> Command {
+        let mut c = Command::new("sh");
+        c.args([
+            "-c",
+            "i=0; while [ $i -lt 2000 ]; do echo \"row $i\"; echo \"[progress] $i\" >&2; i=$((i+1)); done; printf tail; exit 3",
+        ]);
+        c
+    }
+
+    // THE RELAY CHANGES TRANSPORT, NOT THE VERDICT: the collected streams and the status are the
+    // ones `Command::output()` returns for the same child, byte for byte.
+    #[test]
+    fn relayed_output_equals_collected_output() {
+        let collected = specimen().output().expect("spawn");
+        let relayed = run_relaying_as_it_runs(specimen()).expect("spawn");
+        assert_eq!(relayed.status.code(), Some(3));
+        assert_eq!(relayed.status.code(), collected.status.code());
+        assert_eq!(relayed.stdout, collected.stdout);
+        assert_eq!(relayed.stderr, collected.stderr);
+    }
+
+    // THE CENSUS VERDICT IS UNCHANGED: a census stdout relayed through the child decodes to the
+    // same counts as the same bytes decoded directly.
+    #[test]
+    fn a_relayed_census_stdout_decodes_to_the_same_verdict() {
+        let out = "{\"accepted_file_advisories\":{\"path\":\"a.dag\",\"head\":\"r\",\"tail\":[]}}\n\
+                   {\"_terminal\":\"complete\",\"mode\":\"census-resolve\",\"modules\":3,\
+                   \"file_refusals\":0,\"advised_files\":1,\"residual_rows\":0,\"cause_groups\":0}\n";
+        let mut c = Command::new("printf");
+        c.arg("%s").arg(out);
+        let relayed = run_relaying_as_it_runs(c).expect("spawn");
+        let relayed_stdout = String::from_utf8(relayed.stdout).expect("utf8");
+        assert_eq!(relayed_stdout, out);
+        let direct = super::decode_native_census_output(out, Some(0));
+        let via = super::decode_native_census_output(&relayed_stdout, relayed.status.code());
+        assert_eq!(
+            direct.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            )),
+            via.as_ref().map(|r| (
+                r.modules,
+                r.file_refusals,
+                r.residual_rows,
+                r.cause_groups,
+                r.advised_files
+            ))
+        );
+        assert!(direct.is_ok(), "the specimen census must decode");
     }
 }
 

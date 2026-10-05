@@ -1,0 +1,95 @@
+module gunbc.workspace_allocation_release
+
+import std.types { String, NonEmptyStr, Timestamp }
+import std.content_hash { content_hash_of_value, serialize_content_hash }
+import std.durable_compare_and_set { ExpectSlotAbsent, CasObservedReadable, CasObservedUnreadable, CasReadableAbsent, CasReadablePresent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
+import gunbc.durable_cas_fabric_storage { fabric_storage_observe_cas_slot, fabric_storage_compare_and_set }
+import gunbc.durable_cas_file_store { admit_cas_attempt_for_derived_payload, DerivedPayloadAdmitted, DerivedPayloadKeyNotSlotAddressable }
+import gunbc.fabric_storage_client { FabricStorageBinding }
+import gunbc.workspace_allocation { WorkspaceReservation, workspace_reservation_json }
+import gunbc.workspace_money_codec { workspace_money_json }
+import gunbc.fabric_control_plane { fabric_money_reservation_ref }
+import gunbc.auth.approval_capability { utc_instant_is_canonical }
+import product.fabric.budget { MoneyAccount, release_money, AccountAdvanced }
+import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field_string, FieldRead }
+
+// This immutable receipt is recorded BEFORE the slot release. It retains the monetary transition
+// and its absolute timestamp across a crash between local hold CAS and shared owner publication.
+type WorkspaceReleasePlan sole_constructor {
+  reservation: WorkspaceReservation,
+  released_at: Timestamp,
+  released_account: MoneyAccount,
+}
+type WorkspaceReleasePreparation
+  = WorkspaceReleasePrepared { plan: WorkspaceReleasePlan }
+  | WorkspaceReleaseRefused { reason: String }
+
+data workspace_release_reason: NonEmptyStr = "workspace sanitation observed" as NonEmptyStr
+
+fn workspace_release_key(reservation: WorkspaceReservation) -> NonEmptyStr {
+  concat("workspace-release-", serialize_content_hash(hash: content_hash_of_value(value: serialize_json(v: workspace_reservation_json(reservation: reservation)) as NonEmptyStr)) as String) as NonEmptyStr
+}
+
+fn workspace_release_derive(reservation: WorkspaceReservation, released_at: Timestamp) -> WorkspaceReleasePreparation {
+  if !utc_instant_is_canonical(t: released_at) { WorkspaceReleaseRefused { reason: "release timestamp is not canonical UTC" } }
+  else { match release_money(
+    a: reservation.money_account, reference: fabric_money_reservation_ref(demand: reservation.demand, offer: reservation.offer),
+    generation: reservation.money_generation, reason: workspace_release_reason, released_at: released_at,
+  ) {
+    AccountAdvanced { account: advanced } => WorkspaceReleasePrepared { plan: WorkspaceReleasePlan {
+      reservation: reservation, released_at: released_at, released_account: advanced,
+    } }
+    other => WorkspaceReleaseRefused { reason: "reservation monetary release refused" }
+  } }
+}
+
+fn workspace_release_wire(plan: WorkspaceReleasePlan) -> NonEmptyStr {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "reservation", value: workspace_reservation_json(reservation: plan.reservation)),
+    json_kv(key: "released_at", value: json_string(s: plan.released_at)),
+    json_kv(key: "released_account", value: workspace_money_json(account: plan.released_account)),
+  ])) as NonEmptyStr
+}
+
+fn workspace_release_decode(reservation: WorkspaceReservation, wire: NonEmptyStr) -> WorkspaceReleasePreparation {
+  match parse_json_document(s: wire as String) {
+    JsonDocumentUnreadable { gap: _ } => WorkspaceReleaseRefused { reason: "release intent JSON is unreadable" }
+    JsonDocumentParsed { value: body } => match json_field_string(obj: body, key: "released_at") {
+      FieldRead { value: at } => match workspace_release_derive(reservation: reservation, released_at: at) {
+        WorkspaceReleasePrepared { plan: expected } => if workspace_release_wire(plan: expected) == wire {
+          WorkspaceReleasePrepared { plan: expected }
+        } else { WorkspaceReleaseRefused { reason: "release intent differs from reservation or monetary policy" } }
+        refused => refused
+      }
+      other => WorkspaceReleaseRefused { reason: "release intent timestamp is missing or malformed" }
+    }
+  }
+}
+
+fn workspace_release_read(store: FabricStorageBinding, reservation: WorkspaceReservation) -> WorkspaceReleasePreparation {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_release_key(reservation: reservation)) {
+    CasObservedReadable { readable: CasReadablePresent { version: stored } } => workspace_release_decode(reservation: reservation, wire: stored.value)
+    other => WorkspaceReleaseRefused { reason: "durable release intent is absent or unreadable" }
+  }
+}
+
+fn workspace_release_prepare(store: FabricStorageBinding, reservation: WorkspaceReservation, released_at: Timestamp) -> WorkspaceReleasePreparation {
+  match fabric_storage_observe_cas_slot(store: store, key: workspace_release_key(reservation: reservation)) {
+    CasObservedUnreadable { cause: _ } => WorkspaceReleaseRefused { reason: "release intent store is unreadable" }
+    CasObservedReadable { readable: CasReadablePresent { version: prior } } => workspace_release_decode(reservation: reservation, wire: prior.value)
+    CasObservedReadable { readable: CasReadableAbsent } => match workspace_release_derive(reservation: reservation, released_at: released_at) {
+      WorkspaceReleasePrepared { plan: prepared } => match admit_cas_attempt_for_derived_payload(
+        key: workspace_release_key(reservation: reservation), expected: ExpectSlotAbsent, proposed: workspace_release_wire(plan: prepared),
+      ) {
+        DerivedPayloadKeyNotSlotAddressable { key: _ } => WorkspaceReleaseRefused { reason: "release intent key is not addressable" }
+        DerivedPayloadAdmitted { verified: proposed } => match fabric_storage_compare_and_set(store: store, verified: proposed) {
+          CasCommitted { committed: _ } => WorkspaceReleasePrepared { plan: prepared }
+          CasPreconditionFailed { expected: _, observed: _ } => workspace_release_read(store: store, reservation: reservation)
+          CasStoreRefused { cause: _ } => WorkspaceReleaseRefused { reason: "release intent could not be durably published" }
+        }
+      }
+      refused => refused
+    }
+  }
+}

@@ -2,7 +2,7 @@ module gunbc.compile_permit_scope
 
 import std.types { String, NonEmptyStr, List, Bool, list_length }
 import std.materialization_ladder { string_list_contains }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.fleet_runner_connectivity { fleet_hosts }
 import std.measure { HardwareThreadCount }
 

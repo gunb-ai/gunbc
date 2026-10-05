@@ -30,7 +30,7 @@ import extdeps.dhcp.v4 {
   Active,
 }
 import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
+import gunbc.fleet_host_identity { operator_host_srv1, operator_host_srv3 }
 import gunbc.network_identity_subsumption {
   network_identity_subsumes_fleet_slot,
   lease_table_has_os_up_subsumption,
@@ -39,7 +39,7 @@ import gunbc.network_identity_subsumption {
   srv3_bmc_static_lease_row,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuilt }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.srv3_actuate_shell_paths {
   srv3_bmcweb_token_path,
 }
@@ -537,7 +537,12 @@ fn sol_has_installer_evidence(verdict: SolConsoleDiagnosticVerdict) -> Bool {
 fn sol_has_autoinstall_evidence(verdict: SolConsoleDiagnosticVerdict) -> Bool {
   match verdict {
     SolAutoinstallSeen => true
-    _ => false
+    SolSilent => false
+    SolFirmwareMenu => false
+    SolGrubSeen => false
+    SolInstallerSeen => false
+    SolErrorSeen => false
+    SolCaptureUnavailable => false
   }
 }
 
@@ -557,7 +562,16 @@ fn diagnose_when_router_not_installed(
         VirtualMediaAbsent => VirtualMediaNotMounted
         VirtualMediaDisconnected => VirtualMediaNotMounted
         BmcSessionExpired => VirtualMediaServeDown
-        _ =>
+        VirtualMediaMountedExpectedIso =>
+          diagnose_when_serve_ready(
+            intent: intent,
+            observations: observations,
+            redfish: redfish,
+            virtual_media: virtual_media,
+            sol: sol,
+            router: router,
+          )
+        VirtualMediaWrongIso =>
           diagnose_when_serve_ready(
             intent: intent,
             observations: observations,
@@ -567,7 +581,11 @@ fn diagnose_when_router_not_installed(
             router: router,
           )
       }
-    _ => VirtualMediaServeDown
+    ServeAbsent => VirtualMediaServeDown
+    ServePortAbsentVerdict => VirtualMediaServeDown
+    ServePortConflictVerdict => VirtualMediaServeDown
+    TokenMissingVerdict => VirtualMediaServeDown
+    IsoMissingVerdict => VirtualMediaServeDown
   }
 }
 
@@ -594,7 +612,28 @@ fn diagnose_when_serve_ready(
               router: router,
             )
           }
-        _ =>
+        VirtualMediaAbsent =>
+          diagnose_when_not_pre_boot_ready(
+            observations: observations,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+          )
+        VirtualMediaWrongIso =>
+          diagnose_when_not_pre_boot_ready(
+            observations: observations,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+          )
+        VirtualMediaDisconnected =>
+          diagnose_when_not_pre_boot_ready(
+            observations: observations,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+          )
+        BmcSessionExpired =>
           diagnose_when_not_pre_boot_ready(
             observations: observations,
             redfish: redfish,
@@ -602,7 +641,35 @@ fn diagnose_when_serve_ready(
             router: router,
           )
       }
-    _ =>
+    PowerOff =>
+      diagnose_when_not_pre_boot_ready(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+    PowerOnFirmware =>
+      diagnose_when_not_pre_boot_ready(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+    BootProgressSetupEnteredVerdict =>
+      diagnose_when_not_pre_boot_ready(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+    BootProgressOsBootStartedVerdict =>
+      diagnose_when_not_pre_boot_ready(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+    BootProgressOsRunningVerdict =>
       diagnose_when_not_pre_boot_ready(
         observations: observations,
         redfish: redfish,
@@ -642,7 +709,9 @@ fn diagnose_when_not_pre_boot_ready(
 fn router_lacks_os_installed_lease(router: RouterLeaseDiagnosticVerdict) -> Bool {
   match router {
     Srv3OsLeasePresent => false
-    _ => true
+    Srv3OsLeaseAbsent => true
+    WrongHostnameLeasePresent => true
+    OnlyBmcLeasePresent => true
   }
 }
 
@@ -693,13 +762,21 @@ fn diagnose_boot_override_consumed_or_weak(
                 BootOverrideConsumedNoInstall
               }
             }
-          _ => BootOverrideConsumedNoInstall
+          SolGrubSeen => BootOverrideConsumedNoInstall
+          SolInstallerSeen => BootOverrideConsumedNoInstall
+          SolAutoinstallSeen => BootOverrideConsumedNoInstall
+          SolErrorSeen => BootOverrideConsumedNoInstall
+          SolCaptureUnavailable => BootOverrideConsumedNoInstall
         }
       } else {
         FirmwareIdle
       }
-    _ =>
-      diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    PowerOff => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    PowerOnFirmware => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    BootOverrideCdOnceArmed => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    BootProgressSetupEnteredVerdict => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    BootProgressOsBootStartedVerdict => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+    BootProgressOsRunningVerdict => diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
   }
 }
 
@@ -711,7 +788,7 @@ fn diagnose_weak_kvm_or_inconclusive(
     SolGrubSeen => InstallerBooted
     SolInstallerSeen => InstallerBooted
     SolSilent => FirmwareIdle
-    _ =>
+    SolFirmwareMenu =>
       match observations.kvm.video_state {
         KvmFirmwareMenu =>
           if !observations.kvm.keyboard_accepted {
@@ -719,7 +796,41 @@ fn diagnose_weak_kvm_or_inconclusive(
           } else {
             InconclusiveVerdict
           }
-        _ => InconclusiveVerdict
+        KvmIdle => InconclusiveVerdict
+        KvmUnknown => InconclusiveVerdict
+      }
+    SolAutoinstallSeen =>
+      match observations.kvm.video_state {
+        KvmFirmwareMenu =>
+          if !observations.kvm.keyboard_accepted {
+            KvmUntrustedVerdict
+          } else {
+            InconclusiveVerdict
+          }
+        KvmIdle => InconclusiveVerdict
+        KvmUnknown => InconclusiveVerdict
+      }
+    SolErrorSeen =>
+      match observations.kvm.video_state {
+        KvmFirmwareMenu =>
+          if !observations.kvm.keyboard_accepted {
+            KvmUntrustedVerdict
+          } else {
+            InconclusiveVerdict
+          }
+        KvmIdle => InconclusiveVerdict
+        KvmUnknown => InconclusiveVerdict
+      }
+    SolCaptureUnavailable =>
+      match observations.kvm.video_state {
+        KvmFirmwareMenu =>
+          if !observations.kvm.keyboard_accepted {
+            KvmUntrustedVerdict
+          } else {
+            InconclusiveVerdict
+          }
+        KvmIdle => InconclusiveVerdict
+        KvmUnknown => InconclusiveVerdict
       }
   }
 }
@@ -762,21 +873,54 @@ fn diagnose_os_install_actuation(
 fn install_diagnostic_verdict_is_ready_to_boot(verdict: InstallDiagnosticVerdict) -> Bool {
   match verdict {
     ReadyToBootVerdict => true
-    _ => false
+    VirtualMediaServeDown => false
+    VirtualMediaNotMounted => false
+    BootOverrideNotSet => false
+    BootOverrideConsumedNoInstall => false
+    BootAttemptInProgress => false
+    FirmwareIdle => false
+    InstallerBooted => false
+    AutoinstallRunning => false
+    InstallerHungVerdict => false
+    OsInstalledVerdict => false
+    KvmUntrustedVerdict => false
+    InconclusiveVerdict => false
   }
 }
 
 fn install_diagnostic_verdict_is_os_installed(verdict: InstallDiagnosticVerdict) -> Bool {
   match verdict {
     OsInstalledVerdict => true
-    _ => false
+    ReadyToBootVerdict => false
+    VirtualMediaServeDown => false
+    VirtualMediaNotMounted => false
+    BootOverrideNotSet => false
+    BootOverrideConsumedNoInstall => false
+    BootAttemptInProgress => false
+    FirmwareIdle => false
+    InstallerBooted => false
+    AutoinstallRunning => false
+    InstallerHungVerdict => false
+    KvmUntrustedVerdict => false
+    InconclusiveVerdict => false
   }
 }
 
 fn install_diagnostic_verdict_is_boot_override_consumed_failure(verdict: InstallDiagnosticVerdict) -> Bool {
   match verdict {
     BootOverrideConsumedNoInstall => true
-    _ => false
+    ReadyToBootVerdict => false
+    VirtualMediaServeDown => false
+    VirtualMediaNotMounted => false
+    BootOverrideNotSet => false
+    BootAttemptInProgress => false
+    FirmwareIdle => false
+    InstallerBooted => false
+    AutoinstallRunning => false
+    InstallerHungVerdict => false
+    OsInstalledVerdict => false
+    KvmUntrustedVerdict => false
+    InconclusiveVerdict => false
   }
 }
 
@@ -854,7 +998,9 @@ fn install_has_progress_evidence(
     || sol_has_autoinstall_evidence(verdict: sol)
     || match router {
       Srv3OsLeasePresent => true
-      _ => false
+      Srv3OsLeaseAbsent => false
+      WrongHostnameLeasePresent => false
+      OnlyBmcLeasePresent => false
     }
 }
 
@@ -957,7 +1103,7 @@ fn diagnose_srv3_install_when_serve_observed(
 ) -> Srv3InstallDiagnostic {
   match observation.bmc_websocket {
     WebsocketUnavailable => BmcWebsocketUnavailable
-    _ =>
+    WebsocketUpgradeAccepted =>
       match serve_readiness {
         IsoHashMismatch => ServeDown
         ServeReady =>
@@ -968,7 +1114,28 @@ fn diagnose_srv3_install_when_serve_observed(
             router: router,
             elapsed: elapsed,
           )
-        _ => ServeDown
+        ServeAbsent => ServeDown
+        ServePortAbsentVerdict => ServeDown
+        ServePortConflictVerdict => ServeDown
+        TokenMissingVerdict => ServeDown
+        IsoMissingVerdict => ServeDown
+      }
+    WebsocketUnknown =>
+      match serve_readiness {
+        IsoHashMismatch => ServeDown
+        ServeReady =>
+          diagnose_srv3_install_when_serve_ready(
+            observation: observation,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+            elapsed: elapsed,
+          )
+        ServeAbsent => ServeDown
+        ServePortAbsentVerdict => ServeDown
+        ServePortConflictVerdict => ServeDown
+        TokenMissingVerdict => ServeDown
+        IsoMissingVerdict => ServeDown
       }
   }
 }
@@ -1008,7 +1175,55 @@ fn diagnose_srv3_install_when_serve_ready(
           elapsed: elapsed,
         )
       }
-    _ =>
+    PowerOff =>
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
+      }
+    PowerOnFirmware =>
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
+      }
+    BootProgressSetupEnteredVerdict =>
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
+      }
+    BootProgressOsBootStartedVerdict =>
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
+      }
+    BootProgressOsRunningVerdict =>
       if srv3_install_pre_boot_ready_to_boot(observation: observation) {
         ReadyToBoot
       } else {
@@ -1070,12 +1285,16 @@ fn diagnose_srv3_install_post_boot(
                     }
                   }
                 }
-              _ => BootOverrideConsumedNoInstallEvidence
+              SolGrubSeen => BootOverrideConsumedNoInstallEvidence
+              SolInstallerSeen => BootOverrideConsumedNoInstallEvidence
+              SolAutoinstallSeen => BootOverrideConsumedNoInstallEvidence
+              SolErrorSeen => BootOverrideConsumedNoInstallEvidence
+              SolCaptureUnavailable => BootOverrideConsumedNoInstallEvidence
             }
           } else {
             Inconclusive
           }
-        _ =>
+        PowerOff =>
           match observation.kvm {
             Present { value: kvm } =>
               match kvm.video_state {
@@ -1085,7 +1304,83 @@ fn diagnose_srv3_install_post_boot(
                   } else {
                     Inconclusive
                   }
-                _ => Inconclusive
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+        PowerOnFirmware =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+        BootOverrideCdOnceArmed =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+        BootProgressSetupEnteredVerdict =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+        BootProgressOsBootStartedVerdict =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+        BootProgressOsRunningVerdict =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                KvmIdle => Inconclusive
+                KvmUnknown => Inconclusive
               }
             Absent => Inconclusive
           }
@@ -1280,9 +1575,15 @@ fn parse_virtual_media_session_observation(
         WebsocketUpgradeAccepted =>
           match serve_readiness {
             ServeReady => AttachedToExpectedServe
-            _ => VirtualMediaSessionUnknown
+            ServeAbsent => VirtualMediaSessionUnknown
+            ServePortAbsentVerdict => VirtualMediaSessionUnknown
+            ServePortConflictVerdict => VirtualMediaSessionUnknown
+            TokenMissingVerdict => VirtualMediaSessionUnknown
+            IsoMissingVerdict => VirtualMediaSessionUnknown
+            IsoHashMismatch => VirtualMediaSessionUnknown
           }
-        _ => NoAttachedServe
+        WebsocketUnavailable => NoAttachedServe
+        WebsocketUnknown => NoAttachedServe
       }
   }
 }
@@ -1366,21 +1667,48 @@ fn srv3_install_diagnostic_wire(verdict: Srv3InstallDiagnostic) -> String {
 fn srv3_install_diagnostic_is_ready_to_boot(verdict: Srv3InstallDiagnostic) -> Bool {
   match verdict {
     ReadyToBoot => true
-    _ => false
+    ServeDown => false
+    BmcWebsocketUnavailable => false
+    BootOverrideNotArmed => false
+    BootOverrideConsumedNoInstallEvidence => false
+    InstallerProbablyRunning => false
+    InstallerHung => false
+    OsInstalled => false
+    KvmUntrusted => false
+    Inconclusive => false
+    InconclusiveNeedsServeObservation => false
   }
 }
 
 fn srv3_install_diagnostic_is_os_installed(verdict: Srv3InstallDiagnostic) -> Bool {
   match verdict {
     OsInstalled => true
-    _ => false
+    ReadyToBoot => false
+    ServeDown => false
+    BmcWebsocketUnavailable => false
+    BootOverrideNotArmed => false
+    BootOverrideConsumedNoInstallEvidence => false
+    InstallerProbablyRunning => false
+    InstallerHung => false
+    KvmUntrusted => false
+    Inconclusive => false
+    InconclusiveNeedsServeObservation => false
   }
 }
 
 fn srv3_install_diagnostic_is_boot_override_consumed(verdict: Srv3InstallDiagnostic) -> Bool {
   match verdict {
     BootOverrideConsumedNoInstallEvidence => true
-    _ => false
+    ReadyToBoot => false
+    ServeDown => false
+    BmcWebsocketUnavailable => false
+    BootOverrideNotArmed => false
+    InstallerProbablyRunning => false
+    InstallerHung => false
+    OsInstalled => false
+    KvmUntrusted => false
+    Inconclusive => false
+    InconclusiveNeedsServeObservation => false
   }
 }
 

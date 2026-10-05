@@ -1,7 +1,8 @@
 # Derived-node identity in v1 infer
 
-Status: model, step 1 of 2. No infer code changes under this note until step 2 is scheduled.
-Owner: clever-lynx-801. Ruling: quiet-gull-780, 2026-10-01; scheduled by neat-boar-16.
+Status: step 1 landed (#12913, #12914); step 2 scheduled 2026-10-04, starting with §7's instrument.
+Owner: jolly-pike-330 (staffed by gentle-dove-36); scheduled by gentle-dove-36 on neat-boar-16's
+handoff, 2026-10-04. Step 1 owner: clever-lynx-801. Ruling: quiet-gull-780, 2026-10-01.
 Class row: `gunbc.recurring_failure_mode` `generic_identity_decided_by_spelling`.
 
 ## 1. The question
@@ -142,8 +143,22 @@ constructors inventoried in §2. The following are outside this note:
    - the srv3 witness, the `00_compile` native-lane site, and `head_of(xs: [1], d: 2)` into a
      String parameter.
 
-   Step 2 starts only after eager-newt-412's facts work lands its last stage, because both rewrite
-   infer's copying paths.
+   **Step 2 does not wait on the site-keyed facts store** (struck 2026-10-04, gentle-dove-36). This
+   note used to sequence step 2 after that work "because both rewrite infer's copying paths". They
+   are two modules both named infer, and they share no symbol:
+   - step 2 edits `v1.compiler.infer` (`unify_generics`, `substitute_generics_apply`,
+     `infer_call_arguments_generic_pass`, `build_call_application_plan`,
+     `bind_local_func_conformance`, `infer_record_lit_structural`) and `v1.compiler.infer_env`
+     `env_with_type_variable_bindings`, which copy type nodes;
+   - the facts store edits `v2.compiler.infer` (`inferred_facts_map_enter`,
+     `facts_map_from_entries`, `inferred_facts_witness_for_node`) and the readers of
+     `InferredTree.facts` in v2 eval, emit, translate and the lenses, which key a facts table.
+
+   `v1.compiler.infer` imports nothing from v2 and holds no facts table, and §5 already scopes v2
+   infer out of this note. The facts store was never built past its model
+   (`keying-relation-design.md` §3e) and has no owner. The one indirect link: step 2's
+   next-generation control compiles `src/v2`, so a facts conversion landing during step 2 changes
+   that control's corpus, not step 2's code.
    **Residue admitted to step 2** (quiet-gull-780, 2026-10-01, via clever-newt-773): a generic
    variant literal with no expected type, such as `Cons { head, tail }` at
    `gunbc.spark.host_commitment`, is typed as its parent's *unapplied* declaration in

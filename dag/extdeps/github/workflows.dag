@@ -11,6 +11,7 @@ import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import std.resources { Network }
 import extdeps.ietf.http_semantics { POST }
+import extdeps.transports.rest { RestResult }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

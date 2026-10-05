@@ -5,10 +5,11 @@ import std.measure { second, millisecond }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.owned_process { OwnedRelease, OwnedReleased, OwnedAlreadyGone, OwnedReleaseFailed, OwnedReleaseNotOwned, OwnedRunning, OwnedNotRecorded, OwnedForeign }
-import gunbc.machine_intake_mtcollins1_kvm_still {
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverRecord, KvmObserverNotStarted, KvmJournalText, KvmInstant,
   KvmRetainedStill, KvmStillHashed, KvmTerminalStill, KvmTerminalStillAnswered, KvmTerminalStillUnanswered,
-  KvmTeardownRecorded, KvmSnapshotKept, mtcollins1_kvm_observer_dir,
+  KvmTeardownRecorded, KvmSnapshotKept,
   KvmJournalText, KvmJournalAbsent, KvmJournalUnread,
   KvmSessionReleased, KvmSessionReleaseHttp, KvmSessionReleaseFailed, KvmSessionLoginUnobserved, KvmSessionNoSession, KvmSessionReleaseUnrecognized,
   KvmBrowserClosed, KvmBrowserNotLaunched, KvmBrowserCloseFailed, KvmBrowserCloseUnrecognized, kvm_session_release_of, kvm_browser_close_of,
@@ -21,7 +22,7 @@ import gunbc.machine_intake_mtcollins1_kvm_observer_observe {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE VERDICT IS READ FROM THE RECORD mtcollins1_kvm_observer_finish RETURNS, so its inputs are SUPPLIED
+// THE VERDICT IS READ FROM THE RECORD megarac_kvm_observer_finish RETURNS, so its inputs are SUPPLIED
 // records (DESIGN §3: a witness discriminates at one interface). The real producer runs twice elsewhere:
 // against the loopback controller in test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness,
 // which holds the same finish, stop and release to what the controller saw, and against the real BMC

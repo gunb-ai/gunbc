@@ -1,0 +1,118 @@
+module v2.test.claim.self_host.kernel_optional_mint_binding_test
+
+import std.types { Bool, Int, String, List }
+import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.literal_elaboration {
+  KernelMintDeclaration,
+  KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous,
+  kernel_mint_declaration_for,
+  DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous,
+  kernel_mint_ownership
+}
+import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
+import v2.std.optional { Optional, Present, Absent, optional_present, optional_absent }
+
+// THE SEED'S KERNEL OPTIONAL IS v2.std.optional Optional (Optional de-fork, binding step). These
+// claims hold the decision at the row interface: which declaration a kernel mint stands for is
+// read from gunbc.structural_realization_bindings kernel_mint_declaration_rows by exact name, and
+// the answer for Optional is the corpus's one declaration of that coproduct. The consumer is
+// v1.compiler.infer kernel_mint_parent_identity, which stamps that declaration on every Present
+// and Absent arm reached through `T?`.
+
+test fn kernel_optional_mint_is_bound_to_the_one_declaration() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "Optional") {
+    KernelMintDeclarationFound { declaration: d } =>
+      declaration_ref_eq(a: d, b: decl_ref(module_path: "v2.std.optional", decl_name: "Optional"))
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+// The state before the binding existed: with the row removed the mint has no declaration, which is
+// the state in which a `T?` arm could only report its owner as unrecovered.
+test fn removing_the_row_leaves_the_mint_unbound() -> Bool {
+  let no_rows: List<KernelMintDeclaration> = []
+  match kernel_mint_declaration_for(rows: no_rows, minted_name: "Optional") {
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+// A kernel type that is not bound to a corpus declaration keeps its kernel identity.
+test fn a_kernel_type_without_a_row_is_unbound() -> Bool {
+  match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: "Bool") {
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAbsent => true
+    KernelMintDeclarationAmbiguous { row_count: _ } => false
+  }
+}
+
+// Two rows for one mint is two declarations claiming one identity: refused, never the first.
+test fn a_mint_bound_twice_is_ambiguous() -> Bool {
+  let doubled = concat(kernel_mint_declaration_rows, kernel_mint_declaration_rows)
+  match kernel_mint_declaration_for(rows: doubled, minted_name: "Optional") {
+    KernelMintDeclarationFound { declaration: _ } => false
+    KernelMintDeclarationAbsent => false
+    KernelMintDeclarationAmbiguous { row_count: n } => n == 2
+  }
+}
+
+// THE OWNERSHIP QUESTION THE EMITTER ASKS (v1.compiler.emit_rust host_option_arm_reading): is this
+// arm's declaration the one the kernel optional stands for. The bound declaration owns it; another
+// declaration does not.
+test fn the_bound_declaration_owns_the_kernel_optional() -> Bool {
+  match kernel_mint_ownership(rows: kernel_mint_declaration_rows, minted_name: "Optional", declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional")) {
+    DeclarationOwnsTheMint => true
+    DeclarationDoesNotOwnTheMint => false
+    KernelMintOwnershipAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn another_declaration_does_not_own_the_kernel_optional() -> Bool {
+  match kernel_mint_ownership(rows: kernel_mint_declaration_rows, minted_name: "Optional", declaration: decl_ref(module_path: "v2.std.diagnostic", decl_name: "Diagnostics")) {
+    DeclarationOwnsTheMint => false
+    DeclarationDoesNotOwnTheMint => true
+    KernelMintOwnershipAmbiguous { row_count: _ } => false
+  }
+}
+
+// TWO CANDIDATE PARENTS FOR ONE ARM REFUSE. With the mint bound twice the question has no answer,
+// and it must not be answered "does not own": that reading silently stops every optional arm from
+// lowering to the host option, which is the state a yes/no form of this question produced.
+test fn an_ambiguously_bound_mint_is_refused_not_answered() -> Bool {
+  let doubled = concat(kernel_mint_declaration_rows, kernel_mint_declaration_rows)
+  match kernel_mint_ownership(rows: doubled, minted_name: "Optional", declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional")) {
+    DeclarationOwnsTheMint => false
+    DeclarationDoesNotOwnTheMint => false
+    KernelMintOwnershipAmbiguous { row_count: n } => n == 2
+  }
+}
+
+fn sugared_present() -> Int? { optional_present(value: 3) }
+fn sugared_absent() -> Int? { optional_absent() }
+fn declared_present() -> Optional<Int> { Present { value: 3 } }
+fn declared_absent() -> Optional<Int> { Absent }
+
+fn value_or_minus_one(o: Optional<Int>) -> Int {
+  match o {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+fn sugared_value_or_minus_one(o: Int?) -> Int {
+  match o {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+// THE REAL PATH, EXECUTED: a value produced under the `T?` sugar is consumed by a match over the
+// declared coproduct and the reverse, in both arms. One Optional, reached two ways.
+test fn sugar_and_declaration_round_trip_through_each_other() -> Bool {
+  value_or_minus_one(o: sugared_present()) == 3
+    && value_or_minus_one(o: sugared_absent()) == 0 - 1
+    && sugared_value_or_minus_one(o: declared_present()) == 3
+    && sugared_value_or_minus_one(o: declared_absent()) == 0 - 1
+}

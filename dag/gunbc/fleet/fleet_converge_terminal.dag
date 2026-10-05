@@ -1,0 +1,42 @@
+module gunbc.fleet_converge_terminal
+
+import std.types { String, Int }
+
+// Shared terminal and wire authority. Receipt decoding must not load the fleet planning graph.
+type FleetConvergeApplyTerminal
+  = FullyApplied
+  | PartiallyApplied { refused_axis_count: Int, detail: String }
+  | AwaitingCapability { capability: String }
+
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+    AwaitingCapability { capability: c } => join(["awaiting_capability|", c], "")
+  }
+}
+
+fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
+  if text == "fully_applied" {
+    Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "awaiting_capability|") {
+    Present {
+      value: AwaitingCapability {
+        capability: substring(s: text, start: 20, end: string_length(s: text)),
+      },
+    }
+  } else if starts_with(s: text, prefix: "partially_applied|") {
+    let rest = substring(s: text, start: 18, end: string_length(s: text))
+    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    match parse_int(s: n_text) {
+      Absent => none
+      Present { value: n } =>
+        Present { value: PartiallyApplied {
+          refused_axis_count: n,
+          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
+        } }
+    }
+  } else {
+    none
+  }
+}

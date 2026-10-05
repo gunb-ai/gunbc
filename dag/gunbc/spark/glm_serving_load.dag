@@ -11,7 +11,8 @@ import extdeps.vllm.bench_serve {
 import extdeps.vllm.server { vllm_route_path }
 import extdeps.vllm.engine_args { SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished }
-import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
   glm53_native_fp8_row, runtime_artifact_wire, serving_runtime_row,
 }

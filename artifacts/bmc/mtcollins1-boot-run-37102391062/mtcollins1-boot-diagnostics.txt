@@ -1,0 +1,1973 @@
+mtcollins1 boot diagnostics
+attempt=37102391062
+outcome=ok
+== decisive findings ==
+bmc sensor CPU0_0V8_VDDCSOC status ns: No Reading
+bmc sensor CPU0_0V75_PCP status ns: No Reading
+bmc sensor CPU0_1V2VDDQ0123 status ns: No Reading
+bmc sensor CPU0_0V6_VTT0123 status ns: No Reading
+bmc sensor CPU0_2V5_VPP0123 status ns: No Reading
+bmc sensor CPU0_1V2VDDQ4567 status ns: No Reading
+bmc sensor CPU0_0V6_VTT4567 status ns: No Reading
+bmc sensor CPU0_2V5_VPP4567 status ns: No Reading
+bmc sensor CPU0_0V85_RCA status ns: No Reading
+bmc sensor CPU0_1V8_VDDH status ns: No Reading
+bmc sensor CPU0_1V5_VDDH status ns: No Reading
+bmc sensor CPU0_1V8_SOC status ns: No Reading
+bmc sensor CPU0_1V8_PCP status ns: No Reading
+bmc sensor CPU0_3V3_SOC status ns: No Reading
+bmc sensor CPU0_3V3_SRD_ADC status ns: No Reading
+bmc sensor CPU0_5V_SRD status ns: No Reading
+bmc sensor CPU0_SOC_Temp status ns: No Reading
+bmc sensor CPU0_SOC_VRDTemp status ns: No Reading
+bmc sensor CPU0_DIMMVRDTemp status ns: No Reading
+bmc sensor CPU0_PMD_VRDTemp status ns: No Reading
+bmc sensor CPU0_DIMMG0_Temp status ns: No Reading
+bmc sensor CPU0_DIMMG1_Temp status ns: No Reading
+bmc sensor CPU0_CPU_Pwr status ns: No Reading
+bmc sensor CPU0_DIMM_VR1Pwr status ns: No Reading
+bmc sensor CPU0_DIMM_VR2Pwr status ns: No Reading
+bmc sensor CPU0_MEM_Pwr status ns: No Reading
+bmc sensor CPU0_CPU_VCORE status ns: No Reading
+bmc sensor CPU0_DIMMVR1Volt status ns: No Reading
+bmc sensor CPU0_DIMMVR2Volt status ns: No Reading
+bmc sensor CPU0_DIMMDDRVolt status ns: No Reading
+bmc sensor CPU0_Hightemp status ns: No Reading
+bmc sensor CPU0_Overtemp status ns: No Reading
+bmc sensor CPU0_ACPI_State status ns: No Reading
+bmc sensor CPU0_MemStatus status ns: No Reading
+bmc sensor CPU0_CPU_Status status ns: No Reading
+bmc sensor CPU0_SCP_Status status ns: No Reading
+bmc sensor CPU0_PCIeStatus status ns: No Reading
+bmc sensor CPU0_OtherStatus status ns: No Reading
+bmc sensor CPU1_0V8_VDDCSOC status ns: No Reading
+bmc sensor CPU1_0V75_PCP status ns: No Reading
+bmc sensor CPU1_1V2VDDQ0123 status ns: No Reading
+bmc sensor CPU1_0V6_VTT0123 status ns: No Reading
+bmc sensor CPU1_2V5_VPP0123 status ns: No Reading
+bmc sensor CPU1_1V2VDDQ4567 status ns: No Reading
+bmc sensor CPU1_0V6_VTT4567 status ns: No Reading
+bmc sensor CPU1_2V5_VPP4567 status ns: No Reading
+bmc sensor CPU1_0V85_RCA status ns: No Reading
+bmc sensor CPU1_1V8_VDDH status ns: No Reading
+bmc sensor CPU1_1V5_VDDH status ns: No Reading
+bmc sensor CPU1_1V8_SOC status ns: No Reading
+bmc sensor CPU1_1V8_PCP status ns: No Reading
+bmc sensor CPU1_3V3_SOC status ns: No Reading
+bmc sensor CPU1_3V3_SRD_ADC status ns: No Reading
+bmc sensor CPU1_5V_SRD status ns: No Reading
+bmc sensor CPU1_SOC_Temp status ns: No Reading
+bmc sensor CPU1_SOC_VRDTemp status ns: No Reading
+bmc sensor CPU1_DIMMVRDTemp status ns: No Reading
+bmc sensor CPU1_PMD_VRDTemp status ns: No Reading
+bmc sensor CPU1_DIMMG0_Temp status ns: No Reading
+bmc sensor CPU1_DIMMG1_Temp status ns: No Reading
+bmc sensor CPU1_CPU_Pwr status ns: No Reading
+bmc sensor CPU1_DIMM_VR1Pwr status ns: No Reading
+bmc sensor CPU1_DIMM_VR2Pwr status ns: No Reading
+bmc sensor CPU1_MEM_Pwr status ns: No Reading
+bmc sensor CPU1_CPU_VCORE status ns: No Reading
+bmc sensor CPU1_DIMMVR1Volt status ns: No Reading
+bmc sensor CPU1_DIMMVR2Volt status ns: No Reading
+bmc sensor CPU1_DIMMDDRVolt status ns: No Reading
+bmc sensor CPU1_Hightemp status ns: No Reading
+bmc sensor CPU1_Overtemp status ns: No Reading
+bmc sensor CPU1_ACPI_State status ns: No Reading
+bmc sensor CPU1_MemStatus status ns: No Reading
+bmc sensor CPU1_CPU_Status status ns: No Reading
+bmc sensor CPU1_SCP_Status status ns: No Reading
+bmc sensor CPU1_PCIeStatus status ns: No Reading
+bmc sensor CPU1_OtherStatus status ns: No Reading
+SMpro socket 0: CUR_BOOTSTAGE UEFI firmware booting; BOOTSTAGE UEFI firmware booting, completed without error
+SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff); BOOTSTAGE UNAVAILABLE (BOOTSTAGE NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff)
+DRAM firmware 220414 printed no trained DIMM for socket 1 (no SK1 row under 'DRAM populated DIMMs:')
+firmware boot summary: 1 active socket(s), the census holds 2
+== bmc system event log ==
+before: read at 2026-10-03T08:38:18Z, 706 record(s)
+after: read at 2026-10-03T08:42:18Z, 717 record(s)
+sdr cache: dumped at 2026-10-03T08:38:17Z to /opt/actions-runner/srv1-06/_work/_temp/mtcollins1-bmc-credential.sdr-cache; both snapshots read through it
+delta: 11 new record(s) (1 OEM, kept opaque)
+  record 707 at 10/03/2026 04:38:23 AM UTC: 2c3 | 10/03/2026 | 04:38:23 AM UTC | Session Audit SOL_Status |  | Asserted
+  record 708 at 10/03/2026 04:39:02 AM UTC: 2c4 | 10/03/2026 | 04:39:02 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  record 709 at 10/03/2026 04:39:02 AM UTC: 2c5 | 10/03/2026 | 04:39:02 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  record 710 at 10/03/2026 04:39:18 AM UTC: 2c6 | 10/03/2026 | 04:39:18 AM UTC | Power Unit ChassisPwrStatus | Power cycle | Asserted
+  record 711 at 10/03/2026 04:40:18 AM UTC: 2c7 | 10/03/2026 | 04:40:18 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+  record 712 at 10/03/2026 04:40:18 AM UTC: 2c8 | 10/03/2026 | 04:40:18 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+  record 713 at 10/03/2026 04:41:04 AM UTC: OEM record, manufacturer 00cd3a, bytes 128e05000000 (OEM-defined; not decoded)
+  record 714 at 10/03/2026 04:42:12 AM UTC: 2ca | 10/03/2026 | 04:42:12 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  record 715 at 10/03/2026 04:42:14 AM UTC: 2cb | 10/03/2026 | 04:42:14 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  record 716 at 10/03/2026 04:42:14 AM UTC: 2cc | 10/03/2026 | 04:42:14 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  record 717 at 10/03/2026 04:42:16 AM UTC: 2cd | 10/03/2026 | 04:42:16 AM UTC | Session Audit SOL_Status |  | Asserted
+-- raw before (ipmitool sel elist, verbatim) --
+   1 | 10/02/2026 | 07:22:54 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+   2 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+   3 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+   4 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+   5 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+   6 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+   7 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+   8 | 10/02/2026 | 07:23:44 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+   9 | 10/02/2026 | 07:23:45 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+   a | 10/02/2026 | 07:24:08 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+   b | 10/02/2026 | 07:24:08 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+   c | 10/02/2026 | 07:24:11 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+   d | 10/02/2026 | 07:24:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+   e | 10/02/2026 | 07:27:57 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+   f | 10/02/2026 | 07:28:44 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+  10 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+  11 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+  12 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+  13 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+  14 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+  15 | 10/02/2026 | 07:29:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  16 | 10/02/2026 | 07:29:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  17 | 10/02/2026 | 07:29:26 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  18 | 10/02/2026 | 07:29:26 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  19 | 10/02/2026 | 07:29:27 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  1a | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+  1b | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+  1c | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+  1d | 10/02/2026 | 07:29:28 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  1e | 10/02/2026 | 07:29:52 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  1f | 10/02/2026 | 07:29:52 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  20 | 10/02/2026 | 07:29:53 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  21 | 10/02/2026 | 07:29:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  22 | 10/02/2026 | 07:30:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  23 | 10/02/2026 | 07:30:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  24 | 10/02/2026 | 07:30:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  25 | 10/02/2026 | 07:30:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  26 | 10/02/2026 | 07:30:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  27 | 10/02/2026 | 07:30:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  28 | 10/02/2026 | 07:30:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  29 | 10/02/2026 | 07:30:45 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  2a | 10/02/2026 | 07:31:09 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  2b | 10/02/2026 | 07:31:09 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  2c | 10/02/2026 | 07:31:09 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  2d | 10/02/2026 | 07:31:11 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  2e | 10/02/2026 | 07:31:35 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  2f | 10/02/2026 | 07:31:35 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  30 | 10/02/2026 | 07:31:36 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  31 | 10/02/2026 | 07:31:37 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  32 | 10/02/2026 | 07:32:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  33 | 10/02/2026 | 07:32:01 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  34 | 10/02/2026 | 07:32:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  35 | 10/02/2026 | 07:32:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  36 | 10/02/2026 | 07:32:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  37 | 10/02/2026 | 07:32:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  38 | 10/02/2026 | 07:32:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  39 | 10/02/2026 | 07:32:28 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  3a | 10/02/2026 | 07:32:52 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  3b | 10/02/2026 | 07:32:52 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  3c | 10/02/2026 | 07:32:52 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  3d | 10/02/2026 | 07:32:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  3e | 10/02/2026 | 07:33:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  3f | 10/02/2026 | 07:33:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  40 | 10/02/2026 | 07:33:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  41 | 10/02/2026 | 07:33:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  42 | 10/02/2026 | 07:33:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  43 | 10/02/2026 | 07:33:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  44 | 10/02/2026 | 07:33:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  45 | 10/02/2026 | 07:33:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  46 | 10/02/2026 | 07:34:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  47 | 10/02/2026 | 07:34:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  48 | 10/02/2026 | 07:34:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  49 | 10/02/2026 | 07:34:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  4a | 10/02/2026 | 07:34:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  4b | 10/02/2026 | 07:34:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  4c | 10/02/2026 | 07:34:36 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  4d | 10/02/2026 | 07:34:37 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  4e | 10/02/2026 | 07:35:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  4f | 10/02/2026 | 07:35:01 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  50 | 10/02/2026 | 07:35:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  51 | 10/02/2026 | 07:35:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  52 | 10/02/2026 | 07:35:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  53 | 10/02/2026 | 07:35:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  54 | 10/02/2026 | 07:35:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  55 | 10/02/2026 | 07:35:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  56 | 10/02/2026 | 07:35:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  57 | 10/02/2026 | 07:35:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  58 | 10/02/2026 | 07:35:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  59 | 10/02/2026 | 07:35:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  5a | 10/02/2026 | 07:36:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  5b | 10/02/2026 | 07:36:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  5c | 10/02/2026 | 07:36:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  5d | 10/02/2026 | 07:36:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  5e | 10/02/2026 | 07:36:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  5f | 10/02/2026 | 07:36:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  60 | 10/02/2026 | 07:36:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  61 | 10/02/2026 | 07:36:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  62 | 10/02/2026 | 07:37:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  63 | 10/02/2026 | 07:37:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  64 | 10/02/2026 | 07:37:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  65 | 10/02/2026 | 07:37:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  66 | 10/02/2026 | 07:37:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  67 | 10/02/2026 | 07:37:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  68 | 10/02/2026 | 07:37:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  69 | 10/02/2026 | 07:37:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  6a | 10/02/2026 | 07:38:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  6b | 10/02/2026 | 07:38:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  6c | 10/02/2026 | 07:38:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  6d | 10/02/2026 | 07:38:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  6e | 10/02/2026 | 07:38:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  6f | 10/02/2026 | 07:38:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  70 | 10/02/2026 | 07:38:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  71 | 10/02/2026 | 07:38:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  72 | 10/02/2026 | 07:38:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  73 | 10/02/2026 | 07:38:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  74 | 10/02/2026 | 07:38:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  75 | 10/02/2026 | 07:38:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  76 | 10/02/2026 | 07:39:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  77 | 10/02/2026 | 07:39:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  78 | 10/02/2026 | 07:39:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  79 | 10/02/2026 | 07:39:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  7a | 10/02/2026 | 07:39:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  7b | 10/02/2026 | 07:39:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  7c | 10/02/2026 | 07:39:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  7d | 10/02/2026 | 07:39:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  7e | 10/02/2026 | 07:40:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  7f | 10/02/2026 | 07:40:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  80 | 10/02/2026 | 07:40:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  81 | 10/02/2026 | 07:40:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  82 | 10/02/2026 | 07:40:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  83 | 10/02/2026 | 07:40:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  84 | 10/02/2026 | 07:40:39 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  85 | 10/02/2026 | 07:40:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  86 | 10/02/2026 | 07:41:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  87 | 10/02/2026 | 07:41:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  88 | 10/02/2026 | 07:41:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  89 | 10/02/2026 | 07:41:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  8a | 10/02/2026 | 07:41:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  8b | 10/02/2026 | 07:41:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  8c | 10/02/2026 | 07:42:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  8d | 10/02/2026 | 07:42:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  8e | 10/02/2026 | 07:42:18 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  8f | 10/02/2026 | 07:42:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  90 | 10/02/2026 | 07:42:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  91 | 10/02/2026 | 07:42:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  92 | 10/02/2026 | 07:42:47 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  93 | 10/02/2026 | 07:42:47 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  94 | 10/02/2026 | 07:48:54 PM UTC | Session Audit SOL_Status |  | Asserted
+  95 | 10/02/2026 | 07:49:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  96 | 10/02/2026 | 07:49:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  97 | 10/02/2026 | 07:49:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  98 | 10/02/2026 | 07:49:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  99 | 10/02/2026 | 07:49:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  9a | 10/02/2026 | 07:49:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  9b | 10/02/2026 | 07:50:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  9c | 10/02/2026 | 07:50:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  9d | 10/02/2026 | 07:50:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  9e | 10/02/2026 | 07:50:07 PM UTC | Session Audit SOL_Status |  | Asserted
+  9f | 10/02/2026 | 07:50:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a0 | 10/02/2026 | 07:50:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a1 | 10/02/2026 | 07:51:24 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a2 | 10/02/2026 | 07:51:24 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a3 | 10/02/2026 | 07:51:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a4 | 10/02/2026 | 07:51:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a5 | 10/02/2026 | 07:52:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a6 | 10/02/2026 | 07:52:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a7 | 10/02/2026 | 07:52:18 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  a8 | 10/02/2026 | 07:52:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a9 | 10/02/2026 | 07:57:27 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+  aa | 10/02/2026 | 07:58:03 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+  ab | 10/02/2026 | 07:58:03 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+  ac | 10/02/2026 | 07:58:03 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+  ad | 10/02/2026 | 07:58:03 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+  ae | 10/02/2026 | 07:58:03 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+  af | 10/02/2026 | 07:58:03 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+  b0 | 10/02/2026 | 07:58:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b1 | 10/02/2026 | 07:58:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  b2 | 10/02/2026 | 07:58:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  b3 | 10/02/2026 | 07:58:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  b4 | 10/02/2026 | 07:58:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b5 | 10/02/2026 | 07:58:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  b6 | 10/02/2026 | 07:59:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  b7 | 10/02/2026 | 07:59:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  b8 | 10/02/2026 | 07:59:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b9 | 10/02/2026 | 07:59:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  ba | 10/02/2026 | 07:59:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  bb | 10/02/2026 | 07:59:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  bc | 10/02/2026 | 07:59:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  bd | 10/02/2026 | 07:59:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  be | 10/02/2026 | 08:00:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  bf | 10/02/2026 | 08:00:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  c0 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+  c1 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+  c2 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+  c3 | 10/02/2026 | 08:00:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  c4 | 10/02/2026 | 08:00:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  c5 | 10/02/2026 | 08:00:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  c6 | 10/02/2026 | 08:00:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  c7 | 10/02/2026 | 08:00:27 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  c8 | 10/02/2026 | 08:00:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  c9 | 10/02/2026 | 08:00:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ca | 10/02/2026 | 08:00:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  cb | 10/02/2026 | 08:00:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  cc | 10/02/2026 | 08:00:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  cd | 10/02/2026 | 08:01:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ce | 10/02/2026 | 08:01:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  cf | 10/02/2026 | 08:01:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d0 | 10/02/2026 | 08:01:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d1 | 10/02/2026 | 08:01:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  d2 | 10/02/2026 | 08:01:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  d3 | 10/02/2026 | 08:01:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d4 | 10/02/2026 | 08:01:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d5 | 10/02/2026 | 08:02:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  d6 | 10/02/2026 | 08:02:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  d7 | 10/02/2026 | 08:02:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d8 | 10/02/2026 | 08:02:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d9 | 10/02/2026 | 08:02:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  da | 10/02/2026 | 08:02:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  db | 10/02/2026 | 08:02:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  dc | 10/02/2026 | 08:02:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  dd | 10/02/2026 | 08:03:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  de | 10/02/2026 | 08:03:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  df | 10/02/2026 | 08:03:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e0 | 10/02/2026 | 08:03:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e1 | 10/02/2026 | 08:03:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  e2 | 10/02/2026 | 08:03:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  e3 | 10/02/2026 | 08:03:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e4 | 10/02/2026 | 08:03:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e5 | 10/02/2026 | 08:03:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  e6 | 10/02/2026 | 08:03:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  e7 | 10/02/2026 | 08:03:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e8 | 10/02/2026 | 08:03:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e9 | 10/02/2026 | 08:04:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ea | 10/02/2026 | 08:04:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  eb | 10/02/2026 | 08:04:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  ec | 10/02/2026 | 08:04:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  ed | 10/02/2026 | 08:04:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ee | 10/02/2026 | 08:04:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  ef | 10/02/2026 | 08:04:48 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  f0 | 10/02/2026 | 08:04:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f1 | 10/02/2026 | 08:33:02 PM UTC | Session Audit SOL_Status |  | Asserted
+  f2 | 10/02/2026 | 08:33:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  f3 | 10/02/2026 | 08:33:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  f4 | 10/02/2026 | 08:33:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f5 | 10/02/2026 | 08:33:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  f6 | 10/02/2026 | 08:33:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  f7 | 10/02/2026 | 08:33:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  f8 | 10/02/2026 | 08:34:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f9 | 10/02/2026 | 08:34:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  fa | 10/02/2026 | 08:34:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  fb | 10/02/2026 | 08:34:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  fc | 10/02/2026 | 08:34:37 PM UTC | Session Audit SOL_Status |  | Asserted
+  fd | 10/02/2026 | 08:34:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  fe | 10/02/2026 | 08:34:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  ff | 10/02/2026 | 08:35:09 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 100 | 10/02/2026 | 08:35:09 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 101 | 10/02/2026 | 08:35:41 PM UTC | Session Audit SOL_Status |  | Asserted
+ 102 | 10/02/2026 | 08:36:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 103 | 10/02/2026 | 08:36:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 104 | 10/02/2026 | 08:36:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 105 | 10/02/2026 | 08:36:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 106 | 10/02/2026 | 08:36:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 107 | 10/02/2026 | 08:36:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 108 | 10/02/2026 | 08:36:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 109 | 10/02/2026 | 08:36:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 10a | 10/02/2026 | 08:36:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 10b | 10/02/2026 | 08:36:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 10c | 10/02/2026 | 08:37:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 10d | 10/02/2026 | 08:37:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 10e | 10/02/2026 | 08:37:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 10f | 10/02/2026 | 08:37:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 110 | 10/02/2026 | 08:37:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 111 | 10/02/2026 | 08:37:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 112 | 10/02/2026 | 08:37:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 113 | 10/02/2026 | 08:37:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 114 | 10/02/2026 | 08:38:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 115 | 10/02/2026 | 08:38:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 116 | 10/02/2026 | 08:38:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 117 | 10/02/2026 | 08:38:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 118 | 10/02/2026 | 08:38:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 119 | 10/02/2026 | 08:38:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 11a | 10/02/2026 | 08:38:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 11b | 10/02/2026 | 08:38:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 11c | 10/02/2026 | 08:39:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 11d | 10/02/2026 | 08:39:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 11e | 10/02/2026 | 08:39:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 11f | 10/02/2026 | 08:39:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 120 | 10/02/2026 | 08:39:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 121 | 10/02/2026 | 08:39:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 122 | 10/02/2026 | 08:39:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 123 | 10/02/2026 | 08:39:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 124 | 10/02/2026 | 08:39:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 125 | 10/02/2026 | 08:39:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 126 | 10/02/2026 | 08:39:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 127 | 10/02/2026 | 08:39:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 128 | 10/02/2026 | 08:40:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 129 | 10/02/2026 | 08:40:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 12a | 10/02/2026 | 08:40:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 12b | 10/02/2026 | 08:40:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 12c | 10/02/2026 | 08:40:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 12d | 10/02/2026 | 08:40:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 12e | 10/02/2026 | 08:40:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 12f | 10/02/2026 | 08:40:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 130 | 10/02/2026 | 08:41:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 131 | 10/02/2026 | 08:41:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 132 | 10/02/2026 | 08:41:12 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 133 | 10/02/2026 | 08:41:13 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 134 | 10/02/2026 | 08:41:37 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 135 | 10/02/2026 | 08:41:37 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 136 | 10/02/2026 | 08:41:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 137 | 10/02/2026 | 08:41:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 138 | 10/02/2026 | 08:42:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 139 | 10/02/2026 | 08:42:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 13a | 10/02/2026 | 08:42:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 13b | 10/02/2026 | 08:42:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 13c | 10/02/2026 | 08:42:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 13d | 10/02/2026 | 08:42:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 13e | 10/02/2026 | 08:42:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 13f | 10/02/2026 | 08:42:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 140 | 10/02/2026 | 08:42:35 PM UTC | Session Audit SOL_Status |  | Asserted
+ 141 | 10/02/2026 | 08:42:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 142 | 10/02/2026 | 08:42:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 143 | 10/02/2026 | 08:42:57 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 144 | 10/02/2026 | 08:42:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 145 | 10/02/2026 | 08:56:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 146 | 10/02/2026 | 08:56:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 147 | 10/02/2026 | 08:56:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 148 | 10/02/2026 | 08:56:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 149 | 10/02/2026 | 08:56:53 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 14a | 10/02/2026 | 08:56:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 14b | 10/02/2026 | 08:57:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 14c | 10/02/2026 | 08:57:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 14d | 10/02/2026 | 08:57:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 14e | 10/02/2026 | 08:57:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 14f | 10/02/2026 | 08:57:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 150 | 10/02/2026 | 08:57:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 151 | 10/02/2026 | 08:57:47 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 152 | 10/02/2026 | 08:57:47 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 153 | 10/02/2026 | 09:43:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 154 | 10/02/2026 | 09:43:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 155 | 10/02/2026 | 09:43:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 156 | 10/02/2026 | 09:43:39 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 157 | 10/02/2026 | 09:43:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 158 | 10/02/2026 | 09:43:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 159 | 10/02/2026 | 09:44:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 15a | 10/02/2026 | 09:44:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 15b | 10/02/2026 | 09:44:05 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 15c | 10/02/2026 | 09:44:06 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 15d | 10/02/2026 | 09:44:30 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 15e | 10/02/2026 | 09:44:30 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 15f | 10/02/2026 | 09:44:31 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 160 | 10/02/2026 | 09:44:32 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 161 | 10/02/2026 | 09:44:56 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 162 | 10/02/2026 | 09:44:56 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 163 | 10/02/2026 | 09:44:57 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 164 | 10/02/2026 | 09:44:58 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 165 | 10/02/2026 | 09:45:22 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 166 | 10/02/2026 | 09:45:22 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 167 | 10/02/2026 | 09:45:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 168 | 10/02/2026 | 09:45:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 169 | 10/02/2026 | 09:45:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 16a | 10/02/2026 | 09:45:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 16b | 10/02/2026 | 09:45:48 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 16c | 10/02/2026 | 09:45:49 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 16d | 10/02/2026 | 09:46:13 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 16e | 10/02/2026 | 09:46:13 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 16f | 10/02/2026 | 09:46:14 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 170 | 10/02/2026 | 09:46:15 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 171 | 10/02/2026 | 09:46:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 172 | 10/02/2026 | 09:46:39 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 173 | 10/02/2026 | 09:46:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 174 | 10/02/2026 | 09:46:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 175 | 10/02/2026 | 09:47:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 176 | 10/02/2026 | 09:47:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 177 | 10/02/2026 | 09:47:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 178 | 10/02/2026 | 09:47:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 179 | 10/02/2026 | 09:47:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 17a | 10/02/2026 | 09:47:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 17b | 10/02/2026 | 09:47:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 17c | 10/02/2026 | 09:47:32 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 17d | 10/02/2026 | 09:47:56 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 17e | 10/02/2026 | 09:47:56 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 17f | 10/02/2026 | 09:47:56 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 180 | 10/02/2026 | 09:47:58 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 181 | 10/02/2026 | 09:48:22 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 182 | 10/02/2026 | 09:48:22 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 183 | 10/02/2026 | 09:48:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 184 | 10/02/2026 | 09:48:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 185 | 10/02/2026 | 09:48:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 186 | 10/02/2026 | 09:48:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 187 | 10/02/2026 | 09:48:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 188 | 10/02/2026 | 09:48:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 189 | 10/02/2026 | 09:49:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 18a | 10/02/2026 | 09:49:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 18b | 10/02/2026 | 09:49:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 18c | 10/02/2026 | 09:49:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 18d | 10/02/2026 | 09:49:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 18e | 10/02/2026 | 09:49:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 18f | 10/02/2026 | 09:49:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 190 | 10/02/2026 | 09:49:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 191 | 10/02/2026 | 09:50:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 192 | 10/02/2026 | 09:50:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 193 | 10/02/2026 | 09:50:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 194 | 10/02/2026 | 09:50:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 195 | 10/02/2026 | 09:50:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 196 | 10/02/2026 | 09:50:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 197 | 10/02/2026 | 09:50:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 198 | 10/02/2026 | 09:50:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 199 | 10/02/2026 | 09:50:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 19a | 10/02/2026 | 09:50:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 19b | 10/02/2026 | 09:50:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 19c | 10/02/2026 | 09:50:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 19d | 10/02/2026 | 09:51:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 19e | 10/02/2026 | 09:51:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 19f | 10/02/2026 | 09:51:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a0 | 10/02/2026 | 09:51:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a1 | 10/02/2026 | 09:51:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1a2 | 10/02/2026 | 09:51:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1a3 | 10/02/2026 | 09:51:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a4 | 10/02/2026 | 09:51:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a5 | 10/02/2026 | 09:52:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1a6 | 10/02/2026 | 09:52:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1a7 | 10/02/2026 | 09:52:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a8 | 10/02/2026 | 09:52:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a9 | 10/02/2026 | 09:52:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1aa | 10/02/2026 | 09:52:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ab | 10/02/2026 | 09:52:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1ac | 10/02/2026 | 09:52:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1ad | 10/02/2026 | 09:53:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ae | 10/02/2026 | 09:53:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1af | 10/02/2026 | 09:53:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b0 | 10/02/2026 | 09:53:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b1 | 10/02/2026 | 09:53:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1b2 | 10/02/2026 | 09:53:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1b3 | 10/02/2026 | 09:53:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b4 | 10/02/2026 | 09:53:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b5 | 10/02/2026 | 09:53:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1b6 | 10/02/2026 | 09:53:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1b7 | 10/02/2026 | 09:53:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b8 | 10/02/2026 | 09:53:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b9 | 10/02/2026 | 09:54:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ba | 10/02/2026 | 09:54:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1bb | 10/02/2026 | 09:54:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1bc | 10/02/2026 | 09:54:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1bd | 10/02/2026 | 09:54:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1be | 10/02/2026 | 09:54:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1bf | 10/02/2026 | 09:54:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c0 | 10/02/2026 | 09:54:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c1 | 10/02/2026 | 09:55:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1c2 | 10/02/2026 | 09:55:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1c3 | 10/02/2026 | 09:55:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c4 | 10/02/2026 | 09:55:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c5 | 10/02/2026 | 09:55:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1c6 | 10/02/2026 | 09:55:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1c7 | 10/02/2026 | 09:55:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c8 | 10/02/2026 | 09:55:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c9 | 10/02/2026 | 09:56:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ca | 10/02/2026 | 09:56:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1cb | 10/02/2026 | 09:56:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1cc | 10/02/2026 | 09:56:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1cd | 10/02/2026 | 09:56:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ce | 10/02/2026 | 09:56:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1cf | 10/02/2026 | 09:56:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d0 | 10/02/2026 | 09:56:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d1 | 10/02/2026 | 09:56:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1d2 | 10/02/2026 | 09:56:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1d3 | 10/02/2026 | 09:56:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d4 | 10/02/2026 | 09:56:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d5 | 10/02/2026 | 09:57:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1d6 | 10/02/2026 | 09:57:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1d7 | 10/02/2026 | 09:57:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d8 | 10/02/2026 | 09:57:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d9 | 10/02/2026 | 09:57:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1da | 10/02/2026 | 09:57:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1db | 10/02/2026 | 09:57:50 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1dc | 10/02/2026 | 09:57:51 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1dd | 10/02/2026 | 09:58:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1de | 10/02/2026 | 09:58:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1df | 10/02/2026 | 09:58:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e0 | 10/02/2026 | 09:58:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e1 | 10/02/2026 | 09:58:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1e2 | 10/02/2026 | 09:58:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1e3 | 10/02/2026 | 09:58:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e4 | 10/02/2026 | 09:58:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e5 | 10/02/2026 | 09:59:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1e6 | 10/02/2026 | 09:59:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1e7 | 10/02/2026 | 09:59:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e8 | 10/02/2026 | 09:59:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e9 | 10/02/2026 | 09:59:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ea | 10/02/2026 | 09:59:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1eb | 10/02/2026 | 09:59:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1ec | 10/02/2026 | 09:59:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1ed | 10/02/2026 | 09:59:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ee | 10/02/2026 | 09:59:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ef | 10/02/2026 | 09:59:59 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f0 | 10/02/2026 | 10:00:00 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f1 | 10/02/2026 | 10:00:24 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1f2 | 10/02/2026 | 10:00:24 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1f3 | 10/02/2026 | 10:00:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f4 | 10/02/2026 | 10:00:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f5 | 10/02/2026 | 10:00:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1f6 | 10/02/2026 | 10:00:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1f7 | 10/02/2026 | 10:00:50 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f8 | 10/02/2026 | 10:00:51 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f9 | 10/02/2026 | 10:01:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1fa | 10/02/2026 | 10:01:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1fb | 10/02/2026 | 10:01:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1fc | 10/02/2026 | 10:01:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1fd | 10/02/2026 | 10:01:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1fe | 10/02/2026 | 10:01:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ff | 10/02/2026 | 10:01:42 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 200 | 10/02/2026 | 10:01:43 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 201 | 10/02/2026 | 10:02:07 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 202 | 10/02/2026 | 10:02:07 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 203 | 10/02/2026 | 10:02:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 204 | 10/02/2026 | 10:02:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 205 | 10/02/2026 | 10:02:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 206 | 10/02/2026 | 10:02:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 207 | 10/02/2026 | 10:02:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 208 | 10/02/2026 | 10:02:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 209 | 10/02/2026 | 10:02:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 20a | 10/02/2026 | 10:02:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 20b | 10/02/2026 | 10:03:01 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 20c | 10/02/2026 | 10:03:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 20d | 10/02/2026 | 11:55:54 PM UTC | Session Audit SOL_Status |  | Asserted
+ 20e | 10/02/2026 | 11:56:17 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 20f | 10/02/2026 | 11:56:18 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 210 | 10/02/2026 | 11:56:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 211 | 10/02/2026 | 11:56:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 212 | 10/02/2026 | 11:56:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 213 | 10/02/2026 | 11:56:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 214 | 10/02/2026 | 11:57:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 215 | 10/02/2026 | 11:57:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 216 | 10/02/2026 | 11:57:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 217 | 10/02/2026 | 11:57:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 218 | 10/02/2026 | 11:57:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 219 | 10/02/2026 | 11:57:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 21a | 10/02/2026 | 11:57:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 21b | 10/02/2026 | 11:57:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 21c | 10/02/2026 | 11:57:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 21d | 10/02/2026 | 11:57:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 21e | 10/02/2026 | 11:58:01 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 21f | 10/02/2026 | 11:58:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 220 | 10/02/2026 | 11:58:01 PM UTC | Session Audit SOL_Status |  | Asserted
+ 221 | 10/03/2026 | 12:20:47 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 222 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 223 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 224 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 225 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 226 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 227 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 228 | 10/03/2026 | 12:21:42 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 229 | 10/03/2026 | 12:21:43 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 22a | 10/03/2026 | 12:22:06 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 22b | 10/03/2026 | 12:22:06 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 22c | 10/03/2026 | 12:22:07 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 22d | 10/03/2026 | 12:22:08 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 22e | 10/03/2026 | 12:22:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 22f | 10/03/2026 | 12:22:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 230 | 10/03/2026 | 12:22:33 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 231 | 10/03/2026 | 12:22:33 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 232 | 10/03/2026 | 12:22:57 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 233 | 10/03/2026 | 12:22:57 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 234 | 10/03/2026 | 12:22:58 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 235 | 10/03/2026 | 12:22:59 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 236 | 10/03/2026 | 12:23:23 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 237 | 10/03/2026 | 12:23:23 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 238 | 10/03/2026 | 12:23:24 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 239 | 10/03/2026 | 12:23:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 23a | 10/03/2026 | 12:23:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 23b | 10/03/2026 | 12:23:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 23c | 10/03/2026 | 12:23:49 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 23d | 10/03/2026 | 12:23:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 23e | 10/03/2026 | 12:24:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 23f | 10/03/2026 | 12:24:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 240 | 10/03/2026 | 12:24:16 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 241 | 10/03/2026 | 12:24:16 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 242 | 10/03/2026 | 12:24:40 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 243 | 10/03/2026 | 12:24:40 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 244 | 10/03/2026 | 12:24:41 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 245 | 10/03/2026 | 12:24:42 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 246 | 10/03/2026 | 12:24:54 AM UTC | Session Audit SOL_Status |  | Asserted
+ 247 | 10/03/2026 | 12:25:06 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 248 | 10/03/2026 | 12:25:06 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 249 | 10/03/2026 | 12:25:07 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 24a | 10/03/2026 | 12:25:08 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 24b | 10/03/2026 | 12:25:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 24c | 10/03/2026 | 12:25:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 24d | 10/03/2026 | 12:25:32 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 24e | 10/03/2026 | 12:25:34 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 24f | 10/03/2026 | 12:25:58 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 250 | 10/03/2026 | 12:25:58 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 251 | 10/03/2026 | 12:25:59 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 252 | 10/03/2026 | 12:25:59 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 253 | 10/03/2026 | 12:26:23 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 254 | 10/03/2026 | 12:26:23 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 255 | 10/03/2026 | 12:26:24 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 256 | 10/03/2026 | 12:26:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 257 | 10/03/2026 | 12:26:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 258 | 10/03/2026 | 12:26:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 259 | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 25a | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 25b | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 25c | 10/03/2026 | 12:26:50 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 25d | 10/03/2026 | 12:26:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 25e | 10/03/2026 | 12:27:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 25f | 10/03/2026 | 12:27:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 260 | 10/03/2026 | 12:27:15 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 261 | 10/03/2026 | 12:27:17 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 262 | 10/03/2026 | 12:27:41 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 263 | 10/03/2026 | 12:27:41 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 264 | 10/03/2026 | 12:27:43 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 265 | 10/03/2026 | 12:27:43 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 266 | 10/03/2026 | 12:27:43 AM UTC | Session Audit SOL_Status |  | Asserted
+ 267 | 10/03/2026 | 12:34:30 AM UTC | Session Audit SOL_Status |  | Asserted
+ 268 | 10/03/2026 | 12:34:53 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 269 | 10/03/2026 | 12:34:54 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 26a | 10/03/2026 | 12:35:17 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 26b | 10/03/2026 | 12:35:17 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 26c | 10/03/2026 | 12:35:18 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 26d | 10/03/2026 | 12:35:19 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 26e | 10/03/2026 | 12:35:43 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 26f | 10/03/2026 | 12:35:43 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 270 | 10/03/2026 | 12:35:44 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 271 | 10/03/2026 | 12:35:45 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 272 | 10/03/2026 | 12:36:09 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 273 | 10/03/2026 | 12:36:09 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 274 | 10/03/2026 | 12:36:09 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 275 | 10/03/2026 | 12:36:11 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 276 | 10/03/2026 | 12:36:35 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 277 | 10/03/2026 | 12:36:35 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 278 | 10/03/2026 | 12:36:36 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 279 | 10/03/2026 | 12:36:36 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 27a | 10/03/2026 | 12:37:00 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 27b | 10/03/2026 | 12:37:00 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 27c | 10/03/2026 | 12:37:01 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 27d | 10/03/2026 | 12:37:02 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 27e | 10/03/2026 | 12:37:26 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 27f | 10/03/2026 | 12:37:26 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 280 | 10/03/2026 | 12:37:29 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 281 | 10/03/2026 | 12:37:29 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 282 | 10/03/2026 | 12:37:29 AM UTC | Session Audit SOL_Status |  | Asserted
+ 283 | 10/03/2026 | 12:43:06 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 284 | 10/03/2026 | 12:43:46 AM UTC | Session Audit SOL_Status |  | Asserted
+ 285 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 286 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 287 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 288 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 289 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 28a | 10/03/2026 | 12:43:50 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 28b | 10/03/2026 | 12:44:08 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 28c | 10/03/2026 | 12:44:09 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 28d | 10/03/2026 | 12:44:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 28e | 10/03/2026 | 12:44:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 28f | 10/03/2026 | 12:44:33 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 290 | 10/03/2026 | 12:44:34 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 291 | 10/03/2026 | 12:44:58 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 292 | 10/03/2026 | 12:44:58 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 293 | 10/03/2026 | 12:44:59 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 294 | 10/03/2026 | 12:45:00 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 295 | 10/03/2026 | 12:45:24 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 296 | 10/03/2026 | 12:45:24 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 297 | 10/03/2026 | 12:45:25 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 298 | 10/03/2026 | 12:45:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 299 | 10/03/2026 | 12:45:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 29a | 10/03/2026 | 12:45:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 29b | 10/03/2026 | 12:45:50 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 29c | 10/03/2026 | 12:45:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 29d | 10/03/2026 | 12:46:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 29e | 10/03/2026 | 12:46:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 29f | 10/03/2026 | 12:46:15 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 2a0 | 10/03/2026 | 12:46:17 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 2a1 | 10/03/2026 | 12:46:41 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2a2 | 10/03/2026 | 12:46:41 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 2a3 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 2a4 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 2a5 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 2a6 | 10/03/2026 | 12:46:44 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2a7 | 10/03/2026 | 12:46:44 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2a8 | 10/03/2026 | 12:46:45 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2a9 | 10/03/2026 | 01:07:07 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 2aa | 10/03/2026 | 01:07:43 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 2ab | 10/03/2026 | 01:07:43 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 2ac | 10/03/2026 | 01:07:43 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 2ad | 10/03/2026 | 01:07:43 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 2ae | 10/03/2026 | 01:07:43 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 2af | 10/03/2026 | 01:07:43 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 2b0 | 10/03/2026 | 01:08:09 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2b1 | 10/03/2026 | 01:08:09 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2b2 | 10/03/2026 | 01:08:25 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2b3 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 2b4 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 2b5 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 2b6 | 10/03/2026 | 01:09:34 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2b7 | 10/03/2026 | 01:09:34 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 2b8 | 10/03/2026 | 01:10:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+ 2b9 | 10/03/2026 | 01:10:49 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+ 2ba | 10/03/2026 | 01:12:36 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2bb | 10/03/2026 | 01:12:36 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2bc | 10/03/2026 | 01:12:44 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2bd | 10/03/2026 | 01:13:17 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2be | 10/03/2026 | 01:14:36 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+ 2bf | 10/03/2026 | 01:14:36 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+ 2c0 | 10/03/2026 | 01:23:28 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c1 | 10/03/2026 | 01:49:15 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c2 | 10/03/2026 | 01:49:30 AM UTC | Session Audit SOL_Status |  | Asserted
+-- raw after (ipmitool sel elist, verbatim) --
+   1 | 10/02/2026 | 07:22:54 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+   2 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+   3 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+   4 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+   5 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+   6 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+   7 | 10/02/2026 | 07:23:27 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+   8 | 10/02/2026 | 07:23:44 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+   9 | 10/02/2026 | 07:23:45 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+   a | 10/02/2026 | 07:24:08 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+   b | 10/02/2026 | 07:24:08 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+   c | 10/02/2026 | 07:24:11 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+   d | 10/02/2026 | 07:24:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+   e | 10/02/2026 | 07:27:57 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+   f | 10/02/2026 | 07:28:44 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+  10 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+  11 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+  12 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+  13 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+  14 | 10/02/2026 | 07:28:44 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+  15 | 10/02/2026 | 07:29:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  16 | 10/02/2026 | 07:29:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  17 | 10/02/2026 | 07:29:26 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  18 | 10/02/2026 | 07:29:26 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  19 | 10/02/2026 | 07:29:27 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  1a | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+  1b | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+  1c | 10/02/2026 | 07:29:27 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+  1d | 10/02/2026 | 07:29:28 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  1e | 10/02/2026 | 07:29:52 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  1f | 10/02/2026 | 07:29:52 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  20 | 10/02/2026 | 07:29:53 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  21 | 10/02/2026 | 07:29:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  22 | 10/02/2026 | 07:30:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  23 | 10/02/2026 | 07:30:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  24 | 10/02/2026 | 07:30:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  25 | 10/02/2026 | 07:30:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  26 | 10/02/2026 | 07:30:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  27 | 10/02/2026 | 07:30:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  28 | 10/02/2026 | 07:30:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  29 | 10/02/2026 | 07:30:45 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  2a | 10/02/2026 | 07:31:09 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  2b | 10/02/2026 | 07:31:09 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  2c | 10/02/2026 | 07:31:09 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  2d | 10/02/2026 | 07:31:11 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  2e | 10/02/2026 | 07:31:35 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  2f | 10/02/2026 | 07:31:35 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  30 | 10/02/2026 | 07:31:36 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  31 | 10/02/2026 | 07:31:37 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  32 | 10/02/2026 | 07:32:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  33 | 10/02/2026 | 07:32:01 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  34 | 10/02/2026 | 07:32:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  35 | 10/02/2026 | 07:32:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  36 | 10/02/2026 | 07:32:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  37 | 10/02/2026 | 07:32:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  38 | 10/02/2026 | 07:32:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  39 | 10/02/2026 | 07:32:28 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  3a | 10/02/2026 | 07:32:52 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  3b | 10/02/2026 | 07:32:52 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  3c | 10/02/2026 | 07:32:52 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  3d | 10/02/2026 | 07:32:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  3e | 10/02/2026 | 07:33:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  3f | 10/02/2026 | 07:33:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  40 | 10/02/2026 | 07:33:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  41 | 10/02/2026 | 07:33:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  42 | 10/02/2026 | 07:33:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  43 | 10/02/2026 | 07:33:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  44 | 10/02/2026 | 07:33:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  45 | 10/02/2026 | 07:33:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  46 | 10/02/2026 | 07:34:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  47 | 10/02/2026 | 07:34:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  48 | 10/02/2026 | 07:34:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  49 | 10/02/2026 | 07:34:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  4a | 10/02/2026 | 07:34:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  4b | 10/02/2026 | 07:34:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  4c | 10/02/2026 | 07:34:36 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  4d | 10/02/2026 | 07:34:37 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  4e | 10/02/2026 | 07:35:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  4f | 10/02/2026 | 07:35:01 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  50 | 10/02/2026 | 07:35:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  51 | 10/02/2026 | 07:35:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  52 | 10/02/2026 | 07:35:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  53 | 10/02/2026 | 07:35:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  54 | 10/02/2026 | 07:35:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  55 | 10/02/2026 | 07:35:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  56 | 10/02/2026 | 07:35:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  57 | 10/02/2026 | 07:35:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  58 | 10/02/2026 | 07:35:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  59 | 10/02/2026 | 07:35:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  5a | 10/02/2026 | 07:36:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  5b | 10/02/2026 | 07:36:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  5c | 10/02/2026 | 07:36:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  5d | 10/02/2026 | 07:36:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  5e | 10/02/2026 | 07:36:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  5f | 10/02/2026 | 07:36:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  60 | 10/02/2026 | 07:36:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  61 | 10/02/2026 | 07:36:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  62 | 10/02/2026 | 07:37:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  63 | 10/02/2026 | 07:37:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  64 | 10/02/2026 | 07:37:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  65 | 10/02/2026 | 07:37:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  66 | 10/02/2026 | 07:37:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  67 | 10/02/2026 | 07:37:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  68 | 10/02/2026 | 07:37:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  69 | 10/02/2026 | 07:37:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  6a | 10/02/2026 | 07:38:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  6b | 10/02/2026 | 07:38:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  6c | 10/02/2026 | 07:38:02 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  6d | 10/02/2026 | 07:38:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  6e | 10/02/2026 | 07:38:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  6f | 10/02/2026 | 07:38:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  70 | 10/02/2026 | 07:38:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  71 | 10/02/2026 | 07:38:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  72 | 10/02/2026 | 07:38:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  73 | 10/02/2026 | 07:38:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  74 | 10/02/2026 | 07:38:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  75 | 10/02/2026 | 07:38:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  76 | 10/02/2026 | 07:39:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  77 | 10/02/2026 | 07:39:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  78 | 10/02/2026 | 07:39:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  79 | 10/02/2026 | 07:39:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  7a | 10/02/2026 | 07:39:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  7b | 10/02/2026 | 07:39:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  7c | 10/02/2026 | 07:39:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  7d | 10/02/2026 | 07:39:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  7e | 10/02/2026 | 07:40:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  7f | 10/02/2026 | 07:40:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  80 | 10/02/2026 | 07:40:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  81 | 10/02/2026 | 07:40:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  82 | 10/02/2026 | 07:40:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  83 | 10/02/2026 | 07:40:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  84 | 10/02/2026 | 07:40:39 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  85 | 10/02/2026 | 07:40:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  86 | 10/02/2026 | 07:41:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  87 | 10/02/2026 | 07:41:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  88 | 10/02/2026 | 07:41:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  89 | 10/02/2026 | 07:41:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  8a | 10/02/2026 | 07:41:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  8b | 10/02/2026 | 07:41:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  8c | 10/02/2026 | 07:42:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  8d | 10/02/2026 | 07:42:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  8e | 10/02/2026 | 07:42:18 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  8f | 10/02/2026 | 07:42:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  90 | 10/02/2026 | 07:42:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  91 | 10/02/2026 | 07:42:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  92 | 10/02/2026 | 07:42:47 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  93 | 10/02/2026 | 07:42:47 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  94 | 10/02/2026 | 07:48:54 PM UTC | Session Audit SOL_Status |  | Asserted
+  95 | 10/02/2026 | 07:49:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  96 | 10/02/2026 | 07:49:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  97 | 10/02/2026 | 07:49:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  98 | 10/02/2026 | 07:49:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  99 | 10/02/2026 | 07:49:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  9a | 10/02/2026 | 07:49:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  9b | 10/02/2026 | 07:50:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  9c | 10/02/2026 | 07:50:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  9d | 10/02/2026 | 07:50:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  9e | 10/02/2026 | 07:50:07 PM UTC | Session Audit SOL_Status |  | Asserted
+  9f | 10/02/2026 | 07:50:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a0 | 10/02/2026 | 07:50:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a1 | 10/02/2026 | 07:51:24 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a2 | 10/02/2026 | 07:51:24 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a3 | 10/02/2026 | 07:51:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a4 | 10/02/2026 | 07:51:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a5 | 10/02/2026 | 07:52:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a6 | 10/02/2026 | 07:52:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  a7 | 10/02/2026 | 07:52:18 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  a8 | 10/02/2026 | 07:52:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  a9 | 10/02/2026 | 07:57:27 PM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+  aa | 10/02/2026 | 07:58:03 PM UTC | Fan FAN0_Presence | Device Present | Asserted
+  ab | 10/02/2026 | 07:58:03 PM UTC | Fan FAN1_Presence | Device Present | Asserted
+  ac | 10/02/2026 | 07:58:03 PM UTC | Fan FAN2_Presence | Device Present | Asserted
+  ad | 10/02/2026 | 07:58:03 PM UTC | Fan FAN3_Presence | Device Present | Asserted
+  ae | 10/02/2026 | 07:58:03 PM UTC | Fan FAN4_Presence | Device Present | Asserted
+  af | 10/02/2026 | 07:58:03 PM UTC | Fan FAN5_Presence | Device Present | Asserted
+  b0 | 10/02/2026 | 07:58:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b1 | 10/02/2026 | 07:58:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  b2 | 10/02/2026 | 07:58:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  b3 | 10/02/2026 | 07:58:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  b4 | 10/02/2026 | 07:58:45 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b5 | 10/02/2026 | 07:58:46 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  b6 | 10/02/2026 | 07:59:10 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  b7 | 10/02/2026 | 07:59:10 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  b8 | 10/02/2026 | 07:59:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  b9 | 10/02/2026 | 07:59:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  ba | 10/02/2026 | 07:59:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  bb | 10/02/2026 | 07:59:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  bc | 10/02/2026 | 07:59:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  bd | 10/02/2026 | 07:59:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  be | 10/02/2026 | 08:00:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  bf | 10/02/2026 | 08:00:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  c0 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+  c1 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+  c2 | 10/02/2026 | 08:00:03 PM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+  c3 | 10/02/2026 | 08:00:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  c4 | 10/02/2026 | 08:00:03 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  c5 | 10/02/2026 | 08:00:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  c6 | 10/02/2026 | 08:00:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  c7 | 10/02/2026 | 08:00:27 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  c8 | 10/02/2026 | 08:00:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  c9 | 10/02/2026 | 08:00:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ca | 10/02/2026 | 08:00:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  cb | 10/02/2026 | 08:00:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  cc | 10/02/2026 | 08:00:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  cd | 10/02/2026 | 08:01:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ce | 10/02/2026 | 08:01:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  cf | 10/02/2026 | 08:01:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d0 | 10/02/2026 | 08:01:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d1 | 10/02/2026 | 08:01:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  d2 | 10/02/2026 | 08:01:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  d3 | 10/02/2026 | 08:01:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d4 | 10/02/2026 | 08:01:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d5 | 10/02/2026 | 08:02:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  d6 | 10/02/2026 | 08:02:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  d7 | 10/02/2026 | 08:02:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  d8 | 10/02/2026 | 08:02:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  d9 | 10/02/2026 | 08:02:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  da | 10/02/2026 | 08:02:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  db | 10/02/2026 | 08:02:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  dc | 10/02/2026 | 08:02:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  dd | 10/02/2026 | 08:03:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  de | 10/02/2026 | 08:03:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  df | 10/02/2026 | 08:03:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e0 | 10/02/2026 | 08:03:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e1 | 10/02/2026 | 08:03:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  e2 | 10/02/2026 | 08:03:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  e3 | 10/02/2026 | 08:03:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e4 | 10/02/2026 | 08:03:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e5 | 10/02/2026 | 08:03:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  e6 | 10/02/2026 | 08:03:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  e7 | 10/02/2026 | 08:03:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  e8 | 10/02/2026 | 08:03:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  e9 | 10/02/2026 | 08:04:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ea | 10/02/2026 | 08:04:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  eb | 10/02/2026 | 08:04:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  ec | 10/02/2026 | 08:04:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  ed | 10/02/2026 | 08:04:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  ee | 10/02/2026 | 08:04:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  ef | 10/02/2026 | 08:04:48 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+  f0 | 10/02/2026 | 08:04:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f1 | 10/02/2026 | 08:33:02 PM UTC | Session Audit SOL_Status |  | Asserted
+  f2 | 10/02/2026 | 08:33:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  f3 | 10/02/2026 | 08:33:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  f4 | 10/02/2026 | 08:33:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f5 | 10/02/2026 | 08:33:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  f6 | 10/02/2026 | 08:33:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  f7 | 10/02/2026 | 08:33:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  f8 | 10/02/2026 | 08:34:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  f9 | 10/02/2026 | 08:34:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  fa | 10/02/2026 | 08:34:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+  fb | 10/02/2026 | 08:34:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+  fc | 10/02/2026 | 08:34:37 PM UTC | Session Audit SOL_Status |  | Asserted
+  fd | 10/02/2026 | 08:34:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+  fe | 10/02/2026 | 08:34:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+  ff | 10/02/2026 | 08:35:09 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 100 | 10/02/2026 | 08:35:09 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 101 | 10/02/2026 | 08:35:41 PM UTC | Session Audit SOL_Status |  | Asserted
+ 102 | 10/02/2026 | 08:36:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 103 | 10/02/2026 | 08:36:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 104 | 10/02/2026 | 08:36:27 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 105 | 10/02/2026 | 08:36:27 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 106 | 10/02/2026 | 08:36:28 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 107 | 10/02/2026 | 08:36:29 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 108 | 10/02/2026 | 08:36:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 109 | 10/02/2026 | 08:36:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 10a | 10/02/2026 | 08:36:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 10b | 10/02/2026 | 08:36:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 10c | 10/02/2026 | 08:37:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 10d | 10/02/2026 | 08:37:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 10e | 10/02/2026 | 08:37:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 10f | 10/02/2026 | 08:37:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 110 | 10/02/2026 | 08:37:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 111 | 10/02/2026 | 08:37:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 112 | 10/02/2026 | 08:37:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 113 | 10/02/2026 | 08:37:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 114 | 10/02/2026 | 08:38:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 115 | 10/02/2026 | 08:38:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 116 | 10/02/2026 | 08:38:11 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 117 | 10/02/2026 | 08:38:12 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 118 | 10/02/2026 | 08:38:36 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 119 | 10/02/2026 | 08:38:36 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 11a | 10/02/2026 | 08:38:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 11b | 10/02/2026 | 08:38:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 11c | 10/02/2026 | 08:39:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 11d | 10/02/2026 | 08:39:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 11e | 10/02/2026 | 08:39:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 11f | 10/02/2026 | 08:39:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 120 | 10/02/2026 | 08:39:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 121 | 10/02/2026 | 08:39:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 122 | 10/02/2026 | 08:39:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 123 | 10/02/2026 | 08:39:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 124 | 10/02/2026 | 08:39:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 125 | 10/02/2026 | 08:39:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 126 | 10/02/2026 | 08:39:54 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 127 | 10/02/2026 | 08:39:55 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 128 | 10/02/2026 | 08:40:19 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 129 | 10/02/2026 | 08:40:19 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 12a | 10/02/2026 | 08:40:20 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 12b | 10/02/2026 | 08:40:21 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 12c | 10/02/2026 | 08:40:45 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 12d | 10/02/2026 | 08:40:45 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 12e | 10/02/2026 | 08:40:46 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 12f | 10/02/2026 | 08:40:47 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 130 | 10/02/2026 | 08:41:11 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 131 | 10/02/2026 | 08:41:11 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 132 | 10/02/2026 | 08:41:12 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 133 | 10/02/2026 | 08:41:13 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 134 | 10/02/2026 | 08:41:37 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 135 | 10/02/2026 | 08:41:37 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 136 | 10/02/2026 | 08:41:37 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 137 | 10/02/2026 | 08:41:38 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 138 | 10/02/2026 | 08:42:02 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 139 | 10/02/2026 | 08:42:02 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 13a | 10/02/2026 | 08:42:03 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 13b | 10/02/2026 | 08:42:04 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 13c | 10/02/2026 | 08:42:28 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 13d | 10/02/2026 | 08:42:28 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 13e | 10/02/2026 | 08:42:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 13f | 10/02/2026 | 08:42:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 140 | 10/02/2026 | 08:42:35 PM UTC | Session Audit SOL_Status |  | Asserted
+ 141 | 10/02/2026 | 08:42:54 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 142 | 10/02/2026 | 08:42:54 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 143 | 10/02/2026 | 08:42:57 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 144 | 10/02/2026 | 08:42:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 145 | 10/02/2026 | 08:56:29 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 146 | 10/02/2026 | 08:56:30 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 147 | 10/02/2026 | 08:56:53 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 148 | 10/02/2026 | 08:56:53 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 149 | 10/02/2026 | 08:56:53 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 14a | 10/02/2026 | 08:56:54 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 14b | 10/02/2026 | 08:57:18 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 14c | 10/02/2026 | 08:57:18 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 14d | 10/02/2026 | 08:57:19 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 14e | 10/02/2026 | 08:57:20 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 14f | 10/02/2026 | 08:57:44 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 150 | 10/02/2026 | 08:57:44 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 151 | 10/02/2026 | 08:57:47 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 152 | 10/02/2026 | 08:57:47 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 153 | 10/02/2026 | 09:43:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 154 | 10/02/2026 | 09:43:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 155 | 10/02/2026 | 09:43:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 156 | 10/02/2026 | 09:43:39 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 157 | 10/02/2026 | 09:43:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 158 | 10/02/2026 | 09:43:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 159 | 10/02/2026 | 09:44:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 15a | 10/02/2026 | 09:44:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 15b | 10/02/2026 | 09:44:05 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 15c | 10/02/2026 | 09:44:06 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 15d | 10/02/2026 | 09:44:30 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 15e | 10/02/2026 | 09:44:30 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 15f | 10/02/2026 | 09:44:31 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 160 | 10/02/2026 | 09:44:32 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 161 | 10/02/2026 | 09:44:56 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 162 | 10/02/2026 | 09:44:56 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 163 | 10/02/2026 | 09:44:57 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 164 | 10/02/2026 | 09:44:58 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 165 | 10/02/2026 | 09:45:22 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 166 | 10/02/2026 | 09:45:22 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 167 | 10/02/2026 | 09:45:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 168 | 10/02/2026 | 09:45:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 169 | 10/02/2026 | 09:45:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 16a | 10/02/2026 | 09:45:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 16b | 10/02/2026 | 09:45:48 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 16c | 10/02/2026 | 09:45:49 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 16d | 10/02/2026 | 09:46:13 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 16e | 10/02/2026 | 09:46:13 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 16f | 10/02/2026 | 09:46:14 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 170 | 10/02/2026 | 09:46:15 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 171 | 10/02/2026 | 09:46:39 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 172 | 10/02/2026 | 09:46:39 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 173 | 10/02/2026 | 09:46:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 174 | 10/02/2026 | 09:46:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 175 | 10/02/2026 | 09:47:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 176 | 10/02/2026 | 09:47:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 177 | 10/02/2026 | 09:47:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 178 | 10/02/2026 | 09:47:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 179 | 10/02/2026 | 09:47:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 17a | 10/02/2026 | 09:47:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 17b | 10/02/2026 | 09:47:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 17c | 10/02/2026 | 09:47:32 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 17d | 10/02/2026 | 09:47:56 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 17e | 10/02/2026 | 09:47:56 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 17f | 10/02/2026 | 09:47:56 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 180 | 10/02/2026 | 09:47:58 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 181 | 10/02/2026 | 09:48:22 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 182 | 10/02/2026 | 09:48:22 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 183 | 10/02/2026 | 09:48:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 184 | 10/02/2026 | 09:48:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 185 | 10/02/2026 | 09:48:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 186 | 10/02/2026 | 09:48:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 187 | 10/02/2026 | 09:48:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 188 | 10/02/2026 | 09:48:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 189 | 10/02/2026 | 09:49:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 18a | 10/02/2026 | 09:49:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 18b | 10/02/2026 | 09:49:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 18c | 10/02/2026 | 09:49:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 18d | 10/02/2026 | 09:49:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 18e | 10/02/2026 | 09:49:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 18f | 10/02/2026 | 09:49:40 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 190 | 10/02/2026 | 09:49:41 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 191 | 10/02/2026 | 09:50:05 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 192 | 10/02/2026 | 09:50:05 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 193 | 10/02/2026 | 09:50:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 194 | 10/02/2026 | 09:50:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 195 | 10/02/2026 | 09:50:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 196 | 10/02/2026 | 09:50:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 197 | 10/02/2026 | 09:50:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 198 | 10/02/2026 | 09:50:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 199 | 10/02/2026 | 09:50:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 19a | 10/02/2026 | 09:50:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 19b | 10/02/2026 | 09:50:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 19c | 10/02/2026 | 09:50:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 19d | 10/02/2026 | 09:51:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 19e | 10/02/2026 | 09:51:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 19f | 10/02/2026 | 09:51:23 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a0 | 10/02/2026 | 09:51:24 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a1 | 10/02/2026 | 09:51:48 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1a2 | 10/02/2026 | 09:51:48 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1a3 | 10/02/2026 | 09:51:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a4 | 10/02/2026 | 09:51:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a5 | 10/02/2026 | 09:52:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1a6 | 10/02/2026 | 09:52:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1a7 | 10/02/2026 | 09:52:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1a8 | 10/02/2026 | 09:52:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1a9 | 10/02/2026 | 09:52:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1aa | 10/02/2026 | 09:52:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ab | 10/02/2026 | 09:52:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1ac | 10/02/2026 | 09:52:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1ad | 10/02/2026 | 09:53:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ae | 10/02/2026 | 09:53:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1af | 10/02/2026 | 09:53:06 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b0 | 10/02/2026 | 09:53:07 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b1 | 10/02/2026 | 09:53:31 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1b2 | 10/02/2026 | 09:53:31 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1b3 | 10/02/2026 | 09:53:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b4 | 10/02/2026 | 09:53:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b5 | 10/02/2026 | 09:53:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1b6 | 10/02/2026 | 09:53:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1b7 | 10/02/2026 | 09:53:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1b8 | 10/02/2026 | 09:53:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1b9 | 10/02/2026 | 09:54:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ba | 10/02/2026 | 09:54:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1bb | 10/02/2026 | 09:54:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1bc | 10/02/2026 | 09:54:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1bd | 10/02/2026 | 09:54:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1be | 10/02/2026 | 09:54:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1bf | 10/02/2026 | 09:54:49 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c0 | 10/02/2026 | 09:54:50 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c1 | 10/02/2026 | 09:55:14 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1c2 | 10/02/2026 | 09:55:14 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1c3 | 10/02/2026 | 09:55:15 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c4 | 10/02/2026 | 09:55:16 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c5 | 10/02/2026 | 09:55:40 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1c6 | 10/02/2026 | 09:55:40 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1c7 | 10/02/2026 | 09:55:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1c8 | 10/02/2026 | 09:55:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1c9 | 10/02/2026 | 09:56:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ca | 10/02/2026 | 09:56:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1cb | 10/02/2026 | 09:56:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1cc | 10/02/2026 | 09:56:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1cd | 10/02/2026 | 09:56:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ce | 10/02/2026 | 09:56:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1cf | 10/02/2026 | 09:56:32 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d0 | 10/02/2026 | 09:56:33 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d1 | 10/02/2026 | 09:56:57 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1d2 | 10/02/2026 | 09:56:57 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1d3 | 10/02/2026 | 09:56:58 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d4 | 10/02/2026 | 09:56:59 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d5 | 10/02/2026 | 09:57:23 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1d6 | 10/02/2026 | 09:57:23 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1d7 | 10/02/2026 | 09:57:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1d8 | 10/02/2026 | 09:57:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1d9 | 10/02/2026 | 09:57:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1da | 10/02/2026 | 09:57:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1db | 10/02/2026 | 09:57:50 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1dc | 10/02/2026 | 09:57:51 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1dd | 10/02/2026 | 09:58:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1de | 10/02/2026 | 09:58:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1df | 10/02/2026 | 09:58:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e0 | 10/02/2026 | 09:58:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e1 | 10/02/2026 | 09:58:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1e2 | 10/02/2026 | 09:58:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1e3 | 10/02/2026 | 09:58:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e4 | 10/02/2026 | 09:58:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e5 | 10/02/2026 | 09:59:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1e6 | 10/02/2026 | 09:59:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1e7 | 10/02/2026 | 09:59:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1e8 | 10/02/2026 | 09:59:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1e9 | 10/02/2026 | 09:59:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ea | 10/02/2026 | 09:59:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1eb | 10/02/2026 | 09:59:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1ec | 10/02/2026 | 09:59:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1ed | 10/02/2026 | 09:59:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1ee | 10/02/2026 | 09:59:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ef | 10/02/2026 | 09:59:59 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f0 | 10/02/2026 | 10:00:00 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f1 | 10/02/2026 | 10:00:24 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1f2 | 10/02/2026 | 10:00:24 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1f3 | 10/02/2026 | 10:00:24 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f4 | 10/02/2026 | 10:00:25 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f5 | 10/02/2026 | 10:00:49 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1f6 | 10/02/2026 | 10:00:49 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1f7 | 10/02/2026 | 10:00:50 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1f8 | 10/02/2026 | 10:00:51 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1f9 | 10/02/2026 | 10:01:15 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1fa | 10/02/2026 | 10:01:15 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1fb | 10/02/2026 | 10:01:16 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 1fc | 10/02/2026 | 10:01:17 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 1fd | 10/02/2026 | 10:01:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 1fe | 10/02/2026 | 10:01:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 1ff | 10/02/2026 | 10:01:42 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 200 | 10/02/2026 | 10:01:43 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 201 | 10/02/2026 | 10:02:07 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 202 | 10/02/2026 | 10:02:07 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 203 | 10/02/2026 | 10:02:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 204 | 10/02/2026 | 10:02:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 205 | 10/02/2026 | 10:02:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 206 | 10/02/2026 | 10:02:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 207 | 10/02/2026 | 10:02:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 208 | 10/02/2026 | 10:02:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 209 | 10/02/2026 | 10:02:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 20a | 10/02/2026 | 10:02:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 20b | 10/02/2026 | 10:03:01 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 20c | 10/02/2026 | 10:03:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 20d | 10/02/2026 | 11:55:54 PM UTC | Session Audit SOL_Status |  | Asserted
+ 20e | 10/02/2026 | 11:56:17 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 20f | 10/02/2026 | 11:56:18 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 210 | 10/02/2026 | 11:56:41 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 211 | 10/02/2026 | 11:56:41 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 212 | 10/02/2026 | 11:56:41 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 213 | 10/02/2026 | 11:56:42 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 214 | 10/02/2026 | 11:57:06 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 215 | 10/02/2026 | 11:57:06 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 216 | 10/02/2026 | 11:57:07 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 217 | 10/02/2026 | 11:57:08 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 218 | 10/02/2026 | 11:57:32 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 219 | 10/02/2026 | 11:57:32 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 21a | 10/02/2026 | 11:57:33 PM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 21b | 10/02/2026 | 11:57:34 PM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 21c | 10/02/2026 | 11:57:58 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 21d | 10/02/2026 | 11:57:58 PM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 21e | 10/02/2026 | 11:58:01 PM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 21f | 10/02/2026 | 11:58:01 PM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 220 | 10/02/2026 | 11:58:01 PM UTC | Session Audit SOL_Status |  | Asserted
+ 221 | 10/03/2026 | 12:20:47 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 222 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 223 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 224 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 225 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 226 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 227 | 10/03/2026 | 12:21:24 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 228 | 10/03/2026 | 12:21:42 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 229 | 10/03/2026 | 12:21:43 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 22a | 10/03/2026 | 12:22:06 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 22b | 10/03/2026 | 12:22:06 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 22c | 10/03/2026 | 12:22:07 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 22d | 10/03/2026 | 12:22:08 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 22e | 10/03/2026 | 12:22:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 22f | 10/03/2026 | 12:22:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 230 | 10/03/2026 | 12:22:33 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 231 | 10/03/2026 | 12:22:33 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 232 | 10/03/2026 | 12:22:57 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 233 | 10/03/2026 | 12:22:57 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 234 | 10/03/2026 | 12:22:58 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 235 | 10/03/2026 | 12:22:59 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 236 | 10/03/2026 | 12:23:23 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 237 | 10/03/2026 | 12:23:23 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 238 | 10/03/2026 | 12:23:24 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 239 | 10/03/2026 | 12:23:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 23a | 10/03/2026 | 12:23:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 23b | 10/03/2026 | 12:23:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 23c | 10/03/2026 | 12:23:49 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 23d | 10/03/2026 | 12:23:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 23e | 10/03/2026 | 12:24:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 23f | 10/03/2026 | 12:24:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 240 | 10/03/2026 | 12:24:16 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 241 | 10/03/2026 | 12:24:16 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 242 | 10/03/2026 | 12:24:40 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 243 | 10/03/2026 | 12:24:40 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 244 | 10/03/2026 | 12:24:41 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 245 | 10/03/2026 | 12:24:42 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 246 | 10/03/2026 | 12:24:54 AM UTC | Session Audit SOL_Status |  | Asserted
+ 247 | 10/03/2026 | 12:25:06 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 248 | 10/03/2026 | 12:25:06 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 249 | 10/03/2026 | 12:25:07 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 24a | 10/03/2026 | 12:25:08 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 24b | 10/03/2026 | 12:25:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 24c | 10/03/2026 | 12:25:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 24d | 10/03/2026 | 12:25:32 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 24e | 10/03/2026 | 12:25:34 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 24f | 10/03/2026 | 12:25:58 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 250 | 10/03/2026 | 12:25:58 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 251 | 10/03/2026 | 12:25:59 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 252 | 10/03/2026 | 12:25:59 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 253 | 10/03/2026 | 12:26:23 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 254 | 10/03/2026 | 12:26:23 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 255 | 10/03/2026 | 12:26:24 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 256 | 10/03/2026 | 12:26:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 257 | 10/03/2026 | 12:26:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 258 | 10/03/2026 | 12:26:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 259 | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 25a | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 25b | 10/03/2026 | 12:26:50 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 25c | 10/03/2026 | 12:26:50 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 25d | 10/03/2026 | 12:26:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 25e | 10/03/2026 | 12:27:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 25f | 10/03/2026 | 12:27:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 260 | 10/03/2026 | 12:27:15 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 261 | 10/03/2026 | 12:27:17 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 262 | 10/03/2026 | 12:27:41 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 263 | 10/03/2026 | 12:27:41 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 264 | 10/03/2026 | 12:27:43 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 265 | 10/03/2026 | 12:27:43 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 266 | 10/03/2026 | 12:27:43 AM UTC | Session Audit SOL_Status |  | Asserted
+ 267 | 10/03/2026 | 12:34:30 AM UTC | Session Audit SOL_Status |  | Asserted
+ 268 | 10/03/2026 | 12:34:53 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 269 | 10/03/2026 | 12:34:54 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 26a | 10/03/2026 | 12:35:17 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 26b | 10/03/2026 | 12:35:17 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 26c | 10/03/2026 | 12:35:18 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 26d | 10/03/2026 | 12:35:19 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 26e | 10/03/2026 | 12:35:43 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 26f | 10/03/2026 | 12:35:43 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 270 | 10/03/2026 | 12:35:44 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 271 | 10/03/2026 | 12:35:45 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 272 | 10/03/2026 | 12:36:09 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 273 | 10/03/2026 | 12:36:09 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 274 | 10/03/2026 | 12:36:09 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 275 | 10/03/2026 | 12:36:11 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 276 | 10/03/2026 | 12:36:35 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 277 | 10/03/2026 | 12:36:35 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 278 | 10/03/2026 | 12:36:36 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 279 | 10/03/2026 | 12:36:36 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 27a | 10/03/2026 | 12:37:00 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 27b | 10/03/2026 | 12:37:00 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 27c | 10/03/2026 | 12:37:01 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 27d | 10/03/2026 | 12:37:02 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 27e | 10/03/2026 | 12:37:26 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 27f | 10/03/2026 | 12:37:26 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 280 | 10/03/2026 | 12:37:29 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 281 | 10/03/2026 | 12:37:29 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 282 | 10/03/2026 | 12:37:29 AM UTC | Session Audit SOL_Status |  | Asserted
+ 283 | 10/03/2026 | 12:43:06 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 284 | 10/03/2026 | 12:43:46 AM UTC | Session Audit SOL_Status |  | Asserted
+ 285 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 286 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 287 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 288 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 289 | 10/03/2026 | 12:43:50 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 28a | 10/03/2026 | 12:43:50 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 28b | 10/03/2026 | 12:44:08 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 28c | 10/03/2026 | 12:44:09 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 28d | 10/03/2026 | 12:44:32 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 28e | 10/03/2026 | 12:44:32 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 28f | 10/03/2026 | 12:44:33 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 290 | 10/03/2026 | 12:44:34 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 291 | 10/03/2026 | 12:44:58 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 292 | 10/03/2026 | 12:44:58 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 293 | 10/03/2026 | 12:44:59 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 294 | 10/03/2026 | 12:45:00 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 295 | 10/03/2026 | 12:45:24 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 296 | 10/03/2026 | 12:45:24 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 297 | 10/03/2026 | 12:45:25 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 298 | 10/03/2026 | 12:45:25 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 299 | 10/03/2026 | 12:45:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 29a | 10/03/2026 | 12:45:49 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 29b | 10/03/2026 | 12:45:50 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 29c | 10/03/2026 | 12:45:51 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 29d | 10/03/2026 | 12:46:15 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 29e | 10/03/2026 | 12:46:15 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 29f | 10/03/2026 | 12:46:15 AM UTC | OEM record c0 | 00cd3a | ca8f7114ffff
+ 2a0 | 10/03/2026 | 12:46:17 AM UTC | OEM record c0 | 00cd3a | ca8ff114ffff
+ 2a1 | 10/03/2026 | 12:46:41 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2a2 | 10/03/2026 | 12:46:41 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 2a3 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 2a4 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 2a5 | 10/03/2026 | 12:46:42 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 2a6 | 10/03/2026 | 12:46:44 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2a7 | 10/03/2026 | 12:46:44 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2a8 | 10/03/2026 | 12:46:45 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2a9 | 10/03/2026 | 01:07:07 AM UTC | Power Unit ChassisPwrStatus | AC lost | Asserted
+ 2aa | 10/03/2026 | 01:07:43 AM UTC | Fan FAN0_Presence | Device Present | Asserted
+ 2ab | 10/03/2026 | 01:07:43 AM UTC | Fan FAN1_Presence | Device Present | Asserted
+ 2ac | 10/03/2026 | 01:07:43 AM UTC | Fan FAN2_Presence | Device Present | Asserted
+ 2ad | 10/03/2026 | 01:07:43 AM UTC | Fan FAN3_Presence | Device Present | Asserted
+ 2ae | 10/03/2026 | 01:07:43 AM UTC | Fan FAN4_Presence | Device Present | Asserted
+ 2af | 10/03/2026 | 01:07:43 AM UTC | Fan FAN5_Presence | Device Present | Asserted
+ 2b0 | 10/03/2026 | 01:08:09 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2b1 | 10/03/2026 | 01:08:09 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2b2 | 10/03/2026 | 01:08:25 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2b3 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU1_Status | Presence detected | Asserted
+ 2b4 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU2_Status | Presence detected | Asserted
+ 2b5 | 10/03/2026 | 01:09:03 AM UTC | Power Supply PSU2_Status | Power Supply AC lost | Asserted
+ 2b6 | 10/03/2026 | 01:09:34 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2b7 | 10/03/2026 | 01:09:34 AM UTC | System Boot Initiated Sys_Boot_Restart | System Restart | Asserted
+ 2b8 | 10/03/2026 | 01:10:49 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+ 2b9 | 10/03/2026 | 01:10:49 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+ 2ba | 10/03/2026 | 01:12:36 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2bb | 10/03/2026 | 01:12:36 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2bc | 10/03/2026 | 01:12:44 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2bd | 10/03/2026 | 01:13:17 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2be | 10/03/2026 | 01:14:36 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+ 2bf | 10/03/2026 | 01:14:36 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+ 2c0 | 10/03/2026 | 01:23:28 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c1 | 10/03/2026 | 01:49:15 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c2 | 10/03/2026 | 01:49:30 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c3 | 10/03/2026 | 04:38:23 AM UTC | Session Audit SOL_Status |  | Asserted
+ 2c4 | 10/03/2026 | 04:39:02 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2c5 | 10/03/2026 | 04:39:02 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2c6 | 10/03/2026 | 04:39:18 AM UTC | Power Unit ChassisPwrStatus | Power cycle | Asserted
+ 2c7 | 10/03/2026 | 04:40:18 AM UTC | System ACPI Power State CPU0_ACPI_State | S0/G0: working | Asserted
+ 2c8 | 10/03/2026 | 04:40:18 AM UTC | System Firmwares Boot_Progress | System boot initiated | Asserted
+ 2c9 | 10/03/2026 | 04:41:04 AM UTC | OEM record c0 | 00cd3a | 128e05000000
+ 2ca | 10/03/2026 | 04:42:12 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2cb | 10/03/2026 | 04:42:14 AM UTC | Power Unit ChassisPwrStatus | Power off/down | Asserted
+ 2cc | 10/03/2026 | 04:42:14 AM UTC | System ACPI Power State CPU0_ACPI_State | S5/G2: soft-off | Asserted
+ 2cd | 10/03/2026 | 04:42:16 AM UTC | Session Audit SOL_Status |  | Asserted
+== bmc sensors (ipmi sdr elist) ==
+read at 2026-10-03T08:42:24Z: 197 line(s), 3 without a reading field
+socket 0 (CPU0_ sensors: 38 with a reading, 0 without):
+  CPU0_0V8_VDDCSOC | 1Fh | ns | 19.0 | No Reading
+  CPU0_0V75_PCP | 20h | ns | 19.0 | No Reading
+  CPU0_1V2VDDQ0123 | 21h | ns | 19.0 | No Reading
+  CPU0_0V6_VTT0123 | 22h | ns | 19.0 | No Reading
+  CPU0_2V5_VPP0123 | 23h | ns | 19.0 | No Reading
+  CPU0_1V2VDDQ4567 | 24h | ns | 19.0 | No Reading
+  CPU0_0V6_VTT4567 | 25h | ns | 19.0 | No Reading
+  CPU0_2V5_VPP4567 | 26h | ns | 19.0 | No Reading
+  CPU0_0V85_RCA | 27h | ns | 19.0 | No Reading
+  CPU0_1V8_VDDH | 28h | ns | 19.0 | No Reading
+  CPU0_1V5_VDDH | 29h | ns | 19.0 | No Reading
+  CPU0_1V8_SOC | 2Ah | ns | 19.0 | No Reading
+  CPU0_1V8_PCP | 2Bh | ns | 19.0 | No Reading
+  CPU0_3V3_SOC | 2Ch | ns | 19.0 | No Reading
+  CPU0_3V3_SRD_ADC | BDh | ns | 19.0 | No Reading
+  CPU0_5V_SRD | 3Bh | ns | 19.0 | No Reading
+  CPU0_SOC_Temp | 3Dh | ns | 30.15 | No Reading
+  CPU0_SOC_VRDTemp | 3Eh | ns | 30.16 | No Reading
+  CPU0_DIMMVRDTemp | 3Fh | ns | 30.17 | No Reading
+  CPU0_PMD_VRDTemp | 40h | ns | 30.18 | No Reading
+  CPU0_DIMMG0_Temp | 41h | ns | 30.19 | No Reading
+  CPU0_DIMMG1_Temp | 42h | ns | 30.19 | No Reading
+  CPU0_CPU_Pwr | 43h | ns | 3.39 | No Reading
+  CPU0_DIMM_VR1Pwr | 44h | ns | 3.40 | No Reading
+  CPU0_DIMM_VR2Pwr | 45h | ns | 3.41 | No Reading
+  CPU0_MEM_Pwr | 46h | ns | 3.42 | No Reading
+  CPU0_CPU_VCORE | 47h | ns | 19.43 | No Reading
+  CPU0_DIMMVR1Volt | 48h | ns | 19.44 | No Reading
+  CPU0_DIMMVR2Volt | 49h | ns | 19.45 | No Reading
+  CPU0_DIMMDDRVolt | 4Ah | ns | 19.46 | No Reading
+  CPU0_Hightemp | 4Bh | ns | 3.1 | No Reading
+  CPU0_Overtemp | 4Ch | ns | 3.1 | No Reading
+  CPU0_ACPI_State | 4Dh | ns | 34.1 | No Reading
+  CPU0_MemStatus | 61h | ns | 8.0 | No Reading
+  CPU0_CPU_Status | D9h | ns | 3.2 | No Reading
+  CPU0_SCP_Status | DBh | ns | 3.1 | No Reading
+  CPU0_PCIeStatus | 5Fh | ns | 23.0 | No Reading
+  CPU0_OtherStatus | C5h | ns | 0.0 | No Reading
+socket 1 (CPU1_ sensors: 38 with a reading, 0 without):
+  CPU1_0V8_VDDCSOC | 2Dh | ns | 19.0 | No Reading
+  CPU1_0V75_PCP | 2Eh | ns | 19.0 | No Reading
+  CPU1_1V2VDDQ0123 | 2Fh | ns | 19.0 | No Reading
+  CPU1_0V6_VTT0123 | 30h | ns | 19.0 | No Reading
+  CPU1_2V5_VPP0123 | 31h | ns | 19.0 | No Reading
+  CPU1_1V2VDDQ4567 | 32h | ns | 19.0 | No Reading
+  CPU1_0V6_VTT4567 | 33h | ns | 19.0 | No Reading
+  CPU1_2V5_VPP4567 | 34h | ns | 19.0 | No Reading
+  CPU1_0V85_RCA | 35h | ns | 19.0 | No Reading
+  CPU1_1V8_VDDH | 36h | ns | 19.0 | No Reading
+  CPU1_1V5_VDDH | 37h | ns | 19.0 | No Reading
+  CPU1_1V8_SOC | 38h | ns | 19.0 | No Reading
+  CPU1_1V8_PCP | 39h | ns | 19.0 | No Reading
+  CPU1_3V3_SOC | 3Ah | ns | 19.0 | No Reading
+  CPU1_3V3_SRD_ADC | BEh | ns | 19.0 | No Reading
+  CPU1_5V_SRD | C0h | ns | 19.0 | No Reading
+  CPU1_SOC_Temp | 4Eh | ns | 30.20 | No Reading
+  CPU1_SOC_VRDTemp | 4Fh | ns | 30.21 | No Reading
+  CPU1_DIMMVRDTemp | 50h | ns | 30.22 | No Reading
+  CPU1_PMD_VRDTemp | 51h | ns | 30.23 | No Reading
+  CPU1_DIMMG0_Temp | 52h | ns | 30.24 | No Reading
+  CPU1_DIMMG1_Temp | 53h | ns | 30.24 | No Reading
+  CPU1_CPU_Pwr | 54h | ns | 3.47 | No Reading
+  CPU1_DIMM_VR1Pwr | 55h | ns | 3.48 | No Reading
+  CPU1_DIMM_VR2Pwr | 56h | ns | 3.49 | No Reading
+  CPU1_MEM_Pwr | 57h | ns | 3.50 | No Reading
+  CPU1_CPU_VCORE | 58h | ns | 19.51 | No Reading
+  CPU1_DIMMVR1Volt | 59h | ns | 19.52 | No Reading
+  CPU1_DIMMVR2Volt | 5Ah | ns | 19.53 | No Reading
+  CPU1_DIMMDDRVolt | 5Bh | ns | 19.54 | No Reading
+  CPU1_Hightemp | 5Ch | ns | 3.1 | No Reading
+  CPU1_Overtemp | 5Dh | ns | 3.1 | No Reading
+  CPU1_ACPI_State | 5Eh | ns | 34.2 | No Reading
+  CPU1_MemStatus | 63h | ns | 8.0 | No Reading
+  CPU1_CPU_Status | DAh | ns | 3.2 | No Reading
+  CPU1_SCP_Status | DCh | ns | 3.1 | No Reading
+  CPU1_PCIeStatus | 60h | ns | 23.0 | No Reading
+  CPU1_OtherStatus | C6h | ns | 0.0 | No Reading
+all sensors:
+  FAN0_0_Speed | 01h | ns | 29.0 | No Reading
+  FAN0_1_Speed | 02h | ns | 29.1 | No Reading
+  FAN1_0_Speed | 03h | ns | 29.2 | No Reading
+  FAN1_1_Speed | 04h | ns | 29.3 | No Reading
+  FAN2_0_Speed | 05h | ns | 29.4 | No Reading
+  FAN2_1_Speed | 06h | ns | 29.5 | No Reading
+  FAN3_0_Speed | 07h | ns | 29.6 | No Reading
+  FAN3_1_Speed | 08h | ns | 29.7 | No Reading
+  FAN4_0_Speed | 09h | ns | 29.8 | No Reading
+  FAN4_1_Speed | 0Ah | ns | 29.9 | No Reading
+  FAN5_0_Speed | 0Bh | ns | 29.10 | No Reading
+  FAN5_1_Speed | 0Ch | ns | 29.11 | No Reading
+  FAN0_Presence | 0Fh | ns | 29.0 | No Reading
+  FAN1_Presence | 10h | ns | 29.0 | No Reading
+  FAN2_Presence | 11h | ns | 29.0 | No Reading
+  FAN3_Presence | 12h | ns | 29.0 | No Reading
+  FAN4_Presence | 13h | ns | 29.0 | No Reading
+  FAN5_Presence | 14h | ns | 29.0 | No Reading
+  FAN0_Failure | 17h | ns | 29.0 | No Reading
+  FAN1_Failure | 18h | ns | 29.0 | No Reading
+  FAN2_Failure | 19h | ns | 29.0 | No Reading
+  FAN3_Failure | 1Ah | ns | 29.0 | No Reading
+  FAN4_Failure | 1Bh | ns | 29.0 | No Reading
+  FAN5_Failure | 1Ch | ns | 29.0 | No Reading
+  CPU0_0V8_VDDCSOC | 1Fh | ns | 19.0 | No Reading
+  CPU0_0V75_PCP | 20h | ns | 19.0 | No Reading
+  CPU0_1V2VDDQ0123 | 21h | ns | 19.0 | No Reading
+  CPU0_0V6_VTT0123 | 22h | ns | 19.0 | No Reading
+  CPU0_2V5_VPP0123 | 23h | ns | 19.0 | No Reading
+  CPU0_1V2VDDQ4567 | 24h | ns | 19.0 | No Reading
+  CPU0_0V6_VTT4567 | 25h | ns | 19.0 | No Reading
+  CPU0_2V5_VPP4567 | 26h | ns | 19.0 | No Reading
+  CPU0_0V85_RCA | 27h | ns | 19.0 | No Reading
+  CPU0_1V8_VDDH | 28h | ns | 19.0 | No Reading
+  CPU0_1V5_VDDH | 29h | ns | 19.0 | No Reading
+  CPU0_1V8_SOC | 2Ah | ns | 19.0 | No Reading
+  CPU0_1V8_PCP | 2Bh | ns | 19.0 | No Reading
+  CPU0_3V3_SOC | 2Ch | ns | 19.0 | No Reading
+  CPU0_3V3_SRD_ADC | BDh | ns | 19.0 | No Reading
+  CPU0_5V_SRD | 3Bh | ns | 19.0 | No Reading
+  CPU1_0V8_VDDCSOC | 2Dh | ns | 19.0 | No Reading
+  CPU1_0V75_PCP | 2Eh | ns | 19.0 | No Reading
+  CPU1_1V2VDDQ0123 | 2Fh | ns | 19.0 | No Reading
+  CPU1_0V6_VTT0123 | 30h | ns | 19.0 | No Reading
+  CPU1_2V5_VPP0123 | 31h | ns | 19.0 | No Reading
+  CPU1_1V2VDDQ4567 | 32h | ns | 19.0 | No Reading
+  CPU1_0V6_VTT4567 | 33h | ns | 19.0 | No Reading
+  CPU1_2V5_VPP4567 | 34h | ns | 19.0 | No Reading
+  CPU1_0V85_RCA | 35h | ns | 19.0 | No Reading
+  CPU1_1V8_VDDH | 36h | ns | 19.0 | No Reading
+  CPU1_1V5_VDDH | 37h | ns | 19.0 | No Reading
+  CPU1_1V8_SOC | 38h | ns | 19.0 | No Reading
+  CPU1_1V8_PCP | 39h | ns | 19.0 | No Reading
+  CPU1_3V3_SOC | 3Ah | ns | 19.0 | No Reading
+  CPU1_3V3_SRD_ADC | BEh | ns | 19.0 | No Reading
+  CPU1_5V_SRD | C0h | ns | 19.0 | No Reading
+  3V3_SB | F1h | ns | 7.0 | No Reading
+  CPU0_SOC_Temp | 3Dh | ns | 30.15 | No Reading
+  CPU0_SOC_VRDTemp | 3Eh | ns | 30.16 | No Reading
+  CPU0_DIMMVRDTemp | 3Fh | ns | 30.17 | No Reading
+  CPU0_PMD_VRDTemp | 40h | ns | 30.18 | No Reading
+  CPU0_DIMMG0_Temp | 41h | ns | 30.19 | No Reading
+  CPU0_DIMMG1_Temp | 42h | ns | 30.19 | No Reading
+  CPU0_CPU_Pwr | 43h | ns | 3.39 | No Reading
+  CPU0_DIMM_VR1Pwr | 44h | ns | 3.40 | No Reading
+  CPU0_DIMM_VR2Pwr | 45h | ns | 3.41 | No Reading
+  CPU0_MEM_Pwr | 46h | ns | 3.42 | No Reading
+  CPU0_CPU_VCORE | 47h | ns | 19.43 | No Reading
+  CPU0_DIMMVR1Volt | 48h | ns | 19.44 | No Reading
+  CPU0_DIMMVR2Volt | 49h | ns | 19.45 | No Reading
+  CPU0_DIMMDDRVolt | 4Ah | ns | 19.46 | No Reading
+  CPU0_Hightemp | 4Bh | ns | 3.1 | No Reading
+  CPU0_Overtemp | 4Ch | ns | 3.1 | No Reading
+  CPU0_ACPI_State | 4Dh | ns | 34.1 | No Reading
+  CPU1_SOC_Temp | 4Eh | ns | 30.20 | No Reading
+  CPU1_SOC_VRDTemp | 4Fh | ns | 30.21 | No Reading
+  CPU1_DIMMVRDTemp | 50h | ns | 30.22 | No Reading
+  CPU1_PMD_VRDTemp | 51h | ns | 30.23 | No Reading
+  CPU1_DIMMG0_Temp | 52h | ns | 30.24 | No Reading
+  CPU1_DIMMG1_Temp | 53h | ns | 30.24 | No Reading
+  CPU1_CPU_Pwr | 54h | ns | 3.47 | No Reading
+  CPU1_DIMM_VR1Pwr | 55h | ns | 3.48 | No Reading
+  CPU1_DIMM_VR2Pwr | 56h | ns | 3.49 | No Reading
+  CPU1_MEM_Pwr | 57h | ns | 3.50 | No Reading
+  CPU1_CPU_VCORE | 58h | ns | 19.51 | No Reading
+  CPU1_DIMMVR1Volt | 59h | ns | 19.52 | No Reading
+  CPU1_DIMMVR2Volt | 5Ah | ns | 19.53 | No Reading
+  CPU1_DIMMDDRVolt | 5Bh | ns | 19.54 | No Reading
+  CPU1_Hightemp | 5Ch | ns | 3.1 | No Reading
+  CPU1_Overtemp | 5Dh | ns | 3.1 | No Reading
+  CPU1_ACPI_State | 5Eh | ns | 34.2 | No Reading
+  CPU0_MemStatus | 61h | ns | 8.0 | No Reading
+  CPU1_MemStatus | 63h | ns | 8.0 | No Reading
+  FIO_Inlet_Temp | 65h | ns | 30.0 | No Reading
+  Outlet_1_Temp | 66h | ns | 30.0 | No Reading
+  Outlet_2_Temp | 67h | ns | 30.0 | No Reading
+  BMC_Zone_Temp | 68h | ns | 30.0 | No Reading
+  PSU_Zone_Temp | 69h | ns | 30.0 | No Reading
+  OCP_Zone_Temp | 6Ah | ns | 30.0 | No Reading
+  M2_Zone_Temp | 6Bh | ns | 30.0 | No Reading
+  HDD_BP_Temp1 | 6Dh | ns | 3.0 | No Reading
+  HDD_BP_Temp2 | 6Eh | ns | 3.0 | No Reading
+  PSU1_POUT | 70h | ok | 19.0 | 0 Watts
+  PSU2_POUT | 71h | ok | 19.0 | 0 Watts
+  Total_Power | 72h | ns | 19.0 | No Reading
+  PSU1_TEMP | 73h | ok | 19.0 | 33 degrees C
+  PSU2_TEMP | 74h | ok | 19.0 | 32 degrees C
+  PSU1_FAN_SPEED | 75h | ok | 19.1 | 5000 RPM
+  PSU2_FAN_SPEED | 76h | ok | 19.1 | 0 RPM
+  PSU1_Status | EAh | ok | 0.0 | Presence detected
+  PSU2_Status | EBh | ok | 0.0 | Presence detected, Power Supply AC lost
+  HDD0_Status | 77h | ns | 208.0 | No Reading
+  HDD1_Status | 78h | ns | 208.0 | No Reading
+  HDD2_Status | 79h | ns | 208.0 | No Reading
+  HDD3_Status | 7Ah | ns | 208.0 | No Reading
+  HDD4_Status | 7Bh | ns | 208.0 | No Reading
+  HDD5_Status | 7Ch | ns | 208.0 | No Reading
+  HDD6_Status | 7Dh | ns | 208.0 | No Reading
+  HDD7_Status | 7Eh | ns | 208.0 | No Reading
+  HDD8_Status | 7Fh | ns | 208.0 | No Reading
+  HDD9_Status | 80h | ns | 208.0 | No Reading
+  HDD10_Status | 81h | ns | 208.0 | No Reading
+  HDD11_Status | 82h | ns | 208.0 | No Reading
+  HDD12_Status | 83h | ns | 208.0 | No Reading
+  HDD13_Status | 84h | ns | 208.0 | No Reading
+  HDD14_Status | 85h | ns | 208.0 | No Reading
+  HDD15_Status | 86h | ns | 208.0 | No Reading
+  HDD16_Status | 87h | ns | 208.0 | No Reading
+  HDD17_Status | 88h | ns | 208.0 | No Reading
+  HDD18_Status | 89h | ns | 208.0 | No Reading
+  HDD19_Status | 8Ah | ns | 208.0 | No Reading
+  HDD20_Status | E1h | ns | 208.0 | No Reading
+  HDD21_Status | C7h | ns | 208.0 | No Reading
+  HDD22_Status | C8h | ns | 208.0 | No Reading
+  HDD23_Status | E3h | ns | 208.0 | No Reading
+  HDD0_Temp | EEh | ns | 3.1 | No Reading
+  HDD1_Temp | EFh | ns | 3.2 | No Reading
+  HDD2_Temp | 91h | ns | 3.3 | No Reading
+  HDD3_Temp | 92h | ns | 3.4 | No Reading
+  HDD4_Temp | A9h | ns | 3.5 | No Reading
+  HDD5_Temp | AAh | ns | 3.6 | No Reading
+  HDD6_Temp | 95h | ns | 3.7 | No Reading
+  HDD7_Temp | 96h | ns | 3.8 | No Reading
+  HDD8_Temp | 62h | ns | 3.9 | No Reading
+  HDD9_Temp | 98h | ns | 3.10 | No Reading
+  HDD10_Temp | 99h | ns | 3.11 | No Reading
+  HDD11_Temp | 9Ah | ns | 3.12 | No Reading
+  HDD12_Temp | 9Bh | ns | 3.13 | No Reading
+  HDD13_Temp | 9Ch | ns | 3.14 | No Reading
+  HDD14_Temp | 9Dh | ns | 3.15 | No Reading
+  HDD15_Temp | 9Eh | ns | 3.16 | No Reading
+  HDD16_Temp | 9Fh | ns | 3.17 | No Reading
+  HDD17_Temp | A0h | ns | 3.18 | No Reading
+  HDD18_Temp | A1h | ns | 3.19 | No Reading
+  HDD19_Temp | A2h | ns | 3.20 | No Reading
+  HDD20_Temp | A3h | ns | 3.21 | No Reading
+  HDD21_Temp | A4h | ns | 3.22 | No Reading
+  HDD22_Temp | A5h | ns | 3.23 | No Reading
+  HDD23_Temp | A6h | ns | 3.24 | No Reading
+  Rear_HDD_BP_Temp | 6Fh | ns | 3.0 | No Reading
+  Rear_HDD1_Status | B7h | ns | 208.0 | No Reading
+  Rear_HDD2_Status | B8h | ns | 208.0 | No Reading
+  Rear_HDD1_Temp | BBh | ns | 3.10 | No Reading
+  Rear_HDD2_Temp | BCh | ns | 3.10 | No Reading
+  M2_SSD_Temp | F2h | ns | 30.0 | No Reading
+  OCP_Temp | 64h | ns | 30.0 | No Reading
+  Riser0_Zone_Temp | B1h | ns | 30.0 | No Reading
+  Riser1_Zone_Temp | B2h | ns | 30.0 | No Reading
+  Riser2_Zone_Temp | B5h | ns | 30.0 | No Reading
+  GPU1_Temp | ABh | ns | 30.0 | No Reading
+  GPU2_Temp | ACh | ns | 30.0 | No Reading
+  GPU3_Temp | ADh | ns | 30.0 | No Reading
+  GPU4_Temp | AEh | ns | 30.0 | No Reading
+  GPU5_Temp | AFh | ns | 30.0 | No Reading
+  GPU6_Temp | B0h | ns | 30.0 | No Reading
+  GPU7_Temp | B3h | ns | 30.0 | No Reading
+  GPU8_Temp | B4h | ns | 30.0 | No Reading
+  NICMax_Temp | D1h | ns | 3.0 | No Reading
+  System_Inlet | C2h | ns | 3.0 | No Reading
+  Watchdog2        | D7h | ok  | 33.0 |
+  EndOfPost        | E2h | ok  |  6.2 |
+  BmcReset | E4h | ns | 3.1 | No Reading
+  ReadFrontBPHDD | E9h | ns | 208.0 | No Reading
+  Sys_Boot_Restart | D5h | ns | 34.2 | No Reading
+  ReadRearBPHDD | F0h | ns | 208.0 | No Reading
+  Host_SPI_Auth | E6h | ns | 208.2 | No Reading
+  CPU0_CPU_Status | D9h | ns | 3.2 | No Reading
+  CPU1_CPU_Status | DAh | ns | 3.2 | No Reading
+  CPU0_SCP_Status | DBh | ns | 3.1 | No Reading
+  CPU1_SCP_Status | DCh | ns | 3.1 | No Reading
+  CPU1_PCIeStatus | 60h | ns | 23.0 | No Reading
+  CPU0_PCIeStatus | 5Fh | ns | 23.0 | No Reading
+  CPU0_OtherStatus | C5h | ns | 0.0 | No Reading
+  CPU1_OtherStatus | C6h | ns | 0.0 | No Reading
+  Event_log        | D6h | ok  |  6.2 |
+  PSU1_PIN | D3h | ok | 19.0 | 8 Watts
+  PSU2_PIN | D4h | ok | 19.0 | 0 Watts
+== this attempt: power, one-shot override, in-run smpro passes ==
+media=attempt 37102391062 medium 'gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso' sha256 161b98b9bb389a803805b582203fe73fa9a3ec421e3783b6463528124c2bd513; no power-off: the presentation is not exactly one stale census image of this unit's stem; power before the session: on; session released; READY via attached at image-list index 6; start-media accepted: { "image_name": "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso", "image_type": 1, "image_index": 6, "image_redirection": 1 }: 'gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso' media_index=0 session_index=0 redirection_status=1 established_at=1791016729316 looks=7 cd_error_code before any write=0 at ready=0 general settings at ready answered at 1791016729487: { "id": 1, "local_media_support": 0, "remote_media_support": 1, "same_settings": 0, "cd_remote_server_address": "192.168.1.188", "cd_remote_source_path": "\/srv\/bmc", "cd_remote_share_type": "nfs", "cd_remote_domain_name": "", "cd_remote_user_name": "", "mount_cd": 1, "cd_image_name": "", "cd_error_code": 0, "mount_hd": 0, "hd_remote_server_address": "", "hd_remote_source_path": "", "hd_remote_share_type": "", "hd_remote_domain_name": "", "hd_remote_user_name": "", "hd_image_name": "", "hd_error_code": 0, "rmedia_retry_count": 3, "rmedia_retry_interval": 15 }
+handoff_media=before handoff: share bound; row started, session_index 0; cd_error_code 0; general settings answered at 1791016730385: { "id": 1, "local_media_support": 0, "remote_media_support": 1, "same_settings": 0, "cd_remote_server_address": "192.168.1.188", "cd_remote_source_path": "\/srv\/bmc", "cd_remote_share_type": "nfs", "cd_remote_domain_name": "", "cd_remote_user_name": "", "mount_cd": 1, "cd_image_name": "", "cd_error_code": 0, "mount_hd": 0, "hd_remote_server_address": "", "hd_remote_source_path": "", "hd_remote_share_type": "", "hd_remote_domain_name": "", "hd_remote_user_name": "", "hd_image_name": "", "hd_error_code": 0, "rmedia_retry_count": 3, "rmedia_retry_interval": 15 }; configurations answered at 1791016730650: [ { "id": 1, "media_type": 1, "media_index": 0, "session_index": 0, "image_name": "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso", "redirection_status": 1 } ]; session released | handoff: confirmed by chassis read-back | after handoff: share bound; row started, session_index 0; cd_error_code 0; general settings answered at 1791016749419: { "id": 1, "local_media_support": 0, "remote_media_support": 1, "same_settings": 0, "cd_remote_server_address": "192.168.1.188", "cd_remote_source_path": "\/srv\/bmc", "cd_remote_share_type": "nfs", "cd_remote_domain_name": "", "cd_remote_user_name": "", "mount_cd": 1, "cd_image_name": "", "cd_error_code": 0, "mount_hd": 0, "hd_remote_server_address": "", "hd_remote_source_path": "", "hd_remote_share_type": "", "hd_remote_domain_name": "", "hd_remote_user_name": "", "hd_image_name": "", "hd_error_code": 0, "rmedia_retry_count": 3, "rmedia_retry_interval": 15 }; configurations answered at 1791016749589: [ { "id": 1, "media_type": 1, "media_index": 0, "session_index": 0, "image_name": "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso", "redirection_status": 1 } ]; session released
+end_media=share bound; row started, session_index 0; cd_error_code 0; general settings answered at 1791016934906: { "id": 1, "local_media_support": 0, "remote_media_support": 1, "same_settings": 0, "cd_remote_server_address": "192.168.1.188", "cd_remote_source_path": "\/srv\/bmc", "cd_remote_share_type": "nfs", "cd_remote_domain_name": "", "cd_remote_user_name": "", "mount_cd": 1, "cd_image_name": "", "cd_error_code": 0, "mount_hd": 0, "hd_remote_server_address": "", "hd_remote_source_path": "", "hd_remote_share_type": "", "hd_remote_domain_name": "", "hd_remote_user_name": "", "hd_image_name": "", "hd_error_code": 0, "rmedia_retry_count": 3, "rmedia_retry_interval": 15 }; configurations answered at 1791016935482: [ { "id": 1, "media_type": 1, "media_index": 0, "session_index": 0, "image_name": "gunbc-mtcollins1-census-ubuntu-24.04.3-arm64-161b98b9bb389a80.iso", "redirection_status": 1 } ]; session released
+override=consumed by this attempt: cleared after a census END marker, which only a boot of the override's device prints
+power_after=off after the census END marker (expected: the census image ends with poweroff -f)
+-- phase timing (gunbc.machine_intake_mtcollins1_boot_phase_timing) --
+boot_start=warm
+clock=/proc/uptime (boot-based; not stepped by NTP)
+phase sol_acquire: first_action=+0ms verified_after=1030ms
+phase param5_before: first_action=+1030ms verified_after=110ms
+phase media_attach: first_action=+1140ms verified_after=25550ms
+phase handoff: first_action=+26690ms verified_after=20100ms
+phase smpro_power_on: first_action=+46790ms REFUSED_after=90ms (no SMpro register returned a word (10 reads; each outcome is in the smpro section))
+phase terminal_watch: first_action=+46880ms verified_after=181950ms
+phase param5_after: first_action=+228830ms verified_after=4460ms
+phase power_after: first_action=+233290ms verified_after=140ms
+phase sol_release: first_action=+233430ms verified_after=1670ms
+boot parameter 5 before (2026-10-03T08:38:24Z):
+Boot parameter version: 1
+Boot parameter 5 is valid/unlocked
+Boot parameter data: 0000000000
+ Boot Flags :
+   - Boot Flag Invalid
+   - Options apply to only next boot
+   - BIOS PC Compatible (legacy) boot 
+   - Boot Device Selector : No override
+   - BIOS verbosity : System Default
+   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)
+   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST
+boot parameter 5 after (2026-10-03T08:42:16Z):
+Boot parameter version: 1
+Boot parameter 5 is valid/unlocked
+Boot parameter data: 0000000000
+ Boot Flags :
+   - Boot Flag Invalid
+   - Options apply to only next boot
+   - BIOS PC Compatible (legacy) boot 
+   - Boot Device Selector : No override
+   - BIOS verbosity : System Default
+   - Console Redirection control : Console redirection occurs per BIOS configuration setting (default)
+   - BIOS Mux Control Override : BIOS uses recommended setting of the mux at the end of POST
+-- smpro pass at power on --
+location: bus 2 (private: a bet), from the operator brief; socket 0 at 7-bit 0x4f, socket 1 at 7-bit 0x4e
+SMpro socket 0: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff); BOOTSTAGE UNAVAILABLE (BOOTSTAGE NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff)
+SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff); BOOTSTAGE UNAVAILABLE (BOOTSTAGE NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff)
+probes, in the order sent:
+  socket 0 MANUFACTURER_ID_REG: REFUSED by the BMC: completion code 0xff
+    #0 raw 0x06 0x52 0x05 0x9e 0x02 0x02 0x02 at 2026-10-03T08:39:09Z exit=1 stdout=[] stderr=[Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0xff): Unspecified error]
+  socket 0 CUR_BOOTSTAGE: NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 0 BOOTSTAGE_LO: NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 0 BOOTSTAGE_HI: NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 0 BOOTSTAGE: NOT SENT: socket 0 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 MANUFACTURER_ID_REG: NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 CUR_BOOTSTAGE: NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE_LO: NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE_HI: NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE: NOT SENT: socket 0 control did not establish the transport: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+-- smpro pass while the census ran --
+location: bus 2 (private: a bet), from the operator brief; socket 0 at 7-bit 0x4f, socket 1 at 7-bit 0x4e
+SMpro socket 0: CUR_BOOTSTAGE UEFI firmware booting; BOOTSTAGE UEFI firmware booting, completed without error
+SMpro socket 1: CUR_BOOTSTAGE UNAVAILABLE (CUR_BOOTSTAGE NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff); BOOTSTAGE UNAVAILABLE (BOOTSTAGE NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff)
+probes, in the order sent:
+  socket 0 MANUFACTURER_ID_REG: read 0xcd3a
+    #0 raw 0x06 0x52 0x05 0x9e 0x02 0x02 0x02 at 2026-10-03T08:41:55Z exit=0 stdout=[cd 3a] stderr=[]
+  socket 0 CUR_BOOTSTAGE: read 0x0008
+    #1 raw 0x06 0x52 0x05 0x9e 0x02 0xb2 0x02 at 2026-10-03T08:41:55Z exit=0 stdout=[00 08] stderr=[]
+  socket 0 BOOTSTAGE_LO: read 0xad00
+    #2 raw 0x06 0x52 0x05 0x9e 0x02 0xb1 0x02 at 2026-10-03T08:41:56Z exit=0 stdout=[ad 00] stderr=[]
+  socket 0 BOOTSTAGE_HI: read 0x0000
+    #3 raw 0x06 0x52 0x05 0x9e 0x02 0xb3 0x02 at 2026-10-03T08:41:56Z exit=0 stdout=[00 00] stderr=[]
+  socket 0 BOOTSTAGE: read 0x0802
+    #4 raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02 at 2026-10-03T08:41:56Z exit=0 stdout=[08 02] stderr=[]
+  socket 1 MANUFACTURER_ID_REG: REFUSED by the BMC: completion code 0xff
+    #5 raw 0x06 0x52 0x05 0x9c 0x02 0x02 0x02 at 2026-10-03T08:41:56Z exit=1 stdout=[] stderr=[Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0xff): Unspecified error]
+  socket 1 CUR_BOOTSTAGE: NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE_LO: NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE_HI: NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+  socket 1 BOOTSTAGE: NOT SENT: socket 1 control: MANUFACTURER_ID REFUSED by the BMC: completion code 0xff
+    (no request sent)
+== smpro boot stage (ipmi master write-read) ==
+-- pass after the attempt --
+NOT TAKEN: the host powered off after the census END marker, as the census image intends; the in-run passes are this attempt's socket-local record
+== bmc inventory (redfish) ==
+system=not-read
+processors: UNREAD: BMC refused the credential at https://192.168.1.228/redfish/v1/Systems (2026-10-03T08:42:25Z): curl: (22) The requested URL returned error: 401
+memory: UNREAD: BMC refused the credential at https://192.168.1.228/redfish/v1/Systems (2026-10-03T08:42:25Z): curl: (22) The requested URL returned error: 401
+== pre-os console ==
+capture /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-sol.capture retained in this artifact: 177913 bytes (stat), 2983 line(s), within the 16777216-byte bound; firmware stated no terminal
+ampere dram firmware: version 220414; block printed 1 time(s), the last read
+params (observations; a value differing from its printed default is not a finding): 2
+  MEMC mcu_enable_mask = 00000001 [default 000000ff] (differs from printed default)
+  MCU ecc_en = 00000002 [default 00000001] (differs from printed default)
+roster: closed
+trained dimms by socket: SK0=1 SK1=0
+  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK
+malformed rows: 0
+firmware boot summary (last of 1): RC 2.10c, active sockets 1, active cores 80, sockets printed 0
+  Socket[0] Core voltage = 1065
+  Socket[0] SCU ProductID = A10001
+  Socket[0] Max cores = 80
+  Socket[0] Warranty = 0
+  Socket[0] Subnuma = 0
+  Socket[0] RC disable mask = 0
+  Socket[0] AVS enabled = 1
+  Socket[0] AVS voltage = 1027
+  Socket[0] VDM capability = 0
+  Socket[0] Soc voltage = 750
+  Socket[0] DIMM1 voltage = 1235
+  Socket[0] DIMM2 voltage = 1235
+Ampere CPER records (2, sockets this boot 0; other sections 0):
+  GHES 0 severity=recoverable dword0=00000005 -> socket 0 GIC subtype 0 instance 0
+  BERT (previous boot) severity=recoverable dword0=000000ff -> socket 0 BERT subtype 0 instance 0
+against the two-socket reference boot artifacts/bmc/mtcollins1-hw-census-sol.log: 6 difference(s)
+  active sockets: reference 2, this boot 1
+  Socket[1] printed in the reference summary, absent from this boot's
+  Inter Socket Connection 0 (reference: Width: x16 / Speed 25 GT/s) not printed by this boot
+  Inter Socket Connection 1 (reference: Width: x16 / Speed 25 GT/s) not printed by this boot
+  Socket[0] RC disable mask: reference 3, this boot 0
+  CPER socket 1 GIC subtype 0 raised by the reference boot, not by this one
+module decompression: no refusal record in this capture; named insert failures: none
+== bmc kvm screen (held observer; stills retained, not interpreted) ==
+observer /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062 for host 192.168.1.228, attempt 37102391062: established at 2026-10-03T08:38:30.837Z (host 192.168.1.228, session 15, attempt 37102391062); checked at 2026-10-03T08:38:30Z
+journal: read
+stills: 5 hash-bound of 5 written
+  #1 2026-10-03T08:39:10.196Z (trigger:1001-power-on-verified) /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/still-1.jpg sha256=649e3a034f001c421cfa31f5e9d8746e5292ebd6e95aa728201e6e98c5343daf
+  #2 2026-10-03T08:39:30.988Z (periodic) /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/still-2.jpg sha256=e1016695bf0a6a2081f5c2426d0c38986ca645f7db74b5e1174fb35db39e6aa6
+  #3 2026-10-03T08:40:31.111Z (periodic) /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/still-3.jpg sha256=7726652d107f5cc8109bd20e65f21587fd4121d2236104b900ce85fa3c6b9e20
+  #4 2026-10-03T08:41:31.268Z (periodic) /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/still-4.jpg sha256=b0b63b576f27c7fcde42ac61fce0056adc5f287d0cee94a853c95aaa1f46c5dd
+  #5 2026-10-03T08:42:12.169Z (trigger:1003-terminal-verdict) /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/still-5.jpg sha256=31785fbb7ce51276d133ecf8e2e2b8fb23a8a765e265be8bb98d601a60e9d461
+gaps, step-backs and unclosed ends: 0
+
+boundary and lifecycle events:
+  2026-10-03T08:38:29.101Z main frame navigated #1 during viewer to "https://192.168.1.228/viewer.html"
+  2026-10-03T08:38:29.268Z viewer console error during viewer: "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+  2026-10-03T08:38:29.268Z viewer console error during viewer: "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-u53XPsg1jUezxU4pkvQGpQYjy5ak5C7XfBMDmAwKBdg='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+  2026-10-03T08:38:29.275Z viewer console error during viewer: "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+  2026-10-03T08:38:29.275Z viewer console error during viewer: "Applying inline style violates the following Content Security Policy directive 'style-src 'self''. Either the 'unsafe-inline' keyword, a hash ('sha256-QXuk2mcJ+M8985CWeo7NmUEp3j3oPPC79sOzNYFeKhc='), or a nonce ('nonce-...') is required to enable inline execution. The action has been blocked."
+  2026-10-03T08:38:29.322Z viewer console error during viewer: "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  2026-10-03T08:38:30.464Z viewer console warning during viewer: "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+  2026-10-03T08:38:30.833Z connection requested (no frame yet)
+  2026-10-03T08:38:30.836Z connection open gen 1 (first /kvm frame received)
+  2026-10-03T08:38:30.837Z established host="192.168.1.228" session=15 attempt=37102391062 gen=1
+  2026-10-03T08:39:10.196Z still #1 (trigger:1001-power-on-verified, gen 1) still-1.jpg
+  2026-10-03T08:39:30.988Z still #2 (periodic, gen 1) still-2.jpg
+  2026-10-03T08:40:31.111Z still #3 (periodic, gen 1) still-3.jpg
+  2026-10-03T08:41:31.268Z still #4 (periodic, gen 1) still-4.jpg
+  2026-10-03T08:42:12.169Z still #5 (trigger:1003-terminal-verdict, gen 1) still-5.jpg
+  2026-10-03T08:42:13.170Z stop requested by stop-file
+  2026-10-03T08:42:13.315Z session release: released
+  2026-10-03T08:42:13.365Z browser close: closed
+  2026-10-03T08:42:13.365Z stopped; session released; browser closed
+terminal still: answered: 2026-10-03T08:42:12.169Z still #5 (trigger:1003-terminal-verdict, gen 1) still-5.jpg
+pre-teardown snapshot: kept at /opt/actions-runner/srv1-06/_work/gunbc/gunbc/artifacts/mtcollins1-boot-kvm-37102391062/journal.pre-teardown
+stop requested by the boot at 2026-10-03T08:42:12Z; the observer journalled stopped
+observer session release: released at 2026-10-03T08:42:13.315Z
+observer browser close: closed at 2026-10-03T08:42:13.365Z
+owned process: pid 442621 had already exited

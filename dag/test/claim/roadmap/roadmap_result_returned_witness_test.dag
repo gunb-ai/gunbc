@@ -1,6 +1,6 @@
 module test.claim.roadmap.roadmap_result_returned_witness_test
 
-import std.types { Bool, String, List, NonEmptyStr }
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.principal_projection { PrincipalRef, fabric_workflow_principal }
@@ -27,12 +27,13 @@ import gunbc.roadmap.roadmap_event_carrier {
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemPermissionDenied,
+  FilesystemReadSucceeded, FilesystemReadRefused, filesystem_file_observation, filesystem_listing_observation,
 }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
   AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, attempt_request_binding_commit_of,
-  attempt_request_binding_read_of,
+  attempt_request_binding_read_from_observation,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_request_binding {
@@ -50,7 +51,8 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
   result_returned_observation_of,
 }
-import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit }
+import gunbc.roadmap_belt_tick_cli { belt_tick_result_tail_exit, belt_tick_exit_with_snapshot_closes }
+import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
 import test.claim.roadmap_belt_actuate_witness { completed_attempt_progress }
 
 data rr_attempt: String = "feedfacefeedface"
@@ -317,9 +319,35 @@ test fn the_binding_record_round_trips_and_a_malformed_one_is_unreadable() -> Bo
     RequestBindingUndecodable { reason } => string_length(s: reason) > 0
     RequestBindingDecoded { binding: _ } => false
   })
-  let file_arms = attempt_request_binding_read_of(success: false, error_kind: "not_found", error: "no such file", content: "") == RequestBindingAbsent
-    && (match attempt_request_binding_read_of(success: false, error_kind: "permission_denied", error: "denied", content: "") { RequestBindingUnreadable { reason } => reason == "denied"  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
-    && (match attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: "not json") { RequestBindingUnreadable { reason: _ } => true  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
+  let absent_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "other-attempt.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )
+  let refused_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  )
+  let undecodable_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadSucceeded { content: "not json" },
+  )
+  let file_arms = attempt_request_binding_read_from_observation(observation: absent_observed) == RequestBindingAbsent
+    && (match attempt_request_binding_read_from_observation(observation: refused_observed) {
+      RequestBindingUnreadable { reason } => string_contains(s: reason, pattern: "Permission denied")
+      RequestBindingRead { binding: _ } => false
+      RequestBindingAbsent => false
+    })
+    && (match attempt_request_binding_read_from_observation(observation: undecodable_observed) {
+      RequestBindingUnreadable { reason: _ } => true
+      RequestBindingRead { binding: _ } => false
+      RequestBindingAbsent => false
+    })
   codec && strict && file_arms
 }
 
@@ -498,7 +526,7 @@ test fn the_reader_observes_the_result_for_the_attempts_exact_identity() -> Bool
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
   let published = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "2026-10-03T08:00:00Z")
   match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c2, published, c1] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
-    ResultReturnedObserved { node, event, claim, return_to, outcome, recorded_at } =>
+    ResultReturnedObserved { node, attempt: _, event, claim, return_to, outcome, recorded_at } =>
       (node as String) == (rr_node() as String)
         && (event as String) == (published.id as String)
         && (claim as String) == (c1.id as String)
@@ -520,14 +548,14 @@ test fn an_unanswered_attempt_reads_as_not_returned_and_an_unrequested_one_as_no
   let other = rr_result(node: rr_node(), attempt: "0ther0ther0ther00", claim: claim.id, outcome: rr_published(), parent: claim.id, at: "t2")
   let not_returned = all([[claim, other], [claim]], envelopes => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: envelopes }, binding: rr_bound(claim: claim.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotReturned { attempt_key } => attempt_key == rr_attempt
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotOwed { reason: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   })
   let not_owed = all([RequestBindingAbsent, RequestBindingRead { binding: RequestAutonomous }], b => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [claim] }, binding: b, node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotOwed { reason } => string_length(s: reason) > 0
     ResultNotReturned { attempt_key: _ } => false
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   })
   not_returned && not_owed
@@ -536,7 +564,7 @@ test fn an_unanswered_attempt_reads_as_not_returned_and_an_unrequested_one_as_no
 fn rr_unobserved_at(o: ResultReturnedObservation, step: String) -> Bool {
   match o {
     ResultReturnedUnobserved { step: s, reason } => s == step && string_length(s: reason) > 0
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotReturned { attempt_key: _ } => false
     ResultNotOwed { reason: _ } => false
   }
@@ -557,7 +585,7 @@ test fn a_misaddressed_unreadable_forked_or_duplicated_result_is_not_the_attempt
   let on_other_issue = rr_result(node: other_issue, attempt: rr_attempt, claim: b1.id, outcome: rr_published(), parent: b1.id, at: "t2")
   let other_issue_is_not_the_answer = match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, b1, on_other_issue] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotReturned { attempt_key } => attempt_key == rr_attempt
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotOwed { reason: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   }
@@ -590,7 +618,14 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
       match attempt_request_binding_commit_of(binding: launch, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) {
         RequestBindingCommitRefused { step: _, detail: _ } => false
         RequestBindingCommitted { binding: committed } => {
-          let recorded = attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: attempt_request_binding_json(binding: committed))
+          let recorded = attempt_request_binding_read_from_observation(
+            observation: filesystem_file_observation(
+              listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+              name: "request.json",
+              path: "/srv/gunbc/requests/request.json",
+              read: FilesystemReadSucceeded { content: attempt_request_binding_json(binding: committed) },
+            ),
+          )
           match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: recorded, envelopes: [c1, c2]) {
             ResultPrecheckSettled { outcome: _ } => false
             ResultPrecheckOwed { binding: bound } =>
@@ -609,8 +644,9 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
                         EventFileContent { content: roadmap_event_wire_text(env: appended) },
                       ])
                       match result_returned_observation_of(read: read, binding: recorded, node_id: "result-returned-node", attempt_key: rr_attempt) {
-                        ResultReturnedObserved { node, event: id, claim: answered, return_to: to, outcome: returned, recorded_at: _ } =>
+                        ResultReturnedObserved { node, attempt: returned_for, event: id, claim: answered, return_to: to, outcome: returned, recorded_at: _ } =>
                           (node as String) == "result-returned-node"
+                            && (returned_for as String) == rr_attempt
                             && (id as String) == (appended.id as String)
                             && (answered as String) == (c1.id as String)
                             && event_principal_label(p: to) == "principal:google-oidc/accounts/sub-alice"
@@ -632,7 +668,8 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
 // result_return_attempts_for_instance is driven against srv2 preview and withholds on the posture
 // before it reads the log or observes an attempt.
 test fn the_result_return_pass_withholds_on_an_observe_only_instance() -> Bool {
-  match result_return_attempts_for_instance(instance: srv2_preview_dashboard_instance(), recorded_at: "2026-10-03T10:00:00Z") {
+  let run = result_return_attempts_for_instance(instance: srv2_preview_dashboard_instance(), recorded_at: "2026-10-03T10:00:00Z")
+  count(run.closes) == 0 && match run.pass {
     ResultReturnPassWithheld { reason } => string_contains(s: reason, pattern: "observe-only")
     ResultReturnPassRan { outcomes: _ } => false
     ResultReturnPassRefused { step: _, reason: _ } => false
@@ -675,4 +712,27 @@ test fn an_undelivered_result_fails_the_tick_and_is_named_beside_an_observation_
   }
   let neither = match belt_tick_result_tail_exit(returned: clean_pass, tail: ExitSuccess) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
   undelivered && unreadable && clean && both && observation_only && result_only && neither
+}
+
+// A SNAPSHOT THE RESULT RETURN LEFT BEHIND FAILS THE TICK AND IS NAMED, AND REPLACES NOTHING. A
+// clean tick whose pass left one worktree behind exits nonzero naming that worktree and what the
+// removal answered; a tick that already failed keeps its code and its own reason and gains the
+// leak after it; a tick whose snapshots all closed, or that opened none, exits exactly as it would
+// have. The red is an exit that is unchanged by a failed removal.
+test fn a_snapshot_left_behind_by_the_result_return_fails_the_tick_beside_its_own_exit() -> Bool {
+  let leaked = SnapshotCloseFailed { worktree: "/tmp/tmp.rrleak" as FilePath, exit_code: 128, stderr: "fatal: cannot remove a locked working tree\n" }
+  let alone = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, leaked, SnapshotNotOpened]) {
+    ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "1 roadmap event snapshot(s)") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak") && string_contains(s: reason, pattern: "exit 128") && string_contains(s: reason, pattern: "locked working tree")
+    ExitSuccess => false
+  }
+  let beside = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [leaked]) {
+    ExitFailure { code, reason } => code == 3 && starts_with(s: reason, prefix: "served observation write failed") && string_contains(s: reason, pattern: "/tmp/tmp.rrleak")
+    ExitSuccess => false
+  }
+  let closed = match belt_tick_exit_with_snapshot_closes(exit: ExitSuccess, closes: [SnapshotClosed, SnapshotNotOpened]) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+  let untouched = match belt_tick_exit_with_snapshot_closes(exit: ExitFailure { code: 3, reason: "served observation write failed" }, closes: [SnapshotClosed]) {
+    ExitFailure { code, reason } => code == 3 && reason == "served observation write failed"
+    ExitSuccess => false
+  }
+  alone && beside && closed && untouched
 }
