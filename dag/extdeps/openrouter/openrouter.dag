@@ -142,11 +142,11 @@ fn openrouter_lexeme_is_zero(lexeme: String) -> Bool {
 }
 
 fn trim_zero_digits(s: String) -> String {
-  join(filter(chars(s), c => c != "0" && c != "." && c != "-" && c != "+" && c != "e" && c != "E"), "")
+  replace(s: replace(s: replace(s: replace(s: replace(s: replace(s: s, from: "0", to: ""), from: ".", to: ""), from: "-", to: ""), from: "+", to: ""), from: "e", to: ""), from: "E", to: "")
 }
 
-fn openrouter_decode_key_spend_limit(data: JsonValue) -> OpenRouterKeySpendLimit? {
-  match json_field(obj: data, key: "limit") {
+fn openrouter_decode_key_spend_limit(key_data: JsonValue) -> OpenRouterKeySpendLimit? {
+  match json_field(obj: key_data, key: "limit") {
     FieldAbsent => Present { value: KeySpendUncapped }
     FieldMalformed { cause: _ } => none
     FieldRead { value: v } =>
@@ -190,8 +190,8 @@ fn openrouter_int_member(obj: JsonValue, key: String, subject: String) -> JsonFi
   }
 }
 
-fn openrouter_decode_key_daily(data: JsonValue, is_free_tier: Bool, spend_limit: OpenRouterKeySpendLimit) -> OpenRouterKeyDecode {
-  match json_field(obj: data, key: "free_model_daily_requests") {
+fn openrouter_decode_key_daily(key_data: JsonValue, is_free_tier: Bool, spend_limit: OpenRouterKeySpendLimit) -> OpenRouterKeyDecode {
+  match json_field(obj: key_data, key: "free_model_daily_requests") {
     FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no free_model_daily_requests" }
     FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
     FieldRead { value: daily } =>
@@ -221,14 +221,14 @@ fn openrouter_decode_key_read(body: String) -> OpenRouterKeyDecode {
       match json_field(obj: doc, key: "data") {
         FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no data member" }
         FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
-        FieldRead { value: data } =>
-          match json_field_bool(obj: data, key: "is_free_tier") {
+        FieldRead { value: key_data } =>
+          match json_field_bool(obj: key_data, key: "is_free_tier") {
             FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no is_free_tier" }
             FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
             FieldRead { value: free } =>
-              match openrouter_decode_key_spend_limit(data: data) {
+              match openrouter_decode_key_spend_limit(key_data: key_data) {
                 Absent => OpenRouterKeyUndecodable { cause: "the key read's limit member is not a number or null" }
-                Present { value: spend } => openrouter_decode_key_daily(data: data, is_free_tier: free, spend_limit: spend)
+                Present { value: spend } => openrouter_decode_key_daily(key_data: key_data, is_free_tier: free, spend_limit: spend)
               }
           }
       }

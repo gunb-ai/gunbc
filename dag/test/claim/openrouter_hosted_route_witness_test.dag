@@ -1,0 +1,230 @@
+module test.claim.openrouter_hosted_route_witness_test
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import extdeps.languages.json.emit { serialize_json, json_object }
+import extdeps.openrouter.openrouter {
+  openrouter_decode_error_body, OpenRouterErrorDecoded, OpenRouterErrorUndecodable,
+  OpenRouterPaymentRequired, OpenRouterRateLimited, OpenRouterOtherError,
+  KeySpendLimit, InFlightBudgetLimit, CreditsLimit, WeightExceedsBudget,
+  openrouter_decode_key_read, OpenRouterKeyDecoded, OpenRouterKeyUndecodable,
+  KeySpendCappedAtZero, KeySpendUncapped, KeySpendCappedAbove,
+  openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
+  CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day,
+  EffortHigh, EffortMedium,
+}
+import gunbc.harness.harness_reasoning_wire {
+  NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
+  harness_openrouter_reasoning_kwargs, harness_reasoning_kwargs_for, ReasoningKwargsAdmitted, ReasoningLevelUnsupported,
+  harness_unit_model_id, harness_unit_placement, LeasedFromHostedQuota, PlacedOnFleetSeat,
+}
+import gunbc.harness.harness_hosted_route {
+  hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
+  harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
+  hosted_key_refusal,
+}
+import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
+import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
+import product.capacity.event_chain { PartitionId }
+import gunbc.fabric_storage_client { FabricStorageServed }
+import gunbc.harness.harness_turn { TurnHostedQuotaFull, harness_outcome_label }
+import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_tokens }
+import std.process { ExitSuccess, ExitFailure }
+
+// ── THE QUOTA REFUSAL: a full pool stops the request before it is sent ──────────────────────
+//
+// Supplied lease answers at the decision's own interface (DESIGN section 3, a witness discriminates at one
+// interface): the leases are gunbc.fabric_quota's subject and are witnessed there.
+
+fn w_leased(reference: String) -> QuotaLease {
+  QuotaLeased {
+    grant: LeaseGrant {
+      reference: reference as NonEmptyStr,
+      fence: LeaseFence { grant: join(["g-", reference], "") as GrantIdentity, generation: 1 },
+      granted_at: 100,
+      maximum_duration_seconds: 60,
+      expires_at: 160,
+    },
+    partition: join(["quota-openrouter-", reference], "") as PartitionId,
+    store: FabricStorageServed { endpoint: "witness" as NonEmptyStr },
+  }
+}
+
+// RED: the day pool is full after the minute pool leased. The round refuses as FULL, and the minute
+// lease is named as owed back -- a refusal that kept it would hold a slot for a request never sent.
+test fn hosted_round_refuses_full_when_the_day_pool_is_full_and_returns_the_minute_lease() -> Bool {
+  match hosted_round_decision(minute: w_leased(reference: "m"), day: Present { value: QuotaFull { wire: "openrouter-free-models-day: 1000/1000" } }) {
+    RoundRefusedFull { wire: w, minute_to_return: Present { value: QuotaLeased { grant: g, partition: _, store: _ } } } =>
+      w.contains("free-models-day") && (g.reference as String) == "m"
+    RoundRefusedFull { wire: _, minute_to_return: _ } => false
+    RoundBothLeased { minute: _, day: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// RED: the minute pool is full, so the day pool is never asked and nothing is owed back.
+test fn hosted_round_refuses_full_when_the_minute_pool_is_full_and_asks_nothing_else() -> Bool {
+  match hosted_round_decision(minute: QuotaFull { wire: "openrouter-free-models-minute: 20/20" }, day: none) {
+    RoundRefusedFull { wire: w, minute_to_return: Absent } => w.contains("free-models-minute")
+    RoundRefusedFull { wire: _, minute_to_return: Present { value: _ } } => false
+    RoundBothLeased { minute: _, day: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// CONTROL: both pools leased is the only arm that posts.
+test fn hosted_round_posts_only_when_both_pools_leased() -> Bool {
+  match hosted_round_decision(minute: w_leased(reference: "m"), day: Present { value: w_leased(reference: "d") }) {
+    RoundBothLeased { minute: _, day: _ } => true
+    RoundRefusedFull { wire: _, minute_to_return: _ } => false
+    RoundRefusedUnleasable { detail: _, minute_to_return: _ } => false
+  }
+}
+
+// A FULL ROUND IS A REFUSAL EXIT, NOT A COMPLETED TURN.
+test fn a_hosted_quota_full_turn_exits_as_a_refusal() -> Bool {
+  let o = TurnHostedQuotaFull { wire: "openrouter-free-models-minute: 20/20", steps_taken: 2 }
+  harness_outcome_label(outcome: o) == "hosted-quota-full"
+    && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
+}
+
+// ── THE 402 DECODE: limit_source is a closed set and names which budget refused ─────────────
+
+test fn a_402_from_the_key_limit_decodes_to_the_key_spend_limit() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"Key limit exceeded\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\",\"remedy_hint\":\"raise the key limit\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: KeySpendLimit, reason: Absent, message: m, remedy_hint: Present { value: _ } } } => m == "Key limit exceeded"
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+test fn a_402_from_the_in_flight_budget_carries_its_reason() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"busy\",\"metadata\":{\"limit_source\":\"openrouter_in_flight_budget\",\"reason\":\"weight_exceeds_budget\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: InFlightBudgetLimit, reason: Present { value: WeightExceedsBudget }, message: _, remedy_hint: Absent } } => true
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+// RED: an unpublished limit_source refuses rather than decoding as the nearest of three.
+test fn a_402_with_an_unpublished_limit_source_refuses_to_decode() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_mystery_budget\"}}}") {
+    OpenRouterErrorUndecodable { cause: c } => c.contains("openrouter_mystery_budget")
+    OpenRouterErrorDecoded { error: _ } => false
+  }
+}
+
+// RED: a 402 naming no budget is not decodable as a payment refusal.
+test fn a_402_without_a_limit_source_refuses_to_decode() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":402,\"message\":\"x\"}}") {
+    OpenRouterErrorUndecodable { cause: c } => c.contains("limit_source")
+    OpenRouterErrorDecoded { error: _ } => false
+  }
+}
+
+test fn a_429_names_whose_limit_it_was() -> Bool {
+  match openrouter_decode_error_body(body: "{\"error\":{\"code\":429,\"message\":\"slow down\",\"metadata\":{\"error_type\":\"rate_limit_exceeded\",\"provider_code\":\"nvidia\"}}}") {
+    OpenRouterErrorDecoded { error: OpenRouterRateLimited { message: _, provider_code: Present { value: p } } } => p == "nvidia"
+    OpenRouterErrorDecoded { error: _ } => false
+    OpenRouterErrorUndecodable { cause: _ } => false
+  }
+}
+
+// ── THE REASONING LEVEL: mapped to a listed effort or refused ───────────────────────────────
+
+// RED: a listing whose supported efforts lack medium refuses the standard level instead of sending it.
+test fn a_level_mapping_to_an_unlisted_effort_is_refused() -> Bool {
+  match harness_openrouter_reasoning_kwargs(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningStandard, supported: [EffortHigh], mandatory: false) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: c } => (c as String).contains("medium")
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  }
+}
+
+// RED: a listing that makes reasoning mandatory refuses the off level.
+test fn reasoning_off_is_refused_where_the_listing_makes_reasoning_mandatory() -> Bool {
+  match harness_openrouter_reasoning_kwargs(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningOff, supported: [EffortHigh, EffortMedium], mandatory: true) {
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => true
+    ReasoningKwargsAdmitted { kwargs: _ } => false
+  }
+}
+
+// CONTROL: the same mapping against the real listing's row sends OpenRouter's reasoning object, never the
+// model's chat-template keys.
+test fn the_standard_level_sends_effort_medium_on_the_real_listing() -> Bool {
+  match harness_reasoning_kwargs_for(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningStandard) {
+    ReasoningKwargsAdmitted { kwargs: k } => {
+      let wire = serialize_json(v: json_object(k))
+      wire.contains("\"effort\": \"medium\"") && !wire.contains("chat_template_kwargs")
+    }
+    ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+  }
+}
+
+// ── THE KEY READ: a key that can spend money is refused ─────────────────────────────────────
+
+test fn a_key_capped_at_zero_on_the_thousand_tier_decodes_both_facts() -> Bool {
+  match openrouter_decode_key_read(body: "{\"data\":{\"limit\":0,\"limit_remaining\":0,\"usage\":0,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":3,\"limit\":1000,\"remaining\":997}}}") {
+    OpenRouterKeyDecoded { key: k } =>
+      (match k.spend_limit { KeySpendCappedAtZero => true  KeySpendUncapped => false  KeySpendCappedAbove { lexeme: _ } => false })
+        && (match openrouter_credits_from_daily_limit(daily_limit: k.free_daily_limit) {
+          CreditsTierObserved { credits: CreditsPurchasedAtLeastTen } => true
+          CreditsTierObserved { credits: CreditsPurchasedBelowTen } => false
+          CreditsTierUnrecognized { daily_limit: _ } => false
+        })
+    OpenRouterKeyUndecodable { cause: _ } => false
+  }
+}
+
+// RED: an uncapped key is refused by name.
+test fn an_uncapped_key_is_refused_as_able_to_spend() -> Bool {
+  match openrouter_decode_key_read(body: "{\"data\":{\"limit\":null,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":0,\"limit\":1000,\"remaining\":1000}}}") {
+    OpenRouterKeyDecoded { key: k } => hosted_key_refusal(key: k).contains("no credit limit")
+    OpenRouterKeyUndecodable { cause: _ } => false
+  }
+}
+
+// THE TIER SETS THE DAY POOL'S CEILING, and an unpublished ceiling is not a tier.
+test fn the_daily_tier_selects_the_day_pool_ceiling_and_an_unpublished_one_refuses() -> Bool {
+  openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen).requests == 1000
+    && openrouter_free_models_per_day(credits: CreditsPurchasedBelowTen).requests == 50
+    && (match openrouter_credits_from_daily_limit(daily_limit: 200) { CreditsTierUnrecognized { daily_limit: n } => n == 200  CreditsTierObserved { credits: _ } => false })
+}
+
+// ── INHABITANCE ON THE REAL PATH ─────────────────────────────────────────────────────────────
+//
+// The real unit's real route, joined from the real listing rows, reaches the real decisions: it is placed
+// by a hosted quota lease rather than a seat; its route is HTTPS and names the listing's model id; the
+// selection over the real field chooses the maximum level for the harness's real max_tokens; and that level
+// renders effort high. Deleting the hosted arm from any of harness_unit_placement, harness_hosted_route_for,
+// the selection or the reasoning seam turns this red.
+test fn the_hosted_nemotron_route_is_quota_leased_https_and_selects_effort_high() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      (match harness_unit_placement(unit: NemotronUltraFreeOnOpenRouter) { LeasedFromHostedQuota => true  PlacedOnFleetSeat => false })
+        && (route.url as String).starts_with("https://")
+        && (harness_unit_model_id(unit: NemotronUltraFreeOnOpenRouter) as String) == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        && (match harness_hosted_level_choice(route: route, max_tokens: harness_default_max_tokens) {
+          HostedLevelSelected { level: ReasoningMaximum } =>
+            (match harness_reasoning_kwargs_for(unit: NemotronUltraFreeOnOpenRouter, level: ReasoningMaximum) {
+              ReasoningKwargsAdmitted { kwargs: k } => serialize_json(v: json_object(k)).contains("\"effort\": \"high\"")
+              ReasoningLevelUnsupported { unit: _, level: _, cause: _ } => false
+            })
+          HostedLevelSelected { level: _ } => false
+          HostedLevelUnselected { cause: _ } => false
+        })
+  }
+}
+
+// RED: a max_tokens above the listing's completion ceiling leaves no admissible level, and the selection
+// refuses rather than choosing one.
+test fn a_request_above_the_completion_ceiling_selects_no_level() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      match harness_hosted_level_choice(route: route, max_tokens: 70000) {
+        HostedLevelUnselected { cause: _ } => true
+        HostedLevelSelected { level: _ } => false
+      }
+  }
+}

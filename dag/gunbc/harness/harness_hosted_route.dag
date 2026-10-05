@@ -17,7 +17,7 @@ import std.decision {
 }
 import std.upsert_decision { ObservationVerdict, Converged, Inaccessible }
 import extdeps.external_authority { CitedToAuthority }
-import extdeps.api_rate_limit { UpstreamRateLimit, rate_limit_period_seconds }
+import extdeps.api_rate_limit { UpstreamRateLimit }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 import extdeps.cloud.gcp.secret_manager { SmEnabled }
 import extdeps.http.client
@@ -30,8 +30,8 @@ import extdeps.tools.curl {
 import extdeps.openrouter.openrouter {
   OpenRouterReasoningEffort, openrouter_chat_completions_url, openrouter_key_url, openrouter_authorization_header_line,
   openrouter_free_models_per_minute, openrouter_free_models_per_day, openrouter_reasoning_authority,
-  OpenRouterCreditsReading, CreditsTierObserved, CreditsTierUnrecognized, openrouter_credits_from_daily_limit,
-  OpenRouterKeyRead, OpenRouterKeyDecode, OpenRouterKeyDecoded, OpenRouterKeyUndecodable, openrouter_decode_key_read,
+  CreditsTierObserved, CreditsTierUnrecognized, openrouter_credits_from_daily_limit,
+  OpenRouterKeyRead, OpenRouterKeyDecoded, OpenRouterKeyUndecodable, openrouter_decode_key_read,
   KeySpendUncapped, KeySpendCappedAtZero, KeySpendCappedAbove, openrouter_key_spend_limit_wire,
   OpenRouterErrorDecoded, OpenRouterErrorUndecodable, openrouter_decode_error_body, openrouter_error_wire,
   openrouter_effort_eq,
@@ -523,25 +523,49 @@ type HostedRoundLease
   | HostedRoundQuotaFull { wire: String }
   | HostedRoundUnleasable { detail: String }
 
+// THE DECISION IS PURE AND THE LEASING IS NOT, so they are two functions: what a pair of lease answers
+// MEANS for the round is decided here from supplied answers, and harness_hosted_round_lease performs the
+// leases and acts on the decision. The day pool is asked only when the minute pool leased, so its answer
+// is absent otherwise; a refusal that arrives after the minute pool leased names that lease as owed back.
+type HostedRoundDecision
+  = RoundBothLeased { minute: QuotaLease, day: QuotaLease }
+  | RoundRefusedFull { wire: String, minute_to_return: QuotaLease? }
+  | RoundRefusedUnleasable { detail: String, minute_to_return: QuotaLease? }
+
+fn hosted_round_decision(minute: QuotaLease, day: QuotaLease?) -> HostedRoundDecision {
+  match minute {
+    QuotaFull { wire: w } => RoundRefusedFull { wire: w, minute_to_return: none }
+    QuotaLeaseRefused { detail: d } => RoundRefusedUnleasable { detail: d, minute_to_return: none }
+    QuotaLeased { grant: _, partition: _, store: _ } =>
+      match day {
+        Absent => RoundRefusedUnleasable { detail: "the minute pool leased but the day pool was never asked", minute_to_return: Present { value: minute } }
+        Present { value: QuotaLeased { grant: g, partition: p, store: st } } => RoundBothLeased { minute: minute, day: QuotaLeased { grant: g, partition: p, store: st } }
+        Present { value: QuotaFull { wire: w } } => RoundRefusedFull { wire: w, minute_to_return: Present { value: minute } }
+        Present { value: QuotaLeaseRefused { detail: d } } => RoundRefusedUnleasable { detail: d, minute_to_return: Present { value: minute } }
+      }
+  }
+}
+
+fn hosted_return_minute(minute: QuotaLease?) -> String {
+  match minute {
+    Absent => ""
+    Present { value: m } => join(["; minute lease returned: ", quota_settle_wire(s: fabric_quota_settle(lease: m, actual: 0))], "")
+  }
+}
+
 fn harness_hosted_round_lease(quota: HarnessHostedQuota, term: Second) -> HostedRoundLease {
   let term_seconds = second_count(s: term) as Nat
-  match fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: 1, actor: quota.actor, term_seconds: term_seconds) {
-    QuotaFull { wire: w } => HostedRoundQuotaFull { wire: w }
-    QuotaLeaseRefused { detail: d } => HostedRoundUnleasable { detail: d }
-    QuotaLeased { grant: mg, partition: mp, store: ms } => {
-      let minute = QuotaLeased { grant: mg, partition: mp, store: ms }
-      match fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_day, amount: 1, actor: quota.actor, term_seconds: term_seconds) {
-        QuotaLeased { grant: dg, partition: dp, store: ds } => HostedRoundLeased { minute: minute, day: QuotaLeased { grant: dg, partition: dp, store: ds } }
-        QuotaFull { wire: w } => {
-          let returned = fabric_quota_settle(lease: minute, actual: 0)
-          HostedRoundQuotaFull { wire: join([w, "; minute lease returned: ", quota_settle_wire(s: returned)], "") }
-        }
-        QuotaLeaseRefused { detail: d } => {
-          let returned = fabric_quota_settle(lease: minute, actual: 0)
-          HostedRoundUnleasable { detail: join([d, "; minute lease returned: ", quota_settle_wire(s: returned)], "") }
-        }
-      }
-    }
+  let minute = fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: 1, actor: quota.actor, term_seconds: term_seconds)
+  let day = match minute {
+    QuotaLeased { grant: _, partition: _, store: _ } =>
+      Present { value: fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_day, amount: 1, actor: quota.actor, term_seconds: term_seconds) }
+    QuotaFull { wire: _ } => none
+    QuotaLeaseRefused { detail: _ } => none
+  }
+  match hosted_round_decision(minute: minute, day: day) {
+    RoundBothLeased { minute: m, day: d } => HostedRoundLeased { minute: m, day: d }
+    RoundRefusedFull { wire: w, minute_to_return: r } => HostedRoundQuotaFull { wire: join([w, hosted_return_minute(minute: r)], "") }
+    RoundRefusedUnleasable { detail: d, minute_to_return: r } => HostedRoundUnleasable { detail: join([d, hosted_return_minute(minute: r)], "") }
   }
 }
 

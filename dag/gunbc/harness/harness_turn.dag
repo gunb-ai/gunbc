@@ -1089,7 +1089,7 @@ fn harness_post_round(
       } }
     ReasoningKwargsAdmitted { kwargs } =>
       match config.backend_access {
-        BackendAdmittedBySeat => RoundPosted { posted: harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round, header_file: none) }
+        BackendAdmittedBySeat => RoundPosted { posted: harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round, header_file: none).round }
         BackendAdmittedByHostedQuota { header_file: hf, quota: q } =>
           match harness_hosted_round_lease(quota: q, term: config.request_deadline) {
             HostedRoundQuotaFull { wire: w } => RoundQuotaFull { wire: w }
