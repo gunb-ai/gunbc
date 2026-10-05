@@ -2,13 +2,121 @@ module test.claim.roadmap.roadmap_launch_deployment_receipt_witness
 
 import gunbc.roadmap_launch_deployment_cli { rlm1_merge_commit }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
-import gunbc.actions_run_binding { json_required_string_member }
+import gunbc.actions_run_binding {
+  ActionsRunBinding,
+  JsonStringMemberFound,
+  JsonStringMemberRefused,
+  json_required_string_member,
+}
+import gunbc.deploy_transition {
+  ActuationInhibited,
+  ActuationPermitted,
+  ActuationStanding,
+  TransitionInForce,
+  TransitionRecord,
+}
 import gunbc.fleet_converge_plan { fleet_converge_scope_wire }
-import gunbc.fleet_converge_receipt { fleet_converge_apply_receipt_identity_hex, fleet_converge_plan_receipt_identity_hex }
-import gunbc.roadmap_belt_actuate { belt_tick_receipt_decode }
-import gunbc.roadmap_launch_deployment_cli { rlm1_contract_digest_frozen, rlm1_merge_commit, rlm_workflow_file_path }
-import gunbc.roadmap_launch_deployment_observe { belt_tick_freshness }
-import gunbc.roadmap_launch_deployment_receipt { observation_window_fact, roadmap_launch_deployment_receipt_document, roadmap_launch_deployment_receipt_identity_hex, roadmap_launch_deployment_verdict, verdict_receipt_identity }
+import gunbc.fleet_converge_receipt {
+  FleetConvergeApplyReceipt,
+  FleetConvergePlanReceipt,
+  fleet_converge_apply_receipt_identity_hex,
+  fleet_converge_plan_receipt_identity_hex,
+}
+import gunbc.fleet_converge_scope {
+  FabricAllocationStoreOnly,
+  FabricExecutionCellsOnly,
+  FullHost,
+  LaunchEnvironment,
+}
+import gunbc.fleet_converge_terminal { FullyApplied, PartiallyApplied }
+import gunbc.live_deploy.apply_receipt {
+  LiveDeployApplyConverged,
+  LiveDeployApplyReceipt,
+  LiveDeployFleetProvenance,
+  LiveDeployReadinessObserved,
+}
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedRootTreeMatches,
+  DeployedRootTreeMismatch,
+  DeployedRootTreeStanding,
+}
+import gunbc.live_deploy.release_binding {
+  DeployedReleaseBinding,
+  ReleaseBindingUnobserved,
+  ReleaseBoundToTree,
+  ReleaseSurfaceMixed,
+}
+import gunbc.live_deploy.unit_standing {
+  BeltOneshotConverged,
+  BeltOneshotStanding,
+  BeltTimerConverged,
+  BeltTimerRefused,
+  BeltTimerStanding,
+  DashboardServiceConverged,
+  LaunchUnitStanding,
+}
+import gunbc.roadmap_belt { AutomaticReady, ManualReady, SpawnMode }
+import gunbc.roadmap_belt_actuate {
+  BeltFootprintAdmission,
+  BeltPassRecorded,
+  BeltProviderPreflight,
+  BeltTickReceipt,
+  BeltTickReceiptAbsent,
+  BeltTickReceiptPresent,
+  BeltTickReceiptUnreadable,
+  FootprintAdmitted,
+  FootprintRefused,
+  ProviderPreflightOk,
+  ProviderPreflightRefused,
+  TickExecuted,
+  belt_tick_receipt_decode,
+}
+import gunbc.roadmap_launch_deployment_cli {
+  rlm1_contract_digest_frozen,
+  rlm1_merge_commit,
+  rlm_workflow_file_path,
+}
+import gunbc.roadmap_launch_deployment_observe { TickStale, belt_tick_freshness }
+import gunbc.roadmap_launch_deployment_receipt {
+  ApplyReceiptFact,
+  ApplyReceiptRead,
+  DashboardReceiptFact,
+  DashboardReceiptRead,
+  DeploymentComplete,
+  DeploymentIncomplete,
+  DesiredRevisionFact,
+  DesiredRevisionObserved,
+  DispatchPreflightAdmittedFact,
+  HostFact,
+  HostObserved,
+  InstanceServedFact,
+  ObservationWindowFact,
+  PlanReceiptFact,
+  PlanReceiptRead,
+  PredecessorRunProvenance,
+  PrincipalFact,
+  PrincipalObserved,
+  ReadinessServed,
+  ReceiptWorkflowRefForeign,
+  ReceiptWorkflowRefNamesFile,
+  RoadmapLaunchDeploymentFacts,
+  RoadmapLaunchDeploymentSubject,
+  RunProvenanceFact,
+  RunProvenanceObserved,
+  RunProvenanceUnobserved,
+  TickFact,
+  TickObserved,
+  TickUnobserved,
+  WindowChanged,
+  WindowSnapshot,
+  WorkflowEndpointFact,
+  WorkflowServedFact,
+  observation_window_fact,
+  roadmap_launch_deployment_receipt_document,
+  roadmap_launch_deployment_receipt_identity_hex,
+  roadmap_launch_deployment_verdict,
+  verdict_receipt_identity,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
