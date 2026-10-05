@@ -1140,9 +1140,12 @@ fn all_algebra_template_names() -> List<String> {
 // The seam diverges before producing anything; `s` is read in the condition so the declared
 // input reaches the result (wiring-liveness). The divergence is the condition's `1 / 0`, evaluated
 // before either arm, so both arms are the same unreached literal there only to type the expression
-// -- the shape of std.bytes pure_dag_seam_unreachable_string. That projection cannot be imported
-// here (std.bytes imports std.types, which imports std.algebra), so its divergence is spelled
-// in place; it was `from_code_point(1 / 0)`, which bound the total seed builtin to type a value that
+// -- the shape of std.bytes pure_dag_seam_unreachable_string, but NOT its refusal: this `1 / 0`
+// refuses as an unnamed division by zero, where that seam refuses by name. The named seam cannot be
+// imported here (std.bytes imports std.types, which imports std.algebra), and that cycle says the
+// seam sits at the wrong layer -- bottom is not a bytes fact. Moving it to a leaf module is the
+// repair, and it is out of this change's scope because the std.bytes path is mirrored into stage0
+// (std.primitive_projection row, v1_rt panic text). It was `from_code_point(1 / 0)`, which bound the total seed builtin to type a value that
 // is never produced (gunbc.recurring_failure_mode bare_from_code_point_binds_the_total_seed_builtin).
 // DISSOLVE-ON: the bottom type std.bytes names -- one divergent seam inhabits every result type.
 fn trim(s: String) -> String {
