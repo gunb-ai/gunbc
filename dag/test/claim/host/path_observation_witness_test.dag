@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import gunbc.host_operation_exec { StatFileType, HeadBytes, host_operation_materialize_argv }
 import v2.std.operation_argv { ArgvMaterialized, ArgvMaterializationRefused }
 import gunbc.spark.host_effect_quiescence { ArgvRun, ArgvRan, ArgvLegDidNotRun }
-import extdeps.tools.stat { stat_file_kind_is_regular, stat_file_kind_is_directory }
+import extdeps.tools.stat { StatFileKind, stat_file_kind_word }
 import gunbc.host.path_observation {
   HostPathKind, HostPathPresent, HostPathAbsent, HostPathUnread, host_path_kind,
   SmallFileRead, SmallFileText, SmallFileAbsent, SmallFileUnread, small_file_read,
@@ -40,9 +40,9 @@ data w_unused: ArgvRun = ArgvLegDidNotRun { cause: "not reached" }
 // directory is another kind; a leg that did not run is unread.
 test fn w_path_kind_separates_absent_from_unread() -> Bool {
   let kind = fn(r) { host_path_kind(run: w_host(stat: r, head: w_unused), path: w_path) }
-  (match kind(w_ran(code: 0, out: "regular file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_is_regular(kind: k)  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
-    && (match kind(w_ran(code: 0, out: "regular empty file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_is_regular(kind: k)  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
-    && (match kind(w_ran(code: 0, out: "directory\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_is_directory(kind: k)  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+  (match kind(w_ran(code: 0, out: "regular file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "regular file"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "regular empty file\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "regular file"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
+    && (match kind(w_ran(code: 0, out: "directory\n", err: "")) { HostPathPresent { kind: k } => stat_file_kind_word(kind: k) == "directory"  HostPathAbsent => false  HostPathUnread { cause: _ } => false })
     && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': No such file or directory\n")) { HostPathAbsent => true  HostPathPresent { kind: _ } => false  HostPathUnread { cause: _ } => false })
     && (match kind(w_ran(code: 1, out: "", err: "/usr/bin/stat: cannot statx '/var/lib/gunbc/arm-committed/u.service': Permission denied\n")) { HostPathUnread { cause: c } => string_contains(s: c, pattern: "Permission denied")  HostPathAbsent => false  HostPathPresent { kind: _ } => false })
     && (match kind(w_ran(code: 0, out: "\n", err: "")) { HostPathUnread { cause: c } => string_contains(s: c, pattern: "printed no file type")  HostPathAbsent => false  HostPathPresent { kind: _ } => false })
