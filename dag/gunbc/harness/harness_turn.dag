@@ -13,6 +13,11 @@ import gunbc.harness.harness_reasoning_wire {
   harness_unit_thinking_end_token, harness_unit_reasoning_field,
   harness_serving_unit_wire, harness_reasoning_level_wire,
 }
+import gunbc.harness.harness_hosted_route {
+  HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HostedRoundLease, HostedRoundLeased,
+  HostedRoundQuotaFull, HostedRoundUnleasable, harness_hosted_round_lease, harness_hosted_round_settle,
+  harness_hosted_refusal_cause,
+}
 import extdeps.clock { ClockUnixMillisRead, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
 import extdeps.http.client
 import extdeps.git.inspect
@@ -243,6 +248,7 @@ type HarnessTurnConfig {
   request_deadline: Second
   environment: HarnessToolEnvironment
   completion: HarnessTurnCompletion
+  backend_access: HarnessBackendAccess
 }
 
 // THE WINDOW THE HARNESS WORKS IN AND THE WINDOW THE ENGINE ADMITS ARE ONE NUMBER, and this field
@@ -521,6 +527,8 @@ type HarnessTurnOutcome
   | TurnUsageUnavailable { cause: String, steps_taken: Int }
   | TurnSubmissionUndecodable { reason: String, steps_taken: Int }
   | TurnAlignmentCheckpointDue { steps_taken: Int }
+  | TurnHostedQuotaFull { wire: String, steps_taken: Int }
+  | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -539,6 +547,8 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnUsageUnavailable { cause: _, steps_taken: _ } => "usage-unavailable"
     TurnSubmissionUndecodable { reason: _, steps_taken: _ } => "submission-undecodable"
     TurnAlignmentCheckpointDue { steps_taken: _ } => "alignment-checkpoint-due"
+    TurnHostedQuotaFull { wire: _, steps_taken: _ } => "hosted-quota-full"
+    TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => "hosted-quota-unleasable"
   }
 }
 
@@ -594,6 +604,16 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
         " tool rounds the epoch boundary announced an alignment checkpoint; the turn returned",
         " control to the workflow, whose adjudication lane decides whether the same lineage",
         " resumes, steers, re-plans, routes or stops. This is not a failure and not a completion.",
+      ], "")
+    TurnHostedQuotaFull { wire: w, steps_taken: n } =>
+      join([
+        "after ", to_string(value: n), " tool rounds the hosted upstream's quota was full (", w,
+        "); the request was not sent, because the upstream would have answered 429",
+      ], "")
+    TurnHostedQuotaUnleasable { detail: d, steps_taken: n } =>
+      join([
+        "after ", to_string(value: n), " tool rounds the hosted upstream's quota could not be leased (", d,
+        "); the request was not sent, because an unleased request is one the fleet cannot account for",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -1024,6 +1044,22 @@ fn harness_thinking_format_cause(unit: HarnessServingUnit, blocks: List<HarnessW
 type HarnessPostedRound {
   read: HarnessResponseRead
   wire_log_detail: String?
+  quota_settle_detail: String?
+}
+
+// A HOSTED ROUND THAT COULD NOT LEASE IS NOT POSTED, and the loop is told which way it was refused. A
+// settlement that did not record is NOT a refusal of the round -- the request already went out and its
+// answer is real -- so it rides the posted round as an event, the same standing the wire log has.
+type HarnessRoundPost
+  = RoundPosted { posted: HarnessPostedRound }
+  | RoundQuotaFull { wire: String }
+  | RoundQuotaUnleasable { detail: String }
+
+fn harness_event_quota_settle_unrecorded(detail: String) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "turn.quota_settle_unrecorded")),
+    json_kv(key: "detail", value: json_string(s: detail)),
+  ]))
 }
 
 fn harness_wire_log_path(config: HarnessTurnConfig, round: Int, kind: String) -> String {
@@ -1038,10 +1074,10 @@ fn harness_post_round(
   config: HarnessTurnConfig,
   messages: List<JsonValue>,
   round: Int,
-) -> HarnessPostedRound {
+) -> HarnessRoundPost {
   match harness_reasoning_kwargs_for(unit: config.serving_unit, level: config.reasoning_mode) {
     ReasoningLevelUnsupported { unit, level, cause } =>
-      HarnessPostedRound {
+      RoundPosted { posted: HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join([
             "the serving unit ", unit as String, " cannot express reasoning level ", level as String,
@@ -1049,9 +1085,34 @@ fn harness_post_round(
           ], ""),
         },
         wire_log_detail: none,
+        quota_settle_detail: none,
+      } }
+    ReasoningKwargsAdmitted { kwargs } =>
+      match config.backend_access {
+        BackendAdmittedBySeat => RoundPosted { posted: harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round, header_file: none) }
+        BackendAdmittedByHostedQuota { header_file: hf, quota: q } =>
+          match harness_hosted_round_lease(quota: q, term: config.request_deadline) {
+            HostedRoundQuotaFull { wire: w } => RoundQuotaFull { wire: w }
+            HostedRoundUnleasable { detail: d } => RoundQuotaUnleasable { detail: d }
+            HostedRoundLeased { minute: m, day: d } => {
+              let lease = HostedRoundLeased { minute: m, day: d }
+              let posted = harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round, header_file: Present { value: hf })
+              RoundPosted { posted: HarnessPostedRound {
+                read: posted.round.read,
+                wire_log_detail: posted.round.wire_log_detail,
+                quota_settle_detail: harness_hosted_round_settle(lease: lease, exit_code: posted.exit_code),
+              } }
+            }
+          }
       }
-    ReasoningKwargsAdmitted { kwargs } => harness_post_round_admitted(config: config, messages: messages, reasoning_kwargs: kwargs, round: round)
   }
+}
+
+// THE POST AND THE CURL EXIT CODE IT ENDED WITH. The code is what a hosted round settles its quota on:
+// a request that never reached the upstream spent nothing, and every other outcome spent one.
+type HarnessPostAttempt {
+  round: HarnessPostedRound
+  exit_code: Int
 }
 
 fn harness_post_round_admitted(
@@ -1059,11 +1120,12 @@ fn harness_post_round_admitted(
   messages: List<JsonValue>,
   reasoning_kwargs: List<JsonKeyValue>,
   round: Int,
-) -> HarnessPostedRound {
+  header_file: NonEmptyStr?,
+) -> HarnessPostAttempt {
   let body = serialize_json(v: harness_request_json(config: config, messages: messages, reasoning_kwargs: reasoning_kwargs))
   let written = Filesystem.Write(path: config.request_scratch_path as String, content: body)
   if !written.success {
-    HarnessPostedRound {
+    HarnessPostAttempt { round: HarnessPostedRound {
       read: HarnessResponseUnreadable {
         cause: join([
           "request body could not be written to ", config.request_scratch_path as String,
@@ -1071,15 +1133,12 @@ fn harness_post_round_admitted(
         ], ""),
       },
       wire_log_detail: none,
-    }
+      quota_settle_detail: none,
+    }, exit_code: 7 }
   } else {
     let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
     let wire_request = Filesystem.Write(path: wire_request_path, content: body)
-    let posted = http.Client.PostJsonFromFile(
-      url: config.backend_url as NonEmptyStr,
-      request_body_file: config.request_scratch_path as String as NonEmptyStr,
-      max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
-    )
+    let posted = harness_post_json(config: config, header_file: header_file)
     let wire_response_path = harness_wire_log_path(config: config, round: round, kind: ".response.json")
     let wire_response = Filesystem.Write(path: wire_response_path, content: posted.body)
     let kept = Filesystem.Write(
@@ -1096,27 +1155,71 @@ fn harness_post_round_admitted(
       Present { value: join(wire_details, "; ") }
     }
     if !posted.success {
-      HarnessPostedRound {
+      HarnessPostAttempt { round: HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join([
-            "the backend refused the request or the transport failed; body was: ", posted.body,
+            "the backend refused the request or the transport failed; ", harness_refusal_body_text(config: config, body: posted.body),
           ], ""),
         },
         wire_log_detail: wire_log_detail,
-      }
+        quota_settle_detail: none,
+      }, exit_code: posted.exit_code }
     } else if !kept.success {
-      HarnessPostedRound {
+      HarnessPostAttempt { round: HarnessPostedRound {
         read: HarnessResponseUnreadable {
           cause: join(["the response could not be kept beside the request: ", kept.error, "; refusing to decode a body no one can re-read"], ""),
         },
         wire_log_detail: wire_log_detail,
-      }
+        quota_settle_detail: none,
+      }, exit_code: posted.exit_code }
     } else {
-      HarnessPostedRound {
+      HarnessPostAttempt { round: HarnessPostedRound {
         read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
         wire_log_detail: wire_log_detail,
-      }
+        quota_settle_detail: none,
+      }, exit_code: posted.exit_code }
     }
+  }
+}
+
+// ONE POST, TWO ADMISSIONS. A seat-admitted backend is the fleet's own engine over its network and takes
+// no credential; a quota-admitted one is a hosted upstream and takes the bearer header file by path. The
+// fleet POST reports no exit code, so it is answered as a completed transfer or an unnamed failure --
+// nothing settles on it, because a seat is released once per turn, not per request.
+type HarnessPostOutcome {
+  body: String
+  success: Bool
+  exit_code: Int
+}
+
+fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
+  match header_file {
+    Absent => {
+      let posted = http.Client.PostJsonFromFile(
+        url: config.backend_url as NonEmptyStr,
+        request_body_file: config.request_scratch_path as String as NonEmptyStr,
+        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+      )
+      HarnessPostOutcome { body: posted.body, success: posted.success, exit_code: if posted.success { 0 } else { 1 } }
+    }
+    Present { value: hf } => {
+      let posted = http.Client.PostJsonFromFileWithHeaderFile(
+        url: config.backend_url as NonEmptyStr,
+        request_body_file: config.request_scratch_path as String as NonEmptyStr,
+        header_file: hf,
+        max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
+      )
+      HarnessPostOutcome { body: posted.body, success: posted.success, exit_code: posted.exit_code }
+    }
+  }
+}
+
+// A HOSTED UPSTREAM'S REFUSAL IS DECODED TO ITS TYPED ERROR, so a 402 says which budget refused and a
+// 429 says whose limit it was; a fleet engine's body is reported as it came.
+fn harness_refusal_body_text(config: HarnessTurnConfig, body: String) -> String {
+  match config.backend_access {
+    BackendAdmittedBySeat => join(["body was: ", body], "")
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => join(["upstream answered: ", harness_hosted_refusal_cause(body: body)], "")
   }
 }
 
@@ -1258,10 +1361,42 @@ fn harness_turn_loop(
       harness_turn_checkpoint_due(config: config, steps_taken: steps_taken, events: events)
     }
   } else {
-    let posted_round = harness_post_round(config: config, messages: messages, round: steps_taken + 1)
-    let events_after_wire = match posted_round.wire_log_detail {
-      Present { value: detail } => concat(events, [harness_event_wire_log_unwritable(detail: detail)])
+    match harness_post_round(config: config, messages: messages, round: steps_taken + 1) {
+      RoundQuotaFull { wire: w } => {
+        let failed = concat(events, [harness_event_turn_failed(message: join(["hosted quota full: ", w], ""))])
+        match harness_write_events(config: config, events: failed) {
+          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+          HarnessEventsWritten => TurnHostedQuotaFull { wire: w, steps_taken: steps_taken }
+        }
+      }
+      RoundQuotaUnleasable { detail: qd } => {
+        let failed = concat(events, [harness_event_turn_failed(message: join(["hosted quota unleasable: ", qd], ""))])
+        match harness_write_events(config: config, events: failed) {
+          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+          HarnessEventsWritten => TurnHostedQuotaUnleasable { detail: qd, steps_taken: steps_taken }
+        }
+      }
+      RoundPosted { posted: posted_round } => harness_turn_after_post(config: config, messages: messages, steps_remaining: steps_remaining, steps_taken: steps_taken, events: events, repairs_used: repairs_used, posted_round: posted_round)
+    }
+  }
+}
+
+fn harness_turn_after_post(
+  config: HarnessTurnConfig,
+  messages: List<JsonValue>,
+  steps_remaining: Int,
+  steps_taken: Int,
+  events: List<String>,
+  repairs_used: Int,
+  posted_round: HarnessPostedRound,
+) -> HarnessTurnOutcome {
+    let events_after_settle = match posted_round.quota_settle_detail {
+      Present { value: detail } => concat(events, [harness_event_quota_settle_unrecorded(detail: detail)])
       Absent => events
+    }
+    let events_after_wire = match posted_round.wire_log_detail {
+      Present { value: detail } => concat(events_after_settle, [harness_event_wire_log_unwritable(detail: detail)])
+      Absent => events_after_settle
     }
     match posted_round.read {
       HarnessResponseUnreadable { cause: c } => {
@@ -1297,7 +1432,6 @@ fn harness_turn_loop(
             )
         }
     }
-  }
 }
 
 // THE ROUND THAT DECODED AND WAS COUNTED. Factored out of the loop when usage became a typed read:

@@ -1,0 +1,461 @@
+module extdeps.openrouter.openrouter
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import extdeps.api_rate_limit { UpstreamRateLimit, PerMinute, PerDay }
+import extdeps.languages.json.emit { JsonValue, JsonObject, JsonNumber, JsonNull, JsonBool, JsonString, JsonArray }
+import extdeps.languages.json.parse {
+  JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
+  JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_int, json_field_bool,
+}
+
+// OPENROUTER, as its own extdeps authority: an independently governed router that relays an
+// OpenAI-compatible chat-completions request to one of several providers. It is not OpenAI (its
+// errors, limits, reasoning parameter and key surface are its own), so it does not live in
+// extdeps.llm.openai_rest, and it is not any provider it relays to. A model OpenRouter lists is a row in
+// its own module beside this one (extdeps.openrouter.nvidia_nemotron_3_ultra_free), so a second listing
+// is a new file rather than an edit here.
+//
+// READ 2026-10-05: the API reference overview (the anchor), the limits page and the errors page. The
+// facts below cite which.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/docs/api-reference/overview",
+  }
+}
+
+data openrouter_limits_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/docs/api-reference/limits",
+  }
+}
+
+data openrouter_reasoning_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https,
+    locator: "openrouter.ai/docs/guides/best-practices/reasoning-tokens",
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.openrouter.openrouter",
+      decl_name: "openrouter_chat_completions_url",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [openrouter_limits_authority, openrouter_reasoning_authority],
+}
+
+// THE TWO ENDPOINTS THIS REPOSITORY CALLS. Chat completions is OpenAI-compatible in shape; the key read
+// answers what the presented key may still spend. Both authenticate with `Authorization: Bearer <key>`,
+// and both are HTTPS -- there is no plain-http door.
+data openrouter_chat_completions_url: NonEmptyStr = "https://openrouter.ai/api/v1/chat/completions" as NonEmptyStr
+
+data openrouter_key_url: NonEmptyStr = "https://openrouter.ai/api/v1/key" as NonEmptyStr
+
+fn openrouter_authorization_header_line(key: NonEmptyStr) -> String {
+  join(["Authorization: Bearer ", key as String, "\n"], "")
+}
+
+// ── THE FREE-MODEL LIMITS, FROM THE LIMITS PAGE ───────────────────────────────────────────────
+//
+// Free variants (model ids ending in ":free") are limited to 20 requests per minute, and per day to 50
+// when the account has purchased fewer than 10 credits all-time or 1000 when it has purchased at least
+// 10. Both limits bind at once, so a caller leases BOTH pools before each request.
+//
+// THE DAILY TIER IS SELECTED BY A TYPED FACT, NOT CHOSEN AS A LITERAL. Which row applies is a property
+// of the account, and the account says which: the key read below returns free_model_daily_requests.limit,
+// so the fact is DERIVED from what OpenRouter reports for the presented key rather than asserted beside
+// it. Both tiers share one scope and therefore one quota partition, because they are one pool on the
+// upstream whose ceiling moves with the account -- two scopes would let a caller spend both.
+type OpenRouterCreditsPurchased
+  = CreditsPurchasedBelowTen
+  | CreditsPurchasedAtLeastTen
+
+data openrouter_free_models_per_minute: UpstreamRateLimit = UpstreamRateLimit {
+  upstream: "openrouter" as NonEmptyStr,
+  scope: "free-models-minute" as NonEmptyStr,
+  requests: 20,
+  period: PerMinute,
+}
+
+fn openrouter_free_models_per_day(credits: OpenRouterCreditsPurchased) -> UpstreamRateLimit {
+  UpstreamRateLimit {
+    upstream: "openrouter" as NonEmptyStr,
+    scope: "free-models-day" as NonEmptyStr,
+    requests: match credits {
+      CreditsPurchasedBelowTen => 50
+      CreditsPurchasedAtLeastTen => 1000
+    },
+    period: PerDay,
+  }
+}
+
+// THE TIER IS READ OFF THE DAILY LIMIT THE KEY REPORTS, and a limit that is neither published tier is a
+// refusal rather than the nearer one: a third tier is a change to the limits page this module has not
+// read, and guessing it would lease against a ceiling nobody published.
+type OpenRouterCreditsReading
+  = CreditsTierObserved { credits: OpenRouterCreditsPurchased }
+  | CreditsTierUnrecognized { daily_limit: Int }
+
+fn openrouter_credits_from_daily_limit(daily_limit: Int) -> OpenRouterCreditsReading {
+  if daily_limit == 1000 {
+    CreditsTierObserved { credits: CreditsPurchasedAtLeastTen }
+  } else if daily_limit == 50 {
+    CreditsTierObserved { credits: CreditsPurchasedBelowTen }
+  } else {
+    CreditsTierUnrecognized { daily_limit: daily_limit }
+  }
+}
+
+// ── THE KEY READ ─────────────────────────────────────────────────────────────────────────────
+//
+// GET /api/v1/key answers data.{limit, limit_remaining, usage, is_free_tier, free_model_daily_requests
+// {used, limit, remaining}}. Only the members a consumer reads are decoded: whether the key is accepted
+// at all (a 200 that decodes), the key's own credit limit, and the free-model daily counters the tier
+// is derived from.
+//
+// THE KEY'S CREDIT LIMIT IS A DIFFERENT FACT FROM THE ACCOUNT'S TIER. data.limit is a per-KEY spending
+// cap set on the key (null when the key has none); the daily free-model ceiling is per ACCOUNT, set by
+// credits purchased. A key capped at zero credits can spend nothing on a priced model and is still
+// metered by the account's free tier, which is exactly the guard a free-only caller wants: a request
+// that reaches a priced model answers 402 from openrouter_key_limit instead of charging anything.
+//
+// ZERO IS READ OFF THE LEXEME, NOT A FLOAT. The wire carries a JSON number ("0", "0.0"); a lexeme whose
+// digits are all zero is zero in every notation JSON admits for it, and anything else is a positive cap
+// a free-only caller must refuse.
+type OpenRouterKeySpendLimit
+  = KeySpendUncapped
+  | KeySpendCappedAtZero
+  | KeySpendCappedAbove { lexeme: String }
+
+fn openrouter_lexeme_is_zero(lexeme: String) -> Bool {
+  lexeme != "" && trim_zero_digits(s: lexeme) == ""
+}
+
+fn trim_zero_digits(s: String) -> String {
+  join(filter(chars(s), c => c != "0" && c != "." && c != "-" && c != "+" && c != "e" && c != "E"), "")
+}
+
+fn openrouter_decode_key_spend_limit(data: JsonValue) -> OpenRouterKeySpendLimit? {
+  match json_field(obj: data, key: "limit") {
+    FieldAbsent => Present { value: KeySpendUncapped }
+    FieldMalformed { cause: _ } => none
+    FieldRead { value: v } =>
+      match v {
+        JsonNumber { lexeme: lx } =>
+          if openrouter_lexeme_is_zero(lexeme: lx) { Present { value: KeySpendCappedAtZero } } else { Present { value: KeySpendCappedAbove { lexeme: lx } } }
+        JsonNull => Present { value: KeySpendUncapped }
+        JsonBool { value: _ } => none
+        JsonString { value: _ } => none
+        JsonArray { elements: _ } => none
+        JsonObject { members: _ } => none
+      }
+  }
+}
+
+fn openrouter_key_spend_limit_wire(l: OpenRouterKeySpendLimit) -> String {
+  match l {
+    KeySpendUncapped => "no key credit limit"
+    KeySpendCappedAtZero => "key credit limit 0"
+    KeySpendCappedAbove { lexeme: lx } => join(["key credit limit ", lx], "")
+  }
+}
+
+type OpenRouterKeyRead {
+  is_free_tier: Bool
+  spend_limit: OpenRouterKeySpendLimit
+  free_daily_used: Int
+  free_daily_limit: Int
+  free_daily_remaining: Int
+}
+
+type OpenRouterKeyDecode
+  = OpenRouterKeyDecoded { key: OpenRouterKeyRead }
+  | OpenRouterKeyUndecodable { cause: String }
+
+fn openrouter_int_member(obj: JsonValue, key: String, subject: String) -> JsonFieldRead<Int> {
+  match json_field_int(obj: obj, key: key) {
+    FieldAbsent => FieldMalformed { cause: join([subject, " carries no ", key], "") }
+    FieldMalformed { cause: c } => FieldMalformed { cause: c }
+    FieldRead { value: n } => FieldRead { value: n }
+  }
+}
+
+fn openrouter_decode_key_daily(data: JsonValue, is_free_tier: Bool, spend_limit: OpenRouterKeySpendLimit) -> OpenRouterKeyDecode {
+  match json_field(obj: data, key: "free_model_daily_requests") {
+    FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no free_model_daily_requests" }
+    FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+    FieldRead { value: daily } =>
+      match openrouter_int_member(obj: daily, key: "used", subject: "free_model_daily_requests") {
+        FieldAbsent => OpenRouterKeyUndecodable { cause: "free_model_daily_requests carries no used" }
+        FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+        FieldRead { value: used } =>
+          match openrouter_int_member(obj: daily, key: "limit", subject: "free_model_daily_requests") {
+            FieldAbsent => OpenRouterKeyUndecodable { cause: "free_model_daily_requests carries no limit" }
+            FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+            FieldRead { value: limit } =>
+              match openrouter_int_member(obj: daily, key: "remaining", subject: "free_model_daily_requests") {
+                FieldAbsent => OpenRouterKeyUndecodable { cause: "free_model_daily_requests carries no remaining" }
+                FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+                FieldRead { value: remaining } =>
+                  OpenRouterKeyDecoded { key: OpenRouterKeyRead { is_free_tier: is_free_tier, spend_limit: spend_limit, free_daily_used: used, free_daily_limit: limit, free_daily_remaining: remaining } }
+              }
+          }
+      }
+  }
+}
+
+fn openrouter_decode_key_read(body: String) -> OpenRouterKeyDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => OpenRouterKeyUndecodable { cause: join(["the key read is not a JSON document: ", json_document_gap_text(gap: g)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "data") {
+        FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no data member" }
+        FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+        FieldRead { value: data } =>
+          match json_field_bool(obj: data, key: "is_free_tier") {
+            FieldAbsent => OpenRouterKeyUndecodable { cause: "the key read carries no is_free_tier" }
+            FieldMalformed { cause: c } => OpenRouterKeyUndecodable { cause: c }
+            FieldRead { value: free } =>
+              match openrouter_decode_key_spend_limit(data: data) {
+                Absent => OpenRouterKeyUndecodable { cause: "the key read's limit member is not a number or null" }
+                Present { value: spend } => openrouter_decode_key_daily(data: data, is_free_tier: free, spend_limit: spend)
+              }
+          }
+      }
+  }
+}
+
+// ── THE ERROR BODY, FROM THE ERRORS AND LIMITS PAGES ──────────────────────────────────────────
+//
+// Every error is {error: {code, message, metadata?}}. Two codes carry metadata a caller must branch on:
+//
+//   - 402: metadata.limit_source names WHICH budget refused -- openrouter_in_flight_budget,
+//     openrouter_key_limit or openrouter_credits -- and metadata.reason refines the in-flight case as
+//     in_flight_budget_exhausted or weight_exceeds_budget. metadata.remedy_hint is documented as
+//     log-only, so it is carried as text and never branched on. Free models are exempt from the
+//     in-flight budget, but a negative balance still answers 402 from openrouter_credits.
+//   - 429: metadata.error_type is rate_limit_exceeded, with provider_code when the limit was the
+//     provider's rather than OpenRouter's own.
+//
+// THE ENUMS ARE CLOSED AND AN UNKNOWN SPELLING REFUSES. A fourth limit_source decoded as the nearest of
+// three would send a caller to repair the wrong budget, which is the whole reason the field exists.
+type OpenRouterLimitSource
+  = InFlightBudgetLimit
+  | KeySpendLimit
+  | CreditsLimit
+
+fn openrouter_limit_source_wire(s: OpenRouterLimitSource) -> NonEmptyStr {
+  match s {
+    InFlightBudgetLimit => "openrouter_in_flight_budget" as NonEmptyStr
+    KeySpendLimit => "openrouter_key_limit" as NonEmptyStr
+    CreditsLimit => "openrouter_credits" as NonEmptyStr
+  }
+}
+
+type OpenRouterLimitReason
+  = InFlightBudgetExhausted
+  | WeightExceedsBudget
+
+fn openrouter_limit_reason_wire(r: OpenRouterLimitReason) -> NonEmptyStr {
+  match r {
+    InFlightBudgetExhausted => "in_flight_budget_exhausted" as NonEmptyStr
+    WeightExceedsBudget => "weight_exceeds_budget" as NonEmptyStr
+  }
+}
+
+type OpenRouterError
+  = OpenRouterPaymentRequired { limit_source: OpenRouterLimitSource, reason: OpenRouterLimitReason?, message: String, remedy_hint: String? }
+  | OpenRouterRateLimited { message: String, provider_code: String? }
+  | OpenRouterOtherError { code: Int, message: String }
+
+type OpenRouterErrorDecode
+  = OpenRouterErrorDecoded { error: OpenRouterError }
+  | OpenRouterErrorUndecodable { cause: String }
+
+type OpenRouterLimitSourceRead
+  = LimitSourceRead { source: OpenRouterLimitSource }
+  | LimitSourceUnrecognized { wire: String }
+
+fn openrouter_limit_source_from_wire(wire: String) -> OpenRouterLimitSourceRead {
+  if wire == "openrouter_in_flight_budget" {
+    LimitSourceRead { source: InFlightBudgetLimit }
+  } else if wire == "openrouter_key_limit" {
+    LimitSourceRead { source: KeySpendLimit }
+  } else if wire == "openrouter_credits" {
+    LimitSourceRead { source: CreditsLimit }
+  } else {
+    LimitSourceUnrecognized { wire: wire }
+  }
+}
+
+type OpenRouterLimitReasonRead
+  = LimitReasonAbsent
+  | LimitReasonRead { reason: OpenRouterLimitReason }
+  | LimitReasonUnrecognized { wire: String }
+
+fn openrouter_limit_reason_from_field(field: JsonFieldRead<String>) -> OpenRouterLimitReasonRead {
+  match field {
+    FieldAbsent => LimitReasonAbsent
+    FieldMalformed { cause: c } => LimitReasonUnrecognized { wire: c }
+    FieldRead { value: w } =>
+      if w == "in_flight_budget_exhausted" {
+        LimitReasonRead { reason: InFlightBudgetExhausted }
+      } else if w == "weight_exceeds_budget" {
+        LimitReasonRead { reason: WeightExceedsBudget }
+      } else {
+        LimitReasonUnrecognized { wire: w }
+      }
+  }
+}
+
+fn openrouter_optional_string(field: JsonFieldRead<String>) -> String? {
+  match field {
+    FieldRead { value: s } => Present { value: s }
+    FieldAbsent => none
+    FieldMalformed { cause: _ } => none
+  }
+}
+
+fn openrouter_decode_402(message: String, metadata: JsonValue) -> OpenRouterErrorDecode {
+  match json_field_string(obj: metadata, key: "limit_source") {
+    FieldAbsent => OpenRouterErrorUndecodable { cause: "a 402 whose metadata carries no limit_source names no budget to repair" }
+    FieldMalformed { cause: c } => OpenRouterErrorUndecodable { cause: join(["the 402 limit_source is unreadable: ", c], "") }
+    FieldRead { value: source_wire } =>
+      match openrouter_limit_source_from_wire(wire: source_wire) {
+        LimitSourceUnrecognized { wire: w } => OpenRouterErrorUndecodable { cause: join(["the 402 names an unpublished limit_source '", w, "'"], "") }
+        LimitSourceRead { source: source } =>
+          match openrouter_limit_reason_from_field(field: json_field_string(obj: metadata, key: "reason")) {
+            LimitReasonUnrecognized { wire: w } => OpenRouterErrorUndecodable { cause: join(["the 402 names an unpublished reason '", w, "'"], "") }
+            LimitReasonAbsent =>
+              OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: source, reason: none, message: message, remedy_hint: openrouter_optional_string(field: json_field_string(obj: metadata, key: "remedy_hint")) } }
+            LimitReasonRead { reason: r } =>
+              OpenRouterErrorDecoded { error: OpenRouterPaymentRequired { limit_source: source, reason: Present { value: r }, message: message, remedy_hint: openrouter_optional_string(field: json_field_string(obj: metadata, key: "remedy_hint")) } }
+          }
+      }
+  }
+}
+
+fn openrouter_decode_error_fields(error: JsonValue) -> OpenRouterErrorDecode {
+  match json_field_int(obj: error, key: "code") {
+    FieldAbsent => OpenRouterErrorUndecodable { cause: "the error object carries no code" }
+    FieldMalformed { cause: c } => OpenRouterErrorUndecodable { cause: c }
+    FieldRead { value: code } => {
+      let message = match json_field_string(obj: error, key: "message") {
+        FieldRead { value: m } => m
+        FieldAbsent => ""
+        FieldMalformed { cause: c } => c
+      }
+      let metadata = match json_field(obj: error, key: "metadata") {
+        FieldRead { value: m } => m
+        FieldAbsent => JsonObject { members: [] }
+        FieldMalformed { cause: _ } => JsonObject { members: [] }
+      }
+      if code == 402 {
+        openrouter_decode_402(message: message, metadata: metadata)
+      } else if code == 429 {
+        OpenRouterErrorDecoded { error: OpenRouterRateLimited { message: message, provider_code: openrouter_optional_string(field: json_field_string(obj: metadata, key: "provider_code")) } }
+      } else {
+        OpenRouterErrorDecoded { error: OpenRouterOtherError { code: code, message: message } }
+      }
+    }
+  }
+}
+
+fn openrouter_decode_error_body(body: String) -> OpenRouterErrorDecode {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: g } => OpenRouterErrorUndecodable { cause: join(["the error body is not a JSON document: ", json_document_gap_text(gap: g)], "") }
+    JsonDocumentParsed { value: doc } =>
+      match json_field(obj: doc, key: "error") {
+        FieldAbsent => OpenRouterErrorUndecodable { cause: "the body carries no error member" }
+        FieldMalformed { cause: c } => OpenRouterErrorUndecodable { cause: c }
+        FieldRead { value: e } => openrouter_decode_error_fields(error: e)
+      }
+  }
+}
+
+// WHAT A 402'S SOURCE MEANS FOR A FREE-ONLY KEY. openrouter_key_limit on a key capped at zero credits
+// is not a budget to top up: it says the request reached a PRICED model, which a free-only caller must
+// refuse and never retry -- retrying sends the same paid request again. The other two sources keep
+// their published meaning.
+fn openrouter_limit_source_meaning(s: OpenRouterLimitSource) -> String {
+  match s {
+    KeySpendLimit => "a priced model was requested through a key whose credit limit forbids spending (never retried); "
+    InFlightBudgetLimit => ""
+    CreditsLimit => ""
+  }
+}
+
+fn openrouter_error_wire(e: OpenRouterError) -> String {
+  match e {
+    OpenRouterPaymentRequired { limit_source: s, reason: r, message: m, remedy_hint: _ } =>
+      join([
+        openrouter_limit_source_meaning(s: s),
+        "402 from ", openrouter_limit_source_wire(s: s) as String,
+        match r { Present { value: rv } => join([" (", openrouter_limit_reason_wire(r: rv) as String, ")"], "") Absent => "" },
+        ": ", m,
+      ], "")
+    OpenRouterRateLimited { message: m, provider_code: p } =>
+      join(["429 rate_limit_exceeded", match p { Present { value: pc } => join([" from provider ", pc], "") Absent => " from OpenRouter" }, ": ", m], "")
+    OpenRouterOtherError { code: c, message: m } => join([to_string(c), ": ", m], "")
+  }
+}
+
+// ── THE REASONING PARAMETER, FROM THE REASONING-TOKENS GUIDE ─────────────────────────────────
+//
+// reasoning.effort is one of max, xhigh, high, medium, low, minimal or none; reasoning.enabled false
+// turns reasoning off where the model does not make it mandatory. Which efforts a given model honours
+// is published per model in GET /api/v1/models as reasoning.supported_efforts -- so the vocabulary is
+// OpenRouter's and the admitted subset is each listing's row, never this module's guess.
+type OpenRouterReasoningEffort
+  = EffortMax
+  | EffortXhigh
+  | EffortHigh
+  | EffortMedium
+  | EffortLow
+  | EffortMinimal
+  | EffortNone
+
+fn openrouter_reasoning_effort_wire(e: OpenRouterReasoningEffort) -> NonEmptyStr {
+  match e {
+    EffortMax => "max" as NonEmptyStr
+    EffortXhigh => "xhigh" as NonEmptyStr
+    EffortHigh => "high" as NonEmptyStr
+    EffortMedium => "medium" as NonEmptyStr
+    EffortLow => "low" as NonEmptyStr
+    EffortMinimal => "minimal" as NonEmptyStr
+    EffortNone => "none" as NonEmptyStr
+  }
+}
+
+fn openrouter_effort_eq(a: OpenRouterReasoningEffort, b: OpenRouterReasoningEffort) -> Bool {
+  (openrouter_reasoning_effort_wire(e: a) as String) == (openrouter_reasoning_effort_wire(e: b) as String)
+}
+
+// AN EFFORT OUTSIDE THE LISTING'S SUPPORTED SET IS REFUSED, NOT SENT. OpenRouter's own guide shows what
+// an unsupported effort becomes on another provider -- Gemini maps xhigh down to high -- so sending it
+// is not an error the wire reports, it is a different setting the caller never sees.
+type OpenRouterEffortAdmission
+  = EffortAdmitted { effort: OpenRouterReasoningEffort }
+  | EffortNotSupported { effort: OpenRouterReasoningEffort, supported: List<OpenRouterReasoningEffort> }
+
+fn openrouter_effort_admitted(effort: OpenRouterReasoningEffort, supported: List<OpenRouterReasoningEffort>) -> OpenRouterEffortAdmission {
+  if count(filter(supported, s => openrouter_effort_eq(a: s, b: effort))) > 0 {
+    EffortAdmitted { effort: effort }
+  } else {
+    EffortNotSupported { effort: effort, supported: supported }
+  }
+}
+
+// THE MESSAGE MEMBER REASONING RIDES ON. The guide: "Reasoning tokens will appear in the reasoning field
+// of each message", and the same field is how prior reasoning is passed back.
+data openrouter_message_reasoning_field: NonEmptyStr = "reasoning" as NonEmptyStr
