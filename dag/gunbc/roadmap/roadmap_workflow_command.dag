@@ -67,7 +67,8 @@ type WorkflowCommandAdmission
 fn is_legacy_attempt(modeled_state: WorkflowModeledStateStanding) -> Bool {
   match modeled_state {
     WorkflowModeledStateAbsent => true
-    _ => false
+    WorkflowModeledStateObserved => false
+    WorkflowModeledStateUnreadable { cause: _ } => false
   }
 }
 
