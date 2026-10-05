@@ -462,11 +462,16 @@ fn host_speed_fastest_of(calibrations: List<HostSpeedCalibration>, specimen: Non
         match c {
           HostSpeedCalibrated { specimen_cpu_ms: _, factor: f } =>
             if f.factor_permille < best.factor_permille { c } else { acc }
-          _ => c
+          HostSpeedSpecimenNotMeasured { specimen: _, cause: _ } => c
+          HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => c
+          HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => c
+          HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => c
         }
       HostSpeedSpecimenNotMeasured { specimen: _, cause: k } =>
         if k == "no_replicate_readings" { c } else { acc }
-      _ => acc
+      HostSpeedSpecimenCensored { specimen: _, cpu_lower_bound_ms: _ } => acc
+      HostSpeedSpecimenMoved { specimen: _, declared_steps: _, observed_steps: _ } => acc
+      HostSpeedFactorOutOfRange { specimen: _, factor_permille: _, lower_permille: _, upper_permille: _ } => acc
     }
   })
 }
