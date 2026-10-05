@@ -259,6 +259,7 @@ type TypeDeclReferenceRoute
   = RouteCarriedDeclaration
   | RouteCarriedBinder
   | RouteDeclaringSpan
+  | RouteReferencingModuleDeclarer
   | RouteLeafSpelling
 
 type TypeDeclRoutedResolution {
@@ -283,9 +284,34 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
       }
       match by_span {
         Present { value: identity } => TypeDeclRoutedResolution { route: RouteDeclaringSpan, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
-        Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: resolve_type_decl_leaf(index: index, leaf: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))) }
+        Absent =>
+          let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+          match resolve_type_decl_leaf(index: index, leaf: leaf) {
+            TypeDeclLeafAmbiguous { leaf: l } =>
+              match type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) {
+                Present { value: identity } => TypeDeclRoutedResolution { route: RouteReferencingModuleDeclarer, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
+                Absent => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: TypeDeclLeafAmbiguous { leaf: l } }
+              }
+            other => TypeDeclRoutedResolution { route: RouteLeafSpelling, resolution: other }
+          }
       }
   }
+}
+
+// THE REFERENCING MODULE'S OWN DECLARATION. A leaf two modules declare is still decided when the
+// reference is authored in a module that declares it: a module's own declaration is the binding its
+// scope gives that name, since a module cannot also import a second declaration of a leaf it
+// declares. The arm answers only when exactly one declarer of the leaf sits in the reference's file;
+// otherwise the reference stays LeafAmbiguous and refuses. Interim like the span arm, with the same
+// trigger (type_decl_reference_interim_arms_dissolve_on), and counted under its own route label.
+fn type_decl_referencing_module_declarer(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
+  let local = type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
+    match map_get(index.by_identity, identity) {
+      Present { value: decl } => decl.span.file == reference.span.file
+      Absent => false
+    }
+  )
+  if (local |> fold(init: 0, f: (n, _identity) => n + 1)) == 1 { local |> fold(init: none, f: (acc, identity) => Present { value: identity }) } else { none }
 }
 
 fn resolve_type_decl_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclResolution {
@@ -297,6 +323,7 @@ fn type_decl_routed_resolution_label(routed: TypeDeclRoutedResolution) -> String
     RouteCarriedDeclaration => "carried_declaration"
     RouteCarriedBinder => "carried_binder"
     RouteDeclaringSpan => "declaring_span"
+    RouteReferencingModuleDeclarer => "referencing_module_declarer"
     RouteLeafSpelling => "leaf_spelling"
   }
   match routed.resolution {
