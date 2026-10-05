@@ -1,0 +1,54 @@
+module gunbc.roadmap_issue_status
+
+import std.types { Int, List, String }
+
+// The status an issue is shown with, as a closed vocabulary. It is DERIVED and never stored:
+// gunbc.roadmap_presentation issue_display_status projects it from a row's standing, lifecycle,
+// scheduling and activity, and every surface that shows a status renders this value. The label
+// and the sort rank are total matches over it, so a tenth status cannot be added without naming
+// its word and its place in the order.
+type IssueDisplayStatus
+  = DisplayReady
+  | DisplayAssigned
+  | DisplayActive
+  | DisplayReview
+  | DisplayBlocked
+  | DisplayReturned
+  | DisplayDone
+  | DisplaySuperseded
+  | DisplayUnknown
+
+data issue_display_statuses: List<IssueDisplayStatus> = [
+  DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
+  DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown,
+]
+
+fn issue_display_status_label(status: IssueDisplayStatus) -> String {
+  match status {
+    DisplayReady => "Ready"
+    DisplayAssigned => "Assigned"
+    DisplayActive => "Active"
+    DisplayReview => "Review"
+    DisplayBlocked => "Blocked"
+    DisplayReturned => "Returned"
+    DisplayDone => "Done"
+    DisplaySuperseded => "Superseded"
+    DisplayUnknown => "Unknown"
+  }
+}
+
+// Owner 2026-10-04: descending status means Ready first, not lexical order. The same number
+// drives the initial server order and interactive column sorting.
+fn issue_display_status_sort_rank(status: IssueDisplayStatus) -> Int {
+  match status {
+    DisplayReady => 10
+    DisplayActive => 9
+    DisplayReview => 8
+    DisplayAssigned => 7
+    DisplayReturned => 6
+    DisplayBlocked => 4
+    DisplayUnknown => 3
+    DisplayDone => 2
+    DisplaySuperseded => 1
+  }
+}

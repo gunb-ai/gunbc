@@ -1,6 +1,11 @@
 module gunbc.roadmap_presentation
 
 import gunbc.roadmap_nesting { RoadmapMembership, roadmap_memberships }
+import gunbc.roadmap_issue_status {
+  IssueDisplayStatus, DisplayReady, DisplayAssigned, DisplayActive, DisplayReview, DisplayBlocked,
+  DisplayReturned, DisplayDone, DisplaySuperseded, DisplayUnknown,
+  issue_display_status_label, issue_display_status_sort_rank,
+}
 import v2.std.collection { Map }
 import gunbc.roadmap.roadmap_readiness {
   ReadinessGap, NodeReadiness, ReadyToDispatch, NotReady, node_readiness, readiness_text, readiness_reason_text,
@@ -2134,7 +2139,11 @@ fn issue_work_history_rounds(ledger: HarnessRoundLedger) -> List<RoundSegment> {
 // ruling here. The primary word is a projection, never stored. The four facts remain
 // separate in IssueStatusDetails and the Work ledger; pending stages retain wait targets.
 type IssueStatusDetails { planning: String, obligation: String, outcome: String, evidence: List<ActivityEvidenceRow> }
-fn issue_status_label(view: WorkRowView) -> String {
+// The displayed status is a typed value (gunbc.roadmap_issue_status IssueDisplayStatus); the word
+// and the sort rank are read from it. The last arm reads the scheduling position directly, so
+// every row lands on a member of the vocabulary: the former catch-all word "Open" was reachable
+// only by a scheduling position this match now names.
+fn issue_display_status(view: WorkRowView) -> IssueDisplayStatus {
   let standing = match view.standing {
     Absent => "unknown"
     Present { value: st } => match st {
@@ -2151,32 +2160,28 @@ fn issue_status_label(view: WorkRowView) -> String {
   let lifecycle = work_lifecycle_key(l: view.lifecycle)
   let scheduling = work_scheduling_key(s: view.scheduling)
   let activity = activity_arm_key(a: view.activity)
-  if standing == "unknown" || activity == "unobservable" { "Unknown" }
-  else if lifecycle == "superseded" { "Superseded" }
-  else if lifecycle == "done" { "Done" }
-  else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { "Blocked" }
-  else if standing == "in_progress" || activity == "active" { "Active" }
-  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { "Review" }
-  else if standing == "handed_back" { "Returned" }
-  else if standing == "claimed" { "Assigned" }
-  else if scheduling == "not-ready" { "Blocked" }
-  else if scheduling == "ready" { "Ready" }
-  else { "Open" }
+  if standing == "unknown" || activity == "unobservable" { DisplayUnknown }
+  else if lifecycle == "superseded" { DisplaySuperseded }
+  else if lifecycle == "done" { DisplayDone }
+  else if standing == "blocked" || activity == "refused" || activity == "legacy_supersedable" { DisplayBlocked }
+  else if standing == "in_progress" || activity == "active" { DisplayActive }
+  else if lifecycle == "review" || standing == "ready_for_review" || scheduling == "done" { DisplayReview }
+  else if standing == "handed_back" { DisplayReturned }
+  else if standing == "claimed" { DisplayAssigned }
+  else {
+    match view.scheduling {
+      SchedulingReady => DisplayReady
+      SchedulingNotReady { missing: _ } => DisplayBlocked
+      SchedulingDone => DisplayReview
+      SchedulingSuperseded => DisplaySuperseded
+    }
+  }
 }
-// Owner 2026-10-04: descending status means Ready first, not lexical order.
-// The same numeric value drives the initial server order and interactive column sorting.
+fn issue_status_label(view: WorkRowView) -> String {
+  issue_display_status_label(status: issue_display_status(view: view))
+}
 fn issue_status_sort_rank(view: WorkRowView) -> Int {
-  let label = issue_status_label(view: view)
-  if label == "Ready" { 10 }
-  else if label == "Active" { 9 }
-  else if label == "Review" { 8 }
-  else if label == "Assigned" { 7 }
-  else if label == "Returned" { 6 }
-  else if label == "Open" { 5 }
-  else if label == "Blocked" { 4 }
-  else if label == "Unknown" { 3 }
-  else if label == "Done" { 2 }
-  else { 1 }
+  issue_display_status_sort_rank(status: issue_display_status(view: view))
 }
 
 fn issue_status_details(view: WorkRowView) -> IssueStatusDetails {
