@@ -197,10 +197,14 @@ fn st_part_kind(part: StringTemplatePart) -> String {
   }
 }
 
+fn st_part_kinds(parts: List<StringTemplatePart>) -> List<String> {
+  fold(parts, init: [], f: fn(acc, p) { concat(acc, [st_part_kind(part: p)]) })
+}
+
 // THE READER: text, hole, text, in source order, with each text decoded.
 test fn the_reader_yields_text_hole_text() -> Bool {
   match string_template_parts_optional(node: st_shell()) {
-    Present { value: parts } => fold(parts, init: [], f: fn(acc, p) { concat(acc, [st_part_kind(part: p)]) }) == ["text:x", "hole", "text:y"]
+    Present { value: parts } => st_part_kinds(parts: parts) == ["text:x", "hole", "text:y"]
     Absent => false
   }
 }
