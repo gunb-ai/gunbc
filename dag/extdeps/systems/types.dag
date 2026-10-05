@@ -2,13 +2,13 @@ module extdeps.systems.types
 
 import v2.std.algebra { filter }
 import std.types { NonEmptyStr, List, Int, Bool, String }
-import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt }
+import std.measure { ByteSize, Bandwidth, Watt, BitWidth, Hertz, HardwareThreadCount, hardware_thread_count_value, byte_size, byte_size_count, Millimeter, Celsius, watt, watt_count, Volt, bandwidth_count }
 import std.nat { Nat }
 import extdeps.storage.types { PcieLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.gpu.types { GpuModelCatalogRow }
-import extdeps.memory.types { MemoryFacts }
+import extdeps.memory.types { MemoryFacts, MemoryKind, Dram, Hbm, UnifiedShared }
 import extdeps.toolchain.types { Architecture }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding }
@@ -130,7 +130,9 @@ type GpuMemoryAddressability
   | GpuAddressesDirectly
   | GpuAddressesAcrossCoherentLink { per_direction: Bandwidth }
 
-type SystemMemoryComponent {
+// SEALED: the row-shape projections below are the only constructors, so a component always carries
+// facts copied from a catalog row and never hand-assembled ones.
+type SystemMemoryComponent sole_constructor {
   system: NonEmptyStr
   memory: MemoryFacts
   addressability: GpuMemoryAddressability
@@ -163,11 +165,46 @@ fn gpu_memory_addressability_wire(a: GpuMemoryAddressability) -> NonEmptyStr {
   }
 }
 
-// Identity is the system plus the addressability arm. One system never has two memories reached the
-// same way, so this pair names exactly one component.
+// IDENTITY IS THE WHOLE FACT, not a name:
+// - the system;
+// - the memory's capacity and kind;
+// - the complete addressability, including a coherent link's rate.
+// Two components agree only when every fact agrees. A row edited to different memory, or to a
+// different link rate, under the same system name projects a component that is NOT the original's,
+// so a tier join can never alias them.
+fn memory_kind_same(a: MemoryKind, b: MemoryKind) -> Bool {
+  match a {
+    Dram => match b { Dram => true Hbm => false UnifiedShared => false }
+    Hbm => match b { Dram => false Hbm => true UnifiedShared => false }
+    UnifiedShared => match b { Dram => false Hbm => false UnifiedShared => true }
+  }
+}
+
+fn gpu_memory_addressability_same(a: GpuMemoryAddressability, b: GpuMemoryAddressability) -> Bool {
+  match a {
+    GpuAndCpuShareOnePool => match b {
+      GpuAndCpuShareOnePool => true
+      GpuAddressesDirectly => false
+      GpuAddressesAcrossCoherentLink { per_direction: _ } => false
+    }
+    GpuAddressesDirectly => match b {
+      GpuAndCpuShareOnePool => false
+      GpuAddressesDirectly => true
+      GpuAddressesAcrossCoherentLink { per_direction: _ } => false
+    }
+    GpuAddressesAcrossCoherentLink { per_direction: ra } => match b {
+      GpuAndCpuShareOnePool => false
+      GpuAddressesDirectly => false
+      GpuAddressesAcrossCoherentLink { per_direction: rb } => bandwidth_count(b: ra) == bandwidth_count(b: rb)
+    }
+  }
+}
+
 fn system_memory_component_same(a: SystemMemoryComponent, b: SystemMemoryComponent) -> Bool {
   (a.system as String) == (b.system as String)
-    && (gpu_memory_addressability_wire(a: a.addressability) as String) == (gpu_memory_addressability_wire(a: b.addressability) as String)
+    && byte_size_count(b: a.memory.capacity) == byte_size_count(b: b.memory.capacity)
+    && memory_kind_same(a: a.memory.memory_kind, b: b.memory.memory_kind)
+    && gpu_memory_addressability_same(a: a.addressability, b: b.addressability)
 }
 
 fn system_memory_component_wire(c: SystemMemoryComponent) -> NonEmptyStr {
