@@ -11,7 +11,7 @@ import gunbc.runner_qemu_host_standing {
   qemu_binary_standing_of, QemuAbsent, QemuPinnedBuild, QemuOtherBuild,
   QemuPresence, QemuNotExecutable, QemuExecutable, QemuBannerNotRead, QemuBannerRead, qemu_banner_may_be_read,
   qemu_host_standing_text, QemuHostStanding, FirmwareFileUnreadable, FirmwareFileMatches,
-  QemuLibrariesRead, QemuLibrariesNotRead, qemu_host_ready, firmware_file_standing_of,
+  QemuLibrariesRead, QemuLibrariesNotRead, qemu_host_ready, firmware_file_standing_of, qemu_host_standing_of,
 }
 import extdeps.tools.ldd { ldd_reading_of }
 import gunbc.hostname_read { HostnameShortCapture, HostnameShortCaptured, HostnameShortCaptureRefused }
@@ -20,7 +20,7 @@ import gunbc.verified_archive_install { staged_archive_fetch_commands, staged_ar
 import extdeps.os.ubuntu_ports_archive { UbuntuArchiveBinaryPackage, ubuntu_ports_package_url }
 import extdeps.firmware.tianocore_edk2.aavmf { aavmf_2024_02_ubuntu_noble }
 import gunbc.runner_qemu_toolchain {
-  qemu_toolchain_archives, qemu_toolchain_archives_of, qemu_toolchain_staged_archive, qemu_toolchain_location_of, qemu_toolchain_library_path, qemu_toolchain_rooted, qemu_toolchain_recipe_identity,
+  qemu_toolchain_archives, qemu_toolchain_archives_of, qemu_toolchain_staged_archive, qemu_toolchain_location_of, qemu_toolchain_library_path, qemu_toolchain_rooted, qemu_toolchain_recipe_identity, qemu_toolchain_location,
 }
 
 // A SUPPLIED ROOT: the claims below are about the standing fold, not about where a host's HOME is.
@@ -110,15 +110,20 @@ fn pinned_standing_with(libraries_output: String) -> QemuHostStanding {
 }
 
 fn pinned_standing_on(host: HostnameShortCapture, libraries_output: String) -> QemuHostStanding {
-  QemuHostStanding {
+  // THROUGH THE OBSERVER'S OWN CONSTRUCTION (gunbc.runner_qemu_host_standing qemu_host_standing_of,
+  // the projection observe_qemu_host_standing_wet returns): only the reads are supplied.
+  qemu_host_standing_of(
     host: host,
     root: witness_root,
+    build: qemu_8_2_2_ubuntu_noble_arm64,
+    firmware: aavmf_2024_02_ubuntu_noble,
     kvm: KvmDeviceWritable,
-    qemu: qemu_binary_standing_of(root: witness_root, build: qemu_8_2_2_ubuntu_noble_arm64, presence: pinned_digest(), banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" }),
+    presence: pinned_digest(),
+    banner: QemuBannerRead { banner: "QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18)" },
     libraries: QemuLibrariesRead { reading: ldd_reading_of(output: libraries_output) },
-    aavmf_code: FirmwareFileMatches { path: qemu_toolchain_rooted(root: witness_root, packaged: aavmf_2024_02_ubuntu_noble.code.path) },
-    aavmf_vars_template: FirmwareFileMatches { path: qemu_toolchain_rooted(root: witness_root, packaged: aavmf_2024_02_ubuntu_noble.vars_template.path) },
-  }
+    aavmf_code: Sha256FileDigest { digest: sha256_digest(hex: aavmf_2024_02_ubuntu_noble.code.sha256) },
+    aavmf_vars_template: Sha256FileDigest { digest: sha256_digest(hex: aavmf_2024_02_ubuntu_noble.vars_template.sha256) },
+  )
 }
 
 // THE POSITIVE CONTROL: every fact pinned and every library resolved is ready.
@@ -215,12 +220,12 @@ test fn an_unread_executor_host_is_named_unread() -> Bool {
   string_contains(s: t, pattern: "host=unread (hostname -s exited unsuccessfully)\n")
 }
 
-// THE INSTALL DIRECTORY IS THE CALLER'S: it moves the base and leaves the recipe-named leaf alone.
+// THE INSTALL DIRECTORY IS THE CALLER'S, THROUGH THE PUBLIC ENTRY THE BINDINGS CALL
+// (qemu_toolchain_location): it moves the base and leaves the recipe-named leaf alone.
 test fn the_install_directory_names_the_base_not_the_recipe() -> Bool {
-  let archives = qemu_toolchain_archives()
-  let leaf = qemu_toolchain_recipe_identity(archives: archives) as String
-  let a = qemu_toolchain_location_of(home: "/h", install_dir: "one", archives: archives)
-  let b = qemu_toolchain_location_of(home: "/h", install_dir: "two", archives: archives)
+  let leaf = qemu_toolchain_recipe_identity(archives: qemu_toolchain_archives()) as String
+  let a = qemu_toolchain_location(home: "/h", install_dir: "one")
+  let b = qemu_toolchain_location(home: "/h", install_dir: "two")
   (a.base as String) == "/h/.local/share/one" && (b.base as String) == "/h/.local/share/two"
     && (a.root as String) == join(["/h/.local/share/one/", leaf], "")
     && (b.root as String) == join(["/h/.local/share/two/", leaf], "")

@@ -121,7 +121,7 @@ fn qemu_binary_standing_of(root: String, build: QemuDistributionBuild, presence:
   }
 }
 
-fn observe_qemu_binary_standing_wet(root: String, build: QemuDistributionBuild, presence: QemuPresence) -> QemuBinaryStanding {
+fn observe_qemu_banner_wet(root: String, build: QemuDistributionBuild, presence: QemuPresence) -> QemuBannerReading {
   let path = qemu_toolchain_rooted(root: root, packaged: build.installed_binary)
   let banner = if qemu_banner_may_be_read(presence: presence) {
     match run_shell_command_capture(command: qemu_toolchain_cleared_command(root: root, command: qemu_version_command(binary: path as FilePath)), transport: LocalExec) {
@@ -132,7 +132,7 @@ fn observe_qemu_binary_standing_wet(root: String, build: QemuDistributionBuild, 
   } else {
     QemuBannerNotRead
   }
-  qemu_binary_standing_of(root: root, build: build, presence: presence, banner: banner)
+  banner
 }
 
 fn observe_qemu_presence_wet(root: String, build: QemuDistributionBuild) -> QemuPresence {
@@ -171,8 +171,8 @@ fn firmware_file_standing_of(root: String, file: AavmfFirmwareFile, reading: Sha
   }
 }
 
-fn observe_firmware_file_standing_wet(root: String, file: AavmfFirmwareFile) -> FirmwareFileStanding {
-  firmware_file_standing_of(root: root, file: file, reading: sha256sum_file_digest_via_shell(path: qemu_toolchain_rooted(root: root, packaged: file.path) as NonEmptyStr))
+fn observe_firmware_file_digest_wet(root: String, file: AavmfFirmwareFile) -> Sha256FileDigest {
+  sha256sum_file_digest_via_shell(path: qemu_toolchain_rooted(root: root, packaged: file.path) as NonEmptyStr)
 }
 
 fn qemu_standing_ready(s: QemuBinaryStanding) -> Bool {
@@ -242,6 +242,33 @@ fn executor_host_text(host: HostnameShortCapture) -> String {
   }
 }
 
+// THE ONE CONSTRUCTION OF A STANDING. Every fact the wet observe reads arrives here as a value, and
+// the standing -- its executor key, its root, and every per-fact standing judged under that root --
+// is built from those values and nothing else; the observe below is this projection over its reads,
+// so a claim over this function is a claim over the observer's own construction.
+fn qemu_host_standing_of(
+  host: HostnameShortCapture,
+  root: String,
+  build: QemuDistributionBuild,
+  firmware: AavmfDistributionBuild,
+  kvm: KvmDeviceStanding,
+  presence: QemuPresence,
+  banner: QemuBannerReading,
+  libraries: QemuLibraryStanding,
+  aavmf_code: Sha256FileDigest,
+  aavmf_vars_template: Sha256FileDigest,
+) -> QemuHostStanding {
+  QemuHostStanding {
+    host: host,
+    root: root,
+    kvm: kvm,
+    qemu: qemu_binary_standing_of(root: root, build: build, presence: presence, banner: banner),
+    libraries: libraries,
+    aavmf_code: firmware_file_standing_of(root: root, file: firmware.code, reading: aavmf_code),
+    aavmf_vars_template: firmware_file_standing_of(root: root, file: firmware.vars_template, reading: aavmf_vars_template),
+  }
+}
+
 fn observe_qemu_host_standing_wet(host: HostnameShortCapture, root: String) -> QemuHostStanding {
   let kvm_path = qemu_kvm_accelerator_device as String
   let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
@@ -249,13 +276,16 @@ fn observe_qemu_host_standing_wet(host: HostnameShortCapture, root: String) -> Q
   let build = qemu_8_2_2_ubuntu_noble_arm64
   let firmware = aavmf_2024_02_ubuntu_noble
   let presence = observe_qemu_presence_wet(root: root, build: build)
-  QemuHostStanding {
+  qemu_host_standing_of(
     host: host,
     root: root,
+    build: build,
+    firmware: firmware,
     kvm: kvm_standing_of(exists: exists, writable: writable),
-    qemu: observe_qemu_binary_standing_wet(root: root, build: build, presence: presence),
+    presence: presence,
+    banner: observe_qemu_banner_wet(root: root, build: build, presence: presence),
     libraries: observe_qemu_libraries_wet(root: root, build: build, presence: presence),
-    aavmf_code: observe_firmware_file_standing_wet(root: root, file: firmware.code),
-    aavmf_vars_template: observe_firmware_file_standing_wet(root: root, file: firmware.vars_template),
-  }
+    aavmf_code: observe_firmware_file_digest_wet(root: root, file: firmware.code),
+    aavmf_vars_template: observe_firmware_file_digest_wet(root: root, file: firmware.vars_template),
+  )
 }
