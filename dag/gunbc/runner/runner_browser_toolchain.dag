@@ -84,6 +84,7 @@ import extdeps.exec.command { ArgvCommand, argv_command, ProgramIdentity }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
 import extdeps.tools.gnu_coreutils { tee_program, rm_program }
+import gunbc.filesystem_model { concat_lists }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1273,7 +1274,7 @@ type BrowserReadyLabelsPlan
 // carrier the deleted privileged intents rendered.
 fn browser_ready_labels_posture_argv(posture: BrowserReadyLabelsPosture, program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
   match posture {
-    ReadyLabelsSudoElevated => sudo_elevate_command(command: [(program.invocation) as String] ++ arguments)
+    ReadyLabelsSudoElevated => sudo_elevate_command(command: concat_lists(a: [(program.invocation) as String], b: arguments))
     ReadyLabelsUnprivileged => argv_command(program: program, arguments: arguments)
   }
 }

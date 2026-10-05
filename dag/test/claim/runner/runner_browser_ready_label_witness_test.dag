@@ -19,6 +19,7 @@ import gunbc.runner_browser_toolchain {
   BrowserReadyLabelsGranted, BrowserReadyLabelsRevoked, BrowserReadyLabelsFailed,
 }
 import extdeps.exec.command { argv_words }
+import gunbc.filesystem_model { concat_lists }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -98,7 +99,7 @@ fn grant_reload_is_posture_skipped(p: BrowserReadyLabelsPlan) -> Bool {
 test fn unprivileged_posture_runs_bare_and_skips_the_reload() -> Bool {
   let grant = browser_ready_labels_grant_plan(host: operator_host_srv3, target: browser_ready_labels_unprivileged_target())
   let revoke = browser_ready_labels_revoke_plan(target: browser_ready_labels_unprivileged_target())
-  words_carry_no_sudo(words: plan_write_words(p: grant) ++ plan_remove_words(p: revoke))
+  words_carry_no_sudo(words: concat_lists(a: plan_write_words(p: grant), b: plan_remove_words(p: revoke)))
     && grant_reload_is_posture_skipped(p: grant)
 }
 
