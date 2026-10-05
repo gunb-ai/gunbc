@@ -338,13 +338,16 @@ fn route_control_plane_write_count(route: List<QualificationStage>) -> Int {
   )
 }
 
-// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity.
+// EVERY BMC WRITE IS UNDER THE APPROVAL GATE, by declaration identity. The arms are named, not
+// wildcarded: a stage effect added later must state here what the gate audit reads from it, or the
+// route stops compiling -- a fresh write-shaped effect may not inherit the audit's pass.
 fn route_bmc_writes_are_gated(route: List<QualificationStage>) -> Bool {
   route |> all(s =>
     match stage_effect(stage: s) {
       BmcWrite { gate: g, boot: _, image: _ } =>
         (g.module_path as String) == "gunbc.auth.approval_decision_store" && (g.decl_name as String) == "grant_from_store"
-      _ => true
+      GitHubControlPlaneWrite { authority: _ } => true
+      ObservationOnly => true
     }
   )
 }
@@ -384,7 +387,12 @@ fn route_dispatch_selector_names_the_attempt(route: List<QualificationStage>, at
   route |> all(s =>
     match s {
       DispatchFloorToSlot { workload: _, selector: sel, dispatch: _ } => sel |> any(l => l == (attempt as String))
-      _ => true
+      // Named, not wildcarded: only a dispatch stage is asked to name the attempt, but a stage
+      // added later must state that here rather than inherit the vacuous pass.
+      BootHostUnderApprovalGate { host: _, boot: _, image: _ } => true
+      RegisterEphemeralRunnerSlot { unit: _, labels: _, workspace: _, registration: _ } => true
+      CollectInstruments { instruments: _ } => true
+      DeregisterRunnerSlot { unit: _, deregistration: _ } => true
     }
   )
 }

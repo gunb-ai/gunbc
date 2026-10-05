@@ -3,7 +3,8 @@ module gunbc.fleet_revision_acceptance
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.github.workflow_runs {
-  WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Success, Cancelled, Skipped, Completed,
+  WorkflowRun, WorkflowRunList, WorkflowRunConclusion, Success, Failure, Neutral, Cancelled, Skipped,
+  TimedOut, ActionRequired, StartupFailure, Completed,
 }
 import extdeps.github.actions { github_event_name_merge_group }
 import extdeps.github.push_event { PushRefUpdate }
@@ -441,9 +442,18 @@ fn merge_group_run_carries_verdict(run: WorkflowRun) -> Bool {
       match run.conclusion {
         Present { value: c } =>
           match c {
+            // A run carries a verdict when GitHub states a terminal outcome for it: the five
+            // conclusions below say what happened. Neutral, Cancelled and Skipped report that no
+            // verdict was rendered -- the run did not judge the revision -- so they are not
+            // verdicts, and an unconcluded floor refuses as RequiredCiMergeGroupRunUnconcluded.
+            Success => true
+            Failure => true
+            TimedOut => true
+            ActionRequired => true
+            StartupFailure => true
+            Neutral => false
             Cancelled => false
             Skipped => false
-            _ => true
           }
         none => false
       }

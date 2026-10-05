@@ -5,7 +5,7 @@ import std.contract_identity { ContractEpoch }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import extdeps.github.workflow_runs {
   WorkflowRun, WorkflowRunList, WorkflowRunStatus, WorkflowRunConclusion,
-  Completed, InProgress, Queued, Success, Failure, Cancelled, TimedOut,
+  Completed, InProgress, Queued, Success, Failure, Cancelled, Neutral, TimedOut,
 }
 import extdeps.github.push_event { PushRefUpdate, push_ref_update_from_event_json, PushRefUpdateObserved, PushRefUpdateMemberAbsent }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
@@ -116,6 +116,26 @@ test fn two_completed_successes_for_one_revision_admit() -> Bool {
 // A cancelled run is not a verdict; it neither blocks nor supports the success beside it.
 test fn a_cancelled_run_beside_a_success_admits() -> Bool {
   admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Cancelled), mg(id: 12, conclusion: Success)]))
+}
+
+// NO VERDICT RENDERED IS NOT A FAILED VERDICT. A neutral conclusion reports that the workflow did
+// not apply to this revision; it carries no verdict, so a floor of only-neutral runs is
+// UNCONCLUDED -- not "the floor ran and did not succeed", which is a different refusal and a
+// different operator action. merge_group_run_carries_verdict names all eight conclusions so a
+// conclusion added later cannot inherit verdict-carrying without an arm.
+test fn a_floor_of_neutral_runs_refuses_as_unconcluded_not_not_success() -> Bool {
+  match ci_on_r(rs: runs(rs: [mg(id: 11, conclusion: Neutral)])) {
+    Present { value: RequiredCiRefused { cause: RequiredCiMergeGroupRunUnconcluded { revision: _, run_ids: ids } } } =>
+      ids == [11]
+    _ => false
+  }
+}
+
+// A neutral run beside a success neither contradicts it nor blocks the entry: not applicable is
+// not a competing verdict, and the refusal it caused before the classification named all eight
+// conclusions read as two runs disagreeing about one revision.
+test fn a_neutral_run_beside_a_success_admits() -> Bool {
+  admits(push: main_push(after: sha_r), rs: runs(rs: [mg(id: 11, conclusion: Neutral), mg(id: 12, conclusion: Success)]))
 }
 
 // THE CONTRADICTION. Nothing picks one: the refusal carries both id sets so an operator reads both logs.
