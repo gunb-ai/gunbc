@@ -499,7 +499,7 @@ test fn the_reader_observes_the_result_for_the_attempts_exact_identity() -> Bool
   let c2 = rr_claim_by(node: rr_node(), requester: rr_bob(), parent: Present { value: c1.id }, at: "t2")
   let published = rr_result(node: rr_node(), attempt: rr_attempt, claim: c1.id, outcome: rr_published(), parent: c2.id, at: "2026-10-03T08:00:00Z")
   match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c2, published, c1] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
-    ResultReturnedObserved { node, event, claim, return_to, outcome, recorded_at } =>
+    ResultReturnedObserved { node, attempt: _, event, claim, return_to, outcome, recorded_at } =>
       (node as String) == (rr_node() as String)
         && (event as String) == (published.id as String)
         && (claim as String) == (c1.id as String)
@@ -521,14 +521,14 @@ test fn an_unanswered_attempt_reads_as_not_returned_and_an_unrequested_one_as_no
   let other = rr_result(node: rr_node(), attempt: "0ther0ther0ther00", claim: claim.id, outcome: rr_published(), parent: claim.id, at: "t2")
   let not_returned = all([[claim, other], [claim]], envelopes => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: envelopes }, binding: rr_bound(claim: claim.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotReturned { attempt_key } => attempt_key == rr_attempt
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotOwed { reason: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   })
   let not_owed = all([RequestBindingAbsent, RequestBindingRead { binding: RequestAutonomous }], b => match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [claim] }, binding: b, node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotOwed { reason } => string_length(s: reason) > 0
     ResultNotReturned { attempt_key: _ } => false
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   })
   not_returned && not_owed
@@ -537,7 +537,7 @@ test fn an_unanswered_attempt_reads_as_not_returned_and_an_unrequested_one_as_no
 fn rr_unobserved_at(o: ResultReturnedObservation, step: String) -> Bool {
   match o {
     ResultReturnedUnobserved { step: s, reason } => s == step && string_length(s: reason) > 0
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotReturned { attempt_key: _ } => false
     ResultNotOwed { reason: _ } => false
   }
@@ -558,7 +558,7 @@ test fn a_misaddressed_unreadable_forked_or_duplicated_result_is_not_the_attempt
   let on_other_issue = rr_result(node: other_issue, attempt: rr_attempt, claim: b1.id, outcome: rr_published(), parent: b1.id, at: "t2")
   let other_issue_is_not_the_answer = match result_returned_observation_of(read: EventsRead { node: rr_node(), envelopes: [c1, c2, b1, on_other_issue] }, binding: rr_bound(claim: c1.id), node_id: "result-returned-node", attempt_key: rr_attempt) {
     ResultNotReturned { attempt_key } => attempt_key == rr_attempt
-    ResultReturnedObserved { node: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
+    ResultReturnedObserved { node: _, attempt: _, event: _, claim: _, return_to: _, outcome: _, recorded_at: _ } => false
     ResultNotOwed { reason: _ } => false
     ResultReturnedUnobserved { step: _, reason: _ } => false
   }
@@ -610,8 +610,9 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
                         EventFileContent { content: roadmap_event_wire_text(env: appended) },
                       ])
                       match result_returned_observation_of(read: read, binding: recorded, node_id: "result-returned-node", attempt_key: rr_attempt) {
-                        ResultReturnedObserved { node, event: id, claim: answered, return_to: to, outcome: returned, recorded_at: _ } =>
+                        ResultReturnedObserved { node, attempt: returned_for, event: id, claim: answered, return_to: to, outcome: returned, recorded_at: _ } =>
                           (node as String) == "result-returned-node"
+                            && (returned_for as String) == rr_attempt
                             && (id as String) == (appended.id as String)
                             && (answered as String) == (c1.id as String)
                             && event_principal_label(p: to) == "principal:google-oidc/accounts/sub-alice"
