@@ -246,8 +246,7 @@ fn served_attempt_revision_observations(instance: HostDashboardInstance, attempt
 // (the tick has the instance in hand; serve reads only the finished bytes) and rides every row the
 // page renders — the assignee chips project real identity under the never-blocks law: a store read
 // that refuses degrades to the empty roster, never a failed page.
-fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
-  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+fn served_observation_daily_surface_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
   let standings = served_standings_after_snapshot_close(read: roadmap_standings_read(layout: roadmap_event_carrier_layout_for_instance(instance: instance)))
   let profiles = served_observation_profiles_for_instance(instance: instance)
   let page = match observed {
@@ -299,11 +298,17 @@ fn served_observation_attempts_surface_for_instance(instance: HostDashboardInsta
   ServedObservationSurface { kind: AttemptsJson, status: belt_attempts_http_status(a: a), body: belt_attempts_observed_json(a: a) }
 }
 
-fn served_observation_workflow_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
+// The workflow wire names each attempt's compact view revision, and that view includes whether
+// the attempt is stale, so the wire is given the same revision comparison the pages make.
+fn served_observation_workflow_surface_for_instance(instance: HostDashboardInstance, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
+  let stale_nodes = match observed {
+    WorkflowAttemptsObserved { attempts } => stale_attempt_nodes(observations: served_attempt_revision_observations(instance: instance, attempts: attempts), current_revision_hex: served_current_revision_hex(launch: launch))
+    WorkflowAttemptsRefused { reason: _ } => []
+  }
   ServedObservationSurface {
     kind: WorkflowJson,
     status: belt_workflow_attempts_http_status(observed: observed),
-    body: belt_workflow_attempts_observed_json_for_instance(instance: instance, observed: observed),
+    body: belt_workflow_attempts_observed_json_for_instance(instance: instance, observed: observed, stale_nodes: stale_nodes),
   }
 }
 
@@ -312,17 +317,20 @@ fn served_observation_sessions_surface_for_instance(instance: HostDashboardInsta
   ServedObservationSurface { kind: SessionsJson, status: belt_sessions_http_status(o: o), body: belt_sessions_observed_json(o: o) }
 }
 
-// The workflow attempts are observed ONCE per tick and shared by the two surfaces that project them
-// (one observing authority, two projections), so the walk over dispatch worktrees happens once.
+// The workflow attempts are observed ONCE per tick and shared by the surfaces that project them
+// (one observing authority, several projections), so the walk over dispatch worktrees happens
+// once; the launch host standing is read once as well and handed to the three surfaces that read
+// it, rather than read again by each.
 fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed_at: String) -> ServedObservationSnapshot {
   let observed = belt_workflow_attempts_observe_for_instance(instance: instance)
+  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
   ServedObservationSnapshot {
     observed_at: observed_at,
     surfaces: [
-      served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed),
-      served_observation_issue_query_surface(instance: instance, plan: plan, observed: observed),
+      served_observation_daily_surface_over(instance: instance, plan: plan, observed: observed, launch: launch),
+      served_observation_issue_query_surface(instance: instance, plan: plan, observed: observed, launch: launch),
       served_observation_attempts_surface_for_instance(instance: instance),
-      served_observation_workflow_surface_for_instance(instance: instance, observed: observed),
+      served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
     ],
   }
@@ -760,8 +768,7 @@ fn served_observation_standing_response_for_instance(instance: HostDashboardInst
   }
 }
 
-fn served_observation_issue_query_surface(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts) -> ServedObservationSurface {
-  let launch = belt_launch_host_standing_for_page_over(instance: instance, plan: plan)
+fn served_observation_issue_query_surface(instance: HostDashboardInstance, plan: RoadmapAuthorityProjection, observed: BeltWorkflowAttempts, launch: LaunchHostStanding) -> ServedObservationSurface {
   let attempts = match observed { WorkflowAttemptsObserved { attempts } => attempts WorkflowAttemptsRefused { reason: _ } => [] }
   let body = issue_query_snapshot_for_projection(proj: plan, attempts: attempts,
     attempts_refused: match observed { WorkflowAttemptsObserved { attempts: _ } => none WorkflowAttemptsRefused { reason } => Present { value: reason } },
