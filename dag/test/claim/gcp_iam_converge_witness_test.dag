@@ -1,7 +1,7 @@
 module test.claim.gcp_iam_converge_witness_test
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, List, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.scoped_authorization { AttemptIdentity, AuthorizationRequest }
 import std.content_hash { Sha256Digest }
 import v2.std.optional { Present, Absent }
@@ -20,14 +20,19 @@ import gunbc.auth.gcp_iam_converge {
   ApprovedPolicyWrite, WriteApprovedCells, ApprovedCellsRefused, approved_policy_write,
   iam_converge_reach_excludes_its_own_trust, iam_converge_own_trust_resources,
   iam_converge_bindings, iam_converge_bootstrap_readback, ReachProbe, ExpectAdmitted, ExpectDenied,
-  ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
+  ConvergeCreateRole, ConvergeProviderRole, ConvergeAccountPolicyRole, ConvergeSecretPolicyRole, pool_resource,
   iam_converge_provider_role_permissions, iam_converge_account_policy_role_permissions, iam_converge_secret_policy_role_permissions,
   gcp_iam_observe_dedicated_federation,
   plan_dedicated_federation, plan_estate, gcp_iam_converge_request_over, gcp_iam_estate_diff_preimage,
   gcp_iam_converge_escalation_prefix, gcp_iam_converge_targets,
   iam_converge_denied_permissions, iam_converge_create_role_permissions,
   service_account_resource,
+  GrantSet, SecretPolicyReading, gcp_iam_converge_grant_sets, grant_set_secrets, gcp_iam_converge_grant_set_secrets,
+  plan_grant_set, gcp_iam_estate_labels_unique, grant_set_payload_permissions,
 }
+import gunbc.auth.gcp_secret_access { GrantMemberResolution, GrantMemberResolved, GrantMemberUnresolved, grant_member_resolution }
+import gunbc.auth.github_gcp_federation { federated_service_account_member }
+import gunbc.cloudflare.r2_origin { fabric_workspace_read_secret_id, fabric_workspace_write_secret_id }
 import gunbc.auth.privileged_effect_census {
   PrivilegedEffectSite, privileged_effect_census, site_verdict, DivergesWithReason, gcp_iam_approval_enforced_in_reviewed_code,
 }
@@ -36,7 +41,7 @@ import gunbc.fleet_converge_workflow {
   fleet_converge_gcp_iam_request_step, fleet_converge_gcp_iam_actuate_auth_step, fleet_converge_gcp_iam_apply_step,
   fleet_converge_gcp_iam_approved_if,
 }
-import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission, attempt_identity_of }
+import gunbc.auth.gcp_iam_converge_run { iam_converge_token_env, gcp_iam_converge_admission }
 import gunbc.auth.approval_request_client { ApprovalPollStanding, PollApproved }
 import gunbc.auth.approval_gate { ApprovalGate, GateAdmitted, GateRefused }
 import extdeps.cloud.gcp.iam { gcp_cell_in, gcp_policy_cells }
@@ -384,19 +389,19 @@ test fn only_a_live_approval_admits_the_mint_gate_or_the_apply() -> Bool {
 // the run attempt, so the two requests have different escalation ids -- attempt 2 reads its own slot,
 // never attempt 1's -- while consenting to the same revision. A missing or non-decimal part refuses.
 test fn a_rerun_attempt_files_afresh_and_malformed_attempts_refuse() -> Bool {
-  match attempt_identity_of(run_id: "36235907538", run_attempt: "1") {
+  match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "1") {
     Absent => false
     Present { value: a1 } =>
-      match attempt_identity_of(run_id: "36235907538", run_attempt: "2") {
+      match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "2") {
         Absent => false
         Present { value: a2 } => {
           let q1 = gcp_iam_converge_request_over(d: one_effect_estate(etag: "e1"), g: digest_a, attempt: a1)
           let q2 = gcp_iam_converge_request_over(d: one_effect_estate(etag: "e1"), g: digest_a, attempt: a2)
           q1.escalation_id != q2.escalation_id
             && request_revision_of(request: q1) == request_revision_of(request: q2)
-            && match attempt_identity_of(run_id: "36235907538", run_attempt: "") { Absent => true  Present { value: _ } => false }
-            && match attempt_identity_of(run_id: "36235907538", run_attempt: "2x") { Absent => true  Present { value: _ } => false }
-            && match attempt_identity_of(run_id: "", run_attempt: "1") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "36235907538", run_attempt: "2x") { Absent => true  Present { value: _ } => false }
+            && match gunbc.auth.gcp_iam_converge_run.attempt_identity_of(run_id: "", run_attempt: "1") { Absent => true  Present { value: _ } => false }
         }
       }
   }
@@ -442,4 +447,111 @@ test fn namecheap_has_a_dedicated_secret_scoped_federation() -> Bool {
     && string_contains(s: f.attribute_condition, pattern: "namecheap-dns")
     && string_contains(s: f.attribute_condition, pattern: "refs/heads/main")
   )
+}
+
+
+// ── Grant sets: the R2 mint custody cells, granted by iam-converge (operator decision B') ──────
+
+// A SUPPLIED MEMBER: the plan's subject is what it proposes for a resolved member, not the
+// allocation roster that resolves it (gunbc.auth.gcp_secret_access grant_member_resolution).
+data grant_set_member: GrantMemberResolution = GrantMemberResolved { member: "serviceAccount:fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com" }
+
+fn custody_set() -> GrantSet {
+  match gcp_iam_converge_grant_sets.first() {
+    Present { value: g } => g
+    Absent => GrantSet { label: "absent", grants: [] }
+  }
+}
+
+fn custody_readings(reading: PolicyReading) -> List<SecretPolicyReading> {
+  map(grant_set_secrets(g: custody_set()), x => SecretPolicyReading { secret: x, reading: reading })
+}
+
+fn added_cell_count(p: GcpIamPlan) -> Int {
+  match p {
+    GcpIamApply { diff: d } => fold(d.effects, init: 0, f: (acc, e) => match e {
+      AddPolicyCells { subject: _, observed_etag: _, cells: cs } => acc + cs.length()
+      CreatePool { pool_id: _, display_name: _ } => acc
+      CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => acc
+      CreateServiceAccount { account_id: _, display_name: _ } => acc
+    })
+    GcpIamNoop { target: _ } => 0
+    GcpIamRefused { target: _, reasons: _ } => 0
+  }
+}
+
+fn effect_count(p: GcpIamPlan) -> Int {
+  match p { GcpIamApply { diff: d } => d.effects.length()  GcpIamNoop { target: _ } => 0  GcpIamRefused { target: _, reasons: _ } => 0 }
+}
+
+fn refused(p: GcpIamPlan) -> Bool {
+  match p { GcpIamRefused { target: _, reasons: _ } => true  GcpIamNoop { target: _ } => false  GcpIamApply { diff: _ } => false }
+}
+
+// THE REAL ROSTER, PLANNED OVER EMPTY POLICIES: one policy add per custody secret, and every cell the
+// roster declares is in exactly one of them. The RED is a plan keyed per grant (13 adds, three
+// writes racing on one etag) or per secret that drops the second and third cell.
+test fn the_custody_grant_set_plans_one_add_per_secret_carrying_every_cell() -> Bool {
+  let g = custody_set()
+  let p = plan_grant_set(g: g, member: grant_set_member, secret_policies: custody_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }))
+  effect_count(p: p) == grant_set_secrets(g: g).length()
+    && added_cell_count(p: p) == g.grants.length()
+    && g.grants.length() > grant_set_secrets(g: g).length()
+}
+
+// REFUSALS, EACH ITS OWN CAUSE: an absent secret (the bootstrap creates it; a grant never does), a
+// reading set missing one secret, and a member that does not resolve.
+test fn the_custody_grant_set_refuses_absent_partial_and_unresolved() -> Bool {
+  let g = custody_set()
+  refused(p: plan_grant_set(g: g, member: grant_set_member, secret_policies: custody_readings(reading: PolicyResourceAbsent)))
+    && refused(p: plan_grant_set(g: g, member: grant_set_member, secret_policies: custody_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }).skip(n: 1)))
+    && refused(p: plan_grant_set(g: g, member: GrantMemberUnresolved { cause: "unallocated" }, secret_policies: custody_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") })))
+    && !refused(p: plan_grant_set(g: g, member: grant_set_member, secret_policies: custody_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") })))
+}
+
+// iam-converge's REACH OVER THE CUSTODY SECRETS IS PER SECRET AND PAYLOAD-BLIND: every grant-set
+// secret, including both fabric-workspace containers, carries the secret policy role, and the
+// readback expects access and add DENIED on each. Labels are unique across targets and grant sets.
+test fn custody_secrets_are_bound_per_secret_and_their_payload_stays_denied() -> Bool {
+  let secrets = map(gcp_iam_converge_grant_set_secrets(), x => x as String)
+  let bs = iam_converge_bindings()
+  let rb = iam_converge_bootstrap_readback()
+  any(secrets, x => x == (fabric_workspace_read_secret_id as String))
+    && any(secrets, x => x == (fabric_workspace_write_secret_id as String))
+    && gcp_iam_estate_labels_unique()
+    && iam_converge_reach_excludes_its_own_trust()
+    && all(secrets, x =>
+      any(bs, b => match b.role { ConvergeSecretPolicyRole => string_contains(s: b.resource, pattern: concat("/secrets/", x))  ConvergeCreateRole => false  ConvergeProviderRole => false  ConvergeAccountPolicyRole => false })
+        && all(grant_set_payload_permissions, q => any(rb, r => match r {
+          ExpectDenied { resource: res, permission: perm } => perm == q && string_contains(s: res, pattern: concat("/secrets/", x))
+          ExpectAdmitted { resource: _, permission: _ } => false
+        })))
+}
+
+fn added_members(p: GcpIamPlan) -> List<String> {
+  match p {
+    GcpIamApply { diff: d } => flat_map(d.effects, e => match e {
+      AddPolicyCells { subject: _, observed_etag: _, cells: cs } => map(cs, c => c.member)
+      CreatePool { pool_id: _, display_name: _ } => []
+      CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => []
+      CreateServiceAccount { account_id: _, display_name: _ } => []
+    })
+    GcpIamNoop { target: _ } => []
+    GcpIamRefused { target: _, reasons: _ } => []
+  }
+}
+
+// THE GRANTER IS NEVER THE HOLDER. Planned through the REAL member resolution (the route the estate
+// runs), every custody cell names the resolved fleet convergence principal and none names
+// iam-converge, which grants them (gunbc.auth.gcp_secret_access no_principal_can_both_grant_and_read).
+// The RED is a plan that grants the cells to the identity applying them.
+test fn custody_cells_name_the_resolved_convergence_principal_never_iam_converge() -> Bool {
+  let p = plan_grant_set(g: custody_set(), member: grant_member_resolution(), secret_policies: custody_readings(reading: PolicyObserved { policy: empty_policy(etag: "s0") }))
+  let granter = federated_service_account_member(email: iam_converge_service_account)
+  let ms = added_members(p: p)
+  ms.length() == custody_set().grants.length()
+    && match grant_member_resolution() {
+      GrantMemberResolved { member: m } => all(ms, x => x == m && x != granter)
+      GrantMemberUnresolved { cause: _ } => false
+    }
 }
