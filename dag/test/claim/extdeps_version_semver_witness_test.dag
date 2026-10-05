@@ -135,3 +135,60 @@ test fn w_semver_to_version_identity() -> Bool {
   semver_to_version_identity(v: semver_1_0_0()) == "1.0.0"
 }
 
+// ---------------------------------------------------------------------------
+// SCHEME-LEVEL SEMVER PRECEDENCE — SemVer 2.0.0 §11
+// (https://semver.org/#spec-item-11, the rule the module's
+// extdeps_external_authority_anchor attests). These pin `semver_scheme.compare`
+// — the wire surface a VersionScheme consumer calls — against the cited rule:
+// precedence is decided by major, then minor, then patch NUMERICALLY; a
+// pre-release version has LOWER precedence than the release; pre-release
+// identifiers compare numeric < alphanumeric, numerics numerically, alphanumeric
+// lexically in ASCII sort order, and a larger identifier set ranks higher when
+// the shared prefix is equal; build metadata is ignored.
+// ---------------------------------------------------------------------------
+
+test fn w_semver_scheme_minor_numeric_not_lexical() -> Bool {
+  semver_scheme.compare("1.10.0", "1.9.0") == std.algebra.Greater
+}
+
+test fn w_semver_scheme_release_above_pre_release() -> Bool {
+  semver_scheme.compare("1.0.0", "1.0.0-alpha") == std.algebra.Greater
+}
+
+test fn w_semver_scheme_numeric_identifier_lower_than_alphanumeric() -> Bool {
+  semver_scheme.compare("1.0.0-9", "1.0.0-2x") == std.algebra.Less
+}
+
+test fn w_semver_scheme_numeric_identifiers_compare_numerically() -> Bool {
+  semver_scheme.compare("2.0.0-rc.10", "2.0.0-rc.2") == std.algebra.Greater
+    && semver_scheme.compare("1.0.0-2", "1.0.0-10") == std.algebra.Less
+}
+
+test fn w_semver_scheme_build_metadata_ignored() -> Bool {
+  semver_scheme.compare("1.0.0+a", "1.0.0+b") == std.algebra.Equal
+}
+
+test fn w_semver_scheme_larger_pre_release_set_greater() -> Bool {
+  semver_scheme.compare("1.0.0-alpha.1", "1.0.0-alpha") == std.algebra.Greater
+}
+
+// A label produced by the typed model's own serializer must order the way the typed compare
+// orders the version it labels.
+test fn w_semver_scheme_identity_round_trip_label() -> Bool {
+  match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
+    Less =>
+      semver_scheme.compare(
+        semver_to_version_identity(v: semver_1_0_0_alpha_1()),
+        semver_to_version_identity(v: semver_1_0_0())
+      ) == std.algebra.Less
+    _ => false
+  }
+}
+
+// §11 defines precedence over VALID versions. A label outside the grammar keeps the scheme total
+// through the documented lexical fallback, and the fallback is pinned so it cannot drift
+// silently.
+test fn w_semver_scheme_out_of_grammar_label_refuses_precedence() -> Bool {
+  semver_scheme.compare("1.02.3", "1.2.3") == std.algebra.Less
+}
+

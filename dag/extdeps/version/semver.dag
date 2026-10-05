@@ -3,6 +3,7 @@ module extdeps.version.semver
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.types { List }
 import std.nat { nat_compare }
 import std.types { NonEmptyStr }
@@ -129,8 +130,261 @@ fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
   semver_version_label(v: v)
 }
 
+// CITED RULE (SemVer 2.0.0 §11, https://semver.org/#spec-item-11 — the authority this module's
+// extdeps_external_authority_anchor attests): precedence is decided by comparing major, then
+// minor, then patch as NUMBERS; a pre-release version has LOWER precedence than the normal
+// version; pre-release identifiers compare numeric < alphanumeric, numerics numerically,
+// alphanumerics lexically in ASCII sort order, and a larger set of pre-release identifiers ranks
+// higher when all preceding identifiers are equal; build metadata is ignored entirely.
+//
+// The label is a VersionScheme's only handle, so the comparison parses the label back into the
+// typed form and routes through `semver_compare` — the ONE implementation of the cited rule —
+// instead of keeping a second, lexical rule beside it.
+//
+// §11 defines precedence over VALID versions. A label outside the §2 grammar refuses the typed
+// route and keeps the scheme total through the documented lexical fallback, which is pinned by
+// w_semver_scheme_out_of_grammar_label_refuses_precedence so it cannot drift silently.
 fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { if a < b { Less } else { Greater } }
+  match semver_identity_parse(label: a) {
+    Present { value: av } =>
+      match semver_identity_parse(label: b) {
+        Present { value: bv } => semver_compare(a: av, b: bv)
+        Absent => semver_identity_lexical_compare(a: a, b: b)
+      }
+    Absent => semver_identity_lexical_compare(a: a, b: b)
+  }
+}
+
+// ---- label parse (SemVer 2.0.0 §2 grammar) --------------------------------
+
+fn semver_identity_code_points(label: VersionIdentity) -> List<Int> {
+  chars(s: label as String)
+}
+
+fn semver_is_ascii_digit(cp: Int) -> Bool {
+  cp >= 48 && cp <= 57
+}
+
+fn semver_is_ascii_letter(cp: Int) -> Bool {
+  (cp >= 65 && cp <= 90) || (cp >= 97 && cp <= 122)
+}
+
+fn semver_is_identifier_char(cp: Int) -> Bool {
+  semver_is_ascii_digit(cp: cp) || semver_is_ascii_letter(cp: cp) || cp == 45
+}
+
+fn semver_index_of(cp: Int, cps: List<Int>) -> Int? {
+  if cps.count() == 0 {
+    none
+  } else {
+    match cps.first() {
+      Present { value: h } =>
+        if h == cp {
+          Present { value: 0 }
+        } else {
+          match semver_index_of(cp: cp, cps: cps.skip(n: 1)) {
+            Present { value: k } => Present { value: k + 1 }
+            Absent => none
+          }
+        }
+      Absent => none
+    }
+  }
+}
+
+fn semver_split_on(cp: Int, cps: List<Int>, acc: List<List<Int>>) -> List<List<Int>> {
+  match semver_index_of(cp: cp, cps: cps) {
+    Present { value: i } =>
+      semver_split_on(cp: cp, cps: cps.skip(n: i + 1), acc: concat(acc, [cps.take(n: i)]))
+    Absent => concat(acc, [cps])
+  }
+}
+
+fn semver_all_digits(cps: List<Int>) -> Bool {
+  cps.count() > 0 && all(cps, cp => semver_is_ascii_digit(cp: cp))
+}
+
+// §2: a numeric identifier MUST NOT include leading zeroes; "0" alone is fine.
+fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
+  if !semver_all_digits(cps: cps) {
+    false
+  } else {
+    match cps.first() {
+      Present { value: h } => cps.count() == 1 || h != 48
+      Absent => false
+    }
+  }
+}
+
+fn semver_digits_to_int(cps: List<Int>, acc: Int) -> Int {
+  if cps.count() == 0 {
+    acc
+  } else {
+    match cps.first() {
+      Present { value: h } => semver_digits_to_int(cps: cps.skip(n: 1), acc: acc * 10 + (h - 48))
+      Absent => acc
+    }
+  }
+}
+
+fn semver_nat_field(cps: List<Int>) -> NonNegativeInt? {
+  if !semver_numeric_run_without_leading_zero(cps: cps) {
+    none
+  } else {
+    checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0))
+  }
+}
+
+fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
+  join(cps |> map(cp => from_code_point(cp: cp)), "") as NonEmptyStr
+}
+
+// ---- core MAJOR.MINOR.PATCH -----------------------------------------------
+
+fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeInt>? {
+  if remaining == 0 {
+    if cps.count() == 0 { Present { value: [] } } else { none }
+  } else {
+    match semver_index_of(cp: 46, cps: cps) {
+      Present { value: i } =>
+        match semver_nat_field(cps: cps.take(n: i)) {
+          Absent => none
+          Present { value: v } =>
+            match semver_core_fields_parse(cps: cps.skip(n: i + 1), remaining: remaining - 1) {
+              Absent => none
+              Present { value: rest } => Present { value: concat([v], rest) }
+            }
+        }
+      Absent =>
+        if remaining == 1 {
+          match semver_nat_field(cps: cps) {
+            Absent => none
+            Present { value: v } => Present { value: [v] }
+          }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+fn semver_core_parse(cps: List<Int>) -> SemVerVersion? {
+  match semver_core_fields_parse(cps: cps, remaining: 3) {
+    Absent => none
+    Present { value: fields } =>
+      if fields.count() != 3 {
+        none
+      } else {
+        match fields.first() {
+          Absent => none
+          Present { value: major } =>
+            match fields.skip(n: 1).first() {
+              Absent => none
+              Present { value: minor } =>
+                match fields.skip(n: 2).first() {
+                  Absent => none
+                  Present { value: patch } =>
+                    Present { value: SemVerVersion { major: major, minor: minor, patch: patch, pre_release: [], build: [] } }
+                }
+            }
+        }
+      }
+  }
+}
+
+// ---- pre-release and build identifiers ------------------------------------
+
+fn semver_identifier_parse(cps: List<Int>) -> SemVerIdentifier? {
+  if cps.count() == 0 {
+    none
+  } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
+    none
+  } else if semver_numeric_run_without_leading_zero(cps: cps) {
+    match checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0)) {
+      Absent => none
+      Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
+    }
+  } else {
+    Present { value: SemVerAlphanumericIdentifier { label: semver_label_from_code_points(cps: cps) } }
+  }
+}
+
+// Build identifiers follow the same character class, but §2 permits leading zeroes there, so
+// only no-leading-zero digit runs parse as numeric and anything else stays alphanumeric.
+fn semver_build_identifier_parse(cps: List<Int>) -> SemVerIdentifier? {
+  if cps.count() == 0 {
+    none
+  } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
+    none
+  } else if semver_numeric_run_without_leading_zero(cps: cps) {
+    match checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0)) {
+      Absent => none
+      Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
+    }
+  } else {
+    Present { value: SemVerAlphanumericIdentifier { label: semver_label_from_code_points(cps: cps) } }
+  }
+}
+
+fn semver_identifier_list_parse(
+  segments: List<List<Int>>,
+  strict_numeric: Bool
+) -> List<SemVerIdentifier>? {
+  segments |> fold(
+    init: Present { value: [] },
+    f: (st, seg) =>
+      match st {
+        Absent => Absent
+        Present { value: acc } =>
+          match (if strict_numeric { semver_identifier_parse(cps: seg) } else { semver_build_identifier_parse(cps: seg) }) {
+            Absent => Absent
+            Present { value: id } => Present { value: concat(acc, [id]) }
+          }
+      }
+  )
+}
+
+fn semver_pre_release_parse(cps: List<Int>) -> List<SemVerIdentifier>? {
+  semver_identifier_list_parse(segments: semver_split_on(cp: 46, cps: cps, acc: []), strict_numeric: true)
+}
+
+fn semver_build_parse(cps: List<Int>) -> List<SemVerIdentifier>? {
+  semver_identifier_list_parse(segments: semver_split_on(cp: 46, cps: cps, acc: []), strict_numeric: false)
+}
+
+// ---- label assembly --------------------------------------------------------
+
+fn semver_identity_head_parse(cps: List<Int>, build: List<SemVerIdentifier>) -> SemVerVersion? {
+  match semver_index_of(cp: 45, cps: cps) {
+    Present { value: pi } =>
+      match semver_core_parse(cps: cps.take(n: pi)) {
+        Absent => none
+        Present { value: core } =>
+          match semver_pre_release_parse(cps: cps.skip(n: pi + 1)) {
+            Absent => none
+            Present { value: pre } =>
+              Present { value: SemVerVersion { major: core.major, minor: core.minor, patch: core.patch, pre_release: pre, build: build } }
+          }
+      }
+    Absent =>
+      match semver_core_parse(cps: cps) {
+        Absent => none
+        Present { value: core } =>
+          Present { value: SemVerVersion { major: core.major, minor: core.minor, patch: core.patch, pre_release: [], build: build } }
+      }
+  }
+}
+
+fn semver_identity_parse(label: VersionIdentity) -> SemVerVersion? {
+  let cps = semver_identity_code_points(label: label)
+  match semver_index_of(cp: 43, cps: cps) {
+    Present { value: bi } =>
+      match semver_build_parse(cps: cps.skip(n: bi + 1)) {
+        Absent => none
+        Present { value: build } => semver_identity_head_parse(cps: cps.take(n: bi), build: build)
+      }
+    Absent => semver_identity_head_parse(cps: cps, build: [])
+  }
 }
 
 data semver_scheme: VersionScheme = VersionScheme {

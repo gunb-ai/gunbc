@@ -8,6 +8,7 @@ pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
+pub use crate::std_checked_arithmetic::checked_int_to_nat;
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
@@ -227,7 +228,7 @@ pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
     semver_version_label(v.clone())
 }
 
-pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
+pub fn semver_identity_lexical_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
     if (a.clone() == b.clone()) {
         Ordering::Equal
     } else {
@@ -235,6 +236,427 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
             Ordering::Less
         } else {
             Ordering::Greater
+        }
+    }
+}
+
+pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
+    match semver_identity_parse(a.clone()) {
+        Some(av) => match semver_identity_parse(b.clone()) {
+            Some(bv) => semver_compare(av.clone(), bv.clone()),
+            std::option::Option::None => semver_identity_lexical_compare(a.clone(), b.clone()),
+        },
+        std::option::Option::None => semver_identity_lexical_compare(a.clone(), b.clone()),
+    }
+}
+
+pub fn semver_identity_code_points(label: NonEmptyStr) -> Rc<Vec<i64>> {
+    Rc::new(label.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+}
+
+pub fn semver_is_ascii_digit(cp: i64) -> bool {
+    ((cp.clone() >= 48) && (cp.clone() <= 57))
+}
+
+pub fn semver_is_ascii_letter(cp: i64) -> bool {
+    (((cp.clone() >= 65) && (cp.clone() <= 90)) || ((cp.clone() >= 97) && (cp.clone() <= 122)))
+}
+
+pub fn semver_is_identifier_char(cp: i64) -> bool {
+    ((semver_is_ascii_digit(cp.clone()) || semver_is_ascii_letter(cp.clone()))
+        || (cp.clone() == 45))
+}
+
+pub fn semver_index_of(cp: i64, cps: Rc<Vec<i64>>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if ((cps.clone().len() as i64) == 0) {
+            std::option::Option::None
+        } else {
+            match cps.clone().first().cloned() {
+                Some(h) => {
+                    if (h.clone() == cp.clone()) {
+                        Some(0)
+                    } else {
+                        match semver_index_of(
+                            cp.clone(),
+                            Rc::new(
+                                cps.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(1 as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                        ) {
+                            Some(k) => Some(v1_rt::int_add(k.clone(), 1)),
+                            std::option::Option::None => std::option::Option::None,
+                        }
+                    }
+                }
+                std::option::Option::None => std::option::Option::None,
+            }
+        }
+    })
+}
+
+pub fn semver_split_on(
+    mut __tco_loop_cp: i64,
+    mut __tco_loop_cps: Rc<Vec<i64>>,
+    mut __tco_loop_acc: Rc<Vec<Rc<Vec<i64>>>>,
+) -> Rc<Vec<Rc<Vec<i64>>>> {
+    loop {
+        #[allow(unused_mut)]
+        let mut cp = __tco_loop_cp;
+        #[allow(unused_mut)]
+        let mut cps = __tco_loop_cps;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        match semver_index_of(cp.clone(), cps.clone()) {
+            Some(i) => {
+                let __tco_0 = cp;
+                let __tco_1 = Rc::new(
+                    cps.clone()
+                        .iter()
+                        .cloned()
+                        .skip(v1_rt::int_add(i.clone(), 1) as usize)
+                        .collect::<Vec<_>>(),
+                );
+                let __tco_2 = v1_rt::concat(
+                    acc,
+                    Rc::new(vec![Rc::new(
+                        cps.clone()
+                            .iter()
+                            .cloned()
+                            .take(i.clone() as usize)
+                            .collect::<Vec<_>>(),
+                    )]),
+                );
+                __tco_loop_cp = __tco_0;
+                __tco_loop_cps = __tco_1;
+                __tco_loop_acc = __tco_2;
+                continue;
+            }
+            std::option::Option::None => {
+                break v1_rt::concat(acc.clone(), Rc::new(vec![cps.clone()]));
+            }
+        }
+    }
+}
+
+pub fn semver_all_digits(cps: Rc<Vec<i64>>) -> bool {
+    (((cps.clone().len() as i64) > 0) && {
+        let mut __all = true;
+        for cp in cps.iter().cloned() {
+            if !(semver_is_ascii_digit(cp.clone())) {
+                __all = false;
+                break;
+            }
+        }
+        __all
+    })
+}
+
+pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
+    if !semver_all_digits(cps.clone()) {
+        false
+    } else {
+        match cps.clone().first().cloned() {
+            Some(h) => (((cps.clone().len() as i64) == 1) || (h.clone() != 48)),
+            std::option::Option::None => false,
+        }
+    }
+}
+
+pub fn semver_digits_to_int(mut __tco_loop_cps: Rc<Vec<i64>>, mut __tco_loop_acc: i64) -> i64 {
+    loop {
+        #[allow(unused_mut)]
+        let mut cps = __tco_loop_cps;
+        #[allow(unused_mut)]
+        let mut acc = __tco_loop_acc;
+        if ((cps.clone().len() as i64) == 0) {
+            break acc.clone();
+        } else {
+            match cps.clone().first().cloned() {
+                Some(h) => {
+                    let __tco_0 = Rc::new(cps.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                    let __tco_1 =
+                        v1_rt::int_add(v1_rt::int_mul(acc, 10), v1_rt::int_sub(h.clone(), 48));
+                    __tco_loop_cps = __tco_0;
+                    __tco_loop_acc = __tco_1;
+                    continue;
+                }
+                std::option::Option::None => {
+                    break acc.clone();
+                }
+            }
+        }
+    }
+}
+
+pub fn semver_nat_field(cps: Rc<Vec<i64>>) -> Option<NonNegativeInt> {
+    if !semver_numeric_run_without_leading_zero(cps.clone()) {
+        std::option::Option::None
+    } else {
+        crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(cps.clone(), 0))
+    }
+}
+
+pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for cp in cps.iter().cloned() {
+            __result.push(v1_rt::from_code_point(cp.clone()));
+        }
+        __result
+    })
+    .join(&"".to_string())
+}
+
+pub fn semver_core_fields_parse(
+    cps: Rc<Vec<i64>>,
+    remaining: i64,
+) -> Option<Rc<Vec<NonNegativeInt>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (remaining.clone() == 0) {
+            if ((cps.clone().len() as i64) == 0) {
+                Some(Rc::new(vec![]))
+            } else {
+                std::option::Option::None
+            }
+        } else {
+            match semver_index_of(46, cps.clone()) {
+                Some(i) => match semver_nat_field(Rc::new(
+                    cps.clone()
+                        .iter()
+                        .cloned()
+                        .take(i.clone() as usize)
+                        .collect::<Vec<_>>(),
+                )) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(v) => match semver_core_fields_parse(
+                        Rc::new(
+                            cps.clone()
+                                .iter()
+                                .cloned()
+                                .skip(v1_rt::int_add(i.clone(), 1) as usize)
+                                .collect::<Vec<_>>(),
+                        ),
+                        v1_rt::int_sub(remaining.clone(), 1),
+                    ) {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(rest) => Some(v1_rt::concat(Rc::new(vec![v.clone()]), rest.clone())),
+                    },
+                },
+                std::option::Option::None => {
+                    if (remaining.clone() == 1) {
+                        match semver_nat_field(cps.clone()) {
+                            std::option::Option::None => std::option::Option::None,
+                            Some(v) => Some(Rc::new(vec![v.clone()])),
+                        }
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            }
+        }
+    })
+}
+
+pub fn semver_core_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerVersion>> {
+    match semver_core_fields_parse(cps.clone(), 3) {
+        std::option::Option::None => std::option::Option::None,
+        Some(fields) => {
+            if ((fields.clone().len() as i64) != 3) {
+                std::option::Option::None
+            } else {
+                match fields.clone().first().cloned() {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(major) => match fields.clone().iter().cloned().skip(1 as usize).next() {
+                        std::option::Option::None => std::option::Option::None,
+                        Some(minor) => match fields.clone().iter().cloned().skip(2 as usize).next()
+                        {
+                            std::option::Option::None => std::option::Option::None,
+                            Some(patch) => Some(Rc::new(SemVerVersion {
+                                major: major.clone(),
+                                minor: minor.clone(),
+                                patch: patch.clone(),
+                                pre_release: Rc::new(vec![]),
+                                build: Rc::new(vec![]),
+                            })),
+                        },
+                    },
+                }
+            }
+        }
+    }
+}
+
+pub fn semver_identifier_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerIdentifier>> {
+    if ((cps.clone().len() as i64) == 0) {
+        std::option::Option::None
+    } else {
+        if !{
+            let mut __all = true;
+            for cp in cps.iter().cloned() {
+                if !(semver_is_identifier_char(cp.clone())) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        } {
+            std::option::Option::None
+        } else {
+            if semver_numeric_run_without_leading_zero(cps.clone()) {
+                match crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(
+                    cps.clone(),
+                    0,
+                )) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(n) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
+                        value: n.clone(),
+                    })),
+                }
+            } else {
+                Some(Rc::new(SemVerIdentifier::SemVerAlphanumericIdentifier {
+                    label: semver_label_from_code_points(cps.clone()),
+                }))
+            }
+        }
+    }
+}
+
+pub fn semver_build_identifier_parse(cps: Rc<Vec<i64>>) -> Option<Rc<SemVerIdentifier>> {
+    if ((cps.clone().len() as i64) == 0) {
+        std::option::Option::None
+    } else {
+        if !{
+            let mut __all = true;
+            for cp in cps.iter().cloned() {
+                if !(semver_is_identifier_char(cp.clone())) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        } {
+            std::option::Option::None
+        } else {
+            if semver_numeric_run_without_leading_zero(cps.clone()) {
+                match crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(
+                    cps.clone(),
+                    0,
+                )) {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(n) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
+                        value: n.clone(),
+                    })),
+                }
+            } else {
+                Some(Rc::new(SemVerIdentifier::SemVerAlphanumericIdentifier {
+                    label: semver_label_from_code_points(cps.clone()),
+                }))
+            }
+        }
+    }
+}
+
+pub fn semver_identifier_list_parse(
+    segments: Rc<Vec<Rc<Vec<i64>>>>,
+    strict_numeric: bool,
+) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
+    segments
+        .iter()
+        .cloned()
+        .fold(Some(Rc::new(vec![])), |st: _, seg: Rc<Vec<i64>>| {
+            match st.clone() {
+                std::option::Option::None => std::option::Option::None,
+                Some(acc) => match if strict_numeric.clone() {
+                    semver_identifier_parse(seg.clone())
+                } else {
+                    semver_build_identifier_parse(seg.clone())
+                } {
+                    std::option::Option::None => std::option::Option::None,
+                    Some(id) => Some(v1_rt::concat(acc.clone(), Rc::new(vec![id.clone()]))),
+                },
+            }
+        })
+}
+
+pub fn semver_pre_release_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
+    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), true)
+}
+
+pub fn semver_build_parse(cps: Rc<Vec<i64>>) -> Option<Rc<Vec<Rc<SemVerIdentifier>>>> {
+    semver_identifier_list_parse(semver_split_on(46, cps.clone(), Rc::new(vec![])), false)
+}
+
+pub fn semver_identity_head_parse(
+    cps: Rc<Vec<i64>>,
+    build: Rc<Vec<Rc<SemVerIdentifier>>>,
+) -> Option<Rc<SemVerVersion>> {
+    match semver_index_of(45, cps.clone()) {
+        Some(pi) => match semver_core_parse(Rc::new(
+            cps.clone()
+                .iter()
+                .cloned()
+                .take(pi.clone() as usize)
+                .collect::<Vec<_>>(),
+        )) {
+            std::option::Option::None => std::option::Option::None,
+            Some(core) => match semver_pre_release_parse(Rc::new(
+                cps.clone()
+                    .iter()
+                    .cloned()
+                    .skip(v1_rt::int_add(pi.clone(), 1) as usize)
+                    .collect::<Vec<_>>(),
+            )) {
+                std::option::Option::None => std::option::Option::None,
+                Some(pre) => Some(Rc::new(SemVerVersion {
+                    major: core.major.clone(),
+                    minor: core.minor.clone(),
+                    patch: core.patch.clone(),
+                    pre_release: pre.clone(),
+                    build: build.clone(),
+                })),
+            },
+        },
+        std::option::Option::None => match semver_core_parse(cps.clone()) {
+            std::option::Option::None => std::option::Option::None,
+            Some(core) => Some(Rc::new(SemVerVersion {
+                major: core.major.clone(),
+                minor: core.minor.clone(),
+                patch: core.patch.clone(),
+                pre_release: Rc::new(vec![]),
+                build: build.clone(),
+            })),
+        },
+    }
+}
+
+pub fn semver_identity_parse(label: NonEmptyStr) -> Option<Rc<SemVerVersion>> {
+    {
+        let cps = semver_identity_code_points(label.clone());
+        match semver_index_of(43, cps.clone()) {
+            Some(bi) => match semver_build_parse(Rc::new(
+                cps.clone()
+                    .iter()
+                    .cloned()
+                    .skip(v1_rt::int_add(bi.clone(), 1) as usize)
+                    .collect::<Vec<_>>(),
+            )) {
+                std::option::Option::None => std::option::Option::None,
+                Some(build) => semver_identity_head_parse(
+                    Rc::new(
+                        cps.clone()
+                            .iter()
+                            .cloned()
+                            .take(bi.clone() as usize)
+                            .collect::<Vec<_>>(),
+                    ),
+                    build.clone(),
+                ),
+            },
+            std::option::Option::None => semver_identity_head_parse(cps.clone(), Rc::new(vec![])),
         }
     }
 }
