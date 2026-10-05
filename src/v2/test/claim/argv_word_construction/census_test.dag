@@ -39,7 +39,36 @@ import std.process { ExitSuccess, ProcessExit, ExitFailure }
 
 // ------------------------------------------------------------------ fixture module route
 
-data fixture_path: String = "test/fixture_roots/argv_word_construction/host_words.dag"
+// DIAGNOSTIC battery (to be deleted once the fixture route is green): one claim per stage of the
+// route, so a red names the stage instead of the conjunction.
+test fn diag_fixture_read_established() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: _ } => true
+    ArgvWordsModuleRefused { path: _, reason: r } => {
+      let _ = r
+      false
+    }
+  }
+}
+
+test fn diag_fixture_fact_count_is_seven() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: _ } => true
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "parse")
+  }
+}
+
+// The member set the walk reports, by count: four census members (two counted data decls, one
+// argv-returning fn with a flag literal, one argv-parameter fn), three non-members.
+test fn diag_fixture_member_count_is_four() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { path: _, sites: sites } => length(xs: sites) == 4
+    ArgvWordsModuleRefused { path: _, reason: _ } => false
+  }
+}
+
+
+data fixture_path: String = "src/v2/test/fixture_roots/argv_word_construction/host_words.dag"
 
 // The fixture is a real parse of a real file: read -> raw parse -> walk -> facts -> sites. If the
 // grammar, the walk, or the classification drifts, this route goes red at the identity grain.

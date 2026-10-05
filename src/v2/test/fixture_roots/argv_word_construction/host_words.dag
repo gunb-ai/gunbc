@@ -2,9 +2,10 @@ module fixture.argv_word_construction.host_words
 
 // The committed real-parse fixture for the typed-argv census lens (v2.lens.argv_word_construction):
 // small enough to read and parse inside a claim test, and shaped so every census signal appears
-// once. Off the corpus compile path (test/fixture_roots, like the text-string census's fixture).
+// once. Under the declared src/v2 root like the text-string census's fixture, so claim_batch's
+// confined filesystem can read it and the module loader typechecks it as part of the run.
 
-import std.algebra { Cons, Empty, FreeMonoid }
+import std.algebra { Cons, Empty }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.algebra { length }
