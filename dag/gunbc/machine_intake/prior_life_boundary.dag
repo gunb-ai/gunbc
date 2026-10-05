@@ -20,6 +20,7 @@ import std.goal_assessment {
 }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import extdeps.uri { uri_wire }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_bool, json_string, json_array, json_object, serialize_json }
 import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry,
   RedfishLogService,
@@ -45,10 +46,21 @@ import extdeps.bmc.redfish_telemetry {
   RedfishRotationalRpm,
   RedfishOtherReading,
 }
-import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation, redfish_virtual_media_resource_path }
+import extdeps.bmc.redfish_virtual_media {
+  RedfishVirtualMediaObservation,
+  RedfishVirtualMediaConnectedVia,
+  ConnectedViaNotConnected,
+  ConnectedViaUri,
+  ConnectedViaApplet,
+  ConnectedViaOem,
+  redfish_virtual_media_resource_path,
+  redfish_virtual_media_type_wire,
+}
 import gunbc.bmc_model {
   BmcWorld,
   BmcSelRecord,
+  BmcPower,
+  BmcBootOverride,
   BmcPowerOn,
   BmcPowerOff,
   BootOverrideNone,
@@ -222,85 +234,165 @@ fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
   observer_clock_modeled(millis: millis, realization: prior_life_dry_realization_name)
 }
 
-// ── CAPTURE: what the controller serves for each carrier, as bytes, and their digest ────────────────
+// ── CAPTURE: what the controller serves for each carrier, its encoding, and the encoding's digest ───
+
+// WHAT A CARRIER HELD, TYPED: the controller's own values for that surface, every modeled field kept.
+// The archive's bytes, its digest and its baseline cursor are all derived from these payloads and
+// nothing else, so the cursor is a function of what the store holds.
+type CarrierPayload
+  = BmcClockPayload { date_time: NonEmptyStr }
+  | SelPayload { records: List<BmcSelRecord> }
+  | LogServicesPayload { services: List<RedfishLogService> }
+  | AccountEventsPayload { entries: List<RedfishLogEntry> }
+  | BootOverridePayload { boot_override: BmcBootOverride }
+  | VirtualMediaPayload { members: List<RedfishVirtualMediaObservation> }
+  | PowerStatePayload { power: BmcPower }
+  | SensorSnapshotPayload { points: List<RedfishTelemetryPoint> }
 
 type CarrierGapCause
   = CarrierSurfaceUnmodeled {}
 
 type CarrierCapture
-  = CarrierCaptured { carrier: PriorLifeCarrier, body: NonEmptyStr, digest: ContentHash }
+  = CarrierCaptured { carrier: PriorLifeCarrier, payload: CarrierPayload }
   | CarrierGap { carrier: PriorLifeCarrier, cause: CarrierGapCause }
 
 fn capture_carrier_of(c: CarrierCapture) -> PriorLifeCarrier {
   match c {
-    CarrierCaptured { carrier: k, body: _, digest: _ } => k
+    CarrierCaptured { carrier: k, payload: _ } => k
     CarrierGap { carrier: k, cause: _ } => k
   }
 }
 
-fn captured(carrier: PriorLifeCarrier, lines: List<String>) -> CarrierCapture {
-  let body = join(concat([prior_life_carrier_label(c: carrier) as String], lines), "\n") as NonEmptyStr
-  CarrierCaptured { carrier: carrier, body: body, digest: content_hash_of_value(value: body) }
+// THE ENCODING. RFC 8259 JSON through extdeps.languages.json.emit serialize_json: every string is
+// quoted and escaped, every list is framed, every record is an object with fixed member names and
+// every closed choice is a member naming its arm, so the encoding is INJECTIVE over the payload --
+// two payloads that differ in any modeled field encode to different bytes. A delimiter-joined text
+// was not: a message carrying the delimiter and a newline made two different log populations encode
+// identically while their baseline cursors differed (side-chat review of 31ef3dbe8c).
+fn arm(name: String, members: List<JsonKeyValue>) -> JsonValue {
+  json_object(members: concat([json_kv(key: "arm", value: json_string(s: name))], members))
 }
 
-fn sel_line(r: BmcSelRecord) -> String {
-  join([r.id_hex, r.date, r.time, r.sensor, r.event, r.state], "|")
+fn optional_text(v: NonEmptyStr?) -> JsonValue {
+  match v {
+    Present { value: t } => arm(name: "Present", members: [json_kv(key: "value", value: json_string(s: t as String))])
+    Absent => arm(name: "Absent", members: [])
+  }
 }
 
-fn log_entry_line(e: RedfishLogEntry) -> String {
-  join([to_string(e.id), e.severity as String, e.message as String], "|")
+fn sel_record_json(r: BmcSelRecord) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "id_hex", value: json_string(s: r.id_hex)),
+    json_kv(key: "date", value: json_string(s: r.date)),
+    json_kv(key: "time", value: json_string(s: r.time)),
+    json_kv(key: "sensor", value: json_string(s: r.sensor)),
+    json_kv(key: "event", value: json_string(s: r.event)),
+    json_kv(key: "state", value: json_string(s: r.state)),
+  ])
 }
 
-fn log_service_lines(s: RedfishLogService) -> List<String> {
-  concat([join(["service", s.id as String, "entries", to_string(length(xs: s.entries))], " ")], map(s.entries, e => log_entry_line(e: e)))
+fn log_entry_json(e: RedfishLogEntry) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "id", value: json_int(n: e.id)),
+    json_kv(key: "severity", value: json_string(s: e.severity as String)),
+    json_kv(key: "message", value: json_string(s: e.message as String)),
+  ])
 }
 
-fn health_word(h: RedfishHealth) -> String {
+fn log_service_json(s: RedfishLogService) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "id", value: json_string(s: s.id as String)),
+    json_kv(key: "entries", value: json_array(elements: map(s.entries, e => log_entry_json(e: e)))),
+  ])
+}
+
+fn health_json(h: RedfishHealth) -> JsonValue {
   match h {
-    RedfishHealthOk => "OK"
-    RedfishHealthWarning => "Warning"
-    RedfishHealthCritical => "Critical"
-    RedfishHealthOther { health: x } => x as String
-    RedfishHealthUnreported => "unreported"
+    RedfishHealthOk => arm(name: "Ok", members: [])
+    RedfishHealthWarning => arm(name: "Warning", members: [])
+    RedfishHealthCritical => arm(name: "Critical", members: [])
+    RedfishHealthOther { health: x } => arm(name: "Other", members: [json_kv(key: "health", value: json_string(s: x as String))])
+    RedfishHealthUnreported => arm(name: "Unreported", members: [])
   }
 }
 
-fn state_word(s: RedfishResourceState) -> String {
+fn state_json(s: RedfishResourceState) -> JsonValue {
   match s {
-    RedfishStateEnabled => "Enabled"
-    RedfishStateDisabled => "Disabled"
-    RedfishStateAbsent => "Absent"
-    RedfishStateOther { state: x } => x as String
-    RedfishStateUnreported => "unreported"
+    RedfishStateEnabled => arm(name: "Enabled", members: [])
+    RedfishStateDisabled => arm(name: "Disabled", members: [])
+    RedfishStateAbsent => arm(name: "Absent", members: [])
+    RedfishStateOther { state: x } => arm(name: "Other", members: [json_kv(key: "state", value: json_string(s: x as String))])
+    RedfishStateUnreported => arm(name: "Unreported", members: [])
   }
 }
 
-fn reading_word(r: RedfishReading) -> String {
+fn reading_json(r: RedfishReading) -> JsonValue {
   match r {
-    RedfishReadingValue { whole: n } => to_string(n)
-    RedfishReadingNull => "null"
-    RedfishReadingMissing => "missing"
+    RedfishReadingValue { whole: n } => arm(name: "Value", members: [json_kv(key: "whole", value: json_int(n: n))])
+    RedfishReadingNull => arm(name: "Null", members: [])
+    RedfishReadingMissing => arm(name: "Missing", members: [])
   }
 }
 
-fn kind_word(k: RedfishPointKind) -> String {
+fn kind_json(k: RedfishPointKind) -> JsonValue {
   match k {
-    RedfishTemperatureCelsius => "Temperature"
-    RedfishRotationalRpm => "Rotational"
-    RedfishOtherReading { reading_type: t } => t as String
+    RedfishTemperatureCelsius => arm(name: "TemperatureCelsius", members: [])
+    RedfishRotationalRpm => arm(name: "RotationalRpm", members: [])
+    RedfishOtherReading { reading_type: t } => arm(name: "Other", members: [json_kv(key: "reading_type", value: json_string(s: t as String))])
   }
 }
 
-fn sensor_line(p: RedfishTelemetryPoint) -> String {
-  join([p.name as String, kind_word(k: p.kind), reading_word(r: p.reading), health_word(h: p.health), state_word(s: p.state)], "|")
+fn sensor_json(p: RedfishTelemetryPoint) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: p.name as String)),
+    json_kv(key: "kind", value: kind_json(k: p.kind)),
+    json_kv(key: "reading", value: reading_json(r: p.reading)),
+    json_kv(key: "health", value: health_json(h: p.health)),
+    json_kv(key: "state", value: state_json(s: p.state)),
+  ])
 }
 
-fn virtual_media_line(v: RedfishVirtualMediaObservation) -> String {
-  join([
-    redfish_virtual_media_resource_path(locator: v.locator) as String,
-    if v.inserted { "inserted" } else { "ejected" },
-    match v.image { Present { value: u } => uri_wire(uri: u) as String  Absent => "no-image" },
-  ], "|")
+fn connected_via_json(c: RedfishVirtualMediaConnectedVia) -> JsonValue {
+  match c {
+    ConnectedViaNotConnected => arm(name: "NotConnected", members: [])
+    ConnectedViaUri => arm(name: "URI", members: [])
+    ConnectedViaApplet => arm(name: "Applet", members: [])
+    ConnectedViaOem => arm(name: "Oem", members: [])
+  }
+}
+
+fn virtual_media_json(v: RedfishVirtualMediaObservation) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "resource", value: json_string(s: redfish_virtual_media_resource_path(locator: v.locator) as String)),
+    json_kv(key: "media_types", value: json_array(elements: map(v.media_types, t => json_string(s: redfish_virtual_media_type_wire(t: t) as String)))),
+    json_kv(key: "connected_via", value: connected_via_json(c: v.connected_via)),
+    json_kv(key: "inserted", value: json_bool(b: v.inserted)),
+    json_kv(key: "image", value: match v.image { Present { value: u } => optional_text(v: Present { value: uri_wire(uri: u) })  Absent => optional_text(v: none) }),
+  ])
+}
+
+fn payload_json(p: CarrierPayload) -> JsonValue {
+  match p {
+    BmcClockPayload { date_time: t } => arm(name: "BmcClock", members: [json_kv(key: "date_time", value: json_string(s: t as String))])
+    SelPayload { records: rs } => arm(name: "Sel", members: [json_kv(key: "records", value: json_array(elements: map(rs, r => sel_record_json(r: r))))])
+    LogServicesPayload { services: ss } => arm(name: "LogServices", members: [json_kv(key: "services", value: json_array(elements: map(ss, s => log_service_json(s: s))))])
+    AccountEventsPayload { entries: es } => arm(name: "AccountEvents", members: [json_kv(key: "entries", value: json_array(elements: map(es, e => log_entry_json(e: e))))])
+    BootOverridePayload { boot_override: o } =>
+      arm(name: "BootOverride", members: [json_kv(key: "boot_override", value: match o { BootOverrideNone => arm(name: "None", members: [])  BootOverrideCdromEfiNextBoot => arm(name: "CdromEfiNextBoot", members: []) })])
+    VirtualMediaPayload { members: vs } => arm(name: "VirtualMedia", members: [json_kv(key: "members", value: json_array(elements: map(vs, v => virtual_media_json(v: v))))])
+    PowerStatePayload { power: w } =>
+      arm(name: "PowerState", members: [json_kv(key: "power", value: match w { BmcPowerOn => arm(name: "On", members: [])  BmcPowerOff => arm(name: "Off", members: []) })])
+    SensorSnapshotPayload { points: ps } => arm(name: "SensorSnapshot", members: [json_kv(key: "points", value: json_array(elements: map(ps, q => sensor_json(p: q))))])
+  }
+}
+
+fn capture_json(c: CarrierCapture) -> JsonValue {
+  match c {
+    CarrierCaptured { carrier: k, payload: p } =>
+      arm(name: "Captured", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "payload", value: payload_json(p: p))])
+    CarrierGap { carrier: k, cause: _ } =>
+      arm(name: "Gap", members: [json_kv(key: "carrier", value: json_string(s: prior_life_carrier_label(c: k) as String)), json_kv(key: "cause", value: arm(name: "SurfaceUnmodeled", members: []))])
+  }
 }
 
 // ONE CAPTURE PER CARRIER, FROM THE WORLD. A surface the world does not model is a gap, never an
@@ -310,32 +402,30 @@ fn capture_from_world(world: BmcWorld, carrier: PriorLifeCarrier) -> CarrierCapt
   match carrier {
     PriorLifeBmcClock =>
       match surfaces.manager_date_time {
-        Present { value: t } => captured(carrier: carrier, lines: [t as String])
+        Present { value: t } => CarrierCaptured { carrier: carrier, payload: BmcClockPayload { date_time: t } }
         Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
       }
-    PriorLifeSelAndEventLogs => captured(carrier: carrier, lines: concat([join(["records", to_string(length(xs: world.sel))], " ")], map(world.sel, r => sel_line(r: r))))
+    PriorLifeSelAndEventLogs => CarrierCaptured { carrier: carrier, payload: SelPayload { records: world.sel } }
     PriorLifeRedfishLogCollections =>
       match surfaces.log_services {
-        Present { value: ss } => captured(carrier: carrier, lines: fold(ss, init: [], f: (acc, s) => concat(acc, log_service_lines(s: s))))
+        Present { value: ss } => CarrierCaptured { carrier: carrier, payload: LogServicesPayload { services: ss } }
         Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
       }
     PriorLifeAuditAccountEvents =>
       match surfaces.account_events {
-        Present { value: es } => captured(carrier: carrier, lines: concat([join(["entries", to_string(length(xs: es))], " ")], map(es, e => log_entry_line(e: e))))
+        Present { value: es } => CarrierCaptured { carrier: carrier, payload: AccountEventsPayload { entries: es } }
         Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
       }
-    PriorLifeBootOverride =>
-      captured(carrier: carrier, lines: [match world.boot_override { BootOverrideNone => "none"  BootOverrideCdromEfiNextBoot => "cdrom-efi-next-boot" }])
+    PriorLifeBootOverride => CarrierCaptured { carrier: carrier, payload: BootOverridePayload { boot_override: world.boot_override } }
     PriorLifeVirtualMediaState =>
       match surfaces.virtual_media {
-        Present { value: vs } => captured(carrier: carrier, lines: concat([join(["members", to_string(length(xs: vs))], " ")], map(vs, v => virtual_media_line(v: v))))
+        Present { value: vs } => CarrierCaptured { carrier: carrier, payload: VirtualMediaPayload { members: vs } }
         Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
       }
-    PriorLifePowerState =>
-      captured(carrier: carrier, lines: [match world.power { BmcPowerOn => "on"  BmcPowerOff => "off" }])
+    PriorLifePowerState => CarrierCaptured { carrier: carrier, payload: PowerStatePayload { power: world.power } }
     PriorLifeSensorSnapshot =>
       match surfaces.sensors {
-        Present { value: ps } => captured(carrier: carrier, lines: concat([join(["members", to_string(length(xs: ps))], " ")], map(ps, p => sensor_line(p: p))))
+        Present { value: ps } => CarrierCaptured { carrier: carrier, payload: SensorSnapshotPayload { points: ps } }
         Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
       }
   }
@@ -343,10 +433,10 @@ fn capture_from_world(world: BmcWorld, carrier: PriorLifeCarrier) -> CarrierCapt
 
 // ── THE ARCHIVE AND ITS CURSOR ─────────────────────────────────────────────────────────────────────
 
-// THE CURSOR, DERIVED FROM THE ARCHIVE AND NOTHING ELSE: the last SEL record id, the last entry id of
-// each Redfish log service and of the account-event log, and the archive's own digest. Sealed, and
-// minted only by archive_of below, so a cursor cannot be authored beside an archive it was not read
-// from.
+// THE CURSOR, DERIVED FROM THE ARCHIVED PAYLOADS AND NOTHING ELSE: the last SEL record id, the last
+// entry id of each Redfish log service and of the account-event log, and the archive's own digest.
+// The positions are also encoded into the archive bytes, so two archives whose cursors differ cannot
+// share a digest. Sealed, and minted only by archive_of.
 type LogServiceCursor {
   service: NonEmptyStr
   final_entry: Int?
@@ -359,9 +449,9 @@ type BaselineCursor sole_constructor {
   archive: ContentHash
 }
 
-// THE ARCHIVE THE PHASE WRITES, sealed: the subject it was read for, every required carrier's
-// capture, the canonical body those captures make, its digest, and the instant the controller was
-// read. Minted only by archive_of, from a full set of captures.
+// THE ARCHIVE THE PHASE WRITES, sealed: the subject it was read for, every carrier's capture, the
+// canonical bytes those captures and the cursor positions encode to, the digest of those bytes, and
+// the instant the controller was read. Minted only by archive_of, from a world it captures itself.
 type PriorLifeArchive sole_constructor {
   subject: MachineIntakeSubject
   captures: List<CarrierCapture>
@@ -375,12 +465,66 @@ fn last_of<T>(xs: List<T>) -> T? {
   xs.last()
 }
 
-fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive {
-  let lines = fold(captures, init: [], f: (acc, c) => match c {
-    CarrierCaptured { carrier: _, body: b, digest: _ } => concat(acc, [b as String])
-    CarrierGap { carrier: k, cause: _ } => concat(acc, [join([prior_life_carrier_label(c: k) as String, "gap"], " ")])
+fn int_json(v: Int?) -> JsonValue {
+  match v {
+    Present { value: n } => arm(name: "Present", members: [json_kv(key: "value", value: json_int(n: n))])
+    Absent => arm(name: "Absent", members: [])
+  }
+}
+
+// The positions are read from the captured payloads, never from the world beside them.
+type CursorPositions {
+  sel_final_record: String?
+  log_services: List<LogServiceCursor>
+  account_events_final_entry: Int?
+}
+
+fn cursor_positions_of(captures: List<CarrierCapture>) -> CursorPositions {
+  fold(captures, init: CursorPositions { sel_final_record: none, log_services: [], account_events_final_entry: none }, f: (acc, c) => match c {
+    CarrierGap { carrier: _, cause: _ } => acc
+    CarrierCaptured { carrier: _, payload: p } =>
+      match p {
+        SelPayload { records: rs } =>
+          CursorPositions { sel_final_record: match last_of(xs: rs) { Present { value: r } => Present { value: r.id_hex }  Absent => none }, log_services: acc.log_services, account_events_final_entry: acc.account_events_final_entry }
+        LogServicesPayload { services: ss } =>
+          CursorPositions { sel_final_record: acc.sel_final_record, log_services: map(ss, s => LogServiceCursor { service: s.id, final_entry: match last_of(xs: s.entries) { Present { value: e } => Present { value: e.id }  Absent => none } }), account_events_final_entry: acc.account_events_final_entry }
+        AccountEventsPayload { entries: es } =>
+          CursorPositions { sel_final_record: acc.sel_final_record, log_services: acc.log_services, account_events_final_entry: match last_of(xs: es) { Present { value: e } => Present { value: e.id }  Absent => none } }
+        BmcClockPayload { date_time: _ } => acc
+        BootOverridePayload { boot_override: _ } => acc
+        VirtualMediaPayload { members: _ } => acc
+        PowerStatePayload { power: _ } => acc
+        SensorSnapshotPayload { points: _ } => acc
+      }
   })
-  let body = join(concat([join(["prior-life archive of", ((subject.subject.unit_key as NonEmptyStr) as String), "attempt", ((subject.attempt_id as NonEmptyStr) as String)], " ")], lines), "\n\n") as NonEmptyStr
+}
+
+fn positions_json(p: CursorPositions) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "sel_final_record", value: match p.sel_final_record { Present { value: id } => optional_text(v: Present { value: id as NonEmptyStr })  Absent => optional_text(v: none) }),
+    json_kv(key: "log_services", value: json_array(elements: map(p.log_services, c => json_object(members: [json_kv(key: "service", value: json_string(s: c.service as String)), json_kv(key: "final_entry", value: int_json(v: c.final_entry))])))),
+    json_kv(key: "account_events_final_entry", value: int_json(v: p.account_events_final_entry)),
+  ])
+}
+
+// THE ARCHIVE OF A WORLD: every carrier captured from that world here, the bytes encoded from the
+// subject, those captures and the cursor positions they determine, and the cursor read from the same
+// captures. Confined to observe_prior_life, so no caller can pair a subject with captures read
+// elsewhere.
+fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, read_at: ObserverClockInstant) -> PriorLifeArchive
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "observe_prior_life"),
+  ]
+{
+  let captures = map(prior_life_carriers_all, c => capture_from_world(world: world, carrier: c))
+  let positions = cursor_positions_of(captures: captures)
+  let body = serialize_json(v: json_object(members: [
+    json_kv(key: "archive", value: json_string(s: "gunbc.machine_intake_prior_life_boundary prior-life archive v1")),
+    json_kv(key: "unit_key", value: json_string(s: (subject.subject.unit_key as NonEmptyStr) as String)),
+    json_kv(key: "attempt", value: json_string(s: (subject.attempt_id as NonEmptyStr) as String)),
+    json_kv(key: "captures", value: json_array(elements: map(captures, c => capture_json(c: c)))),
+    json_kv(key: "cursor", value: positions_json(p: positions)),
+  ])) as NonEmptyStr
   let digest = content_hash_of_value(value: body)
   PriorLifeArchive {
     subject: subject,
@@ -389,15 +533,9 @@ fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, captures: List<Car
     digest: digest,
     read_at: read_at,
     cursor: BaselineCursor {
-      sel_final_record: match last_of(xs: world.sel) { Present { value: r } => Present { value: r.id_hex }  Absent => none },
-      log_services: match world.record_surfaces.log_services {
-        Present { value: ss } => map(ss, s => LogServiceCursor { service: s.id, final_entry: match last_of(xs: s.entries) { Present { value: e } => Present { value: e.id }  Absent => none } })
-        Absent => []
-      },
-      account_events_final_entry: match world.record_surfaces.account_events {
-        Present { value: es } => match last_of(xs: es) { Present { value: e } => Present { value: e.id }  Absent => none }
-        Absent => none
-      },
+      sel_final_record: positions.sel_final_record,
+      log_services: positions.log_services,
+      account_events_final_entry: positions.account_events_final_entry,
       archive: digest,
     },
   }
@@ -407,12 +545,20 @@ fn prior_life_archive_digest(a: PriorLifeArchive) -> ContentHash {
   a.digest
 }
 
+fn prior_life_archive_body(a: PriorLifeArchive) -> NonEmptyStr {
+  a.body
+}
+
 fn prior_life_archive_cursor(a: PriorLifeArchive) -> BaselineCursor {
   a.cursor
 }
 
 fn baseline_cursor_sel_final_record(c: BaselineCursor) -> String? {
   c.sel_final_record
+}
+
+fn baseline_cursor_log_services(c: BaselineCursor) -> List<LogServiceCursor> {
+  c.log_services
 }
 
 fn baseline_cursor_archive(c: BaselineCursor) -> ContentHash {
@@ -457,9 +603,12 @@ fn store_object_at(store: DryArchiveStore, digest: ContentHash) -> ArchivedObjec
   store.objects |> filter(o => content_hash_equal(left: o.digest, right: digest)) |> first()
 }
 
-fn observe_prior_life(key: StepInstanceKey, request: PriorLifeRequest) -> ObservationAttempt<PriorLifeObservation, NonEmptyStr> {
-  let captures = map(prior_life_carriers_all, c => capture_from_world(world: request.world.bmc, carrier: c))
-  let archive = archive_of(subject: request.subject, world: request.world.bmc, captures: captures, read_at: request.read_at)
+fn observe_prior_life(key: StepInstanceKey, request: PriorLifeRequest) -> ObservationAttempt<PriorLifeObservation, NonEmptyStr>
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "prior_life_projection"),
+  ]
+{
+  let archive = archive_of(subject: request.subject, world: request.world.bmc, read_at: request.read_at)
   ObservationEstablished { observed: PriorLifeObservation { archive: archive, held: store_object_at(store: request.world.store, digest: archive.digest) } }
 }
 
@@ -472,7 +621,7 @@ fn first_required_gap(policy: PriorLifePolicy, captures: List<CarrierCapture>) -
         Present { value: c } =>
           match c {
             CarrierGap { carrier: k, cause: why } => Present { value: RequiredCarrierNotArchivable { carrier: k, cause: why } }
-            CarrierCaptured { carrier: _, body: _, digest: _ } => none
+            CarrierCaptured { carrier: _, payload: _ } => none
           }
       }
   })
@@ -556,7 +705,11 @@ type DryArchiveWrite {
   receipt: ArchiveWriteReceipt
 }
 
-fn dry_write_archive(store: DryArchiveStore, plan: PriorLifeArchivePlan, budget: LegBudget, started_millis: EpochMs, returned_millis: EpochMs) -> DryArchiveWrite {
+fn dry_write_archive(store: DryArchiveStore, plan: PriorLifeArchivePlan, budget: LegBudget, started_millis: EpochMs, returned_millis: EpochMs) -> DryArchiveWrite
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+  ]
+{
   let deadline = effect_leg_deadline(budget: budget, started: dry_prior_life_instant(millis: started_millis))
   let finished = dry_prior_life_instant(millis: returned_millis)
   let written = match store.behaviour {
@@ -575,7 +728,12 @@ type ArchiveReadBackStanding
   | ArchiveReadBackAbsent { digest: ContentHash }
   | ArchiveReadBackDiffers { digest: ContentHash, read: ContentHash }
 
-fn read_back_archive(store: DryArchiveStore, archive: PriorLifeArchive) -> ArchiveReadBackStanding {
+fn read_back_archive(store: DryArchiveStore, archive: PriorLifeArchive) -> ArchiveReadBackStanding
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+  ]
+{
   match store_object_at(store: store, digest: archive.digest) {
     Absent => ArchiveReadBackAbsent { digest: archive.digest }
     Present { value: o } => {
@@ -668,7 +826,12 @@ type DryPriorLifeStep {
   store: DryArchiveStore
 }
 
-fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome {
+fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "write_then_read_back"),
+  ]
+{
   PriorLifeArchiveEstablished {
     receipt: PriorLifeBoundaryEstablished {
       key: key,
@@ -687,7 +850,11 @@ fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: Machine
 // THE WRITE AND ITS READBACK. The leg's completion is checked first: a write whose clock says it ran
 // past its deadline, finished before it started, or could not be timed is incomplete whatever the
 // store now holds. Then the store is re-read by digest, independently of what the write returned.
-fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld) -> DryPriorLifeStep {
+fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld) -> DryPriorLifeStep
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
+  ]
+{
   let written = dry_write_archive(store: world.store, plan: PriorLifeArchivePlan { archive: archive }, budget: prior_life_archive_write_budget(), started_millis: world.read_at_millis, returned_millis: world.write_returned_at_millis)
   let outcome = match written.receipt.completion {
     LegDeadlineElapsed { deadline: _, finished: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: written.receipt, completion: written.receipt.completion } }
@@ -724,6 +891,8 @@ fn dry_archive_prior_life(
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
     decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_virtual_media_connected_via_and_media_types_are_archived"),
   ]
 {
   match prior_life_policy_for(platform: platform) {

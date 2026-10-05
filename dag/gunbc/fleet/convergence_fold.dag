@@ -544,14 +544,20 @@ fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
 }
 
 // A LEG'S DEADLINE: its budget and the observer-clock instant it started at. Sealed, and built only
-// here from a sealed budget and a sealed observer instant, so an effect that takes a LegDeadline
-// cannot be invoked without one: a leg with no deadline is unconstructible.
+// here from a sealed budget and a sealed observer instant, for the callers effect_leg_deadline admits
+// (each the one function in its domain that runs that leg), so an effect that takes a LegDeadline
+// cannot be invoked without one and no other caller can start a leg at an instant of its choosing.
 type LegDeadline sole_constructor {
   budget: LegBudget
   started: ObserverClockInstant
 }
 
-fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline {
+fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+  ]
+{
   LegDeadline { budget: budget, started: started }
 }
 
@@ -560,8 +566,8 @@ fn leg_deadline_leg(d: LegDeadline) -> DeclarationRef {
 }
 
 // A LEG THAT FINISHED WITHIN ITS DEADLINE, sealed: only complete_effect_leg mints it, from the leg's
-// deadline and an observer-clock read taken after the leg, so a receipt that carries one carries a
-// completion its deadline was actually checked against.
+// deadline and an observer-clock read taken after the leg, and complete_effect_leg admits only the
+// function that ran the leg, so no caller can pair a deadline with a finish instant of its choosing.
 type LegCompletedWithinDeadline sole_constructor {
   deadline: LegDeadline
   finished: ObserverClockInstant
@@ -580,7 +586,12 @@ type LegCompletion
   | LegFinishedBeforeItStarted { deadline: LegDeadline, finished: ObserverClockInstant }
   | LegCompletionUnobserved { deadline: LegDeadline, detail: String }
 
-fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion {
+fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+  ]
+{
   match finished {
     ObserverClockUnreadable { detail: d } => LegCompletionUnobserved { deadline: deadline, detail: d }
     ObserverClockObserved { instant: f } =>

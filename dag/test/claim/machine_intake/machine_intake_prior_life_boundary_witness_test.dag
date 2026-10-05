@@ -2,7 +2,7 @@ module test.claim.machine_intake_prior_life_boundary_witness
 
 import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import std.content_hash { ContentHash, content_hash_equal, content_hash_of_value }
+import std.content_hash { content_hash_equal }
 import std.measure { positive_millisecond, PositiveMeasureSuccessor }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { length }
@@ -10,7 +10,7 @@ import extdeps.bmc.redfish_telemetry {
   RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint, RedfishTemperatureCelsius, RedfishReadingValue, RedfishHealthOk, RedfishStateEnabled,
 }
 import extdeps.bmc.redfish_virtual_media {
-  RedfishVirtualMediaObservation, RedfishVirtualMediaLocator, UnderManager, MediaCd, ConnectedViaNotConnected,
+  RedfishVirtualMediaObservation, RedfishVirtualMediaLocator, UnderManager, MediaCd, MediaDvd, ConnectedViaNotConnected, ConnectedViaUri,
 }
 import gunbc.bmc_model {
   BmcWorld, BmcSelRecord, BmcPowerOn, BmcRecordSurfaces, bmc_world, bmc_with_record_surfaces, bmc_record_surfaces_unmodeled,
@@ -24,7 +24,7 @@ import gunbc.fleet.convergence_fold {
 }
 import gunbc.machine_intake_prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreKeepsWrites, DryArchiveStoreLosesWrites, DryArchiveStoreCorruptsWrites,
-  PriorLifePolicy, UnclearedBoundaryAdmitted, UnclearedBoundaryNotAdmitted, CarrierCaptured, CarrierGap, CarrierSurfaceUnmodeled,
+  PriorLifePolicy, UnclearedBoundaryAdmitted, UnclearedBoundaryNotAdmitted, CarrierCaptured, CarrierGap, CarrierSurfaceUnmodeled, PowerStatePayload,
   PriorLifeCarrier, PriorLifeBmcClock, PriorLifeSensorSnapshot,
   PriorLifeAssessRefusal, RequiredCarrierNotArchivable, UnclearedBoundaryNotAdmittedByPolicy,
   PriorLifeArchiveEstablished, PriorLifeArchiveRefused, PriorLifeArchiveIncomplete,
@@ -35,7 +35,7 @@ import gunbc.machine_intake_prior_life_boundary {
   classify_prior_life_policy, dry_archive_prior_life, prior_life_carriers_all, prior_life_carrier_eq,
   mt_collins_platform_ref, mt_jade_platform_ref,
   prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_archive, prior_life_receipt_realization,
-  prior_life_archive_digest, baseline_cursor_sel_final_record, baseline_cursor_archive,
+  prior_life_archive_digest, prior_life_archive_body, baseline_cursor_sel_final_record, baseline_cursor_archive, baseline_cursor_log_services,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -188,7 +188,7 @@ test fn w_one_unmodeled_carrier_is_a_typed_gap_that_refuses() -> Bool {
 // production rows admit it), the production rows require all eight carriers, and a platform with no
 // policy row refuses on the production path writing NOTHING: the store after the phase holds no object.
 test fn w_a_policy_refusal_writes_nothing() -> Bool {
-  let full_captures = map(prior_life_carriers_all, c => CarrierCaptured { carrier: c, body: "x" as NonEmptyStr, digest: digest_of_x() })
+  let full_captures = map(prior_life_carriers_all, c => CarrierCaptured { carrier: c, payload: PowerStatePayload { power: BmcPowerOn } })
   let not_admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryNotAdmitted }
   let admitting = PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted }
   let mitchell = decl_ref(module_path: "extdeps.ocp.mt_mitchell.subject", decl_name: "MtMitchellSpecificationRevision")
@@ -199,9 +199,6 @@ test fn w_a_policy_refusal_writes_nothing() -> Bool {
     && length(xs: step.store.objects) == 0
 }
 
-fn digest_of_x() -> ContentHash {
-  content_hash_of_value(value: "x" as NonEmptyStr)
-}
 
 // AN ARCHIVE ALREADY HELD IS A NOOP AND IS NOT WRITTEN TWICE. The first run writes and reads back
 // (ArchiveWritten); the second, over the store the first left, finds the object at the archive's
@@ -257,4 +254,94 @@ test fn w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from() -> 
       }
     _ => false
   }
+}
+
+// ── THE ENCODING IS INJECTIVE (side-chat review of 31ef3dbe8c) ─────────────────────────────────────
+
+// A world that differs from the full world only in its one log service's entries.
+fn world_with_log(entries: List<RedfishLogEntry>) -> BmcWorld {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+    manager_date_time: all_surfaces.manager_date_time,
+    log_services: Present { value: [RedfishLogService { id: "EventLog", entries: entries }] },
+    account_events: all_surfaces.account_events,
+    virtual_media: all_surfaces.virtual_media,
+    sensors: all_surfaces.sensors,
+  })
+}
+
+// A world that differs from the full world only in its one virtual-media member.
+fn world_with_media(member: RedfishVirtualMediaObservation) -> BmcWorld {
+  bmc_with_record_surfaces(world: sel_world(), surfaces: BmcRecordSurfaces {
+    manager_date_time: all_surfaces.manager_date_time,
+    log_services: all_surfaces.log_services,
+    account_events: all_surfaces.account_events,
+    virtual_media: Present { value: [member] },
+    sensors: all_surfaces.sensors,
+  })
+}
+
+fn final_event_log_entry(o: PriorLifeArchiveOutcome) -> Int? {
+  match o {
+    PriorLifeArchiveEstablished { receipt: r } =>
+      match prior_life_receipt_boundary(r: r) {
+        LogsArchivedWithBaselineCursor { cursor: c } =>
+          match baseline_cursor_log_services(c: c) |> first() {
+            Present { value: lc } => lc.final_entry
+            Absent => none
+          }
+      }
+    _ => none
+  }
+}
+
+fn written_not_held(o: PriorLifeArchiveOutcome) -> Bool {
+  match o {
+    PriorLifeArchiveEstablished { receipt: r } => (match prior_life_receipt_application(r: r) { ArchiveWritten { write: _, within: _ } => true  ArchiveAlreadyHeld => false })
+    _ => false
+  }
+}
+
+fn digests_differ(a: PriorLifeArchiveOutcome, b: PriorLifeArchiveOutcome) -> Bool {
+  match a {
+    PriorLifeArchiveEstablished { receipt: ra } =>
+      match b {
+        PriorLifeArchiveEstablished { receipt: rb } =>
+          content_hash_equal(left: prior_life_archive_digest(a: prior_life_receipt_archive(r: ra)), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: rb))) == false
+            && ((prior_life_archive_body(a: prior_life_receipt_archive(r: ra)) as NonEmptyStr) as String) != ((prior_life_archive_body(a: prior_life_receipt_archive(r: rb)) as NonEmptyStr) as String)
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE REVIEW'S TWO-LOG COUNTEREXAMPLE. One log service, two entries each; a delimiter-joined encoding
+// rendered both as the same three lines while A's last entry is 3 and B's is 2. Now A and B archive
+// to different bytes and digests; B observed over the store A's archive was written to is NOT held
+// (no ArchiveAlreadyHeld receipt with A's archive), so B is written and established with B's own
+// cursor, final entry 2, and A's with final entry 3.
+test fn w_two_log_populations_that_a_delimiter_join_conflated_archive_distinctly() -> Bool {
+  let a = [RedfishLogEntry { id: 1, severity: "OK", message: "a\n2|OK|b" }, RedfishLogEntry { id: 3, severity: "OK", message: "c" }]
+  let b = [RedfishLogEntry { id: 1, severity: "OK", message: "a" }, RedfishLogEntry { id: 2, severity: "OK", message: "b\n3|OK|c" }]
+  let first = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: a), store: empty_store))
+  let second = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_log(entries: b), store: first.store))
+  digests_differ(a: first.outcome, b: second.outcome)
+    && written_not_held(o: second.outcome)
+    && final_event_log_entry(o: first.outcome) == Present { value: 3 }
+    && final_event_log_entry(o: second.outcome) == Present { value: 2 }
+}
+
+// EVERY MODELED VIRTUAL-MEDIA FIELD IS ARCHIVED: a member that differs only in connected_via, and one
+// that differs only in media_types, each archive to a different digest from the base member, and each
+// is written rather than read as held over the base member's store.
+test fn w_virtual_media_connected_via_and_media_types_are_archived() -> Bool {
+  let base = RedfishVirtualMediaObservation { locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "bmc" }, media_id: "CD1" }, media_types: [MediaCd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let via = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd], connected_via: ConnectedViaUri, inserted: false, image: none }
+  let types = RedfishVirtualMediaObservation { locator: base.locator, media_types: [MediaCd, MediaDvd], connected_via: ConnectedViaNotConnected, inserted: false, image: none }
+  let on_base = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: base), store: empty_store))
+  let on_via = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: via), store: on_base.store))
+  let on_types = dry_archive_prior_life(key: key_p(), consumed_identity: identity_p(), subject: subject_p(), platform: mt_jade_platform_ref, world: dry_world(bmc: world_with_media(member: types), store: on_base.store))
+  digests_differ(a: on_base.outcome, b: on_via.outcome)
+    && digests_differ(a: on_base.outcome, b: on_types.outcome)
+    && written_not_held(o: on_via.outcome)
+    && written_not_held(o: on_types.outcome)
 }
