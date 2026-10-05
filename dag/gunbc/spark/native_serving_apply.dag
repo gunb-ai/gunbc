@@ -861,7 +861,7 @@ fn spark_native_front_door_script(port_text: String, served_alias: NonEmptyStr, 
       waited_for: "front-door" as NonEmptyStr),
     "if [ \"$ok\" = ", awaited_probe_ok_word, " ]; then\n",
     "  tr -d ' \\n' < ", spark_native_readback_dir, "/models.json > ", spark_native_readback_dir, "/models.compact\n",
-    "  if grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo ", awaited_served_word, awaited_field_separator, "yes; else echo ", awaited_served_word, awaited_field_separator, "no; fi\n",
+    "  if grep -Fq ", shell_quote(arg: join(["\"id\":\"", served_alias as String, "\""], "")), " ", spark_native_readback_dir, "/models.compact; then echo \"", awaited_served_word, awaited_field_separator, "yes\"; else echo \"", awaited_served_word, awaited_field_separator, "no\"; fi\n",
     "fi\n",
   ], "")
 }
