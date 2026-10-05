@@ -3,6 +3,7 @@ module test.claim.hetzner_cost_quote_witness
 import std.measure { money_amount_micro_count }
 import gunbc.ci_fleet { per_second_billed_cost_quote, cost_estimate_unit_price_micros }
 import extdeps.cloud.hetzner { cax41_catalog, cax41_catalog_superseded, tariff_is_current }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
