@@ -80,6 +80,11 @@ service cloudflare.R2BucketLifecycle {
     auth_input: auth_token
   }
 
+  // THE BODY IS READ AS TEXT, WHOLE, and r2_lifecycle_read_body parses it. Without response_format:
+  // Text the transport JSON-decodes the answer and projects a top-level `body` field the client/v4
+  // envelope { result, success, errors, messages } never has, so every read refused "null at body"
+  // (fleet-converge r2_bucket_ensure run 37294324885, 2026-10-05) -- the class
+  // extdeps.cloudflare.account_api_tokens names beside ListPermissionGroupsRaw.
   operation GetRaw {
     requires Network
     input {
@@ -93,7 +98,8 @@ service cloudflare.R2BucketLifecycle {
     readonly
     transport rest {
       method: GET,
-      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle"
+      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle",
+      response_format: Text
     }
     response {
       200 => String
