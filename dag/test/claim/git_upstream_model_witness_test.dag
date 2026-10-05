@@ -677,6 +677,8 @@ fn ls_tree_z_record(mode: String, object_type: String, oid_hex: String, name: St
   )
 }
 
+// The last record's U+00FF is TEXT (a Char): utf8_encode_bytes yields C3 BF, the expected
+// name_non_ascii. Raw 0xFF is witness_git_ls_tree_z_preserves_non_utf8_path_octets's subject.
 test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() -> Bool {
   let text = concat(
     concat(
@@ -720,7 +722,7 @@ test fn witness_git_ls_tree_z_wire_decodes_into_mode_path_and_identity_rows() ->
         mode: "100644",
         object_type: "blob",
         oid_hex: git_object_id_wire_hex(oid: sha1_blob_regular) as String,
-        name: concat(from_code_point(255), ".dag"),
+        name: concat(char_text(c: 255), ".dag"),
       ),
     ),
   )
