@@ -1,0 +1,73 @@
+module test.claim.long.web_fonts_bytes_witness_test
+import gunbc.site.web_fonts {
+  WebFontFace, web_font_stylesheet, web_font_stylesheet_path,
+  web_font_roboto_400, web_font_roboto_500, web_font_roboto_700, web_font_google_sans_400, web_font_google_sans_500,
+}
+import gunbc.roadmap_serve { roadmap_serve_handle_over, DailyBodyRenderedUnderThisPlan }
+import gunbc.roadmap_authority { RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
+import gunbc.auth.request_authentication { IngressUnattested }
+import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
+import extdeps.http.server { ServeWireResponse, WireHeaderCacheControl }
+import std.encoding { base64_decode, Standard }
+import extdeps.crypto.sha2 { sha256_hex }
+
+// LONG HOME, DECLARED: these claims decode the committed base64 through std.encoding and digest it
+// with the pure extdeps.crypto.sha2 fold, which is millions of eval steps per face (no host-realized
+// SHA-256 over octets exists in std; the host sha256_hex_of_text primitive hashes UTF-8 text, not
+// bytes, so it cannot stand in). The cheap claims about the same rows are in
+// test.claim.web_fonts_witness_test.
+
+// The committed base64 is the face: it decodes, under the standard alphabet, to exactly the
+// recorded number of octets, and those octets hash to the recorded SHA-256. One claim per face so
+// each face's evidence is located and budgeted on its own.
+fn face_bytes_match_record(face: WebFontFace) -> Bool {
+  match base64_decode(s: face.woff2_base64, variant: Standard) {
+    Absent => false
+    Present { value: octets } =>
+      count(octets) == face.woff2_byte_size && sha256_hex(message: octets) == face.woff2_sha256
+  }
+}
+
+test fn roboto_400_bytes_match_record() -> Bool { face_bytes_match_record(face: web_font_roboto_400) }
+test fn roboto_500_bytes_match_record() -> Bool { face_bytes_match_record(face: web_font_roboto_500) }
+test fn roboto_700_bytes_match_record() -> Bool { face_bytes_match_record(face: web_font_roboto_700) }
+test fn google_sans_400_bytes_match_record() -> Bool { face_bytes_match_record(face: web_font_google_sans_400) }
+test fn google_sans_500_bytes_match_record() -> Bool { face_bytes_match_record(face: web_font_google_sans_500) }
+
+// RED for the byte record: a face whose recorded size is off by one is refused by the same check.
+test fn a_misrecorded_face_size_is_refused() -> Bool {
+  let f = web_font_google_sans_400
+  !face_bytes_match_record(face: WebFontFace {
+    source: f.source, weight: f.weight, axis_pins: f.axis_pins,
+    woff2_sha256: f.woff2_sha256, woff2_byte_size: f.woff2_byte_size + 1, woff2_base64: f.woff2_base64,
+  })
+}
+
+fn get(path: String) -> ServeWireResponse {
+  roadmap_serve_handle_over(
+    instance: srv2_preview_dashboard_instance(),
+    plan: fn() { RoadmapAuthorityProjectionRefused { detail: "the font stylesheet route reads no plan" } },
+    daily_body: DailyBodyRenderedUnderThisPlan,
+    method: "GET",
+    path: path,
+    body: "",
+    tailscale_identity: "",
+    ingress: IngressUnattested,
+    request_headers: [],
+    release_revision: deploy_witness_release_revision,
+  )
+}
+
+// The served entry answers the content-addressed path with the stylesheet as text/css and an
+// immutable cache header; a stale fonts path is not served.
+test fn the_served_entry_answers_the_stylesheet_route() -> Bool {
+  let r = get(path: web_font_stylesheet_path())
+  r.status == 200
+    && r.content_type_label == "text/css; charset=utf-8"
+    && r.body == web_font_stylesheet()
+    && count(r.headers) == 1
+    && all(r.headers, h => h.name == WireHeaderCacheControl && h.value == "public, max-age=31536000, immutable")
+    && get(path: "/assets/fonts-0000000000000000.css").status == 404
+}
+
