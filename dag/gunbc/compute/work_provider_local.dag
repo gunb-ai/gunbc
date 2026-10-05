@@ -22,7 +22,7 @@ import extdeps.systemd.systemd_run {
   ServiceResultFormatNotGrounded, MemoryPeakFormatNotGrounded,
   SummaryAbsence, SummaryNoInvocation, SummarySuppressedByQuietLauncher, SummaryCaptureEmpty, SummaryLineAbsent, summary_absence_wire,
   SystemdFormattedBytes, FormattedBytesExact, FormattedBytesBounded, systemd_formatted_bytes_upper,
-, systemd_run_option_words_refused_cause_detail,
+  systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.systemd.systemctl
 import gunbc.compute.unit_bounds { compute_grant_unit_properties, compute_kill_mode_property, compute_kill_mode_value }

@@ -9,7 +9,7 @@ import extdeps.sudo.elevation { sudo_elevate }
 import extdeps.systemd.systemd_run {
   SystemdRunProperty, SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused,
   systemd_run_system_scope_command,
-, systemd_run_option_words_refused_cause_detail,
+  systemd_run_option_words_refused_cause_detail,
 }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.util_linux_setpriv { setpriv_reuid_regid_argv }
