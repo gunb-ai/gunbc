@@ -228,25 +228,13 @@ pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
     semver_version_label(v.clone())
 }
 
-pub fn semver_identity_lexical_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
-    if (a.clone() == b.clone()) {
-        Ordering::Equal
-    } else {
-        if (a.clone() < b.clone()) {
-            Ordering::Less
-        } else {
-            Ordering::Greater
-        }
-    }
-}
-
-pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
+pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Option<Ordering> {
     match semver_identity_parse(a.clone()) {
         Some(av) => match semver_identity_parse(b.clone()) {
-            Some(bv) => semver_compare(av.clone(), bv.clone()),
-            std::option::Option::None => semver_identity_lexical_compare(a.clone(), b.clone()),
+            Some(bv) => Some(semver_compare(av.clone(), bv.clone())),
+            std::option::Option::None => std::option::Option::None,
         },
-        std::option::Option::None => semver_identity_lexical_compare(a.clone(), b.clone()),
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

@@ -14,8 +14,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type VersionIdentity = NonEmptyStr where brand("VersionIdentity")
 
+// Ordering? — a scheme's precedence is defined over the identity grammar the scheme names.
+// A pair the grammar does not cover yields none: a typed, located refusal of the precedence
+// question, never a fabricated order (DESIGN section 5: a failure arm must refuse, never widen).
 type VersionScheme {
-  compare: fn(VersionIdentity, VersionIdentity) -> Ordering
+  compare: fn(VersionIdentity, VersionIdentity) -> Ordering?
 }
 
 type VersionConstraint = NonEmptyStr where brand("VersionConstraint")

@@ -138,20 +138,18 @@ fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
 // higher when all preceding identifiers are equal; build metadata is ignored entirely.
 //
 // The label is a VersionScheme's only handle, so the comparison parses the label back into the
-// typed form and routes through `semver_compare` — the ONE implementation of the cited rule —
-// instead of keeping a second, lexical rule beside it.
-//
-// §11 defines precedence over VALID versions. A label outside the §2 grammar refuses the typed
-// route and keeps the scheme total through the documented lexical fallback, which is pinned by
-// w_semver_scheme_out_of_grammar_label_refuses_precedence so it cannot drift silently.
-fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering {
+// typed form and routes through `semver_compare` — the ONE implementation of the cited rule.
+// §11 defines precedence over VALID versions, so a label outside the §2 grammar yields none: a
+// typed refusal of the precedence question (pinned by
+// w_semver_scheme_out_of_grammar_label_refuses_precedence), never a fabricated order.
+fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> Ordering? {
   match semver_identity_parse(label: a) {
     Present { value: av } =>
       match semver_identity_parse(label: b) {
-        Present { value: bv } => semver_compare(a: av, b: bv)
-        Absent => semver_identity_lexical_compare(a: a, b: b)
+        Present { value: bv } => Present { value: semver_compare(a: av, b: bv) }
+        Absent => none
       }
-    Absent => semver_identity_lexical_compare(a: a, b: b)
+    Absent => none
   }
 }
 

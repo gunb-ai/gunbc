@@ -63,8 +63,8 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
   }
 }
 
-fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
-  if a == b { Equal } else { Greater }
+fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering? {
+  if a == b { Present { value: Equal } } else { Present { value: Greater } }
 }
 
 data git_release_version_scheme: VersionScheme = VersionScheme {

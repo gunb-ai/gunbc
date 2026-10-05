@@ -63,8 +63,8 @@ test fn w_git_release_version_scheme_equal() -> Bool {
     a: git_release_to_version_identity(v: git_2_0_release),
     b: "2.0.0"
   ) {
-    Equal => true
-    _ => false
+    Present { value: v } => v == std.algebra.Equal
+    Absent => false
   }
 }
 

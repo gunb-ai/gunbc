@@ -70,11 +70,17 @@ test fn w_identity_distinct_from_constraint() -> Bool {
 }
 
 test fn w_semver_scheme_equality_compare() -> Bool {
-  semver_scheme.compare("1.0.0", "1.0.0") == std.algebra.Equal
+  match semver_scheme.compare("1.0.0", "1.0.0") {
+    Present { value: v } => v == std.algebra.Equal
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_wire_label_ordering() -> Bool {
-  semver_scheme.compare("1.0.0", "2.0.0") == std.algebra.Less
+  match semver_scheme.compare("1.0.0", "2.0.0") {
+    Present { value: v } => v == std.algebra.Less
+    Absent => false
+  }
 }
 
 test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
@@ -148,28 +154,52 @@ test fn w_semver_to_version_identity() -> Bool {
 // ---------------------------------------------------------------------------
 
 test fn w_semver_scheme_minor_numeric_not_lexical() -> Bool {
-  semver_scheme.compare("1.10.0", "1.9.0") == std.algebra.Greater
+  match semver_scheme.compare("1.10.0", "1.9.0") {
+    Present { value: v } => v == std.algebra.Greater
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_release_above_pre_release() -> Bool {
-  semver_scheme.compare("1.0.0", "1.0.0-alpha") == std.algebra.Greater
+  match semver_scheme.compare("1.0.0", "1.0.0-alpha") {
+    Present { value: v } => v == std.algebra.Greater
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_numeric_identifier_lower_than_alphanumeric() -> Bool {
-  semver_scheme.compare("1.0.0-9", "1.0.0-2x") == std.algebra.Less
+  match semver_scheme.compare("1.0.0-9", "1.0.0-2x") {
+    Present { value: v } => v == std.algebra.Less
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_numeric_identifiers_compare_numerically() -> Bool {
-  semver_scheme.compare("2.0.0-rc.10", "2.0.0-rc.2") == std.algebra.Greater
-    && semver_scheme.compare("1.0.0-2", "1.0.0-10") == std.algebra.Less
+  match semver_scheme.compare("2.0.0-rc.10", "2.0.0-rc.2") {
+    Present { value: v } => v == std.algebra.Greater
+    Absent => false
+  }
+}
+
+test fn w_semver_scheme_numeric_identifiers_compare_numerically_wide() -> Bool {
+  match semver_scheme.compare("1.0.0-2", "1.0.0-10") {
+    Present { value: v } => v == std.algebra.Less
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_build_metadata_ignored() -> Bool {
-  semver_scheme.compare("1.0.0+a", "1.0.0+b") == std.algebra.Equal
+  match semver_scheme.compare("1.0.0+a", "1.0.0+b") {
+    Present { value: v } => v == std.algebra.Equal
+    Absent => false
+  }
 }
 
 test fn w_semver_scheme_larger_pre_release_set_greater() -> Bool {
-  semver_scheme.compare("1.0.0-alpha.1", "1.0.0-alpha") == std.algebra.Greater
+  match semver_scheme.compare("1.0.0-alpha.1", "1.0.0-alpha") {
+    Present { value: v } => v == std.algebra.Greater
+    Absent => false
+  }
 }
 
 // A label produced by the typed model's own serializer must order the way the typed compare
@@ -177,18 +207,24 @@ test fn w_semver_scheme_larger_pre_release_set_greater() -> Bool {
 test fn w_semver_scheme_identity_round_trip_label() -> Bool {
   match semver_compare(a: semver_1_0_0_alpha_1(), b: semver_1_0_0()) {
     Less =>
-      semver_scheme.compare(
+      match semver_scheme.compare(
         semver_to_version_identity(v: semver_1_0_0_alpha_1()),
         semver_to_version_identity(v: semver_1_0_0())
-      ) == std.algebra.Less
+      ) {
+        Present { value: v } => v == std.algebra.Less
+        Absent => false
+      }
     _ => false
   }
 }
 
-// §11 defines precedence over VALID versions. A label outside the grammar keeps the scheme total
-// through the documented lexical fallback, and the fallback is pinned so it cannot drift
-// silently.
+// §11 defines precedence over VALID versions, so a label outside the §2 grammar yields none —
+// a typed refusal of the precedence question. The refusal itself is pinned: the scheme must not
+// fabricate an order for a pair the grammar does not cover.
 test fn w_semver_scheme_out_of_grammar_label_refuses_precedence() -> Bool {
-  semver_scheme.compare("1.02.3", "1.2.3") == std.algebra.Less
+  match semver_scheme.compare("1.02.3", "1.2.3") {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
