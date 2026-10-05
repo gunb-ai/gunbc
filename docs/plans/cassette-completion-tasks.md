@@ -89,4 +89,3 @@ Validation of this allocator change: six allocation checks, eight mechanical-ref
 ## CAS-8 — Desired-set print orchestration
 
 Requested next workflow milestone: [batch planning, dense plate packing and durable execution](print-batch-orchestration.md). BATCH-1 through BATCH-6 define the implementation and release checks. The [explicit-plate workflow foundation](print-workflow-integration.md) now owns preparation and fleet queue execution. Desired-set planning, accepted inventory, crash recovery and the live release checks remain outstanding; CAS-8 is not complete.
-

@@ -33,5 +33,14 @@
     "required-floor: LOCAL-REPO-WET REFUSAL test.claim.roadmap.allocation_client_execution_wet_witness.client_list_reconciles_recorded_intent: WetTerminalHostPremiseUnmet \u2014 not invoked: the runner does not hold the declared host premise RunnerBrowserToolchainReadyForJobUser; remedy the RUNNER, not the subject \u2014 the runner browser toolchain is unresolved on this host: runner_browser_toolchain: srv2 is not in the pool that runs the floor job (derived pool: srv1, srv3, srv4), so no browser toolchain is declared for it"
   ],
   "combined_generated_lane": "Killed at local 28 GiB memory limit after all 59 projections matched; standalone regeneration and fixed-point phases each exited zero.",
-  "printer_effects": "No approvals, device observations or starts issued."
+  "printer_effects": "No approvals, device observations or starts issued.",
+  "post_merge": {
+    "source_head": "19cccb5cfd67e93d6197404c28412b591a09d7c5",
+    "merged_main": "632b72544e9d43695e7361e8a0355bbe7c787e8e",
+    "registered_artifact_gate_exit": 0,
+    "production_entry_invalid_mode_expected_exit": 1,
+    "production_entry_invalid_mode_observed_exit": 1,
+    "production_entry_refusal": "Workflow mode must be prepare or print",
+    "effects": "Mode guard returned before preparation/authentication/printer operations"
+  }
 }

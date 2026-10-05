@@ -48,4 +48,3 @@ fn monitor_step(observation:JobObservation,remaining:Int,unresolved:Int) -> Moni
   JobUnresolved=>if remaining<=1 || unresolved>=7 {MonitorExhausted} else {MonitorAgain {remaining:remaining-1,unresolved:unresolved+1}}
  }
 }
-
