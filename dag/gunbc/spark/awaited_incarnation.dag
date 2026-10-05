@@ -1,6 +1,6 @@
 module gunbc.spark.awaited_incarnation
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr, Int, EpochSecs }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
@@ -30,19 +30,19 @@ import product.host_identity { HostIdentity }
 type AwaitedIncarnation {
   host: HostIdentity
   id: NonEmptyStr
-  deadline_epoch: Int
+  deadline_epoch: EpochSecs
 }
 
 type AwaitedPoll {
   before: String
   probe_ok: Bool
   after: String
-  at_epoch: Int
+  at_epoch: EpochSecs
 }
 
 type AwaitedTrace {
   awaited_id: String?
-  deadline_epoch: Int?
+  deadline_epoch: EpochSecs?
   polls: List<AwaitedPoll>
   served: String?
 }
@@ -66,8 +66,15 @@ fn awaited_fields(line: String) -> List<String> {
   split(s: trim(s: line), delimiter: awaited_field_separator)
 }
 
-fn awaited_int(text: String) -> Int? {
-  parse_int(s: trim(s: text))
+// HOST-CLOCK INSTANTS ARE EpochSecs (std.types; review 76436), never a bare Int. A parsed Int cannot be
+// cast to the refinement, so after the negative check the expected type of Present mints it (the shape
+// gunbc.instruments.fabric_capacity_standing epoch_secs_from_non_negative uses): a negative instant is a
+// broken clock and is refused as unread, never carried.
+fn awaited_int(text: String) -> EpochSecs? {
+  match parse_int(s: trim(s: text)) {
+    Absent => none
+    Present { value: n } => if n < 0 { none } else { Present { value: n } }
+  }
 }
 
 fn awaited_trace_of(stdout: String) -> AwaitedTrace {

@@ -1,6 +1,6 @@
 module test.claim.spark.awaited_incarnation_witness_test
 
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr, Int, EpochSecs }
 import v2.std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import gunbc.spark.awaited_incarnation {
@@ -20,7 +20,7 @@ import gunbc.spark.awaited_incarnation {
 data w_head: HostIdentity = "srv6" as HostIdentity
 data w_a: String = "aaaaaaaaaaaa"
 data w_b: String = "bbbbbbbbbbbb"
-data w_deadline: Int = 1000
+data w_deadline: EpochSecs = 1000
 
 fn w_header(id: String, deadline: Int) -> String {
   join([awaited_header_word, awaited_field_separator, id, awaited_field_separator, to_string(deadline), "\n"], "")
@@ -32,7 +32,7 @@ fn w_poll(before: String, ok: Bool, after: String, at: Int) -> String {
 
 fn w_running(id: String) -> String { join([id, " true 0"], "") }
 
-fn w_awaited(id: String, deadline: Int) -> AwaitedIncarnation {
+fn w_awaited(id: String, deadline: EpochSecs) -> AwaitedIncarnation {
   AwaitedIncarnation { host: w_head, id: id as NonEmptyStr, deadline_epoch: deadline }
 }
 
@@ -100,4 +100,10 @@ test fn w_a_change_during_the_probe_or_no_probe_refuses() -> Bool {
   w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: w_deadline), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_b), at: 990)], ""), expected: none), fragment: "changed while the probe ran")
     && w_refused_with(v: w_decide(stdout: w_header(id: w_a, deadline: w_deadline), expected: none), fragment: "no probe ran")
     && w_refused_with(v: w_decide(stdout: "", expected: none), fragment: "printed no awaited incarnation")
+}
+
+// A NEGATIVE INSTANT IS A BROKEN CLOCK, NOT A DEADLINE: the trace's deadline reads unread and the wait is
+// refused (review 76436: the carrier is EpochSecs, and the parse refuses rather than minting one).
+test fn w_a_negative_deadline_is_unread_and_refused() -> Bool {
+  w_refused_with(v: w_decide(stdout: join([w_header(id: w_a, deadline: 0 - 5), w_poll(before: w_running(id: w_a), ok: true, after: w_running(id: w_a), at: 1)], ""), expected: none), fragment: "printed no absolute deadline")
 }
