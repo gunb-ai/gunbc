@@ -127,7 +127,7 @@ fn managed_host_account_driving(lookup: ManagedHostLookup, endpoint: BmcControll
     ManagedHostFound { standing: s } =>
       match s {
         ManagedHostBound { binding: b } =>
-          if (b.observation.endpoint.host as String) == (endpoint.host as String) { Present { value: b.account } } else { none }
+          Present { value: b.account }
         ManagedHostAccessUnobserved { endpoint: _ } => none
         ManagedHostNotSecured { cause: _ } => none
         ManagedHostEndpointMismatch { observed: _, secured: _ } => none

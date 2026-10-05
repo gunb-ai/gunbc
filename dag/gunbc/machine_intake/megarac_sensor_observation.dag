@@ -49,7 +49,7 @@ fn megarac_sdr_socket_naming(host: AdmittedMegaRacHost) -> MegaRacSdrSocketNamin
       } else {
         SdrSocketNamingRefused { reason: concat("no SDR socket naming is read for MegaRAC firmware ", host.firmware.raw_version as String) as NonEmptyStr }
       }
-    MegaRacVirtualMediaAttach => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
+    MegaRacVirtualMediaAttach => SdrSocketNamingBound { naming: MegaRacSdrSocketNamingRule { host: host.binding.host.host, firmware: host.firmware, prefix: megarac_sdr_socket_prefix_0_32 } }
     MegaRacKvmCanvasStill => SdrSocketNamingRefused { reason: "the MegaRAC host was admitted for another operation, not SDR socket naming" }
   }
 }

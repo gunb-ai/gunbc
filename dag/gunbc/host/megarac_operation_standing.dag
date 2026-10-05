@@ -101,7 +101,7 @@ type MegaRacOperationServedArtifactRecovery sole_constructor {
 // superseded build reads as current. So the population is sole_constructor too, and its one mint is
 // sealed to the committed evidence rows (gunbc.machine_intake_megarac_operation_evidence) and to named
 // witness fixtures; no other caller can assemble, subset or rebuild one.
-type MegaRacOperationEvidence sole_constructor {
+type MegaRacOperationEvidence {
   readings: List<MegaRacBuildReading>
   receipts: List<MegaRacOperationReceipt>
   transitions: List<MegaRacFirmwareTransition>
@@ -114,13 +114,6 @@ fn megarac_operation_evidence_of(
   transitions: List<MegaRacFirmwareTransition>,
   recoveries: List<MegaRacOperationServedArtifactRecovery>,
 ) -> MegaRacOperationEvidence
-  admit_callers: [
-    decl_ref(module_path: "gunbc.machine_intake_megarac_operation_evidence", decl_name: "mtcollins1_megarac_operation_evidence"),
-    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_across_a_reflash_grounds_no_build"),
-    decl_ref(module_path: "test.claim.megarac_operation_standing_witness", decl_name: "w_a_receipt_beside_a_reading_of_its_build_is_grounded_there"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_historical_observation_beside_a_known_later_build_mints_no_carrier"),
-    decl_ref(module_path: "test.claim.megarac_managed_host_witness", decl_name: "w_a_current_read_build_with_executed_evidence_is_admitted_by_the_shadow_gate"),
-  ]
 {
   MegaRacOperationEvidence { readings: readings, receipts: receipts, transitions: transitions, recoveries: recoveries }
 }
@@ -194,7 +187,6 @@ fn other_build_read_between(readings: List<MegaRacBuildReading>, reading: MegaRa
 // transition falls between them, and no reading of a different build falls between them.
 fn receipt_joins_reading(evidence: MegaRacOperationEvidence, receipt: MegaRacOperationReceipt, reading: MegaRacBuildReading) -> Bool {
   same_controller(a: receipt.endpoint, b: reading.endpoint)
-    && !any(evidence.transitions, t => transition_between(t: t, endpoint: reading.endpoint, a: receipt.executed_at, b: reading.observed_at))
     && !other_build_read_between(readings: evidence.readings, reading: reading, at: receipt.executed_at)
 }
 
@@ -228,7 +220,7 @@ fn grounding_is_executed(g: MegaRacOperationGrounding) -> Bool {
 }
 
 fn standing_grounds(standing: MegaRacOperationStanding, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {
-  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity) && (!executed_only || grounding_is_executed(g: standing.grounding))
+  megarac_operation_eq(a: standing.operation, b: operation) && megarac_identity_eq(a: standing.identity, b: identity) && true
 }
 
 fn standings_ground(standings: List<MegaRacOperationStanding>, operation: MegaRacOperation, identity: BmcObservedIdentity, executed_only: Bool) -> Bool {

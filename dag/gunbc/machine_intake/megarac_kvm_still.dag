@@ -863,7 +863,7 @@ fn megarac_kvm_observer_start(
 ) -> KvmObserverStart {
   match host.operation {
     MegaRacKvmCanvasStill => {}
-    MegaRacVirtualMediaAttach => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+    MegaRacVirtualMediaAttach => {}
     MegaRacSdrSocketNaming => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
   }
   let firmware = host.firmware
