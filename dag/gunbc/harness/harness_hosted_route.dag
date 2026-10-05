@@ -4,6 +4,7 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.algebra { trim }
 import std.nat { Nat }
 import std.measure { TokenCount, token_count_value, Second, second, second_count, MoneyAmountMicro, money_amount_micro_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
@@ -23,10 +24,6 @@ import extdeps.cloud.gcp.secret_manager { SmEnabled }
 import extdeps.http.client
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
-import extdeps.tools.curl {
-  curl_exit_outcome, CurlTransferCompleted, CurlCouldNotResolveHost, CurlCouldNotConnect, CurlOperationTimedOut,
-  CurlTlsHandshakeFailed, CurlEmptyReply, CurlReceiveFailed, CurlExitUnnamed,
-}
 import extdeps.openrouter.openrouter {
   OpenRouterReasoningEffort, openrouter_chat_completions_url, openrouter_key_url, openrouter_authorization_header_line,
   openrouter_free_models_per_minute, openrouter_free_models_per_day, openrouter_reasoning_authority,
@@ -53,8 +50,9 @@ import gunbc.auth.materialized_secret {
 }
 import gunbc.readback_independence { ReadBackProbe, ProbeInert }
 import gunbc.fabric_quota {
-  QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, fabric_quota_settle,
-  QuotaSettled, QuotaSettleRefused, quota_settle_wire,
+  QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease_for, QuotaTermToWindowEnd,
+  fabric_quota_settle, QuotaSettle, QuotaSettled, QuotaSettleRefused, quota_settle_wire,
+  fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
 }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter,
@@ -410,6 +408,31 @@ fn hosted_access_from_key(route: HarnessHostedRoute, key: OpenRouterKeyRead, lev
   }
 }
 
+// THE DAY POOL STARTS FROM WHAT THE UPSTREAM SAYS REMAINS, NOT FROM ITS CEILING. The tier sets the
+// ceiling; free_model_daily_requests.remaining says how much of it is left today, including requests
+// another client of this key spent and requests made before this ledger existed. The reading is
+// recorded on the day partition (gunbc.fabric_quota fabric_quota_observe_upstream) before the binding is
+// handed out, so the first lease already sees it. A reading that cannot be recorded refuses the bind:
+// leasing against the bare ceiling would admit requests the upstream has already refused.
+fn hosted_day_remaining(key: OpenRouterKeyRead) -> Nat? {
+  checked_int_to_nat(n: key.free_daily_remaining)
+}
+
+fn hosted_record_day_remaining(bound: HostedBindOutcome, key: OpenRouterKeyRead) -> HostedBindOutcome {
+  match bound {
+    HostedBindRefused { detail: d } => HostedBindRefused { detail: d }
+    HostedBound { url: u, model: m, unit: un, level: l, access: a } =>
+      match hosted_day_remaining(key: key) {
+        Absent => HostedBindRefused { detail: join(["the key read reports a negative free-model remaining count (", to_string(key.free_daily_remaining), ")"], "") }
+        Present { value: remaining } =>
+          match fabric_quota_observe_upstream(short_hostname: a.quota.short_hostname, limit: a.quota.per_day, remaining: remaining, actor: a.quota.actor) {
+            QuotaObservationRefused { detail: d } => HostedBindRefused { detail: join(["the upstream's remaining free-model requests could not be recorded on the day pool: ", d], "") }
+            QuotaUpstreamRecorded { partition: _, remaining: _ } => HostedBound { url: u, model: m, unit: un, level: l, access: a }
+          }
+      }
+  }
+}
+
 fn hosted_key_refusal(key: OpenRouterKeyRead) -> String {
   match key.spend_limit {
     KeySpendCappedAtZero =>
@@ -440,7 +463,7 @@ fn hosted_bind_with_header(route: HarnessHostedRoute, header_dir: NonEmptyStr, h
         HostedLevelSelected { level: l } =>
           match hosted_access_from_key(route: route, key: key, level: l, header_dir: header_dir, header_file: header_file, short_hostname: short_hostname, actor: actor) {
             Absent => HostedBindRefused { detail: hosted_key_refusal(key: key) }
-            Present { value: bound } => bound
+            Present { value: bound } => hosted_record_day_remaining(bound: bound, key: key)
           }
       }
   }
@@ -500,25 +523,32 @@ fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
   ], "")
 }
 
-// ── EACH REQUEST LEASES BOTH POOLS FIRST AND SETTLES THEM AFTER ──────────────────────────────
+// ── EACH REQUEST IS CHARGED TO BOTH POOLS BEFORE IT IS SENT ───────────────────────────────────
 //
-// The minute pool and the day pool are both binding at once, so a request that leased one and not the
-// other would be refused upstream with a 429 the lease existed to prevent. The minute pool is leased
-// first because it is the one that refills soonest; if the day pool then refuses, the minute lease is
-// settled at zero so its slot returns immediately instead of waiting out its term.
+// THE CHARGE AND THE RESPONSE ARE TWO LIFETIMES. The upstream counts a request in the window it ARRIVES
+// in, whatever happens to its answer afterwards; the answer may take minutes. An earlier revision held
+// the lease across the response and settled it afterwards, with the response deadline as the term --
+// and a 2,348-second term can never fit a 60-second lapsing window, so the minute pool refused
+// LeaseCrossesLapse on every request and nothing was ever sent. Shortening the term would not have
+// fixed it: a lease held until the answer arrives still outlives a window the request was counted in.
 //
-// THE TERM IS THE REQUEST'S DEADLINE: a lease outliving the request it covers would hold quota nobody is
-// spending, and a shorter one would let a stale holder's request still be in flight when the slot is
-// re-leased -- the fenced release law (gunbc.fabric_quota) frees only the unspent remainder either way.
+// SO A REQUEST IS CHARGED, NOT HELD. Each pool is leased for the remainder of its current window
+// (gunbc.fabric_quota QuotaTermToWindowEnd, read off the same clock reading the lease is stamped with),
+// and both leases are settled at one BEFORE the request goes out. The charge then stands for the rest of
+// the window whatever the response does, which is also the conservative accounting for a request whose
+// fate is unknown: a crash after the send, or a transport that failed mid-flight, still counted upstream
+// as far as anyone here can tell, so it is never refunded.
+//
+// BOTH POOLS OR NEITHER. The minute pool is leased first because it refills soonest; if the day pool then
+// refuses, the minute lease is settled at zero so its slot returns at once.
 type HostedRoundLease
-  = HostedRoundLeased { minute: QuotaLease, day: QuotaLease }
+  = HostedRoundCharged
   | HostedRoundQuotaFull { wire: String }
   | HostedRoundUnleasable { detail: String }
 
-// THE DECISION IS PURE AND THE LEASING IS NOT, so they are two functions: what a pair of lease answers
-// MEANS for the round is decided here from supplied answers, and harness_hosted_round_lease performs the
-// leases and acts on the decision. The day pool is asked only when the minute pool leased, so its answer
-// is absent otherwise; a refusal that arrives after the minute pool leased names that lease as owed back.
+// THE DECISION IS PURE AND THE LEASING IS NOT. What a pair of lease answers MEANS is decided from
+// supplied answers; the day pool is asked only when the minute pool leased, so its answer is absent
+// otherwise, and a refusal after the minute pool leased names that lease as owed back.
 type HostedRoundDecision
   = RoundBothLeased { minute: QuotaLease, day: QuotaLease }
   | RoundRefusedFull { wire: String, minute_to_return: QuotaLease? }
@@ -545,52 +575,37 @@ fn hosted_return_minute(minute: QuotaLease?) -> String {
   }
 }
 
-fn harness_hosted_round_lease(quota: HarnessHostedQuota, term: Second) -> HostedRoundLease {
-  let term_seconds = second_count(s: term) as Nat
-  let minute = fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: 1, actor: quota.actor, term_seconds: term_seconds)
+fn hosted_settle_refusal(s: QuotaSettle, pool: String) -> List<String> {
+  match s {
+    QuotaSettled { partition: _, actual: _ } => []
+    QuotaSettleRefused { detail: d } => [join([pool, ": ", d], "")]
+  }
+}
+
+// A CHARGE THAT DID NOT RECORD IS NOT SENT. The request has not gone out yet, so refusing costs nothing
+// upstream; sending it would spend quota the ledger does not show, which is the over-admission the
+// lease exists to prevent. A lease left unsettled by the refusal still charges until its window ends,
+// so the refusal errs on the side of spending less.
+fn hosted_round_charge_both(minute: QuotaLease, day: QuotaLease) -> HostedRoundLease {
+  let refused = concat(
+    hosted_settle_refusal(s: fabric_quota_settle(lease: minute, actual: 1), pool: "minute"),
+    hosted_settle_refusal(s: fabric_quota_settle(lease: day, actual: 1), pool: "day"),
+  )
+  if count(refused) == 0 { HostedRoundCharged } else { HostedRoundUnleasable { detail: join(["the request's charge did not record, so it was not sent: ", join(refused, "; ")], "") } }
+}
+
+fn harness_hosted_round_charge(quota: HarnessHostedQuota) -> HostedRoundLease {
+  let minute = fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_minute, amount: 1, actor: quota.actor, term: QuotaTermToWindowEnd)
   let day = match minute {
     QuotaLeased { grant: _, partition: _, store: _ } =>
-      Present { value: fabric_quota_lease(short_hostname: quota.short_hostname, limit: quota.per_day, amount: 1, actor: quota.actor, term_seconds: term_seconds) }
+      Present { value: fabric_quota_lease_for(short_hostname: quota.short_hostname, limit: quota.per_day, amount: 1, actor: quota.actor, term: QuotaTermToWindowEnd) }
     QuotaFull { wire: _ } => none
     QuotaLeaseRefused { detail: _ } => none
   }
   match hosted_round_decision(minute: minute, day: day) {
-    RoundBothLeased { minute: m, day: d } => HostedRoundLeased { minute: m, day: d }
+    RoundBothLeased { minute: m, day: d } => hosted_round_charge_both(minute: m, day: d)
     RoundRefusedFull { wire: w, minute_to_return: r } => HostedRoundQuotaFull { wire: join([w, hosted_return_minute(minute: r)], "") }
     RoundRefusedUnleasable { detail: d, minute_to_return: r } => HostedRoundUnleasable { detail: join([d, hosted_return_minute(minute: r)], "") }
-  }
-}
-
-// HOW MANY REQUESTS ACTUALLY WENT OUT. Only a transport that never reached the upstream -- no name
-// resolution, no connection, no TLS -- spent nothing; every other outcome, an HTTP error status
-// included, is a request the upstream counted.
-fn hosted_request_spent(exit_code: Int) -> Nat {
-  match curl_exit_outcome(code: exit_code) {
-    CurlCouldNotResolveHost => 0
-    CurlCouldNotConnect => 0
-    CurlTlsHandshakeFailed => 0
-    CurlTransferCompleted => 1
-    CurlOperationTimedOut => 1
-    CurlEmptyReply => 1
-    CurlReceiveFailed => 1
-    CurlExitUnnamed { code: _ } => 1
-  }
-}
-
-fn harness_hosted_round_settle(lease: HostedRoundLease, exit_code: Int) -> String? {
-  match lease {
-    HostedRoundLeased { minute: m, day: d } => {
-      let spent = hosted_request_spent(exit_code: exit_code)
-      let ms = fabric_quota_settle(lease: m, actual: spent)
-      let ds = fabric_quota_settle(lease: d, actual: spent)
-      let refused = concat(
-        match ms { QuotaSettled { partition: _, actual: _ } => [] QuotaSettleRefused { detail: x } => [join(["minute: ", x], "")] },
-        match ds { QuotaSettled { partition: _, actual: _ } => [] QuotaSettleRefused { detail: x } => [join(["day: ", x], "")] },
-      )
-      if count(refused) == 0 { none } else { Present { value: join(refused, "; ") } }
-    }
-    HostedRoundQuotaFull { wire: _ } => none
-    HostedRoundUnleasable { detail: _ } => none
   }
 }
 

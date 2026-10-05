@@ -2,11 +2,13 @@ module gunbc.fabric_quota
 
 import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.measure { Measure }
 import extdeps.api_rate_limit { UpstreamRateLimit, upstream_rate_limit_key }
 import product.capacity.quota { quota_partition, quota_root_pool }
 import product.capacity.event_chain { PartitionId }
-import product.capacity.pool_events { PoolSettled, SeatRequest }
+import product.capacity.pool_events { PoolSettled, PoolUpstreamObserved, SeatRequest }
+import product.capacity.pool { pool_window_at, WindowResolved, WholeLifetime, InstantBeforeAnchor }
 import product.capacity.lease { LeasePolicy, LeaseGrant, FencedResource }
 import gunbc.fabric_event_log_host { HostEventLogStore, HostStoreResolved, HostStoreRefused, event_log_store_for_host, now_epoch_seconds }
 import gunbc.fabric_storage_client { FabricStorageBinding }
@@ -33,13 +35,44 @@ fn quota_policy(term_seconds: Nat) -> LeasePolicy {
   LeasePolicy { maximum_duration_seconds: term_seconds, release_law: FencedResource }
 }
 
+// A TERM IS EITHER THE CALLER'S DURATION OR "TO THE END OF THIS WINDOW". A lapsing pool refuses a lease
+// that would outlive its window (product.capacity.pool LeaseCrossesLapse), so a caller whose spend is
+// an instant -- a request counted the moment it is sent -- cannot know a fixed term that always fits:
+// at second 59 of a minute window only one second is left. The window end is read from the SAME
+// clock reading the lease is stamped with, so the term fits by construction rather than by luck.
+type QuotaTerm
+  = QuotaTermSeconds { seconds: Nat }
+  | QuotaTermToWindowEnd
+
+fn quota_term_to_window_end(limit: UpstreamRateLimit, at: EpochSecs) -> Nat? {
+  match pool_window_at(pool: quota_root_pool(limit: limit), at: at) {
+    WindowResolved { window: w } => if w.end > at { checked_int_to_nat(n: w.end - at) } else { none }
+    WholeLifetime => none
+    InstantBeforeAnchor { anchor: _, at: _ } => none
+  }
+}
+
+fn quota_term_seconds(limit: UpstreamRateLimit, term: QuotaTerm, at: EpochSecs) -> Nat? {
+  match term {
+    QuotaTermSeconds { seconds: n } => Present { value: n }
+    QuotaTermToWindowEnd => quota_term_to_window_end(limit: limit, at: at)
+  }
+}
+
 fn fabric_quota_lease(short_hostname: String, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term_seconds: Nat) -> QuotaLease {
+  fabric_quota_lease_for(short_hostname: short_hostname, limit: limit, amount: amount, actor: actor, term: QuotaTermSeconds { seconds: term_seconds })
+}
+
+fn fabric_quota_lease_for(short_hostname: String, limit: UpstreamRateLimit, amount: Nat, actor: NonEmptyStr, term: QuotaTerm) -> QuotaLease {
   match event_log_store_for_host(short_hostname: short_hostname) {
     HostStoreRefused { detail: d } => QuotaLeaseRefused { detail: d }
     HostStoreResolved { store: store, executor: _ } =>
       match now_epoch_seconds() {
         Absent => QuotaLeaseRefused { detail: "the clock could not be read as epoch seconds" }
-        Present { value: now } => {
+        Present { value: now } =>
+          match quota_term_seconds(limit: limit, term: term, at: now) {
+            Absent => QuotaLeaseRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
+            Present { value: term_seconds } => {
           let partition = quota_partition(limit: limit)
           match fabric_seat_acquire(
             store: store, partition: partition, root: quota_root_pool(limit: limit), actor: actor,
@@ -50,7 +83,43 @@ fn fabric_quota_lease(short_hostname: String, limit: UpstreamRateLimit, amount: 
             SeatFull { wire: w, attempts_used: _ } => QuotaFull { wire: join([upstream_rate_limit_key(l: limit) as String, ": ", w], "") }
             other => QuotaLeaseRefused { detail: seat_acquisition_wire(a: other) }
           }
-        }
+            }
+          }
+      }
+  }
+}
+
+// WHAT THE UPSTREAM SAYS REMAINS IS RECORDED ON THE PARTITION, NOT KEPT BESIDE IT. A fresh local ledger
+// knows nothing of requests spent before it existed, or by another client of the same credential; an
+// upstream that reports how many remain is the authority on that. The reading is appended as the
+// existing PoolUpstreamObserved event, which the fold turns into a hold of the shortfall for the rest
+// of the window (product.capacity.pool observe_upstream_remaining) -- so a reading of zero leaves no
+// headroom, a partial one leaves exactly that much, and a later, larger reading never gives back what
+// an earlier one held. There is no second balance model: the pool is the balance.
+type QuotaObservation
+  = QuotaUpstreamRecorded { partition: PartitionId, remaining: Nat }
+  | QuotaObservationRefused { detail: String }
+
+fn fabric_quota_observe_upstream(short_hostname: String, limit: UpstreamRateLimit, remaining: Nat, actor: NonEmptyStr) -> QuotaObservation {
+  match event_log_store_for_host(short_hostname: short_hostname) {
+    HostStoreRefused { detail: d } => QuotaObservationRefused { detail: d }
+    HostStoreResolved { store: store, executor: _ } =>
+      match now_epoch_seconds() {
+        Absent => QuotaObservationRefused { detail: "the clock could not be read as epoch seconds" }
+        Present { value: now } =>
+          match quota_term_to_window_end(limit: limit, at: now) {
+            Absent => QuotaObservationRefused { detail: join([upstream_rate_limit_key(l: limit) as String, ": no window end is defined at this instant"], "") }
+            Present { value: term } => {
+              let partition = quota_partition(limit: limit)
+              match fabric_pool_event_append(
+                store: store, partition: partition, actor: actor, at: now,
+                payload: PoolUpstreamObserved { remaining: remaining, term_seconds: term }, attempts: 3,
+              ) {
+                PoolEventAppended { id: _ } => QuotaUpstreamRecorded { partition: partition, remaining: remaining }
+                other => QuotaObservationRefused { detail: pool_event_append_wire(a: other) }
+              }
+            }
+          }
       }
   }
 }

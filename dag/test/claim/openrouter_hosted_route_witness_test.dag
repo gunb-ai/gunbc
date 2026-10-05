@@ -1,6 +1,7 @@
 module test.claim.openrouter_hosted_route_witness_test
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.nat { Nat }
 import v2.std.optional { Present, Absent }
 import extdeps.languages.json.emit { serialize_json, json_object }
 import extdeps.openrouter.openrouter {
@@ -21,14 +22,22 @@ import gunbc.harness.harness_reasoning_wire {
 import gunbc.harness.harness_hosted_route {
   hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
   harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
-  hosted_key_refusal,
+  hosted_key_refusal, hosted_day_remaining,
 }
+import gunbc.fabric_quota { quota_term_to_window_end }
+import product.capacity.quota { quota_root_pool }
+import product.capacity.pool {
+  Pool, pool_acquire, pool_settle, observe_upstream_remaining, PoolOutcome, PoolAdvanced, PoolRefused,
+  LeaseCrossesLapse, LedgerRefusal, pool_reading_at, PoolRead, PoolReadingRefused,
+}
+import std.measure { Measure, Count, One, second_count }
+import extdeps.api_rate_limit { UpstreamRateLimit }
 import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageServed }
 import gunbc.harness.harness_turn { TurnHostedQuotaFull, harness_outcome_label }
-import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count }
+import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { token_count }
 
@@ -226,6 +235,116 @@ test fn a_request_above_the_completion_ceiling_selects_no_level() -> Bool {
       match harness_hosted_level_choice(route: route, max_tokens: token_count(count: 70000)) {
         HostedLevelUnselected { cause: _ } => true
         HostedLevelSelected { level: _ } => false
+      }
+  }
+}
+
+// ── THE CHARGE FITS ITS WINDOW AT EVERY INSTANT, THROUGH THE REAL POOL ADMISSION ──────────────
+//
+// The pools are the production pools (product.capacity.quota quota_root_pool over the real OpenRouter
+// rows the hosted route carries), the term is the production derivation (gunbc.fabric_quota
+// quota_term_to_window_end), and admission is product.capacity.pool pool_acquire -- the function a
+// partition append adjudicates with. Only the clock is supplied: an instant one second into a UTC day
+// that is also one second into its minute, and instants one second before the minute and the day end.
+data w_day_start: Int = 1780531200
+
+fn w_charge_admitted(limit: UpstreamRateLimit, at: Int) -> Bool {
+  match quota_term_to_window_end(limit: limit, at: at) {
+    Absent => false
+    Present { value: term } =>
+      match pool_acquire(pool: quota_root_pool(limit: limit), reference: "charge" as NonEmptyStr, amount: Measure { count: 1 }, at: at, term_seconds: term) {
+        PoolAdvanced { pool: _ } => true
+        PoolRefused { refusal: _ } => false
+      }
+  }
+}
+
+test fn a_hosted_charge_fits_both_real_pools_early_and_late_in_their_windows() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } => {
+      let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+      w_charge_admitted(limit: route.per_minute, at: w_day_start + 1)
+        && w_charge_admitted(limit: route.per_minute, at: w_day_start + 59)
+        && w_charge_admitted(limit: day, at: w_day_start + 1)
+        && w_charge_admitted(limit: day, at: w_day_start + 86399)
+    }
+  }
+}
+
+// RED, THE DEFECT THIS REPLACED: a lease held for the response deadline cannot fit the minute window at
+// any instant, so the pool refuses it as crossing the lapse.
+test fn a_lease_for_the_response_deadline_crosses_the_minute_lapse() -> Bool {
+  match harness_hosted_route_for(unit: NemotronUltraFreeOnOpenRouter) {
+    Absent => false
+    Present { value: route } =>
+      match pool_acquire(pool: quota_root_pool(limit: route.per_minute), reference: "held" as NonEmptyStr, amount: Measure { count: 1 }, at: w_day_start + 1, term_seconds: second_count(s: harness_request_deadline)) {
+        PoolRefused { refusal: LeaseCrossesLapse { reference: _, expires_at: _, window_end: _ } } => true
+        PoolRefused { refusal: _ } => false
+        PoolAdvanced { pool: _ } => false
+      }
+  }
+}
+
+// ── THE DAY POOL STARTS FROM WHAT THE UPSTREAM SAYS REMAINS ────────────────────────────────────
+//
+// The remaining count is read by the production reader off a decoded key read, recorded through the
+// fold's own observe_upstream_remaining, and then asked for leases through pool_acquire.
+fn w_key_remaining(used: Int, remaining: Int) -> Nat? {
+  match openrouter_decode_key_read(body: join(["{\"data\":{\"limit\":0,\"is_free_tier\":false,\"free_model_daily_requests\":{\"used\":", to_string(used), ",\"limit\":1000,\"remaining\":", to_string(remaining), "}}}"], "")) {
+    OpenRouterKeyDecoded { key: k } =>
+      hosted_day_remaining(key: k)
+    OpenRouterKeyUndecodable { cause: _ } => none
+  }
+}
+
+fn w_observed(pool: Pool<Count, One>, remaining: Nat, at: Int) -> Pool<Count, One>? {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match quota_term_to_window_end(limit: day, at: at) {
+    Absent => none
+    Present { value: term } =>
+      match observe_upstream_remaining(pool: pool, remaining: Measure { count: remaining }, at: at, term_seconds: term) {
+        PoolAdvanced { pool: p } => Present { value: p }
+        PoolRefused { refusal: _ } => none
+      }
+  }
+}
+
+fn w_day_headroom(pool: Pool<Count, One>, at: Int) -> Int {
+  match pool_reading_at(pool: pool, at: at) {
+    PoolRead { committed: _, ceiling: _, headroom: h, over_committed: _ } => h.count as Int
+    PoolReadingRefused { at: _, anchor: _ } => -1
+  }
+}
+
+// RED: the upstream reports every free request spent (used = limit, remaining = 0) and the local ledger
+// is fresh -- the day pool admits nothing, so no request is ever sent.
+test fn an_exhausted_upstream_day_leaves_a_fresh_day_pool_no_headroom() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match w_key_remaining(used: 1000, remaining: 0) {
+    Absent => false
+    Present { value: r } =>
+      match w_observed(pool: quota_root_pool(limit: day), remaining: r, at: w_day_start + 100) {
+        Absent => false
+        Present { value: p } => w_day_headroom(pool: p, at: w_day_start + 101) == 0
+      }
+  }
+}
+
+// A PARTIAL REMAINDER IS RESPECTED EXACTLY, and a later reading claiming more never gives any back.
+test fn a_partial_upstream_remainder_is_the_headroom_and_later_readings_never_replenish() -> Bool {
+  let day = openrouter_free_models_per_day(credits: CreditsPurchasedAtLeastTen)
+  match w_key_remaining(used: 997, remaining: 3) {
+    Absent => false
+    Present { value: r } =>
+      match w_observed(pool: quota_root_pool(limit: day), remaining: r, at: w_day_start + 100) {
+        Absent => false
+        Present { value: p } =>
+          w_day_headroom(pool: p, at: w_day_start + 101) == 3
+            && (match w_observed(pool: p, remaining: 1000, at: w_day_start + 102) {
+              Absent => false
+              Present { value: p2 } => w_day_headroom(pool: p2, at: w_day_start + 103) == 3
+            })
       }
   }
 }
