@@ -1,8 +1,8 @@
 module std.induction
 
-import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int }
+import std.termination { DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension, peano_literal_materialization_cap, positive_descent_amount_from_positive_int, positive_descent_count, proportional_divisor_from_int_at_least_two, proportional_divisor_to_int, DescentUnknown, DivideByTwo, NonIncreasing, OneStep, Strict, TreeSize }
 
-import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound }
+import std.computation { CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound, tree_size_bound, ArithmeticDivideCall, ArithmeticParam, ArithmeticSubtractCall, ChildAccessorCall, CollectionSize, ConstantShrink, Descend, Fold, Forever, ProportionalShrink, Repeat, SameArgumentCall, UnitShrink }
 
 import std.checked_arithmetic { checked_int_add, checked_int_multiply, checked_int_optional }
 import std.algebra {
@@ -11,7 +11,12 @@ import std.algebra {
   ShapeIterateBody,
   ShapeLinearScan,
   ShapeSortBody,
+  Equal,
+  Greater,
+  Less,
+  Ordering
 }
+import std.types { List }
 
 
 type RecursionShape
@@ -138,7 +143,10 @@ fn is_strict_style_structural(r: SubValueRelation) -> Bool {
     IteratedSubValue { field: _ } => true
     ArithmeticDescent { param: _, factor: _ } => true
     StrictAxisErased => true
-    _ => false
+    PreservedValue => false
+    NonIncreasingValue => false
+    MixedTop => false
+    SubValueUnknown => false
   }
 }
 
@@ -221,7 +229,13 @@ fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueR
   match base {
     SubValueUnknown => SubValueUnknown
 
-    _ => StrictSubValue { field: field, factor: UnitShrink }
+    PreservedValue => StrictSubValue { field: field, factor: UnitShrink }
+    NonIncreasingValue => StrictSubValue { field: field, factor: UnitShrink }
+    StrictSubValue { field: _, factor: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    IteratedSubValue { field: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    ArithmeticDescent { param: _, factor: _ } => StrictSubValue { field: field, factor: UnitShrink }
+    StrictAxisErased => StrictSubValue { field: field, factor: UnitShrink }
+    MixedTop => StrictSubValue { field: field, factor: UnitShrink }
   }
 }
 
@@ -233,7 +247,13 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     NonIncreasingValue =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        _ => NonIncreasingValue
+        PreservedValue => NonIncreasingValue
+        StrictSubValue { field: _, factor: _ } => NonIncreasingValue
+        IteratedSubValue { field: _ } => NonIncreasingValue
+        ArithmeticDescent { param: _, factor: _ } => NonIncreasingValue
+        StrictAxisErased => NonIncreasingValue
+        MixedTop => NonIncreasingValue
+        NonIncreasingValue => NonIncreasingValue
       }
     StrictAxisErased =>
       match arg_rel {
@@ -254,7 +274,12 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         SubValueUnknown => SubValueUnknown
 
         NonIncreasingValue => NonIncreasingValue
-        _ => MixedTop
+        PreservedValue => MixedTop
+        StrictSubValue { field: _, factor: _ } => MixedTop
+        IteratedSubValue { field: _ } => MixedTop
+        ArithmeticDescent { param: _, factor: _ } => MixedTop
+        StrictAxisErased => MixedTop
+        MixedTop => MixedTop
       }
     StrictSubValue { field: _, factor: _ } =>
       match arg_rel {
@@ -288,7 +313,9 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
         StrictAxisErased => StrictAxisErased
         MixedTop => MixedTop
 
-        _ => SubValueUnknown
+        StrictSubValue { field: _, factor: _ } => SubValueUnknown
+        IteratedSubValue { field: _ } => SubValueUnknown
+        ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
       }
   }
 }

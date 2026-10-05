@@ -1,7 +1,7 @@
 module v2.compiler.self_host.parity_receipts_local
 
+import std.types { List }
 import v2.compiler.self_host.parity_window { ParityWindowReceipt, ParityObservation, WindowObserved }
-import v2.std.collection { List }
 import v2.std.text { String }
 
 // Operator-sourced parity observations (ruling 2026-07-22: verify locally, then flip — the receipt

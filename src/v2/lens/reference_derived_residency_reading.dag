@@ -1,5 +1,6 @@
 module v2.lens.reference_derived_residency_reading
 
+import std.types { List }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import gunbc.namespace_reference_derived_residency_qualification {
@@ -17,9 +18,7 @@ import gunbc.namespace_reference_derived_residency_qualification {
 }
 import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { member_edge_type_node }
 import v2.std.node {

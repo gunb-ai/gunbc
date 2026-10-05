@@ -7,32 +7,37 @@ import v2.workflow.floor_pure_producer_share {
   NoMeasuredEffectOverItsConsumers,
   SupersededBySingleAuthorityRepair, KeyOmitsAnInputTheValueDependsOn,
   floor_cross_claim_refused_candidates,
-  floor_cross_claim_admitted_producers,
   refused_share_producers,
-  share_roster_refusal_collisions,
   refused_row_carriers_transfer,
-  PendingShareCandidate,
-  floor_cross_claim_pending_candidates,
-  pending_share_producers,
-  share_roster_pending_collisions
+  CarriedInputWarmRow, ImplicitAcquisition,
+  CallSiteDemandObservation, ClosedCallSiteDemand, UnadmissibleCallSiteDemand,
+  CallSiteDemandCause, ArgumentNotClosedConstant, CalleeDeclaresEffects,
+  CrossClaimShareDerivation, DeclinedShareRow,
+  ShareDerivationDecline, DemandedByOneClaim, ReachedByNoPlannedClaim, IdentityGradeNotShareable, RefusedByMeasurement, CarriedInputProducer,
+  LadderOwesNoCarry,
+  ShareBasis, SharedByDeclaredDemand, SingleClaimFillDebt,
+  SingleClaimFillDebtModule, SingleClaimFillDebtClaim, ActiveFillDebt, RetiredFillDebt, RestructuredPerWitnessRule,
+  fill_debt_active_claims,
+  derive_cross_claim_share, floor_cross_claim_share_derivation,
+  cross_claim_share_derivation_reconciles, derived_share_producers,
+  RuntimeIdentityShareRow, floor_cross_claim_runtime_identity_residual,
+  floor_cross_claim_runtime_identity_residual_producers
 }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import std.computation_identity { ComputationIdentity, NormalizedIdentical, IdentityUnknown, MissingConcept }
+import std.types { List }
+import v2.std.algebra { list_map }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// THE WALL UNDER TEST: `v2.workflow.floor_pure_producer_share` measures share candidates and
-// turns some of them down, and until the refused roster existed a withdrawal had nowhere to live
-// but an annotation -- a channel DESIGN section 4c says no `Accepted` program can read. These
-// probes are what make the refusal mechanical instead of advisory.
-//
-// THE PAIR IS THE POINT. A disjointness assertion over the LIVE rosters alone is green today and
-// can be reddened only by editing the corpus it guards, which DESIGN section 4b calls a
-// decoration -- permanently green by construction, carrying no information, and worse than absent
-// because it would be cited as coverage. So the collision fold takes its two populations as
-// ARGUMENTS: the fixtures below are the source a fixture harness may hand it, where the forbidden
-// state is perfectly writable, and the live tree is the positive control.
+// THE DECISION UNDER TEST: `v2.workflow.floor_pure_producer_share` `derive_cross_claim_share`,
+// the fold that admits a pure computation for cross-claim sharing from the planned claims'
+// observed call-site demand. Every probe below hands it authored observation rows -- the forbidden
+// states are writable as source handed to the fold, so each RED is authorable -- and the live
+// derivation over this tree's refused and carried rows is the positive control. The real
+// observation path (the seed walking a prepared subject) is exercised by the required floor
+// itself and by `v1_compiler.cli_run.claim_call_site_demand`'s own tests; this module judges the
+// decision only.
 
 fn probe_refused_row(producer: String) -> RefusedShareCandidate {
   RefusedShareCandidate {
@@ -49,67 +54,270 @@ data probe_refused: List<RefusedShareCandidate> = [
   probe_refused_row(producer: "v2.probe.languages.rust.probe_core_edges")
 ]
 
-// RED: an admitted roster that re-proposes a refused identity must be reported, and the report
-// must NAME the identity rather than answer a count -- the remedy is "go read that refused row",
-// which needs the row's key.
-test fn a_re_proposed_refused_identity_collides_and_is_named() -> Bool {
-  let collisions = share_roster_refusal_collisions(
-    admitted: [
-      "v2.probe.languages.bash.probe_fold_lex",
-      "v2.probe.languages.rust.probe_core_edges"
-    ],
-    refused: probe_refused
+fn probe_identity() -> ComputationIdentity {
+  NormalizedIdentical { normalizer: "authored fixture" }
+}
+
+// `claims` distinct planned claims, named so each is one ladder demand at its own claim frame.
+fn probe_claim_names(claims: Int) -> List<String> {
+  if claims <= 0 {
+    []
+  } else {
+    concat(probe_claim_names(claims: claims - 1), [concat("v2.test.probe.claim_", to_string(claims))])
+  }
+}
+
+fn probe_closed(producer: String, claims: Int) -> CallSiteDemandObservation {
+  ClosedCallSiteDemand {
+    producer: producer,
+    argument_preimage: "(src: \"module text\")",
+    identity: probe_identity(),
+    claims: probe_claim_names(claims: claims),
+    planned_claims: 1,
+    sites: ["v2/test/probe.dag:10-40"]
+  }
+}
+
+data probe_carried: List<CarriedInputWarmRow> = [
+  CarriedInputWarmRow {
+    producer: "v2.probe.roadmap.probe_projection",
+    carried_input: "v2.probe.roadmap.probe_history_load",
+    dependence: ImplicitAcquisition,
+    measurement: "authored fixture; no run"
+  }
+]
+
+// One active and one retired member of a fixture debt set, in one module.
+data probe_debt: List<SingleClaimFillDebtModule> = [
+  SingleClaimFillDebtModule {
+    module: "v2.test.debt",
+    claims: [
+      SingleClaimFillDebtClaim { claim: "owes_its_fixture", standing: ActiveFillDebt },
+      SingleClaimFillDebtClaim { claim: "was_restructured", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
+    ]
+  }
+]
+
+fn probe_single_claim(producer: String, claim: String) -> CallSiteDemandObservation {
+  ClosedCallSiteDemand {
+    producer: producer,
+    argument_preimage: "()",
+    identity: probe_identity(),
+    claims: [claim],
+    planned_claims: 1,
+    sites: ["v2/test/debt.dag:10-40"]
+  }
+}
+
+fn basis_tag(basis: ShareBasis) -> String {
+  match basis {
+    SharedByDeclaredDemand => "shared"
+    SingleClaimFillDebt { claim: c } => concat("debt:", c)
+  }
+}
+
+fn probe_derive(observations: List<CallSiteDemandObservation>) -> CrossClaimShareDerivation {
+  derive_cross_claim_share(observations: observations, refused: probe_refused, carried: probe_carried, debt: probe_debt)
+}
+
+fn decline_tag(decline: ShareDerivationDecline) -> String {
+  match decline {
+    DemandedByOneClaim => "DemandedByOneClaim"
+    IdentityGradeNotShareable => "IdentityGradeNotShareable"
+    ReachedByNoPlannedClaim => "ReachedByNoPlannedClaim"
+    RefusedByMeasurement => "RefusedByMeasurement"
+    CarriedInputProducer => "CarriedInputProducer"
+    LadderOwesNoCarry { verdict: _ } => "LadderOwesNoCarry"
+  }
+}
+
+fn declined_as(d: CrossClaimShareDerivation, producer: String, decline: ShareDerivationDecline) -> Bool {
+  let wanted = decline_tag(decline: decline)
+  any(xs: d.declined, predicate: fn(row) { row.producer == producer && decline_tag(decline: row.decline) == wanted })
+}
+
+// THE DISCRIMINATING PAIR: one closed identity, varied ONLY in how many planned claims demand it.
+// Two claims put the obligation's least common ancestor at the shared-state preparation frame, so
+// std.materialization_ladder judges AuthoredDuplication and the carry is owed: admitted. One claim
+// is AcceptedSingleRecompute: declined and named. A fold admitting every closed
+// row passes the first and reds the second; a fold admitting nothing reds the first.
+test fn a_closed_identity_two_claims_demand_is_admitted() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 2)])
+  (length(xs: d.admitted) == 1)
+    && any(xs: derived_share_producers(derivation: d), predicate: fn(p) { p == "v2.probe.n7.probe_assemble" })
+}
+
+test fn a_closed_identity_one_claim_demands_is_declined_and_named() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 1)])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.n7.probe_assemble", decline: DemandedByOneClaim)
+}
+
+// DECLARED DEMAND DECIDES THE OBLIGATION; PLANNED REACH DECIDES THE WARM. The pair varies only how
+// many of the declaring claims this run plans: two declared claims with one planned is admitted
+// (the budget of the planned claim is the same as on a run planning both), and two declared claims
+// with none planned is declined, because nothing in this run would consume the fill.
+test fn two_declared_claims_with_one_planned_is_admitted() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 2)])
+  length(xs: d.admitted) == 1
+}
+
+test fn declared_demand_no_planned_claim_reaches_is_declined_and_named() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.probe.n7.probe_unplanned",
+      argument_preimage: "()",
+      identity: probe_identity(),
+      claims: probe_claim_names(claims: 4),
+      planned_claims: 0,
+      sites: ["v2/test/probe.dag:70-80"]
+    }
+  ])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.n7.probe_unplanned", decline: ReachedByNoPlannedClaim)
+}
+
+// SINGLE-CLAIM FILL DEBT IS EXPOSED, NEVER READ AS SHARING. The triple varies only the sole
+// claim's standing in the debt set: an ACTIVE member's fixture identity is admitted and its basis
+// NAMES the claim; a RETIRED member's and a non-member's are declined as one-claim demand. A fold
+// that admitted every one-claim identity passes the first and reds the other two.
+test fn an_active_debt_members_fixture_is_admitted_and_names_its_claim() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_a", claim: "v2.test.debt.owes_its_fixture")])
+  (length(xs: d.admitted) == 1)
+    && any(xs: d.admitted, predicate: fn(row) { basis_tag(basis: row.basis) == "debt:v2.test.debt.owes_its_fixture" })
+}
+
+test fn a_retired_debt_members_fixture_is_declined_as_one_claim_demand() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_b", claim: "v2.test.debt.was_restructured")])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.test.debt.fixture_b", decline: DemandedByOneClaim)
+}
+
+test fn a_non_members_fixture_is_declined_as_one_claim_demand() -> Bool {
+  let d = probe_derive(observations: [probe_single_claim(producer: "v2.test.debt.fixture_c", claim: "v2.test.debt.never_listed")])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.test.debt.fixture_c", decline: DemandedByOneClaim)
+}
+
+// A shared identity keeps the sharing basis even when one of its demanders is a debt member.
+test fn a_shared_identity_is_based_on_demand_not_debt() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.test.debt.shared_fixture",
+      argument_preimage: "()",
+      identity: probe_identity(),
+      claims: ["v2.test.debt.owes_its_fixture", "v2.test.debt.another"],
+      planned_claims: 2,
+      sites: ["v2/test/debt.dag:50-60"]
+    }
+  ])
+  (length(xs: d.admitted) == 1)
+    && any(xs: d.admitted, predicate: fn(row) { basis_tag(basis: row.basis) == "shared" })
+}
+
+// The active-claim projection the seed joins against lists active members only.
+test fn only_active_members_are_projected_for_the_identity_join() -> Bool {
+  let active = fill_debt_active_claims(debt: probe_debt)
+  (length(xs: active) == 1) && any(xs: active, predicate: fn(c) { c == "v2.test.debt.owes_its_fixture" })
+}
+
+// A MEASURED REFUSAL OUTRANKS DEMAND. The producer is demanded by many claims and still declined,
+// naming the refusal -- the literal re-proposal path of the refused-candidate class, now closed by
+// construction rather than by a collision wall over an authored roster.
+test fn a_refused_producer_is_declined_however_many_claims_demand_it() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.languages.rust.probe_core_edges", claims: 40)])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.languages.rust.probe_core_edges", decline: RefusedByMeasurement)
+}
+
+// A CARRIED-INPUT PRODUCER IS NEVER ADMITTED AS A PLAIN SHARE. Its entry is keyed on the carried
+// content; admitting it again would make one value servable under a key that omits the carrier.
+test fn a_carried_input_producer_is_declined_as_a_plain_share() -> Bool {
+  let d = probe_derive(observations: [probe_closed(producer: "v2.probe.roadmap.probe_projection", claims: 7)])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.roadmap.probe_projection", decline: CarriedInputProducer)
+}
+
+// AN UNKNOWN IDENTITY GRADE IS NOT SHAREABLE, by std.computation_identity's own predicate.
+test fn an_identity_of_unknown_grade_is_declined() -> Bool {
+  let d = probe_derive(observations: [
+    ClosedCallSiteDemand {
+      producer: "v2.probe.n7.probe_unknown",
+      argument_preimage: "()",
+      identity: IdentityUnknown { cause: MissingConcept { detail: "authored fixture" } },
+      claims: probe_claim_names(claims: 3),
+      planned_claims: 3,
+      sites: ["v2/test/probe.dag:50-60"]
+    }
+  ])
+  (length(xs: d.admitted) == 0)
+    && declined_as(d: d, producer: "v2.probe.n7.probe_unknown", decline: IdentityGradeNotShareable)
+}
+
+// NEVER WIDEN: a call with no closed identity is counted under its cause and is never admitted,
+// however many claims reach it -- the absorbing fallback would admit its declaration instead.
+test fn an_unadmissible_demand_is_counted_with_its_cause_and_never_admitted() -> Bool {
+  let d = probe_derive(observations: [
+    UnadmissibleCallSiteDemand { cause: ArgumentNotClosedConstant, claims: 9, sites: 30 },
+    UnadmissibleCallSiteDemand { cause: CalleeDeclaresEffects, claims: 4, sites: 5 }
+  ])
+  (length(xs: d.admitted) == 0)
+    && (length(xs: d.declined) == 0)
+    && (length(xs: d.unadmissible) == 2)
+}
+
+// THE PARTITION RECONCILES over a mixed population: every closed row lands in exactly one of
+// admitted or declined, so a row silently dropped by the fold reds this.
+test fn the_derivation_partitions_every_closed_observation() -> Bool {
+  let observations = [
+    probe_closed(producer: "v2.probe.n7.probe_assemble", claims: 6),
+    probe_closed(producer: "v2.probe.n7.probe_single", claims: 1),
+    probe_closed(producer: "v2.probe.languages.rust.probe_target_model", claims: 3),
+    UnadmissibleCallSiteDemand { cause: ArgumentNotClosedConstant, claims: 2, sites: 2 }
+  ]
+  let d = probe_derive(observations: observations)
+  cross_claim_share_derivation_reconciles(observations: observations, derivation: d)
+    && (length(xs: d.admitted) == 1)
+    && (length(xs: d.declined) == 2)
+}
+
+// THE FROZEN RESIDUAL IS CLOSED, joined by IDENTITY and in both directions: each of the five
+// declarations the ruling names is a member, and the population has no sixth. The literals are the
+// ruling's own closed set (sharp-raven-357, 2026-10-03), not a measurement of this tree, so adding
+// a member reds here until the ruling itself changes.
+fn residual_has(producer: String) -> Bool {
+  length(xs: filter(xs: floor_cross_claim_runtime_identity_residual_producers(), predicate: fn(p) { p == producer })) == 1
+}
+
+test fn the_frozen_runtime_identity_residual_is_exactly_the_ruled_five() -> Bool {
+  residual_has(producer: "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node")
+    && residual_has(producer: "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness")
+    && residual_has(producer: "v2.compiler.target_serialize.grammar_relation_row_for_emitted")
+    && residual_has(producer: "v2.std.grammar.formal_productions_from_catalog_node")
+    && residual_has(producer: "v2.std.compilers.target_model.target_project_arrow_body_to_value_expression")
+    && (length(xs: floor_cross_claim_runtime_identity_residual_producers()) == 5)
+}
+
+// Every member carries the one cause that admits a producer to the residual: its arguments are
+// not closed constants. A row minted with any other cause is not a residual member.
+test fn every_residual_member_carries_the_non_closed_argument_cause() -> Bool {
+  length(xs: filter(xs: floor_cross_claim_runtime_identity_residual, predicate: fn(r) {
+    match r.cause {
+      ArgumentNotClosedConstant => false
+      _ => true
+    }
+  })) == 0
+}
+
+// THE LIVE POSITIVE CONTROL: the derivation the floor runs consults THIS TREE's refused rows. A
+// live refused producer demanded by two claims is declined -- which reds if the floor's fold
+// stopped reading floor_cross_claim_refused_candidates.
+test fn the_live_derivation_declines_every_live_refused_producer() -> Bool {
+  let live_refused = refused_share_producers(refused: floor_cross_claim_refused_candidates)
+  let d = floor_cross_claim_share_derivation(
+    observations: list_map(xs: live_refused, f: fn(p) { probe_closed(producer: p, claims: 2) })
   )
-  (length(xs: collisions) == 1)
-    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.rust.probe_core_edges" })
-}
-
-// RED, both refused rows at once: the fold reports every collision rather than stopping at the
-// first. A wall that names one of two re-proposals sends the next author back for a second round.
-test fn every_re_proposed_refused_identity_is_reported_not_just_the_first() -> Bool {
-  let collisions = share_roster_refusal_collisions(
-    admitted: [
-      "v2.probe.languages.rust.probe_target_model",
-      "v2.probe.languages.bash.probe_fold_lex",
-      "v2.probe.languages.rust.probe_core_edges"
-    ],
-    refused: probe_refused
-  )
-  length(xs: collisions) == 2
-}
-
-// GREEN CONTROL beside those REDs, and it is the conjunct that makes them mean something: an
-// admitted roster sharing NO identity with the refused roster reports nothing. Without this a
-// fold that returned its whole input would pass both probes above.
-test fn a_roster_that_re_proposes_nothing_reports_no_collision() -> Bool {
-  length(xs: share_roster_refusal_collisions(
-    admitted: [
-      "v2.probe.languages.bash.probe_fold_lex",
-      "v2.probe.languages.bash.probe_fold_productions"
-    ],
-    refused: probe_refused
-  )) == 0
-}
-
-// The empty-refusal control: with nothing refused, nothing collides however the admitted roster
-// is spelled. DESIGN's `predicate_vacuously_true_on_an_empty_domain` cuts the other way here --
-// this is the arm that must stay quiet, and the probes above establish the domain is not empty.
-test fn an_empty_refused_roster_collides_with_nothing() -> Bool {
-  length(xs: share_roster_refusal_collisions(
-    admitted: ["v2.probe.languages.rust.probe_target_model"],
-    refused: []
-  )) == 0
-}
-
-// THE LIVE POSITIVE CONTROL. Today's admitted rosters and today's refused roster are disjoint,
-// and this is the probe that reds if anyone re-enrols `rust_target_model`,
-// `rust_target_model_core_edges`, `rust_target_model_staging`, or the argument-taking
-// `compile_phase_frontier_standing` without first retiring its refused row.
-test fn the_live_rosters_admit_nothing_this_roster_has_refused() -> Bool {
-  length(xs: share_roster_refusal_collisions(
-    admitted: floor_cross_claim_admitted_producers(),
-    refused: floor_cross_claim_refused_candidates
-  )) == 0
+  (length(xs: live_refused) > 0) && (length(xs: d.admitted) == 0)
 }
 
 // THE REFUSED ROSTER IS NOT EMPTY, asserted separately and deliberately. The live control above
@@ -144,77 +352,4 @@ test fn a_superseded_row_does_not_transfer_to_other_producers() -> Bool {
   refused_row_carriers_transfer(
     verdict: SupersededBySingleAuthorityRepair { repaired_by: "an authored fixture" }
   ) == false
-}
-
-// ── THE PENDING WALL ──────────────────────────────────────────────────────────────────────
-//
-// A pending row is a proposal, so it is refused by the same two populations a re-proposal in an
-// admitted roster is: already enrolled, or already measured and turned down. The probes below are
-// the fixture arm -- the forbidden state is perfectly writable as source handed to the harness,
-// which is what makes the live control worth reading.
-
-fn probe_pending_row(producer: String) -> PendingShareCandidate {
-  PendingShareCandidate {
-    producer: producer,
-    proposed_because: "authored fixture; no instrument",
-    deciding_measurement: "authored fixture; no run",
-    refuses_if: "authored fixture; no verdict"
-  }
-}
-
-// RED: proposing something already ENROLLED. This is the direction that matters most, because the
-// enrolment is the arm that executes while the pending row says the question is still open.
-test fn a_pending_row_for_an_already_admitted_identity_collides_and_is_named() -> Bool {
-  let collisions = share_roster_pending_collisions(
-    pending: [
-      probe_pending_row(producer: "v2.probe.languages.bash.probe_fold_lex"),
-      probe_pending_row(producer: "v2.probe.index.probe_decl_facts")
-    ],
-    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
-    refused: []
-  )
-  (length(xs: collisions) == 1)
-    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.bash.probe_fold_lex" })
-}
-
-// RED: proposing something already MEASURED AND REFUSED. Without this arm the refused roster is
-// bypassable by proposing a row instead of enrolling it, and the measurement that turned it down
-// would be re-run rather than read.
-test fn a_pending_row_for_a_refused_identity_collides_and_is_named() -> Bool {
-  let collisions = share_roster_pending_collisions(
-    pending: [probe_pending_row(producer: "v2.probe.languages.rust.probe_core_edges")],
-    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
-    refused: probe_refused
-  )
-  (length(xs: collisions) == 1)
-    && any(xs: collisions, predicate: fn(c) { c == "v2.probe.languages.rust.probe_core_edges" })
-}
-
-// GREEN CONTROL beside those two REDs: a pending row naming an identity neither roster has
-// decided reports nothing. Without this a fold returning its whole input would pass both probes.
-test fn a_pending_row_for_an_undecided_identity_reports_no_collision() -> Bool {
-  length(xs: share_roster_pending_collisions(
-    pending: [probe_pending_row(producer: "v2.probe.index.probe_decl_facts")],
-    admitted: ["v2.probe.languages.bash.probe_fold_lex"],
-    refused: probe_refused
-  )) == 0
-}
-
-// THE LIVE POSITIVE CONTROL. Today's pending candidates are decided by neither roster, and this
-// reds if anyone enrols or refuses one of them without retiring its pending row in the same
-// motion -- which is the only way a pending row is supposed to leave.
-test fn the_live_pending_candidates_are_decided_by_neither_roster() -> Bool {
-  length(xs: share_roster_pending_collisions(
-    pending: floor_cross_claim_pending_candidates,
-    admitted: floor_cross_claim_admitted_producers(),
-    refused: floor_cross_claim_refused_candidates
-  )) == 0
-}
-
-// THE PENDING ROSTER IS NOT EMPTY, asserted separately for the reason its sibling above states:
-// the live control is satisfied by an empty pending list, so on its own it cannot tell "nothing is
-// double-decided" from "nothing is proposed". Non-emptiness rather than a count, so measuring and
-// retiring a candidate does not red a tree-copied oracle.
-test fn the_pending_roster_carries_identities() -> Bool {
-  length(xs: pending_share_producers(pending: floor_cross_claim_pending_candidates)) > 0
 }

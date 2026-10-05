@@ -1,0 +1,70 @@
+module test.claim.auth.login_transaction_consume_wet_witness
+
+import std.types { String, Bool, FilePath }
+import extdeps.auth.oidc { OidcLoginTransaction, OidcPkceCodeVerifier, RelativeReturnPath }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.auth.auth_store_key { auth_store_key_of }
+import gunbc.auth.login_transaction_store { LoginTransactionStoreLayout, login_transaction_store_save, login_transaction_store_delete, login_transaction_store_lookup, login_transaction_file_path, LoginTransactionSaved, LoginTransactionSaveRefused, LoginTransactionDeleted, LoginTransactionNothingToDelete, LoginTransactionDeleteRefused, LoginTransactionStoreFound, LoginTransactionStoreUnknown, LoginTransactionStoreUnread, LoginTransactionStoreEntryMalformed }
+
+// THE ATOMIC CONSUME OVER REAL FILES. Exclusivity is a property of the filesystem's create-new
+// write, so these claims run on a throwaway temp directory in the required floor's local-repo wet
+// lane (v2.workflow.local_repo_wet_terminal local_repo_wet_schedule), never against a mock.
+fn browser_transaction() -> OidcLoginTransaction {
+  OidcLoginTransaction { state: "state-A", nonce: "nonce-A", created_at: "2026-09-28T00:00:00Z", expires_at: "2026-09-28T00:10:00Z",
+    verifier: OidcPkceCodeVerifier { verifier: "verifier-from-jar-A" }, return_path: RelativeReturnPath { path: "/" } }
+}
+
+test fn transaction_consume_has_one_winner_over_real_files() -> Bool {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
+  if directory == "" { false } else {
+    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
+    let transaction = browser_transaction()
+    match login_transaction_store_save(layout: layout, transaction: transaction) {
+      LoginTransactionSaved { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
+        LoginTransactionDeleted { state: _ } => match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleted { state: _ } => false
+          LoginTransactionNothingToDelete { state: _ } => true
+          LoginTransactionDeleteRefused { state: _, detail: _ } => false
+        }
+        LoginTransactionNothingToDelete { state: _ } => false
+        LoginTransactionDeleteRefused { state: _, detail: _ } => false
+      }
+      LoginTransactionSaveRefused { step: _, reason: _ } => false
+    }
+  }
+}
+
+// THE CONCURRENT LOSER, by supplied state: a second consumer that still lists the transaction
+// file finds the winner's create-new claim already on disk. The claim is planted here rather than
+// raced, so the arm is reached deterministically. RED if the claim write stops being create-new
+// (the loser would then delete and report Deleted); the transaction file must survive the loser.
+test fn a_consumer_that_loses_the_create_new_claim_refuses_and_deletes_nothing() -> Bool {
+  let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc-login-consume.XXXXXX").path
+  if directory == "" { false } else {
+    let layout = LoginTransactionStoreLayout { root: directory as FilePath }
+    let transaction = browser_transaction()
+    match login_transaction_store_save(layout: layout, transaction: transaction) {
+      LoginTransactionSaveRefused { step: _, reason: _ } => false
+      LoginTransactionSaved { state: _ } => {
+        match auth_store_key_of(raw: transaction.state as String) {
+          Absent => false
+          Present { value: key } => {
+        let planted = Filesystem.WriteCreateNewWithMode(path: concat(login_transaction_file_path(layout: layout, key: key), ".consumed"), content: "consumed", mode: 384)
+        planted.success && match login_transaction_store_delete(layout: layout, state: transaction.state) {
+          LoginTransactionDeleteRefused { state: _, detail: _ } =>
+            match login_transaction_store_lookup(layout: layout, state: transaction.state) {
+              LoginTransactionStoreFound { transaction: _ } => true
+              LoginTransactionStoreUnknown { state: _ } => false
+              LoginTransactionStoreUnread { state: _, detail: _ } => false
+              LoginTransactionStoreEntryMalformed { state: _, detail: _ } => false
+            }
+          LoginTransactionDeleted { state: _ } => false
+          LoginTransactionNothingToDelete { state: _ } => false
+        }
+          }
+        }
+      }
+    }
+  }
+}

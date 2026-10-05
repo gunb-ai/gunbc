@@ -51,45 +51,18 @@ use bootstrap_stage0_crate_layout_generated::{
 
 /// Bumped from `.v1` when the flat eight-field record split into the two-variant carrier below.
 ///
-/// THE BUMP IS LOAD-BEARING ONLY BECAUSE `read_receipt` COMPARES IT. An earlier revision claimed a
-/// stale `.v1` receipt "fails to deserialize into the new shape". FALSE, caught in review: serde
-/// ignores unknown fields by default, and a v1 record carries every required field plus the
-/// removed `fixed_point_equal`, so it parsed cleanly. The version string was written three times
-/// and read zero times -- decoration. Two things now make the claim true: `deny_unknown_fields` on
-/// the carrier, and an explicit equality check in `read_receipt`. A version nobody compares is the
-/// same defect class as the impersonation this module closes -- an artifact asserting a property
-/// nothing establishes.
+/// Its only reader, the deleted second-generation pass (operator ruling 2026-10-04), compared it
+/// before building on a prior receipt; what still rejects a stale record is `deny_unknown_fields`
+/// on the carrier, which refuses the `.v1` shape's `fixed_point_equal` and the deleted
+/// `fixed_point` variant's fields alike.
 const RECEIPT_SCHEMA: &str = "gunbc.regen_receipt.v2";
 
-/// Evidence produced by the FIRST regen pass, referenced by the second.
-///
-/// Carries the `commit_sha` it was measured at so a consumer READS which tree these facts describe
-/// instead of inferring it from the quoting receipt. A reference not naming its subject would be
-/// the impersonation this type ends, wearing better vocabulary.
-#[derive(Debug, Serialize, serde::Deserialize)]
-pub struct PriorReceiptRef {
-    pub commit_sha: String,
-    pub committed_generated_digest: String,
-    pub first_generation_equal: bool,
-    pub changed_paths: Vec<String>,
-    pub candidate_artifact: String,
-}
-
-/// A RECEIPT MAY REFERENCE PRIOR EVIDENCE BUT MAY NOT IMPERSONATE PRIOR EVIDENCE AS SOMETHING IT
-/// MEASURED ITSELF (operator ruling, 2026-08-20).
-///
-/// This was one flat eight-field record, forcing the second pass to populate fields it had not
-/// measured; the only source was the first pass's on-disk receipt, so four of six were copied
-/// verbatim: `committed_generated_digest`, `first_generation_equal`, `changed_paths`,
-/// `candidate_artifact`. The product was stamped with the SECOND pass `commit_sha` while carrying
-/// FIRST pass answers -- consistent, schema-valid, silent about which tree four fields describe,
-/// and unvalidatable because nothing recorded the provenance to validate.
-///
-/// The split makes the fabrication UNWRITABLE rather than detectable: `FixedPoint` has no
-/// `first_generation_equal` field, so there is no value to copy and no check to pass (DESIGN 4b
-/// structural impossibility, one rung above validation). Computing all six in the second pass is
-/// worse -- pass two would re-derive `first_generation_equal` against the committed tree, pass
-/// one's question, fusing two authorities into one row (DESIGN 3).
+/// EACH VARIANT CARRIES ONLY WHAT ITS PASS MEASURED (operator ruling 2026-08-20). There is one pass
+/// now: the second-generation pass and its `FixedPoint` variant, which referenced the first pass's
+/// evidence without impersonating it, were deleted under the operator ruling of 2026-10-04 ("we
+/// are not that particular about determinism in v1 anymore") -- a same-binary re-emit could only
+/// ever see nondeterminism. The declared drop is `gunbc.rung_drop`
+/// `floor_cut_regen_second_generation_agreement`.
 ///
 /// Authority: `gunbc.regen_receipt`.
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -116,20 +89,13 @@ pub enum RegenReceipt {
     /// load-bearing: unlike the string sentinels it is INDISTINGUISHABLE from a real answer --
     /// `false` is what an honest unequal comparison writes.
     ///
-    /// It CROSSED THE PROCESS BOUNDARY: the receipt file is the only carrier between the passes,
-    /// `read_receipt` returned the fabricated `false` as a `PriorMeasurement`, `PriorReceiptRef`
-    /// copied it into the fixed-point receipt, and `claim_executor` printed
-    /// `referenced_first_generation_equal=false`. A standalone `--required-regen-fixed-point` at
-    /// the same commit passes the cross-tree guard precisely BECAUSE the refusal happened at this
-    /// commit. The run still reds -- pass 2's real digest cannot equal `refused:population` -- so
-    /// this was diagnostic harm, not fail-open: the operator was told the first generation
-    /// compared unequal when it never compared.
+    /// It CROSSED THE PROCESS BOUNDARY: the receipt file was then read back by the (since deleted)
+    /// second-generation pass as a measurement, and printed as a first-generation answer for a
+    /// comparison that never ran.
     ///
-    /// "Not asked" was already modelled correctly THREE times in this file --
-    /// `FirstGeneration::NotMeasured`, the `first_generation_equal()` accessor's documented
-    /// `Option`, and `fixed_point_equal()`'s mirror -- so the Bool was a fourth representation
-    /// disagreeing with three correct neighbours, not a missing state (DESIGN §3). The fix repeats
-    /// the eight-field split's move: the variant has no `first_generation_equal` and no digest
+    /// "Not asked" was already modelled correctly by the `first_generation_equal()` accessor's
+    /// documented `Option`, so the Bool was a second representation disagreeing with a correct
+    /// neighbour, not a missing state (DESIGN §3). The variant has no `first_generation_equal` and no digest
     /// fields, so the fabrication is UNWRITABLE (DESIGN §4b, structural impossibility). It carries
     /// the one thing a refusal knows -- why it refused.
     #[serde(rename = "refused")]
@@ -149,7 +115,7 @@ pub enum RegenReceipt {
     ///
     /// IT CARRIES NO DIGESTS, for exactly the reason `Refused` carries none: nothing was compared,
     /// so there is no first generation to have a digest of. Routing this through `FirstGeneration`
-    /// would have put an empty-population digest in a field a fixed-point pass reads as evidence.
+    /// would have put an empty-population digest in a field read as evidence.
     /// The three empty-population refusals in this file (`verify_candidate_tree`,
     /// `tree_digest_for_basenames`, `tree_digest_from_map`) are RIGHT and stay: a digest over
     /// nothing is not evidence of anything, and for the whole-population round an empty population
@@ -162,15 +128,6 @@ pub enum RegenReceipt {
         authority_digest: String,
         /// The scope line that selected nothing, so the receipt says WHY it adjudicated nothing.
         scope: String,
-    },
-    #[serde(rename = "fixed_point")]
-    FixedPoint {
-        schema: String,
-        commit_sha: String,
-        authority_digest: String,
-        candidate_generated_digest: String,
-        fixed_point_equal: bool,
-        prior: PriorReceiptRef,
     },
 }
 
@@ -205,13 +162,11 @@ impl RegenReceipt {
             RegenReceipt::FirstGeneration { commit_sha, .. } => commit_sha,
             RegenReceipt::Refused { commit_sha, .. } => commit_sha,
             RegenReceipt::NoAffectedMirrors { commit_sha, .. } => commit_sha,
-            RegenReceipt::FixedPoint { commit_sha, .. } => commit_sha,
         }
     }
 
-    /// `Some` only where the pass measured it. `FixedPoint` returns `None` rather than reaching
-    /// into `prior`, because "the second pass did not measure this" and "the first pass measured
-    /// it as false" are different states and a `bool` cannot hold both.
+    /// `Some` only where the pass measured it: "not asked" and "measured as false" are different
+    /// states and a `bool` cannot hold both.
     pub fn first_generation_equal(&self) -> Option<bool> {
         match self {
             RegenReceipt::FirstGeneration {
@@ -222,19 +177,6 @@ impl RegenReceipt {
             // Nothing was compared, so there is no answer -- not `Some(true)`, which would report a
             // clean comparison that never happened.
             RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint { .. } => None,
-        }
-    }
-
-    /// `Some` only where the pass measured it -- the mirror of the above.
-    pub fn fixed_point_equal(&self) -> Option<bool> {
-        match self {
-            RegenReceipt::FirstGeneration { .. } => None,
-            RegenReceipt::Refused { .. } => None,
-            RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint {
-                fixed_point_equal, ..
-            } => Some(*fixed_point_equal),
         }
     }
 
@@ -249,34 +191,6 @@ impl RegenReceipt {
             } => Some(candidate_artifact),
             // No candidate tree was written, because no emit was run.
             RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint { .. } => None,
-        }
-    }
-
-    /// The referenced first-pass evidence, present only on `FixedPoint`.
-    /// The digest of the tree THIS pass emitted.
-    ///
-    /// `Some` exactly where a candidate digest was measured. This accessor was TOTAL while both
-    /// variants measured one; `Refused` measures none, so it follows the rule its Option-returning
-    /// siblings state. A sentinel string here would put the fabrication back one accessor lower
-    /// than where it was removed.
-    ///
-    /// Consumer: the composed `--required-ci` run, which hands pass 1's digest to the fixed-point
-    /// pass IN MEMORY rather than re-reading the previous process's receipt file.
-    /// `run_required_regen_fixed_point` has always taken `pass1_digest: Option<String>`; before
-    /// the phases shared a process there was no way to supply it.
-    pub fn candidate_generated_digest(&self) -> Option<&str> {
-        match self {
-            RegenReceipt::FirstGeneration {
-                candidate_generated_digest,
-                ..
-            } => Some(candidate_generated_digest),
-            RegenReceipt::Refused { .. } => None,
-            RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint {
-                candidate_generated_digest,
-                ..
-            } => Some(candidate_generated_digest),
         }
     }
 
@@ -288,16 +202,6 @@ impl RegenReceipt {
             RegenReceipt::Refused { reason, .. } => Some(reason),
             // Not a refusal: the round ran and correctly had nothing to do.
             RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint { .. } => None,
-        }
-    }
-
-    pub fn prior(&self) -> Option<&PriorReceiptRef> {
-        match self {
-            RegenReceipt::FirstGeneration { .. } => None,
-            RegenReceipt::Refused { .. } => None,
-            RegenReceipt::NoAffectedMirrors { .. } => None,
-            RegenReceipt::FixedPoint { prior, .. } => Some(prior),
         }
     }
 }
@@ -306,35 +210,6 @@ impl RegenReceipt {
 pub struct RequiredRegenOutcome {
     pub receipt: RegenReceipt,
     pub failures: Vec<String>,
-    /// WHETHER PASS ONE ACTUALLY EMITTED, kept OFF the receipt's digest fields on purpose.
-    ///
-    /// A population refusal happens before any content comparison, so there is no first
-    /// generation to digest. This field carries that for the IN-PROCESS handoff;
-    /// `RegenReceipt::Refused` carries it across the process boundary, so neither route has a
-    /// digest position for a refusal to fill. The receipt previously filled one with the sentinel
-    /// `refused:population`, which is why this field exists: handing that receipt to the
-    /// fixed-point phase would compare a real pass-two digest against sentinel prose and report a
-    /// determinism failure nobody measured -- a fabricated plausible output (DESIGN §5), convincing
-    /// because it names two digests. Not redundant with the receipt: the in-process handoff must
-    /// not go through a file.
-    pub first_generation: FirstGeneration,
-}
-
-/// What pass one produced, as a coproduct rather than as a string that might be a digest.
-/// `NotMeasured` has no digest field at all, so the sentinel has no route into a comparison.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FirstGeneration {
-    Measured(String),
-    NotMeasured(String),
-}
-
-/// The ONLY way the fixed-point phase learns pass one's digest. `NotMeasured` yields `None`, and
-/// phase three reports its own SKIPPED state rather than a refusal it did not observe.
-pub fn pass1_digest_for_fixed_point(outcome: &RequiredRegenOutcome) -> Option<&str> {
-    match &outcome.first_generation {
-        FirstGeneration::Measured(d) => Some(d.as_str()),
-        FirstGeneration::NotMeasured(_) => None,
-    }
 }
 
 /// THE UNSCOPED ROUND, unchanged: every committed mirror's bytes adjudicated, written and
@@ -426,10 +301,6 @@ pub fn run_required_regen_scoped(
         return Ok(RequiredRegenOutcome {
             receipt,
             failures: Vec::new(),
-            first_generation: FirstGeneration::NotMeasured(
-                "the affected-set bound selected no compared mirror, so no generation was emitted"
-                    .to_string(),
-            ),
         });
     }
 
@@ -576,10 +447,7 @@ pub fn run_required_regen_scoped(
         &candidate_tree_id,
     )?;
 
-    // Every field here was measured by THIS pass against THIS tree. The old shape also carried
-    // `fixed_point_equal: false` -- not a measurement, since the first pass never asks; a literal
-    // `false` asserted a negative where "not asked" belonged. The variant has no such field.
-    let first_generation = FirstGeneration::Measured(candidate_digest.clone());
+    // Every field here was measured by THIS pass against THIS tree.
     let receipt = RegenReceipt::FirstGeneration {
         schema: RECEIPT_SCHEMA.to_string(),
         commit_sha,
@@ -645,142 +513,7 @@ pub fn run_required_regen_scoped(
         hand.declared_divergent.join(", ")
     );
 
-    Ok(RequiredRegenOutcome {
-        receipt,
-        failures,
-        first_generation,
-    })
-}
-
-/// Reconcile the two available answers to "what did the first generation emit".
-///
-/// TWO SOURCES FOR ONE FACT, RECONCILED BY REFUSAL RATHER THAN BY PRECEDENCE. The receipt file is
-/// read unconditionally — the cross-tree refusal and the `PriorReceiptRef` are provenance facts
-/// only the file carries — so a caller ALSO supplying the digest in memory makes it exist twice.
-/// The previous `pass1_digest.unwrap_or(prior)` silently preferred the argument: two
-/// representations with a precedence rule, so a disagreement decided and reported nothing
-/// (DESIGN §3).
-///
-/// WHO MADE IT REACHABLE: until the phases shared a process every caller passed `None`, so the
-/// file was the only source. The composed `--required-ci` run supplies the argument, so the change
-/// creating the second source is the change closing it.
-///
-/// WHAT IT IS *NOT*: not a guard on an active defect on the composed path, where
-/// `run_required_regen` writes the receipt and returns the same digest in one pass, so the two
-/// agree by construction. It guards the FUNCTION's contract for a caller supplying a digest
-/// against a receipt written by some other run at this commit — a rebuild between passes, a
-/// mutated `target/`, a first pass that refused after writing. Extracted from the call site so
-/// that claim is testable without a seven-minute emit.
-fn reconcile_pass1_digest(supplied: Option<String>, prior: &str) -> Result<String, String> {
-    match supplied {
-        Some(supplied) if supplied != prior => Err(format!(
-            "refusal: pass-1 digest disagreement — the caller supplied {supplied} but the \
-             receipt at this commit records {prior}. These are two answers to what the first \
-             generation emitted; the fixed-point comparison is meaningless until they agree. \
-             Re-run `claim_executor --required-regen` at this commit so the receipt and the \
-             in-memory pass agree."
-        )),
-        Some(supplied) => Ok(supplied),
-        None => Ok(prior.to_string()),
-    }
-}
-
-pub fn run_required_regen_fixed_point(
-    receipt_rel: &str,
-    pass1_digest: Option<String>,
-) -> Result<RequiredRegenOutcome, String> {
-    let workspace = workspace_root();
-    let receipt_path = workspace.join(receipt_rel);
-    let commit_sha = git_head_sha(&workspace)?;
-    let prior = read_receipt(&receipt_path)?;
-
-    // THE CROSS-TREE REFUSAL. The two passes are separate process invocations sharing one file
-    // under `target/`; nothing requires the first to have run in this process, at this commit, or
-    // at all. Without this arm a developer iterating on the determinism half over a `target/` warm
-    // from an earlier commit produces a receipt stamped with TODAY's `commit_sha` carrying
-    // YESTERDAY's `changed_paths` and `first_generation_equal`. In CI the arm is unreachable
-    // because actions/checkout's default clean removes the ignored `target/` each run (measured:
-    // two consecutive main runs each compiled 105 crates starting at proc-macro2, where a warm
-    // tree compiles zero) -- a checkout default nobody declared, one cache-reuse change from live.
-    //
-    // It refuses rather than recomputing: re-running the first pass here would fuse the two
-    // authorities, and proceeding is the fabrication. `PriorReceiptRef` makes the impersonation
-    // unwritable; this makes referencing the WRONG tree loud.
-    if prior.commit_sha != commit_sha {
-        return Err(format!(
-            "refusal: prior regen receipt was measured at commit {} but HEAD is {} -- the \
-             fixed-point pass may reference first-generation evidence only from the same tree. \
-             Re-run `claim_executor --required-regen` at this commit first.",
-            prior.commit_sha, commit_sha
-        ));
-    }
-
-    let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
-    let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
-    let sources = super::regen_input_sources(&workspace)?;
-    let authority_digest = authority_digest_from_sources(&sources)?;
-    // WHOLE POPULATION, DELIBERATELY. The fixed-point pass asks whether a seed rebuilt from the
-    // installed mirrors regenerates them unchanged; it compares digests over the COMMITTED
-    // roster, so it must render every member of that roster. A selection here would compare a
-    // digest over one population against pass 1's over another.
-    let emitted = compile_stage0(
-        &sources,
-        &Rc::new(RustModuleRenderSelection::RenderEveryModule),
-    )?;
-    let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
-    if emitted.is_empty() {
-        return Err("refusal: fixed-point emit produced zero files".to_string());
-    }
-    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
-    let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
-    if let Some(reason) = validate_compared_populations(
-        &committed_basenames,
-        &emitted_basenames,
-        &hand_dir_shadows,
-        SEED_RETENTION_FRONTIER_TOP_LEVEL_SRC_BASENAMES,
-    ) {
-        return Err(reason);
-    }
-    let pass2 = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
-    let fixed_point_equal = pass1 == pass2;
-
-    // `commit_sha` is what THIS pass ran against; `prior` names the tree its referenced evidence
-    // came from. Equality is checked above and a mismatch refuses, so no receipt here quotes
-    // another tree -- but the field is carried regardless: a subject guaranteed only by an
-    // upstream check is one refactor from a reference that does not name its subject.
-    let receipt = RegenReceipt::FixedPoint {
-        schema: RECEIPT_SCHEMA.to_string(),
-        commit_sha,
-        authority_digest,
-        candidate_generated_digest: pass2.clone(),
-        fixed_point_equal,
-        prior: PriorReceiptRef {
-            commit_sha: prior.commit_sha,
-            committed_generated_digest: prior.committed_generated_digest,
-            first_generation_equal: prior.first_generation_equal,
-            changed_paths: prior.changed_paths,
-            candidate_artifact: prior.candidate_artifact,
-        },
-    };
-    write_receipt(&receipt_path, &receipt)?;
-
-    let failures = if fixed_point_equal {
-        Vec::new()
-    } else {
-        vec![format!(
-            "fixed-point refused: pass-1 digest {pass1} != pass-2 digest {pass2}"
-        )]
-    };
-
-    // This outcome IS the fixed-point pass; it is not anybody's first generation, and saying so
-    // is more useful than echoing a digest a later reader might hand onward.
-    Ok(RequiredRegenOutcome {
-        receipt,
-        failures,
-        first_generation: FirstGeneration::NotMeasured(
-            "this outcome is the fixed-point pass, not a first generation".to_string(),
-        ),
-    })
+    Ok(RequiredRegenOutcome { receipt, failures })
 }
 
 /// The emit-and-compare sequence, performed ONCE and in ONE place.
@@ -1208,11 +941,8 @@ fn emitted_tree_packages(
     // and by nothing after it, so the pool is not put in the thread's shared memo, where it
     // would sit beside the round's source-roots index for the life of the thread.
     let index = super::build_multi_entry_index(&roots);
-    let (graph, indices) =
-        super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-            .map_err(|e| {
-                format!("refusal: the emitted tree's package graph did not resolve: {e}")
-            })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+        .map_err(|e| format!("refusal: the emitted tree's package graph did not resolve: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // DECODE IS NOT HAND-WRITTEN: `Value` -> `value_to_wire_json` -> `serde_json::from_value` into
     // the mirror types, the decode authority `namespace_baseline` `decode_environment_value` uses.
@@ -1686,7 +1416,6 @@ fn regen_refusal_outcome(
     Ok(RequiredRegenOutcome {
         receipt,
         failures: vec![reason.clone()],
-        first_generation: FirstGeneration::NotMeasured(reason),
     })
 }
 
@@ -2347,106 +2076,6 @@ fn git_head_sha(workspace: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// The first-pass measurement the second pass builds on.
-///
-/// This was a separate `RegenReceiptStored` struct mirroring the carrier's fields -- a second
-/// representation (DESIGN 3), and where the false fail-closed claim hid: it accepted any JSON
-/// containing its fields, reading a v1 record as happily as a v2. Gone: `read_receipt`
-/// deserializes the REAL carrier and destructures it, so reader cannot drift from writer.
-struct PriorMeasurement {
-    commit_sha: String,
-    committed_generated_digest: String,
-    candidate_generated_digest: String,
-    first_generation_equal: bool,
-    changed_paths: Vec<String>,
-    candidate_artifact: String,
-}
-
-/// Read the prior receipt, refusing everything that is not a first-generation measurement written
-/// by this version of the carrier.
-///
-/// THREE REFUSALS, each closing a state the previous shape accepted silently:
-///
-///   * `deny_unknown_fields` on the carrier rejects a record carrying a field this shape does not
-///     know -- which is exactly a stale `.v1` receipt, whose removed `fixed_point_equal` serde
-///     would otherwise ignore;
-///   * the schema equality check rejects a record whose version differs, so the version string is
-///     compared rather than merely written;
-///   * the variant match rejects a `fixed_point` receipt, because the second pass must build on a
-///     FIRST-pass measurement and a receipt left by another second pass is not one.
-///
-/// The third was already true by construction (a `fixed_point` record lacks four required fields)
-/// but is an explicit arm so the refusal reports the cause rather than a missing field name.
-fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
-    let bytes =
-        fs::read_to_string(path).map_err(|e| format!("read receipt {}: {e}", path.display()))?;
-    let receipt: RegenReceipt = serde_json::from_str(&bytes)
-        .map_err(|e| format!("parse receipt {}: {e}", path.display()))?;
-    match receipt {
-        RegenReceipt::FirstGeneration {
-            schema,
-            commit_sha,
-            authority_digest: _,
-            committed_generated_digest,
-            candidate_generated_digest,
-            first_generation_equal,
-            changed_paths,
-            candidate_artifact,
-            candidate_manifest: _,
-        } => {
-            if schema != RECEIPT_SCHEMA {
-                return Err(format!(
-                    "refusal: prior receipt {} declares schema {schema} but this reader is \
-                     {RECEIPT_SCHEMA} -- re-run `claim_executor --required-regen` to rewrite it",
-                    path.display()
-                ));
-            }
-            Ok(PriorMeasurement {
-                commit_sha,
-                committed_generated_digest,
-                candidate_generated_digest,
-                first_generation_equal,
-                changed_paths,
-                candidate_artifact,
-            })
-        }
-        // THE ROUTE THE FABRICATED BOOL USED TO TAKE. Before `Refused` existed, a population
-        // refusal left a `FirstGeneration` receipt and this arm read it as a measurement:
-        // `first_generation_equal: false` became a `PriorMeasurement`, then a `PriorReceiptRef`,
-        // then `referenced_first_generation_equal=false` on the operator's terminal -- a result
-        // for a comparison that never ran. The cross-tree guard cannot catch it: the refusal
-        // happened AT this commit, exactly what the guard admits. Now the variant carries no such
-        // field and this arm refuses with the ORIGINAL cause: the fix is the refusal, not the
-        // fixed point.
-        RegenReceipt::Refused { reason, .. } => Err(format!(
-            "refusal: the first-generation pass at this commit REFUSED ({reason}) — there is no \
-             first-generation measurement for the fixed-point pass to reference. Close that \
-             refusal and re-run `claim_executor --required-regen` before asking for the fixed \
-             point. Receipt: {}",
-            path.display()
-        )),
-        // A SCOPED ROUND THAT SELECTED NOTHING EMITTED NOTHING, so there is no first generation
-        // here either -- and the remedy is different from the refusal above, which is why it is
-        // its own arm rather than folded into one. Nothing is broken; the fixed-point pass is
-        // simply being asked to build on a round that had no work to do. The operator either
-        // wants the WHOLE-population round (drop `--regen-affected-scope`) or does not need a
-        // fixed point for this edit at all.
-        RegenReceipt::NoAffectedMirrors { scope, .. } => Err(format!(
-            "refusal: the first-generation pass at this commit selected no compared mirror \
-             ({scope}), so it emitted nothing and there is no first-generation measurement for \
-             the fixed-point pass to reference. Re-run without `--regen-affected-scope` if you \
-             need a whole-population fixed point. Receipt: {}",
-            path.display()
-        )),
-        RegenReceipt::FixedPoint { .. } => Err(format!(
-            "refusal: prior receipt {} is a fixed-point receipt, not a first-generation \
-             measurement -- the fixed-point pass cannot build on another fixed-point pass. \
-             Re-run `claim_executor --required-regen` first.",
-            path.display()
-        )),
-    }
-}
-
 fn write_receipt(path: &Path, receipt: &RegenReceipt) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
@@ -2962,111 +2591,6 @@ mod tests {
     }
 
     #[test]
-    fn filter_in_branch_condition_refuses_and_does_not_publish_the_module() {
-        let (named, module_published, positive_published, positive_named, free_named, free_published, free_has_fn) =
-            std::thread::Builder::new()
-                .stack_size(16 * 1024 * 1024)
-                .spawn(|| {
-                    let emit_one = |content: &str| {
-                        let module_index =
-                            crate::cli_run::build_module_path_index_from_witness_roots();
-                        let sources = crate::cli_run::resolve_virtual_source_with_imports(
-                            "probe.dag",
-                            content,
-                            &module_index,
-                        );
-                        let resolved = compile_to_resolved(Rc::new(sources.into()));
-                        let typed = emittable_graph(resolved)
-                            .expect("front-end must accept the specimen so emission is the wall")
-                            .graph();
-                        crate::v1_compiler_emit_rust::emit_rust(typed)
-                    };
-                    let negative = emit_one(
-                        "module fx.filter_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (xs |> filter(x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let named = negative.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
-                                construct,
-                                ..
-                            } if matches!(
-                                construct,
-                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
-                            )
-                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                    });
-                    let module_published = negative.files.iter().any(|f| {
-                        f.path.contains("fx_filter_guard")
-                    });
-                    let positive = emit_one(
-                        "module fx.any_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if xs |> any(x => x > 0) {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let positive_named = positive.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable { .. }
-                        )
-                    });
-                    let positive_published = positive.files.iter().any(|f| f.path.contains("fx_any_guard"));
-                    let free_call = emit_one(
-                        "module fx.filter_call_guard\nimport std.types { List, Bool, Int }\nfn f(xs: List<Int>) -> Int {\n  if (filter(xs, x => x > 0) |> count) > 0 {\n    1\n  } else {\n    0\n  }\n}\n",
-                    );
-                    let free_named = free_call.diagnostics.iter().any(|d| {
-                        matches!(
-                            &*d.diagnostic,
-                            crate::v1_std_core::CompilerDiagnostic::EmissionConstructUnprojectable {
-                                construct,
-                                ..
-                            } if matches!(
-                                construct,
-                                crate::v1_std_core::UnprojectableConstruct::FilterInBranchCondition
-                            )
-                        ) && crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())
-                    });
-                    let free_published = free_call
-                        .files
-                        .iter()
-                        .any(|f| f.path.contains("fx_filter_call_guard"));
-                    let free_has_fn = free_call.files.iter().any(|f| {
-                        f.path.contains("fx_filter_call_guard") && f.content.contains("fn f")
-                    });
-                    (
-                        named,
-                        module_published,
-                        positive_published,
-                        positive_named,
-                        free_named,
-                        free_published,
-                        free_has_fn,
-                    )
-                })
-                .expect("spawn projection-refusal thread")
-                .join()
-                .expect("projection-refusal thread panicked");
-        assert!(
-            named,
-            "filter in a branch condition must refuse at emission with EmissionConstructUnprojectable naming the construct"
-        );
-        assert!(
-            !module_published,
-            "the refused module must be absent from EmitResult.files — output-plus-diagnostic is not a fix"
-        );
-        assert!(
-            positive_published && !positive_named,
-            "an already-supported guarded any-lambda must still emit its module"
-        );
-        assert!(
-            free_named,
-            "written-as-free-call filter in a guard must refuse via the method arm after infer rewrite"
-        );
-        assert!(
-            !free_published && !free_has_fn,
-            "the rewritten free-call spelling must still withhold the module from EmitResult.files"
-        );
-    }
-
-    #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
         let src = root.join("src");
@@ -3241,173 +2765,6 @@ mod tests {
         verify_candidate_tree(&src, &["foo.rs".to_string()]).expect("candidate present");
         let _ = fs::remove_dir_all(&tmp);
     }
-
-    // THE SENTINEL HAS NO ROUTE TO THE FIXED-POINT PHASE -- ON EITHER CARRIER.
-    //
-    // The defect pinned, found in review of gunbc#8647: a population refusal returns `Ok`, and
-    // its receipt held `refused:population` in both digest positions and
-    // `first_generation_equal: false` where "not asked" belonged. Two carriers cross out of that
-    // function -- the in-process `RequiredRegenOutcome` and the on-disk receipt -- and the typed
-    // `FirstGeneration` closed only the first. The receipt crosses the PROCESS boundary, so the
-    // fabricated Bool reached a standalone `--required-regen-fixed-point` run through
-    // `read_receipt` and printed as `referenced_first_generation_equal=false`.
-    //
-    // Both halves are asserted. In-memory (the original test): `pass1_digest_for_fixed_point`
-    // yields `None` for a refusal, and answering from the receipt fails it. On-disk (new): the
-    // refusal variant has no Bool and no digest to read, and `read_receipt` refuses a refused
-    // prior with its ORIGINAL cause rather than a derived answer.
-    #[test]
-    fn a_refused_first_generation_hands_no_digest_to_the_fixed_point() {
-        let refused_receipt = || RegenReceipt::Refused {
-            schema: RECEIPT_SCHEMA.to_string(),
-            commit_sha: "sha".to_string(),
-            authority_digest: "auth".to_string(),
-            reason: "refusal: emit produced zero files".to_string(),
-            candidate_artifact: "cand".to_string(),
-        };
-
-        let refused = RequiredRegenOutcome {
-            receipt: refused_receipt(),
-            failures: vec!["refusal: emit produced zero files".to_string()],
-            first_generation: FirstGeneration::NotMeasured(
-                "refusal: emit produced zero files".to_string(),
-            ),
-        };
-        assert_eq!(pass1_digest_for_fixed_point(&refused), None);
-
-        // THE HALF THAT USED TO BE THE GAP. The old test asserted the OPPOSITE -- that the
-        // sentinel "IS still sitting in the receipt ... the wrong answer is right there to be
-        // read" -- and called the coproduct load-bearing for a clean outcome over a fabricated
-        // receipt. Now no digest and no equality exist to misread; absent from the variant, not
-        // by convention.
-        assert_eq!(refused.receipt.candidate_generated_digest(), None);
-        assert_eq!(refused.receipt.first_generation_equal(), None);
-        assert_eq!(
-            refused.receipt.refusal_reason(),
-            Some("refusal: emit produced zero files")
-        );
-
-        // POSITIVE CONTROL: ordinary drift is not a refusal. Pass one emitted, the comparison
-        // disagreed, and the fixed point still has a subject -- skipping it would lose the
-        // determinism signal exactly when drift makes it interesting. This control carries a REAL
-        // digest and a REAL `false`: here `false` is an answer, and no receipt remains on which it
-        // is not.
-        let drifted = RequiredRegenOutcome {
-            receipt: RegenReceipt::FirstGeneration {
-                schema: RECEIPT_SCHEMA.to_string(),
-                commit_sha: "sha".to_string(),
-                authority_digest: "auth".to_string(),
-                committed_generated_digest: "committed-digest".to_string(),
-                candidate_generated_digest: "real-digest".to_string(),
-                first_generation_equal: false,
-                changed_paths: vec!["drifted.rs".to_string()],
-                candidate_artifact: "cand".to_string(),
-                candidate_manifest: fixture_candidate_manifest(),
-            },
-            failures: vec!["17 file(s) drifted".to_string()],
-            first_generation: FirstGeneration::Measured("real-digest".to_string()),
-        };
-        assert_eq!(pass1_digest_for_fixed_point(&drifted), Some("real-digest"));
-        assert_eq!(
-            drifted.receipt.candidate_generated_digest(),
-            Some("real-digest")
-        );
-        assert_eq!(drifted.receipt.first_generation_equal(), Some(false));
-        assert_eq!(drifted.receipt.refusal_reason(), None);
-    }
-
-    // THE ON-DISK HALF, THROUGH THE REAL READER. `read_receipt` turned the fabricated Bool into a
-    // `PriorMeasurement`, so the refusal is asserted THROUGH it, not against the variant alone.
-    //
-    // RED: give `RegenReceipt::Refused` a `first_generation_equal: bool` field and let this arm
-    // build a `PriorMeasurement` from it -- the defect restored -- and this test fails. The
-    // positive control keeps the refusal from being satisfied by a reader refusing everything.
-    #[test]
-    fn read_receipt_refuses_a_refused_prior_with_its_original_cause() {
-        let tmp = temp_dir("required-regen-refused-prior");
-        fs::create_dir_all(&tmp).expect("create tmp");
-        let path = tmp.join("receipt.json");
-
-        write_receipt(
-            &path,
-            &RegenReceipt::Refused {
-                schema: RECEIPT_SCHEMA.to_string(),
-                commit_sha: "sha".to_string(),
-                authority_digest: "auth".to_string(),
-                reason: "refusal: committed mirror is no longer emitted".to_string(),
-                candidate_artifact: "cand".to_string(),
-            },
-        )
-        .expect("write refused receipt");
-
-        // Matched rather than `expect_err` because `PriorMeasurement` is deliberately not `Debug`;
-        // the Ok arm names what went wrong instead of asking the type to print itself.
-        let err = match read_receipt(&path) {
-            Ok(_) => panic!("a refused prior must not read as a first-generation measurement"),
-            Err(e) => e,
-        };
-        assert!(
-            err.contains("refusal: committed mirror is no longer emitted"),
-            "the ORIGINAL cause must survive, not a comparison result standing in for it: {err}"
-        );
-
-        // POSITIVE CONTROL: a real first-generation receipt still reads, with its real answer.
-        write_receipt(
-            &path,
-            &RegenReceipt::FirstGeneration {
-                schema: RECEIPT_SCHEMA.to_string(),
-                commit_sha: "sha".to_string(),
-                authority_digest: "auth".to_string(),
-                committed_generated_digest: "committed-digest".to_string(),
-                candidate_generated_digest: "real-digest".to_string(),
-                first_generation_equal: false,
-                changed_paths: vec!["drifted.rs".to_string()],
-                candidate_artifact: "cand".to_string(),
-                candidate_manifest: fixture_candidate_manifest(),
-            },
-        )
-        .expect("write measured receipt");
-
-        let prior = read_receipt(&path).expect("a measured prior reads");
-        assert_eq!(prior.candidate_generated_digest, "real-digest");
-        assert!(!prior.first_generation_equal);
-
-        let _ = fs::remove_dir_all(&tmp);
-    }
-
-    // LOCAL RUST RED CONTROL FOR THE DUAL-INPUT REFUSAL — local, NOT enrolled. The Rust suite has
-    // been out of CI since the 2026-07-11 operator ruling, so this executes for whoever runs it
-    // and for no gate. The previous heading claimed "ENROLLED" — the rung inflation DESIGN §4b
-    // calls worse than sitting low: an unenrolled control claiming enrollment never ranks for it.
-    //
-    // The arm it guards is UNREACHABLE from the composed `--required-ci` path — there
-    // `run_required_regen` writes the receipt and returns the same digest in one pass — which is
-    // why the decision was extracted from its call site: through the real function it needs a
-    // seven-minute emit, and a wall no test can reach is a wall nobody knows works.
-    //
-    // RED: restoring `pass1_digest.unwrap_or(prior)` makes the disagreement case return Ok and
-    // fails the first assertion. The None and agreeing cases are the positive controls.
-    #[test]
-    fn pass1_digest_disagreement_refuses_rather_than_preferring_one() {
-        let err = reconcile_pass1_digest(Some("supplied-abc".to_string()), "receipt-xyz")
-            .expect_err("two different answers to one fact must refuse");
-        assert!(
-            err.contains("supplied-abc") && err.contains("receipt-xyz"),
-            "the refusal must name BOTH values so the reader sees a contradiction rather than \
-             a comparison whose operand was chosen for them: {err}"
-        );
-
-        assert_eq!(
-            reconcile_pass1_digest(Some("same".to_string()), "same").expect("agreement is fine"),
-            "same",
-            "positive control: agreeing sources are not a refusal"
-        );
-        assert_eq!(
-            reconcile_pass1_digest(None, "from-receipt").expect("no second source, no conflict"),
-            "from-receipt",
-            "positive control: with one source the receipt is simply used"
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3502,11 +2859,8 @@ impl RegenConvergenceModel {
                 "refusal: convergence transaction model is outside source roots".to_string()
             })?;
         let index = super::process_shared_index(source_roots);
-        let (graph, indices) =
-            super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
-                .map_err(|e| {
-                    format!("refusal: convergence transaction model did not resolve: {e}")
-                })?;
+        let (graph, indices) = super::resolve_entry_with_index(&index, &entry.to_string_lossy())
+            .map_err(|e| format!("refusal: convergence transaction model did not resolve: {e}"))?;
         Ok(Self { graph, indices })
     }
 
@@ -4301,10 +3655,9 @@ fn render_round_cost_receipt(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the receipt cannot render: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     // The model's carriers, built in the model's vocabulary: a duration is a
     // `std.measure` Nanosecond (`Measure { count }`) inside `std.observation` Measured, on a
@@ -4500,10 +3853,9 @@ fn partition_rebuild_actuation(
     use crate::v1_interpreter::{self, ExecutionMode};
     let entry = round_cost_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let call = |function: &str| -> Result<ModelValue, String> {
         let args = vec![
@@ -4641,9 +3993,6 @@ fn read_first_generation_receipt(
         RegenReceipt::Refused { reason, .. } => Err(format!(
             "regen refused before convergence planning: {reason}"
         )),
-        RegenReceipt::FixedPoint { .. } => Err(
-            "regen convergence expected a first-generation receipt, found fixed-point".to_string(),
-        ),
         RegenReceipt::NoAffectedMirrors { scope, .. } => Err(format!(
             "regen convergence has no affected mirrors for {scope}"
         )),
@@ -6335,9 +5684,7 @@ mod regen_round_cost_tests {
             );
             let entry = round_cost_entry(&roots).unwrap();
             let index = super::super::process_shared_index(&roots);
-            let (graph, indices) =
-                super::super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-                    .unwrap();
+            let (graph, indices) = super::super::resolve_entry_with_index(&index, &entry).unwrap();
             let ctx = super::super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
             let decision_line = |mirror: &str, shell: &[String]| {
                 let args = vec![
@@ -8050,7 +7397,7 @@ pub fn regen_generation_role_population(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strings = |items: &[String]| {
@@ -8157,10 +7504,9 @@ pub fn render_affected_set_bound(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
 
     let reached = regen_reverse_closure_host(edited, edges);
@@ -8313,10 +7659,9 @@ pub fn render_scope_selection(
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = required_regen_scope_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| {
-            format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
-        })?;
+    let (graph, indices) = super::resolve_entry_with_index(&index, &entry).map_err(|e| {
+        format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
+    })?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
     let strs = |items: &[String]| {
         let values: Vec<Value> = items.iter().map(str_value).collect();
@@ -8603,7 +7948,6 @@ mod regen_emission_scope_tests {
             authority_digest: s("sha256:test"),
             scope: scope.line(),
         };
-        assert_eq!(receipt.candidate_generated_digest(), None);
         assert_eq!(receipt.first_generation_equal(), None);
         assert_eq!(receipt.candidate_artifact(), None);
         assert_eq!(
@@ -9200,7 +8544,7 @@ mod dag_artifact_identity_tests {
 
     /// THE LOCAL ARM OF THE REQUIRED RIDER, so the control can be run against a tree without
     /// driving a whole required lane. It is not the enrolled consumer -- that is the
-    /// `dag-artifact-identity` rider inside `RequiredCiPhase::RegenFixedPoint`, which is what
+    /// `dag-artifact-identity` rider inside `RequiredCiPhase::GeneratedArtifact`, which is what
     /// executes on the merge path (`cargo test -p v1-compiler --lib` is off it, a declared drop).
     ///
     /// Measured on this control's own two arms: with `v1.compile` emitting `map_keys` of the item

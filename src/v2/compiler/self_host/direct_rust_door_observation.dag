@@ -1,5 +1,6 @@
 module v2.compiler.self_host.direct_rust_door_observation
 
+import v2.std.diagnostic { diagnostics_fatal_reason }
 import v2.compiler.self_host.candidate_generation {
   ArtifactProduced,
   AssemblyRejected,
@@ -16,7 +17,6 @@ import v2.compiler.self_host.v2_emitter_direct_rust_door_contract {
   direct_rust_door_source_fidelity_assessment,
   direct_rust_door_source_produced_assessment,
 }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
@@ -49,10 +49,10 @@ fn project_direct_rust_door_observation(
   group: DirectRustDoorProductionGroup
 ) -> DirectRustDoorObservation {
   match group.emission {
-    AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: ds.head.reason }
-    InferenceRejected { diagnostics: ds } => InferenceRefused { reason: ds.head.reason }
-    EmissionRejected { diagnostics: ds } => CandidateRejected { reason: ds.head.reason }
-    ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: ds.head.reason }
+    AssemblyRejected { diagnostics: ds } => AssemblyRefused { reason: diagnostics_fatal_reason(d: ds) }
+    InferenceRejected { diagnostics: ds } => InferenceRefused { reason: diagnostics_fatal_reason(d: ds) }
+    EmissionRejected { diagnostics: ds } => CandidateRejected { reason: diagnostics_fatal_reason(d: ds) }
+    ProducerReceiptRejected { diagnostics: ds } => ReceiptRefused { reason: diagnostics_fatal_reason(d: ds) }
     ArtifactProduced { artifact: a } =>
       match direct_rust_door_source_fidelity_assessment(artifact: a) {
         ArtifactLeafRefused { cause: _ } => EmittedSourceMismatch

@@ -4,7 +4,6 @@ import v2.compiler.normalized_tree { normalized_tree_roots_to_nodes }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Edge, Authored, Node, Positional, TypeNode, node_subtree_nodes, symbol_lexeme, StructuralLabel }
 import v2.std.text { String }
 import v2.test.claim.namespace_xl0.call_argument_mention_survival { call_argument_fixture_normalized }

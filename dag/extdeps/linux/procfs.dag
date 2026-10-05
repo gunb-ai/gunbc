@@ -1,6 +1,8 @@
 module extdeps.linux.procfs
 
-import std.types { NonEmptyStr, List, Bool, Unit }
+import std.types { NonEmptyStr, List, Bool, Unit, Int, String }
+import std.algebra { trim }
+import v2.std.optional { Present, Absent }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -40,6 +42,23 @@ fn procfs_pid_file_path(pid: String, file: String) -> String {
 }
 
 data procfs_stat_path: String = "/proc/stat"
+
+// THE EFFECTIVE UID FROM /proc/<pid>/status (proc(5)): the `Uid:` line holds four tab-separated
+// decimal ids, real, effective, saved set and filesystem, in that order. The effective one is the
+// second. A missing line, a different field count or a non-decimal field is no uid, never uid 0.
+fn procfs_status_effective_uid(content: String) -> Int? {
+  fold(split(s: content, delimiter: "\n"), init: none, f: (acc, line) => match acc {
+    Present { value: _ } => acc
+    Absent => if !starts_with(s: line, prefix: "Uid:") { none } else {
+      let ids = split(s: trim(s: substring(s: line, start: 4, end: string_length(s: line))), delimiter: "\t") |> filter(f => f != "")
+      if length(ids) != 4 { none } else { match ids.skip(n: 1) |> first {
+        Absent => none
+        Present { value: e } =>
+          if e == "" || !all(e |> chars, cp => cp >= 48 && cp <= 57) { none } else { parse_int(s: e) }
+      } }
+    }
+  })
+}
 
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {

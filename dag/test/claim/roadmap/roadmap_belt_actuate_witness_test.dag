@@ -1,6 +1,8 @@
 module test.claim.roadmap_belt_actuate_witness
 
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap_nesting { roadmap_memberships }
+import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
@@ -64,6 +66,7 @@ import gunbc.roadmap_execution_contract {
 import std.types { NonEmptyStr, FilePath }
 import gunbc.roadmap_validation_oracle { ValidationOracleRef }
 import gunbc.roadmap_workflow_progress {
+  AttemptWorktreePresent,
   WorkflowAttemptEvidence,
   WorkflowAttemptProgress,
   workflow_attempt_progress,
@@ -89,7 +92,8 @@ import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
 import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
-import gunbc.roadmap_belt_actuate { workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
+import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
+import gunbc.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
 import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
 import gunbc.roadmap_belt_actuate {
   BeltAlignmentBinding, BeltAlignmentBindingOk, BeltAlignmentBindingRefused,
@@ -849,7 +853,8 @@ fn every_launch_refusal_arm_has_an_exemplar() -> Bool {
 }
 
 test fn witness_band_fold_pins_operator_vocabulary() -> Bool {
-  belt_dispatch_label_band_rows().length() == 18
+  belt_dispatch_label_band_rows().length() == 19
+    && band_key_for_label(label: "no_placement_grant") == "loud"
     && band_key_for_label(label: "supervisor_convened") == "ok"
     && band_key_for_label(label: "stale_session") == "loud"
     && band_key_for_label(label: "no_capacity") == "fail"
@@ -916,6 +921,7 @@ fn d4_wire_contract_labels() -> List<String> {
     "no_capacity",
     "cause_not_permitted_by_mode",
     "gate_not_evaluated",
+    "no_placement_grant",
   ]
 }
 
@@ -1218,6 +1224,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
     modeled_state_present: true,
+    worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
     spawn_failure_present: false,
@@ -1256,6 +1263,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     submission_capture: CaptureAbsent,
     integration: IntegrationReceiptAbsent,
     goal_audit: [],
+    session_placement: SessionPlacementAbsent { unit: "" },
   })
 }
 
@@ -1308,6 +1316,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       attempt_key: "feedfacefeedface",
       branch: "dispatch/belt-verify-running-node-afeedfacefeedface",
       modeled_state_present: true,
+      worktree: AttemptWorktreePresent { path: "/wt/fixture" },
       admission_receipt_readable: true,
       admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
       spawn_failure_present: false,
@@ -1343,6 +1352,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       submission_capture: CaptureAbsent,
       integration: IntegrationReceiptAbsent,
       goal_audit: [],
+      session_placement: SessionPlacementAbsent { unit: "" },
     }),
   ) {
     VerifyDeferred { node_id: _, reason } =>
@@ -1405,6 +1415,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
     publish_outcomes: [],
     review_outcomes: [],
     audit_outcomes: [],
+    metering_outcomes: [],
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
@@ -1438,6 +1449,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
     publish_outcomes: [],
     review_outcomes: [],
     audit_outcomes: [],
+    metering_outcomes: [],
   }
   match belt_tick_receipt_from_result(
     result: result,
@@ -1492,6 +1504,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       publish_outcomes: [],
       review_outcomes: [],
       audit_outcomes: [],
+      metering_outcomes: [],
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -1514,6 +1527,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+    metering_pass: BeltPassRecorded,
   }
   let detail = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-verify-refused-node"),
@@ -1532,6 +1546,7 @@ test fn verification_presentation_verify_failed_is_failed() -> Bool {
     commit_pass: BeltPassRecorded,
     verify_pass: BeltPassFailed { reason: "validation verdict failed" },
     publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
+    metering_pass: BeltPassRecorded,
   }
   let detail = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-verify-failed-node"),
@@ -2349,6 +2364,7 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       publish_outcomes: [],
       review_outcomes: [],
       audit_outcomes: [],
+      metering_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2369,6 +2385,7 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       publish_outcomes: [],
       review_outcomes: [],
       audit_outcomes: [],
+      metering_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
@@ -2405,6 +2422,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
     graph: graph,
     merged: [],
     node_id: node_id,
+    request: LaunchAutonomous,
   )
 }
 
@@ -2607,6 +2625,7 @@ test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool {
     publish_outcomes: [],
     review_outcomes: [],
     audit_outcomes: [],
+    metering_outcomes: [],
   }
   belt_tick_commit_poisoned_count(t: result) == 2
     && string_contains(
@@ -3280,4 +3299,46 @@ test fn the_publish_pass_failure_names_the_failing_attempt_and_its_detail() -> B
     BeltPassDeferred { reason: _ } => false
     BeltPassRefused { reason: _ } => false
   }
+}
+
+data failed_release_note: String = "session placement refused: the capacity ledger could not be read (release record not written at /state/x.release.json: EACCES)"
+
+fn release_note_carried(o: BeltSpawnOutcome) -> Bool {
+  match belt_spawn_outcome_with_release(outcome: o, release_note: failed_release_note, provider_wire_label: "gunbc-harness", launch: launch_identity_exemplar()) {
+    SpawnFailed { node_id: _, step: _, detail, provider: _, launch: _ } => string_contains(s: detail, pattern: "release record not written")
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
+    SpawnNotAdmitted { node_id: _, refusal: _ } => false
+  }
+}
+
+// G5, review 74569: A SPAWN THAT DID NOT HAPPEN AFTER ITS PLACEMENT WAS GRANTED NEVER DROPS THE RELEASE
+// OUTCOME. Every non-spawned arm -- including a SpawnNotAdmitted, which LaunchRefusal cannot carry a
+// note on -- comes back as a SpawnFailed whose detail contains the release note, so a release whose
+// record failed to write is visible (DISCRIMINATING: the note is a failed-write rendering). The
+// positive control: a Spawned outcome is returned unchanged and carries no note.
+test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -> Bool {
+  let note = failed_release_note
+  let spawned = Spawned { node_id: "a", session_name: "s", provider: "gunbc-harness", launch: launch_identity_exemplar() }
+  release_note_carried(o: not_admitted(r: LaunchNoCapacity { occupied: 3, max_concurrent: 3 }))
+    && release_note_carried(o: SpawnFailed { node_id: "a", step: "harness-unit-start", detail: "exit 1", provider: "gunbc-harness", launch: launch_identity_exemplar() })
+    && match belt_spawn_outcome_with_release(outcome: spawned, release_note: note, provider_wire_label: "gunbc-harness", launch: launch_identity_exemplar()) {
+      Spawned { node_id: _, session_name: _, provider: _, launch: _ } => true
+      SupervisorConvened { node_id: _, unit: _, provider: _, launch: _ } => false
+      SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
+      SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    }
+}
+
+// A REFUSED METERING WRITE FAILS THE TICK'S METERING PASS, named by its cause; an attempt not yet due
+// and a persisted record do not.
+test fn a_refused_metering_write_fails_the_metering_pass() -> Bool {
+  (match belt_metering_pass_outcome_from(outcomes: [MeteringNotDue, MeteringPersistRefused { cause: "disk full" }]) {
+    BeltPassFailed { reason: r } => string_contains(s: r, pattern: "disk full")
+    _ => false
+  })
+    && (match belt_metering_pass_outcome_from(outcomes: [MeteringNotDue, MeteringPersisted { path: "/a/metering.json", standing: MeteringStandingFinal }]) {
+      BeltPassRecorded => true
+      _ => false
+    })
 }

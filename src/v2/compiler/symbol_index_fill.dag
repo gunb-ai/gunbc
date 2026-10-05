@@ -19,7 +19,6 @@ import v2.std.optional {
   optional_present
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.node {
   Arrow,
   Conj,
@@ -44,6 +43,7 @@ import v2.std.symbol_index {
   symbol_index_mark_namespace_body,
   VariantArmPayload,
   symbol_index_bind_at,
+  symbol_index_mark_module_root,
   symbol_index_declaring_path_of,
   symbol_index_insert,
   symbol_index_lookup,
@@ -61,6 +61,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.compiler.parse { parse_tree_projection_edge }
 import v2.std.type_binder { OpaqueTypeDecl, TypeAlias, GenericTypeDecl, PlainTypeDecl, type_decl_view, type_param_names }
+import std.types { List }
 
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -501,7 +502,7 @@ fn symbol_index_fill_module_declarations(
         xs: record_declarations,
         empty: symbol_index_fill_unique_variant_aliases(
           index: symbol_index_fill_containment_node(
-            index: index,
+            index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
             path: module_qn,
             node: root
           ),

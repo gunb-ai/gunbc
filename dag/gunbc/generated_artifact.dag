@@ -6,7 +6,7 @@ import gunbc.plan { Plan, plan_doc_directory, plan_doc_name, PlanProjectsCommitt
 import gunbc.generated_artifact_merge_driver { generated_artifact_merge_driver_script_directory, generated_artifact_merge_driver_script_name }
 import gunbc.whole_corpus_compile_demand_projection { whole_corpus_compile_demand_projection_directory, whole_corpus_compile_demand_projection_name }
 import gunbc.fleet_intent { ComputeHost }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import std.decl_ref { DeclarationRef, decl_ref }
 
 type GeneratedArtifact

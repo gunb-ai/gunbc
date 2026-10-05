@@ -1,0 +1,117 @@
+module gunbc.workspace_commissioning_directive
+
+import std.types { String, NonEmptyStr }
+import std.measure { hardware_thread_count, byte_size }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_field_string, json_field_int, json_field_bool, FieldRead, FieldMalformed, JsonDocumentUnreadable }
+import extdeps.languages.json.emit { JsonValue, serialize_json }
+import gunbc.build_cache_instance { runner_slot_instance_name }
+import gunbc.runner_slot_allocation { workspace_execution_slot_identities }
+import gunbc.workspace_commissioning_transaction { WorkspaceCommissioningProvenance, WorkspaceCommissioningPrepared }
+import gunbc.workspace_commissioning_store { workspace_commissioning_record_text }
+import gunbc.running_release_identity { release_revision_text_valid }
+import std.content_hash { sha256_hex_digest }
+
+// A directive is intention, not permission to publish readiness. It uses the journal's canonical
+// prepared-record wire shape, so the plan and controller cannot invent competing provenance codecs.
+// Only a systemd credential delivered by the reviewed fleet apply reaches the controller consumer.
+type WorkspaceCommissioningDirectiveRead
+  = WorkspaceCommissioningDirectiveReady { provenance: WorkspaceCommissioningProvenance }
+  | WorkspaceCommissioningDirectiveRefused { reason: String }
+
+fn workspace_commissioning_directive_from_text(text: String) -> WorkspaceCommissioningDirectiveRead {
+  match parse_json_document(s: text) {
+    JsonDocumentParsed { value: body } => workspace_commissioning_directive_decode(body: body)
+    JsonDocumentUnreadable { gap: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential JSON is unreadable" }
+  }
+}
+
+fn workspace_commissioning_directive_decode(body: JsonValue) -> WorkspaceCommissioningDirectiveRead {
+  match json_field_string(obj: body, key: "installed_tree_digest") {
+    FieldRead { value: digest } => match sha256_hex_digest(hex: digest) {
+      Present { value: _ } => workspace_commissioning_directive_decode_with_tree(body: body, tree_digest: digest as NonEmptyStr)
+      Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning installed tree digest is invalid" }
+    }
+    FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique installed_tree_digest" }
+    FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique installed_tree_digest" }
+  }
+}
+
+fn workspace_commissioning_directive_decode_with_tree(body: JsonValue, tree_digest: NonEmptyStr) -> WorkspaceCommissioningDirectiveRead {
+  match json_field_string(obj: body, key: "slot") {
+    FieldRead { value: slot_name } => {
+      match json_field_string(obj: body, key: "plan_hash") {
+        FieldRead { value: plan_hash } => {
+          match json_field_string(obj: body, key: "source_revision") {
+            FieldRead { value: revision } => {
+              match json_field_string(obj: body, key: "controller_digest") {
+                FieldRead { value: controller_digest } => {
+                  match json_field_string(obj: body, key: "guest_image_digest") {
+                    FieldRead { value: image_digest } => {
+                      match json_field_string(obj: body, key: "sanitation_observation") {
+                        FieldRead { value: sanitation } => {
+                          match json_field_int(obj: body, key: "cpu_budget") {
+                            FieldRead { value: cpu } => {
+                              match json_field_int(obj: body, key: "attempt_envelope_bytes") {
+                                FieldRead { value: memory } => {
+                                  match json_field_bool(obj: body, key: "no_swap") {
+                                    FieldRead { value: no_swap } => {
+                                      if plan_hash == "" || sanitation == "" || cpu < 1 || memory < 1 || !no_swap
+                                        || !release_revision_text_valid(text: revision) {
+                                        WorkspaceCommissioningDirectiveRefused { reason: "commissioning identity, budget or source revision is invalid" }
+                                      } else { match sha256_hex_digest(hex: controller_digest) {
+                                        Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning controller digest is invalid" }
+                                        Present { value: _ } => match sha256_hex_digest(hex: image_digest) {
+                                          Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning image digest is invalid" }
+                                          Present { value: _ } => match filter(workspace_execution_slot_identities(), slot => (runner_slot_instance_name(slot: slot) as String) == slot_name).first() {
+                                            Absent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning slot is not designated for workspace use" }
+                                            Present { value: slot } => {
+                                              let provenance = WorkspaceCommissioningProvenance {
+                                                slot: slot, plan_hash: plan_hash as NonEmptyStr, source_revision: revision as NonEmptyStr, installed_tree_digest: tree_digest,
+                                                controller_digest: controller_digest as NonEmptyStr, guest_image_digest: image_digest as NonEmptyStr,
+                                                cpu_budget: hardware_thread_count(count: cpu), attempt_envelope: byte_size(memory),
+                                                no_swap: no_swap, sanitation_observation: sanitation as NonEmptyStr,
+                                              }
+                                              if serialize_json(v: body) == (workspace_commissioning_record_text(record: WorkspaceCommissioningPrepared { provenance: provenance }) as String) {
+                                                WorkspaceCommissioningDirectiveReady { provenance: provenance }
+                                              } else { WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has unknown, duplicate or inconsistent fields" } }
+                                            }
+                                          }
+                                        }
+                                      } }
+                                    }
+                                    FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique no_swap" }
+                                    FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique no_swap" }
+                                  }
+                                }
+                                FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique attempt_envelope_bytes" }
+                                FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique attempt_envelope_bytes" }
+                              }
+                            }
+                            FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique cpu_budget" }
+                            FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique cpu_budget" }
+                          }
+                        }
+                        FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique sanitation_observation" }
+                        FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique sanitation_observation" }
+                      }
+                    }
+                    FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique guest_image_digest" }
+                    FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique guest_image_digest" }
+                  }
+                }
+                FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique controller_digest" }
+                FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique controller_digest" }
+              }
+            }
+            FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique source_revision" }
+            FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique source_revision" }
+          }
+        }
+        FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique plan_hash" }
+        FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique plan_hash" }
+      }
+    }
+    FieldAbsent => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique slot" }
+    FieldMalformed { cause: _ } => WorkspaceCommissioningDirectiveRefused { reason: "commissioning credential has no unique slot" }
+  }
+}

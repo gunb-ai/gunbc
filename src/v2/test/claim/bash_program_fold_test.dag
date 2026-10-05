@@ -1,5 +1,6 @@
 module v2.test.claim.bash_program_fold
 
+import std.types { List }
 import v2.extdeps.languages.bash_build {
   bash_build_and_then,
   bash_build_assign,
@@ -30,10 +31,8 @@ import v2.workflow.bash_emit {
 }
 import v2.std.algebra { list_map }
 import std.algebra { list_append }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.test.claim.bash_program_fold_support {
   bash_program_fixture_assign_root_node,

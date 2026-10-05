@@ -1,5 +1,6 @@
 module v2.test.claim.named_argument_binding
 
+import std.types { List }
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.program_assembly { assemble_program_from_ingest }
@@ -21,9 +22,7 @@ import v2.std.arrow_signature {
   arrow_declared_parameter_order
 }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
-import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node {
   all_edges_positional,
   Arrow,

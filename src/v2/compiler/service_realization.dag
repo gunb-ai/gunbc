@@ -23,9 +23,8 @@ import v2.std.service_realization_labels {
   realization_arm_doc_label,
   realization_status_code_label
 }
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Rejected, Unavailable, node_locus }
-import v2.std.logic { Bool }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.node {
@@ -386,16 +385,16 @@ fn realization_leaf_member_refusal(interface: Node, member: Edge) -> Optional<Re
 // closed set (v2.extdeps.languages.dag dag_grammar_service_config_field_name_expr), which the lowering
 // reads; the values are ordinary expressions whose references resolve.
 fn realization_config_refusal(config: Node) -> Optional<RealizationRefusal> {
-  realization_require_conj(n: config, reason: ^service_realization_config_malformed, then: fn() {
+  realization_require_conj(n: config, reason: ^service_realization_config_malformed, proceed: fn() {
     if (count(config.children) > 0) && all_names_distinct(children: config.children) { optional_absent() }
     else { realization_refusal(reason: ^service_realization_config_malformed, at: config) }
   })
 }
 
-// Proceed with `then` when the node is a Conj; any other shape refuses with `reason`, at the node.
-fn realization_require_conj(n: Node, reason: Symbol, then: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
+// Call `proceed` when the node is a Conj; any other shape refuses with `reason`, at the node.
+fn realization_require_conj(n: Node, reason: Symbol, proceed: fn() -> Optional<RealizationRefusal>) -> Optional<RealizationRefusal> {
   match realization_node_shape(n: n) {
-    ShapeConj => then()
+    ShapeConj => proceed()
     ShapeAtom { identity: _ } => realization_refusal(reason: reason, at: n)
     ShapeArrow => realization_refusal(reason: reason, at: n)
     ShapeOther => realization_refusal(reason: reason, at: n)
@@ -406,7 +405,7 @@ fn realization_require_conj(n: Node, reason: Symbol, then: fn() -> Optional<Real
 // <projection>) at most once; a second block of one kind refuses at the entry.
 fn realization_entry_refusal(op: Node, entry: Node) -> Optional<RealizationRefusal> {
   match realization_node_shape(n: op) {
-    ShapeArrow => realization_require_conj(n: entry, reason: ^service_realization_entry_malformed, then: fn() { realization_entry_members_refusal(op: op, entry: entry) })
+    ShapeArrow => realization_require_conj(n: entry, reason: ^service_realization_entry_malformed, proceed: fn() { realization_entry_members_refusal(op: op, entry: entry) })
     ShapeAtom { identity: _ } => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
     ShapeConj => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
     ShapeOther => realization_refusal(reason: ^service_realization_entry_without_operation, at: entry)
@@ -426,7 +425,7 @@ fn realization_entry_members_refusal(op: Node, entry: Node) -> Optional<Realizat
 }
 
 fn realization_entry_with_transport_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
-  realization_require_conj(n: transport, reason: ^service_realization_transport_malformed, then: fn() { realization_transport_block_refusal(op: op, entry: entry, transport: transport) })
+  realization_require_conj(n: transport, reason: ^service_realization_transport_malformed, proceed: fn() { realization_transport_block_refusal(op: op, entry: entry, transport: transport) })
 }
 
 fn realization_transport_block_refusal(op: Node, entry: Node, transport: Node) -> Optional<RealizationRefusal> {
@@ -678,7 +677,7 @@ fn realization_arm_member_count_conforms(arm: Node) -> Bool {
 // The output must be one the operation declares, and the key must name something the transport
 // observes (closed on shell and file, an open body member on rest).
 fn realization_projection_refusal(kind: DeclaredTransport, op: Node, rows: Node) -> Optional<RealizationRefusal> {
-  realization_require_conj(n: rows, reason: ^service_realization_projection_malformed, then: fn() { realization_projection_rows_refusal(kind: kind, op: op, rows: rows) })
+  realization_require_conj(n: rows, reason: ^service_realization_projection_malformed, proceed: fn() { realization_projection_rows_refusal(kind: kind, op: op, rows: rows) })
 }
 
 fn realization_projection_rows_refusal(kind: DeclaredTransport, op: Node, rows: Node) -> Optional<RealizationRefusal> {

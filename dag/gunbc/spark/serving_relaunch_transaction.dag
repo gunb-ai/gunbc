@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Second, second, second_count, ByteSize, byte_size_count }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.docker.cli {
   DockerCreateSpec, DockerEnvAssignment, DockerDeviceMapping, DockerMount, BindMount, VolumeMount, TmpfsMount,
@@ -12,9 +12,9 @@ import extdeps.docker.cli {
   docker_create_command, docker_start_command, docker_stop_command, docker_rename_command,
   docker_remove_force_command,
 }
-import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag }
+import extdeps.vllm.engine_args { vllm_max_num_seqs_flag, vllm_gpu_memory_utilization_flag, vllm_kv_cache_dtype_flag, vllm_argv_without_admission_flags, vllm_argv_scheduler_admission, vllm_argv_indexer_kv_dtype_request, vllm_scheduler_admission_key, vllm_indexer_kv_dtype_key }
 import extdeps.docker.container_inspect {
-  ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectUlimit,
+  ContainerInspect, HostConfig, ContainerConfig, DockerInspectDevice, DockerInspectMount, DockerInspectUlimit,
   docker_capability_canonical, docker_memlock_ulimit_name,
 }
 import extdeps.nvidia.nccl {
@@ -83,12 +83,16 @@ type RelaunchAxis
   = TransportAxis
   | BatchingAxis
   | UtilizationAxis
+  | KvCacheDtypeAxis
+  | AdmissionControlsAxis
 
 fn relaunch_axis_wire(a: RelaunchAxis) -> NonEmptyStr {
   match a {
     TransportAxis => "collective-transport" as NonEmptyStr
     BatchingAxis => "batching-bounds" as NonEmptyStr
     UtilizationAxis => "gpu-memory-utilization" as NonEmptyStr
+    KvCacheDtypeAxis => "kv-cache-dtype" as NonEmptyStr
+    AdmissionControlsAxis => "admission-controls" as NonEmptyStr
   }
 }
 
@@ -309,9 +313,12 @@ fn env_difference_observed_text(d: EnvDifference) -> String {
   }
 }
 
-// THE NAMES THIS COMPARISON MAKES NO CLAIM ABOUT, reported so a reader can see the residue rather
-// than infer that it was checked. It is not consulted by the verdict; it is what the trigger above
-// would turn into evidence.
+// THE NAMES THIS COMPARISON MAKES NO CLAIM ABOUT. The relaunch delta reports them; the native apply's
+// readback CONSULTS them (gunbc.spark.native_serving_apply spark_native_unplanned_assignments): an
+// assignment under one of these names refuses unless it is identical to an assignment in the image's
+// own Config.Env, read by the id the container was created from. (This note said "not consulted by the
+// verdict" while that readback refused on every name here -- including the image's own PATH --
+// Group A fp8-8 launch, run 37172948981.)
 fn env_unclaimed_names(spec: DockerCreateSpec, observed: List<String>, gid_selection: NcclRoceGidSelection) -> List<String> {
   let subject = env_subject_names(spec: spec, gid_selection: gid_selection)
   fold(observed, init: [], f: (acc, a) => {
@@ -398,10 +405,20 @@ fn planned_mount_bind_text(m: DockerMount) -> String {
   }
 }
 
+// The observed mounts rendered in planned_mount_bind_text's own convention, per mount type, from the
+// structured HostConfig.Mounts a `--mount` create records.
+fn observed_mount_text(m: DockerInspectMount) -> String {
+  if (m.kind as String) == "tmpfs" {
+    join(["tmpfs:", m.target as String, ":", match m.tmpfs_size_bytes { Present { value: n } => to_string(n)  Absent => "unset" }], "")
+  } else {
+    join([m.source, ":", m.target as String, if m.read_only { ":ro" } else { ":rw" }], "")
+  }
+}
+
 fn observed_mounts_text(hc: HostConfig) -> String? {
-  match hc.binds {
+  match hc.mounts {
     Absent => none
-    Present { value: bs } => Present { value: join(sorted_text(xs: bs), ",") }
+    Present { value: ms } => Present { value: join(sorted_text(xs: map(ms, m => observed_mount_text(m: m))), ",") }
   }
 }
 
@@ -646,16 +663,21 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
       field: SpecCommand,
       cause: "the inspect document carries no Config.Cmd, so the engine arguments this container was created with were not compared" as NonEmptyStr,
     }
-    Present { value: argv } =>
-      if count(argv) != count(spec.command) {
+    Present { value: full_argv } =>
+      match admission_controls_comparison(planned: spec.command, observed: full_argv) {
+       AdmissionControlsUnreadable { cause: c } => FieldUnreadable { field: SpecCommand, cause: c }
+       AdmissionControlsCompared { moved: admission_moved } => {
+      let planned_core = vllm_argv_without_admission_flags(argv: spec.command)
+      let argv = vllm_argv_without_admission_flags(argv: full_argv)
+      if count(argv) != count(planned_core) {
         FieldDiffersOffAxis {
           field: SpecCommand,
-          planned: join([to_string(count(spec.command)), " words"], ""),
+          planned: join([to_string(count(planned_core)), " words"], ""),
           observed: join([to_string(count(argv)), " words"], ""),
         }
       } else {
-        let differences = argv_word_differences(planned: spec.command, observed: argv)
-        let off_axis = filter(differences, d => axis_is_absent(a: argv_difference_axis(planned: spec.command, d: d)))
+        let differences = argv_word_differences(planned: planned_core, observed: argv)
+        let off_axis = filter(differences, d => axis_is_absent(a: argv_difference_axis(planned: planned_core, d: d)))
         match off_axis.first() {
           Present { value: d } => FieldDiffersOffAxis {
             field: SpecCommand,
@@ -663,14 +685,14 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
             observed: d.observed,
           }
           Absent =>
-            match differences.first() {
-              Absent => FieldAgrees { field: SpecCommand }
-              Present { value: _ } => FieldDiffersOnAxis {
+            if length(differences) == 0 && !admission_moved { FieldAgrees { field: SpecCommand } }
+            else {
+              FieldDiffersOnAxis {
                 field: SpecCommand,
-                axes: argv_difference_axes(planned: spec.command, differences: differences),
+                axes: concat(argv_difference_axes(planned: planned_core, differences: differences), if admission_moved { [AdmissionControlsAxis] } else { [] }),
                 planned: join(map(differences, x => join([
                   "word ", to_string(x.index), " (",
-                  match argv_difference_axis(planned: spec.command, d: x) {
+                  match argv_difference_axis(planned: planned_core, d: x) {
                     Present { value: a } => relaunch_axis_wire(a: a) as String
                     Absent => "no axis"
                   },
@@ -681,6 +703,35 @@ fn compare_command_field(spec: DockerCreateSpec, observed: ContainerInspect) -> 
             }
         }
       }
+      }
+       }
+  }
+}
+
+// THE ADMISSION CONTROLS ARE COMPARED AS TYPED VALUES, not as words: a launch that adds the full-input
+// gate and a watermark changes the argv's length, which a word-wise reading can only call off-axis.
+// Both sides are read through extdeps.vllm.engine_args' readers; an unreadable side refuses rather than
+// guessing, and a difference is the AdmissionControlsAxis.
+type AdmissionControlsComparison
+  = AdmissionControlsCompared { moved: Bool }
+  | AdmissionControlsUnreadable { cause: NonEmptyStr }
+
+fn admission_controls_comparison(planned: List<String>, observed: List<String>) -> AdmissionControlsComparison {
+  match vllm_argv_scheduler_admission(argv: planned) {
+    Absent => AdmissionControlsUnreadable { cause: "the planned argv's scheduler admission controls cannot be read (a repeated or conflicting flag)" as NonEmptyStr }
+    Present { value: ps } => match vllm_argv_scheduler_admission(argv: observed) {
+      Absent => AdmissionControlsUnreadable { cause: "the running container's scheduler admission controls cannot be read (a repeated or conflicting flag)" as NonEmptyStr }
+      Present { value: os } => match vllm_argv_indexer_kv_dtype_request(argv: planned) {
+        Absent => AdmissionControlsUnreadable { cause: "the planned argv's indexer KV dtype cannot be read" as NonEmptyStr }
+        Present { value: pi } => match vllm_argv_indexer_kv_dtype_request(argv: observed) {
+          Absent => AdmissionControlsUnreadable { cause: "the running container's indexer KV dtype cannot be read" as NonEmptyStr }
+          Present { value: oi } => AdmissionControlsCompared {
+            moved: vllm_scheduler_admission_key(r: ps) != vllm_scheduler_admission_key(r: os)
+              || vllm_indexer_kv_dtype_key(r: pi) != vllm_indexer_kv_dtype_key(r: oi),
+          }
+        }
+      }
+    }
   }
 }
 
@@ -722,6 +773,8 @@ fn argv_difference_axis(planned: List<String>, d: ArgvDifference) -> RelaunchAxi
           Present { value: BatchingAxis }
         } else if flag == vllm_gpu_memory_utilization_flag {
           Present { value: UtilizationAxis }
+        } else if flag == vllm_kv_cache_dtype_flag {
+          Present { value: KvCacheDtypeAxis }
         } else {
           none
         }
@@ -901,7 +954,7 @@ fn relaunch_leg(
 ) -> NonEmptyStr?
 {
   match spark_remote_run(ctx: ctx, argv: argv_words(command: command)) {
-    RemoteUnreachable { cause: why } =>
+    RemoteUnreachable { cause: why, reach: _ } =>
       Present { value: join([relaunch_step_wire(s: step) as String, ": ", why], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: _, stderr: err } =>
       if code != 0 {
@@ -1525,7 +1578,7 @@ fn await_after_interval(c: ArmCapture, remaining: Nat) -> RankTransportObservati
     ) }
     SleepArgv { words: words } =>
       match spark_remote_run(ctx: c.rank.ctx, argv: words) {
-        RemoteUnreachable { cause: why } => RankTransportRefused { refusal: rank_observation_refusal(
+        RemoteUnreachable { cause: why, reach: _ } => RankTransportRefused { refusal: rank_observation_refusal(
           subject: c.rank.subject,
           step: relaunch_step_wire(s: StepAwaitAnnouncement),
           cause: join(["the wait between announcement polls could not be taken: ", why], "") as NonEmptyStr,

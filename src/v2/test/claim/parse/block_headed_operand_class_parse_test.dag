@@ -2,7 +2,6 @@ module v2.test.parse.block_headed_operand_class_parse
 
 import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

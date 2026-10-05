@@ -1,7 +1,8 @@
 module gunbc.auth.session
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, Email, List }
-import std.nat { Nat }
+import std.nat { Nat, Zero }
+import extdeps.http.server { SetCookie, CookieSameSiteLax }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
 import extdeps.uri { Uri }
@@ -112,6 +113,7 @@ fn mint_authenticated_session(
   admit_callers: [
     decl_ref(module_path: "test.claim.auth_session_witness_test", decl_name: "witness_mint_session"),
     decl_ref(module_path: "test.claim.request_authentication_witness_test", decl_name: "witness_mint_session"),
+    decl_ref(module_path: "gunbc.roadmap_auth_routes", decl_name: "auth_callback_mint_session"),
   ]
 {
   if login_transaction_expired(t: transaction, observed_at: observed_at) {
@@ -245,17 +247,20 @@ type SessionCookieIdParse
   | SessionCookieIdNotPresent
   | SessionCookieIdMalformed { detail: String }
 
-fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
+// The cookie NAME is a parameter so the login flow's browser-binding cookie (__Host-gunbc-login,
+// gunbc.auth.login_browser_binding) parses with the same syntax and duplicate refusal; the session
+// cookie is the default.
+fn session_cookie_id_of_header(cookie_header: String, cookie_name: NonEmptyStr = session_cookie_name) -> SessionCookieIdParse {
   let pairs = split(s: cookie_header, delimiter: ";")
   let matches: List<String> = filter(
     pairs,
-    pair => starts_with(s: trim(pair), prefix: concat(session_cookie_name as String, "=")),
+    pair => starts_with(s: trim(pair), prefix: concat(cookie_name as String, "=")),
   )
   if count(matches) == 0 {
     SessionCookieIdNotPresent
   } else if count(matches) > 1 {
     SessionCookieIdMalformed {
-      detail: concat("duplicate ", concat(session_cookie_name as String, " cookie in the Cookie header")),
+      detail: concat("duplicate ", concat(cookie_name as String, " cookie in the Cookie header")),
     }
   } else {
     match matches.first() {
@@ -265,7 +270,7 @@ fn session_cookie_id_of_header(cookie_header: String) -> SessionCookieIdParse {
         session_cookie_id_of_value(
           value: substring(
             s: trimmed_pair,
-            start: string_length(s: concat(session_cookie_name as String, "=")),
+            start: string_length(s: concat(cookie_name as String, "=")),
             end: string_length(s: trimmed_pair),
           ),
         )
@@ -315,41 +320,30 @@ fn session_cookie_id_of_value(value: String) -> SessionCookieIdParse {
 // and cannot drift from the rows the witness checks. Max-Age is the bounded lifetime in whole
 // seconds; the caller supplies it because the lifetime bound is the login policy's fact
 // (gunbc.auth.oidc_deployment_config), not this module's.
-fn session_cookie_set_cookie_line(session_id: NonEmptyStr, max_age_seconds: Nat) -> String {
-  join(
-    [
-      "Set-Cookie: ",
-      session_cookie_name as String,
-      "=",
-      session_id as String,
-      if session_cookie_secure { "; Secure" } else { "" },
-      if session_cookie_http_only { "; HttpOnly" } else { "" },
-      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
-      "; Path=",
-      session_cookie_path as String,
-      "; Max-Age=",
-      to_string(value: max_age_seconds),
-    ],
-    "",
-  )
+fn session_cookie_set_cookie(session_id: NonEmptyStr, max_age_seconds: Nat) -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: session_id as String,
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: max_age_seconds,
+  }
 }
 
-// THE LOGOUT CLEARING LINE: same attributes, empty value, zero lifetime, so the browser drops
+// THE LOGOUT CLEARING COOKIE: same attributes, empty value, zero lifetime, so the browser drops
 // the cookie whether or not the server-side session could be deleted.
-fn session_cookie_clear_line() -> String {
-  join(
-    [
-      "Set-Cookie: ",
-      session_cookie_name as String,
-      "=; Path=",
-      session_cookie_path as String,
-      if session_cookie_secure { "; Secure" } else { "" },
-      if session_cookie_http_only { "; HttpOnly" } else { "" },
-      if session_cookie_same_site_lax { "; SameSite=Lax" } else { "" },
-      "; Max-Age=0",
-    ],
-    "",
-  )
+fn session_cookie_clear() -> SetCookie {
+  SetCookie {
+    name: session_cookie_name,
+    value: "",
+    path: session_cookie_path,
+    secure: session_cookie_secure,
+    http_only: session_cookie_http_only,
+    same_site: if session_cookie_same_site_lax { Present { value: CookieSameSiteLax } } else { none },
+    max_age_seconds: Zero,
+  }
 }
 
 // ONE REFUSAL, ONE RENDERED REASON over the non-valid arms, for routes that answer a standing

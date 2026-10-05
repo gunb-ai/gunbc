@@ -1,10 +1,14 @@
 module v2.compiler.self_host.wet_receipt_route_standing
 
+import std.types { List }
 import tools.self_host_module_behavioral_transport_roster {
   ModuleBehavioralTransportConfig,
   module_behavioral_transport_config_for
 }
-import tools.self_host_curated_seed_linked_harness { cssl_pass_marker_stem }
+import tools.self_host_curated_seed_linked_harness {
+  cssl_pass_marker_stem,
+  CsslWitnessDriver
+}
 import v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings {
   SelfHostWetReceiptBinding,
   find_wet_receipt_binding
@@ -15,9 +19,7 @@ import v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries {
 import tools.self_host_logic_behavioral_transport { slb_receipt_pass_marker }
 import std.realization_schedule { ScheduleWitnessEntry }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 
 // ROW-GRAIN ROUTE STANDING FOR THE WET SELF-HOST BEHAVIORAL RECEIPTS, and the grain is the whole
@@ -79,14 +81,18 @@ type WetReceiptUnavailableCause
   = BindingRevokedOnMeasuredRed { cadence_run: String }
   | BindingNeverEstablished
 
-// THE DRIVER IS NOT ALWAYS A FILE, and a String field would have hidden that. The sixteen module
-// receipts name a repo-relative witness_main.rs; the logic receipt's driver is an inline source
-// constant in its own transport module. Both are drivers; only one has a path. Writing the symbol
-// into a path-shaped String would be a positional/symbolic conflation in one field, so the two
-// carriers are variants -- the operator's `driver` field decomposed, not widened.
+// THE DRIVER IS NEVER A FILE, and a String field would have hidden what it is instead. A module
+// receipt's driver is rendered from its roster row over a .dag contract emitted beside its subject,
+// so what identifies it is that contract; the logic receipt's driver is an inline source constant
+// in its own transport module, identified by citation. The module rows used to name a
+// repo-relative witness_main.rs; that carrier is deleted with the last hand-written driver.
 type WetReceiptDriver
-  = DriverFile { path: String }
-  | DriverInlineSource { citation: String }
+  = DriverInlineSource { citation: String }
+  | DriverEmittedContract { contract_entry: String, contract_function: String }
+
+fn wet_receipt_driver_of(driver: CsslWitnessDriver) -> WetReceiptDriver {
+  DriverEmittedContract { contract_entry: driver.contract_entry_rel, contract_function: driver.contract_function }
+}
 
 type WetReceiptObsoleteCause
   = TransportConfigAbsent
@@ -163,7 +169,7 @@ fn wet_receipt_module_row_standing(
           }
           Present { value: _ } => WetReceiptExecutable {
             receipt: receipt,
-            driver: DriverFile { path: cfg.driver_rel },
+            driver: wet_receipt_driver_of(driver: cfg.driver),
             binding: ModuleBinding { module_path: module_path },
             expected_fault_marker: fault_marker
           }

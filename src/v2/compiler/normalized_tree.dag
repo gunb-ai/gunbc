@@ -17,7 +17,8 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   rejected_with_pending,
-  UserInputBoundary
+  UserInputBoundary,
+  Unavailable
 }
 import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, map_lookup }
 import std.occurrence_identity { OccurrenceMinted, OccurrencePending, OccurrenceProjected, OccurrenceSynthetic }
@@ -290,7 +291,7 @@ fn census_tree_binding_source(t: CensusTree) -> ModuleBindingSource {
 }
 
 // Projection of ONE sealed tree's captured import rows, for a reader that must ask what a module
-// imports without unsealing the carrier: v2.compiler.compile native_import_target_file_refusal,
+// imports without unsealing the carrier: v2.compiler.compile native_import_target_attribution,
 // which attributes a resolve refusal to an import target the context refused at ingest.
 fn normalized_tree_import_bindings(tree: NormalizedTree) -> FreeMonoid<AliasBindingRow> {
   tree.import_bindings

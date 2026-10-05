@@ -4,7 +4,6 @@ import v2.compiler.resolve { ResolvedTree }
 import v2.test.claim.type_param_binder_frame { tpb_accepts, tpb_assemble, tpb_refuses_with }
 import v2.std.diagnostic { Accepted, NodeLocus, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_subtree_nodes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -126,7 +125,7 @@ test fn btar_unannotated_fn_literal_is_not_erased() -> Bool {
 }
 
 // ONE WARM PRODUCER FOR THE TWO FN-LITERAL VERDICTS (3) and (4): each once paid its own front end.
-// Enrolled in v2.workflow.floor_pure_producer_share floor_cross_claim_pure_producers_warm; the
+// Shared by v2.workflow.floor_pure_producer_share derive_cross_claim_share; the
 // claims only read their Bool.
 type BtarFnLiteralOutcomes {
   annotated_reaches_resolve: Bool

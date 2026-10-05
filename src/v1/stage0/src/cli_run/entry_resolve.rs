@@ -58,7 +58,6 @@ use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{
     parse_module_binding, ModuleBindingOutcome, ModuleBindingRefusal, ParsedModuleBinding,
 };
-use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -85,12 +84,12 @@ use crate::v1_std_core::{
     build_newline_index, byte_to_line_col, diagnostic_to_message, diagnostic_to_span,
     empty_intern_table, empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_init_node_name_at, field_init_node_value,
-    has_child_named, inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    make_error_node, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-    module_items, no_span, param_node_name_at, param_node_type_expr, Cardinality,
-    CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    has_child_named, inferred_to_node, intern, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, make_error_node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
+    param_node_name_at, param_node_type_expr, Cardinality, CompilerDiagnostic, Connective,
+    ErrorNode, ExprData, ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex,
+    Node,
 };
 use serde::Serialize;
 
@@ -965,7 +964,6 @@ pub(crate) fn try_index_for_run_or_owned_pool(
     Ok(Rc::new(new_multi_entry_index_shell(
         try_build_module_index(&roots)?,
         &roots,
-        None,
     )))
 }
 
@@ -1033,7 +1031,6 @@ pub fn try_process_shared_index_for_pool(
     }
     #[cfg(test)]
     yield_live_pool_before_building_another();
-    let build_started = std::time::Instant::now();
     let walk_started = std::time::Instant::now();
     let module_index = if primary_precedence {
         try_build_module_index_primary_precedence(&roots)?
@@ -1045,11 +1042,7 @@ pub fn try_process_shared_index_for_pool(
         super::pre_entry_phase::PhaseScale::Tree,
         walk_started.elapsed(),
     );
-    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots, None));
-    discovery_phase_totals::add(
-        &discovery_phase_totals::SHARED_INDEX_BUILD_MS,
-        build_started.elapsed(),
-    );
+    let idx = Rc::new(new_multi_entry_index_shell(module_index, &roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow_mut()[slot].insert(roots_key, idx.clone());
     });
@@ -1155,7 +1148,6 @@ pub fn resolved_graph_memo_keys_for_test(index: &MultiEntryIndex) -> Vec<String>
 pub(crate) fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
-    cross_worker_store: Option<Arc<RwLock<SharedTypecheckCaches>>>,
 ) -> MultiEntryIndex {
     record_multi_entry_index_site(std::panic::Location::caller(), &source_files);
     MultiEntryIndex {
@@ -1170,7 +1162,6 @@ pub(crate) fn new_multi_entry_index_shell(
         typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
-        cross_worker_store,
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(std::collections::HashMap::new()),
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
@@ -1410,24 +1401,7 @@ pub fn resolve_entry_with_index(
     ),
     String,
 > {
-    resolve_entry_with_parse_cache(index, entry_file, ResolveTypecheckGate::Strict)
-}
-
-pub fn resolve_entry_with_index_for_discovery_corpus(
-    index: &MultiEntryIndex,
-    entry_file: &str,
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    resolve_entry_with_parse_cache(
-        index,
-        entry_file,
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-    )
+    resolve_entry_with_parse_cache(index, entry_file)
 }
 
 /// Cumulative per-worker stage attribution across every entry resolve this thread
@@ -1535,7 +1509,6 @@ pub(crate) fn resolve_span_exit(depth: u32, entry_file: &str, elapsed_nanos: u12
 pub(crate) fn resolve_entry_with_parse_cache(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1545,7 +1518,7 @@ pub(crate) fn resolve_entry_with_parse_cache(
 > {
     let depth = resolve_span_enter();
     let span_started = std::time::Instant::now();
-    let out = resolve_entry_with_parse_cache_inner(index, entry_file, typecheck_gate);
+    let out = resolve_entry_with_parse_cache_inner(index, entry_file);
     resolve_span_exit(depth, entry_file, span_started.elapsed().as_nanos());
     out
 }
@@ -1553,7 +1526,6 @@ pub(crate) fn resolve_entry_with_parse_cache(
 pub(crate) fn resolve_entry_with_parse_cache_inner(
     index: &MultiEntryIndex,
     entry_file: &str,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -1570,7 +1542,6 @@ pub(crate) fn resolve_entry_with_parse_cache_inner(
     resolved_graph_from_sources_with_index(
         index,
         sources,
-        typecheck_gate,
         entry_file,
         ResolvedGraphMemoShare::Memoize,
     )
@@ -1687,15 +1658,14 @@ pub(crate) fn via_index_parse_one_source(
 /// diagnostics before refusing (parse errors across every file, resolve/normalize/
 /// typecheck/ownership across every module), so a multi-error tree reports its full
 /// failing-stage set in one run, never one error per run. Hardness predicates:
-/// typecheck refusals use `is_resolve_typecheck_blocking(typecheck_gate)` and the
-/// other stages use `is_error_diagnostic` — for the gate's `Strict` mode both reduce
+/// typecheck refusals use `is_interpreter_blocking_diagnostic` and the
+/// other stages use `is_error_diagnostic` — both reduce
 /// to the `00_core.dag` interpreter-blocking authority on every class those stages
 /// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
 /// only produced by complexity analysis, which does not run on this path).
 pub(crate) fn resolved_graph_from_sources_with_index(
     index: &MultiEntryIndex,
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
     phase_label: &str,
     memo_share: ResolvedGraphMemoShare,
 ) -> Result<
@@ -1716,9 +1686,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // this process, so a hit is an in-run judgment.
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            record_required_lane_judged_sources(&sources);
-        }
+        record_required_lane_judged_sources(&sources);
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
 
@@ -1832,13 +1800,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
             .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
-    if typecheck_gate == ResolveTypecheckGate::Strict {
-        // `typed` carries the completed per-module typecheck and its diagnostics. Record the
-        // verdict before testing whether it is positive: a blocking diagnostic is stronger
-        // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
-        // produced no typed result never reach this boundary and are not credited.
-        record_required_lane_judged_sources(&sources);
-    }
+    // `typed` carries the completed per-module typecheck and its diagnostics. Record the
+    // verdict before testing whether it is positive: a blocking diagnostic is stronger
+    // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
+    // produced no typed result never reach this boundary and are not credited.
+    record_required_lane_judged_sources(&sources);
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -1868,12 +1834,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let has_type_errors = typed
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_type_errors {
         let msgs: Vec<String> = typed
             .diagnostics
             .iter()
-            .filter(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
+            .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
             .map(|d| format_error_node(d, &source_indices))
             .collect();
         return Err(join_via_index_stage_refusal(
@@ -2005,7 +1971,6 @@ pub(crate) fn parse_module_node_from_index_source(
 
 pub(crate) fn resolved_graph_from_sources(
     sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
-    typecheck_gate: ResolveTypecheckGate,
 ) -> Result<
     (
         Rc<v1_compiler_compile::ResolvedGraph>,
@@ -2013,30 +1978,19 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
-    let strict_sources = (typecheck_gate == ResolveTypecheckGate::Strict).then(|| sources.clone());
-    let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => {
-            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
-        }
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
-                sources.into(),
-            ))
-        }
-    };
+    let judged_sources = sources.clone();
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
-    if typecheck_gate == ResolveTypecheckGate::Strict && result.graph.is_some() {
+    if result.graph.is_some() {
         // A produced graph is the compile-to-resolved path's completed strict judgment receipt,
         // whether its diagnostics are positive or negative.
-        if let Some(strict_sources) = strict_sources.as_ref() {
-            record_required_lane_judged_sources(strict_sources);
-        }
+        record_required_lane_judged_sources(&judged_sources);
     }
 
     let has_errors = result
         .diagnostics
         .iter()
-        .any(|d| is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate));
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
     if has_errors {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2050,7 +2004,7 @@ pub(crate) fn resolved_graph_from_sources(
         // the owning module beside its location, so a line is attributable without mapping a path.
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
-            if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
+            if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -2068,13 +2022,11 @@ pub(crate) fn resolved_graph_from_sources(
                 diagnostic_to_message(d.diagnostic.clone())
             ));
         }
-        if typecheck_gate == ResolveTypecheckGate::Strict {
-            // The refused graph is discarded here either way; attributing it takes the only
-            // owner, so an `Rc` another holder keeps reports itself as unattributable.
-            if let Ok(owned) = Rc::try_unwrap(result) {
-                if let Some(graph) = owned.graph {
-                    typed_graph_byte_attribution("strict-refused", graph);
-                }
+        // The refused graph is discarded here either way; attributing it takes the only
+        // owner, so an `Rc` another holder keeps reports itself as unattributable.
+        if let Ok(owned) = Rc::try_unwrap(result) {
+            if let Some(graph) = owned.graph {
+                typed_graph_byte_attribution("strict-refused", graph);
             }
         }
         return Err(format!(
@@ -2153,8 +2105,7 @@ pub fn whole_tree_resolved_ctx(
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
     let modules_resolved = picked.modules_resolved;
     let modules_excluded = picked.modules_excluded;
-    let (graph, source_indices) =
-        resolved_graph_from_sources(picked.sources, ResolveTypecheckGate::Strict)?;
+    let (graph, source_indices) = resolved_graph_from_sources(picked.sources)?;
     Ok(WholeTreeCtx {
         ctx: v1_interpreter::InterpContext::with_runtime_options(
             graph.as_ref(),
@@ -3545,7 +3496,7 @@ mod live_pool_entry_resolve_attribution {
         ] {
             let entry = root.join(e);
             let t = std::time::Instant::now();
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
             assert!(r.is_ok(), "{e} resolves");
             eprintln!("PROBE resolve {e} {:?}", t.elapsed());
             eprintln!("PROBE   stages {:?}", resolve_stage_totals());
@@ -3948,7 +3899,7 @@ mod cross_tree_bare_census {
                 sf,
                 &index,
                 |root| super::super::closure_name_census(&index, root),
-                |_, _, _| Ok(()),
+                |_, _, _, _| Ok(()),
             );
             if let Err(e) = r {
                 refusals.push(e);
@@ -4104,7 +4055,7 @@ mod cross_tree_migrated_entries_resolve {
             "dag/test/claim/builtin_get_resolver_test.dag",
         ] {
             let entry = root.join(e);
-            let r = resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy());
+            let r = resolve_entry_with_index(&index, &entry.to_string_lossy());
             eprintln!("MIGRATED {e} ok={}", r.is_ok());
             if let Err(err) = &r {
                 eprintln!("MIGRATED   {}", err.chars().take(600).collect::<String>());
@@ -4441,10 +4392,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     .diagnostics
                     .iter()
                     .filter(|d| {
-                        !is_resolve_typecheck_blocking(
-                            d.diagnostic.clone(),
-                            ResolveTypecheckGate::Strict,
-                        )
+                        !is_interpreter_blocking_diagnostic(d.diagnostic.clone())
                     })
                     .count();
                 assert!(
@@ -4453,7 +4401,7 @@ mod strict_refusal_counts_blocking_diagnostics {
                     raw.diagnostics
                 );
                 let refusal =
-                    match resolved_graph_from_sources(fixture_sources(), ResolveTypecheckGate::Strict) {
+                    match resolved_graph_from_sources(fixture_sources()) {
                         Err(text) => text,
                         Ok(_) => panic!("a fixture with a blocking diagnostic must refuse"),
                     };

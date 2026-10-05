@@ -1,5 +1,6 @@
 module v2.test.emit.emit_module_contribution
 
+import std.types { List }
 import v2.compiler.emit_module {
   emit_module_contribution,
   emit_module_text
@@ -10,10 +11,8 @@ import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust { rust_source_text }
 import v2.extdeps.languages.rust_test { rust_add_target_model_staging }
 import v2.test.execution.emit_host_add_equals_eval { emit_eval_subject_tree }
-import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.algebra { fold_list }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

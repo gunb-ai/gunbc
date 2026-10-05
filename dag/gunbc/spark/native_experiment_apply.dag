@@ -1,6 +1,7 @@
 module gunbc.spark.native_experiment_apply
 
 import std.types { String, Bool, List, NonEmptyStr, Secret }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import std.nat { Nat }
 import std.measure { token_count_value }
 import v2.std.algebra { zip_map }
@@ -8,7 +9,7 @@ import v2.std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.content_hash { serialize_content_hash }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.auth.materialized_secret { with_materialized_ssh_key_file, MaterializedSshKeyFileBracketCompleted, MaterializedSshKeyFileBracketRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -634,7 +635,7 @@ fn arm_experiment_actuation_admission(
               match plan.checkpoint == checkpoint && plan.runtime == runtime && plan.topology == topology {
                 false => ArmExperimentActuationRefused { cause: "the experiment plan names a different checkpoint, runtime or topology than the actuation was asked to run: the plan and the actuation must be one subject" as NonEmptyStr }
                 true =>
-                  match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: plan.profile) {
+                  match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: plan.profile) {
                     ArmMemorySubjectRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
                     ArmMemorySubjectReady { subject: subject } =>
                       let open = arm_memory_subject_open_components(subject: subject)
@@ -1041,14 +1042,14 @@ fn spark_native_experiment_default_actuation() -> ArmExperimentActuationAdmissio
     Absent => ArmExperimentActuationRefused { cause: "the restoration intent refused, so no experiment subject exists" as NonEmptyStr }
     Present { value: executable } =>
       let profile = executable.profile
-      match arm_memory_fit_subject_for_launch(checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
+      match arm_memory_fit_subject_for_launch(runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4, profile: profile) {
         ArmMemorySubjectRefused { cause: c } => ArmExperimentActuationRefused { cause: c }
         ArmMemorySubjectReady { subject: subject } =>
           match arm_memory_fit_verdict(subject: subject) {
             ArmMemoryFitUnestablished { obligations: _ } =>
               match arm_memory_fit_experiment_plan(
                 checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
-                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject)) {
+                workload: subject.intent, policy_profile: profile, targets: arm_memory_subject_open_components(subject: subject), deployment_env: glm_group_b_deployment_env()) {
                 ArmMemoryExperimentAdmitted { plan: p } => arm_experiment_actuation_admission(
                   checkpoint: Glm53NativeFp8, runtime: GunbcGlm53NopeDerivedGb10, topology: FourSparkTp4,
                   verdict: arm_memory_fit_verdict(subject: subject), plan: Present { value: p })

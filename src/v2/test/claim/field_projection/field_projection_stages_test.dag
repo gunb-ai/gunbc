@@ -1,6 +1,8 @@
 module v2.test.claim.field_projection.field_projection_stages
 
-import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.resolve { Namespace, ResolvedTree, empty_namespace, root_binding_names_value }
+import v2.std.symbol_index { SymbolIndex, empty_symbol_index }
+import v2.std.collection { map_insert }
 import v2.compiler.infer { infer }
 import v2.compiler.inferred_tree { InferredTree, ObligatedInferredTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
@@ -14,8 +16,7 @@ import v2.std.artifact { Artifact, SourceFile }
 import v2.std.diagnostic {
   Some,
   diagnostics_has_reason, Accepted, NodeLocus, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, symbol_eq }
+import v2.std.node { Arrow, Atom, Conj, Connective, Node, Symbol, TypeNode, symbol_eq }
 import v2.std.qualified_name {
   parameter_reference_path_optional,
   qualified_name_last_segment, declaration_reference_path_optional, qualified_name_spine_shape_present }
@@ -211,7 +212,9 @@ fn fps_type_of(facts: Optional<InferredFacts>) -> Optional<Node> {
   }
 }
 
-// THE WARM PRODUCERS, one per fixture program; each is listed in floor_cross_claim_pure_producers_warm.
+// THE FIXTURE PRODUCERS, one per fixture program, nullary so the derived cross-claim share
+// (v2.workflow.floor_pure_producer_share derive_cross_claim_share) fills one once wherever two or
+// more declared claims read it; one read by a single claim is that claim's own cost.
 fn fps_no_projection_reading() -> FpsReading { fps_reading_of(o: fps_no_projection_source()) }
 fn fps_valid_field_reading() -> FpsReading { fps_reading_of(o: fps_valid_field_source()) }
 fn fps_absent_field_reading() -> FpsReading { fps_reading_of(o: fps_absent_field_source()) }
@@ -589,27 +592,67 @@ fn fps_root_data_projection_source() -> Outcome<ResolvedTree> {
   fps_assemble(src: "module p\n\ntype Box {\n  tree: Int\n}\n\ndata cfg: Box = Box { tree: 1 }\n\nfn f() -> Int {\n  cfg.tree\n}\n")
 }
 
-// MEASURED, AND IT IS NOT YET SUPPORTED -- BY A ROUTE THE DOTTED-PATH DECISION NEITHER CAUSED NOR FIXED.
-// `cfg.tree` where `cfg` is a module-level `data` value refuses at resolve with resolve_reason_unbound_symbol.
-// Receipt, taken in a detached worktree so the two heads are the only variable: the SAME reason at
-// 2bd1f0ded41 and at bd9d3d3bb5c. The cause is upstream of every arm that chooses a reading -- the head
-// segment is not in the scope chain AT ALL, so it answers ScopeUnbound, and the declaration reading finds no
-// candidate for the path `cfg.tree`. It is therefore a THIRD form, distinct from the two
-// resolve_dotted_path_reading decides between, and closing it means making module-level value bindings
-// answerable on the chain rather than adding an arm here.
-//
-// THE ROW IS WRITTEN AT THE REFUSAL, NOT AT THE CAPABILITY, so it cannot sit green while the thing it names
-// stays broken, and it flips the moment a root-bound value becomes projectable. It is asserted BY REASON:
-// a row satisfied by any refusal would stay green if the gate over-prohibited and broke this for a
-// different cause, which is exactly the failure this control exists to catch.
-//
-// NEXT TRIGGER: a module-level value binding that the scope chain answers for. Until then the 3d repair's
-// scope claim is "a namespace segment may not be projected through", and this row is what keeps it from
-// being read as "only a lexical binder may have fields".
+// SERVED, AND THE ROW BELOW WAS FLIPPED AT THE REFUSAL. `cfg.tree` used to refuse at resolve with
+// resolve_reason_unbound_symbol because the head was not on the scope chain at all: the admission door
+// (v2.compiler.name_resolve admitted_subject_from_bindings) harvested a module root's direct members only,
+// while a module's own declarations live under its grafted body. v2.compiler.resolve
+// namespace_bindings_augment_from_module_atoms now harvests both for every door, and
+// resolve_dotted_path_reading projects off a root binding whose declaration is a value
+// (root_binding_names_value). Receipt: at the tests-only head this row refused and the projection row was
+// red; at the repair head it projects.
 fn fps_root_data_projection_reading() -> FpsReading { fps_reading_of(o: fps_root_data_projection_source()) }
 
-test fn fps_a_root_bound_data_value_is_not_yet_projectable_holds() -> Bool {
-  fps_root_data_projection_reading().resolve_refused_unbound
+
+// THE POSITIVE CONTROL THE ROW ABOVE WAS WAITING FOR. A module-level `data` value is a value, so `cfg.tree`
+// resolves as a projection off it: resolve accepts and the resolved tree carries the projection node.
+test fn fps_a_root_bound_data_value_projects_holds() -> Bool {
+  let r = fps_root_data_projection_reading()
+  r.resolves && r.resolved_carries_projection
+}
+
+// THE RED THAT KEEPS THE CLIMB SCOPED TO VALUES, AT THE ONE INTERFACE THAT DECIDES IT. A root-bound TYPE
+// is a declaration, not a value, so a path through it stays a qualified name and `Box.tree` refuses unbound
+// instead of projecting. Whether a root head projects is decided by v2.compiler.resolve
+// root_binding_names_value from the declaration the binding names, so the red SUPPLIES that namespace
+// (DESIGN section 3, a witness discriminates at one interface): `p.Box` declares a type (Conj), `p.cfg` a
+// value (the nullary Arrow body lowering realizes `data` as). The real path is still executed by
+// fps_a_root_bound_data_value_projects above, which assembles, resolves and projects `cfg.tree`; a full
+// assembly of a type-head source measured 175k eval steps, over the new-witness budget.
+fn fps_decl_node(connective: Connective) -> Node {
+  Node { kind: TypeNode { connective: connective }, children: [], occurrence_id: OccurrenceSynthetic }
+}
+
+fn fps_root_kind_namespace() -> Namespace {
+  let base = empty_namespace()
+  let index = empty_symbol_index()
+  Namespace {
+    bindings: base.bindings,
+    canonical_symbols: base.canonical_symbols,
+    symbol_index: SymbolIndex {
+      entries: map_insert(
+        map_insert(index.entries, Cons { head: ^p, tail: Cons { head: ^Box, tail: Empty } }, fps_decl_node(connective: Conj)),
+        Cons { head: ^p, tail: Cons { head: ^cfg, tail: Empty } },
+        fps_decl_node(connective: Arrow)
+      ),
+      global_bare: index.global_bare,
+      bound_declarings: index.bound_declarings,
+      declared_payloads: index.declared_payloads,
+      renaming_aliases: index.renaming_aliases,
+      declared_type_params: index.declared_type_params,
+      declared_resources: index.declared_resources,
+      namespace_bodies: index.namespace_bodies,
+      module_roots: index.module_roots
+    },
+    module_qn: base.module_qn,
+    test_code: base.test_code,
+    declared_in: Cons { head: ^p, tail: Empty },
+    imported_origins: base.imported_origins
+  }
+}
+
+test fn fps_a_root_bound_type_projected_as_value_refuses_holds() -> Bool {
+  !root_binding_names_value(namespace: fps_root_kind_namespace(), canonical: ^Box)
+    && root_binding_names_value(namespace: fps_root_kind_namespace(), canonical: ^cfg)
 }
 
 // BOTH READINGS OF A DOTTED PATH, QUALIFIED TOGETHER. v2.compiler.resolve resolve_dotted_path_reading

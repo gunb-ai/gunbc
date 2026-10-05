@@ -7,6 +7,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
+import gunbc.ci_release_bins { ci_floor_invoked_bins }
 import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_clippy_command }
 import gunbc.repo_self_warning_policy { repo_self_warning_denial_rustflags }
 import gunbc.workflow_capability_closure {
@@ -559,7 +560,10 @@ fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -
 // change did not cause. Named rather than absorbed so the gap stays countable -- DESIGN's
 // 2026-08-25 row already declares the class, and this is a specimen escaping by a mode that row
 // does not enumerate (the `.dag` side is clean and the drifted artifact is hand-authored Rust).
-data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
+// THE FLOOR BUILDS THE CI-INVOKED PAIR, read from its one authority (gunbc.ci_release_bins), because
+// the same pair is the product the floor hands to fleet-desired and hw boot (gunbc.fleet_release_bins_key
+// compiler_pair_release_product): a second spelling here could build one roster and key another.
+data witness_floor_required_bins: List<String> = ci_floor_invoked_bins
 
 // THE HEAL REVALIDATION INPUT. A heal that repairs a branch pushes a new head H1 with the Actions
 // job credential, and H1 must be judged on its own tree rather than inherit H0's receipts, which
@@ -1649,6 +1653,27 @@ fn prepared_bound_steps(build_script: String) -> List<WitnessFloorBoundStep> {
 //
 // Cargo is deliberately NOT listed on the run step: it invokes a prebuilt binary and does not
 // shell out to cargo. Listing it would trade one false declaration for another.
+// THE PER-CLAIM COST RECEIPT'S UPLOAD, ONE ROW BOUND BY BOTH FLOOR JOBS. The floor writes
+// required_floor_claim_cost.tsv whenever GUNBC_REQUIRED_FLOOR_CLAIM_COST is set, and the required
+// floor job emitted by gunbc.compiler_gate_workflow sets it; the upload is what makes the file an
+// instrument anyone can read. It was authored only in this file's step list, so when the required
+// floor moved to gunbc.compiler_gate_workflow the env came along and the upload did not, and the
+// artifact silently stopped existing while prose kept citing it
+// (gunbc.recurring_failure_mode instrument_artifact_stopped_existing_while_cited). One function,
+// bound by name in both lists, is what keeps the two from parting again.
+fn required_floor_claim_cost_upload_bound_step() -> WitnessFloorBoundStep {
+  WitnessFloorBoundStep {
+    step: witness_floor_tsv_upload_step(
+      step_name: "Upload the floor's per-claim cost receipt",
+      artifact_name: required_floor_claim_cost_artifact_name,
+      path: required_floor_claim_cost_path,
+      condition: witness_floor_precondition()
+    ),
+    role: capability_neutral,
+    step_name: "Upload the floor's per-claim cost receipt",
+  }
+}
+
 fn required_ci_measurement_bound_steps() -> List<WitnessFloorBoundStep> {
   [
     WitnessFloorBoundStep {
@@ -1717,16 +1742,7 @@ fn witness_floor_bound_steps() -> List<WitnessFloorBoundStep> {
         role: capability_neutral,
         step_name: "Upload the long-home storage agreement",
       },
-      WitnessFloorBoundStep {
-        step: witness_floor_tsv_upload_step(
-          step_name: "Upload the floor's per-claim cost receipt",
-          artifact_name: required_floor_claim_cost_artifact_name,
-          path: required_floor_claim_cost_path,
-          condition: witness_floor_precondition()
-        ),
-        role: capability_neutral,
-        step_name: "Upload the floor's per-claim cost receipt",
-      },
+      required_floor_claim_cost_upload_bound_step(),
       WitnessFloorBoundStep {
         step: witness_floor_tsv_upload_step(
           step_name: "Upload the floor's cross-claim demand census",

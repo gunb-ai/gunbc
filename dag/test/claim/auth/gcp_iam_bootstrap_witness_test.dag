@@ -1,0 +1,320 @@
+module test.claim.auth.gcp_iam_bootstrap_witness_test
+
+import std.types { Bool, List, NonEmptyStr }
+import extdeps.auth.oidc { OidcStandardClaims }
+import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.cloud.gcp.iam_deny { GcpDenyRule, GcpDenyPolicyRule }
+import gunbc.auth.gcp_iam_bootstrap_model {
+  BootstrapProbeToken, iam_bootstrap_roles, iam_bootstrap_role_matches, iam_bootstrap_role_name, iam_bootstrap_role_permissions,
+  iam_bootstrap_deny_rules, iam_bootstrap_deny_matches, iam_bootstrap_model_admitted,
+  iam_bootstrap_capability_bindings, iam_bootstrap_resource_key, iam_bootstrap_binding,
+  BootstrapSecret, BootstrapProject, BootstrapApplyRole, BootstrapObserveSecret, IamBootstrapBinding,
+}
+import gunbc.auth.gcp_iam_converge {
+  gcp_iam_converge_grant_set_secrets, iam_converge_service_account, iam_observe_service_account,
+  ConvergeSecretPolicyRole, ConvergeCreateRole, iam_converge_role_id,
+}
+import gunbc.auth.gcp_iam_bootstrap {
+  custody_container_step, custody_after_create, custody_journal_of, custody_journal_name, custody_journal_wire, custody_candidate_operations,
+  CustodyOperationRecords, CustodyJournalRead, CustodyJournalUnreadable,
+  IamAuthorityRecord, AuthorityRecordAbsent, AuthorityRecordPresent, AuthorityRecordRefused,
+  CustodyCreateJournal, CustodyContainerStep, CustodyAfterCreate,
+  CustodyMarkElected, CustodyMarkClosed, CustodyMarkRefused, CustodyMarkDisposed,
+  CustodyObservedPresent, CustodyObservedAbsent, CustodyObservationRefused,
+  CustodyCreated, CustodyCreateRefused, CustodyCreateOutcomeUnknown,
+  CustodyContainerLeave, CustodyContainerSettle, CustodyContainerCreateBare, CustodyContainerRefuse,
+  CustodyReadBack, CustodyCreateRefusedDefinitely, CustodyCreateStops,
+  iam_bootstrap_service_enabled, iam_bootstrap_probe_cell, iam_bootstrap_pool_seedable, iam_bootstrap_pool_initialized, iam_bootstrap_pool_initial_cells, iam_bootstrap_pool_policy_reading, iam_bootstrap_stage_admitted, BootstrapServices, BootstrapIdentities, BootstrapRoles, BootstrapDeny,
+  BootstrapCapabilities, BootstrapProbeAuthority, BootstrapProbeCleanup, BootstrapPrivilegeReadback, BootstrapWorkflowTrust, BootstrapAuthorityCleanup,
+}
+
+import gunbc.auth.gcp_iam_bootstrap_authority {
+  bootstrap_operator_matches, iam_bootstrap_operator_subject,
+  iam_bootstrap_authority_organization, bootstrap_parent_name_valid, bootstrap_authority_publication_refused, bootstrap_deny_retry_admitted, bootstrap_authority_requires, TemporaryAuthorityRetired, DenyPolicyReadback,
+  BootstrapAuthorityIntent, bootstrap_authority_cell, bootstrap_authority_intent_wire, bootstrap_authority_may_grant,
+  bootstrap_authority_action, AuthorityAbsent, AuthorityPresent, AuthorityUnreadable,
+  AuthorityRefused, AuthoritySettled, RemoveAuthority, PublishAuthority,
+}
+import extdeps.cloud.gcp.iam {
+  GcpPolicy, GcpIamBindingCell, GcpIamOwnedCellUniverse, gcp_cells_bindings, gcp_policy_cells,
+  reconcile_gcp_policy, GcpPolicyDeltaRequired, gcp_cell_in,
+}
+
+import gunbc.auth.gcp_iam_converge { PolicyUnreadable, PolicyObserved, PolicyResourceAbsent }
+
+test fn bootstrap_role_drift_never_authorizes_adoption() -> Bool {
+  all(iam_bootstrap_roles, role => {
+    let name = iam_bootstrap_role_name(role: role)
+    let permissions = iam_bootstrap_role_permissions(role: role)
+    iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions + ["resourcemanager.projects.setIamPolicy"] }, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Absent, stage: Present { value: "GA" }, deleted: none)
+      && !iam_bootstrap_role_matches(role: role, name: name, permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: Present { value: true })
+      && !iam_bootstrap_role_matches(role: role, name: "projects/other/roles/foreign", permissions: Present { value: permissions }, stage: Present { value: "GA" }, deleted: none)
+  })
+}
+
+test fn deny_exceptions_and_incomplete_readback_withhold_trust() -> Bool {
+  let rows = iam_bootstrap_deny_rules()
+  iam_bootstrap_deny_matches(rules: Present { value: rows })
+    && !iam_bootstrap_deny_matches(rules: Absent)
+    && !iam_bootstrap_deny_matches(rules: Present { value: [] })
+    && !iam_bootstrap_deny_matches(rules: Present { value: rows + rows })
+    && all(rows, row => match row.deny_rule {
+      Absent => false
+      Present { value: r } => !iam_bootstrap_deny_matches(rules: Present { value: [GcpDenyPolicyRule { deny_rule: Present { value: GcpDenyRule {
+        denied_principals: r.denied_principals, denied_permissions: r.denied_permissions,
+        exception_principals: Present { value: r.denied_principals }, exception_permissions: none, denial_condition: none,
+      } } }] })
+    })
+}
+
+test fn workflow_trust_requires_completed_deny_and_privilege_readback() -> Bool {
+  iam_bootstrap_model_admitted()
+    && iam_bootstrap_stage_admitted(stage: BootstrapServices, completed: [])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [])
+    && iam_bootstrap_stage_admitted(stage: BootstrapIdentities, completed: [BootstrapServices])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapCapabilities])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapPrivilegeReadback])
+    && iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny, BootstrapAuthorityCleanup, BootstrapCapabilities, BootstrapProbeAuthority, BootstrapPrivilegeReadback, BootstrapProbeCleanup])
+}
+
+
+data authority_specimen: BootstrapAuthorityIntent = BootstrapAuthorityIntent { operation: "control-1", expires_at: "2026-09-28T23:00:00Z" }
+
+test fn authority_deadline_is_bounded_and_retry_does_not_renew_it() -> Bool {
+  bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T22:30:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T21:00:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "2026-09-28T23:00:00Z")
+    && !bootstrap_authority_may_grant(intent: authority_specimen, now: "unreadable")
+    && bootstrap_authority_intent_wire(intent: authority_specimen) != bootstrap_authority_intent_wire(intent: BootstrapAuthorityIntent { operation: "control-1", expires_at: "2026-09-29T00:00:00Z" })
+}
+
+test fn uncertain_publication_cannot_be_settled_from_an_absent_cell() -> Bool {
+  bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: false, retired: false, withdrawing: true, live: false) == AuthorityRefused
+    && bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: true, retired: false, withdrawing: true, live: false) == AuthoritySettled
+    && bootstrap_authority_action(observed: AuthorityAbsent, publication_elected: true, publication_closed: true, retired: true, withdrawing: false, live: true) != PublishAuthority
+    && bootstrap_authority_action(observed: AuthorityPresent, publication_elected: true, publication_closed: false, retired: false, withdrawing: true, live: false) == RemoveAuthority
+}
+
+test fn unknown_policy_and_unowned_grants_never_authorize_changes() -> Bool {
+  bootstrap_authority_action(observed: AuthorityUnreadable, publication_elected: false, publication_closed: false, retired: false, withdrawing: false, live: true) == AuthorityRefused
+    && bootstrap_authority_action(observed: AuthorityPresent, publication_elected: false, publication_closed: false, retired: false, withdrawing: true, live: true) == AuthorityRefused
+    && !iam_bootstrap_stage_admitted(stage: BootstrapCapabilities, completed: [BootstrapIdentities, BootstrapRoles, BootstrapDeny])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust, completed: [BootstrapDeny, BootstrapPrivilegeReadback])
+}
+
+test fn authority_retirement_preserves_existing_human_and_foreign_access() -> Bool {
+  let owned = bootstrap_authority_cell(intent: authority_specimen)
+  let foreign = GcpIamBindingCell { role: "roles/iam.denyAdmin", member: "user:other@example.com", condition: none }
+  let original = GcpIamBindingCell { role: "roles/iam.denyAdmin", member: owned.member, condition: none }
+  let before = GcpPolicy { bindings: gcp_cells_bindings(cs: [foreign, original, owned]), etag: "observed-generation", version: 3 }
+  match reconcile_gcp_policy(observed: before, desired_owned: [], owned_universe: GcpIamOwnedCellUniverse { cells: [owned] }) {
+    GcpPolicyDeltaRequired { policy, added, removed, preserved: _ } =>
+      count(added) == 0 && count(removed) == 1 && policy.etag == "observed-generation"
+      && gcp_cell_in(c: foreign, xs: gcp_policy_cells(p: policy))
+      && gcp_cell_in(c: original, xs: gcp_policy_cells(p: policy))
+      && !gcp_cell_in(c: owned, xs: gcp_policy_cells(p: policy))
+    _ => false
+  }
+}
+
+
+test fn bootstrap_authority_requires_an_organization_resource() -> Bool {
+  bootstrap_parent_name_valid(name: iam_bootstrap_authority_organization, kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "projects/582015116396", kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "organizations/123?alt=other", kind: "organizations")
+    && !bootstrap_parent_name_valid(name: "folders/../../organizations/123", kind: "folders")
+    && !bootstrap_parent_name_valid(name: "organizations/", kind: "organizations")
+    && bootstrap_parent_name_valid(name: "folders/123", kind: "folders")
+}
+
+test fn definite_publication_rejection_is_distinct_from_unknown_commit() -> Bool {
+  bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 400, body: "unsupported role scope" })
+    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 403, body: "permission denied" })
+    && bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 409, body: "etag conflict" })
+    && !bootstrap_authority_publication_refused(outcome: RestStatusRefused { status: 500, body: "unknown" })
+    && !bootstrap_authority_publication_refused(outcome: RestTransportRefused { cause: "connection lost" })
+    && !bootstrap_authority_publication_refused(outcome: RestBodyUndecodable { status: 200, cause: "lost success body" })
+}
+
+
+test fn deny_propagation_retry_requires_live_authority_and_a_remaining_budget() -> Bool {
+  let refused = RestStatusRefused { status: 403, body: "permission not established" }
+  bootstrap_deny_retry_admitted(outcome: refused, remaining: 2, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 1, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: refused, remaining: 30, live: false)
+    && !bootstrap_deny_retry_admitted(outcome: RestTransportRefused { cause: "unknown commit" }, remaining: 30, live: true)
+    && !bootstrap_deny_retry_admitted(outcome: RestStatusRefused { status: 500, body: "unknown commit" }, remaining: 30, live: true)
+}
+
+
+test fn cleanup_dependency_does_not_wait_for_successful_deny_installation() -> Bool {
+  !any(bootstrap_authority_requires(subject: TemporaryAuthorityRetired), prerequisite => prerequisite == DenyPolicyReadback)
+}
+
+
+test fn authority_beneficiary_requires_the_verified_stable_google_subject() -> Bool {
+  let claims = OidcStandardClaims { email: Present { value: "brian@gunb.ai" }, email_verified: Present { value: true }, name: none }
+  bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: claims)
+    && !bootstrap_operator_matches(subject: "another-subject", claims: claims)
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: claims.email, email_verified: Present { value: false }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: none, email_verified: Present { value: true }, name: none })
+    && !bootstrap_operator_matches(subject: iam_bootstrap_operator_subject, claims: OidcStandardClaims { email: Present { value: "briansrls@gunb.ai" }, email_verified: Present { value: true }, name: none })
+}
+
+
+test fn empty_pool_policy_does_not_authorize_unconditional_publication() -> Bool {
+  let missing = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Absent, version: Absent)
+  let empty = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "" }, version: Absent)
+  let observed = iam_bootstrap_pool_policy_reading(outcome: RestOk, bindings: Absent, etag: Present { value: "observed-revision" }, version: Absent)
+  (match missing { PolicyUnreadable { cause: reason } => reason != "" _ => false })
+    && (match empty { PolicyUnreadable { cause: _ } => true _ => false })
+    && (match observed { PolicyObserved { policy } => policy.etag == "observed-revision" _ => false })
+}
+
+
+test fn pool_initialization_rejects_existing_unfenced_bindings() -> Bool {
+  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  count(cells) > 0
+    && iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Present { value: gcp_cells_bindings(cs: cells) }, etag: Absent, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Present { value: "revision" }, version: Absent)
+    && !iam_bootstrap_pool_seedable(audit_configured: false, bindings: Absent, etag: Absent, version: Present { value: 99 })
+    && !iam_bootstrap_pool_seedable(audit_configured: true, bindings: Absent, etag: Absent, version: Absent)
+    && count(iam_bootstrap_pool_initial_cells(pool: "undeclared-pool")) == 0
+}
+
+test fn pool_initialization_readback_requires_exact_cells_and_a_revision() -> Bool {
+  let cells = iam_bootstrap_pool_initial_cells(pool: "github-heal-publisher")
+  let policy = GcpPolicy { bindings: gcp_cells_bindings(cs: cells), etag: "revision", version: 3 }
+  iam_bootstrap_pool_initialized(policy: policy, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: policy.bindings, etag: "", version: 3 }, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: GcpPolicy { bindings: [], etag: "revision", version: 3 }, cells: cells)
+    && !iam_bootstrap_pool_initialized(policy: policy, cells: [])
+}
+
+
+test fn probe_authority_has_no_signing_or_policy_permission() -> Bool {
+  iam_bootstrap_role_permissions(role: BootstrapProbeToken) == ["iam.serviceAccounts.getAccessToken"]
+    && iam_bootstrap_probe_cell(intent: authority_specimen).member == "user:brian@gunb.ai"
+    && (match iam_bootstrap_probe_cell(intent: authority_specimen).condition {
+      Absent => false
+      Present { value: condition } => condition.expression == "request.time < timestamp('2026-09-28T23:00:00Z')"
+    })
+}
+
+test fn probe_cleanup_is_required_for_trust_but_not_successful_probes() -> Bool {
+  iam_bootstrap_stage_admitted(stage: BootstrapProbeCleanup, completed: [BootstrapProbeAuthority])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapWorkflowTrust,
+      completed: [BootstrapDeny, BootstrapAuthorityCleanup, BootstrapPrivilegeReadback])
+    && !iam_bootstrap_stage_admitted(stage: BootstrapPrivilegeReadback, completed: [BootstrapCapabilities])
+}
+
+
+test fn service_enablement_requires_enabled_state_on_the_exact_project() -> Bool {
+  iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "ENABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/other/services/cloudresourcemanager.googleapis.com", state: "ENABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "DISABLED", service: "cloudresourcemanager.googleapis.com")
+    && !iam_bootstrap_service_enabled(name: "projects/582015116396/services/cloudresourcemanager.googleapis.com", state: "ENABLING", service: "cloudresourcemanager.googleapis.com")
+}
+
+fn binding_present(bs: List<IamBootstrapBinding>, b: IamBootstrapBinding) -> Bool {
+  any(bs, x => iam_bootstrap_resource_key(resource: x.resource) == iam_bootstrap_resource_key(resource: b.resource) && x.cell.role == b.cell.role && x.cell.member == b.cell.member)
+}
+
+// EVERY GRANT-SET SECRET IS BOUND PER SECRET, AND NOTHING ABOUT IT IS PROJECT-LEVEL (operator
+// decision B', 2026-10-04): iam-converge's secret policy role and iam-observe's secret reader are each
+// in that secret's own policy, and the only project binding iam-converge holds is still the create
+// role whose permissions name no secret. The RED is the custody population bound on the project.
+test fn grant_set_secrets_are_bound_per_secret_never_on_the_project() -> Bool {
+  let bs = iam_bootstrap_capability_bindings()
+  gcp_iam_converge_grant_set_secrets().length() > 0
+    && all(gcp_iam_converge_grant_set_secrets(), x =>
+      binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapApplyRole { role: ConvergeSecretPolicyRole }, account: iam_converge_service_account))
+        && binding_present(bs: bs, b: iam_bootstrap_binding(resource: BootstrapSecret { secret: x }, role: BootstrapObserveSecret, account: iam_observe_service_account)))
+    && all(filter(bs, b => iam_bootstrap_resource_key(resource: b.resource) == iam_bootstrap_resource_key(resource: BootstrapProject)), b =>
+      b.cell.role == iam_converge_role_id(r: ConvergeCreateRole))
+    && !any(iam_bootstrap_role_permissions(role: BootstrapApplyRole { role: ConvergeCreateRole }), p => starts_with(s: p, prefix: "secretmanager."))
+}
+
+data custody_x: NonEmptyStr = "cloudflare-r2-workspace-read-token"
+
+fn valid(op: String) -> IamAuthorityRecord { AuthorityRecordPresent { bytes: custody_journal_wire(secret: custody_x, operation: op) } }
+
+fn ops(op: String, elected: IamAuthorityRecord, closed: IamAuthorityRecord, refused: IamAuthorityRecord, disposed: IamAuthorityRecord) -> CustodyOperationRecords {
+  CustodyOperationRecords { operation: op, elected: elected, closed: closed, refused: refused, disposed: disposed }
+}
+
+fn elected_only(op: String) -> CustodyOperationRecords { ops(op: op, elected: valid(op: op), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordAbsent) }
+
+fn creates(st: CustodyContainerStep) -> Bool {
+  match st { CustodyContainerCreateBare => true  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false  CustodyContainerRefuse { reason: _ } => false }
+}
+
+fn refuses(st: CustodyContainerStep) -> Bool {
+  match st { CustodyContainerRefuse { reason: _ } => true  CustodyContainerCreateBare => false  CustodyContainerLeave => false  CustodyContainerSettle { operations: _ } => false }
+}
+
+fn stops_unresolved(a: CustodyAfterCreate) -> Bool {
+  match a { CustodyCreateStops { reason: _ } => true  CustodyReadBack => false  CustodyCreateRefusedDefinitely { reason: _ } => false }
+}
+
+fn absent_step(records: List<CustodyOperationRecords>) -> CustodyContainerStep {
+  custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: custody_journal_of(secret: custody_x, records: records))
+}
+
+// THE CROSS-INVOCATION CONTROL. Run 1 reads an empty journal, observes the container absent, elects
+// and issues the create, and the outcome is unknown: the step stops and records nothing beyond its
+// election. Run 2 reads that election, discovered from the file name run 1 wrote and read with run
+// 1's wire, and again observes absent -- and must refuse, never reaching the create. The REDs are a
+// run-2 step that ignores the journal, and an unknown outcome treated as a definite refusal.
+test fn an_ambiguous_create_blocks_every_later_automatic_create() -> Bool {
+  let run1_step = absent_step(records: [])
+  let run1_after = custody_after_create(secret: custody_x, c: CustodyCreateOutcomeUnknown { cause: "timeout" })
+  let discovered = custody_candidate_operations(secret: custody_x, listing: custody_journal_name(secret: custody_x, operation: "op1", mark: CustodyMarkElected))
+  let run2_step = absent_step(records: map(discovered, op => elected_only(op: op)))
+  creates(st: run1_step) && stops_unresolved(a: run1_after) && count(discovered) == 1 && refuses(st: run2_step) && !creates(st: run2_step)
+}
+
+// SETTLE BY OBSERVED PRESENT: an unresolved election whose container is now observed present is
+// closed, never re-created. The RED is a present observation that ignores the unresolved election.
+test fn an_unresolved_create_is_settled_by_observing_the_container() -> Bool {
+  match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [elected_only(op: "op1")])) {
+    CustodyContainerSettle { operations: settled } => count(settled) == 1 && all(settled, o => o == "op1")
+    CustodyContainerLeave => false
+    CustodyContainerCreateBare => false
+    CustodyContainerRefuse { reason: _ } => false
+  }
+}
+
+// A TERMINAL MARK SETTLES NOTHING UNLESS ITS BYTES ARE THE EXACT WIRE. A valid election beside a
+// disposed marker that is empty (a disposition interrupted after WriteCreateNew), carries another
+// operation's wire, or cannot be read, with the container absent, refuses and never creates. A
+// terminal mark with no election refuses too. Positive control: the exact wire releases a new
+// operation. The RED is a fold that believes a mark without comparing its bytes.
+test fn a_terminal_mark_settles_only_with_its_exact_wire() -> Bool {
+  refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordPresent { bytes: "" })]))
+    && refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op2"))]))
+    && refuses(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: AuthorityRecordRefused)]))
+    && refuses(st: absent_step(records: [ops(op: "op1", elected: AuthorityRecordAbsent, closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op1"))]))
+    && creates(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: AuthorityRecordAbsent, disposed: valid(op: "op1"))]))
+}
+
+// POSITIVE CONTROLS: an empty journal and an absent container create; a definite refusal journaled
+// with its exact wire releases a new operation; a present container with no election is left alone;
+// an unreadable journal or an unobservable container refuses; and candidate discovery never takes
+// another secret's marks as this one's (the '.' around the id).
+test fn resolved_journals_admit_a_new_create_and_unreadable_ones_refuse() -> Bool {
+  let other = custody_journal_name(secret: "cloudflare-r2-workspace-read-token-old" as NonEmptyStr, operation: "op9", mark: CustodyMarkElected)
+  creates(st: absent_step(records: []))
+    && (match custody_after_create(secret: custody_x, c: CustodyCreateRefused { cause: "409" }) { CustodyCreateRefusedDefinitely { reason: _ } => true  CustodyReadBack => false  CustodyCreateStops { reason: _ } => false })
+    && (match custody_after_create(secret: custody_x, c: CustodyCreated) { CustodyReadBack => true  CustodyCreateRefusedDefinitely { reason: _ } => false  CustodyCreateStops { reason: _ } => false })
+    && creates(st: absent_step(records: [ops(op: "op1", elected: valid(op: "op1"), closed: AuthorityRecordAbsent, refused: valid(op: "op1"), disposed: AuthorityRecordAbsent)]))
+    && count(custody_candidate_operations(secret: custody_x, listing: other)) == 0
+    && (match custody_container_step(secret: custody_x, o: CustodyObservedPresent, journal: custody_journal_of(secret: custody_x, records: [])) { CustodyContainerLeave => true  CustodyContainerSettle { operations: _ } => false  CustodyContainerCreateBare => false  CustodyContainerRefuse { reason: _ } => false })
+    && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservedAbsent, journal: CustodyJournalUnreadable { cause: "list failed" }))
+    && refuses(st: custody_container_step(secret: custody_x, o: CustodyObservationRefused { cause: "403" }, journal: custody_journal_of(secret: custody_x, records: [])))
+}
+

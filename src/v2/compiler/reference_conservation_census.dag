@@ -1,5 +1,7 @@
 module v2.compiler.reference_conservation_census
 
+import v2.compiler.tokenize { prepare_lex_rules }
+import std.types { List }
 import v2.std.node { symbol_lexeme }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -48,10 +50,8 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import gunbc.namespace_step0_subject_collector { Step0SubjectCollected, Step0SubjectCollectionRefused, collect_step0_subject_vector_at }
 import v2.std.integer { integer_int_to_decimal_string }
 import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected, diagnostics_fatal_reason }
 import v2.std.text { String }
-import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 
 // THE CORPUS ENTRY FOR v2.compiler.reference_conservation: the host reads the file, the pure check
@@ -125,6 +125,7 @@ fn sample_path_measured(path: String, text: String) -> SamplePathObservation {
         report: reference_conservation_of_read(
           read: conservation_read_of(path: path, text: text),
           lm: dag_language_model(),
+          lex: prepare_lex_rules(rules: dag_language_model().lex),
           prepared: prepared,
           residue: residue
         )
@@ -229,7 +230,7 @@ fn changed_scope_row_lines(rows: FreeMonoid<ChangedScopeRow>) -> String {
     cons: fn(acc, row) {
       match row {
         ScopeOutside { path: p } => acc + "outside " + p + "\n"
-        ScopeMembershipUnreadable { path: p, diagnostics: d } => acc + "membership-unreadable " + p + " " + symbol_lexeme(sym: d.head.reason) + "\n"
+        ScopeMembershipUnreadable { path: p, diagnostics: d } => acc + "membership-unreadable " + p + " " + symbol_lexeme(sym: diagnostics_fatal_reason(d: d)) + "\n"
         ScopeConserved { path: p, report: r } =>
           fold_list(xs: reference_conservation_report_lines(report: r), empty: acc + "conserved " + p + "\n", cons: fn(a, line) { a + "  " + line + "\n" })
         ScopeDropped { path: p, report: r, refusals: _ } =>

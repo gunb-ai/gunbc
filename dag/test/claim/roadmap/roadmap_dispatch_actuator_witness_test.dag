@@ -54,6 +54,7 @@ import extdeps.llm.cli {
 }
 import gunbc.roadmap_dispatch_actuator {
   attempt_state_prepare_argv_for_instance,
+  dispatch_reviewer_attempt_identity,
   dispatch_attempt_publication_dir_for_instance,
   dispatch_attempt_state_path_for_instance,
   dispatch_actuator_selection,
@@ -422,7 +423,7 @@ fn codex_tmux_command_shape_holds(
   codex_executable: String,
 ) -> Bool {
   match cmds.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe: _, provider_start } =>
       codex_tmux_arm_shape_holds(spawn: spawn, provider_start: provider_start, codex_executable: codex_executable)
   }
@@ -476,7 +477,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
 
 fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
   match commands.session_container {
-    SystemdUnitContainer { run: _ } => false
+    SystemdUnitContainer { plan: _ } => false
     TmuxSessionContainer { spawn, default_shell: _, remain_on_exit: _, event_pipe, provider_start } =>
       lab_instance_tmux_shape_holds(commands: commands, lab: lab, spawn: spawn, event_pipe: event_pipe, provider_start: provider_start)
   }
@@ -1137,10 +1138,10 @@ test fn witness_inner_argv_carries_pinned_model_for_both_vendors() -> Bool {
 // every reviewer lane exited 1 before any ssh leg with no verdict written (measured 2026-09-20 on
 // srv2, all fourteen lanes of one belt review pass). The criterion key is part of the mint because
 // the lanes of one attempt share the node id and attempt key, and each lane's identity must stay
-// distinct.
+// distinct, and the head is part of it because one criterion is reviewed again at each new head.
 
 test fn witness_review_attempt_identity_is_a_safe_path_segment() -> Bool {
-  path_segment_is_safe(raw: join(["reviewer:", "node-1", "-", "att-20260920", "-", "conformance-external-facts"], ""))
+  path_segment_is_safe(raw: dispatch_reviewer_attempt_identity(node_id: "node-1", attempt_key: "att-20260920", criterion_key: "conformance-external-facts", head_sha: "abc123"))
 }
 
 test fn witness_review_argv_carries_spawner_minted_attempt_identity() -> Bool {
@@ -1175,7 +1176,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
   )
-  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:node-1-att-20260920-conformance-external-facts")
+  string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:6.node-1.12.att-20260920.26.conformance-external-facts.6.abc123")
 }
 
 // THE ROW THAT WOULD HAVE CAUGHT THE ORIGINAL BUG: an attempt identity built from a path-bearing
@@ -1369,7 +1370,7 @@ test fn witness_supervisor_unit_argv_shapes_one_session_per_escalation_record() 
     && wire.contains("BRIEF-MARKER")
     && wire.contains("\0verdict_name=supervisor-verdict.json\0")
     && wire.contains("/supervisor/harness-request.json")
-    && wire.contains("/supervisor/provider-events.jsonl")
+    && wire.contains("/supervisor/t3.provider-events.jsonl")
     && wire.contains("ReadWritePaths=")
     && wire.contains("/supervisor\0")
     && !wire.contains("harness_worker_cli")

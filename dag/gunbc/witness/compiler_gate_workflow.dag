@@ -119,6 +119,7 @@ import gunbc.witness_floor_workflow {
   required_floor_claim_cost_path,
   required_floor_cross_claim_demand_path,
   required_ci_measurement_bound_steps,
+  required_floor_claim_cost_upload_bound_step,
   required_ci_measurement_scripts_are_renderable,
   WitnessFloorGenerationOutcome, WitnessFloorGenerated, WitnessFloorGenerationRefused
 }
@@ -141,6 +142,11 @@ import gunbc.heal_candidate {
 import gunbc.heal_publication_boundary { heal_repair_candidate_artifact_name }
 // The fork clauses are heal's authorship; the fleet lane inherited the work they guarded.
 import gunbc.heal_workflow { heal_same_repository_clause, heal_not_dependabot_clause }
+import gunbc.fleet_release_bins_key {
+  compiler_pair_release_product, release_bins_key_script_for, release_bins_pack_manifest_script_for,
+  release_bins_pack_object_script, release_bins_pack_object_path_expression,
+  compiler_pair_candidate_artifact_name, compiler_pair_candidate_retention_whole_days,
+}
 import gunbc.repo_self_build { repo_self_build_command, repo_self_clippy_command }
 import extdeps.exec.command { shell_command_render }
 import extdeps.github.expressions { interpolate, ContextAccess, Needs, Github, Expression, default_expression_spellings }
@@ -429,13 +435,22 @@ fn compiler_gate_drift_step() -> Step {
   }
 }
 
-// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, BOTH GENERATIONS DEEP. Operator decision
-// msg_6e36a6a2 (2026-09-23) put this step on the merge queue, superseding msg_4a9045fc's
-// generation-1-only ruling and msg_f1ade7cf-77e4-4896-a8b3-476747692c37's ~20 min pricing; operator
-// ruling 2026-09-28 keeps its depth and widens its events (below).
+// THE STAGE0 MIRRORS ARE CHECKED ON EVERY EVENT, ONE GENERATION DEEP. Operator decision
+// msg_6e36a6a2 (2026-09-23) put this step on the merge queue at two generations, superseding
+// msg_4a9045fc's generation-1-only ruling; operator ruling 2026-09-28 widened its events (below);
+// operator ruling 2026-10-04 ("we don't need to run multiple times - we are not that particular
+// about determinism in v1 anymore") cut it back to one generation.
+//
+// WHAT THE STEP ASSERTS, in one sentence: the committed mirrors equal ONE emission of the current
+// .dag sources by the seed built from those committed mirrors. The ruling waives DETERMINISM, which
+// is all the deleted second generation could see -- it re-emitted with the same binary. It does
+// not waive CONVERGENCE, and the one-generation assertion still holds it: the seed this lane runs
+// is built from the committed mirrors, so mirrors emitted by a binary that predates a change to the
+// emitter's own closure (infer, emit_rust) do not equal what this seed emits, and the step refuses.
+// An author changing that closure therefore still owes a second ROUND (rebuild from the installed
+// mirrors, emit again) before the step admits; an author changing anything else owes one.
 // The drift step above reads gunbc.generated_artifact alone; the ~158 compile_stage0 mirrors are
-// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase (first generation) and
-// the RegenFixedPoint phase (second generation against the first's receipt) -- and no job had run
+// adjudicated by claim_executor's build lane -- the GeneratedArtifact phase -- and no job had run
 // that lane since #11742, so std_measure.rs drifted onto main under a green required run
 // (gunbc#12067) and more mirrors had drifted by the time this step first executed.
 //
@@ -443,7 +458,7 @@ fn compiler_gate_drift_step() -> Step {
 // partition (gunbc.witness_floor_workflow build_lane_run_script over gunbc.fabric_witness_run
 // build_lane_run_command), never by this YAML. Measured on the fleet (run 35890770775, after
 // #12100 removed the field-name re-export leak that had inflated generation 1 to 30 min): the
-// whole lane, both generations, took 22.5 min, and the floor job ~58 min against
+// whole lane, then two generations deep, took 22.5 min, and the floor job ~58 min against
 // compiler_gate_floor_timeout_minutes.
 //
 // A STEP ON ITS OWN JOB, BESIDE THE FLOOR -- operator ruling 2026-09-27, which supersedes the
@@ -467,13 +482,9 @@ fn compiler_gate_drift_step() -> Step {
 // `!cancelled()` rather than the default success(): an earlier red step, such as the lint, must not
 // disarm this check (see witness_floor_workflow's measured correction).
 //
-// gunbc.rung_drop.floor_cut_regen_second_generation_agreement IS NOT RETIRED BY THIS STEP. Its
-// trigger is second-generation refusal for EVERY phase that regenerates a committed population,
-// shown by a red on a generation-unstable fixture under this execution model. RegenFixedPoint
-// compares a second generation for the stage0 mirror population only (it reads
-// target/stage0-regen-receipt.json); the registry-rostered projections have no second
-// generation, and no unstable fixture has been run.
-data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match what this seed emits, both generations: required CI build lane"
+// gunbc.rung_drop.floor_cut_regen_second_generation_agreement STANDS, and since 2026-10-04 no
+// required phase compares a second generation for any population.
+data compiler_gate_stage0_regen_step_name: String = "Stage0 mirrors match one emission by this seed: required CI build lane"
 data compiler_gate_stage0_regen_step_id: String = "stage0_regen"
 
 // NO EVENT CLAUSE, which is the ruling rather than an omission: the step runs wherever the job does,
@@ -597,7 +608,10 @@ fn compiler_gate_candidate_upload_step() -> Step {
 }
 
 fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
-  concat(compiler_gate_fleet_prelude_bound_steps(), concat([
+  concat(compiler_gate_fleet_prelude_bound_steps_around_build(
+    before_build: compiler_gate_candidate_key_bound_steps(),
+    after_build: compiler_gate_candidate_pack_bound_steps(),
+  ), concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_run_step(),
       role: consumes_only(capabilities: [RustfmtCapability]),
@@ -611,7 +625,11 @@ fn compiler_gate_floor_bound_steps() -> List<CompilerGateBoundStep> {
 // build step keeps its id, build_witness_fold, in both jobs because every downstream condition in
 // each job reads that id; step ids are per job, so the two never collide.
 fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
-  [
+  compiler_gate_fleet_prelude_bound_steps_around_build(before_build: [], after_build: [])
+}
+
+fn compiler_gate_fleet_prelude_bound_steps_around_build(before_build: List<CompilerGateBoundStep>, after_build: List<CompilerGateBoundStep>) -> List<CompilerGateBoundStep> {
+  concat([
     CompilerGateBoundStep {
       step: compiler_gate_floor_checkout_step(),
       role: capability_neutral,
@@ -632,6 +650,7 @@ fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [RustupCapability, CargoCapability]),
       step_name: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)",
     },
+  ], concat(before_build, concat([
     CompilerGateBoundStep {
       step: witness_floor_build_step(
         step_name: compiler_gate_floor_build_step_name,
@@ -640,12 +659,13 @@ fn compiler_gate_fleet_prelude_bound_steps() -> List<CompilerGateBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: compiler_gate_floor_build_step_name,
     },
+  ], concat(after_build, [
     CompilerGateBoundStep {
       step: witness_toolchain_homes_isolated_guard_step(),
       role: capability_neutral,
       step_name: "Require isolated toolchain homes",
     },
-  ]
+  ]))))
 }
 
 // ORDER: the lint first (the cheapest verdict, over the Rust the prelude just built), then the build
@@ -698,9 +718,14 @@ fn compiler_gate_generated_bound_steps() -> List<CompilerGateBoundStep> {
 // re-declaring them, so this lane and the floor workflow cannot carry two refusal mechanisms for
 // one receipt (DESIGN section 3). The rows already bind their env to steps.build_witness_fold,
 // which is the id witness_floor_build_step gives this job's build step too.
+//
+// THE PER-CLAIM COST RECEIPT IS UPLOADED AFTER THEM, re-bound the same way
+// (gunbc.witness_floor_workflow required_floor_claim_cost_upload_bound_step). Its condition is the
+// floor's precondition, which holds through a red adjudication, so a refused floor still publishes
+// the cost of what it executed.
 fn compiler_gate_floor_measurement_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(
-    xs: required_ci_measurement_bound_steps(),
+    xs: concat(required_ci_measurement_bound_steps(), [required_floor_claim_cost_upload_bound_step()]),
     f: fn(b) { CompilerGateBoundStep { step: b.step, role: b.role, step_name: b.step_name } },
   )
 }
@@ -722,6 +747,89 @@ fn compiler_gate_floor_scripts_are_renderable() -> Bool {
     && wrap_command_is_renderable(command: repo_self_clippy_command())
     && wrap_command_is_renderable(command: repo_self_build_command(bins: witness_floor_required_bins))
     && required_ci_measurement_scripts_are_renderable()
+}
+
+// ── THE MERGE QUEUE PRODUCES THE COMPILER PAIR CANDIDATE ────────────────────────────────────────
+//
+// The floor already builds claim_executor and gunbc from the tree that will land. On a merge group
+// (the composed revision that becomes main), it also keys that build as gunbc.fleet_release_bins_key
+// compiler_pair_release_product BEFORE building -- so the build is stamped with the materialized tree,
+// as the preimage says -- then packs the two binaries with the build log the build step just wrote,
+// wraps the pack as one object and uploads it as a short-lived workflow artifact. The floor holds no
+// cache credential: it produces a CANDIDATE, and fleet-desired, after the revision lands, verifies it
+// and is the only canonical publisher. A pull-request run produces nothing (nothing would consume it).
+// A refusal here is the floor's: an environment the product's preimage cannot honestly describe
+// stops the line rather than yielding an unprovenanced candidate.
+fn compiler_gate_candidate_condition() -> String {
+  "github.event_name == 'merge_group'"
+}
+
+fn compiler_gate_candidate_built_condition() -> String {
+  "github.event_name == 'merge_group' && steps.build_witness_fold.outcome == 'success'"
+}
+
+fn compiler_gate_candidate_run_step(name: String, script: String, condition: String) -> Step {
+  RunStep {
+    name: Present { value: name },
+    id: none,
+    run: script,
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: condition },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn compiler_gate_candidate_key_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_run_step(
+        name: "Key the compiler pair candidate (merge group; stamps the build with the materialized tree)",
+        script: release_bins_key_script_for(product: compiler_pair_release_product()),
+        condition: compiler_gate_candidate_condition(),
+      ),
+      role: consumes_only(capabilities: [CargoCapability, RustcCapability]),
+      step_name: "Key the compiler pair candidate (merge group; stamps the build with the materialized tree)",
+    },
+  ]
+}
+
+fn compiler_gate_candidate_pack_bound_steps() -> List<CompilerGateBoundStep> {
+  [
+    CompilerGateBoundStep {
+      step: compiler_gate_candidate_run_step(
+        name: "Pack the compiler pair candidate with its build log",
+        script: join([release_bins_pack_manifest_script_for(product: compiler_pair_release_product()), release_bins_pack_object_script()], "\n"),
+        condition: compiler_gate_candidate_built_condition(),
+      ),
+      role: capability_neutral,
+      step_name: "Pack the compiler pair candidate with its build log",
+    },
+    CompilerGateBoundStep {
+      step: UsesStep {
+        name: Present { value: "Upload the compiler pair candidate" },
+        id: none,
+        uses: upload_artifact_action,
+        with: Present {
+          value: [
+            kv(key: "name", value: yaml_string(s: compiler_pair_candidate_artifact_name)),
+            kv(key: "path", value: yaml_string(s: release_bins_pack_object_path_expression())),
+            kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+            kv(key: "retention-days", value: yaml_int(n: compiler_pair_candidate_retention_whole_days())),
+            kv(key: "compression-level", value: yaml_int(n: 0))
+          ]
+        },
+        env: none,
+        if_condition: Present { value: compiler_gate_candidate_built_condition() },
+        continue_on_error: none,
+        timeout_minutes: none
+      },
+      role: capability_neutral,
+      step_name: "Upload the compiler pair candidate",
+    },
+  ]
 }
 
 fn compiler_gate_floor_job() -> Job {
