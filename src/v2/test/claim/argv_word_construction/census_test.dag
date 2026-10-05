@@ -255,3 +255,53 @@ fn site_absent(sites: List<ArgvWordsSite>, module_file: String, decl: String) ->
     Absent => true
   }
 }
+
+// --- diag battery 2 (throwaway, delete before commit): turn the refusal reason into verdicts ---
+test fn diag2_reason_canonicalize() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "canonicalize")
+  }
+}
+
+test fn diag2_reason_outside_root() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "outside the checkout root")
+  }
+}
+
+test fn diag2_reason_commit_deterministic() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "commit-deterministic")
+  }
+}
+
+test fn diag2_reason_governed() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "governed")
+  }
+}
+
+test fn diag2_reason_mock() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "mock")
+  }
+}
+
+test fn diag2_reason_read_refused_prefix() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => string_contains(s: r, pattern: "read refused:")
+  }
+}
+
+test fn diag2_reason_nonempty() -> Bool {
+  match argv_word_construction_module_sites(path: fixture_path) {
+    ArgvWordsModuleEstablished { sites: _ } => false
+    ArgvWordsModuleRefused { path: _, reason: r } => !string_is_empty(s: r)
+  }
+}
