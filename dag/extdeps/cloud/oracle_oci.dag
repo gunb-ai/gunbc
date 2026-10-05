@@ -1,0 +1,205 @@
+module extdeps.cloud.oracle_oci
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { Gigabyte, gigabyte }
+import std.types { Bool, NonEmptyStr }
+import std.nat { Nat }
+
+// ORACLE CLOUD INFRASTRUCTURE COMPUTE, AS ITS ALWAYS FREE ALLOWANCE AND ITS TWO FREE SHAPES.
+//
+// Every figure below was read on 2026-10-05 from the three Oracle pages cited by the authority rows
+// in this module, and each row names the page it came from. This module holds the vendor's facts
+// only. Whether a planned set of instances fits the allowance, and how an instance becomes a fabric
+// offer, are OUR questions, and they live in product.supplier.oracle_oci.
+//
+// THE ALLOWANCE WAS HALVED IN 2026, AND THE OLD FIGURE IS STILL WIDELY REPEATED. The Always Free page
+// read on 2026-10-05 gives 1,500 OCPU hours and 9,000 GB hours a month, "equivalent to 2 OCPUs and
+// 12 GB of memory". The 4 OCPU / 24 GB figure that many guides still give is the previous allowance.
+// Only the current page is cited here. The secondary reports of the cut (heise, linuxiac) are not
+// cited, because the vendor page states the current number directly.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm"
+  }
+}
+
+// A named handle on the Always Free page, for consumers that cite where an allowance figure came from
+// (the same reason extdeps.cloud.ubicloud gives for ubicloud_runner_types_authority).
+data oci_always_free_resources_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data oci_compute_shapes_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm"
+  }
+}
+
+data oci_preemptible_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.oracle.com/en-us/iaas/Content/Compute/Concepts/preemptible.htm"
+  }
+}
+
+// ── THE TWO ALWAYS FREE SHAPES ────────────────────────────────────────────────────────────────
+//
+// There is no "Ampere Micro". The Arm option is one flexible shape whose size the tenant chooses, and
+// the AMD option is one fixed micro shape. These are separate allowances, so a tenancy can use both
+// at once.
+type OciAlwaysFreeShape
+  = VmStandardA1Flex
+  | VmStandardE21Micro
+
+fn oci_shape_wire_name(shape: OciAlwaysFreeShape) -> NonEmptyStr {
+  match shape {
+    VmStandardA1Flex => "VM.Standard.A1.Flex" as NonEmptyStr
+    VmStandardE21Micro => "VM.Standard.E2.1.Micro" as NonEmptyStr
+  }
+}
+
+fn oci_shape_architecture(shape: OciAlwaysFreeShape) -> Architecture {
+  match shape {
+    VmStandardA1Flex => Aarch64
+    VmStandardE21Micro => X86_64
+  }
+}
+
+// From the compute shapes page: "1 OCPU on Arm A1 (Compute) = 1 core on Arm A1 (Compute) or 1 vCPU",
+// and "1 OCPU on x86 (AMD and Intel) = 2 vCPUs". This is the denominator the allowance is written in.
+// Without it, "2 OCPUs" on A1 and on E2 would look like the same amount of compute, and they are not.
+fn oci_vcpus_per_ocpu(shape: OciAlwaysFreeShape) -> Nat {
+  match shape {
+    VmStandardA1Flex => 1
+    VmStandardE21Micro => 2
+  }
+}
+
+// The compute shapes page names the A1.Flex processor as Ampere Altra Q80-30. That part is already a
+// catalog row, which is cited here rather than restated.
+data oci_a1_flex_processor: DeclarationRef = decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_q8030_catalog")
+
+// ── THE ALLOWANCE ─────────────────────────────────────────────────────────────────────────────
+//
+// The page writes memory as "GB" and does not say whether that is decimal or binary. The figures are
+// kept as the page writes them, as Gigabyte counts, and are not converted to bytes. A byte figure
+// would assert a basis the vendor never stated.
+//
+// The hour figures: "All tenancies get the first 1,500 OCPU hours and 9,000 GB hours per month for
+// free for VM instances using the VM.Standard.A1.Flex shape". The always_free figures: "For Always
+// Free tenancies, this is equivalent to 2 OCPUs and 12 GB of memory."
+type OciA1FlexAllowance {
+  ocpu_hours_per_month: Nat
+  gb_hours_per_month: Nat
+  always_free_ocpus: Nat
+  always_free_memory: Gigabyte
+}
+
+data oci_a1_flex_allowance: OciA1FlexAllowance = OciA1FlexAllowance {
+  ocpu_hours_per_month: 1500,
+  gb_hours_per_month: 9000,
+  always_free_ocpus: 2,
+  always_free_memory: gigabyte(count: 12),
+}
+
+// "All tenancies get up to two Always Free VM instances using the VM.Standard.E2.1.Micro shape".
+// Each one: "1/8th of an OCPU with the ability to use additional CPU resources", 1 GB of memory, and
+// "up to 50 Mbps network bandwidth via the internet".
+type OciE2MicroAllowance {
+  max_instances: Nat
+  memory_per_instance: Gigabyte
+  internet_bandwidth_megabits_per_second: Nat
+}
+
+data oci_e2_micro_allowance: OciE2MicroAllowance = OciE2MicroAllowance {
+  max_instances: 2,
+  memory_per_instance: gigabyte(count: 1),
+  internet_bandwidth_megabits_per_second: 50,
+}
+
+// "All tenancies receive a total of 200 GB of Block Volume storage, and five volume backups". Every
+// instance's boot volume is a block volume, so this one pool is shared by every free instance.
+type OciBlockVolumeAllowance {
+  total: Gigabyte
+  volume_backups: Nat
+}
+
+data oci_block_volume_allowance: OciBlockVolumeAllowance = OciBlockVolumeAllowance {
+  total: gigabyte(count: 200),
+  volume_backups: 5,
+}
+
+// ── PLACEMENT RULES ───────────────────────────────────────────────────────────────────────────
+//
+// "You must create the Always Free compute instances in your home region." The home region is a fact
+// about one tenancy, not about Oracle, so it is never written here. The consumer has to supply it.
+//
+// "Instances using the VM.Standard.E2.1.Micro shape can only be created in one availability domain",
+// while A1 instances may use any availability domain, except in South Korea North (Chuncheon).
+type OciAvailabilityDomainRule
+  = AnyAvailabilityDomain
+  | SingleEligibleAvailabilityDomain
+
+fn oci_availability_domain_rule(shape: OciAlwaysFreeShape) -> OciAvailabilityDomainRule {
+  match shape {
+    VmStandardA1Flex => AnyAvailabilityDomain
+    VmStandardE21Micro => SingleEligibleAvailabilityDomain
+  }
+}
+
+// The five capacity types the instance-creation console offers. The Always Free page describes only
+// ordinary instances. It says nothing about the other four, so the free-eligibility of those four is
+// UNREAD, which is different from refused. The preemptible page states that preemptible capacity
+// "costs 50% less than on-demand capacity", that A1.Flex supports it, and that E2.1.Micro does not.
+// It also says nothing about Always Free.
+type OciCapacityType
+  = OnDemandCapacity
+  | PreemptibleCapacity
+  | CapacityReservation
+  | DedicatedVirtualMachineHost
+  | ComputeCluster
+
+// ── IDLE RECLAMATION ──────────────────────────────────────────────────────────────────────────
+//
+// "Oracle will deem virtual machine and bare metal compute instances as idle if, during a 7-day
+// period, the following are true: CPU utilization for the 95th percentile is less than 20%, Network
+// utilization is less than 20%, Memory utilization is less than 20% (applies to A1 shapes only)".
+// All the conditions must hold together, so an instance that is busy on any one axis is not idle.
+type OciIdleReclamationRule {
+  window_days: Nat
+  cpu_p95_percent_below: Nat
+  network_percent_below: Nat
+  memory_percent_below: Nat
+}
+
+data oci_idle_reclamation_rule: OciIdleReclamationRule = OciIdleReclamationRule {
+  window_days: 7,
+  cpu_p95_percent_below: 20,
+  network_percent_below: 20,
+  memory_percent_below: 20,
+}
+
+// The memory condition "applies to A1 shapes only", so on E2.1.Micro the instance can be judged idle
+// on CPU and network alone.
+fn oci_idle_rule_reads_memory(shape: OciAlwaysFreeShape) -> Bool {
+  match shape {
+    VmStandardA1Flex => true
+    VmStandardE21Micro => false
+  }
+}
+
+// ── ACCOUNT TIERS ─────────────────────────────────────────────────────────────────────────────
+//
+// The allowance is stated for "all tenancies", so a Pay As You Go tenancy gets the same free amounts.
+// What differs is what happens above them. On an Always Free tenancy, resources beyond the allowance
+// are simply not available. The out-of-capacity guidance says that upgrading "gives you access to
+// more types of Compute resources". On a paid tenancy, usage above the allowance is billed at that
+// resource's rate. No rate is read into this module, so a consumer that needs the overage price must
+// refuse rather than assume one.
+type OciTenancyTier
+  = AlwaysFreeTenancy
+  | PayAsYouGoTenancy

@@ -1,0 +1,329 @@
+module product.supplier.oracle_oci
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure {
+  Gigabyte, gigabyte, gigabyte_count, Second, second,
+  byte_size, hardware_thread_count, money_amount_micro, MoneyPerHour,
+}
+import extdeps.currency.currency { Usd }
+import product.fabric.identity { FabricIdentity }
+import product.fabric.work { Shape, HardRequirements, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.envelope { cpu_memory_envelope }
+import product.fabric.isolation { IsolationProfile }
+import product.fabric.supply { SupplierOffer, OfferQuote, QuotedPerHour, UnobservedSupply }
+import product.fabric.provider_route {
+  ProviderRegionObservation, ProviderRegionUnread, ProviderRouteObserved, ProviderRouteRegionUnobserved,
+  provider_route_from_region,
+}
+import product.supplier.ubicloud {
+  SupplierOfferProjection, UnexpressedSupplyFact, IsolationNotObserved,
+  ReadinessObservation, ReadinessMeasured, ReadinessUnmeasured,
+  OfferBinding, OfferBound, OfferBindingRefused,
+}
+import extdeps.cloud.oracle_oci {
+  OciAlwaysFreeShape, VmStandardA1Flex, VmStandardE21Micro,
+  OciCapacityType, OnDemandCapacity, PreemptibleCapacity, CapacityReservation,
+  DedicatedVirtualMachineHost, ComputeCluster,
+  OciTenancyTier, AlwaysFreeTenancy, PayAsYouGoTenancy,
+  oci_a1_flex_allowance, oci_e2_micro_allowance, oci_block_volume_allowance,
+  oci_shape_wire_name, oci_shape_architecture, oci_vcpus_per_ocpu,
+}
+
+// ORACLE'S ALWAYS FREE ALLOWANCE AS A FABRIC SUPPLIER: TWO QUESTIONS, ASKED IN ORDER.
+//
+// First: does a planned set of instances fit the allowance? oci_always_free_fit answers that, and it
+// is what makes a $0 price true. A zero quote is honest only inside the allowance, so no offer from
+// this module carries one unless the plan it belongs to has fit. Second: how does one planned
+// instance become a SupplierOffer? bind_oci_always_free_offer answers that, using the same refusals
+// as product.supplier.ubicloud. A route needs the tenancy's home region to have been read, and a
+// ranked offer needs a measured readiness. Those types are imported from that module rather than
+// re-minted, because a second OfferBinding beside the first would be the fork DESIGN section 3
+// forbids.
+//
+// Every vendor figure comes from extdeps.cloud.oracle_oci. Nothing here restates it.
+
+// ── THE PLAN ──────────────────────────────────────────────────────────────────────────────────
+
+type OciInstanceSize
+  = A1FlexSize { ocpus: Nat, memory: Gigabyte }
+  | E2MicroSize
+
+fn oci_instance_shape(size: OciInstanceSize) -> OciAlwaysFreeShape {
+  match size {
+    A1FlexSize { ocpus, memory } => VmStandardA1Flex
+    E2MicroSize => VmStandardE21Micro
+  }
+}
+
+// Home region and the micro availability domain are facts about THIS tenancy, so the planner states
+// them on each instance. The vendor module cannot know them.
+type OciRegionPlacement
+  = InHomeRegion
+  | OutsideHomeRegion
+
+type OciMicroDomainPlacement
+  = InMicroEligibleDomain
+  | OutsideMicroEligibleDomain
+
+type OciPlannedInstance {
+  name: NonEmptyStr
+  size: OciInstanceSize
+  boot_volume: Gigabyte
+  capacity: OciCapacityType
+  region: OciRegionPlacement
+  micro_domain: OciMicroDomainPlacement
+}
+
+// ── THE FIT ───────────────────────────────────────────────────────────────────────────────────
+//
+// Every breach is collected rather than stopping at the first one, so a planner sees the whole
+// distance from a free plan in one reading.
+//
+// CapacityTypeFreeEligibilityUnread: on-demand is the only capacity type the Always Free page
+// describes. For the other four, free eligibility is unread rather than refused, and this arm names
+// the obligation. It must never be read as "Oracle charges for this".
+type OciAllowanceBreach
+  = A1OcpusOverAllowance { planned: Nat, allowed: Nat }
+  | A1MemoryOverAllowance { planned: Nat, allowed: Nat }
+  | E2MicroCountOverAllowance { planned: Nat, allowed: Nat }
+  | BlockVolumeOverAllowance { planned: Nat, allowed: Nat }
+  | NotInHomeRegion { instance: NonEmptyStr }
+  | MicroOutsideEligibleDomain { instance: NonEmptyStr }
+  | CapacityTypeFreeEligibilityUnread { instance: NonEmptyStr, obligation: DeclarationRef }
+
+type OciAllowanceFit
+  = FitsAlwaysFree
+  | ExceedsAlwaysFree { breaches: List<OciAllowanceBreach> }
+
+data oci_capacity_type_free_eligibility_obligation: NonEmptyStr = "Whether preemptible capacity, a capacity reservation, a dedicated virtual machine host or a compute cluster can host an Always Free instance is UNREAD. extdeps.cloud.oracle_oci records that the Always Free page (read 2026-10-05) describes only ordinary instances, and that the preemptible page prices preemptible capacity at 50% of on-demand and says nothing about Always Free. RESOLVED BY an Oracle statement covering Always Free eligibility for that capacity type, in either direction."
+
+fn oci_capacity_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  let unread = [CapacityTypeFreeEligibilityUnread {
+    instance: i.name,
+    obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_capacity_type_free_eligibility_obligation"),
+  }]
+  match i.capacity {
+    OnDemandCapacity => []
+    PreemptibleCapacity => unread
+    CapacityReservation => unread
+    DedicatedVirtualMachineHost => unread
+    ComputeCluster => unread
+  }
+}
+
+fn oci_region_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  match i.region {
+    InHomeRegion => []
+    OutsideHomeRegion => [NotInHomeRegion { instance: i.name }]
+  }
+}
+
+// The single-domain rule constrains the micro shape only. An A1 instance's micro_domain field is
+// not read.
+fn oci_micro_domain_breach(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  match i.size {
+    A1FlexSize { ocpus, memory } => []
+    E2MicroSize =>
+      match i.micro_domain {
+        InMicroEligibleDomain => []
+        OutsideMicroEligibleDomain => [MicroOutsideEligibleDomain { instance: i.name }]
+      }
+  }
+}
+
+fn oci_a1_ocpus(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => ocpus
+    E2MicroSize => 0
+  }
+}
+
+fn oci_a1_memory_gb(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => gigabyte_count(g: memory)
+    E2MicroSize => 0
+  }
+}
+
+fn oci_micro_count(i: OciPlannedInstance) -> Nat {
+  match i.size {
+    A1FlexSize { ocpus, memory } => 0
+    E2MicroSize => 1
+  }
+}
+
+fn oci_over(planned: Nat, allowed: Nat) -> Bool {
+  planned > allowed
+}
+
+fn oci_aggregate_breaches(plan: List<OciPlannedInstance>) -> List<OciAllowanceBreach> {
+  let ocpus = fold(plan, init: 0, f: (acc, i) => acc + oci_a1_ocpus(i: i))
+  let memory = fold(plan, init: 0, f: (acc, i) => acc + oci_a1_memory_gb(i: i))
+  let micros = fold(plan, init: 0, f: (acc, i) => acc + oci_micro_count(i: i))
+  let block = fold(plan, init: 0, f: (acc, i) => acc + gigabyte_count(g: i.boot_volume))
+  let ocpu_cap = oci_a1_flex_allowance.always_free_ocpus
+  let memory_cap = gigabyte_count(g: oci_a1_flex_allowance.always_free_memory)
+  let micro_cap = oci_e2_micro_allowance.max_instances
+  let block_cap = gigabyte_count(g: oci_block_volume_allowance.total)
+  let b1 = if oci_over(planned: ocpus, allowed: ocpu_cap) { [A1OcpusOverAllowance { planned: ocpus, allowed: ocpu_cap }] } else { [] }
+  let b2 = if oci_over(planned: memory, allowed: memory_cap) { [A1MemoryOverAllowance { planned: memory, allowed: memory_cap }] } else { [] }
+  let b3 = if oci_over(planned: micros, allowed: micro_cap) { [E2MicroCountOverAllowance { planned: micros, allowed: micro_cap }] } else { [] }
+  let b4 = if oci_over(planned: block, allowed: block_cap) { [BlockVolumeOverAllowance { planned: block, allowed: block_cap }] } else { [] }
+  concat(concat(b1, b2), concat(b3, b4))
+}
+
+fn oci_instance_breaches(i: OciPlannedInstance) -> List<OciAllowanceBreach> {
+  concat(concat(oci_capacity_breach(i: i), oci_region_breach(i: i)), oci_micro_domain_breach(i: i))
+}
+
+fn oci_always_free_fit(plan: List<OciPlannedInstance>) -> OciAllowanceFit {
+  let per_instance = fold(plan, init: [], f: (acc, i) => concat(acc, oci_instance_breaches(i: i)))
+  let breaches = concat(oci_aggregate_breaches(plan: plan), per_instance)
+  if breaches.length() == 0 { FitsAlwaysFree } else { ExceedsAlwaysFree { breaches: breaches } }
+}
+
+// What a breach costs depends on the tenancy tier. On an Always Free tenancy the vendor refuses the
+// excess. On Pay As You Go the excess is billed, and its rate is unread, so the consequence names the
+// obligation and no number. Neither tier makes a breaching plan free.
+type OciBreachConsequence
+  = ExcessRefusedByVendor
+  | ExcessBilledAtUnreadRate { obligation: DeclarationRef }
+
+data oci_overage_rate_obligation: NonEmptyStr = "The Pay As You Go price of OCI compute and block storage above the Always Free allowance is UNREAD; extdeps.cloud.oracle_oci carries no price row. RESOLVED BY citing Oracle's price list for VM.Standard.A1.Flex OCPU and memory hours and for block volume storage into an extdeps.pricing module."
+
+fn oci_breach_consequence(tier: OciTenancyTier) -> OciBreachConsequence {
+  match tier {
+    AlwaysFreeTenancy => ExcessRefusedByVendor
+    PayAsYouGoTenancy => ExcessBilledAtUnreadRate {
+      obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_overage_rate_obligation"),
+    }
+  }
+}
+
+// ── THE OFFER ─────────────────────────────────────────────────────────────────────────────────
+
+fn oci_provider_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "extdeps_external_authority_anchor")
+}
+
+fn oci_service_ref() -> DeclarationRef {
+  decl_ref(module_path: "extdeps.cloud.oracle_oci", decl_name: "oci_always_free_resources_authority")
+}
+
+// Nobody has read this tenancy's home region into the tree. The console the operator was using
+// suggested Ashburn, but a guess is not a reading, so the standing observation is the unread arm and
+// every offer refuses on it.
+data oci_home_region_unread_obligation: NonEmptyStr = "The home region of the operator's OCI tenancy has not been read into this tree. Always Free compute must be created there (extdeps.cloud.oracle_oci), so it is the region of every offer this supplier can make. RESOLVED BY the tenancy's home region as shown in the OCI console (Tenancy details), cited as a region row."
+
+fn oci_home_region_unread() -> ProviderRegionObservation {
+  ProviderRegionUnread {
+    obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_home_region_unread_obligation"),
+  }
+}
+
+data oci_readiness_unread_obligation: NonEmptyStr = "Provisioning delay from an OCI launch request to an Always Free instance accepting work has not been measured. Out-of-capacity refusals are common on A1 in many home regions, so the delay may be unbounded. RESOLVED BY a launch receipt recording request and first-heartbeat timestamps per shape."
+
+data oci_readiness: ReadinessObservation = ReadinessUnmeasured {
+  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_readiness_unread_obligation"),
+}
+
+// An instance that fits the allowance is not yet supply. Until one is launched and observed, its
+// evidence is the unobserved arm, which product.fabric.failure_scenario_admission refuses by name.
+data oci_instance_unlaunched_obligation: NonEmptyStr = "No Always Free instance has been launched and observed for this offer. RESOLVED BY a launch receipt naming the instance OCID, shape and home region."
+
+// The quote is zero, and that is only true inside a plan that fit. The binding takes the fit as an
+// argument and refuses when the fit is not FitsAlwaysFree, so a zero cannot outlive the plan that
+// earned it.
+fn oci_zero_quote() -> OfferQuote {
+  QuotedPerHour(MoneyPerHour { amount: money_amount_micro(count: 0), currency: Usd })
+}
+
+// Oracle meters the allowance in OCPU-hours and GB-hours. Above the allowance a free tenancy never
+// bills, so the quantum is never consulted on a zero quote. It is stated as an hour because that is
+// the unit the allowance is denominated in.
+data oci_billing_quantum: Second = second(count: 3600)
+
+// E2MicroSize is 1/8 OCPU with burst, carried as one hardware thread. The fractional baseline
+// cannot be written in a thread count.
+fn oci_vcpus(size: OciInstanceSize) -> Nat {
+  match size {
+    A1FlexSize { ocpus, memory } => ocpus * oci_vcpus_per_ocpu(shape: VmStandardA1Flex)
+    E2MicroSize => 1
+  }
+}
+
+fn oci_memory(size: OciInstanceSize) -> Gigabyte {
+  match size {
+    A1FlexSize { ocpus, memory } => memory
+    E2MicroSize => oci_e2_micro_allowance.memory_per_instance
+  }
+}
+
+// Gigabytes are held as the vendor writes them, with no stated basis. The envelope needs bytes, so
+// the DECIMAL reading is taken, which is the smaller of the two possible readings. An offer that
+// promises less memory than the instance has can only refuse work it could have run. It can never
+// admit work the instance cannot hold.
+fn oci_shape(size: OciInstanceSize) -> Shape {
+  Shape {
+    hard: HardRequirements { threads: hardware_thread_count(count: oci_vcpus(size: size)) },
+    envelope: cpu_memory_envelope(
+      min_threads: hardware_thread_count(count: oci_vcpus(size: size)),
+      architecture: oci_shape_architecture(shape: oci_instance_shape(size: size)),
+      min_bytes: byte_size(count: gigabyte_count(g: oci_memory(size: size)) * 1000000000),
+    ),
+  }
+}
+
+data oci_always_free_fit_refusal: NonEmptyStr = "This instance belongs to a plan that does not fit the Always Free allowance (see oci_always_free_fit), so a zero quote for it would be false. Bind it only after the plan fits, or bind it through a priced supplier once the overage rate is read."
+
+fn bind_oci_always_free_offer<P>(
+  principal: P,
+  executor: P,
+  instance: OciPlannedInstance,
+  plan_fit: OciAllowanceFit,
+  capabilities: CapabilityManifestRef,
+  trust_domain: TrustDomainRef,
+  readiness: ReadinessObservation,
+  region: ProviderRegionObservation,
+) -> OfferBinding<P> {
+  match plan_fit {
+    ExceedsAlwaysFree { breaches } => OfferBindingRefused {
+      runs_on_label: instance.name,
+      cause: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_always_free_fit_refusal"),
+    },
+    FitsAlwaysFree =>
+    match provider_route_from_region(provider: oci_provider_ref(), service: oci_service_ref(), region: region) {
+      ProviderRouteRegionUnobserved { obligation } =>
+        OfferBindingRefused { runs_on_label: instance.name, cause: obligation },
+      ProviderRouteObserved { route: bound_route } =>
+      match readiness {
+        ReadinessUnmeasured { obligation } =>
+          OfferBindingRefused { runs_on_label: instance.name, cause: obligation },
+        ReadinessMeasured { ready_at, receipt } =>
+          OfferBound {
+            bound: SupplierOfferProjection {
+              offer: SupplierOffer {
+                id: FabricIdentity { principal: principal, key: instance.name },
+                executor: executor,
+                route: bound_route,
+                shape: oci_shape(size: instance.size),
+                capabilities: capabilities,
+                trust_domain: trust_domain,
+                isolation: IsolationProfile { guarantees: [] },
+                quantity_bound: 1,
+                ready_at: ready_at,
+                quote: oci_zero_quote(),
+                billing_quantum: oci_billing_quantum,
+                evidence: UnobservedSupply {
+                  obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_instance_unlaunched_obligation"),
+                },
+              },
+              unexpressed: [IsolationNotObserved],
+            },
+          },
+      },
+    },
+  }
+}

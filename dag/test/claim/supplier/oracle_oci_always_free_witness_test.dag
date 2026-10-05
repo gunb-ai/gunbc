@@ -1,0 +1,188 @@
+module test.claim.supplier.oracle_oci_always_free_witness
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.measure { gigabyte, money_amount_micro_count }
+import product.fabric.provider_route { ProviderRegionObservation, ProviderRegionRead }
+import product.fabric.supply { offer_quote_amount, UnobservedSupply, ObservedSupply, QuotedSupply }
+import product.supplier.ubicloud { ReadinessObservation, ReadinessMeasured, OfferBound, OfferBindingRefused }
+import extdeps.cloud.oracle_oci {
+  OnDemandCapacity, PreemptibleCapacity, AlwaysFreeTenancy, PayAsYouGoTenancy,
+}
+import product.supplier.oracle_oci {
+  OciPlannedInstance, OciInstanceSize, A1FlexSize, E2MicroSize,
+  InHomeRegion, OutsideHomeRegion, InMicroEligibleDomain, OutsideMicroEligibleDomain,
+  OciAllowanceFit, FitsAlwaysFree, ExceedsAlwaysFree, OciAllowanceBreach,
+  A1OcpusOverAllowance, A1MemoryOverAllowance, E2MicroCountOverAllowance,
+  BlockVolumeOverAllowance, NotInHomeRegion, MicroOutsideEligibleDomain,
+  CapacityTypeFreeEligibilityUnread,
+  ExcessRefusedByVendor, ExcessBilledAtUnreadRate,
+  oci_always_free_fit, oci_breach_consequence, bind_oci_always_free_offer,
+  oci_home_region_unread, oci_readiness,
+}
+
+// The subject is the allowance fit and the offer seam, at the vendor figures in
+// extdeps.cloud.oracle_oci. Each plan below is built here as a supplied value. The figures it is
+// checked against are the real rows, so moving the allowance moves these verdicts.
+fn a1(name: NonEmptyStr, ocpus: Nat, gb: Nat, boot: Nat) -> OciPlannedInstance {
+  OciPlannedInstance {
+    name: name,
+    size: A1FlexSize { ocpus: ocpus, memory: gigabyte(count: gb) },
+    boot_volume: gigabyte(count: boot),
+    capacity: OnDemandCapacity,
+    region: InHomeRegion,
+    micro_domain: InMicroEligibleDomain,
+  }
+}
+
+fn micro(name: NonEmptyStr, boot: Nat) -> OciPlannedInstance {
+  OciPlannedInstance {
+    name: name,
+    size: E2MicroSize,
+    boot_volume: gigabyte(count: boot),
+    capacity: OnDemandCapacity,
+    region: InHomeRegion,
+    micro_domain: InMicroEligibleDomain,
+  }
+}
+
+fn fits(plan: List<OciPlannedInstance>) -> Bool {
+  match oci_always_free_fit(plan: plan) {
+    FitsAlwaysFree => true
+    ExceedsAlwaysFree { breaches } => false
+  }
+}
+
+fn breaches_of(plan: List<OciPlannedInstance>) -> List<OciAllowanceBreach> {
+  match oci_always_free_fit(plan: plan) {
+    FitsAlwaysFree => []
+    ExceedsAlwaysFree { breaches } => breaches
+  }
+}
+
+// The vendor's own example: two AMD micros alongside one 2-OCPU Ampere instance, all at once.
+test fn two_micros_and_one_full_a1_fit_together() -> Bool {
+  fits(plan: [micro(name: "m1", boot: 47), micro(name: "m2", boot: 47), a1(name: "a", ocpus: 2, gb: 12, boot: 47)])
+}
+
+// The pre-2026 allowance, 4 OCPUs and 24 GB, no longer fits. It refuses on exactly those two axes.
+test fn the_old_four_ocpu_allowance_refuses_on_ocpus_and_memory() -> Bool {
+  breaches_of(plan: [a1(name: "a", ocpus: 4, gb: 24, boot: 47)]) == [A1OcpusOverAllowance { planned: 4, allowed: 2 }, A1MemoryOverAllowance { planned: 24, allowed: 12 }]
+}
+
+// The maximum instance count is limited by storage. Four 50 GB boot volumes use exactly 200 GB and
+// fit. One more gigabyte on any of them refuses on block volume alone.
+test fn four_instances_fit_at_exactly_two_hundred_gigabytes() -> Bool {
+  fits(plan: [micro(name: "m1", boot: 50), micro(name: "m2", boot: 50), a1(name: "a1", ocpus: 1, gb: 6, boot: 50), a1(name: "a2", ocpus: 1, gb: 6, boot: 50)])
+}
+
+test fn one_more_boot_gigabyte_refuses_on_block_volume_alone() -> Bool {
+  breaches_of(plan: [micro(name: "m1", boot: 51), micro(name: "m2", boot: 50), a1(name: "a1", ocpus: 1, gb: 6, boot: 50), a1(name: "a2", ocpus: 1, gb: 6, boot: 50)]) == [BlockVolumeOverAllowance { planned: 201, allowed: 200 }]
+}
+
+test fn a_third_micro_refuses_on_micro_count() -> Bool {
+  breaches_of(plan: [micro(name: "m1", boot: 40), micro(name: "m2", boot: 40), micro(name: "m3", boot: 40)]) == [E2MicroCountOverAllowance { planned: 3, allowed: 2 }]
+}
+
+// Preemptible capacity is UNREAD for Always Free, which is different from refused. The breach is the
+// unread arm, so it names an obligation and asserts no price.
+test fn preemptible_capacity_is_unread_not_priced() -> Bool {
+  let p = OciPlannedInstance {
+    name: "p", size: A1FlexSize { ocpus: 1, memory: gigabyte(count: 6) }, boot_volume: gigabyte(count: 47),
+    capacity: PreemptibleCapacity, region: InHomeRegion, micro_domain: InMicroEligibleDomain,
+  }
+  breaches_of(plan: [p]) == [CapacityTypeFreeEligibilityUnread {
+    instance: "p",
+    obligation: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: "oci_capacity_type_free_eligibility_obligation"),
+  }]
+}
+
+// The single-domain rule binds the micro and not the A1. The same misplacement refuses on one shape
+// and not the other.
+test fn the_micro_domain_rule_binds_the_micro_only() -> Bool {
+  let m = OciPlannedInstance {
+    name: "m", size: E2MicroSize, boot_volume: gigabyte(count: 47),
+    capacity: OnDemandCapacity, region: InHomeRegion, micro_domain: OutsideMicroEligibleDomain,
+  }
+  let a = OciPlannedInstance {
+    name: "a", size: A1FlexSize { ocpus: 1, memory: gigabyte(count: 6) }, boot_volume: gigabyte(count: 47),
+    capacity: OnDemandCapacity, region: OutsideHomeRegion, micro_domain: OutsideMicroEligibleDomain,
+  }
+  breaches_of(plan: [m, a]) == [MicroOutsideEligibleDomain { instance: "m" }, NotInHomeRegion { instance: "a" }]
+}
+
+test fn a_breach_is_refused_on_free_and_billed_at_an_unread_rate_on_paid() -> Bool {
+  let free = match oci_breach_consequence(tier: AlwaysFreeTenancy) {
+    ExcessRefusedByVendor => true
+    ExcessBilledAtUnreadRate { obligation } => false
+  }
+  let paid = match oci_breach_consequence(tier: PayAsYouGoTenancy) {
+    ExcessRefusedByVendor => false
+    ExcessBilledAtUnreadRate { obligation } => true
+  }
+  free && paid
+}
+
+// ── THE OFFER SEAM ────────────────────────────────────────────────────────────────────────────
+data oci_witness_home_region: NonEmptyStr = "oci-witness-home-region"
+
+fn read_region() -> ProviderRegionObservation {
+  ProviderRegionRead {
+    region: decl_ref(module_path: "test.claim.supplier.oracle_oci_always_free_witness", decl_name: "oci_witness_home_region"),
+  }
+}
+
+fn measured() -> ReadinessObservation {
+  ReadinessMeasured { ready_at: "2026-10-05T00:00:00Z", receipt: "gunbc.observation.oci-witness-readiness" }
+}
+
+fn refused_with(instance: OciPlannedInstance, fit: OciAllowanceFit, region: ProviderRegionObservation, readiness: ReadinessObservation, expected: NonEmptyStr) -> Bool {
+  match bind_oci_always_free_offer(
+    principal: "gunbc", executor: "gunbc", instance: instance, plan_fit: fit,
+    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
+    readiness: readiness, region: region,
+  ) {
+    OfferBound { bound } => false
+    OfferBindingRefused { runs_on_label, cause } =>
+      declaration_ref_eq(a: cause, b: decl_ref(module_path: "product.supplier.oracle_oci", decl_name: expected))
+  }
+}
+
+// RED: the state production is in. The home region is unread, so the offer refuses on that
+// obligation, even with the plan fitting and readiness measured.
+test fn production_state_refuses_on_the_unread_home_region() -> Bool {
+  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
+  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: oci_home_region_unread(), readiness: measured(), expected: "oci_home_region_unread_obligation")
+}
+
+test fn production_readiness_refuses_once_the_region_is_read() -> Bool {
+  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
+  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: read_region(), readiness: oci_readiness, expected: "oci_readiness_unread_obligation")
+}
+
+// A plan over the allowance cannot carry a zero quote, even when region and readiness are both read.
+test fn an_over_allowance_plan_refuses_before_any_route() -> Bool {
+  let i = a1(name: "a", ocpus: 4, gb: 24, boot: 47)
+  refused_with(instance: i, fit: oci_always_free_fit(plan: [i]), region: read_region(), readiness: measured(), expected: "oci_always_free_fit_refusal")
+}
+
+// POSITIVE CONTROL: with everything read, the same call binds a zero-quoted offer. Its evidence is
+// still the unobserved arm, because nothing has been launched yet.
+test fn a_fitting_plan_with_region_and_readiness_binds_at_zero_unobserved() -> Bool {
+  let i = a1(name: "a", ocpus: 2, gb: 12, boot: 47)
+  match bind_oci_always_free_offer(
+    principal: "gunbc", executor: "gunbc", instance: i, plan_fit: oci_always_free_fit(plan: [i]),
+    capabilities: "cap-manifest-oci", trust_domain: "trust-domain-oci",
+    readiness: measured(), region: read_region(),
+  ) {
+    OfferBound { bound } =>
+      money_amount_micro_count(m: offer_quote_amount(q: bound.offer.quote)) == 0
+        && match bound.offer.evidence {
+          UnobservedSupply { obligation } => true
+          ObservedSupply { observed_at, receipt } => false
+          QuotedSupply { quoted_at, valid_until, receipt } => false
+        }
+    OfferBindingRefused { runs_on_label, cause } => false
+  }
+}
