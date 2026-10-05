@@ -433,6 +433,10 @@ test fn w_the_honest_two_tier_placement_mints() -> Bool {
   }
 }
 
+fn tw_zero() -> Nat {
+  byte_size_count(b: byte_size(count: 0))
+}
+
 fn tw_device_headroom(kv: ArmComponentPlacement) -> Nat {
   let device = tw_tier(gpu_local: true)
   match tw_split_rank(kv: kv) {
@@ -443,13 +447,13 @@ fn tw_device_headroom(kv: ArmComponentPlacement) -> Nat {
         host: ArmHostCoherentSuperchip { row: nvidia_gh200_480gb_catalog }, tiers: tw_tiers(), ranks: rows) {
         ArmMemorySubjectReady { subject: s } => match arm_memory_fit_verdict(subject: s) {
           ArmMemoryFitProved { rank: _, tier: t, phase: _, headroom_bytes: h } =>
-            if system_memory_component_same(a: t, b: device) { byte_size_count(b: h) } else { 0 }
-          ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => 0
-          ArmMemoryFitUnestablished { obligations: _ } => 0
+            if system_memory_component_same(a: t, b: device) { byte_size_count(b: h) } else { tw_zero() }
+          ArmMemoryFitRefused { rank: _, tiers: _, phase: _, demand_lower: _, supply_upper: _, cause: _ } => tw_zero()
+          ArmMemoryFitUnestablished { obligations: _ } => tw_zero()
         }
-        ArmMemorySubjectRefused { cause: _ } => 0
+        ArmMemorySubjectRefused { cause: _ } => tw_zero()
       }
-    Absent => 0
+    Absent => tw_zero()
   }
 }
 

@@ -50,7 +50,7 @@ import gunbc.spark.arm_memory_fit {
   demand_for_phase,
   arm_memory_fit_subject, arm_memory_fit_subject_with_rank_demands, arm_memory_fit_subject_for_launch,
   arm_memory_fit_verdict, arm_memory_subject_open_components,
-  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply, placed_in,
+  gb10_pool_bound, gb10_memory_tier, gb10_host_class, ArmTierSupply, placed_in, ArmRowView,
   arm_memory_fit_experiment_plan, arm_memory_experiment_runtime, arm_memory_launch_gate,
   arm_classify_measurement, arm_apply_measurement, arm_readback_observation,
   ArmMemorySubjectReady, ArmMemorySubjectRefused,
@@ -663,19 +663,19 @@ test fn w_the_envelope_refuses_at_the_first_engine_admitted_phase() -> Bool {
 // ── WITNESS 9: PHASES KEEP TRANSIENTS IN THEIR PHASE ────────────────────────────────────────────
 test fn w_the_loader_transient_is_charged_only_in_its_phases() -> Bool {
   let rd = fx_rank(rank: 0, checkpoint: fx_even_checkpoint())
-  let model_upper = match demand_for_phase(rd: rd, phase: ArmPhaseModelLoad).upper {
+  let model_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseModelLoad).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let idle_upper = match demand_for_phase(rd: rd, phase: ArmPhaseIdleServing).upper {
+  let idle_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseIdleServing).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let loader_upper = match demand_for_phase(rd: rd, phase: ArmPhaseLoaderTransform).upper {
+  let loader_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseLoaderTransform).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
-  let overlap_upper = match demand_for_phase(rd: rd, phase: ArmPhaseRestartOverlap).upper {
+  let overlap_upper = match demand_for_phase(rv: ArmRowView { demand: rd, tier: gb10_memory_tier() }, phase: ArmPhaseRestartOverlap).upper {
     Absent => 0
     Present { value: b } => byte_size_count(b: b)
   }
