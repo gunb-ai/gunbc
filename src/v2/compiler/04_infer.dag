@@ -32,7 +32,7 @@ import v2.compiler.inferred_tree {
 }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_reading }
 import v2.std.model_core { AlgebraInhabitanceDecl }
-import std.literal_elaboration { DirectLiteral, KernelIntLiteral, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at }
+import std.literal_elaboration { DirectLiteral, HomomorphismDuplicated, KernelIntLiteral, LiteralElaborationRefusal, LiteralElaborationRefused, ViaHomomorphism, elaborate_literal_at }
 import gunbc.structural_realization_bindings { literal_homomorphism_rows }
 import std.decl_ref { DeclarationRef, decl_ref }
 import v2.std.grammar { node_atom_identity_optional }
@@ -3646,6 +3646,14 @@ fn infer_literal_destination_has_row(expected: Node, declarations: SymbolIndex) 
   }
 }
 
+// The table's own refusal, carried through as its own typed reason rather than flattened to a generic one
+// (review 76326): a duplicated homomorphism row is an authoring defect in literal_homomorphism_rows.
+fn infer_literal_elaboration_refusal_reason(cause: LiteralElaborationRefusal) -> Symbol {
+  match cause {
+    HomomorphismDuplicated { source_kind: _, destination: _, row_count: _ } => ^infer_reason_literal_homomorphism_duplicated
+  }
+}
+
 fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations: SymbolIndex) -> InferLiteralElaboration {
   match dag_canonical_literal_from_node(node: literal_node) {
     Rejected { diagnostics: _ } =>
@@ -3664,7 +3672,7 @@ fn infer_literal_elaborates_at(literal_node: Node, expected: Node, declarations:
               match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: destination, element: none, destination_realizes_natively: false) {
                 ViaHomomorphism { homomorphism: _ } => InferLiteralElaboratesTo { destination_type: wanted }
                 DirectLiteral => InferLiteralNotElaborated
-                LiteralElaborationRefused { cause: _ } => InferLiteralElaborationRefused { cause: ^infer_reason_literal_elaboration_refused }
+                LiteralElaborationRefused { cause: c } => InferLiteralElaborationRefused { cause: infer_literal_elaboration_refusal_reason(cause: c) }
               }
           }
         DagCanonicalBoolLiteral { value: _ } => InferLiteralNotElaborated
