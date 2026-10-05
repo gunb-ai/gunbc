@@ -182,14 +182,6 @@ data code_point_contract: PrimitiveContract = {
   carrier_cost: CarrierInsensitive
 }
 
-data from_code_point_contract: PrimitiveContract = {
-  name: "from_code_point",
-  work: "1",
-  output_size: "1",
-  certainty: Proven,
-  carrier_cost: CarrierInsensitive
-}
-
 data scan_while_contract: PrimitiveContract = {
   name: "scan_while",
   work: "k",
@@ -605,7 +597,6 @@ fn builtin_registry_surface_names() -> List<String> {
     "parse_int",
     "char_at",
     "substring",
-    "from_code_point",
     "chars_to_string",
     "record_source_chars_index_lookup",
     "resolution_silent_pick_is_enabled",
@@ -762,7 +753,6 @@ fn primitive_contract_roster() -> List<PrimitiveContract> {
     str_eq_contract,
     replace_section_contract,
     code_point_contract,
-    from_code_point_contract,
     scan_while_contract,
     skip_horizontal_ws_contract,
     scan_to_eol_contract,

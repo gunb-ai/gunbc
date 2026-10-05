@@ -23452,12 +23452,6 @@ macro_rules! v1_builtin_arms {
                 Ok(Some(Value::Int(cp)))
             },
 
-            arm "free_call.from_code_point" { "from_code_point" } => {
-                let cp = expect_int($positional.first().copied(), "from_code_point")?;
-                let c = char::from_u32(cp as u32).unwrap_or('\0');
-                Ok(Some(str_value(c.to_string())))
-            },
-
             arm "free_call.is_xid_start" { "is_xid_start" } => {
                 let cp = expect_int($positional.first().copied(), "is_xid_start")?;
                 Ok(Some(Value::Bool(v1_rt::is_xid_start(cp))))
