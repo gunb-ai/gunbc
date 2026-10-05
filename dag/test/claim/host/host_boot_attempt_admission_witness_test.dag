@@ -10,7 +10,7 @@ import extdeps.ampere.mt_collins_getting_started_guide.dimm_layout { dimm_figure
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_power_on_account {
-  AttemptConfigurationReceipt, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded,
+  AttemptConfigurationReceipt, FirmwareReadbacks, FirmwareReadBeforeActuation, FirmwareReadbacksNotRecorded,
   ExpectedSockets, ExpectedTopologyNotRecorded, StimulusRequested, NoStimulusRequested, StimulusRequestNotRecorded,
   StimulusAppliedByReceipt, StimulusApplicationNotRecorded, PopulationOperatorAttested, PopulationNotRecorded,
   PopulationLiveObserved, PopulationConflicted,
@@ -18,7 +18,7 @@ import gunbc.machine_intake_mtcollins1_power_on_account {
 import extdeps.bmc.ipmitool_observed_output { ipmitool_hpm_check_bmc0_32 }
 import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
 import gunbc.host_boot_attempt_admission {
-  PrePowerFirmwareUnread, pre_power_firmware_of_hpm_check, attempt_configuration_with_pre_power,
+  PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_minted, attempt_configuration_with_pre_power,
   AttemptReceiptRefusal, ReceiptValidation, ReceiptValidated, ReceiptRefused,
   ReceiptHostHasNoRoute, ReceiptExecutorForAnotherHost, ReceiptExecutorNotOnStoreHost, ReceiptHostUnbound, ReceiptNonceMissing, ReceiptNonceNotSlotSafe, ReceiptHostNotSlotSafe,
   ReceiptPathOutsideReceipts, ReceiptFileUnreadable, ReceiptNotJson, ReceiptSchemaMismatch,
@@ -349,15 +349,27 @@ fn admitted_configuration() -> AttemptConfigurationReceipt {
   }
 }
 
-test fn the_hpm_check_table_is_bound_to_the_admitted_attempt_and_an_unread_one_stays_not_recorded() -> Bool {
-  let read = attempt_configuration_with_pre_power(c: admitted_configuration(), firmware: pre_power_firmware_of_hpm_check(table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), source: "ipmitool hpm check"))
-  let read_ok = match read.firmware {
-    FirmwareReadBeforeActuation { attempt: a, source: _, rows: rs } => (a as String) == "n42" && count(rs) == 5 && any(rs, r => (r.component as String) == "APP" && (r.version as String) == "0.32 01112100")
-    FirmwareReadbacksNotRecorded { reason: _ } => false
+fn observed_for(attempt: NonEmptyStr) -> PrePowerFirmware {
+  pre_power_firmware_minted(host: operator_host_mtcollins1, attempt: attempt, table: hpm_check_table_of(stdout: ipmitool_hpm_check_bmc0_32), source: "ipmitool hpm check")
+}
+
+fn firmware_attempt(f: FirmwareReadbacks) -> String {
+  match f {
+    FirmwareReadBeforeActuation { attempt: a, source: _, rows: rs } => if count(rs) == 5 && any(rs, r => (r.component as String) == "APP" && (r.version as String) == "0.32 01112100") { a as String } else { "wrong rows" }
+    FirmwareReadbacksNotRecorded { reason: _ } => "not recorded"
   }
-  let unread = attempt_configuration_with_pre_power(c: admitted_configuration(), firmware: PrePowerFirmwareUnread { reason: "hpm check was not read: timeout" })
-  let unread_ok = match unread.firmware {
-    FirmwareReadbacksNotRecorded { reason: r } => string_contains(s: r as String, pattern: "timeout")
+}
+
+// B'S READING JOINS B'S CONFIGURATION; A'S OTHERWISE VALID READING IS REFUSED FOR B, NOT RELABELLED; AN
+// UNREAD TABLE STAYS NOT RECORDED.
+test fn a_firmware_reading_joins_only_the_attempt_it_was_taken_for() -> Bool {
+  let b = admitted_configuration()
+  let same = attempt_configuration_with_pre_power(c: b, firmware: observed_for(attempt: "n42"))
+  let other = attempt_configuration_with_pre_power(c: b, firmware: observed_for(attempt: "n41"))
+  let unread = attempt_configuration_with_pre_power(c: b, firmware: PrePowerFirmwareUnread { reason: "hpm check was not read: timeout" })
+  let other_refused = match other.firmware {
+    FirmwareReadbacksNotRecorded { reason: r } => string_contains(s: r as String, pattern: "taken for attempt n41") && string_contains(s: r as String, pattern: "refused, not relabelled")
     FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => false
   }
-  read_ok && unread_ok}
+  firmware_attempt(f: same.firmware) == "n42" && other_refused && firmware_attempt(f: unread.firmware) == "not recorded"
+}

@@ -902,18 +902,65 @@ fn cas_store_failure_text(cause: CasStoreFailure) -> String {
   }
 }
 
-// ── THE PRE-POWER READ, joined to the frozen configuration ──────────────────────────────────────
-// Taken after admission and before actuation, so it belongs to the attempt admission bound.
+// ── THE PRE-POWER READ, bound to its attempt where it is taken ───────────────────────────────────
+// A reading is the attempt's only if the read was taken FOR that attempt: the production read mints a
+// PrePowerFirmwareReading from the attempt's BootAttemptClearance, and the join keeps that identity and
+// refuses a configuration of any other attempt or host. Nothing re-labels a reading.
+
+// THE TABLE'S ACTIVE CELLS, AS RENDERED (the auxiliary bytes have no public decode here). A pure
+// classifier: it carries no attempt and no observed standing, so it cannot enter a configuration.
+type HpmFirmwareProjection
+  = HpmFirmwareRows { rows: List<FirmwareReadbackRow> }
+  | HpmFirmwareUnreadable { reason: NonEmptyStr }
+
+fn hpm_firmware_projection(table: HpmCheckTable) -> HpmFirmwareProjection {
+  match table {
+    HpmCheckRead { rows: rs } => HpmFirmwareRows { rows: map(rs, r => FirmwareReadbackRow { component: r.name, version: hpm_version_cell_text(c: r.active) as NonEmptyStr }) }
+    HpmCheckUpgradeVariant { header: h } => HpmFirmwareUnreadable { reason: concat("hpm check printed the upgrade-progress table, not the component properties: ", h as String) as NonEmptyStr }
+    HpmCheckUnreadable { detail: d } => HpmFirmwareUnreadable { reason: concat("hpm check output is unreadable: ", d as String) as NonEmptyStr }
+  }
+}
+
+type PrePowerFirmwareReading sole_constructor {
+  host: HostIdentity
+  attempt: NonEmptyStr
+  source: NonEmptyStr
+  rows: List<FirmwareReadbackRow>
+}
+
 type PrePowerFirmware
-  = PrePowerFirmwareRead { source: NonEmptyStr, rows: List<FirmwareReadbackRow> }
+  = PrePowerFirmwareRead { reading: PrePowerFirmwareReading }
   | PrePowerFirmwareUnread { reason: NonEmptyStr }
 
-// THE ACTIVE CELL OF EVERY COMPONENT, AS RENDERED: the auxiliary bytes have no public decode here.
-fn pre_power_firmware_of_hpm_check(table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware {
-  match table {
-    HpmCheckRead { rows: rs } => PrePowerFirmwareRead { source: source, rows: map(rs, r => FirmwareReadbackRow { component: r.name, version: hpm_version_cell_text(c: r.active) as NonEmptyStr }) }
-    HpmCheckUpgradeVariant { header: h } => PrePowerFirmwareUnread { reason: concat("hpm check printed the upgrade-progress table, not the component properties: ", h as String) as NonEmptyStr }
-    HpmCheckUnreadable { detail: d } => PrePowerFirmwareUnread { reason: concat("hpm check output is unreadable: ", d as String) as NonEmptyStr }
+// THE ATTEMPT A CLEARANCE ADMITTED: the receipt's attempt (the dispatch nonce) when one was admitted,
+// otherwise the run's own identity. attempt_configuration_receipt labels the configuration the same way.
+fn cleared_attempt(clearance: BootAttemptClearance, run_attempt: NonEmptyStr) -> NonEmptyStr {
+  match clearance.source {
+    ConfigurationReceiptNotNamed => run_attempt
+    ConfigurationReceiptAdmitted { receipt: r, slot: _ } => r.plan.attempt
+  }
+}
+
+// THE PRODUCTION READ'S BINDING: the reading belongs to the host and attempt the clearance admitted.
+fn pre_power_firmware_observed(clearance: BootAttemptClearance, run_attempt: NonEmptyStr, table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle", decl_name: "mtcollins1_boot_hpm_check"),
+  ]
+{
+  pre_power_firmware_minted(host: clearance.host, attempt: cleared_attempt(clearance: clearance, run_attempt: run_attempt), table: table, source: source)
+}
+
+// THE ONE MINT OF A READING, reachable only from the production binding above and from the witness
+// that exercises the join's cross-attempt refusal.
+fn pre_power_firmware_minted(host: HostIdentity, attempt: NonEmptyStr, table: HpmCheckTable, source: NonEmptyStr) -> PrePowerFirmware
+  admit_callers: [
+    decl_ref(module_path: "gunbc.host_boot_attempt_admission", decl_name: "pre_power_firmware_observed"),
+    decl_ref(module_path: "test.claim.host_boot_attempt_admission_witness", decl_name: "observed_for"),
+  ]
+{
+  match hpm_firmware_projection(table: table) {
+    HpmFirmwareUnreadable { reason: r } => PrePowerFirmwareUnread { reason: r }
+    HpmFirmwareRows { rows: rs } => PrePowerFirmwareRead { reading: PrePowerFirmwareReading { host: host, attempt: attempt, source: source, rows: rs } }
   }
 }
 
@@ -927,8 +974,13 @@ fn attempt_configuration_with_pre_power(c: AttemptConfigurationReceipt, firmware
     cpus: c.cpus,
     dimms: c.dimms,
     firmware: match firmware {
-      PrePowerFirmwareRead { source: src, rows: rs } => FirmwareReadBeforeActuation { attempt: c.attempt, source: src, rows: rs }
       PrePowerFirmwareUnread { reason: r } => FirmwareReadbacksNotRecorded { reason: r }
+      PrePowerFirmwareRead { reading: r } =>
+        if (r.attempt as String) == (c.attempt as String) && (r.host as String) == (c.subject as String) {
+          FirmwareReadBeforeActuation { attempt: r.attempt, source: r.source, rows: r.rows }
+        } else {
+          FirmwareReadbacksNotRecorded { reason: join(["a firmware reading taken for attempt ", r.attempt as String, " on ", r.host as String, " is not this attempt's (", c.attempt as String, " on ", c.subject as String, "); it was refused, not relabelled"], "") as NonEmptyStr }
+        }
     },
   }
 }

@@ -88,7 +88,7 @@ import gunbc.managed_host {
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerObservation, chassis_observation_text }
 import gunbc.host_boot_attempt_admission {
-  BootAttemptCleared, BootAttemptRefused, admit_boot_attempt, attempt_configuration_receipt,
+  BootAttemptCleared, BootAttemptRefused, BootAttemptClearance, admit_boot_attempt, attempt_configuration_receipt,
   attempt_configuration_with_pre_power, PrePowerFirmwareUnread,
   attempt_configuration_not_recorded, attempt_configuration_refused, attempt_receipt_refusal_text,
 }
@@ -2511,7 +2511,7 @@ fn mtcollins1_boot_under_live_unit_hold(
           }
         }
         BootAttemptCleared { clearance: clearance } => {
-          let configuration = mtcollins1_boot_pre_power(configuration: attempt_configuration_receipt(clearance: clearance, attempt: run_id), password_file: password_file)
+          let configuration = mtcollins1_boot_pre_power(configuration: attempt_configuration_receipt(clearance: clearance, attempt: run_id), clearance: clearance, run_attempt: run_id, password_file: password_file)
           let taken = baseline()
           let actuation = mtcollins1_boot_actuate_held(proof: p, subject: subject, password_file: password_file, run_id: run_id, sol_pid_path: sol_pid_path, sol_capture_path: sol_capture_path, resolve_toolchain: resolve_toolchain)
           MtCollins1HeldBoot { actuation: actuation, configuration: configuration, baseline: taken }
@@ -2522,14 +2522,14 @@ fn mtcollins1_boot_under_live_unit_hold(
 
 // THE PRE-POWER READ, AFTER ADMISSION AND BEFORE ANY WRITE: the firmware each component runs (hpm
 // check), joined to the frozen configuration by gunbc.host_boot_attempt_admission.
-fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, password_file: String) -> AttemptConfigurationReceipt {
+fn mtcollins1_boot_pre_power(configuration: AttemptConfigurationReceipt, clearance: BootAttemptClearance, run_attempt: NonEmptyStr, password_file: String) -> AttemptConfigurationReceipt {
   match mtcollins1_bmc_username {
     Absent => attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "mtcollins1's BMC is not BmcSecured, so no account is modeled to read it with" })
     Present { value: user } =>
       if password_file == "" {
         attempt_configuration_with_pre_power(c: configuration, firmware: PrePowerFirmwareUnread { reason: "no BMC credential path is bound" })
       } else {
-        attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr))
+        attempt_configuration_with_pre_power(c: configuration, firmware: mtcollins1_boot_hpm_check(username: user, password_file: password_file as NonEmptyStr, clearance: clearance, run_attempt: run_attempt))
       }
   }
 }
