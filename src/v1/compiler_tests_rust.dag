@@ -1826,6 +1826,34 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
   )
 }
 
+// The referencing-module arm admits only a bare spelling: a qualified reference to another module's
+// declaration, arriving unstamped, is not decided by the referencing module's own same-leaf one.
+fn ct_qualified_reference_is_not_decided_by_the_local_declarer_test() -> String {
+  concat(
+    "    // A QUALIFIED REFERENCE IS NOT DECIDED BY THE LOCAL DECLARER. hom.local declares its own Slot\n",
+    "    // and ALSO names no.such.module.Slot, which resolve cannot bind, so the reference reaches the\n",
+    "    // emitter unstamped while two modules declare Slot. The referencing-module arm\n",
+    "    // (v1.compiler.infer_emit_info type_decl_referencing_module_declarer) would pick the LOCAL Slot:\n",
+    "    // the wrong-declarer class itself. It is admitted only for a bare spelling, so this refuses.\n",
+    "    // THE CONTROL is the same module without the second declarer: the spelling names a sole\n",
+    "    // declarer, and nothing refuses.\n",
+    "    #[test]\n",
+    "    fn qualified_reference_is_not_decided_by_the_local_declarer() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let wide = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_qualified/wide.dag\".to_string(), content: \"module hom.wide\\n\\ntype Inner<C> {\\n  value: C\\n}\\n\\ntype Slot<A, B> {\\n  first: Inner<A>\\n  second: Inner<B>\\n}\\n\".to_string() });\n",
+    "        let local = || std::rc::Rc::new(SourceFile { path: \"fixtures/same_leaf_qualified/local.dag\".to_string(), content: \"module hom.local\\n\\ntype Slot<T> {\\n  held: T\\n}\\n\\ntype Odd<K> {\\n  slot: no.such.module.Slot<K>\\n}\\n\".to_string() });\n",
+    "        let emitted = |sources: Vec<std::rc::Rc<SourceFile>>| -> String {\n",
+    "            let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "            result.files.iter().find(|f| f.path.contains(\"hom_local\")).map(|f| f.content.clone()).unwrap_or_default()\n",
+    "        };\n",
+    "        let red = emitted(vec![wide(), local()]);\n",
+    "        assert!(red.contains(\"compile_error!\") && red.contains(\"item 'Odd' references type 'Slot', which more than one module of this closure declares\"), \"a qualified unstamped reference must refuse, not take the local Slot:\\n\{red}\");\n",
+    "        let control = emitted(vec![local()]);\n",
+    "        assert!(control.contains(\"pub struct Odd<K: Clone>\") && !control.contains(\"more than one module of this closure declares\"), \"a sole declarer resolves by spelling:\\n\{control}\");\n",
+    "    }\n\n"
+  )
+}
+
 // Cause 3's refusal: one header may bind a type-parameter name once, because a binder's identity is
 // (owner, name). The Rust it renders says what the row discriminates.
 fn ct_duplicate_type_parameter_refuses_test() -> String {
@@ -1980,6 +2008,7 @@ fn ct_coercion_tests() -> String {
     ct_declaration_field_reference_identity_test(),
     ct_same_leaf_type_declarations_emit_by_identity_test(),
     ct_unbound_reference_to_a_twice_declared_leaf_refuses_test(),
+    ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }

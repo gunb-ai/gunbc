@@ -285,10 +285,11 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
       match by_span {
         Present { value: identity } => TypeDeclRoutedResolution { route: RouteDeclaringSpan, resolution: type_decl_resolution_at_identity(index: index, identity: identity) }
         Absent =>
-          let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: type_expr))
+          let authored = authored_name_at(source_indices: source_indices, node: type_expr)
+          let leaf = qualified_last_segment(name: authored)
           let by_spelling = resolve_type_decl_leaf(index: index, leaf: leaf)
           let referencing_module_identity = match by_spelling {
-            TypeDeclLeafAmbiguous { leaf: l } => type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr)
+            TypeDeclLeafAmbiguous { leaf: l } => if authored == l { type_decl_referencing_module_declarer(index: index, leaf: l, reference: type_expr) } else { none }
             TypeDeclResolved { identity: _, decl: _ } => none
             TypeDeclKernelSpellingUndecided { leaf: _ } => none
             TypeDeclNotDeclared => none
@@ -304,7 +305,10 @@ fn resolve_type_decl_routed(index: TypeDeclIndex, type_expr: Node, source_indice
 // THE REFERENCING MODULE'S OWN DECLARATION. A leaf two modules declare is still decided when the
 // reference is authored in a module that declares it: a module's own declaration is the binding its
 // scope gives that name, since a module cannot also import a second declaration of a leaf it
-// declares. The arm answers only when exactly one declarer of the leaf sits in the reference's file;
+// declares. That holds only for a BARE spelling: a qualified reference (other.module.Slot) names
+// another module's declaration, so when it arrives unstamped it is not decided by the local one and
+// stays LeafAmbiguous (resolve_type_decl_routed admits this arm only when the authored name equals
+// its leaf). The arm answers only when exactly one declarer of the leaf sits in the reference's file;
 // otherwise the reference stays LeafAmbiguous and refuses. Counted under its own route label
 // (referencing_module_declarer) in v1.tests.claim.carrier_realization_census emitter_decl_route.
 // WHY THE STAMP DOES NOT REACH THESE. A bare reference resolves (v1.compiler.infer_resolve
