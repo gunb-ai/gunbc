@@ -28,6 +28,7 @@ import gunbc.fabric_storage_placement { FabricStorageOwnershipMarkerSpec, Fabric
 import extdeps.access.posix { file_mode_octal }
 import extdeps.shell
 import std.algebra { trim }
+import std.list { distinct_by_key }
 import std.types { FilePath }
 import gunbc.live_deploy.desired { DesiredDeployment, desired_deployment_roster, prod_role_actuated_realization, selected_deployment_spec, bind_desired_selected_identity, DesiredSelectedIdentityBound, DesiredSelectedIdentityUnknownInstance, DesiredSelectedIdentityRosterRefused, DesiredSelectedIdentityMismatch, instance_id_text }
 import gunbc.live_deploy.member_observe {
@@ -143,11 +144,11 @@ fn member_eq(a: RoleSingletonMember, b: RoleSingletonMember) -> Bool {
 }
 
 fn distinct_ids(ids: List<DeploymentId>) -> List<DeploymentId> {
-  fold(ids, init: [], f: (acc, d) => if any(acc, a => a == d) { acc } else { concat(acc, [d]) })
+  distinct_by_key(xs: ids, key: d => d.name as String)
 }
 
 fn distinct_hosts(hosts: List<NonEmptyStr>) -> List<NonEmptyStr> {
-  fold(hosts, init: [], f: (acc, h) => if any(acc, a => (a as String) == (h as String)) { acc } else { concat(acc, [h]) })
+  distinct_by_key(xs: hosts, key: h => h as String)
 }
 
 fn deployment_sightings(readings: List<HostRoleSingletonReading>) -> List<RoleSingletonSighting> {
@@ -458,13 +459,29 @@ fn presence_cause(p: EntryPresence) -> String? {
 // fabric_storage_ownership_marker_spec). Only an exact match is the marker; any differing field is a
 // distinct sighting the adjudication refuses, and a field that cannot be read makes the host
 // unobservable rather than reading as either.
-fn stat_leg(arm: ObservationArm, path: String, format: String, leg: String) -> Leg {
+// WHICH STAT FIELD A LEG READS, as a closed choice: each arm names its own shell.Stat operation and its
+// own format, so there is no string to mistype and no arm that a wrong value falls through to.
+type MarkerStatField = MarkerStatMode | MarkerStatOwner | MarkerStatGroup
+
+fn marker_stat_format(field: MarkerStatField) -> String {
+  match field {
+    MarkerStatMode => "%a"
+    MarkerStatOwner => "%U"
+    MarkerStatGroup => "%G"
+  }
+}
+
+fn stat_leg(arm: ObservationArm, path: String, field: MarkerStatField, leg: String) -> Leg {
   match arm {
     OnTheHostItself => {
-      let r = if format == "%a" { shell.Stat.ModeOf(path: path as FilePath) } else if format == "%U" { shell.Stat.OwnerOf(path: path as FilePath) } else { shell.Stat.GroupOf(path: path as FilePath) }
+      let r = match field {
+        MarkerStatMode => shell.Stat.ModeOf(path: path as FilePath)
+        MarkerStatOwner => shell.Stat.OwnerOf(path: path as FilePath)
+        MarkerStatGroup => shell.Stat.GroupOf(path: path as FilePath)
+      }
       if r.success { LegOut { stdout: r.stdout } } else { LegRefused { cause: join([leg, " failed: ", r.stderr], "") } }
     }
-    OverTransport { transport } => remote_leg(transport: transport, argv: ["stat", "-c", format, "--", path], leg: leg)
+    OverTransport { transport } => remote_leg(transport: transport, argv: ["stat", "-c", marker_stat_format(field: field), "--", path], leg: leg)
   }
 }
 
@@ -475,11 +492,11 @@ type MarkerRead
 fn read_marker(arm: ObservationArm, path: NonEmptyStr) -> MarkerRead {
   match unit_document_leg(arm: arm, path: path as String) {
     LegRefused { cause } => MarkerReadRefused { cause: cause }
-    LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, format: "%a", leg: "reading the marker's mode") {
+    LegOut { stdout: content } => match stat_leg(arm: arm, path: path as String, field: MarkerStatMode, leg: "reading the marker's mode") {
       LegRefused { cause } => MarkerReadRefused { cause: cause }
-      LegOut { stdout: mode } => match stat_leg(arm: arm, path: path as String, format: "%U", leg: "reading the marker's owner") {
+      LegOut { stdout: mode } => match stat_leg(arm: arm, path: path as String, field: MarkerStatOwner, leg: "reading the marker's owner") {
         LegRefused { cause } => MarkerReadRefused { cause: cause }
-        LegOut { stdout: owner } => match stat_leg(arm: arm, path: path as String, format: "%G", leg: "reading the marker's group") {
+        LegOut { stdout: owner } => match stat_leg(arm: arm, path: path as String, field: MarkerStatGroup, leg: "reading the marker's group") {
           LegRefused { cause } => MarkerReadRefused { cause: cause }
           LegOut { stdout: group } => MarkerReadBack { reading: FabricStorageMarkerReading { path: path, content: content, mode: trim(s: mode), owner: owner, group: group } }
         }
