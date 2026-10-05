@@ -283,3 +283,11 @@ and lower lips so the separate socket's through-bolt hardware can pass. CAD chec
 a 10 mm diameter, 6 mm deep underside hardware envelope against both rear shoes.
 The four residential-joinery witnesses still pass. The new batch prints upper posts
 inverted and pins head-down; build-plate-only supports avoid the enclosed post bores.
+
+Printer-02's preparation receipt is `artifacts/printing/rear-posts-2026-10-05/`.
+The local pinned-slicer workflow produced one ten-object plate, and the preparation
+readback checked its checksum, material/machine settings, rigid transforms, complete
+membership, deposited XY bounds and support attribution. This receipt is a manually
+invoked preparation result. CAD kernel checks and sliced-toolpath readback are not
+yet mandatory gates in the printer-start workflow; BATCH-3 must bind them to the
+source/process/project before the start route can enforce that preparation evidence.
