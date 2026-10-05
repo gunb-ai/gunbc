@@ -10,6 +10,7 @@ import gunbc.runner_registration_labels {
 }
 import product.host_identity { HostIdentity }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
