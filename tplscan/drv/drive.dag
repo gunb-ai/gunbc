@@ -8,7 +8,7 @@ import v2.extdeps.languages.dag { dag_grammar_root, dag_language_model }
 import v2.std.node { content_hash }
 import v2.std.diagnostic { Accepted, Rejected }
 import std.process { ProcessExit, ExitFailure }
-data tplscan_paths: List<String> = [
+data tplscan_paths_0: List<String> = [
   "dag/extdeps/bmc/http.dag",
   "dag/extdeps/bmc/ipmi.dag",
   "dag/extdeps/bmc/megarac.dag",
@@ -20,7 +20,14 @@ data tplscan_paths: List<String> = [
   "dag/extdeps/crypto/hash.dag",
   "dag/extdeps/entropy/entropy.dag",
   "dag/extdeps/ethtool/ethtool.dag",
-  "dag/extdeps/filesystem/filesystem_io.dag",
+  "dag/extdeps/filesystem/filesystem_io.dag"
+]
+
+fn run0() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_0)) }
+}
+
+data tplscan_paths_1: List<String> = [
   "dag/extdeps/filesystem/filesystem_rust_realization.dag",
   "dag/extdeps/git/git.dag",
   "dag/extdeps/github/actions_runs.dag",
@@ -32,7 +39,14 @@ data tplscan_paths: List<String> = [
   "dag/extdeps/git/inspect.dag",
   "dag/extdeps/git/plumbing.dag",
   "dag/extdeps/git/publication_transport.dag",
-  "dag/extdeps/go/go.dag",
+  "dag/extdeps/go/go.dag"
+]
+
+fn run1() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_1)) }
+}
+
+data tplscan_paths_2: List<String> = [
   "dag/extdeps/gunbc/gunbc.dag",
   "dag/extdeps/http/client.dag",
   "dag/extdeps/iproute2/ip_address.dag",
@@ -44,7 +58,14 @@ data tplscan_paths: List<String> = [
   "dag/extdeps/llm/codex_app_server.dag",
   "dag/extdeps/node/node.dag",
   "dag/extdeps/package_managers/apt.dag",
-  "dag/extdeps/package_managers/dpkg.dag",
+  "dag/extdeps/package_managers/dpkg.dag"
+]
+
+fn run2() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_2)) }
+}
+
+data tplscan_paths_3: List<String> = [
   "dag/extdeps/posix/signal.dag",
   "dag/extdeps/python/python.dag",
   "dag/extdeps/rust/cargo_build.dag",
@@ -56,7 +77,14 @@ data tplscan_paths: List<String> = [
   "dag/extdeps/sudo/nopasswd_execute_probe_check_op.dag",
   "dag/extdeps/systemd/journalctl.dag",
   "dag/extdeps/systemd/systemctl.dag",
-  "dag/extdeps/systemd/systemd_run.dag",
+  "dag/extdeps/systemd/systemd_run.dag"
+]
+
+fn run3() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_3)) }
+}
+
+data tplscan_paths_4: List<String> = [
   "dag/extdeps/test/http_pilot.dag",
   "dag/extdeps/tmux/tmux.dag",
   "dag/extdeps/tools/coreutils_stat.dag",
@@ -68,7 +96,14 @@ data tplscan_paths: List<String> = [
   "dag/extdeps/tools/openssl.dag",
   "dag/extdeps/tools/rustfmt.dag",
   "dag/extdeps/tools/sed.dag",
-  "dag/extdeps/tools/sha256sum.dag",
+  "dag/extdeps/tools/sha256sum.dag"
+]
+
+fn run4() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_4)) }
+}
+
+data tplscan_paths_5: List<String> = [
   "dag/extdeps/tools/sha512sum.dag",
   "dag/extdeps/tools/sleep.dag",
   "dag/extdeps/tools/stat.dag",
@@ -80,7 +115,14 @@ data tplscan_paths: List<String> = [
   "dag/gunbc/cli_services.dag",
   "dag/gunbc/instruments/emit_host_fixtures.dag",
   "dag/gunbc/instruments/module_impact_query_front_door.dag",
-  "dag/gunbc/machine_intake/sol_hold.dag",
+  "dag/gunbc/machine_intake/sol_hold.dag"
+]
+
+fn run5() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_5)) }
+}
+
+data tplscan_paths_6: List<String> = [
   "dag/gunbc/owned_process.dag",
   "dag/gunbc/product/altra_motherboard/placement.dag",
   "dag/gunbc/product/spatial_dimension.dag",
@@ -92,7 +134,14 @@ data tplscan_paths: List<String> = [
   "dag/test/claim/bmc/bmc_onboarding_quarantine_witness_test.dag",
   "dag/test/claim/dag_line_comment_annotation_channel_test.dag",
   "dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag",
-  "dag/test/claim/roadmap/roadmap_belt_witness_test.dag",
+  "dag/test/claim/roadmap/roadmap_belt_witness_test.dag"
+]
+
+fn run6() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_6)) }
+}
+
+data tplscan_paths_7: List<String> = [
   "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag",
   "dag/test/fixture/argv_executable_position_probe.dag",
   "fixtures/atomic_materialization/subject.dag",
@@ -100,12 +149,13 @@ data tplscan_paths: List<String> = [
   "src/v1/02_parse.dag",
   "src/v2/lens/grounding.dag"
 ]
-fn run() -> ProcessExit {
-  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_text()) }
+
+fn run7() -> ProcessExit {
+  ExitFailure { code: 1, reason: concat("TPLSCAN\n", run_paths(paths: tplscan_paths_7)) }
 }
 
-fn run_text() -> String {
-  fold_list(xs: tplscan_paths, empty: "", cons: fn(acc, p) {
+fn run_paths(paths: List<String>) -> String {
+  fold_list(xs: paths, empty: "", cons: fn(acc, p) {
     let v = match grammar_coverage_ingest_path(path: p) {
       ParsedClean => "ACCEPTED"
       ParseRejected { stage: s, reason: r } => concat("REFUSED ", concat(s, concat(" ", symbol_lexeme(sym: r))))
