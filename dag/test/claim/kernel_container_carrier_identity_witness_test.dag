@@ -50,38 +50,38 @@ fn carrier_refused(o: MultiModuleCompileFixtureOutcome) -> Bool {
 
 data kc_prelude: String = "module kc.entry\nimport std.algebra { FreeMonoid, Empty, Cons }\nfn kc_take(xs: List<Int>) -> Int { 0 }\n"
 
-test fn kc_empty_record_literal_is_a_list_value() -> Bool {
+test fn kc_empty_record_literal_is_a_list_value() -> Bool  {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Empty {}) }\n")))
 }
 
-test fn kc_cons_record_literal_is_a_list_value() -> Bool {
+test fn kc_cons_record_literal_is_a_list_value() -> Bool  {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Cons { head: 1, tail: Empty {} }) }\n")))
 }
 
 // THE MISFIRE CONTROL (63a4308): a bare `Empty` produces the unapplied List<element> container,
 // a container-vs-container question the carrier verdict must not answer.
-test fn kc_bare_empty_is_a_list_value() -> Bool {
+test fn kc_bare_empty_is_a_list_value() -> Bool  {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "fn kc_use() -> Int { kc_take(xs: Empty) }\n")))
 }
 
-test fn kc_local_alias_of_the_carrier_admits_its_constructor() -> Bool {
+test fn kc_local_alias_of_the_carrier_admits_its_constructor() -> Bool  {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcAlias<T> = FreeMonoid<T>\nfn kc_take_alias(xs: KcAlias<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take_alias(xs: Empty {}) }\n")))
 }
 
-test fn kc_list_field_admits_the_carrier_constructor() -> Bool {
+test fn kc_list_field_admits_the_carrier_constructor() -> Bool  {
   carrier_accepted(o: carrier_run(entry_source: concat(kc_prelude, "type KcHolder { xs: List<Int> }\nfn kc_use() -> KcHolder { KcHolder { xs: Empty {} } }\n")))
 }
 
 // RED: a module's own declaration spelled FreeMonoid is a different declaration.
-test fn kc_own_freemonoid_record_is_not_a_list_value() -> Bool {
+test fn kc_own_freemonoid_record_is_not_a_list_value() -> Bool  {
   carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype FreeMonoid<T> { items: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: FreeMonoid { items: 1 }) }\n"))
 }
 
-test fn kc_own_freemonoid_through_a_local_is_not_a_list_value() -> Bool {
+test fn kc_own_freemonoid_through_a_local_is_not_a_list_value() -> Bool  {
   carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype FreeMonoid<T> { items: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int {\n  let v = FreeMonoid { items: 1 }\n  kc_take(xs: v)\n}\n"))
 }
 
 // RED: an unrelated record at List<Int>.
-test fn kc_unrelated_record_is_not_a_list_value() -> Bool {
+test fn kc_unrelated_record_is_not_a_list_value() -> Bool  {
   carrier_refused(o: carrier_run(entry_source: "module kc.entry\ntype KcPoint { x: Int }\nfn kc_take(xs: List<Int>) -> Int { 0 }\nfn kc_use() -> Int { kc_take(xs: KcPoint { x: 1 }) }\n"))
 }

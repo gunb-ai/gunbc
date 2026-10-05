@@ -38,19 +38,19 @@ fn krs_prelude() -> String {
   "import std.types { Int, String, string_non_empty }\n\ntype KrsNonEmpty = String where string_non_empty\n\ntype KrsSemi {\n  head: Int\n  tail: List<Int>\n}\n\nfn take_semi(s: KrsSemi) -> Int {\n  s.head\n}\n\nfn take_s(s: String) -> String {\n  s\n}\n\n"
 }
 
-test fn a_kernel_refinement_at_a_record_parameter_must_refuse() -> Bool {
+test fn a_kernel_refinement_at_a_record_parameter_must_refuse() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.refined\n\n", krs_prelude(), "fn probe() -> Int {\n  take_semi(s: \"ab\" as KrsNonEmpty)\n}\n")
   ) >= 1
 }
 
-test fn the_bare_kernel_at_a_record_parameter_still_refuses() -> Bool {
+test fn the_bare_kernel_at_a_record_parameter_still_refuses() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.bare\n\n", krs_prelude(), "fn probe() -> Int {\n  take_semi(s: \"ab\")\n}\n")
   ) >= 1
 }
 
-test fn a_kernel_refinement_at_its_base_parameter_still_compiles() -> Bool {
+test fn a_kernel_refinement_at_its_base_parameter_still_compiles() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.base\n\n", krs_prelude(), "fn probe() -> String {\n  take_s(s: \"ab\" as KrsNonEmpty)\n}\n")
   ) == 0
@@ -66,25 +66,25 @@ fn krs_text_prelude() -> String {
   "import std.types { Int, NonEmptyStr }\nimport std.algebra { Empty, FreeSemigroup }\nimport v2.std.text { String, string_replace }\n\nfn take_ne(s: NonEmptyStr) -> Int {\n  1\n}\n\n"
 }
 
-test fn a_cast_nonempty_needle_at_string_replace_must_refuse() -> Bool {
+test fn a_cast_nonempty_needle_at_string_replace_must_refuse() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.real_cast\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: \"{ x }\" as NonEmptyStr, replacement: Empty)\n}\n")
   ) >= 1
 }
 
-test fn a_plain_literal_needle_at_string_replace_still_refuses() -> Bool {
+test fn a_plain_literal_needle_at_string_replace_still_refuses() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.real_plain\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: \"{ x }\", replacement: Empty)\n}\n")
   ) >= 1
 }
 
-test fn a_structural_needle_at_string_replace_still_compiles() -> Bool {
+test fn a_structural_needle_at_string_replace_still_compiles() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.real_structural\n\n", krs_text_prelude(), "fn probe() -> String {\n  string_replace(source: Empty, needle: FreeSemigroup { head: 1, tail: Empty }, replacement: Empty)\n}\n")
   ) == 0
 }
 
-test fn a_kernel_refinement_at_its_own_refinement_parameter_still_compiles() -> Bool {
+test fn a_kernel_refinement_at_its_own_refinement_parameter_still_compiles() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: concat("module krs.ne_at_ne\n\n", krs_text_prelude(), "fn probe() -> Int {\n  take_ne(s: \"ab\" as NonEmptyStr)\n}\n")
   ) == 0
@@ -96,7 +96,7 @@ test fn a_kernel_refinement_at_its_own_refinement_parameter_still_compiles() -> 
 // NonEmptyStr }` at an Optional<NonEmptyStr> field) with expected Coproduct(Optional), got
 // Product(NonEmptyStr). The peel decides the produced NAME only; the structure guard stays on the
 // produced node itself.
-test fn a_present_refinement_at_an_optional_refinement_field_still_compiles() -> Bool {
+test fn a_present_refinement_at_an_optional_refinement_field_still_compiles() -> Bool  {
   krs_not_inhabited_blocking_count(
     source: "module krs.optional_field\n\nimport std.types { NonEmptyStr, String }\n\ntype KrsStep {\n  command: Optional<NonEmptyStr>\n}\n\ndata krs_cmd: String = \"git clone\"\n\ndata krs_step: KrsStep = KrsStep { command: Present { value: krs_cmd as NonEmptyStr } }\n"
   ) == 0

@@ -18,6 +18,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data legacy_test_behavior_acceptance_dissolution_note: String = "DISSOLVES BY GREENING, never deletion. When the last discovered legacy behavior receives an admitted disposition, this witness becomes green and its QuarantineProbeExpectRed exclusion and known-red probe rows must be removed in the same change. The witness then joins ordinary DiscoverySelection as the permanent regression wall."
 
-test fn legacy_test_behavior_unclassified_frontier_is_zero() -> Bool {
+test fn legacy_test_behavior_unclassified_frontier_is_zero() -> Bool  {
   legacy_test_behavior_closing_contract_holds()
 }

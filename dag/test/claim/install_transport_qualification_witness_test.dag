@@ -80,7 +80,7 @@ data absence_beside_unprobed: List<TransportProbeObservation> = [
 // the answer is owed, not no. Reading the four silences as absences is the
 // defect that made the solver refuse a host whose sibling installs over exactly
 // this transport.
-test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
+test fn unprobed_requirements_are_unestablished_not_refused() -> Bool  {
   match srv3_configfs_reinstall_path_standing {
     ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 4
     ReinstallPathRefused { observed_absent: _ } => false
@@ -91,7 +91,7 @@ test fn unprobed_requirements_are_unestablished_not_refused() -> Bool {
 // The missing set is the exact four nobody ran, not a count that happens to be
 // four. A standing that named the wrong requirements would send someone to run
 // probes that were already done.
-test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
+test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool  {
   match transport_requirement_standing(
     observations: srv3_configfs_transport_observations,
     requirement: MassStorageFunctionAvailable,
@@ -124,7 +124,7 @@ test fn the_missing_probes_are_the_four_that_were_never_run() -> Bool {
 
 // The four that WERE run report present, so Unestablished above is not the
 // function ignoring its input.
-test fn the_four_observed_requirements_report_present() -> Bool {
+test fn the_four_observed_requirements_report_present() -> Bool  {
   match transport_requirement_standing(
     observations: srv3_configfs_transport_observations,
     requirement: ConfigfsMounted,
@@ -158,7 +158,7 @@ test fn the_four_observed_requirements_report_present() -> Bool {
 // POSITIVE CONTROL: Unestablished is reachable-out-of. With every requirement
 // observed present the standing is Established, so the srv3 verdict is a
 // function of its evidence rather than a constant.
-test fn a_fully_probed_transport_is_established() -> Bool {
+test fn a_fully_probed_transport_is_established() -> Bool  {
   match configfs_reinstall_path_standing(observations: every_requirement_present) {
     ReinstallPathEstablished { qualified_by: q } => list_length(items: q) == 8
     _ => false
@@ -168,7 +168,7 @@ test fn a_fully_probed_transport_is_established() -> Bool {
 // ABSENCE OUTRANKS IGNORANCE, and this is the arm that distinguishes the two
 // negative states. One requirement observed ABSENT with the other seven present
 // is REFUSED, not Unestablished: no remaining probe can change it.
-test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Bool {
+test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Bool  {
   match configfs_reinstall_path_standing(observations: one_requirement_absent) {
     ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
     ReinstallPathUnestablished { missing_probes: _ } => false
@@ -179,7 +179,7 @@ test fn one_observed_absence_refuses_rather_than_asking_for_more_probes() -> Boo
 // The same rule under partial evidence: an absence alongside unprobed axes still
 // refuses. Answering Unestablished here would hide a decided no behind a request
 // for probes that cannot overturn it.
-test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool {
+test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool  {
   match configfs_reinstall_path_standing(observations: absence_beside_unprobed) {
     ReinstallPathRefused { observed_absent: a } => list_length(items: a) == 1
     _ => false
@@ -189,7 +189,7 @@ test fn an_absence_beside_unprobed_axes_still_refuses() -> Bool {
 // EMPTY EVIDENCE IS NOT A VERDICT. With nothing probed at all the standing owes
 // all eight, and specifically is not Refused — the shape of the original defect,
 // where knowing nothing produced a no.
-test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
+test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool  {
   match configfs_reinstall_path_standing(observations: []) {
     ReinstallPathUnestablished { missing_probes: m } => list_length(items: m) == 8
     _ => false
@@ -204,7 +204,7 @@ test fn no_observations_owes_every_probe_and_refuses_nothing() -> Bool {
 // executes is the half a producer exists for — the reinstall path derived from
 // srv3's probe population stays unestablished (the "running" half was a literal
 // constructed here, which decides nothing and is not asserted).
-test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool {
+test fn a_running_host_can_have_an_unestablished_reinstall_path() -> Bool  {
   match srv3_configfs_reinstall_path_standing {
     ReinstallPathUnestablished { missing_probes: _ } => true
     _ => false

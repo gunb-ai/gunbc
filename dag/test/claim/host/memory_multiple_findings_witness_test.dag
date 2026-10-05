@@ -86,7 +86,7 @@ fn multiple_test_satisfies(a: MemoryConfigurationAssessment, obligation: MemoryO
 // A reported byte must match the same transcript token that admits the finding.
 // The second capture has Samsung at the mismatch coordinate, independently of
 // the first capture's Hynix package observation.
-test fn w_actual_byte_must_match_cited_capture() -> Bool {
+test fn w_actual_byte_must_match_cited_capture() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -102,7 +102,7 @@ test fn w_actual_byte_must_match_cited_capture() -> Bool {
   }
 }
 
-test fn w_both_observations_survive_with_distinct_values_and_sources() -> Bool {
+test fn w_both_observations_survive_with_distinct_values_and_sources() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -113,7 +113,7 @@ test fn w_both_observations_survive_with_distinct_values_and_sources() -> Bool {
   }
 }
 
-test fn w_both_captured_configurations_are_rejected_without_catalog_suffix_invention() -> Bool {
+test fn w_both_captured_configurations_are_rejected_without_catalog_suffix_invention() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -136,7 +136,7 @@ test fn w_both_captured_configurations_are_rejected_without_catalog_suffix_inven
   }
 }
 
-test fn w_each_observed_pair_rejects_through_the_production_variant_evaluator() -> Bool {
+test fn w_each_observed_pair_rejects_through_the_production_variant_evaluator() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => all([145, 178], byte => {
@@ -147,7 +147,7 @@ test fn w_each_observed_pair_rejects_through_the_production_variant_evaluator() 
   }
 }
 
-test fn w_unobserved_byte_pair_is_not_generalized_into_a_rejection() -> Bool {
+test fn w_unobserved_byte_pair_is_not_generalized_into_a_rejection() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -158,7 +158,7 @@ test fn w_unobserved_byte_pair_is_not_generalized_into_a_rejection() -> Bool {
   }
 }
 
-test fn w_duplicate_findings_do_not_turn_delivery_uncertainty_into_certain_rejection() -> Bool {
+test fn w_duplicate_findings_do_not_turn_delivery_uncertainty_into_certain_rejection() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -176,7 +176,7 @@ test fn w_duplicate_findings_do_not_turn_delivery_uncertainty_into_certain_rejec
   }
 }
 
-test fn w_reordering_findings_preserves_the_decision() -> Bool {
+test fn w_reordering_findings_preserves_the_decision() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -188,7 +188,7 @@ test fn w_reordering_findings_preserves_the_decision() -> Bool {
   }
 }
 
-test fn w_empty_finding_collection_cannot_answer_package_or_scope_coverage() -> Bool {
+test fn w_empty_finding_collection_cannot_answer_package_or_scope_coverage() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -200,7 +200,7 @@ test fn w_empty_finding_collection_cannot_answer_package_or_scope_coverage() -> 
   }
 }
 
-test fn w_failed_second_capture_preserves_first_finding_without_proving_the_new_pair() -> Bool {
+test fn w_failed_second_capture_preserves_first_finding_without_proving_the_new_pair() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -216,7 +216,7 @@ test fn w_failed_second_capture_preserves_first_finding_without_proving_the_new_
   }
 }
 
-test fn w_each_captured_cycle_must_cover_the_whole_claimed_inventory() -> Bool {
+test fn w_each_captured_cycle_must_cover_the_whole_claimed_inventory() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -232,7 +232,7 @@ test fn w_each_captured_cycle_must_cover_the_whole_claimed_inventory() -> Bool {
   }
 }
 
-test fn w_one_cycle_or_banner_only_cannot_claim_two_complete_stimuli() -> Bool {
+test fn w_one_cycle_or_banner_only_cannot_claim_two_complete_stimuli() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -249,7 +249,7 @@ test fn w_one_cycle_or_banner_only_cannot_claim_two_complete_stimuli() -> Bool {
 
 // Uniform within each socket clears the documented capacity requirement even
 // when socket capacities differ. It does not establish catalog identity or boot.
-test fn w_socket_capacity_is_independent_of_package_binding_and_boot() -> Bool {
+test fn w_socket_capacity_is_independent_of_package_binding_and_boot() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -267,7 +267,7 @@ test fn w_socket_capacity_is_independent_of_package_binding_and_boot() -> Bool {
   }
 }
 
-test fn w_missing_observed_capacity_is_unresolved() -> Bool {
+test fn w_missing_observed_capacity_is_unresolved() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -285,7 +285,7 @@ test fn w_missing_observed_capacity_is_unresolved() -> Bool {
   }
 }
 
-test fn w_second_configuration_withholds_actual_production_fulfillment() -> Bool {
+test fn w_second_configuration_withholds_actual_production_fulfillment() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -303,7 +303,7 @@ test fn w_second_configuration_withholds_actual_production_fulfillment() -> Bool
   }
 }
 
-test fn w_changed_firmware_does_not_reuse_either_observed_pair() -> Bool {
+test fn w_changed_firmware_does_not_reuse_either_observed_pair() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -318,7 +318,7 @@ test fn w_changed_firmware_does_not_reuse_either_observed_pair() -> Bool {
   }
 }
 
-test fn w_moving_the_mixture_to_an_unobserved_socket_rechecks_scope() -> Bool {
+test fn w_moving_the_mixture_to_an_unobserved_socket_rechecks_scope() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -337,7 +337,7 @@ test fn w_moving_the_mixture_to_an_unobserved_socket_rechecks_scope() -> Bool {
   }
 }
 
-test fn w_uniform_hypothetical_b2_clears_only_the_known_package_scope() -> Bool {
+test fn w_uniform_hypothetical_b2_clears_only_the_known_package_scope() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -355,7 +355,7 @@ test fn w_uniform_hypothetical_b2_clears_only_the_known_package_scope() -> Bool 
   }
 }
 
-test fn w_unknown_catalog_binding_preserves_an_existing_supplier_refusal() -> Bool {
+test fn w_unknown_catalog_binding_preserves_an_existing_supplier_refusal() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {
@@ -371,7 +371,7 @@ test fn w_unknown_catalog_binding_preserves_an_existing_supplier_refusal() -> Bo
 }
 
 // A printed-token standing is deliberately tempting but cannot establish a catalog-bound axis.
-test fn w_printed_token_standings_cannot_qualify_unbound_modules() -> Bool {
+test fn w_printed_token_standings_cannot_qualify_unbound_modules() -> Bool  {
   match mt_collins_channel_population_roles {
     PopulationRolesRefused { refusals: _ } => false
     PopulationRolesResolved { roles } => {

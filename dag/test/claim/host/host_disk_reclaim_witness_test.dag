@@ -52,21 +52,21 @@ fn label_for(job_state: SlotJobState, packs: Int) -> String {
 
 // AN IDLE, FRAGMENTED CHECKOUT IS THE ONLY STATE THAT EARNS THE I/O. 46 is the measured upper end on
 // srv4 (operator 2026-08-22), so this is the live shape rather than an invented one.
-test fn an_idle_fragmented_checkout_is_warranted() -> Bool {
+test fn an_idle_fragmented_checkout_is_warranted() -> Bool  {
   label_for(job_state: SlotIdle, packs: 46) == "warranted"
 }
 
 // THE GATE IS A FRAGMENTATION GATE AND THIS IS THE ROW THAT PROVES IT IS NOT A SIZE GATE: the
 // checkout is 8GB in both this row and the one above, and only the pack count differs. A gate that
 // had drifted to charging on size would pass both.
-test fn an_idle_but_unfragmented_checkout_is_skipped_not_warranted() -> Bool {
+test fn an_idle_but_unfragmented_checkout_is_skipped_not_warranted() -> Bool  {
   label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs) == "below-gate"
 }
 
 // THE BOUNDARY IS EXCLUSIVE, asserted at both sides of the gate rather than near it, because an
 // off-by-one here means either re-packing a clean repo every six hours or never packing a repo that
 // has crossed the threshold.
-test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool {
+test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool  {
   label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs + 1) == "warranted"
     && label_for(job_state: SlotIdle, packs: reclaim_fragmentation_gate_packs - 1) == "below-gate"
 }
@@ -75,7 +75,7 @@ test fn the_fragmentation_gate_is_exclusive_at_both_sides() -> Bool {
 // property the real script holds by cgroup detection, and it must dominate the fragmentation
 // decision rather than being weighed against it -- so it is asserted at the pack count that most
 // strongly argues for repacking.
-test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
+test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool  {
   label_for(
     job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
     packs: 370,
@@ -88,7 +88,7 @@ test fn a_busy_slot_refuses_git_work_however_fragmented() -> Bool {
 // whether a job is running here" have different owners and different repairs. This row is an
 // INEQUALITY over the two labels, so it goes red the moment they are merged, which is exactly the
 // state-space conflation DESIGN section 5 names.
-test fn the_two_refusals_do_not_share_one_answer() -> Bool {
+test fn the_two_refusals_do_not_share_one_answer() -> Bool  {
   let busy = label_for(
     job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr },
     packs: 370,
@@ -112,7 +112,7 @@ fn probe_slot(job_state: SlotJobState, tmp_packs: Int) -> SlotDiskObservation {
 // EVERY CHECKOUT UNDER A SLOT INHERITS THE SLOT'S JOB STATE, not its own. The script decides
 // busy-ness per SLOT and then walks that slot's checkouts, so a per-checkout re-decision would be a
 // second authority for one fact.
-test fn every_checkout_under_a_busy_slot_is_refused() -> Bool {
+test fn every_checkout_under_a_busy_slot_is_refused() -> Bool  {
   let ds = slot_repack_decisions(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 0))
   map(ds, d => decision_label(d: d)) == ["refused-busy"]
 }
@@ -120,7 +120,7 @@ test fn every_checkout_under_a_busy_slot_is_refused() -> Bool {
 // THE tmp_pack SWEEP IS NOT GATED ON BUSY-NESS, and this pair is what says so: the same residue is
 // reported under a busy slot and an idle one. An interrupted index-pack's leftover is not job
 // state, so gating it on busy-ness would leave pure garbage on exactly the hosts working hardest.
-test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool {
+test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool  {
   slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotRunningJob { worker_cgroup_unit: "actions-runner@srv4-01.service" as NonEmptyStr }, tmp_packs: 3))
     && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 3))
     && slot_has_interrupted_fetch_residue(obs: probe_slot(job_state: SlotIdle, tmp_packs: 0)) == false
@@ -132,7 +132,7 @@ test fn interrupted_fetch_residue_is_reported_regardless_of_job_state() -> Bool 
 // be a change detector against a number transcribed from the same arithmetic that produced it --
 // the oracle failure DESIGN section 5 names -- and it would go red on a correct unit refactor while
 // staying green if both floors were wrong by the same factor.
-test fn the_age_floors_keep_their_authored_ratio() -> Bool {
+test fn the_age_floors_keep_their_authored_ratio() -> Bool  {
   second_count(s: reclaim_diag_max_age) == 3 * second_count(s: reclaim_tmp_pack_min_age)
     && second_count(s: reclaim_tmp_pack_min_age) > 0
 }

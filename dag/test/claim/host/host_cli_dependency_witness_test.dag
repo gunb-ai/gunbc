@@ -26,12 +26,12 @@ data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wi
 // check reddens -- and it is exactly the pair a reader of the refusal needs: which binary, and how
 // to get it. Whether THIS runner has it is a wet question and lives in the wet witness; asserting
 // it here would be a claim about the runner, not about the enrollment.
-test fn password_session_enrollment_names_the_execed_binary() -> Bool {
+test fn password_session_enrollment_names_the_execed_binary() -> Bool  {
   sshpass_cli_tool.program.invocation == sshpass_program().invocation
     && install_hint(sources: sshpass_cli_tool.installable_via).contains("apt install sshpass")
 }
 
-test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
+test fn password_session_roster_carries_the_sshpass_requirement() -> Bool  {
   fold_list(
     xs: password_session_host_cli_requirements,
     empty: false,
@@ -39,7 +39,7 @@ test fn password_session_roster_carries_the_sshpass_requirement() -> Bool {
   )
 }
 
-test fn host_dependency_absent_wire_is_stable() -> Bool {
+test fn host_dependency_absent_wire_is_stable() -> Bool  {
   let wire = host_dependency_absent_wire(
     tool: "npm" as NonEmptyStr,
     hint: "apt install npm",
@@ -50,14 +50,14 @@ test fn host_dependency_absent_wire_is_stable() -> Bool {
     && wire.contains("apt install npm\}")
 }
 
-test fn host_cli_dependency_failure_receipt_absent_on_present() -> Bool {
+test fn host_cli_dependency_failure_receipt_absent_on_present() -> Bool  {
   match host_cli_dependency_failure_receipt(observation: HostCliDependencyPresent) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
-test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
+test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool  {
   let wire = host_dependency_absent_wire(
     tool: "npm" as NonEmptyStr,
     hint: "apt install npm",

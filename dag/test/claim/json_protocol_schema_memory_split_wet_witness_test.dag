@@ -36,7 +36,7 @@ fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
 // JSON. Both fail the witness -- correctly, since neither is a green bisect step -- but they are now
 // DIFFERENT VALUES at the point a human reads the bisect, so a wrong staging path can no longer be
 // bisected as a subject defect.
-test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_largest_protocol_schema_only() -> Bool  {
   match materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   ) {
@@ -47,7 +47,7 @@ test fn wet_finish_parse_largest_protocol_schema_only() -> Bool {
   }
 }
 
-test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool {
+test fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> Bool  {
   match materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
     source: committed_admitted_codex_runtime_source(),
   ) {

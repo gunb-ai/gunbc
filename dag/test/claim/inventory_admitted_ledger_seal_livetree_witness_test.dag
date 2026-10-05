@@ -70,19 +70,19 @@ fn ledger_seal_violation_count(source: String) -> Int {
   }
 }
 
-test fn w_a_foreign_record_literal_of_the_admitted_ledger_refuses() -> Bool {
+test fn w_a_foreign_record_literal_of_the_admitted_ledger_refuses() -> Bool  {
   ledger_seal_violation_count(source: forged_source) >= 1
 }
 
 // The positive control. Same imports, same parameter list, no record literal: it proves the type
 // resolves and is legally nameable from a foreign module, so the red above is the literal being
 // refused rather than the import failing.
-test fn w_lawful_foreign_use_of_the_admitted_ledger_is_unsealed() -> Bool {
+test fn w_lawful_foreign_use_of_the_admitted_ledger_is_unsealed() -> Bool  {
   ledger_seal_violation_count(source: lawful_source) == 0
 }
 
 // The differential. Both counts above could be satisfied by a census dominated by the shared
 // closure; the subtraction states that the forged literal is the whole difference.
-test fn w_the_ledger_seal_is_the_only_difference_between_the_sources() -> Bool {
+test fn w_the_ledger_seal_is_the_only_difference_between_the_sources() -> Bool  {
   ledger_seal_violation_count(source: forged_source) - ledger_seal_violation_count(source: lawful_source) >= 1
 }

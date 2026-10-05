@@ -59,20 +59,20 @@ fn registration_citation_count(r: LanguageTargetRegistration) -> Int {
   }
 }
 
-test fn every_external_grounding_carries_at_least_one_citation() -> Bool {
+test fn every_external_grounding_carries_at_least_one_citation() -> Bool  {
   fold(registered_language_targets, init: true, f: fn(acc, r) {
     acc && registration_citation_count(r: r) > 0
   })
 }
 
 // The construction wall restated as an executable property. registration_subject reads the subject OUT of the grounding, so there is no second field that could disagree with it; this asserts the projection is total over every registered row — every registration yields a subject whose module path is nonempty — which is the observable consequence of the subject having exactly one source.
-test fn every_registration_derives_a_nonempty_subject() -> Bool {
+test fn every_registration_derives_a_nonempty_subject() -> Bool  {
   fold(registered_language_targets, init: true, f: fn(acc, r) {
     acc && registration_subject(registration: r).module_path != ""
   })
 }
 
-test fn no_subject_is_registered_twice() -> Bool {
+test fn no_subject_is_registered_twice() -> Bool  {
   fold(registered_language_targets, init: true, f: fn(acc, r) {
     let subj = registration_subject(registration: r)
     let occurrences = fold(registered_language_targets, init: 0, f: fn(a, other) {
@@ -117,7 +117,7 @@ data expected_subject_carrier_paths: List<String> = [
   "dag/extdeps/languages/yaml/subject.dag"
 ]
 
-test fn every_subject_carrier_is_enrolled_in_the_scope_roster() -> Bool {
+test fn every_subject_carrier_is_enrolled_in_the_scope_roster() -> Bool  {
   all(expected_subject_carrier_paths, p =>
     scope_frontier_strings_contain(xs: scope_carrier_paths, s: p))
 }
@@ -133,7 +133,7 @@ fn disposition_arm_present(pick: fn(LanguageTargetRegistration) -> Bool) -> Bool
   fold(registered_language_targets, init: false, f: fn(acc, r) { acc || pick(r) })
 }
 
-test fn every_disposition_arm_is_inhabited() -> Bool {
+test fn every_disposition_arm_is_inhabited() -> Bool  {
   disposition_arm_present(pick: fn(r) { match r.disposition { TargetActive => true, TargetParked { reason: _ } => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
     && disposition_arm_present(pick: fn(r) { match r.disposition { TargetParked { reason: _ } => true, TargetActive => false, TargetDecisionPending { decision_id: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
     && disposition_arm_present(pick: fn(r) { match r.disposition { TargetDecisionPending { decision_id: _ } => true, TargetActive => false, TargetParked { reason: _ } => false, TargetMaintenanceOnly => false, TargetGovernedByContracts { contract_ids: _ } => false } })
@@ -142,7 +142,7 @@ test fn every_disposition_arm_is_inhabited() -> Bool {
 }
 
 // Two independently governed documents may ground ONE subject — external_model_scope_law permits several citations per subject and forbids several subjects per module. Verilog is the specimen: IEEE 1364-2005 is the Verilog standard this repository's surface actually models, and that same IEEE page records it as superseded by the SystemVerilog standard, so both are carried. Collapsing them would either hide the supersession or silently claim SystemVerilog support.
-test fn a_subject_may_carry_more_than_one_citation() -> Bool {
+test fn a_subject_may_carry_more_than_one_citation() -> Bool  {
   fold(registered_language_targets, init: false, f: fn(acc, r) {
     acc || registration_citation_count(r: r) > 1
   })
@@ -155,13 +155,13 @@ fn no_registration_mentions(module_fragment: String) -> Bool {
   })
 }
 
-test fn unverified_upstreams_are_absent_from_the_registry() -> Bool {
+test fn unverified_upstreams_are_absent_from_the_registry() -> Bool  {
   no_registration_mentions(module_fragment: "sql")
     && no_registration_mentions(module_fragment: "x86")
     && no_registration_mentions(module_fragment: "aarch64")
 }
 
-test fn unverified_upstreams_are_recorded_as_typed_findings() -> Bool {
+test fn unverified_upstreams_are_recorded_as_typed_findings() -> Bool  {
   unregistered_target_finding_count() > 0
     && fold(unregistered_target_findings, init: true, f: fn(acc, f) {
          acc && match f.cause {
@@ -184,7 +184,7 @@ fn subject_is_registered(target: DeclarationRef) -> Bool {
   })
 }
 
-test fn named_projections_hang_off_registered_subjects() -> Bool {
+test fn named_projections_hang_off_registered_subjects() -> Bool  {
   subject_is_registered(target: rust_language_subject_ref)
     && subject_is_registered(target: spice_netlist_language_subject_ref)
     && subject_is_registered(target: commonmark_format_subject_ref)
@@ -192,7 +192,7 @@ test fn named_projections_hang_off_registered_subjects() -> Bool {
 
 data red_control_note: String = "RED CONTROLS — each asserts that a WRONG state is genuinely detected, so the green assertions above are discriminating rather than vacuous. A synthetic registration whose grounding has zero citations is unwritable by construction (first_citation is a required scalar), so the reachable wrong states are the ones checked here: a subject ref that no registration claims must NOT be reported as present, and a finding cause must not read as satisfied when its fields are empty."
 
-test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
+test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool  {
   let bogus = DeclarationRef {
     module_path: "extdeps.languages.nonexistent.subject",
     decl_name: "nonexistent_language",
@@ -201,7 +201,7 @@ test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
   !subject_is_registered(target: bogus)
 }
 
-test fn red_empty_cause_fields_are_detected() -> Bool {
+test fn red_empty_cause_fields_are_detected() -> Bool  {
   let empty_cause = UpstreamAuthorityUnreadable { attempted_locator: "", observed: "" }
   !match empty_cause {
     UpstreamAuthorityUnreadable { attempted_locator: l, observed: o } => l != "" && o != ""
@@ -210,7 +210,7 @@ test fn red_empty_cause_fields_are_detected() -> Bool {
 }
 
 // The filed legacy-label findings are asserted NON-EMPTY and fully populated, so a row cannot be filed as a hollow placeholder. This is deliberately a weak assertion about strong content: the findings describe a defect in a prose table this change does not touch, so there is nothing here to prove green by execution — what the assertion prevents is a row that names a label while saying nothing about which subjects it fuses or why that matters, which is how a filed finding quietly becomes a checkbox.
-test fn filed_legacy_label_findings_are_populated() -> Bool {
+test fn filed_legacy_label_findings_are_populated() -> Bool  {
   (legacy_frontier_label_findings |> count) > 0
     && fold(legacy_frontier_label_findings, init: true, f: fn(acc, r) {
          acc && r.legacy_label != "" && r.distinct_subjects_under_it != "" && r.consequence != ""
@@ -223,13 +223,13 @@ test fn filed_legacy_label_findings_are_populated() -> Bool {
 // target, the last assertion reds; that is the regression this witness exists to catch, because
 // re-fusing them would look harmless row by row.
 
-test fn spice_medium_and_ngspice_runtime_are_distinct_subjects() -> Bool {
+test fn spice_medium_and_ngspice_runtime_are_distinct_subjects() -> Bool  {
   !declaration_ref_eq(a: spice_netlist_language_subject_ref, b: ngspice_simulator_subject_ref)
     && subject_is_registered(target: spice_netlist_language_subject_ref)
     && !subject_is_registered(target: ngspice_simulator_subject_ref)
 }
 
-test fn the_runtime_binding_relates_the_medium_to_its_runtime() -> Bool {
+test fn the_runtime_binding_relates_the_medium_to_its_runtime() -> Bool  {
   fold(target_runtime_bindings, init: false, f: fn(acc, b) {
     acc || (declaration_ref_eq(a: b.target, b: spice_netlist_language_subject_ref)
       && declaration_ref_eq(a: b.runtime, b: ngspice_simulator_subject_ref))

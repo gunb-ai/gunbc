@@ -93,7 +93,7 @@ data all_sources: List<HostBudgetSource> = [
   BudgetSourceDarwinPhysicalMemory,
 ]
 
-test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
+test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool  {
   kernel_provides_procfs(kernel: Linux)
     && kernel_provides_procfs(kernel: LinuxGuestOnWindows)
     && !kernel_provides_procfs(kernel: Darwin)
@@ -108,7 +108,7 @@ test fn procfs_provision_follows_the_kernel_not_the_name() -> Bool {
 // the witness require that classification to be available -- ratifying the census instead of
 // testing it (review 68937, then sunny-ant-606, on #11760). ProcfsAvailable is therefore refused
 // for every rostered path until a cited census qualifies one.
-test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
+test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool  {
   all(
     procfs_paths_read_by_this_repository,
     p =>
@@ -128,7 +128,7 @@ test fn procfs_availability_is_absent_for_every_path_on_darwin() -> Bool {
 // THE TWO NAMED CONTROLS, so the fold above cannot go green by every path happening to share one
 // arm: /proc/net/pnp on Linux is a CONFIG_IP_PNP obligation, and /proc/net/unix -- the path the
 // first repair wrongly called unconditional -- is unqualified; neither is ProcfsAvailable.
-test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability() -> Bool {
+test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability() -> Bool  {
   (match procfs_availability(kernel: Linux, path: ProcNetPnp) {
     ProcfsConditionalOnKernelConfig { path: _, option: o } => (o as String) == "CONFIG_IP_PNP"
     ProcfsAvailable => false
@@ -143,7 +143,7 @@ test fn proc_net_pnp_is_a_kernel_config_obligation_on_linux_not_an_availability(
     })
 }
 
-test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
+test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool  {
   all(
     procfs_paths_read_by_this_repository,
     p => starts_with(s: procfs_path_literal(p: p) as String, prefix: "/proc/")
@@ -157,13 +157,13 @@ test fn every_procfs_path_renders_an_absolute_proc_path() -> Bool {
 // arm defaulted to non-degraded, which is the direction that actually costs something — a
 // host-shared signal silently trusted as a private limit is the 2026-07-21 srv3 exit-137 shape.
 
-test fn degraded_is_exactly_the_non_observed_sources() -> Bool {
+test fn degraded_is_exactly_the_non_observed_sources() -> Bool  {
   !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" })
     && !host_budget_source_is_degraded(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" })
     && host_budget_source_is_degraded(s: BudgetSourceDarwinPhysicalMemory)
 }
 
-test fn memory_high_is_an_observed_throttle_not_an_enforced_cap() -> Bool {
+test fn memory_high_is_an_observed_throttle_not_an_enforced_cap() -> Bool  {
   !host_budget_source_bounds_this_process(
       s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup" }
     )
@@ -191,7 +191,7 @@ test fn memory_high_is_an_observed_throttle_not_an_enforced_cap() -> Bool {
 // someone adds — it goes red the moment a host-shared reading is reintroduced and pointed at Linux,
 // which is exactly how the deleted arm entered.
 
-test fn RED_a_non_bounding_source_is_inadmissible_where_a_private_limit_exists() -> Bool {
+test fn RED_a_non_bounding_source_is_inadmissible_where_a_private_limit_exists() -> Bool  {
   all(
     all_sources,
     s =>
@@ -204,7 +204,7 @@ test fn RED_a_non_bounding_source_is_inadmissible_where_a_private_limit_exists()
   )
 }
 
-test fn a_non_bounding_source_stays_admissible_where_no_private_limit_exists() -> Bool {
+test fn a_non_bounding_source_stays_admissible_where_no_private_limit_exists() -> Bool  {
   all(
     all_sources,
     s =>
@@ -213,7 +213,7 @@ test fn a_non_bounding_source_stays_admissible_where_no_private_limit_exists() -
   )
 }
 
-test fn cgroup_v2_provision_follows_the_kernel_not_the_name() -> Bool {
+test fn cgroup_v2_provision_follows_the_kernel_not_the_name() -> Bool  {
   kernel_provides_cgroup_v2(kernel: Linux)
     && kernel_provides_cgroup_v2(kernel: LinuxGuestOnWindows)
     && !kernel_provides_cgroup_v2(kernel: Darwin)
@@ -231,7 +231,7 @@ test fn cgroup_v2_provision_follows_the_kernel_not_the_name() -> Bool {
 // than a wall. WindowsNt answers UnmodeledPlatform, which is a third state and must not be
 // reachable by either of the other two.
 
-test fn RED_a_kernel_with_a_private_limit_promises_no_static_source() -> Bool {
+test fn RED_a_kernel_with_a_private_limit_promises_no_static_source() -> Bool  {
   all(
     all_kernels,
     k =>
@@ -246,7 +246,7 @@ test fn RED_a_kernel_with_a_private_limit_promises_no_static_source() -> Bool {
   )
 }
 
-test fn darwin_sources_statically_and_windows_is_unmodeled() -> Bool {
+test fn darwin_sources_statically_and_windows_is_unmodeled() -> Bool  {
   match kernel_budget_sourcing(kernel: Darwin) {
     SourcedStatically { source: s } =>
       !host_budget_source_reads_procfs(s: s)
@@ -274,7 +274,7 @@ test fn darwin_sources_statically_and_windows_is_unmodeled() -> Bool {
 // unconditionally, which is the behaviour today. Together they pin the boundary exactly at 'reads
 // procfs AND kernel lacks procfs', which is the sentence the bug violates.
 
-test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool {
+test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool  {
   all(
     all_sources,
     s =>
@@ -287,7 +287,7 @@ test fn RED_procfs_sources_are_inadmissible_on_kernels_without_procfs() -> Bool 
   )
 }
 
-test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
+test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool  {
   all(
     all_sources,
     s =>
@@ -297,7 +297,7 @@ test fn procfs_sources_stay_admissible_on_kernels_with_procfs() -> Bool {
 }
 
 // A statically-selected source must be admissible on the very kernel it was selected for, which sounds tautological and is exactly the property the old code violated: it selected a procfs source for Darwin. Both admissibility walls are asserted — the procfs one and the bound one — because a source can satisfy either alone and still be wrong.
-test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
+test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool  {
   all(
     all_kernels,
     k =>
@@ -318,7 +318,7 @@ test fn each_kernel_selects_a_source_admissible_on_itself() -> Bool {
 // satisfy: a fallback that returned ANY number would red this row, which is precisely the
 // discrimination the previous shape could not express.
 
-test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
+test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool  {
   all(
     all_kernels,
     k =>
@@ -329,7 +329,7 @@ test fn RED_unreadable_budget_yields_no_number_at_all() -> Bool {
   )
 }
 
-test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
+test fn a_resolved_budget_does_yield_its_bytes() -> Bool  {
   match host_budget_resolution_bytes(
     r: HostBudgetResolved {
       effective_bytes: byte_size(17179869184),
@@ -345,7 +345,7 @@ test fn a_resolved_budget_does_yield_its_bytes() -> Bool {
   }
 }
 
-test fn an_unverified_declaration_remains_a_planning_number_without_becoming_resolved() -> Bool {
+test fn an_unverified_declaration_remains_a_planning_number_without_becoming_resolved() -> Bool  {
   match host_budget_resolution_bytes(
     r: HostBudgetDeclaredUnverified {
       requested_bytes: byte_size(5368709120),
@@ -357,7 +357,7 @@ test fn an_unverified_declaration_remains_a_planning_number_without_becoming_res
   }
 }
 
-test fn RED_operator_request_cannot_widen_an_observed_limit() -> Bool {
+test fn RED_operator_request_cannot_widen_an_observed_limit() -> Bool  {
   match effective_planning_budget(
     requested: Present { value: byte_size(10737418240) },
     observation: Present { value: HostBudgetObserved {
@@ -378,7 +378,7 @@ test fn RED_operator_request_cannot_widen_an_observed_limit() -> Bool {
   }
 }
 
-test fn operator_request_may_narrow_an_observed_limit() -> Bool {
+test fn operator_request_may_narrow_an_observed_limit() -> Bool  {
   match effective_planning_budget(
     requested: Present { value: byte_size(5368709120) },
     observation: Present { value: HostBudgetObserved {
@@ -404,7 +404,7 @@ test fn operator_request_may_narrow_an_observed_limit() -> Bool {
 // exact text `/proc/meminfo MemTotal` is what ships today on a machine with no /proc, and a typed
 // source whose label still said that would have fixed nothing a reader can see.
 
-test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
+test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool  {
   all(
     all_kernels,
     k =>
@@ -420,7 +420,7 @@ test fn no_selected_source_label_claims_a_path_its_kernel_lacks() -> Bool {
   )
 }
 
-test fn procfs_reading_labels_do_name_their_path() -> Bool {
+test fn procfs_reading_labels_do_name_their_path() -> Bool  {
   string_contains(s: host_budget_source_label(s: BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" }) as String, pattern: "memory.high")
     && string_contains(s: host_budget_source_label(s: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" }) as String, pattern: "memory.max")
 }
@@ -432,7 +432,7 @@ test fn procfs_reading_labels_do_name_their_path() -> Bool {
 // BuildBuddy runner that motivated this change the executor must expose the missing observation;
 // a plausible environment integer is exactly the unverified state this change refuses.
 
-test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> Bool {
+test fn the_unreadable_reason_names_both_the_missing_bound_and_the_remedy() -> Bool  {
   all(
     all_kernels,
     k =>

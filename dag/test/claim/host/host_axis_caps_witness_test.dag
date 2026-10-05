@@ -55,7 +55,7 @@ fn srv_caps_desired() -> List<CapMember> {
   ]
 }
 
-test fn caps_idempotence_zero_effects() -> Bool {
+test fn caps_idempotence_zero_effects() -> Bool  {
   let d = srv_caps_desired()
   caps_upsert_count(desired: d, observed: d) == 0
     && caps_teardown_count(desired: d, observed: d) == 0
@@ -66,7 +66,7 @@ test fn caps_idempotence_zero_effects() -> Bool {
        }
 }
 
-test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
+test fn caps_perturb_names_exactly_the_drifted_row() -> Bool  {
   let d = srv_caps_desired()
   let observed = [
     CapMember { dropin_path: path20, content: cap_dropin_content(property: mem_max, bytes_value: bytes8g) },
@@ -78,7 +78,7 @@ test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
     && caps_upsert_count(desired: d, observed: d) == 0
 }
 
-test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
+test fn caps_foreign_occupant_refuses_never_deletes() -> Bool  {
   let d = srv_caps_desired()
   let foreign = CapMember { dropin_path: foreign_path, content: "[Service]\nMemoryMax=1\n" }
   let observed = [
@@ -98,7 +98,7 @@ test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
        ) == 1
 }
 
-test fn caps_content_is_derived_not_handspelled() -> Bool {
+test fn caps_content_is_derived_not_handspelled() -> Bool  {
   cap_dropin_content(property: mem_max, bytes_value: bytes16g) == "[Service]\nMemoryMax=17179869184\n"
     && cap_dropin_content(property: swap_max, bytes_value: bytes32g) == "[Service]\nMemorySwapMax=34359738368\n"
     && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
@@ -106,7 +106,7 @@ test fn caps_content_is_derived_not_handspelled() -> Bool {
 
 data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
 
-test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
+test fn control_shadow_residue_teardowns_owned_unit() -> Bool  {
   let observed = [control_shadow_unit(unit: shadow_unit)]
   control_shadow_teardown_count(desired: [], observed: observed) == 1
     && control_shadow_refusal_count(desired: [], observed: observed) == 0
@@ -117,12 +117,12 @@ test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
     && control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
 }
 
-test fn control_shadow_idempotence_zero_effects() -> Bool {
+test fn control_shadow_idempotence_zero_effects() -> Bool  {
   control_shadow_teardown_count(desired: [], observed: []) == 0
     && control_shadow_refusal_count(desired: [], observed: []) == 0
 }
 
-test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
+test fn witness_derived_memory_caps_match_allocation_authority() -> Bool  {
   let max = derived_runner_memory_max_cap_member()
   let high = derived_runner_memory_high_cap_member()
   let desired = gunbc_runner_slot_desired()
@@ -132,11 +132,11 @@ test fn witness_derived_memory_caps_match_allocation_authority() -> Bool {
     && string_contains(s: high.dropin_path as String, pattern: "40-fleet-high")
 }
 
-test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool {
+test fn witness_control_shadow_revert_script_matches_extdeps_argv() -> Bool  {
   control_shadow_revert_script_matches_extdeps_argv(u: control_shadow_unit(unit: shadow_unit))
 }
 
-test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
+test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool  {
   !runner_memory_cap_author_ready_for_shadow_revert(observed: [])
     && runner_memory_cap_author_ready_for_shadow_revert(observed: derived_runner_memory_cap_members())
 }
@@ -148,7 +148,7 @@ test fn witness_shadow_revert_not_ready_without_derived_dropins() -> Bool {
 // the deploy-side script, which is the one that executes, by
 // witness_cap_author_before_shadow_revert_enforced_in_axis_caps and the two wrong-order REDs
 // below.
-test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bool {
+test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bool  {
   let desired = gunbc_runner_slot_desired()
   string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_max)))
     && string_contains(s: deploy_runner_memory_cap_author_script(), pattern: to_string(byte_size_count(b: desired.memory_high)))
@@ -164,7 +164,7 @@ test fn witness_deploy_memory_cap_author_script_derives_allocation_bytes() -> Bo
 // authorization builder rather than `deploy_memory_cap_apply_script_ordered`, because the guard now
 // judges a script against the MEMBERS it was given and the ordered-composition helper does not take
 // any.
-test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool {
+test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool  {
   let units = [shadow_unit]
   let members = derived_runner_memory_cap_members()
   host_axis_caps_author_before_revert_enforced
@@ -178,7 +178,7 @@ test fn witness_cap_author_before_shadow_revert_enforced_in_axis_caps() -> Bool 
 // REVERSED MUST REFUSE, AND THIS RED IS NOW REACHABLE. Under the text-splitting guard this passed
 // because the predicate could not read any script; it says something only now that the positive
 // control above is green.
-test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() -> Bool {
+test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() -> Bool  {
   let units = [shadow_unit]
   let members = derived_runner_memory_cap_members()
   let author = deploy_runner_memory_cap_author_script()
@@ -190,7 +190,7 @@ test fn witness_reversed_deploy_script_fails_author_before_shadow_revert_gate() 
   )
 }
 
-test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate() -> Bool {
+test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate() -> Bool  {
   let units = [shadow_unit]
   let members = derived_runner_memory_cap_members()
   let author = deploy_runner_memory_cap_author_script()
@@ -206,7 +206,7 @@ test fn witness_padded_wrong_order_script_fails_author_before_shadow_revert_gate
 // equality guard could not express and the text guard could not either: the bytes are in the right
 // ORDER, so an ordering-only predicate admits them, while the content belongs to a different
 // authorization. It is the discriminating red for "the check is about the members it was handed".
-test fn witness_right_order_wrong_members_fails_the_gate() -> Bool {
+test fn witness_right_order_wrong_members_fails_the_gate() -> Bool  {
   let units = [shadow_unit]
   !deploy_memory_cap_script_author_precedes_shadow_revert(
     script: deploy_memory_cap_apply_script_from_authorization(
@@ -220,7 +220,7 @@ test fn witness_right_order_wrong_members_fails_the_gate() -> Bool {
 
 // AN EMPTY MEMBER SET REFUSES, mirroring the zero-unit precondition. Authoring nothing and then
 // reverting shadows raises effective caps off whatever stale files are on disk.
-test fn witness_empty_members_fail_the_gate() -> Bool {
+test fn witness_empty_members_fail_the_gate() -> Bool  {
   let units = [shadow_unit]
   !deploy_memory_cap_script_author_precedes_shadow_revert(
     script: deploy_memory_cap_apply_script_from_authorization(members: [], units: units),
@@ -243,21 +243,21 @@ data apostrophe_cap_member: CapMember = CapMember {
   content: apostrophe_cap_content,
 }
 
-test fn witness_cap_upsert_script_quotes_content_through_posix_authority() -> Bool {
+test fn witness_cap_upsert_script_quotes_content_through_posix_authority() -> Bool  {
   string_contains(
     s: cap_upsert_script(m: apostrophe_cap_member),
     pattern: posix_single_quote(spelling: apostrophe_cap_content),
   )
 }
 
-test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool {
+test fn witness_cap_upsert_script_does_not_emit_raw_apostrophe_content() -> Bool  {
   !string_contains(
     s: cap_upsert_script(m: apostrophe_cap_member),
     pattern: concat("'", concat(apostrophe_cap_content, "'")),
   )
 }
 
-test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool {
+test fn witness_cap_upsert_script_carries_no_hand_spelled_printf_quoting() -> Bool  {
   !string_contains(s: cap_upsert_script(m: apostrophe_cap_member), pattern: "printf '%s' '")
     && !string_contains(s: deploy_runner_memory_cap_author_script(), pattern: "printf '%s' '")
 }

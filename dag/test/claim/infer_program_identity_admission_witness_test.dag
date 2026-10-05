@@ -45,19 +45,19 @@ fn violation_count(source: String, wanted: String) -> Int {
 
 data unlisted_uncataloged_mint_source: String = "module probe_program_identity_unlisted_debt\nimport extdeps.exec.program { ProgramIdentity, uncataloged_program }\nfn probe_new_program() -> ProgramIdentity = uncataloged_program(invocation: \"probe-new-tool\")\n"
 
-test fn w_new_uncataloged_program_outside_the_debt_roster_is_refused() -> Bool {
+test fn w_new_uncataloged_program_outside_the_debt_roster_is_refused() -> Bool  {
   violation_count(source: unlisted_uncataloged_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
 data unlisted_cataloged_mint_source: String = "module probe_program_identity_unlisted_catalog\nimport extdeps.exec.program { ProgramIdentity, cataloged_program }\nfn probe_claimed_cataloged() -> ProgramIdentity = cataloged_program(invocation: \"probe-new-tool\")\n"
 
-test fn w_new_program_claimed_cataloged_outside_the_catalog_is_refused() -> Bool {
+test fn w_new_program_claimed_cataloged_outside_the_catalog_is_refused() -> Bool  {
   violation_count(source: unlisted_cataloged_mint_source, wanted: "ConstructorCallAdmissionRefused") >= 1
 }
 
 data direct_record_source: String = "module probe_program_identity_direct_record\nimport extdeps.exec.program { ProgramIdentity, CatalogCarried }\nfn probe_spelled_program() -> ProgramIdentity = ProgramIdentity { invocation: \"probe-new-tool\", catalog: CatalogCarried }\n"
 
-test fn w_program_identity_spelled_as_a_record_is_refused() -> Bool {
+test fn w_program_identity_spelled_as_a_record_is_refused() -> Bool  {
   violation_count(source: direct_record_source, wanted: "SoleConstructorViolation") >= 1
 }
 
@@ -65,7 +65,7 @@ test fn w_program_identity_spelled_as_a_record_is_refused() -> Bool {
 // it, exactly as production reaches it.
 data admitted_identity_source: String = "module probe_program_identity_admitted\nimport extdeps.exec.command { ArgvCommand }\nimport extdeps.tools.uname { uname_release_command }\nfn probe_uses_admitted_program() -> ArgvCommand = uname_release_command()\n"
 
-test fn w_admitted_identity_through_its_builder_raises_no_admission_refusal() -> Bool {
+test fn w_admitted_identity_through_its_builder_raises_no_admission_refusal() -> Bool  {
   violation_count(source: admitted_identity_source, wanted: "ConstructorCallAdmissionRefused") == 0
     && violation_count(source: admitted_identity_source, wanted: "SoleConstructorViolation") == 0
 }

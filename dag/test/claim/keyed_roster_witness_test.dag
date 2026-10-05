@@ -113,7 +113,7 @@ fn fixture_branch_b_overlap_rows() -> List<KeyedRow<String, FixtureGrant>> {
   ]
 }
 
-test fn keyed_roster_two_branch_union_disjoint_keys_admits() -> Bool {
+test fn keyed_roster_two_branch_union_disjoint_keys_admits() -> Bool  {
   match keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_disjoint_rows(),
@@ -124,7 +124,7 @@ test fn keyed_roster_two_branch_union_disjoint_keys_admits() -> Bool {
   }
 }
 
-test fn keyed_roster_two_branch_union_overlap_refuses_red_control() -> Bool {
+test fn keyed_roster_two_branch_union_overlap_refuses_red_control() -> Bool  {
   match keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_overlap_rows(),
@@ -135,7 +135,7 @@ test fn keyed_roster_two_branch_union_overlap_refuses_red_control() -> Bool {
   }
 }
 
-test fn keyed_roster_two_branch_union_locates_overlap() -> Bool {
+test fn keyed_roster_two_branch_union_locates_overlap() -> Bool  {
   match keyed_roster_union(
     left: fixture_branch_a_rows(),
     right: fixture_branch_b_overlap_rows(),
@@ -149,21 +149,21 @@ test fn keyed_roster_two_branch_union_locates_overlap() -> Bool {
   }
 }
 
-test fn keyed_roster_build_admits_unique_paths() -> Bool {
+test fn keyed_roster_build_admits_unique_paths() -> Bool  {
   match keyed_roster_build(incomings: fixture_rows_unique(), key_eq: fixture_key_eq) {
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
-test fn keyed_roster_build_refuses_duplicate_path_red_control() -> Bool {
+test fn keyed_roster_build_refuses_duplicate_path_red_control() -> Bool  {
   match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: fixture_key_eq) {
     KeyedRosterBuilt { rows: _ } => false
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }
 
-test fn keyed_roster_insert_refuses_second_same_path() -> Bool {
+test fn keyed_roster_insert_refuses_second_same_path() -> Bool  {
   let first = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let second = fixture_row(path: "dag/gunbc/x.dag", audience: "world")
   match keyed_roster_insert(rows: [first], incoming: second, key_eq: fixture_key_eq) {
@@ -173,7 +173,7 @@ test fn keyed_roster_insert_refuses_second_same_path() -> Bool {
   }
 }
 
-test fn keyed_roster_insert_admits_distinct_paths() -> Bool {
+test fn keyed_roster_insert_admits_distinct_paths() -> Bool  {
   let first = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let second = fixture_row(path: "dag/gunbc/y.dag", audience: "world")
   match keyed_roster_insert(rows: [first], incoming: second, key_eq: fixture_key_eq) {
@@ -183,7 +183,7 @@ test fn keyed_roster_insert_admits_distinct_paths() -> Bool {
   }
 }
 
-test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
+test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool  {
   match frontier_rows_keyed_roster_build(
     rows: [
       frontier_row_decl(
@@ -207,21 +207,21 @@ test fn frontier_rows_keyed_build_admits_distinct_decl_fields() -> Bool {
   }
 }
 
-test fn frontier_rows_keyed_build_admits_distinct_paths() -> Bool {
+test fn frontier_rows_keyed_build_admits_distinct_paths() -> Bool  {
   match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
     KeyedRosterBuilt { rows: _ } => true
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
   }
 }
 
-test fn frontier_rows_keyed_build_refuses_duplicate_path_red_control() -> Bool {
+test fn frontier_rows_keyed_build_refuses_duplicate_path_red_control() -> Bool  {
   match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_duplicate_path()) {
     KeyedRosterBuilt { rows: _ } => false
     KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
   }
 }
 
-test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool {
+test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool  {
   frontier_rows_well_formed(rows: fixture_frontier_rows_unique())
     && match frontier_rows_keyed_roster_build(rows: fixture_frontier_rows_unique()) {
       KeyedRosterBuilt { rows: _ } => true
@@ -233,7 +233,7 @@ test fn frontier_rows_keyed_build_requires_well_formed_and_unique() -> Bool {
     }
 }
 
-test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool {
+test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool  {
   let left = fixture_rows_unique()
   let right = [fixture_row(path: "dag/gunbc/a.dag", audience: "other")]
   let merged = keyed_merge_row_lists(left: left, right: right, key_eq: fixture_key_eq)
@@ -244,7 +244,7 @@ test fn merge_row_lists_silently_skips_duplicate_contrast_control() -> Bool {
     }
 }
 
-test fn keyed_roster_build_locates_first_duplicate() -> Bool {
+test fn keyed_roster_build_locates_first_duplicate() -> Bool  {
   match keyed_roster_build(incomings: fixture_rows_duplicate_path(), key_eq: fixture_key_eq) {
     KeyedRosterBuildDuplicateKey { key: k, first: f, duplicate: d } =>
       k == "dag/gunbc/publication_grant.dag"
@@ -254,7 +254,7 @@ test fn keyed_roster_build_locates_first_duplicate() -> Bool {
   }
 }
 
-test fn keyed_roster_insert_locates_duplicate() -> Bool {
+test fn keyed_roster_insert_locates_duplicate() -> Bool  {
   let existing = fixture_row(path: "dag/gunbc/x.dag", audience: "repo")
   let incoming = fixture_row(path: "dag/gunbc/x.dag", audience: "world")
   match keyed_roster_insert(rows: [existing], incoming: incoming, key_eq: fixture_key_eq) {
@@ -265,7 +265,7 @@ test fn keyed_roster_insert_locates_duplicate() -> Bool {
   }
 }
 
-test fn keyed_roster_insert_refuses_preexisting_duplicate_roster_red_control() -> Bool {
+test fn keyed_roster_insert_refuses_preexisting_duplicate_roster_red_control() -> Bool  {
   let incoming = fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
   match keyed_roster_insert(
     rows: fixture_rows_duplicate_path(),
@@ -278,7 +278,7 @@ test fn keyed_roster_insert_refuses_preexisting_duplicate_roster_red_control() -
   }
 }
 
-test fn keyed_roster_insert_locates_preexisting_duplicate_roster() -> Bool {
+test fn keyed_roster_insert_locates_preexisting_duplicate_roster() -> Bool  {
   let incoming = fixture_row(path: "dag/gunbc/new.dag", audience: "repo")
   match keyed_roster_insert(
     rows: fixture_rows_duplicate_path(),

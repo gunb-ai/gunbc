@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // secured account binds to an access observation of the same controller; the reset admission admits
 // it with a selection; its hold is required; and the reset roster is exactly its host. Removing the
 // row, or its secure standing going Absent, turns this red.
-test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission() -> Bool {
+test fn w_reset_roster_is_exactly_mtcollins1_through_the_binding_and_admission() -> Bool  {
   let hosts = managed_hosts()
   let roster = reset_subject_roster()
   count(hosts) == 1
@@ -82,7 +82,7 @@ fn observation_at(o: BmcAccessObservation, host: String) -> BmcAccessObservation
 // secure standing is kept and its access observation is re-pointed at another controller; the
 // binding refuses on the mismatch and the host is absent from the roster, so a secured account can
 // never be sent to a controller it did not secure.
-test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered() -> Bool {
+test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_rostered() -> Bool  {
   managed_hosts() |> all(h => {
     let crossed = match h.access {
       BmcAccessUnobserved { endpoint: _ } => h
@@ -102,7 +102,7 @@ test fn w_a_secured_account_beside_another_controllers_access_is_not_bound_or_ro
 // RED: A CAPABLE HOST WITH NO RESET SELECTION. The real row's standings are kept under a host name
 // gunbc.host_reset_boot_selection has no selection for; it binds, but admission refuses it as
 // selection-less and the roster over both hosts is exactly mtcollins1.
-test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool {
+test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> Bool  {
   managed_hosts() |> all(h => {
     let unselected = managed_host_fixture(host: "fixture-unselected-host", access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
     let bound = match managed_host_binding(host: unselected) {
@@ -126,7 +126,7 @@ test fn w_a_capable_host_with_no_reset_selection_is_absent_from_the_roster() -> 
 // subject whose control is socket 0 behind the controller the binding read. This is the inhabitance
 // claim for gunbc.machine_intake_ampere_smpro_observation SmproPassSubject: the subject every SMpro
 // pass reads through is minted from the real row, not supplied.
-test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
+test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool  {
   managed_hosts() |> all(h => match managed_host_binding(host: h) {
     ManagedHostBound { binding: b } => match managed_host_smpro_subject(binding: b) {
       SmproPassSubjectBound { subject: s } =>
@@ -147,7 +147,7 @@ test fn w_the_real_row_mints_its_smpro_subject_through_its_binding() -> Bool {
 // still binds, but its site is admitted behind "fixture-other-bmc"; the subject mint refuses it with
 // both controllers named, so the pass that would have read this host's BMC against another board's
 // addresses has no subject to read with.
-test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool {
+test fn w_a_row_whose_smpro_site_names_another_controller_mints_no_subject() -> Bool  {
   managed_hosts() |> all(h => {
     let crossed = managed_host_fixture(host: h.host, access: h.access, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold,
       smpro: smpro_site_admit(

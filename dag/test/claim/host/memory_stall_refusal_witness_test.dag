@@ -61,7 +61,7 @@ fn slow_but_progressing_hour() -> MemoryStallObservation {
   }
 }
 
-test fn RED_a_treadmill_window_refuses_and_names_the_pressure() -> Bool {
+test fn RED_a_treadmill_window_refuses_and_names_the_pressure() -> Bool  {
   let verdict = memory_stall_verdict(o: treadmill_window())
   memory_stall_verdict_refuses(v: verdict)
     && string_contains(
@@ -79,7 +79,7 @@ test fn RED_a_treadmill_window_refuses_and_names_the_pressure() -> Bool {
 // The measured specimen the rate-only verdict wrongly refused: over the rate line, but
 // computing for 70% of its wall. It must ADMIT, or the floor's own slow typecheck phases
 // red every crowded runner.
-test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool {
+test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool  {
   match memory_stall_verdict(o: ci_progressing_under_pressure_window()) {
     ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: share } =>
       events_per_minute_count(r: rate) == 12431 && basis_point_count(bp: share) == 7003
@@ -94,7 +94,7 @@ test fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() -> Bool 
   }
 }
 
-test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Bool {
+test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Bool  {
   match memory_stall_verdict(o: slow_but_progressing_hour()) {
     ProgressUnderMemoryAdmissible { major_fault_rate: rate, self_cpu_share: _ } =>
       events_per_minute_count(r: rate) == 1
@@ -112,7 +112,7 @@ test fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() -> Boo
 // A cold-start refault burst inside a short window is NOT a verdict in either direction:
 // the window is still open, which is neither an admission (the treadmill also starts with
 // a burst) nor a refusal (so does a healthy process's first read of its inputs).
-test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bool {
+test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bool  {
   match memory_stall_verdict(o: MemoryStallObservation {
     window_wall: millisecond(count: millisecond_count(m: memory_stall_verdict_window_minimum_wall) - 1),
     major_faults_in_window: 1000000,
@@ -138,7 +138,7 @@ test fn a_burst_below_the_minimum_window_is_an_open_window_not_a_verdict() -> Bo
 // share pinned below its floor, a fault count at the rate line admits and one more
 // refuses; with the rate pinned above its line, a CPU share at the floor admits and one
 // percentage point less refuses. A fixture at an extreme would delete this test.
-test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
+test fn the_refusal_is_tight_at_both_declared_lines() -> Bool  {
   let at_rate_line = memory_stall_verdict(o: MemoryStallObservation {
     window_wall: millisecond(count: 60000),
     major_faults_in_window: events_per_minute_count(r: memory_stall_major_fault_rate_threshold),
@@ -173,7 +173,7 @@ test fn the_refusal_is_tight_at_both_declared_lines() -> Bool {
     && memory_stall_verdict_refuses(v: under_cpu_floor)
 }
 
-test fn the_projections_are_per_minute_and_basis_points_of_wall() -> Bool {
+test fn the_projections_are_per_minute_and_basis_points_of_wall() -> Bool  {
   events_per_minute_count(r: memory_stall_major_fault_rate(o: treadmill_window())) == 60000
     && basis_point_count(bp: memory_stall_self_cpu_share(o: treadmill_window())) == 400
     && events_per_minute_count(r: memory_stall_major_fault_rate(o: ci_progressing_under_pressure_window())) == 12431
@@ -182,7 +182,7 @@ test fn the_projections_are_per_minute_and_basis_points_of_wall() -> Bool {
 
 // The non-refusing arms render no pressure clause: a consumer that logs the clause
 // unconditionally must not fabricate pressure prose for a window that admitted.
-test fn only_the_refusal_carries_pressure_text() -> Bool {
+test fn only_the_refusal_carries_pressure_text() -> Bool  {
   memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: slow_but_progressing_hour())) == ""
     && memory_stall_refusal_pressure_text(v: memory_stall_verdict(o: MemoryStallObservation {
       window_wall: millisecond(count: 1000),

@@ -51,7 +51,7 @@ fn run_body(prelude: String, body: String) -> ShellExecObserved {
   }
 }
 
-test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool {
+test fn provision_read_back_failure_not_converged_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let fake_sccache_path = concat(dir.path as String, "/sccache")
   let seeded = write_fake_sccache(dir_path: dir.path as String, exit_code: "1")

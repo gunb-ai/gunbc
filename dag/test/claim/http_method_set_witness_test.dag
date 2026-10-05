@@ -31,13 +31,13 @@ fn label_is_known(label: String) -> Bool {
   }
 }
 
-test fn connect_and_trace_parse_as_known_methods() -> Bool {
+test fn connect_and_trace_parse_as_known_methods() -> Bool  {
   label_is_known(label: "CONNECT")
     && label_is_known(label: "TRACE")
     && !label_is_known(label: "PROPFIND")
 }
 
-test fn every_method_label_round_trips() -> Bool {
+test fn every_method_label_round_trips() -> Bool  {
   label_round_trips(m: GET)
     && label_round_trips(m: HEAD)
     && label_round_trips(m: POST)
@@ -49,12 +49,12 @@ test fn every_method_label_round_trips() -> Bool {
     && label_round_trips(m: PATCH)
 }
 
-test fn trace_reads_and_connect_needs_write() -> Bool {
+test fn trace_reads_and_connect_needs_write() -> Bool  {
   verb_eq(a: rest_method_verb(method: TRACE), b: Read)
     && verb_eq(a: rest_method_verb(method: CONNECT), b: Write)
 }
 
-test fn connect_derives_no_operation_effect_and_trace_reads() -> Bool {
+test fn connect_derives_no_operation_effect_and_trace_reads() -> Bool  {
   match parse_path_template(raw: "/tunnel") {
     ParsedPathTemplate { template: path } =>
       (match derive_op_effect(operation_name: "Tunnel", method: CONNECT, path: path) {

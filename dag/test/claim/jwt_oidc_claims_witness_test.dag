@@ -67,7 +67,7 @@ fn empty_registered_claims() -> JwtRegisteredClaims {
   }
 }
 
-test fn registered_claims_are_all_optional() -> Bool {
+test fn registered_claims_are_all_optional() -> Bool  {
   let c = empty_registered_claims()
   match c.issuer {
     Present { value: _ } => false
@@ -91,7 +91,7 @@ test fn registered_claims_are_all_optional() -> Bool {
 // RFC 3986 forbids. A brand admits it silently; the decoder refuses it. The two positive cases
 // bracket the refusal: a bare name with no colon stays bare, and urn:openai:amr:passkey decodes its
 // scheme as urn, which extdeps.uri's closed scheme enum could not have represented.
-test fn bare_string_without_colon_is_admitted() -> Bool {
+test fn bare_string_without_colon_is_admitted() -> Bool  {
   match jwt_string_or_uri_of_wire(raw: "pop" as NonEmptyStr) {
     StringOrUriRefused { raw: _, reason: _ } => false
     StringOrUriDecoded { value } =>
@@ -102,7 +102,7 @@ test fn bare_string_without_colon_is_admitted() -> Bool {
   }
 }
 
-test fn urn_scheme_is_admitted_and_decoded() -> Bool {
+test fn urn_scheme_is_admitted_and_decoded() -> Bool  {
   match jwt_string_or_uri_of_wire(raw: "urn:openai:amr:passkey" as NonEmptyStr) {
     StringOrUriRefused { raw: _, reason: _ } => false
     StringOrUriDecoded { value } =>
@@ -115,14 +115,14 @@ test fn urn_scheme_is_admitted_and_decoded() -> Bool {
   }
 }
 
-test fn colon_value_that_is_not_a_uri_is_refused() -> Bool {
+test fn colon_value_that_is_not_a_uri_is_refused() -> Bool  {
   match jwt_string_or_uri_of_wire(raw: "9:30" as NonEmptyStr) {
     StringOrUriDecoded { value: _ } => false
     StringOrUriRefused { raw, reason: _ } => (raw as String) == "9:30"
   }
 }
 
-test fn string_or_uri_round_trips_to_its_wire_form() -> Bool {
+test fn string_or_uri_round_trips_to_its_wire_form() -> Bool  {
   match jwt_string_or_uri_of_wire(raw: "https://auth.openai.com" as NonEmptyStr) {
     StringOrUriRefused { raw: _, reason: _ } => false
     StringOrUriDecoded { value } =>
@@ -148,7 +148,7 @@ fn multiple_audience() -> JwtAudience {
   }
 }
 
-test fn audience_keeps_its_wire_encoding() -> Bool {
+test fn audience_keeps_its_wire_encoding() -> Bool  {
   let same_values = count(jwt_audience_values(audience: single_audience())) == 1
     && count(jwt_audience_values(audience: multiple_audience())) == 1
   let distinguishable = match single_audience() {
@@ -173,7 +173,7 @@ test fn audience_keeps_its_wire_encoding() -> Bool {
 // a number and pass, and an expiry preceding issuance refuses where a clamp would report zero and
 // look like an expired credential.
 
-test fn whole_second_lifetime_is_exact() -> Bool {
+test fn whole_second_lifetime_is_exact() -> Bool  {
   match numeric_date_lifetime(
     issued: NumericDateWholeSeconds { seconds: 1000000 },
     expires: NumericDateWholeSeconds { seconds: 1003600 },
@@ -185,7 +185,7 @@ test fn whole_second_lifetime_is_exact() -> Bool {
   }
 }
 
-test fn fractional_date_refuses_rather_than_rounding() -> Bool {
+test fn fractional_date_refuses_rather_than_rounding() -> Bool  {
   match numeric_date_lifetime(
     issued: NumericDateWholeSeconds { seconds: 1000000 },
     expires: NumericDateFractionalSeconds {
@@ -199,7 +199,7 @@ test fn fractional_date_refuses_rather_than_rounding() -> Bool {
   }
 }
 
-test fn expiry_before_issuance_refuses_rather_than_clamping() -> Bool {
+test fn expiry_before_issuance_refuses_rather_than_clamping() -> Bool  {
   match numeric_date_lifetime(
     issued: NumericDateWholeSeconds { seconds: 1003600 },
     expires: NumericDateWholeSeconds { seconds: 1000000 },
@@ -241,14 +241,14 @@ fn amr_is_registered_pop(raw: NonEmptyStr) -> Bool {
   }
 }
 
-test fn observed_amr_values_decode_by_shape() -> Bool {
+test fn observed_amr_values_decode_by_shape() -> Bool  {
   count(codex_observed_id_token_amr_wire) == 4
     && amr_is_registered_pop(raw: "pop" as NonEmptyStr)
     && amr_is_uri_valued(raw: "urn:openai:amr:passkey" as NonEmptyStr)
     && amr_is_uri_valued(raw: "urn:openai:amr:google" as NonEmptyStr)
 }
 
-test fn unregistered_short_name_is_not_forced_into_the_uri_arm() -> Bool {
+test fn unregistered_short_name_is_not_forced_into_the_uri_arm() -> Bool  {
   match oidc_amr_of_wire(raw: "hwk" as NonEmptyStr) {
     AmrRefused { raw: _, reason: _ } => false
     AmrDecoded { method } =>
@@ -259,7 +259,7 @@ test fn unregistered_short_name_is_not_forced_into_the_uri_arm() -> Bool {
   }
 }
 
-test fn malformed_colon_amr_refuses() -> Bool {
+test fn malformed_colon_amr_refuses() -> Bool  {
   match oidc_amr_of_wire(raw: "9:30" as NonEmptyStr) {
     AmrDecoded { method: _ } => false
     AmrRefused { raw, reason: _ } => (raw as String) == "9:30"
@@ -301,7 +301,7 @@ fn minimal_id_token() -> OidcIdTokenClaims {
   }
 }
 
-test fn minimal_conforming_id_token_is_representable() -> Bool {
+test fn minimal_conforming_id_token_is_representable() -> Bool  {
   let t = minimal_id_token()
   match t.auth_time {
     Present { value: _ } => false
@@ -321,7 +321,7 @@ test fn minimal_conforming_id_token_is_representable() -> Bool {
   }
 }
 
-test fn id_token_projects_onto_registered_claims() -> Bool {
+test fn id_token_projects_onto_registered_claims() -> Bool  {
   let r = oidc_id_token_registered_claims(claims: minimal_id_token())
   match r.issued_at {
     Absent => false
@@ -350,7 +350,7 @@ fn profile_marks_present(claim: String) -> Bool {
   )
 }
 
-test fn observed_presence_does_not_imply_required_shape() -> Bool {
+test fn observed_presence_does_not_imply_required_shape() -> Bool  {
   profile_marks_present(claim: "acr")
     && profile_marks_present(claim: "amr")
     && profile_marks_present(claim: "sid")

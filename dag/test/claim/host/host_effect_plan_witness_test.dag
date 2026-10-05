@@ -64,7 +64,7 @@ fn witness_if_control_flow_plan() -> HostEffectPlan {
   }
 }
 
-test fn witness_empty_plan_refuses_without_fabricated_effect() -> Bool {
+test fn witness_empty_plan_refuses_without_fabricated_effect() -> Bool  {
   match host_effect_plan_apply(plan: witness_empty_plan(), ctx: witness_plan_ctx()) {
     NotConverged { reason: why, applied: Absent } =>
       why == "host_effect_plan_apply: empty plan has no effect to apply"
@@ -72,7 +72,7 @@ test fn witness_empty_plan_refuses_without_fabricated_effect() -> Bool {
   }
 }
 
-test fn witness_control_flow_step_refuses_without_fabricated_effect() -> Bool {
+test fn witness_control_flow_step_refuses_without_fabricated_effect() -> Bool  {
   match host_effect_plan_apply(plan: witness_if_control_flow_plan(), ctx: witness_plan_ctx()) {
     NotConverged { reason: why, applied: Absent } =>
       why == gunbc.host_effect_plan.host_effect_plan_unsupported_step_reason
@@ -101,7 +101,7 @@ fn witness_unsupported_then_do_plan() -> HostEffectPlan {
 }
 
 // Distinct receipt subjects distinguish the last attempted leaf from the first.
-test fn witness_do_retains_actual_intent() -> Bool {
+test fn witness_do_retains_actual_intent() -> Bool  {
   let effect = Srv3ReceiptEmit { lines: ["last-effect"] }
   match host_effect_plan_apply(
     plan: witness_two_do_plan(first: Srv3ReceiptEmit { lines: ["first-effect"] }, last: effect),
@@ -112,7 +112,7 @@ test fn witness_do_retains_actual_intent() -> Bool {
   }
 }
 
-test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool {
+test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool  {
   let effect = gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem }
   match host_effect_plan_apply(
     plan: witness_two_do_plan(first: effect, last: Srv3ReceiptEmit { lines: ["must-not-run"] }),
@@ -123,7 +123,7 @@ test fn witness_failed_do_retains_attempt_and_stops_before_next_effect() -> Bool
   }
 }
 
-test fn witness_unsupported_step_stops_before_next_effect() -> Bool {
+test fn witness_unsupported_step_stops_before_next_effect() -> Bool  {
   match host_effect_plan_apply(
     plan: witness_unsupported_then_do_plan(),
     ctx: witness_plan_ctx(),

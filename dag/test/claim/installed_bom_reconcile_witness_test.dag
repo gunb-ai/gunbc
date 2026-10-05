@@ -98,7 +98,7 @@ fn cataloged_slot(locator: NonEmptyStr, part_is_expected: Bool) -> ObservedDimmS
 
 // LIVE SPECIMEN, NOT A FIXTURE. srv1's 2026-07-16 BMC population is eight sticks of the expected
 // part, so the fleet's own first row confirms.
-test fn srv1_live_population_confirms_the_expectation() -> Bool {
+test fn srv1_live_population_confirms_the_expectation() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: srv1_dimm_expectation,
     observation: srv1_dimm_observation,
@@ -125,7 +125,7 @@ test fn srv1_live_population_confirms_the_expectation() -> Bool {
 // The expectation stays deliberately WRONG (it names the Hynix part srv3 no longer carries)
 // because this witness's subject is the refusal, not the fleet's current correctness -- the
 // matching expectation lives in gunbc.fleet_physical_inventory and is checked there.
-test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
+test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
       host: "srv3" as HostIdentity,
@@ -163,7 +163,7 @@ test fn srv3_live_population_refuses_with_a_located_part_difference() -> Bool {
 
 // EVERY DIFFERING SLOT IS REPORTED, NOT THE FIRST. Two of four slots carry the wrong part; a fold
 // that stopped early would report one, and this claim asserts the exact number and both locators.
-test fn every_differing_slot_appears_in_the_report() -> Bool {
+test fn every_differing_slot_appears_in_the_report() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: uniform_expectation(host: w_host_a, count: 4),
     observation: DimmSlotsObserved {
@@ -207,7 +207,7 @@ test fn every_differing_slot_appears_in_the_report() -> Bool {
 // An observed part with no catalog row is a grounding obligation and refuses. It must not be
 // silently skipped, and it must not be reported as a part difference either, so the arm is asserted
 // by constructor and not merely by the discrepancy count.
-test fn an_uncataloged_observed_part_refuses() -> Bool {
+test fn an_uncataloged_observed_part_refuses() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: uniform_expectation(host: w_host_a, count: 1),
     observation: DimmSlotsObserved {
@@ -240,7 +240,7 @@ test fn an_uncataloged_observed_part_refuses() -> Bool {
 // The count axis alone can refuse: every observed part is the expected one, so the discrepancy list
 // is EMPTY and only the count differs. Asserting the empty list is what distinguishes this from the
 // part-difference refusal above.
-test fn a_short_population_of_the_right_part_refuses_on_count_alone() -> Bool {
+test fn a_short_population_of_the_right_part_refuses_on_count_alone() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: uniform_expectation(host: w_host_a, count: 8),
     observation: DimmPopulationObserved {
@@ -263,7 +263,7 @@ test fn a_short_population_of_the_right_part_refuses_on_count_alone() -> Bool {
 // An observation of a DIFFERENT host cannot answer for this one. Without this arm the fold would
 // reconcile srv2's sticks against srv1's expectation and report a confident verdict about a host
 // nobody read.
-test fn an_observation_of_another_host_refuses() -> Bool {
+test fn an_observation_of_another_host_refuses() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: uniform_expectation(host: w_host_a, count: 8),
     observation: DimmPopulationObserved {
@@ -293,7 +293,7 @@ test fn an_observation_of_another_host_refuses() -> Bool {
 // cost of that swap is that this no longer proves anything about the fleet, only about the fold;
 // the fleet-level claim it used to carry is the report-length test below, which is where the
 // change in occupancy is actually visible.
-test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> Bool {
+test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> Bool  {
   match dimm_reconcile_verdict(
     expectation: HostDimmExpectation {
       host: "srv-never-read" as HostIdentity,
@@ -327,14 +327,14 @@ test fn constructed_unobserved_host_reaches_neither_confirmed_nor_refused() -> B
 // It previously asserted ONE, which was srv3's mixed Hynix population against a uniform
 // expectation. That contradiction was resolved by making the expectation true, not by suppressing
 // it.
-test fn the_fleet_report_is_empty_while_every_expectation_matches() -> Bool {
+test fn the_fleet_report_is_empty_while_every_expectation_matches() -> Bool  {
   dimm_discrepancy_report(verdicts: fleet_dimm_verdicts).length() == 0
 }
 
 // Every verdict the fold produces is grounded: no refusal names an empty discrepancy list with a
 // matching count. Asserted over the live fleet AND over a constructed contradiction so the claim
 // is not carried by a population that happens to contain no refusal.
-test fn every_fold_produced_verdict_is_grounded() -> Bool {
+test fn every_fold_produced_verdict_is_grounded() -> Bool  {
   let live = fleet_dimm_verdicts.length() == 4
     && all(fleet_dimm_verdicts, v => dimm_refusal_is_grounded(verdict: v))
   let constructed = dimm_refusal_is_grounded(
@@ -349,7 +349,7 @@ test fn every_fold_produced_verdict_is_grounded() -> Bool {
   live && constructed
 }
 
-test fn confirmation_predicate_separates_the_two_live_hosts() -> Bool {
+test fn confirmation_predicate_separates_the_two_live_hosts() -> Bool  {
   dimm_verdict_is_confirmed(
     verdict: dimm_reconcile_verdict(
       expectation: srv1_dimm_expectation,
@@ -369,7 +369,7 @@ test fn confirmation_predicate_separates_the_two_live_hosts() -> Bool {
 
 // --- processor half --------------------------------------------------------------------------
 
-test fn an_observed_matching_processor_model_confirms() -> Bool {
+test fn an_observed_matching_processor_model_confirms() -> Bool  {
   match processor_reconcile_verdict(
     expectation: HostProcessorExpectation { host: w_host_a, catalog: altra_max_m12830_catalog },
     observation: ProcessorModelObserved { host: w_host_a, model_number: "M128-30" },
@@ -383,7 +383,7 @@ test fn an_observed_matching_processor_model_confirms() -> Bool {
 
 // The RED that settles the stale fleet-processor claim: if a host actually reported Q64-30, the
 // reconciliation names both models rather than quietly accepting either.
-test fn an_observed_q64_30_refuses_against_the_m128_30_expectation() -> Bool {
+test fn an_observed_q64_30_refuses_against_the_m128_30_expectation() -> Bool  {
   match processor_reconcile_verdict(
     expectation: HostProcessorExpectation { host: w_host_a, catalog: altra_max_m12830_catalog },
     observation: ProcessorModelObserved { host: w_host_a, model_number: altra_q6430_catalog.model_number },
@@ -395,7 +395,7 @@ test fn an_observed_q64_30_refuses_against_the_m128_30_expectation() -> Bool {
   }
 }
 
-test fn a_processor_observation_of_another_host_refuses() -> Bool {
+test fn a_processor_observation_of_another_host_refuses() -> Bool  {
   match processor_reconcile_verdict(
     expectation: HostProcessorExpectation { host: w_host_a, catalog: altra_max_m12830_catalog },
     observation: ProcessorModelObserved { host: w_host_b, model_number: "M128-30" },
@@ -410,7 +410,7 @@ test fn a_processor_observation_of_another_host_refuses() -> Bool {
 // All four fleet hosts stand unconfirmed on the processor axis, because the fleet processor is
 // modeled intent and no host has been read. This is the claim that would go green the moment a
 // dmidecode receipt lands, so it is stated as an exact count rather than as an existence check.
-test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
+test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool  {
   fleet_processor_verdicts.length() == 4
     && all(fleet_processor_verdicts, v => !processor_verdict_is_confirmed(verdict: v))
 }
@@ -426,7 +426,7 @@ test fn every_fleet_processor_verdict_is_unconfirmed_today() -> Bool {
 // direction, so a regression that dropped the citation back to an unread family string goes red
 // here instead of passing unnoticed. The cost and receipt halves did not move - a lot that reported
 // a recorded cost would still be claiming facts nobody has.
-test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bool {
+test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bool  {
   let quantity = dimm_lot_64gib_32x.quantity_acquired == 32
   let read = lot_catalog_is_read(catalog: dimm_lot_64gib_32x.catalog)
   let cited = match lot_catalog_exact_row(catalog: dimm_lot_64gib_32x.catalog) {
@@ -461,7 +461,7 @@ test fn the_dimm_lot_is_committed_with_a_read_catalog_and_no_public_cost() -> Bo
 // beside the lot. This claim measures THE LEDGER, never the fleet - the installed answer lives in
 // fleet_dimm_verdicts, and reading an allocation ledger for a physical-installation fact is the
 // authority-substitution failure DESIGN names.
-test fn the_dimm_lot_is_received_and_wholly_unqualified() -> Bool {
+test fn the_dimm_lot_is_received_and_wholly_unqualified() -> Bool  {
   match derive_inventory_balance(lot: dimm_lot_64gib_32x, events: dimm_lot_64gib_32x_ledger) {
     BalanceRefused { cause: _, event_ordinal: _, event_label: _ } => false
     BalanceDerived { balance: b } =>
@@ -475,7 +475,7 @@ test fn the_dimm_lot_is_received_and_wholly_unqualified() -> Bool {
 // move, because the sticks are in transit. This is why the per-host figures are carried as an
 // intent and not as ledger events - the ledger would not have accepted them, and a model that
 // recorded them anyway would be asserting an allocation of stock nobody has.
-test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_stock() -> Bool {
+test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_stock() -> Bool  {
   match derive_inventory_balance(
     lot: dimm_lot_64gib_32x,
     events: append(
@@ -505,7 +505,7 @@ test fn reserving_the_lot_before_receipt_is_refused_for_insufficient_available_s
 // The intent totals the lot exactly: thirty-two sticks, four hosts, eight each. Asserting the
 // exact total rather than a fits-within bound is what would catch a fifth host being added without
 // the lot growing.
-test fn the_intended_allocation_totals_the_whole_lot() -> Bool {
+test fn the_intended_allocation_totals_the_whole_lot() -> Bool  {
   dimm_lot_64gib_32x_intended_allocation.length() == 4
     && intended_allocation_total(rows: dimm_lot_64gib_32x_intended_allocation) == 32
     && dimm_lot_intent_fits_the_lot()

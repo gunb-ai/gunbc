@@ -171,7 +171,7 @@ fn store_after_take_on_the_store_host() -> ModeledFilesystem? {
 
 // TAKE, OBSERVED ON srv2: refused naming what the process observed, with the hostname read as the
 // only dispatch and the store left empty.
-test fn w_take_observed_off_the_store_host_refuses_before_the_reason_lookup_or_any_store_operation() -> Bool {
+test fn w_take_observed_off_the_store_host_refuses_before_the_reason_lookup_or_any_store_operation() -> Bool  {
   match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv2", fs: empty_store())), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
     WitnessReturned { value, route, state } =>
       refused_as_off_the_store_host(e: value, observed: "srv2")
@@ -184,7 +184,7 @@ test fn w_take_observed_off_the_store_host_refuses_before_the_reason_lookup_or_a
 
 // TAKE, OBSERVED ON srv1: the same entry on the store host reads the reason and commits the hold; the
 // store holds a slot afterwards.
-test fn w_take_observed_on_the_store_host_reaches_the_store_effect() -> Bool {
+test fn w_take_observed_on_the_store_host_reaches_the_store_effect() -> Bool  {
   match evaluate_in_witness_frame(frame: hold_host_frame(world: machine(hostname: "srv1", fs: empty_store())), subject: fn(_scope) { maintenance_hold_take(host: "mtcollins1") }) {
     WitnessReturned { value, route, state } =>
       succeeded(e: value)
@@ -198,7 +198,7 @@ test fn w_take_observed_on_the_store_host_reaches_the_store_effect() -> Bool {
 
 // RELEASE, OBSERVED ON srv2, OVER A STORE THAT HOLDS THE OPERATOR'S HOLD: refused, the hostname read
 // is the only dispatch, and every store file is byte-for-byte what it was.
-test fn w_release_observed_off_the_store_host_refuses_before_any_store_operation() -> Bool {
+test fn w_release_observed_off_the_store_host_refuses_before_any_store_operation() -> Bool  {
   match store_after_take_on_the_store_host() {
     Absent => false
     Present { value: held } =>
@@ -216,7 +216,7 @@ test fn w_release_observed_off_the_store_host_refuses_before_any_store_operation
 
 // RELEASE, OBSERVED ON srv1, OVER THE SAME HELD STORE: the entry reads the slot and commits the
 // release, and a second take on the store host then succeeds -- the slot is free again.
-test fn w_release_observed_on_the_store_host_reaches_the_store_effect() -> Bool {
+test fn w_release_observed_on_the_store_host_reaches_the_store_effect() -> Bool  {
   match store_after_take_on_the_store_host() {
     Absent => false
     Present { value: held } =>
@@ -241,7 +241,7 @@ test fn w_release_observed_on_the_store_host_reaches_the_store_effect() -> Bool 
 
 // CONTROL FOR THE HELD-STORE PREMISE: a second take on the store host over the held store is refused
 // as already held, so the two release claims above start from a store that really holds a hold.
-test fn w_a_second_take_on_the_store_host_is_refused_as_already_held() -> Bool {
+test fn w_a_second_take_on_the_store_host_is_refused_as_already_held() -> Bool  {
   match store_after_take_on_the_store_host() {
     Absent => false
     Present { value: held } =>

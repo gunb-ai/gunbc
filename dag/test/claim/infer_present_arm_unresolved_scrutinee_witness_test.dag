@@ -27,11 +27,11 @@ data present_arm_unresolved_green_source: String = "module probe_present_arm_unr
 
 data present_arm_unresolved_class: String = "PresentArmScrutineeTypeUnresolved"
 
-test fn a_present_arm_over_an_unresolved_scrutinee_refuses() -> Bool {
+test fn a_present_arm_over_an_unresolved_scrutinee_refuses() -> Bool  {
   blocking_class_count_for(source: present_arm_unresolved_red_source, wanted_class: present_arm_unresolved_class) == 1
 }
 
-test fn the_typed_producer_is_accepted() -> Bool {
+test fn the_typed_producer_is_accepted() -> Bool  {
   blocking_class_count_for(source: present_arm_unresolved_green_source, wanted_class: present_arm_unresolved_class) == 0
     && total_blocking_count_for(source: present_arm_unresolved_red_source) - total_blocking_count_for(source: present_arm_unresolved_green_source) == 1
 }
@@ -42,7 +42,7 @@ test fn the_typed_producer_is_accepted() -> Bool {
 type PresentArmProbeCause = | PresentArmProbeBad { detail: String }
 type PresentArmProbeAttempt<T, E> = PresentArmProbeKept { observed: T } | PresentArmProbeRefused { cause: E }
 
-test fn the_typed_producer_reads_its_variant_payload_as_present() -> Bool {
+test fn the_typed_producer_reads_its_variant_payload_as_present() -> Bool  {
   let attempts: List<PresentArmProbeAttempt<Int, PresentArmProbeCause>> = [PresentArmProbeRefused { cause: PresentArmProbeBad { detail: "x" } }]
   let causes = flat_map(attempts, a => match a { PresentArmProbeRefused { cause: c } => [c]  _ => [] })
   match first(causes) { Present { value: PresentArmProbeBad { detail: d } } => d == "x"  _ => false }

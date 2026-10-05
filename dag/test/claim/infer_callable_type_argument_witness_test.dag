@@ -33,19 +33,19 @@ fn resolves_clean(source: String) -> Bool {
     && total_blocking_count_for(source: source) == 0
 }
 
-test fn fold_lambda_calls_a_nullary_element_parameter() -> Bool {
+test fn fold_lambda_calls_a_nullary_element_parameter() -> Bool  {
   resolves_clean(source: fold_thunk_source)
 }
 
-test fn map_lambda_calls_a_unary_element_parameter() -> Bool {
+test fn map_lambda_calls_a_unary_element_parameter() -> Bool  {
   resolves_clean(source: map_unary_source)
 }
 
-test fn match_arm_calls_a_callable_element() -> Bool {
+test fn match_arm_calls_a_callable_element() -> Bool  {
   resolves_clean(source: match_arm_source)
 }
 
-test fn unbound_callee_in_the_same_lambda_still_refuses() -> Bool {
+test fn unbound_callee_in_the_same_lambda_still_refuses() -> Bool  {
   blocking_subject_count_for(source: unbound_callee_source, wanted_class: "InternalError", wanted_subject: "function:unbound_callee_zzz") > 0
 }
 
@@ -66,19 +66,19 @@ data arity_mismatch_source: String = "module test.claim.tmp_callable_type_argume
 
 data same_signature_source: String = "module test.claim.tmp_callable_type_argument_probe\nimport std.types { Int, List }\nfn keep(xs: List<fn(Int) -> Int>) -> List<fn(Int) -> Int> { xs }\n"
 
-test fn element_codomain_mismatch_refuses_at_the_declared_return() -> Bool {
+test fn element_codomain_mismatch_refuses_at_the_declared_return() -> Bool  {
   blocking_class_count_for(source: codomain_mismatch_source, wanted_class: "TypeMismatch") > 0
 }
 
-test fn element_parameter_mismatch_refuses_at_the_declared_return() -> Bool {
+test fn element_parameter_mismatch_refuses_at_the_declared_return() -> Bool  {
   blocking_class_count_for(source: parameter_mismatch_source, wanted_class: "TypeMismatch") > 0
 }
 
-test fn element_arity_mismatch_refuses_at_the_declared_return() -> Bool {
+test fn element_arity_mismatch_refuses_at_the_declared_return() -> Bool  {
   blocking_class_count_for(source: arity_mismatch_source, wanted_class: "TypeMismatch") > 0
 }
 
-test fn element_same_signature_is_accepted_at_the_declared_return() -> Bool {
+test fn element_same_signature_is_accepted_at_the_declared_return() -> Bool  {
   total_blocking_count_for(source: same_signature_source) == 0
 }
 
@@ -95,7 +95,7 @@ data mixed_callbacks_source: String = "module test.claim.callable_common_field_m
 
 data same_callbacks_source: String = "module test.claim.callable_common_field_same_probe\nimport std.types { Int, List }\ntype SameCallbacks = LeftCallbacks { callbacks: List<fn(Int) -> Int> } | RightCallbacks { callbacks: List<fn(Int) -> Int> }\nfn count_same(s: SameCallbacks) -> Int { s.callbacks |> count }\n"
 
-test fn callbacks_differing_in_codomain_are_not_one_common_field() -> Bool {
+test fn callbacks_differing_in_codomain_are_not_one_common_field() -> Bool  {
   compile_dag_rust_emit_check(
     mixed_callbacks_source,
     "src/test_claim_callable_common_field_mixed_probe.rs",
@@ -104,7 +104,7 @@ test fn callbacks_differing_in_codomain_are_not_one_common_field() -> Bool {
   )
 }
 
-test fn callbacks_with_one_signature_are_one_common_field() -> Bool {
+test fn callbacks_with_one_signature_are_one_common_field() -> Bool  {
   compile_dag_rust_emit_check(
     same_callbacks_source,
     "src/test_claim_callable_common_field_same_probe.rs",

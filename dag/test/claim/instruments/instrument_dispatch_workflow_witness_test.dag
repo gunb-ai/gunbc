@@ -21,7 +21,7 @@ import std.measure { byte_size, byte_size_count }
 // claims hold the generator to the conditions.
 
 // The input is a closed choice whose every option is a rostered instrument label.
-test fn every_dispatch_option_is_a_rostered_instrument_label_holds() -> Bool {
+test fn every_dispatch_option_is_a_rostered_instrument_label_holds() -> Bool  {
   instrument_dispatch_labels_are_rostered() && (length(xs: instrument_dispatch_label_options()) > 0)
 }
 
@@ -41,7 +41,7 @@ fn generated_text() -> String {
 // THE GROUP IS ONE NO PRE-FIX REF NAMES: a scalar-form dispatch cancels every pending run in its own
 // group, so sharing the old group name would leave this queue cancellable from any branch cut before
 // the fix. The old name is refused as a group here for that reason.
-test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -> Bool {
+test fn the_workflow_is_dispatch_only_bounded_serialized_and_read_only_holds() -> Bool  {
   let t = generated_text()
   contains(t, "workflow_dispatch:")
     && !contains(t, "pull_request")
@@ -77,7 +77,7 @@ fn step_name(step: Step) -> String {
 // THE RECEIPT'S PRODUCER PRECEDES EVERYTHING THAT CAN FAIL (review of gunbc#12998). Over the job's own
 // step list: the first step is the seed, and the checkout and the build come after it, so a run that dies
 // in the prelude still has a receipt for the always() upload to read.
-test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
+test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool  {
   let names = map(instrument_dispatch_steps(seed: "", guard: "", script: ""), s => step_name(step: s))
   let first = fold(names, init: "", f: fn(acc, n) { if acc == "" { n } else { acc } })
   (first == instrument_dispatch_seed_step_name)
@@ -87,13 +87,13 @@ test fn the_receipt_is_seeded_before_the_fallible_prelude_holds() -> Bool {
 
 // THE FLEET ROUTE SELECTS THE D13 CENSUS: the generated choice carries that exact label, so D13's
 // row-deletion change can dispatch the census at its own head (review of gunbc#12992).
-test fn the_dispatch_choice_offers_the_dependency_demand_census_holds() -> Bool {
+test fn the_dispatch_choice_offers_the_dependency_demand_census_holds() -> Bool  {
   contains(generated_text(), "//gunbc/instruments:dependency-demand-census")
 }
 
 // THE WHOLE-TREE INSTRUMENTS CARRY A DECLARED MEMORY DEMAND (follow-up to gunbc#13141): each census label
 // has a row, every row is dispatchable, and the selected runner target's budget admits every row.
-test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admits_holds() -> Bool {
+test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admits_holds() -> Bool  {
   let declared = map(instrument_dispatch_memory_demands(), d => render_label(l: d.label))
   any(declared, l => l == render_label(l: dependency_demand_census_label()))
     && any(declared, l => l == render_label(l: v2_native_census_label()))
@@ -103,7 +103,7 @@ test fn the_whole_tree_censuses_declare_a_memory_demand_the_selected_target_admi
 
 // The discriminating red: a demand above the target's budget does not fit, so the generator refuses
 // rather than emitting a workflow whose runner cannot hold the subject; a demand at the budget fits.
-test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool {
+test fn a_memory_demand_above_the_target_budget_does_not_fit_holds() -> Bool  {
   let row = InstrumentDispatchMemoryDemand { label: v2_native_census_label(), demand: byte_size(21474836481) }
   !instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836480))
     && instrument_dispatch_memory_demands_fit(demands: [row], budget: byte_size(21474836481))
@@ -127,7 +127,7 @@ fn step_if(step: Step) -> String {
   }
 }
 
-test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool {
+test fn the_memory_guard_is_label_bound_and_precedes_the_prelude_holds() -> Bool  {
   let t = generated_text()
   let steps = instrument_dispatch_steps(seed: "", guard: "", script: "")
   let names = map(steps, s => step_name(step: s))

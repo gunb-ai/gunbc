@@ -87,7 +87,7 @@ data record_completeness_bare_name_product_source: String = "module probe_floor_
 // adequacy control for the zero-field family: it establishes that the completeness check DOES
 // handle zero supplied fields, so a silence on either path below would be a gap on that path
 // rather than an absent wall.
-test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bool {
+test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bool  {
   row_holds(probe: floor_record_completeness_zero_field_product_control_probe, source: record_completeness_zero_field_product_source)
     && blocking_count(source: record_completeness_zero_field_product_source, wanted: "MissingField") == 2
 }
@@ -97,7 +97,7 @@ test fn floor_record_completeness_zero_field_product_refuses_every_field() -> Bo
 // narrowed to the discriminant seam, v1.compiler.infer zero_field_variant_tag_reference_frontier_note);
 // it now refuses with exactly one MissingField, the declared field. This row was the discriminating
 // RED for that wall and stays enrolled as its regression control (DESIGN section 4b(4)).
-test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bool {
+test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bool  {
   row_holds(probe: floor_record_completeness_zero_field_variant_control_probe, source: record_completeness_zero_field_variant_source)
     && blocking_count(source: record_completeness_zero_field_variant_source, wanted: "MissingField") == 1
 }
@@ -107,7 +107,7 @@ test fn floor_record_completeness_zero_field_variant_refuses_every_field() -> Bo
 // kinds reach the wall by two routes (a VariantValueBinding reference and a plain global binding),
 // so each is asserted at full strength -- one silent route would otherwise hide behind the other
 // (the same coverage lesson cursor review 63461 taught this row while it was still a hole).
-test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
+test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool  {
   row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_variant_source)
     && blocking_count(source: record_completeness_bare_name_variant_source, wanted: "MissingField") == 1
     && row_holds(probe: floor_record_completeness_bare_name_control_probe, source: record_completeness_bare_name_product_source)
@@ -121,10 +121,10 @@ test fn floor_record_completeness_bare_name_refuses_every_field() -> Bool {
 data tag_reference_at_discriminant_seam_source: String = "module probe_floor_tag_ref_seam\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { discriminant(v: Fielded {}) }\n"
 data tag_reference_off_the_seam_source: String = "module probe_floor_tag_ref_off\ntype Shape = Fielded { token: Int } | Bare\nfn f() -> String { let v = Fielded {}\n  discriminant(v: v) }\n"
 
-test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool {
+test fn floor_record_completeness_discriminant_tag_reference_stays_clean() -> Bool  {
   total_row_count_is_zero(census: census_of(source: tag_reference_at_discriminant_seam_source))
 }
 
-test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool {
+test fn floor_record_completeness_zero_field_literal_off_the_seam_refuses() -> Bool  {
   blocking_count(source: tag_reference_off_the_seam_source, wanted: "MissingField") == 1
 }

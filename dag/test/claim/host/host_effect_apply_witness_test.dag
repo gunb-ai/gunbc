@@ -34,7 +34,7 @@ fn directive_is_refused(d: ConvergeDirective) -> Bool {
   }
 }
 
-test fn witness_typed_read_on_host_success_converges() -> Bool {
+test fn witness_typed_read_on_host_success_converges() -> Bool  {
   reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -43,7 +43,7 @@ test fn witness_typed_read_on_host_success_converges() -> Bool {
   ))
 }
 
-test fn witness_converge_frontier_failure_fails_closed() -> Bool {
+test fn witness_converge_frontier_failure_fails_closed() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ConvergePlan { policy: fixture_srv1_host_converge() },
@@ -52,7 +52,7 @@ test fn witness_converge_frontier_failure_fails_closed() -> Bool {
   ))
 }
 
-test fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
+test fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: RedfishAction { action: GetSystem },
@@ -61,7 +61,7 @@ test fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
   ))
 }
 
-test fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
+test fn witness_redfish_on_hostos_typed_mismatch() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: RedfishAction { action: GetSystem },
@@ -70,7 +70,7 @@ test fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   ))
 }
 
-test fn witness_typed_read_on_bmc_typed_mismatch() -> Bool {
+test fn witness_typed_read_on_bmc_typed_mismatch() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -79,7 +79,7 @@ test fn witness_typed_read_on_bmc_typed_mismatch() -> Bool {
   ))
 }
 
-test fn witness_runner_local_probe_remote_transport_refuses_before_execution() -> Bool {
+test fn witness_runner_local_probe_remote_transport_refuses_before_execution() -> Bool  {
   match host_effect_apply(
     target: RunnerLocalHost,
     effect: ProbeToolchainHomeInterference {},
@@ -93,7 +93,7 @@ test fn witness_runner_local_probe_remote_transport_refuses_before_execution() -
   }
 }
 
-test fn witness_converge_policy_redrives_not_converged() -> Bool {
+test fn witness_converge_policy_redrives_not_converged() -> Bool  {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -105,7 +105,7 @@ test fn witness_converge_policy_redrives_not_converged() -> Bool {
   )))
 }
 
-test fn witness_oneshot_policy_terminal_not_converged() -> Bool {
+test fn witness_oneshot_policy_terminal_not_converged() -> Bool  {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -117,7 +117,7 @@ test fn witness_oneshot_policy_terminal_not_converged() -> Bool {
   )))
 }
 
-test fn witness_incompatible_is_refused_terminal() -> Bool {
+test fn witness_incompatible_is_refused_terminal() -> Bool  {
   directive_is_refused(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: RedfishAction { action: GetSystem },
@@ -126,7 +126,7 @@ test fn witness_incompatible_is_refused_terminal() -> Bool {
   )))
 }
 
-test fn witness_converged_is_settled() -> Bool {
+test fn witness_converged_is_settled() -> Bool  {
   directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -135,7 +135,7 @@ test fn witness_converged_is_settled() -> Bool {
   )))
 }
 
-test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
+test fn witness_ssh_shell_unreachable_fails_closed() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -144,7 +144,7 @@ test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
   ))
 }
 
-test fn witness_typed_read_artifact_transport_fails_closed() -> Bool {
+test fn witness_typed_read_artifact_transport_fails_closed() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} },
@@ -158,7 +158,7 @@ test fn witness_typed_read_artifact_transport_fails_closed() -> Bool {
 
 // Controlled process observation tests the shared reconciliation boundary;
 // script execution is no longer a constructible HostEffect.
-test fn witness_process_failure_preserves_observed_stdout() -> Bool {
+test fn witness_process_failure_preserves_observed_stdout() -> Bool  {
   match reconcile_shell_exec_observed(
     observed: ShellExecObserved {
       exit_code: 1, success: false,
@@ -179,11 +179,11 @@ test fn witness_process_failure_preserves_observed_stdout() -> Bool {
   }
 }
 
-test fn witness_identity_evidence_derives_oneshot_drive() -> Bool {
+test fn witness_identity_evidence_derives_oneshot_drive() -> Bool  {
   host_effect_drive_from_evidence(evidence: host_effect_identity_evidence) == OneShot
 }
 
-test fn witness_converge_loop_evidence_derives_converge_drive() -> Bool {
+test fn witness_converge_loop_evidence_derives_converge_drive() -> Bool  {
   host_effect_drive_from_evidence(evidence: host_effect_converge_loop_evidence) == ConvergeLoop
 }
 
@@ -192,11 +192,11 @@ data witness_arbitrary_non_idempotent_evidence: IdempotencyEvidence = NonIdempot
   reason: "breaking side effect — not a converge-loop authorization",
 }
 
-test fn witness_arbitrary_non_idempotent_derives_oneshot_not_redrive() -> Bool {
+test fn witness_arbitrary_non_idempotent_derives_oneshot_not_redrive() -> Bool  {
   host_effect_drive_from_evidence(evidence: witness_arbitrary_non_idempotent_evidence) == OneShot
 }
 
-test fn witness_lattice_breaking_shape_derives_oneshot_not_redrive() -> Bool {
+test fn witness_lattice_breaking_shape_derives_oneshot_not_redrive() -> Bool  {
   host_effect_drive_from_evidence(evidence: LatticeEffect { shape: AppendEffect }) == OneShot
 }
 
@@ -226,7 +226,7 @@ fn fixture_srv1_host_converge() -> HostConverge {
   }
 }
 
-test fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
+test fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ConvergePlan { policy: fixture_srv1_host_converge() },
@@ -235,7 +235,7 @@ test fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
   ))
 }
 
-test fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
+test fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool  {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: ConvergePlan { policy: fixture_srv1_host_converge() },
@@ -244,7 +244,7 @@ test fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
   ))
 }
 
-test fn witness_converge_plan_redrives_on_frontier() -> Bool {
+test fn witness_converge_plan_redrives_on_frontier() -> Bool  {
   directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ConvergePlan { policy: fixture_srv1_host_converge() },

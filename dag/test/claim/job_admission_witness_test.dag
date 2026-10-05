@@ -32,42 +32,42 @@ fn receipt() -> JobClassificationReceipt<NonEmptyStr>? {
 
 // A receipt is present in both classification controls, so neither can pass
 // collaterally through ClassificationReceiptMissing.
-test fn declared_ephi_refuses_for_absent_handling_authority() -> Bool {
+test fn declared_ephi_refuses_for_absent_handling_authority() -> Bool  {
   match admit_job(subject: subject, classification: DeclaredEphi, receipt: receipt()) {
     JobRefused { subject: s, reason: EphiHandlingAuthorityHasNoProducer } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
-test fn unresolved_classification_holds_with_a_receipt() -> Bool {
+test fn unresolved_classification_holds_with_a_receipt() -> Bool  {
   match admit_job(subject: subject, classification: ClassificationUnresolved, receipt: receipt()) {
     JobHeld { subject: s } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
-test fn ordinary_job_without_receipt_refuses_for_missing_receipt() -> Bool {
+test fn ordinary_job_without_receipt_refuses_for_missing_receipt() -> Bool  {
   match admit_job(subject: subject, classification: DeclaredNonEphi, receipt: Absent) {
     JobRefused { subject: s, reason: ClassificationReceiptMissing } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
-test fn ordinary_job_with_its_receipt_is_admitted() -> Bool {
+test fn ordinary_job_with_its_receipt_is_admitted() -> Bool  {
   match admit_job(subject: subject, classification: DeclaredNonEphi, receipt: receipt()) {
     JobAdmitted { receipt: r } => fabric_identity_eq(left: r.subject, right: subject)
     _ => false
   }
 }
 
-test fn unresolved_without_receipt_still_holds() -> Bool {
+test fn unresolved_without_receipt_still_holds() -> Bool  {
   match admit_job(subject: subject, classification: ClassificationUnresolved, receipt: Absent) {
     JobHeld { subject: s } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
-test fn receipt_cannot_cross_customer_boundary() -> Bool {
+test fn receipt_cannot_cross_customer_boundary() -> Bool  {
   match admit_job(subject: FabricIdentity { principal: "other-customer", key: subject.key }, classification: DeclaredNonEphi, receipt: receipt()) {
     JobRefused { subject: _, reason: ClassificationReceiptSubjectMismatch } => true
     _ => false
@@ -116,7 +116,7 @@ fn submit_invoice_fixture(invoice: InvoiceFixture, classification: JobClassifica
 // This fourth red is independently discriminating: classification is decided,
 // handling is ordinary, and a receipt EXISTS. It belongs to another job. A pilot
 // bypass on net == 0 would turn this precise refusal into admission.
-test fn zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt() -> Bool {
+test fn zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt() -> Bool  {
   let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }
   let other_job = FabricIdentity { principal: subject.principal, key: "job-b" as WorkKey }
   match classify_job(subject: other_job, classification: DeclaredNonEphi) {
@@ -129,7 +129,7 @@ test fn zero_dollar_net_invoice_cannot_admit_a_job_with_another_jobs_receipt() -
   }
 }
 
-test fn zero_dollar_invoice_keeps_an_admitted_customer_admitted() -> Bool {
+test fn zero_dollar_invoice_keeps_an_admitted_customer_admitted() -> Bool  {
   let invoice = InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }
   match submit_invoice_fixture(invoice: invoice, classification: DeclaredNonEphi, admission_receipt: receipt()).admission {
     JobAdmitted { receipt: r } => net_due(invoice: invoice) == money_amount_micro(count: 0) && fabric_identity_eq(left: r.subject, right: subject)
@@ -137,14 +137,14 @@ test fn zero_dollar_invoice_keeps_an_admitted_customer_admitted() -> Bool {
   }
 }
 
-test fn zero_dollar_invoice_does_not_resolve_classification() -> Bool {
+test fn zero_dollar_invoice_does_not_resolve_classification() -> Bool  {
   match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: FullFixtureCredit }, classification: ClassificationUnresolved, admission_receipt: receipt()).admission {
     JobHeld { subject: s } => fabric_identity_eq(left: s, right: subject)
     _ => false
   }
 }
 
-test fn paid_invoice_does_not_supply_an_admission_receipt() -> Bool {
+test fn paid_invoice_does_not_supply_an_admission_receipt() -> Bool  {
   match submit_invoice_fixture(invoice: InvoiceFixture { gross_charge: money_amount_micro(count: 12000000), promotional_credit: NoFixtureCredit }, classification: DeclaredNonEphi, admission_receipt: Absent).admission {
     JobRefused { subject: _, reason: ClassificationReceiptMissing } => true
     _ => false
@@ -160,7 +160,7 @@ fn credit_preserves_admission(classification: JobClassification, admission_recei
   net_due(invoice: paid.invoice) == money_amount_micro(count: 12000000) && net_due(invoice: credited.invoice) == money_amount_micro(count: 0) && paid.admission == credited.admission
 }
 
-test fn promotional_credit_preserves_every_admission_disposition() -> Bool {
+test fn promotional_credit_preserves_every_admission_disposition() -> Bool  {
   credit_preserves_admission(classification: DeclaredNonEphi, admission_receipt: receipt()) &&
   credit_preserves_admission(classification: DeclaredEphi, admission_receipt: receipt()) &&
   credit_preserves_admission(classification: ClassificationUnresolved, admission_receipt: receipt()) &&
@@ -171,7 +171,7 @@ fn frontier_enrolled_once(row: FrontierRow) -> Bool {
   count(filter(census_closure_frontier_rows(), enrolled => enrolled == row)) == 1
 }
 
-test fn admission_frontiers_reach_the_dissolution_census() -> Bool {
+test fn admission_frontiers_reach_the_dissolution_census() -> Bool  {
   frontier_enrolled_once(row: classification_receipt_issuer_frontier) &&
   frontier_enrolled_once(row: job_admission_billing_frontier) &&
   frontier_enrolled_once(row: job_admission_runner_frontier) &&

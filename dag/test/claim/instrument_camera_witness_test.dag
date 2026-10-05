@@ -217,7 +217,7 @@ fn witness_wheel_releases_scroll_at_outermost_clamp() -> Bool {
     && wheel_owns_scroll_at_clamp(c: camera_initial, delta_px: 40)
 }
 
-test fn instrument_camera_keystone_holds() -> Bool {
+test fn instrument_camera_keystone_holds() -> Bool  {
   witness_only_the_authoritative_view_may_write_a_domain_fact()
     && witness_red_no_instrument_owner_may_write_a_domain_fact()
     && witness_camera_opens_outermost_with_nothing_selected()

@@ -99,43 +99,43 @@ fn identity_join_holds(declared: List<String>, rostered: List<String>) -> Bool {
 
 data control_declared: List<String> = ["ct_a", "ct_b", "ct_c"]
 
-test fn the_join_refuses_equal_counts_with_different_identities() -> Bool {
+test fn the_join_refuses_equal_counts_with_different_identities() -> Bool  {
   !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b", "ct_stale"])
 }
 
-test fn the_join_refuses_an_unrostered_blob() -> Bool {
+test fn the_join_refuses_an_unrostered_blob() -> Bool  {
   !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b"])
 }
 
-test fn the_join_refuses_a_row_that_outlived_its_blob() -> Bool {
+test fn the_join_refuses_a_row_that_outlived_its_blob() -> Bool  {
   !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_b", "ct_c", "ct_stale"])
 }
 
-test fn the_join_refuses_a_duplicate_row_masking_an_unrostered_blob() -> Bool {
+test fn the_join_refuses_a_duplicate_row_masking_an_unrostered_blob() -> Bool  {
   !identity_join_holds(declared: control_declared, rostered: ["ct_a", "ct_a", "ct_b", "ct_c"])
 }
 
-test fn the_join_accepts_the_same_population_in_any_order() -> Bool {
+test fn the_join_accepts_the_same_population_in_any_order() -> Bool  {
   identity_join_holds(declared: control_declared, rostered: ["ct_c", "ct_a", "ct_b"])
 }
 
-test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool {
+test fn language_source_scaffold_roster_is_fully_dispositioned() -> Bool  {
   language_source_scaffold_roster_all_dispositioned()
 }
 
-test fn runtime_rust_blobs_are_all_rostered() -> Bool {
+test fn runtime_rust_blobs_are_all_rostered() -> Bool  {
   let declared = declared_blob_names(path: runtime_rust_source_path, decl_prefix: "rt_")
   let rostered = rostered_names_for(carrier: "v1.compiler.runtime_rust")
   identity_join_holds(declared: declared, rostered: rostered)
 }
 
-test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool {
+test fn compiler_tests_rust_blobs_are_all_rostered() -> Bool  {
   let declared = declared_blob_names(path: compiler_tests_rust_source_path, decl_prefix: "ct_")
   let rostered = rostered_names_for(carrier: "v1.compiler.compiler_tests_rust")
   identity_join_holds(declared: declared, rostered: rostered)
 }
 
-test fn reasoned_terminal_is_accepted() -> Bool {
+test fn reasoned_terminal_is_accepted() -> Bool  {
   let is_scaffold = match legitimate_terminal_control_row.disposition {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
@@ -143,7 +143,7 @@ test fn reasoned_terminal_is_accepted() -> Bool {
   language_source_scaffold_row_is_dispositioned(row: legitimate_terminal_control_row) && is_scaffold == false
 }
 
-test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
+test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool  {
   match rust_pair_completion_spelling_scaffold_trigger {
     Scaffold { dissolves_to: _, bind: bind } =>
       bind.module_path == "std.trait_derive_shape" && bind.decl_name == "pair_completion_op_rows"

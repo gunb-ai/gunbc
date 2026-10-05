@@ -81,7 +81,7 @@ fn if_join_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-test fn the_fixture_modules_are_readable() -> Bool {
+test fn the_fixture_modules_are_readable() -> Bool  {
   string_length(s: if_join_text(path: if_join_declaring_path)) > 0
     && string_length(s: if_join_text(path: if_join_colliding_path)) > 0
     && string_length(s: if_join_text(path: if_join_with_collision_path)) > 0
@@ -90,10 +90,10 @@ test fn the_fixture_modules_are_readable() -> Bool {
     && string_contains(s: if_join_text(path: if_join_colliding_path), pattern: "type PoolSpecimenSquare")
 }
 
-test fn the_declaring_module_compiles_clean_with_the_unrelated_pool_member() -> Bool {
+test fn the_declaring_module_compiles_clean_with_the_unrelated_pool_member() -> Bool  {
   if_join_completed_clean(o: if_join_with_collision_outcome())
 }
 
-test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool {
+test fn the_same_declaring_module_compiles_clean_without_the_pool_member() -> Bool  {
   if_join_completed_clean(o: if_join_without_collision_outcome())
 }

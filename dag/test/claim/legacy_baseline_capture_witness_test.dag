@@ -255,7 +255,7 @@ fn lbc_run(
 // requested B, materialized B+1 -> HeadMismatch, and it refuses BEFORE anything else is compared:
 // the worktree and the subject are BOTH also wrong in this fixture, so a capture that checked them
 // out of order would report one of those instead.
-test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> Bool {
+test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_b(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_b(),
@@ -274,7 +274,7 @@ test fn a_materialized_head_that_is_not_the_requested_commit_refuses_first() -> 
 
 // requested B, HEAD still B, DIRTY WORKTREE -> WorktreeMismatch. The subject also disagrees here, so
 // this arm additionally proves the worktree check precedes the subject comparison.
-test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool {
+test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_b(),
@@ -292,7 +292,7 @@ test fn a_dirty_worktree_refuses_before_the_subject_is_compared() -> Bool {
 }
 
 // a complete observation from ANOTHER source-set digest is never Captured.
-test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -> Bool {
+test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -311,7 +311,7 @@ test fn an_observation_of_a_different_source_set_refuses_as_subject_mismatch() -
 
 // The instrument that ran is a DIFFERENT field from the tree that was materialized, and a
 // disagreement there is still a subject mismatch rather than a worktree one.
-test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mismatch() -> Bool {
+test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mismatch() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -331,7 +331,7 @@ test fn an_observation_from_a_different_compiler_artifact_refuses_as_subject_mis
 // a missing expected outcome -> ObservationIncomplete, and it is reached only once head, worktree and
 // subject all agree, so this arm is also the evidence that the earlier gates passed rather than were
 // skipped.
-test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() -> Bool {
+test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -349,7 +349,7 @@ test fn an_observation_missing_an_expected_occurrence_refuses_as_incomplete() ->
 }
 
 // EVERY GATE PASSING MINTS A BASELINE: binding complete and repair roster answered exactly.
-test fn a_fully_agreeing_capture_mints_the_baseline() -> Bool {
+test fn a_fully_agreeing_capture_mints_the_baseline() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -366,7 +366,7 @@ test fn a_fully_agreeing_capture_mints_the_baseline() -> Bool {
   }
 }
 
-test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete() -> Bool {
+test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -383,7 +383,7 @@ test fn a_repair_observation_missing_a_roster_site_refuses_as_repair_incomplete(
   }
 }
 
-test fn a_repair_observation_of_a_different_source_set_refuses_as_repair_subject_diverged() -> Bool {
+test fn a_repair_observation_of_a_different_source_set_refuses_as_repair_subject_diverged() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -400,7 +400,7 @@ test fn a_repair_observation_of_a_different_source_set_refuses_as_repair_subject
   }
 }
 
-test fn a_repair_observation_from_a_different_compiler_artifact_refuses_as_repair_subject_diverged() -> Bool {
+test fn a_repair_observation_from_a_different_compiler_artifact_refuses_as_repair_subject_diverged() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -417,7 +417,7 @@ test fn a_repair_observation_from_a_different_compiler_artifact_refuses_as_repai
   }
 }
 
-test fn a_roster_that_names_one_site_twice_refuses_as_repair_roster_malformed() -> Bool {
+test fn a_roster_that_names_one_site_twice_refuses_as_repair_roster_malformed() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -434,7 +434,7 @@ test fn a_roster_that_names_one_site_twice_refuses_as_repair_roster_malformed() 
   }
 }
 
-test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_roster_mismatch() -> Bool {
+test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_roster_mismatch() -> Bool  {
   match lbc_run(
     requested: lbc_commit_a(), observed_head: lbc_commit_a(),
     commit_tree: lbc_tree_a(), observed_tree: lbc_tree_a(),
@@ -461,7 +461,7 @@ test fn a_roster_whose_identity_is_not_the_subject_digest_refuses_as_repair_rost
 // a_measured_fixture_root_reaches_the_observed_arm_with_rows_and_bindings and
 // the_live_census_over_the_measured_fixture_root_counts_its_rows in
 // test.claim.legacy_repair_tap_live_bridge_witness - delete the Observed arm and THOSE red.
-test fn the_reported_capability_is_available_because_the_observed_arm_executes_on_the_required_floor() -> Bool {
+test fn the_reported_capability_is_available_because_the_observed_arm_executes_on_the_required_floor() -> Bool  {
   match legacy_baseline_capture_capability() {
     CaptureAvailable => true
     CaptureBlocked { phase: _, cause: _ } => false
@@ -471,7 +471,7 @@ test fn the_reported_capability_is_available_because_the_observed_arm_executes_o
 // An uppercase spelling of a real commit is refused by the git authority itself, so no capture can
 // be attempted with one. This arm is evidence the regrounding removed the local wall rather than
 // hiding it: the refusal happens in the constructor, before this module is reached.
-test fn an_uppercase_commit_spelling_has_no_git_object_id_at_all() -> Bool {
+test fn an_uppercase_commit_spelling_has_no_git_object_id_at_all() -> Bool  {
   match lbc_oid(hex: "1007EFB256A20749F77C3B1295EED144FDDEB9FD") {
     Present { value: _ } => false
     Absent => true

@@ -61,7 +61,7 @@ fn witness_sequential_do_plan() -> HostEffectPlan {
   }
 }
 
-test fn host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution() -> Bool {
+test fn host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution() -> Bool  {
   match host_effect_plan_apply(
     plan: witness_single_do_true_plan(),
     ctx: witness_unreachable_plan_ctx(),
@@ -71,7 +71,7 @@ test fn host_effect_plan_ssh_failure_reason_carries_exit_code_by_real_execution(
   }
 }
 
-test fn host_effect_plan_typed_read_witness_holds_by_real_execution() -> Bool {
+test fn host_effect_plan_typed_read_witness_holds_by_real_execution() -> Bool  {
   reconciliation_converged(r: host_effect_plan_apply(
     plan: witness_single_do_true_plan(),
     ctx: witness_plan_ctx(),

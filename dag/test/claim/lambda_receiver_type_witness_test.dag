@@ -52,10 +52,10 @@ fn lamrecv_blocking_count(source: String) -> Int {
   }
 }
 
-test fn method_call_on_a_lambda_parameter_receiver_resolves() -> Bool {
+test fn method_call_on_a_lambda_parameter_receiver_resolves() -> Bool  {
   lamrecv_blocking_count(source: lamrecv_method_probe_source) == 0
 }
 
-test fn field_read_on_a_lambda_parameter_receiver_resolves() -> Bool {
+test fn field_read_on_a_lambda_parameter_receiver_resolves() -> Bool  {
   lamrecv_blocking_count(source: lamrecv_field_probe_source) == 0
 }

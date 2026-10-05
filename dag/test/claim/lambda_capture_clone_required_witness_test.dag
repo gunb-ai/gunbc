@@ -58,10 +58,10 @@ fn w_lambda_captured_single_use_param_requires_clone() -> Bool {
   )
 }
 
-test fn direct_single_use_param_no_clone_positive() -> Bool {
+test fn direct_single_use_param_no_clone_positive() -> Bool  {
   w_direct_single_use_param_moves_bare()
 }
 
-test fn lambda_captured_single_use_param_clone_required_regression() -> Bool {
+test fn lambda_captured_single_use_param_clone_required_regression() -> Bool  {
   w_lambda_captured_single_use_param_requires_clone()
 }
