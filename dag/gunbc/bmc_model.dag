@@ -1,10 +1,12 @@
 module gunbc.bmc_model
 
-import std.types { Bool, Int, List }
+import std.types { Bool, Int, List, NonEmptyStr }
 import std.measure { Second, second, second_count }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { any, filter }
 import extdeps.bmc.ipmi_channel { IpmiUserId }
+import extdeps.bmc.redfish_telemetry { RedfishLogEntry, RedfishLogService, RedfishTelemetryPoint }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation }
 import extdeps.bmc.ipmi_chassis_control {
   IpmiChassisControlAction, IpmiChassisPowerDown, IpmiChassisPowerUp, IpmiChassisPowerCycle, IpmiChassisHardReset,
 }
@@ -55,6 +57,36 @@ type BmcSelRecord {
   state: String
 }
 
+// THE READ-ONLY RECORD SURFACES A CONTROLLER SERVES BESIDE ITS STATE, one field per upstream surface
+// and only the ones a prior-life archive reads (docs/plans/machine-intake-design.md §5; consumed by
+// gunbc.machine_intake_prior_life_boundary). Each is Absent when a world does not model it, so a
+// reader that needs a surface refuses rather than reading an unmodeled surface as an empty record;
+// bmc_world() leaves all five unmodeled, and no transition in this module changes any of them.
+// - manager_date_time: the Redfish Manager resource's DateTime property (Manager.v1_0_0), as the
+//   controller renders its own clock. It is an observation and never an ordering clock.
+// - log_services: the Redfish LogService resources the controller serves, each with its LogEntry
+//   members (extdeps.bmc.redfish_telemetry RedfishLogService, LogService.v1_0_0 / LogEntry.v1_9_0).
+// - account_events: the LogEntry members of the log service that records AccountService events
+//   (session and account changes). Redfish standardizes the entries, not which service holds them.
+// - virtual_media: the VirtualMedia members (extdeps.bmc.redfish_virtual_media).
+// - sensors: the Sensor members (extdeps.bmc.redfish_telemetry RedfishTelemetryPoint, Sensor.v1_2_0).
+// The IPMI SEL, the boot override and the power state are already fields of BmcWorld.
+type BmcRecordSurfaces {
+  manager_date_time: NonEmptyStr?
+  log_services: List<RedfishLogService>?
+  account_events: List<RedfishLogEntry>?
+  virtual_media: List<RedfishVirtualMediaObservation>?
+  sensors: List<RedfishTelemetryPoint>?
+}
+
+data bmc_record_surfaces_unmodeled: BmcRecordSurfaces = BmcRecordSurfaces {
+  manager_date_time: none,
+  log_services: none,
+  account_events: none,
+  virtual_media: none,
+  sensors: none,
+}
+
 // sol_drop_after_boot, when a scenario sets it, schedules the controller dropping its SOL session that
 // long after the host starts booting, so the loss follows the route's own power-on rather than a clock
 // guessed in advance.
@@ -74,13 +106,14 @@ type BmcWorld {
   sol_drop_after_boot: Second?
   web: BmcWebWorld
   ipmi_users: List<BmcIpmiUser>
+  record_surfaces: BmcRecordSurfaces
 }
 
 fn bmc_world(power: BmcPower) -> BmcWorld {
   BmcWorld {
     power: power, pending: [], fired: [], boot_override: BootOverrideNone, sel: [],
     sol_session_open: false, cycle_off_interval: second(count: 5), host_booted_at: none, booted_via_override: false, sol_drop_after_boot: none,
-    web: bmc_web_world_untouched, ipmi_users: [],
+    web: bmc_web_world_untouched, ipmi_users: [], record_surfaces: bmc_record_surfaces_unmodeled,
   }
 }
 
@@ -148,7 +181,7 @@ fn bmc_with_power(world: BmcWorld, power: BmcPower) -> BmcWorld {
     power: power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -157,7 +190,16 @@ fn bmc_with_web(world: BmcWorld, web: BmcWebWorld) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: web, ipmi_users: world.ipmi_users,
+    web: web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
+  }
+}
+
+fn bmc_with_record_surfaces(world: BmcWorld, surfaces: BmcRecordSurfaces) -> BmcWorld {
+  BmcWorld {
+    power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
+    sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
+    host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: surfaces,
   }
 }
 
@@ -266,7 +308,7 @@ fn bmc_with_override(world: BmcWorld, over: BmcBootOverride) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: over, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -275,7 +317,7 @@ fn bmc_with_sol_session(world: BmcWorld, open: Bool) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -284,7 +326,7 @@ fn bmc_with_pending(world: BmcWorld, pending: List<BmcScheduledEvent>, fired: Li
     power: world.power, pending: pending, fired: fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -300,7 +342,7 @@ fn bmc_host_boots(world: BmcWorld, now: Second) -> BmcWorld {
     power: BmcPowerOn, pending: pending, fired: world.fired, boot_override: BootOverrideNone, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: Present { value: now }, booted_via_override: via, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -401,7 +443,7 @@ fn bmc_with_sol_drop_after_boot(world: BmcWorld, after: Second) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: Present { value: after },
-    web: world.web, ipmi_users: world.ipmi_users,
+    web: world.web, ipmi_users: world.ipmi_users, record_surfaces: world.record_surfaces,
   }
 }
 
@@ -432,7 +474,7 @@ fn bmc_with_ipmi_users(world: BmcWorld, users: List<BmcIpmiUser>) -> BmcWorld {
     power: world.power, pending: world.pending, fired: world.fired, boot_override: world.boot_override, sel: world.sel,
     sol_session_open: world.sol_session_open, cycle_off_interval: world.cycle_off_interval,
     host_booted_at: world.host_booted_at, booted_via_override: world.booted_via_override, sol_drop_after_boot: world.sol_drop_after_boot,
-    web: world.web, ipmi_users: users,
+    web: world.web, ipmi_users: users, record_surfaces: world.record_surfaces,
   }
 }
 

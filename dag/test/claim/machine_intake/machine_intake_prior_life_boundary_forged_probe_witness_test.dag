@@ -1,0 +1,79 @@
+module test.claim.machine_intake_prior_life_boundary_forged_probe_witness
+
+import std.types { String, Bool, Int }
+import v2.std.algebra { filter }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE PRIOR-LIFE ARCHIVE'S AND THE EFFECT LEG'S SEALS, ENROLLED AS EXECUTED REDS (cut O1c-2). The probe
+// authors outside their modules every carrier that stands for an effect having run: a leg's budget,
+// deadline and completion; the archive, its plan, its cursor, the write's receipt, the readback and the
+// phase receipt. It also calls, from callers they do not admit, the budget mint, the dry phase (whose
+// receipt would then name a subject and an identity instance of the caller's choosing) and the dry
+// realization's clock. This witness hands that source to the compiler through the diagnostic-census
+// harness and requires each refusal CLASS at its SUBJECT by name; the class-scoped control shows a clean
+// source reading the same modules through their unsealed functions emits none.
+data forged_probe_source: String = "module probe_prior_life_boundary_forged\n\nimport std.types { EpochMs, Int, List, NonEmptyStr, String }\nimport std.decl_ref { DeclarationRef, decl_ref }\nimport std.content_hash { ContentHash }\nimport std.measure { PositiveMillisecond }\nimport gunbc.clock_read { ObserverClockInstant }\nimport gunbc.machine_intake_subject { MachineIntakeSubject }\nimport gunbc.fleet.convergence_fold {\n  StepInstanceKey, LegBudget, LegDeadline, LegCompletedWithinDeadline, LegCompletion, leg_budget,\n}\nimport gunbc.machine_intake_prior_life_boundary {\n  BaselineCursor, PriorLifeArchive, PriorLifeArchivePlan, ArchiveWriteReceipt, ArchiveReadBack, ArchivedObject,\n  PriorLifeBoundaryEstablished, PriorLifePolicy, PriorLifeApplication, PriorLifeBoundaryArm, CarrierCapture,\n  DryPriorLifeWorld, DryPriorLifeStep, dry_archive_prior_life, dry_prior_life_instant,\n}\n\nfn forged_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget {\n  LegBudget { leg: leg, budget: budget }\n}\n\nfn forged_budget_via_mint(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget {\n  leg_budget(leg: leg, budget: budget)\n}\n\nfn forged_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline {\n  LegDeadline { budget: budget, started: started }\n}\n\nfn forged_within(deadline: LegDeadline, finished: ObserverClockInstant) -> LegCompletedWithinDeadline {\n  LegCompletedWithinDeadline { deadline: deadline, finished: finished }\n}\n\nfn forged_cursor(archive: ContentHash) -> BaselineCursor {\n  BaselineCursor { sel_final_record: none, log_services: [], account_events_final_entry: none, archive: archive }\n}\n\nfn forged_archive(subject: MachineIntakeSubject, digest: ContentHash, at: ObserverClockInstant, cursor: BaselineCursor) -> PriorLifeArchive {\n  PriorLifeArchive { subject: subject, captures: [], body: \"forged\", digest: digest, read_at: at, cursor: cursor }\n}\n\nfn forged_plan(archive: PriorLifeArchive) -> PriorLifeArchivePlan {\n  PriorLifeArchivePlan { archive: archive }\n}\n\nfn forged_write(digest: ContentHash, completion: LegCompletion) -> ArchiveWriteReceipt {\n  ArchiveWriteReceipt { digest: digest, completion: completion }\n}\n\nfn forged_readback(digest: ContentHash, held: ArchivedObject) -> ArchiveReadBack {\n  ArchiveReadBack { digest: digest, held: held }\n}\n\nfn forged_receipt(key: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack, boundary: PriorLifeBoundaryArm) -> PriorLifeBoundaryEstablished {\n  PriorLifeBoundaryEstablished { key: key, consumed_identity: key, subject: subject, policy: policy, archive: archive, application: application, readback: readback, boundary: boundary, realization: \"live\" }\n}\n\nfn forged_phase(key: StepInstanceKey, subject: MachineIntakeSubject, platform: DeclarationRef, world: DryPriorLifeWorld) -> DryPriorLifeStep {\n  dry_archive_prior_life(key: key, consumed_identity: key, subject: subject, platform: platform, world: world)\n}\n\nfn forged_instant(millis: EpochMs) -> ObserverClockInstant {\n  dry_prior_life_instant(millis: millis)\n}\n"
+
+data harness_control_source: String = "module probe_prior_life_boundary_harness_control\nimport std.decl_ref { DeclarationRef }\nimport gunbc.machine_intake_prior_life_boundary { PriorLifePolicy, prior_life_policy_for, mt_jade_platform_ref, prior_life_archive_write_budget }\nimport gunbc.fleet.convergence_fold { LegBudget }\nfn policy() -> PriorLifePolicy? { prior_life_policy_for(platform: mt_jade_platform_ref) }\nfn budget() -> LegBudget { prior_life_archive_write_budget() }\n"
+
+fn probe() -> CompileDiagnosticCensus {
+  compile_dag_diagnostic_census(forged_probe_source)
+}
+
+fn blocking_count_for_class_and_subject(c: CompileDiagnosticCensus, wanted: String, subject: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows
+        |> filter(r => (r.diagnostic_class as String) == wanted && r.subject_name == subject && r.blocking)
+        |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+fn blocking_count_for_class(c: CompileDiagnosticCensus, wanted: String) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      rows |> filter(r => (r.diagnostic_class as String) == wanted && r.blocking) |> fold(init: 0, f: (acc, r) => acc + r.count)
+  }
+}
+
+test fn the_harness_runs_and_a_clean_source_emits_no_seal_violation() -> Bool {
+  let c = compile_dag_diagnostic_census(harness_control_source)
+  blocking_count_for_class(c: c, wanted: "SoleConstructorViolation") == 0
+    && blocking_count_for_class(c: c, wanted: "ConstructorCallAdmissionRefused") == 0
+}
+
+// A leg's budget, its deadline and a within-deadline completion cannot be authored, and the budget
+// mint refuses a caller it does not admit, so no effect leg runs without a deadline its domain declared.
+test fn a_forged_leg_budget_deadline_or_completion_is_refused() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "LegBudget") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "leg_budget") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "LegDeadline") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "LegCompletedWithinDeadline") >= 1
+}
+
+// The archive, its plan, its cursor, the write receipt, the readback and the phase receipt cannot be
+// authored outside the phase's module.
+test fn forged_archive_carriers_and_the_phase_receipt_are_refused_at_their_literals() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "BaselineCursor") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "PriorLifeArchive") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "PriorLifeArchivePlan") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ArchiveWriteReceipt") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "ArchiveReadBack") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "SoleConstructorViolation", subject: "PriorLifeBoundaryEstablished") >= 1
+}
+
+// The dry phase and the dry realization's clock refuse callers they do not admit.
+test fn the_dry_phase_and_its_clock_refuse_an_outside_caller() -> Bool {
+  let c = probe()
+  blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "dry_archive_prior_life") >= 1
+    && blocking_count_for_class_and_subject(c: c, wanted: "ConstructorCallAdmissionRefused", subject: "dry_prior_life_instant") >= 1
+}

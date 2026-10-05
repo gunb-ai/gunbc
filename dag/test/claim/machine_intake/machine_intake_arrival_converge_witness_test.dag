@@ -32,18 +32,26 @@ import gunbc.fleet.convergence_fold {
   ConvergenceRunId, StepSubjectKey, StepInstanceKey, ConvergenceStep, StepPrecondition, SameSubject, ConvergencePlanAdmission,
   ConvergencePlanAdmitted, ConvergencePlanRefused, ConvergencePlanRefusal,
   StepMissingFromCensus, StepDuplicatedInCensus, StepRankDisagreesWithAuthority, PreconditionUnknown,
-  StepOutcome, StepEstablished, StepRefused,
-  RunConverged, RunStopped, RunOutcomesRefused, OutcomeDuplicated,
-  InstanceConverged, InstanceRefused, InstanceNotReached,
+  StepOutcome, StepEstablished, StepRefused, StepIncomplete,
+  RunConverged, RunStopped, RunIncomplete, RunOutcomesRefused, OutcomeDuplicated,
+  InstanceConverged, InstanceRefused, InstanceIncomplete, InstanceNotReached,
   DomainRefused, PreconditionUnmet, StepOutcomeAbsent,
   ConvergenceRunVerdict, StepInstanceStanding,
   admit_convergence_plan, classify_convergence_plan, PlanClassifiedAdmissible, PlanClassifiedRefused,
   ConvergenceReceiptProjection, convergence_receipt_projection,
   fold_convergence_run, step_instance_key, step_outcome_receipt, step_outcome_refusal,
 }
+import gunbc.machine_intake_prior_life_boundary {
+  DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
+  mt_jade_platform_ref, prior_life_receipt_archive, prior_life_receipt_application, prior_life_receipt_boundary, prior_life_receipt_realization,
+  prior_life_receipt_consumed_identity, prior_life_archive_digest, baseline_cursor_archive,
+}
+import std.content_hash { content_hash_equal }
+import test.claim.machine_intake_prior_life_boundary_witness { prior_life_full_dry_world }
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
-  ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, ArrivalStepRefusal,
+  ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
+  ArrivalStepIncomplete, PriorLifeBoundaryIncomplete, PriorLifeInputs, prior_life_boundary_step_ref,
   IdentityBindObserveRefused, IdentityObserveRefusal, IdentityBindAccessForAnotherInstance, UnitKeyNotBound, AccessDiscoverObserveRefused, ReadOnlyPhaseRefused,
   IdentityBindInputs, AccessDiscoverEstablished, BoardSerialAgreementRefusal, BoardSerialsDisagree, SmbiosSessionForAnotherController, classify_board_serial_agreement,
   access_discover_step_ref, identity_bind_provisional_step_ref, arrival_order_authority, arrival_planning_authority,
@@ -67,10 +75,11 @@ data run_b: ConvergenceRunId = "o1c1-witness-run-b" as ConvergenceRunId
 
 data mtjade1_key: StepSubjectKey = "mtjade1" as StepSubjectKey
 
-fn instance_step_is(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>, step: DeclarationRef) -> Bool {
+fn instance_step_is(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>, step: DeclarationRef) -> Bool {
   match s {
     InstanceConverged { key: k, receipt: _ } => declaration_ref_eq(a: k.step_identity, b: step)
     InstanceRefused { key: k, cause: _ } => declaration_ref_eq(a: k.step_identity, b: step)
+    InstanceIncomplete { key: k, cause: _ } => declaration_ref_eq(a: k.step_identity, b: step)
     InstanceNotReached { key: k, blocked_by: _ } => declaration_ref_eq(a: k.step_identity, b: step)
   }
 }
@@ -86,7 +95,7 @@ fn route_is_redfish_write_candidate_on_manager_read(route: BmcRotationRouteStand
   }
 }
 
-fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>) -> Bool {
+fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
   match s {
     InstanceConverged { key: k, receipt: r } =>
       declaration_ref_eq(a: k.step_identity, b: access_discover_step_ref)
@@ -99,13 +108,15 @@ fn access_established_as_read(s: StepInstanceStanding<ArrivalStepReceipt, Arriva
               && (a.route.endpoint.host as String) == "192.168.1.246"
               && route_is_redfish_write_candidate_on_manager_read(route: a.route)
           IdentityBindReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
         }
     InstanceRefused { key: _, cause: _ } => false
+    InstanceIncomplete { key: _, cause: _ } => false
     InstanceNotReached { key: _, blocked_by: _ } => false
   }
 }
 
-fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal>) -> Bool {
+fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
   match s {
     InstanceConverged { key: k, receipt: r } =>
       declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref)
@@ -120,8 +131,10 @@ fn identity_bound_from_committed_captures(s: StepInstanceStanding<ArrivalStepRec
               && (sol_session_controller(a: i.agreement.smbios.sol_session).host as String) == "192.168.1.246"
               && i.subject.subject == qualification_subject_of(unit_key: "B810301000412080005AJ0C1" as UnitKey, assembly: expected_mtjade1_assembly, firmware: expected_mtjade1_firmware)
           AccessDiscoverReceipt { receipt: _ } => false
+          PriorLifeBoundaryReceipt { receipt: _ } => false
         }
     InstanceRefused { key: _, cause: _ } => false
+    InstanceIncomplete { key: _, cause: _ } => false
     InstanceNotReached { key: _, blocked_by: _ } => false
   }
 }
@@ -138,25 +151,78 @@ data expected_mtjade1_firmware: FirmwareManifest = FirmwareManifest {
   configuration_digests: [],
 }
 
+// THE PRIOR-LIFE ARCHIVE AS THE ROUTE REACHED IT: written by this run within its leg's deadline, read
+// back independently, its boundary the uncleared baseline-cursor arm with the cursor naming this
+// archive, consuming exactly this run's IdentityBindProvisional instance for this unit, from the DRY
+// realization and no other.
+fn prior_life_archived_from_the_bound_subject(s: StepInstanceStanding<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> Bool {
+  match s {
+    InstanceConverged { key: k, receipt: r } =>
+      declaration_ref_eq(a: k.step_identity, b: prior_life_boundary_step_ref)
+        && match r {
+          PriorLifeBoundaryReceipt { receipt: p } =>
+            declaration_ref_eq(a: prior_life_receipt_consumed_identity(r: p).step_identity, b: identity_bind_provisional_step_ref)
+              && ((prior_life_receipt_consumed_identity(r: p).run as NonEmptyStr) as String) == "o1c1-witness-run-a"
+              && ((prior_life_receipt_consumed_identity(r: p).subject as NonEmptyStr) as String) == "mtjade1"
+              && (match prior_life_receipt_application(r: p) { ArchiveWritten { write: _, within: _ } => true  _ => false })
+              && (match prior_life_receipt_boundary(r: p) { LogsArchivedWithBaselineCursor { cursor: c } => content_hash_equal(left: baseline_cursor_archive(c: c), right: prior_life_archive_digest(a: prior_life_receipt_archive(r: p))) })
+              && ((prior_life_receipt_realization(r: p) as NonEmptyStr) as String) == "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store"
+          AccessDiscoverReceipt { receipt: _ } => false
+          IdentityBindReceipt { receipt: _ } => false
+        }
+    InstanceRefused { key: _, cause: _ } => false
+    InstanceIncomplete { key: _, cause: _ } => false
+    InstanceNotReached { key: _, blocked_by: _ } => false
+  }
+}
+
 // THE REAL PATH. mtjade1 passes both read-only phases from its committed captures: AccessDiscover from
 // the 2026-10-04 Manager read at 192.168.1.246 (MegaRAC, 2.11.104000, the controller's year-2000 clock
 // kept as a reading, a CANDIDATE Redfish account-write route), and IdentityBindProvisional binding the
 // unit key from the FRU and SMBIOS board serials, which agree, and minting the MachineIntakeSubject
 // over the FRU's provisional assembly and the read's live firmware manifest, with this run as its one
-// intake attempt.
-test fn w_mtjade1_converges_both_read_only_phases_from_its_committed_captures() -> Bool {
-  match converge_mtjade1_arrival_prefix(run: run_a) {
+// intake attempt. Then PriorLifeBoundary archives the dry world under the Mt. Jade policy row through
+// the real route -- the IdentityBindProvisional receipt this run minted, not a supplied subject.
+test fn w_mtjade1_converges_the_prefix_through_its_dry_prior_life_archive() -> Bool {
+  match converge_mtjade1_arrival_prefix(run: run_a, prior_life: prior_life_full_dry_world()) {
     ArrivalRunFolded { verdict: v } =>
       match v {
         RunConverged { run: r } =>
-          length(xs: r.ledger.instances) == 2
+          length(xs: r.ledger.instances) == 3
             && match r.ledger.instances.first() { Present { value: s } => access_established_as_read(s: s)  Absent => false }
-            && match r.ledger.instances.last() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+            && match r.ledger.instances |> filter(s => instance_step_is(s: s, step: identity_bind_provisional_step_ref)) |> first() { Present { value: s } => identity_bound_from_committed_captures(s: s)  Absent => false }
+            && match r.ledger.instances.last() { Present { value: s } => prior_life_archived_from_the_bound_subject(s: s)  Absent => false }
         RunStopped { ledger: _, at: _ } => false
+        RunIncomplete { ledger: _, at: _ } => false
         RunOutcomesRefused { cause: _ } => false
       }
     ArrivalPlanRefused { cause: _ } => false
     ArrivalPrefixUnstepped { phase: _ } => false
+  }
+}
+
+// AN ARCHIVE WRITE THE STORE LOSES LEAVES THE RUN INCOMPLETE, NOT STOPPED AND NOT CONVERGED, at the
+// PriorLifeBoundary instance, which records the write as written-but-not-read-back. Same real route,
+// the store the only difference.
+test fn w_a_lost_archive_write_leaves_the_run_incomplete_at_prior_life_boundary() -> Bool {
+  let full = prior_life_full_dry_world()
+  let losing = DryPriorLifeWorld { bmc: full.bmc, store: DryArchiveStore { objects: [], behaviour: DryArchiveStoreLosesWrites }, read_at_millis: full.read_at_millis, write_returned_at_millis: full.write_returned_at_millis }
+  match converge_mtjade1_arrival_prefix(run: run_a, prior_life: losing) {
+    ArrivalRunFolded { verdict: v } =>
+      match v {
+        RunIncomplete { ledger: l, at: at } =>
+          declaration_ref_eq(a: at.step_identity, b: prior_life_boundary_step_ref)
+            && length(xs: l.instances) == 3
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceIncomplete { key: _, cause: c } => match c { PriorLifeBoundaryIncomplete { cause: i } => match i { ArchiveWrittenButNotReadBack { write: _, digest: _ } => true  _ => false } }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    _ => false
   }
 }
 
@@ -240,17 +306,17 @@ test fn w_a_serial_outside_the_base_board_structure_is_not_read() -> Bool {
     }
 }
 
-// The roster is the authority's own prefix through IdentityBindProvisional: exactly two phases, in
+// The roster is the authority's own prefix through PriorLifeBoundary: exactly three phases, in
 // arrival_phases_all's order, not the twelve-phase list and not a second shorter list.
-test fn w_the_roster_is_the_two_phase_prefix_of_the_authority() -> Bool {
-  arrival_prefix_through(last: arrival_prefix_last) == [Arrival { phase: AccessDiscover }, Arrival { phase: IdentityBindProvisional }]
+test fn w_the_roster_is_the_three_phase_prefix_of_the_authority() -> Bool {
+  arrival_prefix_through(last: arrival_prefix_last) == [Arrival { phase: AccessDiscover }, Arrival { phase: IdentityBindProvisional }, Arrival { phase: PriorLifeBoundary }]
 }
 
 // A phase of the prefix with no step refuses rather than being skipped: through BmcSecure the prefix
-// reaches PriorLifeBoundary, which has no step in this cut.
+// reaches BmcSecure itself, which has no step in this cut (O1c-3 brings it with its gate).
 test fn w_a_prefix_phase_with_no_step_refuses() -> Bool {
   match arrival_prefix_steps(phases: arrival_prefix_through(last: BmcSecure)) {
-    ArrivalPrefixPhaseUnstepped { phase: p } => p == Arrival { phase: PriorLifeBoundary }
+    ArrivalPrefixPhaseUnstepped { phase: p } => p == Arrival { phase: BmcSecure }
     ArrivalPrefixStepped { steps: _ } => false
   }
 }
@@ -279,9 +345,9 @@ fn plan_refusal(admission: ConvergencePlanAdmission<IntakePhase>) -> Convergence
   }
 }
 
-test fn w_the_real_two_step_plan_is_admitted() -> Bool {
+test fn w_the_real_three_step_plan_is_admitted() -> Bool {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
-    ConvergencePlanAdmitted { plan: _ } => length(xs: real_steps()) == 2
+    ConvergencePlanAdmitted { plan: _ } => length(xs: real_steps()) == 3
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -337,28 +403,37 @@ test fn w_a_step_with_two_census_rows_refuses() -> Bool {
 
 // ── run controls, over real step outcomes from mtjade1's real read ─────────────────────────────
 
-fn real_access(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> {
+fn real_access(run: ConvergenceRunId, subject: StepSubjectKey, read: CurrentManagerRead) -> StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> {
   access_discover(key: step_instance_key(run: run, step: access_discover_step_ref, subject: subject), read: read)
 }
 
-fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>) -> AccessDiscoverEstablished? {
+fn established_access(o: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>) -> AccessDiscoverEstablished? {
   match step_outcome_receipt(outcome: o) {
-    Present { value: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none }
+    Present { value: r } => match r { AccessDiscoverReceipt { receipt: a } => Present { value: a }  IdentityBindReceipt { receipt: _ } => none  PriorLifeBoundaryReceipt { receipt: _ } => none }
     Absent => none
   }
 }
 
-fn fold_real(run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal>>) -> ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal>? {
+fn fold_real(run: ConvergenceRunId, subject: StepSubjectKey, outcomes: List<StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>>) -> ConvergenceRunVerdict<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete>? {
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } => Present { value: fold_convergence_run(plan: p, run: run, subject: subject, outcomes: outcomes, projection: arrival_receipt_projection()) }
     ConvergencePlanRefused { cause: _ } => none
   }
 }
 
-fn stopped_on_unmet_access_precondition<R, C>(v: ConvergenceRunVerdict<R, C>?) -> Bool {
+// The instance the line stopped at is IdentityBindProvisional, refused for an unmet AccessDiscover
+// precondition; PriorLifeBoundary after it is not reached.
+fn refused_instance<R, C, I>(s: StepInstanceStanding<R, C, I>) -> Bool {
+  match s {
+    InstanceRefused { key: _, cause: _ } => true
+    _ => false
+  }
+}
+
+fn stopped_on_unmet_access_precondition<R, C, I>(v: ConvergenceRunVerdict<R, C, I>?) -> Bool {
   match v {
     Present { value: verdict } => match verdict {
-      RunStopped { ledger: l, at: _ } => match l.instances.last() {
+      RunStopped { ledger: l, at: _ } => match l.instances |> filter(s => refused_instance(s: s)) |> first() {
         Present { value: s } => match s {
           InstanceRefused { key: _, cause: c } => match c {
             PreconditionUnmet { precondition: p, consumed: _ } =>
@@ -400,7 +475,7 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject() -> 
   let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let foreign_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: "mtjade2" as StepSubjectKey)
   let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
-  let outcomes: List<StepOutcome<ProbeReceipt, String>> = [
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
     StepEstablished { receipt: ProbeReceipt { key: own_access, consumed: [] } },
     StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [foreign_access] } },
   ]
@@ -416,13 +491,45 @@ test fn w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run() -> Boo
   let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let earlier_access = step_instance_key(run: run_b, step: access_discover_step_ref, subject: mtjade1_key)
   let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
-  let outcomes: List<StepOutcome<ProbeReceipt, String>> = [
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
     StepEstablished { receipt: ProbeReceipt { key: own_access, consumed: [] } },
     StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [earlier_access] } },
   ]
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
       stopped_on_unmet_access_precondition(v: Present { value: fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) })
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+// AN INCOMPLETE INSTANCE STOPS ITS DEPENDENTS AND IS NEITHER CONVERGED NOR REFUSED (the fold's rule,
+// SUPPLIED like the two controls above). Over the real admitted plan, AccessDiscover converges,
+// IdentityBindProvisional is INCOMPLETE, and PriorLifeBoundary -- whose receipt here even claims to
+// have consumed the incomplete instance -- is NotReached blocked by it: the verdict is RunIncomplete at
+// IdentityBindProvisional, never RunConverged and never RunStopped.
+test fn w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplete() -> Bool {
+  let own_access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior_life = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: own_access, consumed: [] } },
+    StepIncomplete { key: identity, cause: "written, not read back" },
+    StepEstablished { receipt: ProbeReceipt { key: prior_life, consumed: [identity] } },
+  ]
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: real_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed)) {
+        RunIncomplete { ledger: l, at: at } =>
+          declaration_ref_eq(a: at.step_identity, b: identity_bind_provisional_step_ref)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceNotReached { key: k, blocked_by: b } => declaration_ref_eq(a: k.step_identity, b: prior_life_boundary_step_ref) && declaration_ref_eq(a: b.step_identity, b: identity_bind_provisional_step_ref)
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
     ConvergencePlanRefused { cause: _ } => false
   }
 }
@@ -434,7 +541,7 @@ test fn w_identity_bind_refuses_an_access_receipt_from_another_run() -> Bool {
   match established_access(o: real_access(run: run_b, subject: mtjade1_key, read: read_mtjade1_current_manager_read())) {
     Absent => false
     Present { value: earlier } => {
-      let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal> = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: mtjade1_identity_bind_inputs())
+      let outcome: StepOutcome<ArrivalStepReceipt, ArrivalStepRefusal, ArrivalStepIncomplete> = identity_bind_provisional(key: step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key), access: earlier, inputs: mtjade1_identity_bind_inputs())
       let refusal: ArrivalStepRefusal? = step_outcome_refusal(outcome: outcome)
       match refusal {
         Present { value: c } => match c { IdentityBindAccessForAnotherInstance { access: k } => ((k.run as NonEmptyStr) as String) == "o1c1-witness-run-b"  _ => false }
@@ -466,20 +573,20 @@ test fn w_access_discover_refuses_a_read_bound_to_another_unit() -> Bool {
 }
 
 // A REFUSAL STOPS THE LINE OVER ITS DEPENDENTS, AND EACH NAMES ITS BLOCKER. The real read, run for a
-// unit it is not bound to, refuses AccessDiscover; IdentityBindProvisional is then never executed and
-// is NotReached, blocked by that AccessDiscover instance.
+// unit it is not bound to, refuses AccessDiscover; IdentityBindProvisional and PriorLifeBoundary are
+// then never executed and are NotReached, each blocked by that AccessDiscover instance.
 test fn w_a_refused_access_leaves_identity_bind_not_reached_blocked_by_it() -> Bool {
-  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs()) {
+  match converge_arrival_prefix(run: run_a, subject: "mtjade2" as StepSubjectKey, read: read_mtjade1_current_manager_read(), inputs: mtjade1_identity_bind_inputs(), prior_life: PriorLifeInputs { platform: mt_jade_platform_ref, world: prior_life_full_dry_world() }) {
     ArrivalRunFolded { verdict: v } => match v {
       RunStopped { ledger: l, at: at } =>
         declaration_ref_eq(a: at.step_identity, b: access_discover_step_ref)
-          && length(xs: l.instances) == 2
+          && length(xs: l.instances) == 3
+          && length(xs: l.instances |> filter(s => match s {
+            InstanceNotReached { key: _, blocked_by: b } => declaration_ref_eq(a: b.step_identity, b: access_discover_step_ref) && ((b.subject as NonEmptyStr) as String) == "mtjade2"
+            _ => false
+          })) == 2
           && match l.instances.last() {
-            Present { value: s } => match s {
-              InstanceNotReached { key: k, blocked_by: b } =>
-                declaration_ref_eq(a: k.step_identity, b: identity_bind_provisional_step_ref) && declaration_ref_eq(a: b.step_identity, b: access_discover_step_ref) && ((b.subject as NonEmptyStr) as String) == "mtjade2"
-              _ => false
-            }
+            Present { value: s } => instance_step_is(s: s, step: prior_life_boundary_step_ref)
             Absent => false
           }
       _ => false

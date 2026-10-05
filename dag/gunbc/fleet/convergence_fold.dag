@@ -4,6 +4,15 @@ import std.types { Bool, Int, List, NonEmptyStr, String, brand }
 import v2.std.algebra { length }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import std.decl_ref { decl_ref }
+import std.measure { PositiveMillisecond, positive_millisecond_count }
+import gunbc.clock_read {
+  ObserverClockInstant,
+  ObserverClockRead,
+  ObserverClockObserved,
+  ObserverClockUnreadable,
+  observer_instant_millis,
+  observer_instant_precedes,
+}
 import gunbc.host_convergence_census {
   host_convergence_census_standing,
   HostConvergenceCensus,
@@ -27,12 +36,18 @@ import gunbc.host_convergence_census {
 // run's ledger. It executes no protocol and applies nothing, so it does not discharge CONVERGENCE-ONE
 // C8 (gunbc.host_convergence_protocol host_effect_decide_apply_frontier stays awaiting).
 //
-// WHAT THIS CUT DOES NOT CARRY, because no consumer in it exercises the capability and a designed
-// fixture is not an inhabitant (DESIGN §3 pairing obligation): apply followed by readback, the
-// authorization gate and its discharge, principals, mutation lanes, per-leg deadlines, pending, subject
-// quantifiers (all-of / any-of over a subject set), the domain-declared cheap readback, and order
-// derived from preconditions alone where no order authority exists. Each lands with its first real
-// consumer: O1c-2 (PriorLifeBoundary), O1c-3 (BmcSecure and ManagedHostAdmission), the Spark arm.
+// WHAT THIS HOME CARRIES SINCE O1c-2, with its first effectful consumer (the PriorLifeBoundary
+// archive in gunbc.machine_intake_prior_life_boundary): an applied step's outcome, per-leg deadlines,
+// and INCOMPLETE as its own arm -- a step whose actuation was attempted and whose completion its
+// independent readback does not ground. Incomplete is neither refused (the domain decided not to act,
+// or acting was refused before any effect) nor converged, and it never satisfies a precondition.
+//
+// WHAT IT STILL DOES NOT CARRY, because no consumer exercises it yet and a designed fixture is not an
+// inhabitant (DESIGN §3 pairing obligation): the authorization gate and its discharge, principals,
+// mutation lanes, pending with re-attach across runs, subject quantifiers (all-of / any-of over a
+// subject set), the domain-declared cheap readback, and order derived from preconditions alone where
+// no order authority exists. Each lands with its first real consumer: O1c-3 (BmcSecure and
+// ManagedHostAdmission), the Spark arm.
 
 // A RUN AND A SUBJECT ARE THE CALLER'S IDENTITIES, BRANDED SO NEITHER IS READ AS THE OTHER. The
 // subject key is the domain's canonical spelling of what one step instance converges: for the arrival
@@ -251,23 +266,38 @@ fn admit_convergence_plan<M>(
 // WHAT A DOMAIN HANDS THE FOLD FOR ONE INSTANCE: its sealed receipt, or its typed refusal. The
 // receipt type R is the domain's (construction-confined in the domain module); the fold reads it only
 // through the domain's projection below, so the key it judges is the key the domain sealed.
-type StepOutcome<R, C>
+//
+// INCOMPLETE carries the domain's own incompleteness type I, separate from its refusal type C, so a
+// cause that says "nothing was done" can never stand for one that says "something was done and not
+// read back".
+type StepOutcome<R, C, I>
   = StepEstablished { receipt: R }
   | StepRefused { key: StepInstanceKey, cause: C }
+  | StepIncomplete { key: StepInstanceKey, cause: I }
 
 // THE ONLY EXHAUSTIVE MATCHES ON StepOutcome LIVE IN THIS MODULE, so an arm added later (the Spark
 // arm's pending) changes the fold and no domain. A domain reads its own outcome through these.
-fn step_outcome_receipt<R, C>(outcome: StepOutcome<R, C>) -> R? {
+fn step_outcome_receipt<R, C, I>(outcome: StepOutcome<R, C, I>) -> R? {
   match outcome {
     StepEstablished { receipt: r } => Present { value: r }
     StepRefused { key: _, cause: _ } => none
+    StepIncomplete { key: _, cause: _ } => none
   }
 }
 
-fn step_outcome_refusal<R, C>(outcome: StepOutcome<R, C>) -> C? {
+fn step_outcome_refusal<R, C, I>(outcome: StepOutcome<R, C, I>) -> C? {
   match outcome {
     StepEstablished { receipt: _ } => none
     StepRefused { key: _, cause: c } => Present { value: c }
+    StepIncomplete { key: _, cause: _ } => none
+  }
+}
+
+fn step_outcome_incomplete<R, C, I>(outcome: StepOutcome<R, C, I>) -> I? {
+  match outcome {
+    StepEstablished { receipt: _ } => none
+    StepRefused { key: _, cause: _ } => none
+    StepIncomplete { key: _, cause: i } => Present { value: i }
   }
 }
 
@@ -286,6 +316,7 @@ fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_
     decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "arrival_receipt_projection"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_for_another_subject"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_a_precondition_is_not_satisfied_by_a_receipt_from_another_run"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_an_incomplete_instance_satisfies_no_dependent_and_the_run_is_incomplete"),
   ]
 {
   ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of }
@@ -297,20 +328,21 @@ type StepInstanceRefusal<C>
   | PreconditionUnmet { precondition: StepInstanceKey, consumed: List<StepInstanceKey> }
   | ConsumedReceiptNotAPrecondition { consumed: StepInstanceKey }
 
-type StepInstanceStanding<R, C>
+type StepInstanceStanding<R, C, I>
   = InstanceConverged { key: StepInstanceKey, receipt: R }
   | InstanceRefused { key: StepInstanceKey, cause: StepInstanceRefusal<C> }
+  | InstanceIncomplete { key: StepInstanceKey, cause: I }
   | InstanceNotReached { key: StepInstanceKey, blocked_by: StepInstanceKey }
 
 // THE LEDGER AND THE CONVERGED RUN ARE SEALED: only fold_convergence_run constructs them, so a
 // downstream admission (O1c-3's ManagedHostAdmission) can tell a folded run from an authored one.
 // The verdict and instance arms around them are open diagnostic wrappers; the admission evidence is
 // ConvergedRun.
-type ConvergenceRunLedger<R, C> sole_constructor {
+type ConvergenceRunLedger<R, C, I> sole_constructor {
   run: ConvergenceRunId
   subject: StepSubjectKey
   order_authority: DeclarationRef
-  instances: List<StepInstanceStanding<R, C>>
+  instances: List<StepInstanceStanding<R, C, I>>
 }
 
 // AN OUTCOME THAT IS NOT ONE INSTANCE OF THIS RUN REFUSES THE WHOLE RUN before any ledger is written:
@@ -321,19 +353,23 @@ type RunOutcomeRefusal
   | OutcomeForUnplannedStep { key: StepInstanceKey }
   | OutcomeOutsideRun { key: StepInstanceKey }
 
-type ConvergedRun<R, C> sole_constructor {
-  ledger: ConvergenceRunLedger<R, C>
+type ConvergedRun<R, C, I> sole_constructor {
+  ledger: ConvergenceRunLedger<R, C, I>
 }
 
-type ConvergenceRunVerdict<R, C>
-  = RunConverged { run: ConvergedRun<R, C> }
-  | RunStopped { ledger: ConvergenceRunLedger<R, C>, at: StepInstanceKey }
+// A RUN THAT STOPPED AT AN INCOMPLETE INSTANCE IS NOT A RUN THAT STOPPED AT A REFUSAL: the first may
+// have changed the world and owes a re-observation, the second did not. Neither is converged.
+type ConvergenceRunVerdict<R, C, I>
+  = RunConverged { run: ConvergedRun<R, C, I> }
+  | RunStopped { ledger: ConvergenceRunLedger<R, C, I>, at: StepInstanceKey }
+  | RunIncomplete { ledger: ConvergenceRunLedger<R, C, I>, at: StepInstanceKey }
   | RunOutcomesRefused { cause: RunOutcomeRefusal }
 
-fn outcome_key<R, C>(outcome: StepOutcome<R, C>, projection: ConvergenceReceiptProjection<R>) -> StepInstanceKey {
+fn outcome_key<R, C, I>(outcome: StepOutcome<R, C, I>, projection: ConvergenceReceiptProjection<R>) -> StepInstanceKey {
   match outcome {
     StepEstablished { receipt: r } => projection.key_of(r)
     StepRefused { key: k, cause: _ } => k
+    StepIncomplete { key: k, cause: _ } => k
   }
 }
 
@@ -359,10 +395,11 @@ fn first_outcome_refusal<M>(
     })
 }
 
-fn converged_key_in<R, C>(ledger: List<StepInstanceStanding<R, C>>, key: StepInstanceKey) -> Bool {
+fn converged_key_in<R, C, I>(ledger: List<StepInstanceStanding<R, C, I>>, key: StepInstanceKey) -> Bool {
   ledger |> any(e => match e {
     InstanceConverged { key: k, receipt: _ } => step_instance_key_eq(a: k, b: key)
     InstanceRefused { key: _, cause: _ } => false
+    InstanceIncomplete { key: _, cause: _ } => false
     InstanceNotReached { key: _, blocked_by: _ } => false
   })
 }
@@ -376,11 +413,11 @@ fn key_in(keys: List<StepInstanceKey>, key: StepInstanceKey) -> Bool {
 // receipt must name that exact instance as what it consumed. A receipt for another subject or from
 // another run names another key and satisfies nothing; a consumed key that is no precondition of this
 // step refuses rather than being ignored.
-fn precondition_refusal<M, R, C>(
+fn precondition_refusal<M, R, C, I>(
   step: ConvergenceStep<M>,
   key: StepInstanceKey,
   consumed: List<StepInstanceKey>,
-  ledger: List<StepInstanceStanding<R, C>>,
+  ledger: List<StepInstanceStanding<R, C, I>>,
 ) -> StepInstanceRefusal<C>? {
   let required = map(step.preconditions, p => precondition_key(p: p, key: key))
   match required |> filter(r => (converged_key_in(ledger: ledger, key: r) && key_in(keys: consumed, key: r)) == false) |> first() {
@@ -393,12 +430,13 @@ fn precondition_refusal<M, R, C>(
   }
 }
 
-type LedgerWalk<R, C> {
+type LedgerWalk<R, C, I> {
   stopped_at: StepInstanceKey?
-  instances: List<StepInstanceStanding<R, C>>
+  stopped_incomplete: Bool
+  instances: List<StepInstanceStanding<R, C, I>>
 }
 
-fn instance_outcome<R, C>(outcomes: List<StepOutcome<R, C>>, key: StepInstanceKey, projection: ConvergenceReceiptProjection<R>) -> StepOutcome<R, C>? {
+fn instance_outcome<R, C, I>(outcomes: List<StepOutcome<R, C, I>>, key: StepInstanceKey, projection: ConvergenceReceiptProjection<R>) -> StepOutcome<R, C, I>? {
   outcomes |> filter(o => step_instance_key_eq(a: outcome_key(outcome: o, projection: projection), b: key)) |> first()
 }
 
@@ -406,23 +444,26 @@ fn instance_outcome<R, C>(outcomes: List<StepOutcome<R, C>>, key: StepInstanceKe
 // single-subject run every later instance is such a dependent, so the whole rest of the line is
 // NotReached, each naming the instance that blocked it. When instances span several subjects, an
 // independent instance is not a dependent and is not stopped by this rule. An instance with no outcome refuses as StepOutcomeAbsent; it is never read as converged.
-fn walk_instance<M, R, C>(
-  acc: LedgerWalk<R, C>,
+// An INCOMPLETE instance stops the line the same way, because in a single-subject run every later
+// instance depends on it, and the walk remembers which kind of stop it was.
+fn walk_instance<M, R, C, I>(
+  acc: LedgerWalk<R, C, I>,
   ranked: RankedStep<M>,
   run: ConvergenceRunId,
   subject: StepSubjectKey,
-  outcomes: List<StepOutcome<R, C>>,
+  outcomes: List<StepOutcome<R, C, I>>,
   projection: ConvergenceReceiptProjection<R>,
-) -> LedgerWalk<R, C> {
+) -> LedgerWalk<R, C, I> {
   let key = step_instance_key(run: run, step: ranked.step.identity, subject: subject)
   match acc.stopped_at {
-    Present { value: blocker } => LedgerWalk { stopped_at: acc.stopped_at, instances: concat(acc.instances, [InstanceNotReached { key: key, blocked_by: blocker }]) }
+    Present { value: blocker } => LedgerWalk { stopped_at: acc.stopped_at, stopped_incomplete: acc.stopped_incomplete, instances: concat(acc.instances, [InstanceNotReached { key: key, blocked_by: blocker }]) }
     Absent => {
       let standing = match instance_outcome(outcomes: outcomes, key: key, projection: projection) {
         Absent => InstanceRefused { key: key, cause: StepOutcomeAbsent }
         Present { value: o } =>
           match o {
             StepRefused { key: _, cause: c } => InstanceRefused { key: key, cause: DomainRefused { cause: c } }
+            StepIncomplete { key: _, cause: i } => InstanceIncomplete { key: key, cause: i }
             StepEstablished { receipt: r } =>
               match precondition_refusal(step: ranked.step, key: key, consumed: projection.consumed_of(r), ledger: acc.instances) {
                 Present { value: why } => InstanceRefused { key: key, cause: why }
@@ -433,32 +474,113 @@ fn walk_instance<M, R, C>(
       let stop = match standing {
         InstanceConverged { key: _, receipt: _ } => none
         InstanceRefused { key: k, cause: _ } => Present { value: k }
+        InstanceIncomplete { key: k, cause: _ } => Present { value: k }
         InstanceNotReached { key: k, blocked_by: _ } => Present { value: k }
       }
-      LedgerWalk { stopped_at: stop, instances: concat(acc.instances, [standing]) }
+      let incomplete = match standing {
+        InstanceIncomplete { key: _, cause: _ } => true
+        InstanceConverged { key: _, receipt: _ } => false
+        InstanceRefused { key: _, cause: _ } => false
+        InstanceNotReached { key: _, blocked_by: _ } => false
+      }
+      LedgerWalk { stopped_at: stop, stopped_incomplete: incomplete, instances: concat(acc.instances, [standing]) }
     }
   }
 }
 
 // THE RUN FOLD: one ledger per run, each instance converged, refused or not reached, in the admitted
 // order. The verdict is derived from the ledger and names the instance the line stopped at.
-fn fold_convergence_run<M, R, C>(
+fn fold_convergence_run<M, R, C, I>(
   plan: AdmittedConvergencePlan<M>,
   run: ConvergenceRunId,
   subject: StepSubjectKey,
-  outcomes: List<StepOutcome<R, C>>,
+  outcomes: List<StepOutcome<R, C, I>>,
   projection: ConvergenceReceiptProjection<R>,
-) -> ConvergenceRunVerdict<R, C> {
+) -> ConvergenceRunVerdict<R, C, I> {
   match first_outcome_refusal(run: run, subject: subject, plan: plan, keys: map(outcomes, o => outcome_key(outcome: o, projection: projection))) {
     Present { value: r } => RunOutcomesRefused { cause: r }
     Absent => {
-      let walked = fold(plan.steps, init: LedgerWalk { stopped_at: none, instances: [] }, f: (acc, s) =>
+      let walked = fold(plan.steps, init: LedgerWalk { stopped_at: none, stopped_incomplete: false, instances: [] }, f: (acc, s) =>
         walk_instance(acc: acc, ranked: s, run: run, subject: subject, outcomes: outcomes, projection: projection))
       let ledger = ConvergenceRunLedger { run: run, subject: subject, order_authority: plan.authority, instances: walked.instances }
       match walked.stopped_at {
         Absent => RunConverged { run: ConvergedRun { ledger: ledger } }
-        Present { value: k } => RunStopped { ledger: ledger, at: k }
+        Present { value: k } => if walked.stopped_incomplete { RunIncomplete { ledger: ledger, at: k } } else { RunStopped { ledger: ledger, at: k } }
       }
     }
+  }
+}
+
+// ── EFFECT LEGS AND THEIR DEADLINES ────────────────────────────────────────────────────────────────
+
+// A LEG'S BUDGET: which effect leg, and how long it may take, as a positive duration and never an
+// instant. Sealed, and minted only for the callers leg_budget admits -- the one function in each
+// domain that declares that leg's budget, and the one Bool claim that varies only the duration -- so
+// no caller can hand an effect a made-up budget. The value is a duration and every instant is a
+// sealed observer instant because a time-typed scalar formal does not refuse a record passed at it
+// (gunbc.recurring_failure_mode product_value_at_a_scalar_formal_is_accepted): a deadline's safety
+// comes from these sealed carriers, not from the checker.
+type LegBudget sole_constructor {
+  leg: DeclarationRef
+  budget: PositiveMillisecond
+}
+
+fn leg_budget(leg: DeclarationRef, budget: PositiveMillisecond) -> LegBudget
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "prior_life_archive_write_budget"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
+  ]
+{
+  LegBudget { leg: leg, budget: budget }
+}
+
+// A LEG'S DEADLINE: its budget and the observer-clock instant it started at. Sealed, and built only
+// here from a sealed budget and a sealed observer instant, so an effect that takes a LegDeadline
+// cannot be invoked without one: a leg with no deadline is unconstructible.
+type LegDeadline sole_constructor {
+  budget: LegBudget
+  started: ObserverClockInstant
+}
+
+fn effect_leg_deadline(budget: LegBudget, started: ObserverClockInstant) -> LegDeadline {
+  LegDeadline { budget: budget, started: started }
+}
+
+fn leg_deadline_leg(d: LegDeadline) -> DeclarationRef {
+  d.budget.leg
+}
+
+// A LEG THAT FINISHED WITHIN ITS DEADLINE, sealed: only complete_effect_leg mints it, from the leg's
+// deadline and an observer-clock read taken after the leg, so a receipt that carries one carries a
+// completion its deadline was actually checked against.
+type LegCompletedWithinDeadline sole_constructor {
+  deadline: LegDeadline
+  finished: ObserverClockInstant
+}
+
+fn leg_completed_leg(c: LegCompletedWithinDeadline) -> DeclarationRef {
+  c.deadline.budget.leg
+}
+
+// WHAT THE OBSERVER CLOCK SAYS AFTER A LEG RAN. Only the first arm is a completion; each other arm is
+// a reason completion is NOT grounded, and an attempted effect in any of them is incomplete, never
+// established.
+type LegCompletion
+  = LegCompletedWithin { completed: LegCompletedWithinDeadline }
+  | LegDeadlineElapsed { deadline: LegDeadline, finished: ObserverClockInstant }
+  | LegFinishedBeforeItStarted { deadline: LegDeadline, finished: ObserverClockInstant }
+  | LegCompletionUnobserved { deadline: LegDeadline, detail: String }
+
+fn complete_effect_leg(deadline: LegDeadline, finished: ObserverClockRead) -> LegCompletion {
+  match finished {
+    ObserverClockUnreadable { detail: d } => LegCompletionUnobserved { deadline: deadline, detail: d }
+    ObserverClockObserved { instant: f } =>
+      if observer_instant_precedes(earlier: f, later: deadline.started) {
+        LegFinishedBeforeItStarted { deadline: deadline, finished: f }
+      } else if (observer_instant_millis(instant: f) as Int) - (observer_instant_millis(instant: deadline.started) as Int) > positive_millisecond_count(m: deadline.budget.budget) {
+        LegDeadlineElapsed { deadline: deadline, finished: f }
+      } else {
+        LegCompletedWithin { completed: LegCompletedWithinDeadline { deadline: deadline, finished: f } }
+      }
   }
 }

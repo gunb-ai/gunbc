@@ -76,6 +76,8 @@ fn observer_clock_read() -> ObserverClockRead {
 fn observer_clock_modeled(millis: EpochMs, realization: NonEmptyStr) -> ObserverClockInstant
   admit_callers: [
     decl_ref(module_path: "gunbc.machine_intake_bmc_secure", decl_name: "dry_bmc_account_instant"),
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_prior_life_instant"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_budget_that_differs_only_in_its_duration_flips_completed_to_elapsed"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
     decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "reflash_restored_factory_access_takes_the_same_apply_and_readback_path"),

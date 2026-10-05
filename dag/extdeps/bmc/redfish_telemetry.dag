@@ -56,6 +56,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [
     ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/Thermal.v1_3_0.json" } },
     ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/LogEntry.v1_9_0.json" } },
+    ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/LogService.v1_0_0.json" } },
     ExternalAuthority { uri: Uri { scheme: Https, locator: "redfish.dmtf.org/schemas/v1/Resource.json" } },
   ]
 }
@@ -259,6 +260,13 @@ type RedfishLogEntry {
   id: Int
   severity: NonEmptyStr
   message: NonEmptyStr
+}
+
+// ONE LOG SERVICE (LogService.v1_0_0): its Id within its collection, and the LogEntry members of its
+// Entries collection, in the order the service numbers them.
+type RedfishLogService {
+  id: NonEmptyStr
+  entries: List<RedfishLogEntry>
 }
 
 fn redfish_log_entry(v: JsonValue) -> ObservationAttempt<RedfishLogEntry, NonEmptyStr> {

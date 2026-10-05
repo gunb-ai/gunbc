@@ -1,0 +1,757 @@
+module gunbc.machine_intake_prior_life_boundary
+
+import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.content_hash { ContentHash, content_hash_of_value, content_hash_equal }
+import std.measure { positive_millisecond, PositiveMeasureSuccessor }
+import std.algebra { FreeSemigroup, Empty }
+import v2.std.algebra { length }
+import std.goal_assessment {
+  ObservationAttempt,
+  ObservationEstablished,
+  ObservationRefused,
+  GoalAssessment,
+  GoalSatisfied,
+  GoalDiverged,
+  GoalIndeterminate,
+  GoalAssessmentRefused,
+  GoalInspected,
+  GoalObservationRefused,
+}
+import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
+import extdeps.uri { uri_wire }
+import extdeps.bmc.redfish_telemetry {
+  RedfishLogEntry,
+  RedfishLogService,
+  RedfishTelemetryPoint,
+  RedfishHealth,
+  RedfishHealthOk,
+  RedfishHealthWarning,
+  RedfishHealthCritical,
+  RedfishHealthOther,
+  RedfishHealthUnreported,
+  RedfishResourceState,
+  RedfishStateEnabled,
+  RedfishStateDisabled,
+  RedfishStateAbsent,
+  RedfishStateOther,
+  RedfishStateUnreported,
+  RedfishReading,
+  RedfishReadingValue,
+  RedfishReadingNull,
+  RedfishReadingMissing,
+  RedfishPointKind,
+  RedfishTemperatureCelsius,
+  RedfishRotationalRpm,
+  RedfishOtherReading,
+}
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaObservation, redfish_virtual_media_resource_path }
+import gunbc.bmc_model {
+  BmcWorld,
+  BmcSelRecord,
+  BmcPowerOn,
+  BmcPowerOff,
+  BootOverrideNone,
+  BootOverrideCdromEfiNextBoot,
+}
+import gunbc.clock_read {
+  ObserverClockInstant,
+  ObserverClockObserved,
+  observer_clock_modeled,
+  observer_instant_millis,
+}
+import gunbc.host_convergence_protocol { HostEffectDomainProjection, inspect_via_host_effect_projection }
+import gunbc.fleet.convergence_fold {
+  StepInstanceKey,
+  LegBudget,
+  LegCompletion,
+  LegCompletedWithin,
+  LegDeadlineElapsed,
+  LegFinishedBeforeItStarted,
+  LegCompletionUnobserved,
+  LegCompletedWithinDeadline,
+  leg_budget,
+  effect_leg_deadline,
+  complete_effect_leg,
+}
+import gunbc.machine_intake_subject { MachineIntakeSubject }
+
+// THE PRIOR-LIFE BOUNDARY, ITS ARCHIVE ARM (docs/plans/managed-host-untangle.md, cut O1c-2;
+// docs/plans/machine-intake-design.md §5). Before anything is cleared, the controller's prior-life
+// records are preserved as one immutable content-addressed archive, and a baseline cursor is derived
+// FROM that archive. This cut builds only the arm that clears nothing,
+// LogsArchivedWithBaselineCursor; LogsArchivedAndCleared is a write to the controller with its own
+// admission and operator sign-off, and it has no constructor here.
+//
+// THE PHASE IS EFFECTFUL, BUT NOT ON THE CONTROLLER. Its reads of the controller are read-only; its
+// one effect is the archive WRITE into the intake staging service's content-addressed store
+// (gunbc.machine_intake_staging IntakeStagingCapability ContentAddressedArtifactStore), followed by
+// an independent re-read of that store by digest. Observe, assess and decide go through
+// gunbc.host_convergence_protocol HostEffectDomainProjection; the write and the readback are this
+// domain's own, minted into this domain's sealed receipt, because the projection's apply side is the
+// open C8 frontier (host_effect_decide_apply_frontier). Nothing here discharges C8: the write is not
+// reconciled through gunbc.host_effect_realize host_effect_apply.
+//
+// THIS CUT IS DRY. The only realization is over gunbc.bmc_model BmcWorld and the dry store below; no
+// live controller is read and no live store is written. A live realization lands with its own
+// operator go-ahead, and the receipt names the realization it came from so a dry receipt can never
+// stand for a live one.
+
+// ── THE CARRIERS ───────────────────────────────────────────────────────────────────────────────────
+
+// The eight prior-life carriers of machine-intake-design §5, one arm each. A carrier is archived as
+// its own content-addressed capture, or it is a typed gap; it is never omitted.
+type PriorLifeCarrier
+  = PriorLifeBmcClock
+  | PriorLifeSelAndEventLogs
+  | PriorLifeRedfishLogCollections
+  | PriorLifeAuditAccountEvents
+  | PriorLifeBootOverride
+  | PriorLifeVirtualMediaState
+  | PriorLifePowerState
+  | PriorLifeSensorSnapshot
+
+data prior_life_carriers_all: List<PriorLifeCarrier> = [
+  PriorLifeBmcClock,
+  PriorLifeSelAndEventLogs,
+  PriorLifeRedfishLogCollections,
+  PriorLifeAuditAccountEvents,
+  PriorLifeBootOverride,
+  PriorLifeVirtualMediaState,
+  PriorLifePowerState,
+  PriorLifeSensorSnapshot,
+]
+
+fn prior_life_carrier_label(c: PriorLifeCarrier) -> NonEmptyStr {
+  match c {
+    PriorLifeBmcClock => "bmc-clock"
+    PriorLifeSelAndEventLogs => "ipmi-sel"
+    PriorLifeRedfishLogCollections => "redfish-log-services"
+    PriorLifeAuditAccountEvents => "account-events"
+    PriorLifeBootOverride => "boot-override"
+    PriorLifeVirtualMediaState => "virtual-media"
+    PriorLifePowerState => "power-state"
+    PriorLifeSensorSnapshot => "sensor-snapshot"
+  }
+}
+
+fn prior_life_carrier_eq(a: PriorLifeCarrier, b: PriorLifeCarrier) -> Bool {
+  (prior_life_carrier_label(c: a) as String) == (prior_life_carrier_label(c: b) as String)
+}
+
+// ── PLATFORM POLICY ────────────────────────────────────────────────────────────────────────────────
+
+// WHICH CARRIERS A PLATFORM REQUIRES, AND WHETHER IT ADMITS AN UNCLEARED BOUNDARY. The design admits
+// the archive-with-cursor arm "only where platform policy explicitly admits an uncleared append-only
+// boundary", so the admission is an authored row per platform. The platform is the cited upstream
+// subject the row is about, by declaration, so a row never claims a controller family it has not
+// observed.
+type UnclearedBoundaryAdmission
+  = UnclearedBoundaryAdmitted
+  | UnclearedBoundaryNotAdmitted
+
+type PriorLifePolicy {
+  platform: DeclarationRef
+  required: List<PriorLifeCarrier>
+  uncleared_boundary: UnclearedBoundaryAdmission
+}
+
+data mt_collins_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.ampere.mt_collins_product_brief.subject", decl_name: "MtCollinsPublicProductBrief")
+
+data mt_jade_platform_ref: DeclarationRef = decl_ref(module_path: "extdeps.ocp.mt_jade.subject", decl_name: "MtJadeSpecificationRevision")
+
+// THE ROWS (warm-crane-577 for the operator, 2026-10-05, reported upward for veto). Mt. Collins and
+// Mt. Jade both require ALL EIGHT carriers and admit only the uncleared baseline-cursor arm. A
+// required subset would assert, without evidence, that the other carriers are irrelevant -- absence
+// is not irrelevance (DESIGN §3d) -- so narrowing a platform's set is a new row with its reason.
+// Mt. Jade's row is a requirement, not an observation: it does not depend on the unit's unobserved
+// controller family and claims none.
+data prior_life_platform_policies: List<PriorLifePolicy> = [
+  PriorLifePolicy { platform: mt_collins_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
+  PriorLifePolicy { platform: mt_jade_platform_ref, required: prior_life_carriers_all, uncleared_boundary: UnclearedBoundaryAdmitted },
+]
+
+fn prior_life_policy_for(platform: DeclarationRef) -> PriorLifePolicy? {
+  prior_life_platform_policies |> filter(p => declaration_ref_eq(a: p.platform, b: platform)) |> first()
+}
+
+// ── THE DRY REALIZATION'S WORLD ────────────────────────────────────────────────────────────────────
+
+// THE DRY ARCHIVE STORE: the content-addressed store of the intake staging service, as a value. An
+// object is its digest and its bytes. It is NOT std.artifact_store ArtifactStore, which is a cache
+// provider that evicts least-recently-used rows to a budget: an evidence archive may never evict, so
+// realizing it as a cache would let a prior-life record disappear by policy. Whether the store keeps,
+// loses or corrupts a write is a world fact the dry store carries, so a write can be lost or corrupted.
+type ArchivedObject {
+  digest: ContentHash
+  body: NonEmptyStr
+}
+
+type DryArchiveStoreBehaviour
+  = DryArchiveStoreKeepsWrites
+  | DryArchiveStoreLosesWrites
+  | DryArchiveStoreCorruptsWrites
+
+type DryArchiveStore {
+  objects: List<ArchivedObject>
+  behaviour: DryArchiveStoreBehaviour
+}
+
+// WHAT ONE DRY RUN OF THE PHASE READS AND WRITES: the controller as a BmcWorld, the store, the
+// observer-clock instant (in milliseconds) at which the run reads the controller and starts the
+// write, and the instant the observer clock reads when the write returns. Both instants are labeled
+// modeled wherever they land, so neither can be read as a clock read at run time; a write that
+// returns before it started is a scenario the leg's own check refuses.
+type DryPriorLifeWorld {
+  bmc: BmcWorld
+  store: DryArchiveStore
+  read_at_millis: EpochMs
+  write_returned_at_millis: EpochMs
+}
+
+data prior_life_dry_realization_name: NonEmptyStr = "gunbc.machine_intake_prior_life_boundary dry realization over gunbc.bmc_model BmcWorld and a dry archive store" as NonEmptyStr
+
+// THE DRY REALIZATION'S CLOCK, confined to the two functions of this realization that stamp a read
+// and a write.
+fn dry_prior_life_instant(millis: EpochMs) -> ObserverClockInstant
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_archive_prior_life"),
+    decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive"),
+  ]
+{
+  observer_clock_modeled(millis: millis, realization: prior_life_dry_realization_name)
+}
+
+// ── CAPTURE: what the controller serves for each carrier, as bytes, and their digest ────────────────
+
+type CarrierGapCause
+  = CarrierSurfaceUnmodeled {}
+
+type CarrierCapture
+  = CarrierCaptured { carrier: PriorLifeCarrier, body: NonEmptyStr, digest: ContentHash }
+  | CarrierGap { carrier: PriorLifeCarrier, cause: CarrierGapCause }
+
+fn capture_carrier_of(c: CarrierCapture) -> PriorLifeCarrier {
+  match c {
+    CarrierCaptured { carrier: k, body: _, digest: _ } => k
+    CarrierGap { carrier: k, cause: _ } => k
+  }
+}
+
+fn captured(carrier: PriorLifeCarrier, lines: List<String>) -> CarrierCapture {
+  let body = join(concat([prior_life_carrier_label(c: carrier) as String], lines), "\n") as NonEmptyStr
+  CarrierCaptured { carrier: carrier, body: body, digest: content_hash_of_value(value: body) }
+}
+
+fn sel_line(r: BmcSelRecord) -> String {
+  join([r.id_hex, r.date, r.time, r.sensor, r.event, r.state], "|")
+}
+
+fn log_entry_line(e: RedfishLogEntry) -> String {
+  join([to_string(e.id), e.severity as String, e.message as String], "|")
+}
+
+fn log_service_lines(s: RedfishLogService) -> List<String> {
+  concat([join(["service", s.id as String, "entries", to_string(length(xs: s.entries))], " ")], map(s.entries, e => log_entry_line(e: e)))
+}
+
+fn health_word(h: RedfishHealth) -> String {
+  match h {
+    RedfishHealthOk => "OK"
+    RedfishHealthWarning => "Warning"
+    RedfishHealthCritical => "Critical"
+    RedfishHealthOther { health: x } => x as String
+    RedfishHealthUnreported => "unreported"
+  }
+}
+
+fn state_word(s: RedfishResourceState) -> String {
+  match s {
+    RedfishStateEnabled => "Enabled"
+    RedfishStateDisabled => "Disabled"
+    RedfishStateAbsent => "Absent"
+    RedfishStateOther { state: x } => x as String
+    RedfishStateUnreported => "unreported"
+  }
+}
+
+fn reading_word(r: RedfishReading) -> String {
+  match r {
+    RedfishReadingValue { whole: n } => to_string(n)
+    RedfishReadingNull => "null"
+    RedfishReadingMissing => "missing"
+  }
+}
+
+fn kind_word(k: RedfishPointKind) -> String {
+  match k {
+    RedfishTemperatureCelsius => "Temperature"
+    RedfishRotationalRpm => "Rotational"
+    RedfishOtherReading { reading_type: t } => t as String
+  }
+}
+
+fn sensor_line(p: RedfishTelemetryPoint) -> String {
+  join([p.name as String, kind_word(k: p.kind), reading_word(r: p.reading), health_word(h: p.health), state_word(s: p.state)], "|")
+}
+
+fn virtual_media_line(v: RedfishVirtualMediaObservation) -> String {
+  join([
+    redfish_virtual_media_resource_path(locator: v.locator) as String,
+    if v.inserted { "inserted" } else { "ejected" },
+    match v.image { Present { value: u } => uri_wire(uri: u) as String  Absent => "no-image" },
+  ], "|")
+}
+
+// ONE CAPTURE PER CARRIER, FROM THE WORLD. A surface the world does not model is a gap, never an
+// empty record; an empty log the world does model is a capture of zero entries.
+fn capture_from_world(world: BmcWorld, carrier: PriorLifeCarrier) -> CarrierCapture {
+  let surfaces = world.record_surfaces
+  match carrier {
+    PriorLifeBmcClock =>
+      match surfaces.manager_date_time {
+        Present { value: t } => captured(carrier: carrier, lines: [t as String])
+        Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
+      }
+    PriorLifeSelAndEventLogs => captured(carrier: carrier, lines: concat([join(["records", to_string(length(xs: world.sel))], " ")], map(world.sel, r => sel_line(r: r))))
+    PriorLifeRedfishLogCollections =>
+      match surfaces.log_services {
+        Present { value: ss } => captured(carrier: carrier, lines: fold(ss, init: [], f: (acc, s) => concat(acc, log_service_lines(s: s))))
+        Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
+      }
+    PriorLifeAuditAccountEvents =>
+      match surfaces.account_events {
+        Present { value: es } => captured(carrier: carrier, lines: concat([join(["entries", to_string(length(xs: es))], " ")], map(es, e => log_entry_line(e: e))))
+        Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
+      }
+    PriorLifeBootOverride =>
+      captured(carrier: carrier, lines: [match world.boot_override { BootOverrideNone => "none"  BootOverrideCdromEfiNextBoot => "cdrom-efi-next-boot" }])
+    PriorLifeVirtualMediaState =>
+      match surfaces.virtual_media {
+        Present { value: vs } => captured(carrier: carrier, lines: concat([join(["members", to_string(length(xs: vs))], " ")], map(vs, v => virtual_media_line(v: v))))
+        Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
+      }
+    PriorLifePowerState =>
+      captured(carrier: carrier, lines: [match world.power { BmcPowerOn => "on"  BmcPowerOff => "off" }])
+    PriorLifeSensorSnapshot =>
+      match surfaces.sensors {
+        Present { value: ps } => captured(carrier: carrier, lines: concat([join(["members", to_string(length(xs: ps))], " ")], map(ps, p => sensor_line(p: p))))
+        Absent => CarrierGap { carrier: carrier, cause: CarrierSurfaceUnmodeled {} }
+      }
+  }
+}
+
+// ── THE ARCHIVE AND ITS CURSOR ─────────────────────────────────────────────────────────────────────
+
+// THE CURSOR, DERIVED FROM THE ARCHIVE AND NOTHING ELSE: the last SEL record id, the last entry id of
+// each Redfish log service and of the account-event log, and the archive's own digest. Sealed, and
+// minted only by archive_of below, so a cursor cannot be authored beside an archive it was not read
+// from.
+type LogServiceCursor {
+  service: NonEmptyStr
+  final_entry: Int?
+}
+
+type BaselineCursor sole_constructor {
+  sel_final_record: String?
+  log_services: List<LogServiceCursor>
+  account_events_final_entry: Int?
+  archive: ContentHash
+}
+
+// THE ARCHIVE THE PHASE WRITES, sealed: the subject it was read for, every required carrier's
+// capture, the canonical body those captures make, its digest, and the instant the controller was
+// read. Minted only by archive_of, from a full set of captures.
+type PriorLifeArchive sole_constructor {
+  subject: MachineIntakeSubject
+  captures: List<CarrierCapture>
+  body: NonEmptyStr
+  digest: ContentHash
+  read_at: ObserverClockInstant
+  cursor: BaselineCursor
+}
+
+fn last_of<T>(xs: List<T>) -> T? {
+  xs.last()
+}
+
+fn archive_of(subject: MachineIntakeSubject, world: BmcWorld, captures: List<CarrierCapture>, read_at: ObserverClockInstant) -> PriorLifeArchive {
+  let lines = fold(captures, init: [], f: (acc, c) => match c {
+    CarrierCaptured { carrier: _, body: b, digest: _ } => concat(acc, [b as String])
+    CarrierGap { carrier: k, cause: _ } => concat(acc, [join([prior_life_carrier_label(c: k) as String, "gap"], " ")])
+  })
+  let body = join(concat([join(["prior-life archive of", ((subject.subject.unit_key as NonEmptyStr) as String), "attempt", ((subject.attempt_id as NonEmptyStr) as String)], " ")], lines), "\n\n") as NonEmptyStr
+  let digest = content_hash_of_value(value: body)
+  PriorLifeArchive {
+    subject: subject,
+    captures: captures,
+    body: body,
+    digest: digest,
+    read_at: read_at,
+    cursor: BaselineCursor {
+      sel_final_record: match last_of(xs: world.sel) { Present { value: r } => Present { value: r.id_hex }  Absent => none },
+      log_services: match world.record_surfaces.log_services {
+        Present { value: ss } => map(ss, s => LogServiceCursor { service: s.id, final_entry: match last_of(xs: s.entries) { Present { value: e } => Present { value: e.id }  Absent => none } })
+        Absent => []
+      },
+      account_events_final_entry: match world.record_surfaces.account_events {
+        Present { value: es } => match last_of(xs: es) { Present { value: e } => Present { value: e.id }  Absent => none }
+        Absent => none
+      },
+      archive: digest,
+    },
+  }
+}
+
+fn prior_life_archive_digest(a: PriorLifeArchive) -> ContentHash {
+  a.digest
+}
+
+fn prior_life_archive_cursor(a: PriorLifeArchive) -> BaselineCursor {
+  a.cursor
+}
+
+fn baseline_cursor_sel_final_record(c: BaselineCursor) -> String? {
+  c.sel_final_record
+}
+
+fn baseline_cursor_archive(c: BaselineCursor) -> ContentHash {
+  c.archive
+}
+
+// ── OBSERVE, ASSESS, DECIDE (through the canonical projection) ───────────────────────────────────
+
+// What the phase reads: every carrier's capture from the controller, and whether the store already
+// holds an archive object at the digest those captures make (the store read is part of the
+// observation, so an archive already written and read back is a Noop and is not written twice).
+type PriorLifeObservation {
+  archive: PriorLifeArchive
+  held: ArchivedObject?
+}
+
+type PriorLifeRequest {
+  world: DryPriorLifeWorld
+  subject: MachineIntakeSubject
+  read_at: ObserverClockInstant
+}
+
+type PriorLifeGoal {
+  policy: PriorLifePolicy
+}
+
+type PriorLifeAssessRefusal
+  = RequiredCarrierNotArchivable { carrier: PriorLifeCarrier, cause: CarrierGapCause }
+  | UnclearedBoundaryNotAdmittedByPolicy { platform: DeclarationRef }
+
+type PriorLifeDeviation
+  = ArchiveNotHeldByStore { digest: ContentHash }
+
+// THE ARCHIVE PLAN, sealed to this module: the archive to write. Minted only by write_then_read_back,
+// which dry_archive_prior_life reaches only on an Apply decision, so a plan exists only over an
+// assessment that found every required carrier captured and the store not holding the archive.
+type PriorLifeArchivePlan sole_constructor {
+  archive: PriorLifeArchive
+}
+
+fn store_object_at(store: DryArchiveStore, digest: ContentHash) -> ArchivedObject? {
+  store.objects |> filter(o => content_hash_equal(left: o.digest, right: digest)) |> first()
+}
+
+fn observe_prior_life(key: StepInstanceKey, request: PriorLifeRequest) -> ObservationAttempt<PriorLifeObservation, NonEmptyStr> {
+  let captures = map(prior_life_carriers_all, c => capture_from_world(world: request.world.bmc, carrier: c))
+  let archive = archive_of(subject: request.subject, world: request.world.bmc, captures: captures, read_at: request.read_at)
+  ObservationEstablished { observed: PriorLifeObservation { archive: archive, held: store_object_at(store: request.world.store, digest: archive.digest) } }
+}
+
+fn first_required_gap(policy: PriorLifePolicy, captures: List<CarrierCapture>) -> PriorLifeAssessRefusal? {
+  fold(policy.required, init: none, f: (acc, req) => match acc {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      match captures |> filter(c => prior_life_carrier_eq(a: capture_carrier_of(c: c), b: req)) |> first() {
+        Absent => Present { value: RequiredCarrierNotArchivable { carrier: req, cause: CarrierSurfaceUnmodeled {} } }
+        Present { value: c } =>
+          match c {
+            CarrierGap { carrier: k, cause: why } => Present { value: RequiredCarrierNotArchivable { carrier: k, cause: why } }
+            CarrierCaptured { carrier: _, body: _, digest: _ } => none
+          }
+      }
+  })
+}
+
+// THE CLASSIFIER OVER SUPPLIED VALUES: the refusal a policy gives a set of captures, or none. Pure,
+// so every arm is exercisable; its production consumer is assess_prior_life below, over captures read
+// from the world and the policy row selected for the unit's platform.
+fn classify_prior_life_policy(policy: PriorLifePolicy, captures: List<CarrierCapture>) -> PriorLifeAssessRefusal? {
+  match policy.uncleared_boundary {
+    UnclearedBoundaryNotAdmitted => Present { value: UnclearedBoundaryNotAdmittedByPolicy { platform: policy.platform } }
+    UnclearedBoundaryAdmitted => first_required_gap(policy: policy, captures: captures)
+  }
+}
+
+// SATISFIED only by an object the store already holds at the archive's digest whose bytes are the
+// archive's bytes; an archive the store does not hold is a deviation the write remedies.
+fn assess_prior_life(goal: PriorLifeGoal, observed: PriorLifeObservation) -> GoalAssessment<ArchivedObject, PriorLifeDeviation, NonEmptyStr, PriorLifeAssessRefusal> {
+  match classify_prior_life_policy(policy: goal.policy, captures: observed.archive.captures) {
+    Present { value: r } => GoalAssessmentRefused { cause: r }
+    Absent =>
+      match observed.held {
+        Present { value: o } =>
+          if (o.body as String) == (observed.archive.body as String) {
+            GoalSatisfied { evidence: o }
+          } else {
+            GoalDiverged { deviations: FreeSemigroup { head: ArchiveNotHeldByStore { digest: observed.archive.digest }, tail: Empty } }
+          }
+        Absent => GoalDiverged { deviations: FreeSemigroup { head: ArchiveNotHeldByStore { digest: observed.archive.digest }, tail: Empty } }
+      }
+  }
+}
+
+fn decide_prior_life(assessment: GoalAssessment<ArchivedObject, PriorLifeDeviation, NonEmptyStr, PriorLifeAssessRefusal>) -> UpsertDecision<PriorLifeArchiveDue> {
+  match assessment {
+    GoalSatisfied { evidence: _ } => Noop
+    GoalDiverged { deviations: _ } => Apply { plan: PriorLifeArchiveDue {} }
+    GoalIndeterminate { known_deviations: _, unknowns: _ } => Refuse { reason: "the prior-life archive is indeterminate over what was read" as NonEmptyStr }
+    GoalAssessmentRefused { cause: _ } => Refuse { reason: "the prior-life archive is refused by its platform policy" as NonEmptyStr }
+  }
+}
+
+// The projection's plan is only that an archive is due; the archive itself is the observation's, so
+// the plan the write carries is bound to exactly what was read.
+type PriorLifeArchiveDue {}
+
+fn prior_life_projection() -> HostEffectDomainProjection<StepInstanceKey, PriorLifeGoal, PriorLifeRequest, PriorLifeObservation, ArchivedObject, PriorLifeDeviation, NonEmptyStr, NonEmptyStr, PriorLifeAssessRefusal, PriorLifeArchiveDue> {
+  HostEffectDomainProjection {
+    observe: observe_prior_life,
+    assess: assess_prior_life,
+    decide: decide_prior_life,
+  }
+}
+
+// ── APPLY: the write, its deadline, and the independent readback ───────────────────────────────────
+
+data prior_life_archive_write_leg: DeclarationRef = decl_ref(module_path: "gunbc.machine_intake_prior_life_boundary", decl_name: "dry_write_archive")
+
+// THE WRITE LEG'S BUDGET: thirty seconds for one archive object into the staging store. The one
+// function that declares it, admitted by gunbc.fleet.convergence_fold leg_budget.
+fn prior_life_archive_write_budget() -> LegBudget {
+  leg_budget(leg: prior_life_archive_write_leg, budget: positive_millisecond(count: PositiveMeasureSuccessor { predecessor: 29999 }))
+}
+
+// WHAT THE WRITE RETURNED, sealed: the digest it was asked to store. A write's return is not its
+// completion; only the readback below grounds that.
+type ArchiveWriteReceipt sole_constructor {
+  digest: ContentHash
+  completion: LegCompletion
+}
+
+// THE INDEPENDENT READBACK, sealed: the store re-read at the written digest, its bytes recomputed to
+// that digest and equal to the archive's bytes. Minted only by read_back_archive.
+type ArchiveReadBack sole_constructor {
+  digest: ContentHash
+  held: ArchivedObject
+}
+
+type DryArchiveWrite {
+  store: DryArchiveStore
+  receipt: ArchiveWriteReceipt
+}
+
+fn dry_write_archive(store: DryArchiveStore, plan: PriorLifeArchivePlan, budget: LegBudget, started_millis: EpochMs, returned_millis: EpochMs) -> DryArchiveWrite {
+  let deadline = effect_leg_deadline(budget: budget, started: dry_prior_life_instant(millis: started_millis))
+  let finished = dry_prior_life_instant(millis: returned_millis)
+  let written = match store.behaviour {
+    DryArchiveStoreKeepsWrites => concat(store.objects, [ArchivedObject { digest: plan.archive.digest, body: plan.archive.body }])
+    DryArchiveStoreLosesWrites => store.objects
+    DryArchiveStoreCorruptsWrites => concat(store.objects, [ArchivedObject { digest: plan.archive.digest, body: join([plan.archive.body as String, "corrupted"], "\n") as NonEmptyStr }])
+  }
+  DryArchiveWrite {
+    store: DryArchiveStore { objects: written, behaviour: store.behaviour },
+    receipt: ArchiveWriteReceipt { digest: plan.archive.digest, completion: complete_effect_leg(deadline: deadline, finished: ObserverClockObserved { instant: finished }) },
+  }
+}
+
+type ArchiveReadBackStanding
+  = ArchiveReadBackHeld { readback: ArchiveReadBack }
+  | ArchiveReadBackAbsent { digest: ContentHash }
+  | ArchiveReadBackDiffers { digest: ContentHash, read: ContentHash }
+
+fn read_back_archive(store: DryArchiveStore, archive: PriorLifeArchive) -> ArchiveReadBackStanding {
+  match store_object_at(store: store, digest: archive.digest) {
+    Absent => ArchiveReadBackAbsent { digest: archive.digest }
+    Present { value: o } => {
+      let recomputed = content_hash_of_value(value: o.body)
+      if content_hash_equal(left: recomputed, right: archive.digest) && (o.body as String) == (archive.body as String) {
+        ArchiveReadBackHeld { readback: ArchiveReadBack { digest: archive.digest, held: o } }
+      } else {
+        ArchiveReadBackDiffers { digest: archive.digest, read: recomputed }
+      }
+    }
+  }
+}
+
+// ── THE RECEIPT ────────────────────────────────────────────────────────────────────────────────────
+
+// HOW THE ARCHIVE CAME TO BE HELD: already held when the phase read the store (no write), or written
+// by this run within its leg's deadline.
+type PriorLifeApplication
+  = ArchiveAlreadyHeld
+  | ArchiveWritten { write: ArchiveWriteReceipt, within: LegCompletedWithinDeadline }
+
+// THE ONE ESTABLISHED ARM IN THIS CUT. LogsArchivedAndCleared has no constructor.
+type PriorLifeBoundaryArm
+  = LogsArchivedWithBaselineCursor { cursor: BaselineCursor }
+
+// THE PHASE RECEIPT, SEALED: subject + phase + the consumed identity instance + the archive written
+// + how it was written + the independent post-read + the realization it came from. Minted only by
+// dry_archive_prior_life, after the readback.
+type PriorLifeBoundaryEstablished sole_constructor {
+  key: StepInstanceKey
+  consumed_identity: StepInstanceKey
+  subject: MachineIntakeSubject
+  policy: PriorLifePolicy
+  archive: PriorLifeArchive
+  application: PriorLifeApplication
+  readback: ArchiveReadBack
+  boundary: PriorLifeBoundaryArm
+  realization: NonEmptyStr
+}
+
+fn prior_life_receipt_key(r: PriorLifeBoundaryEstablished) -> StepInstanceKey {
+  r.key
+}
+
+fn prior_life_receipt_consumed_identity(r: PriorLifeBoundaryEstablished) -> StepInstanceKey {
+  r.consumed_identity
+}
+
+fn prior_life_receipt_archive(r: PriorLifeBoundaryEstablished) -> PriorLifeArchive {
+  r.archive
+}
+
+fn prior_life_receipt_application(r: PriorLifeBoundaryEstablished) -> PriorLifeApplication {
+  r.application
+}
+
+fn prior_life_receipt_boundary(r: PriorLifeBoundaryEstablished) -> PriorLifeBoundaryArm {
+  r.boundary
+}
+
+fn prior_life_receipt_realization(r: PriorLifeBoundaryEstablished) -> NonEmptyStr {
+  r.realization
+}
+
+// ── THE PHASE ──────────────────────────────────────────────────────────────────────────────────────
+
+// REFUSED: nothing was written. The policy row is absent, the policy refuses, or the decision refused.
+type PriorLifeRefusal
+  = PriorLifePolicyAbsent { platform: DeclarationRef }
+  | PriorLifeAssessmentRefused { cause: PriorLifeAssessRefusal }
+  | PriorLifeObservationRefused { cause: NonEmptyStr }
+  | PriorLifeDecisionRefused { reason: NonEmptyStr }
+  | PriorLifeSatisfiedWithoutEvidence
+
+// INCOMPLETE: the write was attempted and its completion is not grounded. Each arm carries the
+// write's own receipt, because the store may now hold something.
+type PriorLifeIncomplete
+  = ArchiveWriteLegNotCompleted { write: ArchiveWriteReceipt, completion: LegCompletion }
+  | ArchiveWrittenButNotReadBack { write: ArchiveWriteReceipt, digest: ContentHash }
+  | ArchiveReadBackDiffersFromWrite { write: ArchiveWriteReceipt, digest: ContentHash, read: ContentHash }
+
+type PriorLifeArchiveOutcome
+  = PriorLifeArchiveEstablished { receipt: PriorLifeBoundaryEstablished }
+  | PriorLifeArchiveRefused { cause: PriorLifeRefusal }
+  | PriorLifeArchiveIncomplete { cause: PriorLifeIncomplete }
+
+// ONE DRY RUN OF THE PHASE AND THE STORE IT LEAVES, so a refusal can be shown to have written nothing.
+type DryPriorLifeStep {
+  outcome: PriorLifeArchiveOutcome
+  store: DryArchiveStore
+}
+
+fn established(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, application: PriorLifeApplication, readback: ArchiveReadBack) -> PriorLifeArchiveOutcome {
+  PriorLifeArchiveEstablished {
+    receipt: PriorLifeBoundaryEstablished {
+      key: key,
+      consumed_identity: consumed,
+      subject: subject,
+      policy: policy,
+      archive: archive,
+      application: application,
+      readback: readback,
+      boundary: LogsArchivedWithBaselineCursor { cursor: archive.cursor },
+      realization: prior_life_dry_realization_name,
+    },
+  }
+}
+
+// THE WRITE AND ITS READBACK. The leg's completion is checked first: a write whose clock says it ran
+// past its deadline, finished before it started, or could not be timed is incomplete whatever the
+// store now holds. Then the store is re-read by digest, independently of what the write returned.
+fn write_then_read_back(key: StepInstanceKey, consumed: StepInstanceKey, subject: MachineIntakeSubject, policy: PriorLifePolicy, archive: PriorLifeArchive, world: DryPriorLifeWorld) -> DryPriorLifeStep {
+  let written = dry_write_archive(store: world.store, plan: PriorLifeArchivePlan { archive: archive }, budget: prior_life_archive_write_budget(), started_millis: world.read_at_millis, returned_millis: world.write_returned_at_millis)
+  let outcome = match written.receipt.completion {
+    LegDeadlineElapsed { deadline: _, finished: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: written.receipt, completion: written.receipt.completion } }
+    LegFinishedBeforeItStarted { deadline: _, finished: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: written.receipt, completion: written.receipt.completion } }
+    LegCompletionUnobserved { deadline: _, detail: _ } => PriorLifeArchiveIncomplete { cause: ArchiveWriteLegNotCompleted { write: written.receipt, completion: written.receipt.completion } }
+    LegCompletedWithin { completed: within } =>
+      match read_back_archive(store: written.store, archive: archive) {
+        ArchiveReadBackAbsent { digest: d } => PriorLifeArchiveIncomplete { cause: ArchiveWrittenButNotReadBack { write: written.receipt, digest: d } }
+        ArchiveReadBackDiffers { digest: d, read: r } => PriorLifeArchiveIncomplete { cause: ArchiveReadBackDiffersFromWrite { write: written.receipt, digest: d, read: r } }
+        ArchiveReadBackHeld { readback: rb } =>
+          established(key: key, consumed: consumed, subject: subject, policy: policy, archive: archive, application: ArchiveWritten { write: written.receipt, within: within }, readback: rb)
+      }
+  }
+  DryPriorLifeStep { outcome: outcome, store: written.store }
+}
+
+// THE PHASE, DRY. The platform's policy row is selected before the step (DESIGN §3d) by the caller's
+// platform; the controller is observed and assessed through the projection; Noop needs the store's
+// own held object, Apply writes and reads back, and every refusal writes nothing. Confined to the
+// arrival convergence's step and to the Bool claims of its witness that supply its inputs, so no
+// caller can mint this receipt for a subject or an identity instance of its own choosing.
+fn dry_archive_prior_life(
+  key: StepInstanceKey,
+  consumed_identity: StepInstanceKey,
+  subject: MachineIntakeSubject,
+  platform: DeclarationRef,
+  world: DryPriorLifeWorld,
+) -> DryPriorLifeStep
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_arrival_converge", decl_name: "prior_life_boundary"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_only_the_sel_final_record_with_the_other_carriers_absent_is_not_established"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_one_unmodeled_carrier_is_a_typed_gap_that_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_policy_refusal_writes_nothing"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_an_archive_already_held_is_a_noop_and_is_not_written_twice"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_a_lost_corrupted_or_late_write_is_incomplete_not_refused"),
+    decl_ref(module_path: "test.claim.machine_intake_prior_life_boundary_witness", decl_name: "w_the_baseline_cursor_is_derived_from_the_archive_it_was_read_from"),
+  ]
+{
+  match prior_life_policy_for(platform: platform) {
+    Absent => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifePolicyAbsent { platform: platform } }, store: world.store }
+    Present { value: policy } => {
+      let projection = prior_life_projection()
+      let request = PriorLifeRequest { world: world, subject: subject, read_at: dry_prior_life_instant(millis: world.read_at_millis) }
+      match inspect_via_host_effect_projection(subject: key, goal: PriorLifeGoal { policy: policy }, request: request, projection: projection) {
+        GoalObservationRefused { subject: _, goal: _, request: _, cause: c } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeObservationRefused { cause: c } }, store: world.store }
+        GoalInspected { subject: _, goal: _, request: _, observed: o, assessment: a } =>
+          match projection.decide(a) {
+            Refuse { reason: why } =>
+              match a {
+                GoalAssessmentRefused { cause: c } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeAssessmentRefused { cause: c } }, store: world.store }
+                GoalSatisfied { evidence: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeDecisionRefused { reason: why } }, store: world.store }
+                GoalDiverged { deviations: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeDecisionRefused { reason: why } }, store: world.store }
+                GoalIndeterminate { known_deviations: _, unknowns: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeDecisionRefused { reason: why } }, store: world.store }
+              }
+            Noop =>
+              match read_back_archive(store: world.store, archive: o.archive) {
+                ArchiveReadBackHeld { readback: rb } =>
+                  DryPriorLifeStep { outcome: established(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, application: ArchiveAlreadyHeld, readback: rb), store: world.store }
+                ArchiveReadBackAbsent { digest: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
+                ArchiveReadBackDiffers { digest: _, read: _ } => DryPriorLifeStep { outcome: PriorLifeArchiveRefused { cause: PriorLifeSatisfiedWithoutEvidence }, store: world.store }
+              }
+            Apply { plan: _ } => write_then_read_back(key: key, consumed: consumed_identity, subject: subject, policy: policy, archive: o.archive, world: world)
+          }
+      }
+    }
+  }
+}
