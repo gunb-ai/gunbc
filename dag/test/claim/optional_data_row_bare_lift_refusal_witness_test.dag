@@ -1,0 +1,40 @@
+module test.claim.optional_data_row_bare_lift_refusal_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE BARE-LIFT REFUSAL IN v1.compiler.emit emit_declared_optional_row_json, PINNED (side-chat review
+// of gunbc#13202). A data row declared `T?` whose initializer is a bare variant of T itself is an
+// implicit T -> T? lift no declared coercion admits; the serializer refuses it with a located reason
+// rather than spelling it. The row's T is a coproduct with a NESTED-RECORD variant on purpose: that is
+// what routes the row through the JSON serializer (v1.compiler.emit_rust emit_data_def_body,
+// has_nested_records_node). A flat variant goes down the typed-expression path instead, which is the
+// specimen that exposed this and does not reach the arm at all -- so a witness built on it would stay
+// green with the arm reverted.
+//
+// The red requires the refusal reason in the emitted module and NO serde realization of the row. The
+// control is the same row spelled Present { value: .. }: it must be realized by serde and must not
+// carry the refusal. Reverting the Refused arm makes the red emit a serde parse of the row and fail.
+data bare_inner_variant_row_source: String = "module optional_bare_lift\n\ntype Inner {\n  n: Int\n}\n\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\n\ndata shape_row: Shape? = Circle { inner: Inner { n: 1 } }\n"
+
+data present_spelled_row_source: String = "module optional_present_spelled\n\ntype Inner {\n  n: Int\n}\n\ntype Shape\n  = Circle { inner: Inner }\n  | NoShape\n\ndata shape_row: Shape? = Present { value: Circle { inner: Inner { n: 1 } } }\n"
+
+test fn bare_inner_variant_under_optional_row_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    bare_inner_variant_row_source,
+    "src/optional_bare_lift.rs",
+    ["no declared coercion lifts T into T?"],
+    ["serde_json::from_str("]
+  )
+}
+
+test fn present_spelled_optional_row_is_realized() -> Bool {
+  compile_dag_rust_emit_check(
+    present_spelled_row_source,
+    "src/optional_present_spelled.rs",
+    ["serde_json::from_str("],
+    ["no declared coercion lifts T into T?"]
+  )
+}
