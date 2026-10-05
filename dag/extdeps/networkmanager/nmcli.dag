@@ -76,6 +76,10 @@ fn nm_wireless_powersave_nick(v: NmWirelessPowersave) -> String {
 // The same setting's key in NetworkManager's keyfile format (nm-settings-keyfile(5): the [wifi] group,
 // alias of 802-11-wireless), which is the key netplan's NetworkManager backend carries it under in
 // `networkmanager: passthrough:` (read as `wifi.powersave` on spark-2196, 2026-10-05).
+// Where NetworkManager's own keyfile plugin stores persistent profiles (nm-settings-keyfile(5):
+// "/etc/NetworkManager/system-connections/"); a profile loaded from here persists in that file.
+data nm_keyfile_profile_dir: NonEmptyStr = "/etc/NetworkManager/system-connections/" as NonEmptyStr
+
 data nm_keyfile_wireless_powersave_key: NonEmptyStr = "wifi.powersave" as NonEmptyStr
 
 // nm-settings-nmcli(5), 802-11-wireless setting: "ssid -- SSID of the Wi-Fi network." Read from the

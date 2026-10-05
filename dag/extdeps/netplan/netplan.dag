@@ -6,6 +6,7 @@ import extdeps.uri { Uri, Https }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { filter }
+import extdeps.networkmanager.nmcli { nm_keyfile_profile_dir }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -107,7 +108,6 @@ fn interface_has_link(o: InterfaceObservation) -> Bool {
 // valiant-crab-775: the Wi-Fi profile's FILENAME is that /run keyfile, /etc/NetworkManager/
 // system-connections is empty, the YAML carries `wifi.powersave` '2' and the /run keyfile powersave=2.
 data netplan_nm_generated_profile_prefix: NonEmptyStr = "/run/NetworkManager/system-connections/netplan-" as NonEmptyStr
-data networkmanager_keyfile_profile_dir: NonEmptyStr = "/etc/NetworkManager/system-connections/" as NonEmptyStr
 
 fn netplan_nm_profile_yaml_path(uuid: NonEmptyStr) -> NonEmptyStr {
   join([netplan_config_dir as String, "/90-NM-", uuid as String, ".yaml"], "") as NonEmptyStr
@@ -124,7 +124,7 @@ type NmProfilePersistence
 fn nm_profile_persistence(uuid: NonEmptyStr, filename: NonEmptyStr) -> NmProfilePersistence {
   let f = filename as String
   if starts_with(s: f, prefix: netplan_nm_generated_profile_prefix as String) { PersistedByNetplanYaml { yaml: netplan_nm_profile_yaml_path(uuid: uuid), definition: netplan_nm_definition_id(uuid: uuid) } }
-  else if starts_with(s: f, prefix: networkmanager_keyfile_profile_dir as String) { PersistedByKeyfile { path: filename } }
+  else if starts_with(s: f, prefix: nm_keyfile_profile_dir as String) { PersistedByKeyfile { path: filename } }
   else { PersistedNowhere { path: filename } }
 }
 
