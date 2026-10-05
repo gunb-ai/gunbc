@@ -107,6 +107,8 @@ test fn every_listed_credential_shape_is_refused() -> Bool {
     && excluded_by(path: "home/u/tls/server.pem") == "*.pem"
     && excluded_by(path: "home/u/tls/server.key") == "*.key"
     && excluded_by(path: "home/u/keys/id_ed25519") == "id_ed25519"
+    && excluded_by(path: "home/u/keys/id_ed25519_sk") == "id_ed25519_sk"
+    && excluded_by(path: "home/u/keys/id_ecdsa_sk") == "id_ecdsa_sk"
     && excluded_by(path: "home/u/.config/gh/hosts.yml") == ".config/gh"
     && excluded_by(path: "home/u/.ssh/known_hosts") == ".ssh"
     && excluded_by(path: "home/u/.gnupg/pubring.kbx") == ".gnupg"

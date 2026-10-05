@@ -110,6 +110,8 @@ data workspace_credential_exclusions: List<WorkspaceExclusion> = [
   WorkspaceExclusion { spelling: "id_ecdsa", rule: SegmentEquals { text: "id_ecdsa" } },
   WorkspaceExclusion { spelling: "id_ed25519", rule: SegmentEquals { text: "id_ed25519" } },
   WorkspaceExclusion { spelling: "id_dsa", rule: SegmentEquals { text: "id_dsa" } },
+  WorkspaceExclusion { spelling: "id_ecdsa_sk", rule: SegmentEquals { text: "id_ecdsa_sk" } },
+  WorkspaceExclusion { spelling: "id_ed25519_sk", rule: SegmentEquals { text: "id_ed25519_sk" } },
   WorkspaceExclusion { spelling: ".ssh", rule: SegmentEquals { text: ".ssh" } },
   WorkspaceExclusion { spelling: ".gnupg", rule: SegmentEquals { text: ".gnupg" } },
   WorkspaceExclusion { spelling: ".aws", rule: SegmentEquals { text: ".aws" } },
