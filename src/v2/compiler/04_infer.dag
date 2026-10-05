@@ -5605,24 +5605,20 @@ fn infer_variant_arm_construct(
   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: declared_path) {
     Absent => ConstructNotARecord
     Present { value: resolved_decl } =>
-      match qualified_name_last_segment(qn: declared_path) {
-        Absent => ConstructNotARecord
-        Present { value: _ } =>
-          match qualified_name_init(qn: declared_path) {
-            Absent => ConstructNotARecord
-            Present { value: carrier } =>
-              ConstructIsVariantArm {
-                construct: InferVariantArmConstruct {
-                  record: reference,
-                  arm_path: declared_path,
-                  variant_path: carrier,
-                  formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
-                  type_params: symbol_index_declared_type_params_at(
-                    index: resolved.resolved_declarations,
-                    qualified_path: carrier
-                  )
-                }
-              }
+      match qualified_name_init(qn: declared_path) {
+        Empty => ConstructNotARecord
+        Cons { head: _, tail: _ } =>
+          ConstructIsVariantArm {
+            construct: InferVariantArmConstruct {
+              record: reference,
+              arm_path: declared_path,
+              variant_path: qualified_name_init(qn: declared_path),
+              formals: infer_record_formals(resolved: resolved, path: declared_path, authored: resolved_decl),
+              type_params: symbol_index_declared_type_params_at(
+                index: resolved.resolved_declarations,
+                qualified_path: qualified_name_init(qn: declared_path)
+              )
+            }
           }
       }
   }
