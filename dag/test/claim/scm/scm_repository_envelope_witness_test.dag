@@ -75,6 +75,11 @@ import gunbc.scm.repository_envelope {
   RepositoryEncodeStagedIsSemanticNode, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted,
+  RepositoryEncodeStoreIsPartial,
+  RepositoryEncodeAppendCarriesSemanticNode,
+  RepositoryEncodeAppendShadowsRosteredIdentity,
+  RepositoryIndexHasNoObjectRoster,
+  RepositoryObjectRosterMalformed,
   RepositoryCommitIntegrationSourceNotPreviouslyAdmitted,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
   RepositoryCommitReferenceOutsideAllocator, RepositoryDecodedCommitReferenceOutsideAllocator,
@@ -703,6 +708,9 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
         RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => "commit_integration_source"
+        RepositoryEncodeStoreIsPartial { rostered_shards: _ } => "store_is_partial"
+        RepositoryEncodeAppendCarriesSemanticNode { target: _ } => "append_carries_semantic_node"
+        RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => "append_shadows_rostered_identity"
         RepositoryCommitReferenceDuplicated { reference: _ } => "commit_duplicate"
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => "commit_outside_allocator"
       }
@@ -1005,6 +1013,9 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
         RepositoryEncodeIntegrationSourceNotPreviouslyAdmitted { source: _ } => false
+        RepositoryEncodeStoreIsPartial { rostered_shards: _ } => false
+        RepositoryEncodeAppendCarriesSemanticNode { target: _ } => false
+        RepositoryEncodeAppendShadowsRosteredIdentity { identity: _ } => false
         RepositoryCommitReferenceDuplicated { reference: _ } => false
         RepositoryCommitReferenceOutsideAllocator { reference: _, next_ordinal: _ } => false
       }
@@ -1121,6 +1132,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryFormatRetired { found: _ } => "format_retired"
         RepositoryShardedIndexIsNotWhole { found: _ } => "format_sharded_index"
         RepositoryShardNotDecodable { detail: _ } => "shard_not_decodable"
+        RepositoryIndexHasNoObjectRoster { found: _ } => "index_has_no_object_roster"
+        RepositoryObjectRosterMalformed { detail: _ } => "object_roster_malformed"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
         RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
