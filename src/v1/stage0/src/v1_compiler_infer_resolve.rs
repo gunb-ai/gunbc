@@ -99,7 +99,7 @@ pub fn type_param_kind_diagnostics(
         {
             __result.extend((*match crate::v1_std_core::find_property(pair.1.clone().properties.clone(), crate::v1_std_core::type_param_kind_property_name(), env.source_indices.clone()) {
     std::option::Option::None => Rc::new(vec![]),
-    Some(kind_node) => match carrier.children.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
+    Some(kind_node) => match carrier.children.clone().get((pair.0.clone()) as usize).cloned() {
     std::option::Option::None => Rc::new(vec![]),
     Some(arg) => {
         let kind_name = crate::v1_compiler_infer_env::authored_name(env.clone(), kind_node.clone());
@@ -1739,17 +1739,11 @@ Rc::new(NodeResolveResult {
                                     Some(k) => k.clone(),
                                     std::option::Option::None => unit_type(),
                                 };
-                                let val_child_node = match n
-                                    .children
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .next()
-                                {
-                                    Some(v) => v.clone(),
-                                    std::option::Option::None => unit_type(),
-                                };
+                                let val_child_node =
+                                    match n.children.clone().get((1) as usize).cloned() {
+                                        Some(v) => v.clone(),
+                                        std::option::Option::None => unit_type(),
+                                    };
                                 let key_type = crate::v1_compiler_infer_types::child_type_node(
                                     key_child_node.clone(),
                                 );
@@ -2998,25 +2992,20 @@ pub fn resolve_expr_types(
                                                     })
                                                 }
                                             };
-                                            let body_r = match arm_ch
-                                                .clone()
-                                                .iter()
-                                                .cloned()
-                                                .skip(1 as usize)
-                                                .next()
-                                            {
-                                                Some(b) => resolve_expr_types(
-                                                    b.clone(),
-                                                    env.clone(),
-                                                    module_name.clone(),
-                                                ),
-                                                std::option::Option::None => {
-                                                    Rc::new(ExprResolveResult {
-                                                        expr: child.clone(),
-                                                        diagnostics: Rc::new(vec![]),
-                                                    })
-                                                }
-                                            };
+                                            let body_r =
+                                                match arm_ch.clone().get((1) as usize).cloned() {
+                                                    Some(b) => resolve_expr_types(
+                                                        b.clone(),
+                                                        env.clone(),
+                                                        module_name.clone(),
+                                                    ),
+                                                    std::option::Option::None => {
+                                                        Rc::new(ExprResolveResult {
+                                                            expr: child.clone(),
+                                                            diagnostics: Rc::new(vec![]),
+                                                        })
+                                                    }
+                                                };
                                             Rc::new(ExprResolveResult {
                                                 expr: crate::v1_std_core::make_arm_node(
                                                     child.occurrence_identity.clone(),
@@ -3108,14 +3097,14 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let tr = match ch.clone().get((1) as usize).cloned() {
                     Some(t) => resolve_expr_types(t.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let er = match ch.clone().iter().cloned().skip(2 as usize).next() {
+                let er = match ch.clone().get((2) as usize).cloned() {
                     Some(e) => Some(resolve_expr_types(
                         e.clone(),
                         env.clone(),
@@ -3153,7 +3142,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let br = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let br = match ch.clone().get((1) as usize).cloned() {
                     Some(bd) => Some(resolve_expr_types(
                         bd.clone(),
                         env.clone(),
@@ -3359,7 +3348,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let rr = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let rr = match ch.clone().get((1) as usize).cloned() {
                     Some(r) => resolve_expr_types(r.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
@@ -3401,15 +3390,7 @@ pub fn resolve_expr_types(
                 })
             }
             ExprData::ExprLambda => {
-                let lam_param_nodes = Rc::new(
-                    texpr
-                        .children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                );
+                let lam_param_nodes = Rc::new(v1_rt::list_skip(&texpr.children.clone(), 1));
                 let r = match texpr.children.clone().first().cloned() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(ExprResolveResult {
@@ -3535,7 +3516,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let tr = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let tr = match ch.clone().get((1) as usize).cloned() {
                     Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(NodeResolveResult {
                         resolved: unit_type(),
@@ -3562,7 +3543,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let br = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let br = match ch.clone().get((1) as usize).cloned() {
                     Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     std::option::Option::None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
@@ -3596,7 +3577,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let ir = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let ir = match ch.clone().get((1) as usize).cloned() {
                     Some(index) => {
                         resolve_expr_types(index.clone(), env.clone(), module_name.clone())
                     }
@@ -3627,7 +3608,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let sr = match ch.clone().iter().cloned().skip(1 as usize).next() {
+                let sr = match ch.clone().get((1) as usize).cloned() {
                     Some(start) => {
                         resolve_expr_types(start.clone(), env.clone(), module_name.clone())
                     }
@@ -3636,7 +3617,7 @@ pub fn resolve_expr_types(
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let er = match ch.clone().iter().cloned().skip(2 as usize).next() {
+                let er = match ch.clone().get((2) as usize).cloned() {
                     Some(end_e) => {
                         resolve_expr_types(end_e.clone(), env.clone(), module_name.clone())
                     }
@@ -3739,14 +3720,10 @@ pub fn first_duplicate_type_param_name(names: Rc<Vec<String>>) -> Option<String>
             {
                 if {
                     let mut __found = false;
-                    for other in Rc::new(
-                        names
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .skip(v1_rt::int_add(pair.0.clone(), 1) as usize)
-                            .collect::<Vec<_>>(),
-                    )
+                    for other in Rc::new(v1_rt::list_skip(
+                        &names.clone(),
+                        v1_rt::int_add(pair.0.clone(), 1),
+                    ))
                     .iter()
                     .cloned()
                     {
@@ -3952,15 +3929,7 @@ pub fn binder_marked_param(
                     binders.clone(),
                     env.clone(),
                 )]),
-                Rc::new(
-                    param
-                        .children
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                ),
+                Rc::new(v1_rt::list_skip(&param.children.clone(), 1)),
             ),
             param.params.clone(),
             param.inferred.clone(),

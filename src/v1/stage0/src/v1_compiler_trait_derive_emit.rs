@@ -2001,22 +2001,8 @@ pub fn v1_ord_propagated_zip_loop(
                     (here.clone()
                         || v1_ord_propagated_zip_loop(
                             param_name.clone(),
-                            Rc::new(
-                                decl_params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                type_args
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(&decl_params.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&type_args.clone(), 1)),
                             decl_set_affected_names.clone(),
                             source_indices.clone(),
                         ))
@@ -2666,22 +2652,8 @@ pub fn v1_declared_type_app_mentions_param_non_phantom_loop(
                     (here.clone()
                         || v1_declared_type_app_mentions_param_non_phantom_loop(
                             param_name.clone(),
-                            Rc::new(
-                                decl_params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                type_args
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(&decl_params.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&type_args.clone(), 1)),
                             phantom_slot_names.clone(),
                             bounds.clone(),
                             type_decl_items.clone(),
@@ -3435,22 +3407,8 @@ pub fn v1_declared_type_app_clone_impl_needs_param_loop(
                     (here.clone()
                         || v1_declared_type_app_clone_impl_needs_param_loop(
                             param_name.clone(),
-                            Rc::new(
-                                decl_params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                type_args
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(&decl_params.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&type_args.clone(), 1)),
                             phantom_slot_names.clone(),
                             bounds.clone(),
                             type_decl_items.clone(),
@@ -3518,22 +3476,8 @@ pub fn v1_declared_arg_positions_need_clone_param(
                     (here.clone()
                         || v1_declared_arg_positions_need_clone_param(
                             param_name.clone(),
-                            Rc::new(
-                                decl_params
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
-                            Rc::new(
-                                type_args
-                                    .clone()
-                                    .iter()
-                                    .cloned()
-                                    .skip(1 as usize)
-                                    .collect::<Vec<_>>(),
-                            ),
+                            Rc::new(v1_rt::list_skip(&decl_params.clone(), 1)),
+                            Rc::new(v1_rt::list_skip(&type_args.clone(), 1)),
                             bound_params.clone(),
                             bounds.clone(),
                             type_decl_items.clone(),

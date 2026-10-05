@@ -98,15 +98,10 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
         } else {
             Rc::new(Trace {
                 events: trace.events.clone(),
-                stack: Rc::new(
-                    trace
-                        .stack
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .take(v1_rt::int_sub(n.clone(), 1) as usize)
-                        .collect::<Vec<_>>(),
-                ),
+                stack: Rc::new(v1_rt::list_take(
+                    &trace.stack.clone(),
+                    v1_rt::int_sub(n.clone(), 1),
+                )),
             })
         }
     }
