@@ -169,16 +169,16 @@ fn oci_over(planned: Nat, allowed: Nat) -> Bool {
 type OciOtherUsage {
   a1_ocpus: Nat
   a1_memory: Gigabyte
-  micros: Nat
+  e2_micro_instances: Nat
   block: Gigabyte
 }
 
-data oci_no_other_usage: OciOtherUsage = OciOtherUsage { a1_ocpus: 0, a1_memory: gigabyte(count: 0), micros: 0, block: gigabyte(count: 0) }
+data oci_no_other_usage: OciOtherUsage = OciOtherUsage { a1_ocpus: 0, a1_memory: gigabyte(count: 0), e2_micro_instances: 0, block: gigabyte(count: 0) }
 
 fn oci_aggregate_breaches(plan: List<OciPlannedInstance>, other: OciOtherUsage) -> List<OciAllowanceBreach> {
   let ocpus = fold(plan, init: other.a1_ocpus, f: (acc, i) => acc + oci_a1_ocpus(i: i))
   let memory = fold(plan, init: gigabyte_count(g: other.a1_memory), f: (acc, i) => acc + oci_a1_memory_gb(i: i))
-  let micros = fold(plan, init: other.micros, f: (acc, i) => acc + oci_micro_count(i: i))
+  let micros = fold(plan, init: other.e2_micro_instances, f: (acc, i) => acc + oci_micro_count(i: i))
   let block = fold(plan, init: gigabyte_count(g: other.block), f: (acc, i) => acc + gigabyte_count(g: i.boot_volume))
   let ocpu_cap = oci_a1_flex_allowance.always_free_ocpus
   let memory_cap = gigabyte_count(g: oci_a1_flex_allowance.always_free_memory)
