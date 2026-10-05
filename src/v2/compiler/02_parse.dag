@@ -5307,9 +5307,9 @@ fn parse_expr_infix_apply(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  let abandoned = fn(t) { ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: t } }
   match parse_expr_terminal(token_class: grammar_infix_row_class(row: row), stamp: StampClass, tokens: tokens, table: table, prov: prov) {
-    ParseExprRejected { diagnostics: _, table: table1 } => abandoned(table1)
+    ParseExprRejected { diagnostics: _, table: table1 } =>
+      ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: table1 }
     ParseExprAccepted { remaining: after_operator, captured: operator, diagnostics: _, prov: prov1, table: table1 } =>
       match parse_expr_infix_climb(
         table_expr: table_expr,
@@ -5320,7 +5320,8 @@ fn parse_expr_infix_apply(
         table: table1,
         prov: prov1
       ) {
-        ParseExprRejected { diagnostics: _, table: table2 } => abandoned(table2)
+        ParseExprRejected { diagnostics: _, table: table2 } =>
+          ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: table2 }
         ParseExprAccepted { remaining: rest, captured: rhs, diagnostics: rhs_diags, prov: prov2, table: table2 } =>
           let stamped = parse_stamp_infix_application(left: lhs, operator: operator, right: rhs, prov: prov2)
           parse_expr_infix_continue(
