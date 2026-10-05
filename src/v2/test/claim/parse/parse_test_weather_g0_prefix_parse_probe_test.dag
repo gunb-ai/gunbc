@@ -1,4 +1,4 @@
-module v2.test.parse.weather_g0_prefix_parse_probe
+module test.claim.parse_test_weather_g0_prefix_parse_probe
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Cons, Empty }
