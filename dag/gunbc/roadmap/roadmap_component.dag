@@ -1,8 +1,9 @@
 module gunbc.roadmap_component
+import gunbc.site.controls { ts_on_click, longest_label_len, dispatch_reserved_ch_for, theme_toggle_labels, theme_toggle_reserved_width, sound_toggle_labels, sound_toggle_reserved_width, js_local_storage_get, js_sound_muted_predicate, js_actx_member, js_oscillator_tick_body, js_oscillator_schedule_stmts, sound_preamble_statements, sound_toggle_bind_statements, js_document_element, theme_toggle_bind_statements, account_query_expr, account_swap_statements, dispatch_button_ch_gutter, theme_storage_key, theme_toggle_class, theme_toggle_auto_value, theme_toggle_label_prefix, sound_toggle_class, sound_toggle_note, sound_toggle_label_on, sound_toggle_label_off, sound_muted_storage_value, sound_sounding_storage_value, js_sound_muted_fn, js_audio_context_var, js_tick_fn, sound_preamble_note, js_theme_choice_fn, js_theme_apply_fn }
 
 import gunbc.roadmap_issue_sort { issue_sort_bind_statements }
 import gunbc.roadmap_inline_assignment_client { inline_assignment_bind_statements }
-import gunbc.roadmap_session_client { session_read_bind_statements }
+import gunbc.site.session_client { session_read_bind_statements }
 
 import std.types { Int, String, Bool, Milliseconds }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -140,16 +141,11 @@ fn dispatch_button_terminal_count() -> Int {
 // phrases + dispatch-receipt and observed-session morphs) plus a fixed gutter. A caption or
 // ok-label change moves the reservation by derivation; there is no pixel to re-tune.
 
-data dispatch_button_ch_gutter: Int = 2
 
-fn longest_label_len(labels: List<String>) -> Int {
-  fold(labels, init: 0, f: (acc, l) =>
-    if string_length(s: l) > acc { string_length(s: l) } else { acc })
-}
 
-fn dispatch_reserved_ch_for(labels: List<String>) -> Int {
-  longest_label_len(labels: labels) + dispatch_button_ch_gutter
-}
+
+
+
 
 fn dispatch_caption_set() -> List<String> {
   concat([
@@ -452,173 +448,46 @@ data disclosure_mark_class: String = "disclosure-mark"
 data disclosure_open_class: String = "disclosure-open"
 data disclosure_mark_glyph: String = "›"
 
-data theme_storage_key: String = "gunbc.theme"
-data theme_toggle_class: String = "theme-toggle"
-data theme_toggle_auto_value: String = "auto"
-data theme_toggle_label_prefix: String = "theme · "
 
-fn theme_toggle_labels() -> List<String> {
-  map([theme_toggle_auto_value, day_theme.name, night_theme.name],
-    v => join([theme_toggle_label_prefix, v], ""))
-}
 
-fn theme_toggle_reserved_width() -> String {
-  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: theme_toggle_labels())))
-}
 
-data sound_toggle_class: String = "sound-toggle"
 
-data sound_toggle_note: String = "The mute control, and its whole design is one operator sentence: an instrument can be muted, not argued with. So it is a single persisted boolean with no volume axis, no per-sound settings, and no prompt — the mechanism has one voice and you either hear it or you do not. Default is SOUNDING, because a sound feature shipped off by default is a sound feature nobody discovers, and the sounds here are 5 ms operation ticks rather than notifications.
 
-Both labels are rendered from one authority so the toggle can never disagree with the state it reports, and the reserved width is DERIVED from the longer of them (the same discipline the dispatch button's width uses) so flipping the label cannot reflow the header. Persistence is localStorage rather than a cookie or a server round-trip: the preference is about this browser's speakers, so it belongs to the browser, and a mute that needed the belt to be up would be a mute that failed when the dashboard was most annoying.
 
-The toggle deliberately ticks when it is switched ON and stays silent when switched OFF, which needs no branch — the tick already checks the mute state, so calling it after the flip produces confirmation on unmute and silence on mute. That is the instrument answering with its own voice, which is the only honest way for a sound control to acknowledge itself."
 
-data sound_toggle_label_on: String = "sound · on"
-data sound_toggle_label_off: String = "sound · off"
 
-fn sound_toggle_labels() -> List<String> {
-  [sound_toggle_label_on, sound_toggle_label_off]
-}
 
-fn sound_toggle_reserved_width() -> String {
-  css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: sound_toggle_labels())))
-}
 
-data sound_muted_storage_value: String = "1"
-data sound_sounding_storage_value: String = "0"
 
-data js_sound_muted_fn: String = "gunbcSoundMuted"
-data js_audio_context_var: String = "gunbcAudioContext"
-data js_tick_fn: String = "gunbcTick"
 
-fn js_local_storage_get(key: String) -> TsExpr {
-  ts_call(
-    callee: ts_member(object: ts_ident(name: "localStorage"), property: "getItem"),
-    args: [ts_lit_str(value: key)],
-  )
-}
 
-fn js_sound_muted_predicate() -> TsStmt {
-  ts_const(
-    name: js_sound_muted_fn,
-    value: ts_arrow(
-      params: [],
-      body: ts_expr_stmt(expr: ts_binop(
-        left: js_local_storage_get(key: sound_mute_storage_key),
-        op: "===",
-        right: ts_lit_str(value: sound_muted_storage_value),
-      )),
-    ),
-  )
-}
 
-fn js_actx_member(name: String) -> TsExpr {
-  ts_member(object: ts_ident(name: js_audio_context_var), property: name)
-}
 
-fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
-  let decay_s = sound_spec_decay_seconds_wire(s: s)
-  ts_block(stmts: [
-    ts_if(
-      cond: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
-      then: ts_block(stmts: [ts_return(expr: none)]),
-      else_stmt: none,
-    ),
-    ts_if(
-      cond: ts_prefix(op: "!", expr: ts_ident(name: js_audio_context_var)),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_binop(
-          left: ts_ident(name: js_audio_context_var),
-          op: "=",
-          right: ts_new(callee: ts_ident(name: web_audio_context_interface), args: []),
-        )),
-      ]),
-      else_stmt: none,
-    ),
-    ts_const(name: "play", value: ts_arrow(params: [], body: ts_block(stmts: js_oscillator_schedule_stmts(s: s, decay_s: decay_s)))),
-    ts_if(
-      cond: ts_binop(left: js_actx_member(name: "state"), op: "===", right: ts_lit_str(value: "running")),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "play"), args: [])),
-        ts_return(expr: none),
-      ]),
-      else_stmt: none,
-    ),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_call(callee: js_actx_member(name: "resume"), args: []), property: "then"),
-      args: [ts_ident(name: "play")],
-    )),
-  ])
-}
 
-fn js_oscillator_schedule_stmts(s: SoundSpec, decay_s: String) -> List<TsStmt> {
-  [
-    ts_const(name: "t0", value: js_actx_member(name: web_audio_current_time_property)),
-    ts_const(name: "osc", value: ts_call(callee: js_actx_member(name: web_audio_create_oscillator_method), args: [])),
-    ts_const(name: "amp", value: ts_call(callee: js_actx_member(name: web_audio_create_gain_method), args: [])),
-    ts_const(name: "t1", value: ts_binop(left: ts_ident(name: "t0"), op: "+", right: ts_lit_num(text: decay_s))),
-    ts_expr_stmt(expr: ts_binop(
-      left: ts_member(object: ts_ident(name: "osc"), property: web_audio_type_property),
-      op: "=",
-      right: ts_lit_str(value: sound_spec_timbre_wire(s: s)),
-    )),
-    ts_expr_stmt(expr: ts_binop(
-      left: ts_member(
-        object: ts_member(object: ts_ident(name: "osc"), property: web_audio_frequency_property),
-        property: web_audio_value_property,
-      ),
-      op: "=",
-      right: ts_lit_num(text: sound_spec_frequency_wire(s: s)),
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
-        property: web_audio_set_value_at_time_method,
-      ),
-      args: [ts_lit_num(text: sound_spec_peak_gain_wire(s: s)), ts_ident(name: "t0")],
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_member(object: ts_ident(name: "amp"), property: web_audio_gain_property),
-        property: web_audio_exponential_ramp_method,
-      ),
-      args: [ts_lit_num(text: micros_decimal_wire(micros: web_audio_gain_epsilon_micros)), ts_ident(name: "t1")],
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_connect_method),
-      args: [ts_ident(name: "amp")],
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "amp"), property: web_audio_connect_method),
-      args: [js_actx_member(name: web_audio_destination_property)],
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_start_method),
-      args: [ts_ident(name: "t0")],
-    )),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(object: ts_ident(name: "osc"), property: web_audio_stop_method),
-      args: [ts_ident(name: "t1")],
-    )),
-  ]
-}
 
-data sound_preamble_note: String = "Three statements, in this order for reasons that are not stylistic. The mute predicate comes first because the tick calls it. The AudioContext is a LET initialised to null and constructed lazily inside the tick, not at load: a context created outside a user gesture starts suspended under every browser's autoplay policy, and constructing one per tick would leak a hardware resource per click. The earlier claim that a pointerdown-born context needs no resume dance was measured in Chrome only and did not survive the operator's ears (remodel W1d, A.2): a fresh context can sit suspended with currentTime frozen at 0, so a 5 ms tick scheduled on that clock is silently swallowed — the first press, at least, made no sound. The tick therefore wraps its scheduling in `play` and gates on state: running plays immediately; anything else goes through resume().then(play), which is a no-op cost when the engine was already running and the difference between silence and a first-press tick everywhere else."
 
-fn sound_preamble_statements() -> List<TsStmt> {
-  [
-    js_sound_muted_predicate(),
-    ts_let(name: js_audio_context_var, value: ts_ident(name: "null")),
-    ts_const(
-      name: js_tick_fn,
-      value: ts_arrow(
-        params: [],
-        body: js_oscillator_tick_body(s: engage_detent_click),
-      ),
-    ),
-  ]
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // The toggle paints itself from the same predicate the tick reads, then repaints after each flip,
 // so the label is a projection of the stored state rather than a second copy of it — a toggle whose
@@ -626,49 +495,7 @@ fn sound_preamble_statements() -> List<TsStmt> {
 // the stored preference outlives the page: on load the label must already say what this browser
 // will actually do.
 
-fn sound_toggle_bind_statements() -> List<TsStmt> {
-  [
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_call(
-          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: join([".", sound_toggle_class], ""))],
-        ),
-        property: "forEach",
-      ),
-      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
-        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
-          op: "=",
-          right: ts_cond(
-            test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
-            consequent: ts_lit_str(value: sound_toggle_label_off),
-            alternate: ts_lit_str(value: sound_toggle_label_on),
-          ),
-        )))),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
-          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
-              args: [
-                ts_lit_str(value: sound_mute_storage_key),
-                ts_cond(
-                  test: ts_call(callee: ts_ident(name: js_sound_muted_fn), args: []),
-                  consequent: ts_lit_str(value: sound_sounding_storage_value),
-                  alternate: ts_lit_str(value: sound_muted_storage_value),
-                ),
-              ],
-            )),
-            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_tick_fn), args: [])),
-          ]))],
-        )),
-      ]))],
-    )),
-  ]
-}
+
 
 // The single authority for a state's CSS modifier class, consumed by the client script (which flips
 // classes on the live button), the stylesheet (which paints each class through the state's role
@@ -1241,98 +1068,12 @@ fn swatch_toggle_reserved_width() -> String {
   css_length_wire(l: css_ch(n: dispatch_reserved_ch_for(labels: swatch_toggle_labels())))
 }
 
-data js_theme_choice_fn: String = "gunbcThemeChoice"
-data js_theme_apply_fn: String = "gunbcApplyTheme"
 
-fn js_document_element() -> TsExpr {
-  ts_member(object: ts_ident(name: "document"), property: "documentElement")
-}
 
-fn theme_toggle_bind_statements() -> List<TsStmt> {
-  [
-    ts_const(name: js_theme_choice_fn, value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
-      left: js_local_storage_get(key: theme_storage_key),
-      op: "||",
-      right: ts_lit_str(value: theme_toggle_auto_value))))),
-    ts_const(name: js_theme_apply_fn, value: ts_arrow(params: [], body: ts_block(stmts: [
-      ts_const(name: "t", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
-      ts_if(
-        cond: ts_binop(left: ts_ident(name: "t"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-        then: ts_block(stmts: [
-          ts_expr_stmt(expr: ts_call(
-            callee: ts_member(object: js_document_element(), property: "removeAttribute"),
-            args: [ts_lit_str(value: "data-theme")],
-          )),
-          ts_return(expr: none),
-        ]),
-        else_stmt: none,
-      ),
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(object: js_document_element(), property: "setAttribute"),
-        args: [ts_lit_str(value: "data-theme"), ts_ident(name: "t")],
-      )),
-    ]))),
-    ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_theme_apply_fn), args: [])),
-    ts_expr_stmt(expr: ts_call(
-      callee: ts_member(
-        object: ts_call(
-          callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
-          args: [ts_lit_str(value: join([".", theme_toggle_class], ""))],
-        ),
-        property: "forEach",
-      ),
-      args: [ts_arrow(params: ["t"], body: ts_block(stmts: [
-        ts_const(name: "paint", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
-          left: ts_member(object: ts_ident(name: "t"), property: "textContent"),
-          op: "=",
-          right: ts_binop(
-            left: ts_lit_str(value: theme_toggle_label_prefix),
-            op: "+",
-            right: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: []),
-          ),
-        )))),
-        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-        ts_expr_stmt(expr: ts_call(
-          callee: ts_member(object: ts_ident(name: "t"), property: "addEventListener"),
-          args: [ts_lit_str(value: "click"), ts_arrow(params: [], body: ts_block(stmts: [
-            ts_const(name: "cur", value: ts_call(callee: ts_ident(name: js_theme_choice_fn), args: [])),
-            ts_const(name: "next", value: ts_cond(
-              test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-              consequent: ts_lit_str(value: day_theme.name),
-              alternate: ts_cond(
-                test: ts_binop(left: ts_ident(name: "cur"), op: "===", right: ts_lit_str(value: day_theme.name)),
-                consequent: ts_lit_str(value: night_theme.name),
-                alternate: ts_lit_str(value: theme_toggle_auto_value),
-              ),
-            )),
-            ts_if(
-              cond: ts_binop(left: ts_ident(name: "next"), op: "===", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "removeItem"),
-                  args: [ts_lit_str(value: theme_storage_key)],
-                )),
-              ]),
-              else_stmt: none,
-            ),
-            ts_if(
-              cond: ts_binop(left: ts_ident(name: "next"), op: "!==", right: ts_lit_str(value: theme_toggle_auto_value)),
-              then: ts_block(stmts: [
-                ts_expr_stmt(expr: ts_call(
-                  callee: ts_member(object: ts_ident(name: "localStorage"), property: "setItem"),
-                  args: [ts_lit_str(value: theme_storage_key), ts_ident(name: "next")],
-                )),
-              ]),
-              else_stmt: none,
-            ),
-            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_theme_apply_fn), args: [])),
-            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "paint"), args: [])),
-          ]))],
-        )),
-      ]))],
-    )),
-  ]
-}
+
+
+
+
 
 fn disclosure_bind_statements() -> List<TsStmt> {
   [
@@ -2032,7 +1773,7 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
 }
 
 fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
-  [
+  [ts_if(cond: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"), args: [ts_lit_str(value: "main[data-observation-banners=\"off\"]")])), then: ts_block(stmts: [
     ts_let(name: "bn", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
       args: [ts_lit_str(value: concat(".", source_class))])),
@@ -2067,7 +1808,7 @@ fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
       op: "=",
       right: ts_ident(name: "why"))),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcObserveImpactSync"), args: [])),
-  ]
+  ]), else_stmt: none)]
 }
 
 fn sessions_fetch_effect_statements() -> List<TsStmt> {
@@ -3401,14 +3142,7 @@ fn ts_closest(obj: String, selector: String) -> TsExpr {
     args: [ts_lit_str(value: selector)])
 }
 
-fn ts_on_click(obj: String, body: List<TsStmt>) -> TsStmt {
-  ts_expr_stmt(expr: ts_call(
-    callee: ts_member(object: ts_ident(name: obj), property: "addEventListener"),
-    args: [
-      ts_lit_str(value: "click"),
-      ts_arrow(params: [], body: ts_block(stmts: body)),
-    ]))
-}
+
 
 fn ts_for_each(selector: String, item: String, body: List<TsStmt>) -> TsStmt {
   ts_expr_stmt(expr: ts_call(
@@ -3422,9 +3156,11 @@ fn ts_for_each(selector: String, item: String, body: List<TsStmt>) -> TsStmt {
 
 fn issue_filter_bind_statements() -> List<TsStmt> {
   [
+    ts_const(name: "gunbcFilterEmpty", value: ts_arrow(params: ["root"], body: ts_block(stmts: [ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "root")), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none), ts_const(name: "band", value: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "dataset"), property: "bandFilter")), ts_const(name: "visible", value: ts_call(callee: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "Array"), property: "from"), args: [ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelectorAll"), args: [ts_lit_str(value: ".view-table li.node")])]), property: "some"), args: [ts_arrow(params: ["row"], body: ts_block(stmts: [ts_return(expr: Present { value: ts_binop(left: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "style"), property: "display"), op: "!==", right: ts_lit_str(value: "none")), op: "&&", right: ts_binop(left: ts_prefix(op: "!", expr: ts_ident(name: "band")), op: "||", right: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "row"), property: "dataset"), property: "band"), op: "===", right: ts_ident(name: "band")))) })]))])), ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "dataset"), property: "empty"), op: "=", right: ts_cond(test: ts_ident(name: "visible"), consequent: ts_lit_str(value: "0"), alternate: ts_lit_str(value: "1"))))]))),
     ts_for_each(selector: "[data-band-chip]", item: "c", body: [
       ts_on_click(obj: "c", body: [
         ts_const(name: "root", value: ts_closest(obj: "c", selector: ".roadmap-frontier")),
+        ts_if(cond: ts_binop(left: ts_ident(name: "root"), op: "&&", right: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
         ts_expr_stmt(expr: ts_binop(
           left: ts_ident(name: "root"),
           op: "&&",
@@ -3461,6 +3197,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
                   property: "bandChip")),
             ])),
         ]),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcFilterEmpty"), args: [ts_ident(name: "root")])),
       ]),
     ]),
     ts_for_each(selector: "input.issue-search", item: "q", body: [
@@ -3470,6 +3207,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
           ts_lit_str(value: "input"),
           ts_arrow(params: ["e"], body: ts_block(stmts: [
             ts_const(name: "root", value: ts_closest(obj: "q", selector: ".roadmap-frontier")),
+        ts_if(cond: ts_binop(left: ts_ident(name: "root"), op: "&&", right: ts_call(callee: ts_member(object: ts_ident(name: "root"), property: "querySelector"), args: [ts_lit_str(value: ".issue-table")])), then: ts_block(stmts: [ts_return(expr: none)]), else_stmt: none),
             ts_const(name: "needle", value: ts_call(
               callee: ts_member(
                 object: ts_member(
@@ -3505,6 +3243,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
                       args: [ts_ident(name: "needle")]),
                     consequent: ts_lit_str(value: ""),
                     alternate: ts_lit_str(value: "none")))))]))),
+            ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "gunbcFilterEmpty"), args: [ts_ident(name: "root")])),
           ])),
         ])),
     ]),
@@ -3547,7 +3286,7 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 
 // THE ACCOUNT SWAP (owner defect 2026-09-27: the main page body is the belt's pre-rendered
 // static body, so the account area can only personalize CLIENT-SIDE): rides THE ONE SESSION
-// READ (gunbcSessionRead from gunbc.roadmap_session_client — never a second fetch of
+// READ (gunbcSessionRead from gunbc.site.session_client — never a second fetch of
 // /auth/session); an authenticated response swaps the hidden session target in — the display
 // name and the avatar initials render from the SESSION RESPONSE ALONE (the wire's OPTIONAL
 // name member, the verified token's name claim, preferred; the principal label's short form
@@ -3559,133 +3298,11 @@ fn issue_filter_bind_statements() -> List<TsStmt> {
 // /avatar/<principal> proxy is the tailnet-privacy follow-up): when present, an <img> layers
 // over the initials INSIDE the same chip and the standing flips to data-avatar="resolved" —
 // the initials are NEVER removed, so a slow or failed image renders the initials fallback
-// under the never-blocks law (alt="" keeps a broken image invisible). Sign out is the target's
-// native form POSTing /auth/logout; the 303 lands back here, the read re-runs against the
-// cleared cookie, and Sign in returns.
-fn account_query_expr(selector: String) -> TsExpr {
-  ts_call(
-    callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
-    args: [ts_lit_str(value: selector)])
-}
+// under the never-blocks law (alt="" keeps a broken image invisible). There is no Sign in,
+// Sign out or account menu to drive: the login/logout routes moved to a follow-up PR (#12787).
 
-fn account_swap_statements() -> List<TsStmt> {
-  [
-    ts_const(name: "gunbcAccountSlot", value: account_query_expr(selector: "[data-account-session]")),
-    ts_const(name: "gunbcAccountSignin", value: account_query_expr(selector: "[data-account-signin]")),
-    ts_if(
-      cond: ts_binop(left: ts_ident(name: "gunbcAccountSlot"), op: "&&", right: ts_ident(name: "gunbcAccountSignin")),
-      then: ts_block(stmts: [
-        ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_call(
-            callee: ts_member(object: ts_ident(name: "gunbcSessionRead"), property: "then"),
-            args: [ts_arrow(params: ["s"], body: ts_block(stmts: [
-              ts_if(
-                cond: ts_binop(
-                  left: ts_binop(left: ts_ident(name: "s"), op: "&&", right: ts_member(object: ts_ident(name: "s"), property: "authenticated")),
-                  op: "&&",
-                  right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "authenticated"), op: "===", right: ts_ident(name: "true"))),
-                then: ts_block(stmts: [
-                  ts_const(name: "gunbcViewer", value: ts_binop(
-                    left: ts_binop(
-                      left: ts_member(object: ts_ident(name: "s"), property: "name"),
-                      op: "||",
-                      right: ts_binop(left: ts_member(object: ts_ident(name: "s"), property: "viewer"), op: "||", right: ts_member(object: ts_ident(name: "s"), property: "principal"))),
-                    op: "||",
-                    right: ts_lit_str(value: ""))),
-                  ts_const(name: "gunbcShort", value: ts_call(
-                    callee: ts_member(
-                      object: ts_call(
-                        callee: ts_member(object: ts_ident(name: "gunbcViewer"), property: "split"),
-                        args: [ts_lit_str(value: "/")]),
-                      property: "pop"),
-                    args: [])),
-                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSignin"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
-                  ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "hidden"), op: "=", right: ts_ident(name: "false"))),
-                  ts_expr_stmt(expr: ts_binop(
-                    left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]), property: "textContent"),
-                    op: "=",
-                    right: ts_call(
-                      callee: ts_member(object: ts_ident(name: "gunbcShort"), property: "substring"),
-                      args: [ts_lit_str(value: "0"), ts_lit_str(value: "1")]))),
-                  ts_expr_stmt(expr: ts_binop(
-                    left: ts_member(object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-name]")]), property: "textContent"),
-                    op: "=",
-                    right: ts_ident(name: "gunbcShort"))),
-                  ts_if(
-                    cond: ts_member(object: ts_ident(name: "s"), property: "picture"),
-                    then: ts_block(stmts: [
-                      ts_const(name: "gunbcAvatarImg", value: ts_call(
-                        callee: ts_member(object: ts_ident(name: "document"), property: "createElement"),
-                        args: [ts_lit_str(value: "img")])),
-                      ts_expr_stmt(expr: ts_binop(
-                        left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "src"),
-                        op: "=",
-                        right: ts_member(object: ts_ident(name: "s"), property: "picture"))),
-                      ts_expr_stmt(expr: ts_binop(
-                        left: ts_member(object: ts_ident(name: "gunbcAvatarImg"), property: "alt"),
-                        op: "=",
-                        right: ts_lit_str(value: ""))),
-                      ts_expr_stmt(expr: ts_call(
-                        callee: ts_member(
-                          object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
-                          property: "setAttribute"),
-                        args: [ts_lit_str(value: "data-avatar"), ts_lit_str(value: "resolved")])),
-                      ts_expr_stmt(expr: ts_call(
-                        callee: ts_member(
-                          object: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountSlot"), property: "querySelector"), args: [ts_lit_str(value: "[data-account-avatar]")]),
-                          property: "appendChild"),
-                        args: [ts_ident(name: "gunbcAvatarImg")])),
-                    ]), else_stmt: none),
-                ]),
-                else_stmt: none),
-            ]))]),
-          property: "catch"),
-        args: [ts_arrow(params: [], body: ts_block(stmts: []))])),
-        ts_const(name: "gunbcAccountTrigger", value: account_query_expr(selector: "[data-account-trigger]")),
-        ts_const(name: "gunbcAccountMenu", value: account_query_expr(selector: "[data-account-menu]")),
-        ts_if(
-          cond: ts_binop(left: ts_ident(name: "gunbcAccountTrigger"), op: "&&", right: ts_ident(name: "gunbcAccountMenu")),
-          then: ts_block(stmts: [
-            ts_on_click(obj: "gunbcAccountTrigger", body: [
-              ts_const(name: "gunbcMenuOpen", value: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
-              ts_expr_stmt(expr: ts_binop(
-                left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"),
-                op: "=",
-                right: ts_prefix(op: "!", expr: ts_ident(name: "gunbcMenuOpen")))),
-              ts_expr_stmt(expr: ts_call(
-                callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
-                args: [
-                  ts_lit_str(value: "aria-expanded"),
-                  ts_cond(test: ts_ident(name: "gunbcMenuOpen"), consequent: ts_lit_str(value: "true"), alternate: ts_lit_str(value: "false")),
-                ])),
-            ]),
-            ts_expr_stmt(expr: ts_call(
-              callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
-              args: [
-                ts_lit_str(value: "click"),
-                ts_arrow(params: ["e"], body: ts_block(stmts: [
-                  ts_if(
-                    cond: ts_binop(
-                      left: ts_prefix(op: "!", expr: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden")),
-                      op: "&&",
-                      right: ts_binop(
-                        left: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])),
-                        op: "&&",
-                        right: ts_prefix(op: "!", expr: ts_call(callee: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "contains"), args: [ts_member(object: ts_ident(name: "e"), property: "target")])))),
-                    then: ts_block(stmts: [
-                      ts_expr_stmt(expr: ts_binop(left: ts_member(object: ts_ident(name: "gunbcAccountMenu"), property: "hidden"), op: "=", right: ts_ident(name: "true"))),
-                      ts_expr_stmt(expr: ts_call(
-                        callee: ts_member(object: ts_ident(name: "gunbcAccountTrigger"), property: "setAttribute"),
-                        args: [ts_lit_str(value: "aria-expanded"), ts_lit_str(value: "false")])),
-                    ]), else_stmt: none),
-                ])),
-              ])),
-          ]), else_stmt: none),
-      ]),
-      else_stmt: none),
-  ]
-}
+
+
 
 fn dispatch_client_program_for(
   selector: String,
@@ -3697,7 +3314,7 @@ fn dispatch_client_program_for(
     ts_nocheck: false,
     header_lines: header,
     statements: concat(
-      sound_preamble_statements(),
+      [],
       concat(
         dispatch_preamble_statements(),
         concat(
@@ -3707,9 +3324,9 @@ fn dispatch_client_program_for(
           concat(
             issue_action_bind_statements(),
             concat(
-            sound_toggle_bind_statements(),
+            [],
             concat(
-              theme_toggle_bind_statements(),
+              [],
               concat(
                 disclosure_bind_statements(),
                 concat(
@@ -3723,9 +3340,9 @@ fn dispatch_client_program_for(
                         concat(
                           issue_filter_bind_statements(),
                           concat(
-                            session_read_bind_statements(),
+                            [],
                             concat(
-                              account_swap_statements(),
+                              [],
                               concat(
                                 issue_sort_bind_statements(),
                                 concat(
@@ -4713,13 +4330,13 @@ fn instrument_tuner_client_program() -> TsProgram {
       "Persistent camera, selection parity, one detent per admitted threshold, working controls.",
     ],
     statements: concat(
-      sound_preamble_statements(),
+      [],
       concat(
         instrument_tuner_camera_preamble(),
         concat(
-          sound_toggle_bind_statements(),
+          [],
           concat(
-            theme_toggle_bind_statements(),
+            [],
             concat(
               instrument_tuner_control_bind_statements(),
               [
@@ -5337,7 +4954,7 @@ fn instrument_motion_client_program() -> TsProgram {
         ],
         concat(
           motion_probe_bind_statements(),
-          theme_toggle_bind_statements(),
+          [],
         ),
       ),
     ),

@@ -1,6 +1,7 @@
 module extdeps.git.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
+import std.types { List }
 
 data git_core_mock_case_current_branch: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.CurrentBranch",

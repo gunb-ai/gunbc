@@ -1,6 +1,6 @@
 module gunbc.rung_drop.retention_census_counts_one_retention_per_refused_module
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, LostAsPassenger }
 import gunbc.guarantee_rung { Mitigatable, OutsideTheLadder }
 

@@ -1,6 +1,6 @@
 module gunbc.ci_spec
 
-import gunbc.machine_intake_mtcollins1_kvm_still { mtcollins1_kvm_observer_dir }
+import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_kvm_observer_dir }
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 import gunbc.runner_microvm_slot_unit { microvm_slot_start_receipt_path, microvm_slot_reserve_receipt_path }
 import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path }
@@ -1084,6 +1084,14 @@ data gunbc_ci_spark_runtime_image_probe_target: GunbcRunStepTarget = GunbcRunSte
 // group -- and it is the only step in this job that can occupy a host for hours.
 // THE WIRELESS LINK CONVERGE. Root on a Spark is the administrator password leg, so it shares the
 // probe's prelude; it changes the radio's power-save policy and the connection profile only.
+// THE GRANT OBSERVE (gunbc.fleet_multi_principal_probe spark_exact_grant_probe_ci_wet). Read-only:
+// it rides the job's fleet-key agent as gunbc-automation and the bootstrap principal on every procured
+// Spark, needs no administrator credential, and installs nothing.
+data gunbc_ci_spark_grants_observe_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_multi_principal_probe.dag",
+  function: "spark_exact_grant_probe_ci_wet",
+}
+
 data gunbc_ci_spark_wireless_link_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_wireless_link_converge.dag",
   function: "spark_wireless_link_converge_ci_wet",
@@ -1356,6 +1364,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_runner_browser_toolchain_converge_target,
     gunbc_ci_host_credential_custody_converge_target,
     gunbc_ci_namecheap_observe_target,
+    gunbc_ci_spark_grants_observe_target,
     gunbc_ci_runner_microvm_boot_probe_target,
     gunbc_ci_microvm_slot_start_target,
     gunbc_ci_microvm_slot_reserve_target,
@@ -2902,6 +2911,16 @@ fn gunbc_ci_spark_runtime_image_probe_invoke() -> String {
   )
 }
 
+fn gunbc_ci_spark_grants_observe_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_spark_grants_observe_target.entry,
+    function: gunbc_ci_spark_grants_observe_target.function,
+    claim_run: false,
+    receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
+  )
+}
+
 fn gunbc_ci_spark_wireless_link_converge_invoke() -> String {
   gunbc_run_step_script_with_prelude(
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
@@ -3205,7 +3224,7 @@ fn bhold(script_var: String, label: String, record: Node) -> Node {
 // runs as a checked condition, so a failed removal is reported beside the others instead of aborting
 // the trap under errexit before they are reported.
 //
-// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_mtcollins1_kvm_still)
+// The trap also releases the KVM observer this attempt started (gunbc.machine_intake_megarac_kvm_still)
 // through the same identity-checked release, as its own checked result (kvm): released on exit 0 (gone,
 // not ours, or no record in this run's attempt directory), otherwise the release's exit code is kept --
 // 1 survived KILL, 2 unobservable -- and reported, never read as released.
