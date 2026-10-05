@@ -370,16 +370,6 @@ fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
 // `v2.std.collection`, so normalize's row can only bind after collection's has. A single pass over
 // the roots resolves that pair in one root order and silently not in the other, and the loser binds
 // NOTHING -- the quiet failure again, surfacing far away as an unbound reference.
-//
-// Retrying the deferred rows removes it for chains of any depth without needing the dependency
-// order computed: each round binds every row whose target has become available. It TERMINATES
-// because each recursion is entered only when the deferred list got strictly shorter, so the
-// measure decreases and the last round is either empty or made no progress. Rows still deferred at
-// the end name targets nothing in this corpus declares OR binds; they bind nothing, and the
-// reference that wanted them refuses, located, at the reference site -- which is where
-// docs/plans/namespace-resolution-design.md section 13 puts that refusal.
-}
-
 fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
   fold(
     node_subtree_nodes(root: root),
