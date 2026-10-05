@@ -89,10 +89,13 @@ test fn an_empty_body_digests_to_the_sha256_of_zero_bytes() -> Bool {
   }
 }
 
-test fn a_non_ascii_body_refuses_rather_than_signing() -> Bool {
-  match post_plan(body: "{\"name\":\"caf\u{e9}\"}") {
-    OciSigningReady { signing_string, headers_list, content_sha256, content_length } => false
-    OciSigningRefused { cause } => true
+// A body's content-length is its UTF-8 byte count, not its character count: "é" is one character and
+// two bytes, so {"n":"é"} is 9 characters and 10 bytes.
+test fn a_non_ascii_body_signs_its_utf8_byte_length() -> Bool {
+  match post_plan(body: "{\"n\":\"\u{e9}\"}") {
+    OciSigningReady { signing_string, headers_list, content_sha256, content_length } =>
+      content_length == 10 && string_contains(s: signing_string, pattern: "content-length: 10")
+    OciSigningRefused { cause } => false
   }
 }
 

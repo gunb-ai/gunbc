@@ -79,10 +79,22 @@ fn oci_signature_base64(signature: List<Int>) -> String {
   }
 }
 
-fn oci_send(shape: OciRequestShape, url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String) -> OciExchange uses net: Network {
+// A CREATE IS IDEMPOTENT ON THE WIRE (review 76384 on gunbc#13351). Every POST carries Oracle's
+// opc-retry-token, which its SDK documents as "a token that uniquely identifies a request so it can be
+// retried in case of a timeout or server error without risk of executing that same action again". The
+// token is derived from the exact request, its path and its body, so a re-run that re-sends the same
+// create after a lost reply gets Oracle's original answer rather than a second resource, and a create
+// whose body changed (a newer image, say) is a different request with a different token. Tokens expire
+// after 24 hours. A re-run that late reads the earlier resource back through the list before deciding
+// to create, so the token is the guard for the window in which the list may not yet show it.
+fn oci_retry_token(path_and_query: String, body: String) -> NonEmptyStr {
+  concat("gunbc-", substring(s: sha256_hex_of_text(text: join([path_and_query, body], "\n")), start: 0, end: 48)) as NonEmptyStr
+}
+
+fn oci_send(shape: OciRequestShape, url: NonEmptyStr, path_and_query: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: String) -> OciExchange uses net: Network {
   let run = match shape {
     OciGetRequest => curl_http_signature_get(url: url, date: date, authorization: authorization)
-    OciPostJson { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, body: text)
+    OciPostJson { text } => curl_http_signature_post_json(url: url, date: date, authorization: authorization, content_sha256: content_sha256 as NonEmptyStr, retry_token: oci_retry_token(path_and_query: path_and_query as String, body: text), body: text)
   }
   if run.exit_code != 0 {
     oci_refused(cause: join(["curl exit ", to_string(run.exit_code), ": ", trim(s: run.stderr)], ""))
@@ -115,6 +127,7 @@ fn oci_signed_exchange(shape: OciRequestShape, host: NonEmptyStr, path_and_query
               oci_send(
                 shape: shape,
                 url: join(["https://", host as String, path_and_query as String], "") as NonEmptyStr,
+                path_and_query: path_and_query,
                 date: date as NonEmptyStr,
                 authorization: oci_authorization_header(key: oci_api_key_id, headers_list: headers_list, signature_base64: oci_signature_base64(signature: map(signature, o => o as Int))) as NonEmptyStr,
                 content_sha256: content_sha256,

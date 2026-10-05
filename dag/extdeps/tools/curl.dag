@@ -397,6 +397,10 @@ fn curl_exit_outcome_name(outcome: CurlExitOutcome) -> String {
 // bytes, which is the value the caller signed. The headers are fixed slots, because the set of
 // signed headers is the protocol and not a caller's choice.
 //
+// A POST also carries a caller-derived idempotency token in a fixed slot (Oracle: opc-retry-token),
+// so a request whose reply was lost can be re-sent without the server performing it twice. It is not
+// a signed header.
+//
 // The Authorization value appears in argv. It is a signature bound to one request and one date
 // (Oracle rejects a date more than 5 minutes off), not the key, which never leaves the signer.
 // The response body comes back followed by a newline and the status, read by
@@ -431,6 +435,7 @@ service curl.HttpSignature {
       date: NonEmptyStr,
       authorization: NonEmptyStr,
       content_sha256: NonEmptyStr,
+      retry_token: NonEmptyStr,
       body: String,
     }
     output {
@@ -439,7 +444,7 @@ service curl.HttpSignature {
       stderr: String from "stderr"
     }
     transport shell {
-      argv: [curl_program().invocation, "-sS", "--max-time", "60", "-X", "POST", "-H", "date: {date}", "-H", "authorization: {authorization}", "-H", "content-type: application/json", "-H", "x-content-sha256: {content_sha256}", "--data-binary", "@-", "-D", "/dev/stderr", "-w", "\n%\{http_code\}", "{url}"]
+      argv: [curl_program().invocation, "-sS", "--max-time", "60", "-X", "POST", "-H", "date: {date}", "-H", "authorization: {authorization}", "-H", "content-type: application/json", "-H", "x-content-sha256: {content_sha256}", "-H", "opc-retry-token: {retry_token}", "--data-binary", "@-", "-D", "/dev/stderr", "-w", "\n%\{http_code\}", "{url}"]
       stdin: body
     }
     exit {
@@ -492,7 +497,7 @@ fn curl_http_signature_get(url: NonEmptyStr, date: NonEmptyStr, authorization: N
   CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
 }
 
-fn curl_http_signature_post_json(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: NonEmptyStr, body: String) -> CurlSignedRun uses net: Network {
-  let run = curl.HttpSignature.SignedPostJson(url: url, date: date, authorization: authorization, content_sha256: content_sha256, body: body)
+fn curl_http_signature_post_json(url: NonEmptyStr, date: NonEmptyStr, authorization: NonEmptyStr, content_sha256: NonEmptyStr, retry_token: NonEmptyStr, body: String) -> CurlSignedRun uses net: Network {
+  let run = curl.HttpSignature.SignedPostJson(url: url, date: date, authorization: authorization, content_sha256: content_sha256, retry_token: retry_token, body: body)
   CurlSignedRun { exit_code: run.exit_code, stdout: run.stdout, stderr: run.stderr }
 }
