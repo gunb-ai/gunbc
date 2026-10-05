@@ -44,22 +44,22 @@ data nested_int_source: String = "module probe_go_nested_int\ntype GoHolder<L> {
 // arms. Without it, a census that stopped reporting the class would green every row above.
 data required_alias_source: String = concat("module probe_go_required_alias\n", concat(alias_decls, "type GoReq<L> { v: L }\nfn f(h: GoReq<GoNatLike>) -> Bool {\n  match h { GoReq { v: l } => match l { Present { value: _ } => true, Absent => false } }\n}\n"))
 
-test fn a_nested_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool {
+test fn a_nested_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool  {
   blocking_class_count_for(source: nested_alias_source, wanted_class: variant_not_found_class) == 0
 }
 
-test fn a_directly_bound_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool {
+test fn a_directly_bound_optional_field_at_an_alias_argument_admits_present_and_absent() -> Bool  {
   blocking_class_count_for(source: direct_alias_source, wanted_class: variant_not_found_class) == 0
 }
 
-test fn a_generic_optional_returned_over_a_generic_record_admits_present_and_absent() -> Bool {
+test fn a_generic_optional_returned_over_a_generic_record_admits_present_and_absent() -> Bool  {
   blocking_class_count_for(source: returned_optional_source, wanted_class: variant_not_found_class) == 0
 }
 
-test fn the_nested_shape_at_a_primitive_argument_still_admits_present_and_absent() -> Bool {
+test fn the_nested_shape_at_a_primitive_argument_still_admits_present_and_absent() -> Bool  {
   blocking_class_count_for(source: nested_int_source, wanted_class: variant_not_found_class) == 0
 }
 
-test fn a_required_field_at_an_alias_argument_still_refuses_both_arms() -> Bool {
+test fn a_required_field_at_an_alias_argument_still_refuses_both_arms() -> Bool  {
   blocking_class_count_for(source: required_alias_source, wanted_class: variant_not_found_class) == 2
 }

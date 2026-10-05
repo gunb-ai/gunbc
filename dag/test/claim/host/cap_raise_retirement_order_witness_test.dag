@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE POSITIVE CONTROL. Without it every row below is satisfied by a gate that blocks everything,
 // which is the failure mode a refusal-only suite cannot see.
-test fn an_empty_surplus_admits_the_raise() -> Bool {
+test fn an_empty_surplus_admits_the_raise() -> Bool  {
   match cap_raise_standing(
     required_retiring: [],
     observation: SurplusSlotsObserved { retired: ["actions-runner@srv1-13.service"], still_present: [] }
@@ -52,7 +52,7 @@ test fn an_empty_surplus_admits_the_raise() -> Bool {
 
 // A SLOT STILL PRESENT BLOCKS, and the standing names WHICH -- a blocked raise that cannot say what
 // it is waiting for gives an operator nothing to act on.
-test fn a_surviving_surplus_slot_blocks_the_raise() -> Bool {
+test fn a_surviving_surplus_slot_blocks_the_raise() -> Bool  {
   match cap_raise_standing(
     required_retiring: [],
     observation: SurplusSlotsObserved {
@@ -70,7 +70,7 @@ test fn a_surviving_surplus_slot_blocks_the_raise() -> Bool {
 // THE ARM THAT MATTERS MOST: AN UNOBSERVED SURPLUS IS NOT AN EMPTY ONE. Rendering "I could not see
 // the retiring set" as "there is nothing left to retire" is the empty-observation narrow, and it is
 // what makes a shrink silently unsafe instead of loudly blocked.
-test fn an_unobserved_surplus_blocks_rather_than_reading_as_empty() -> Bool {
+test fn an_unobserved_surplus_blocks_rather_than_reading_as_empty() -> Bool  {
   match cap_raise_standing(
     required_retiring: [],
     observation: SurplusSlotsUnobserved { cause: "no unit census was taken on this host" }
@@ -82,7 +82,7 @@ test fn an_unobserved_surplus_blocks_rather_than_reading_as_empty() -> Bool {
   }
 }
 
-test fn both_blocked_standings_report_as_blocking() -> Bool {
+test fn both_blocked_standings_report_as_blocking() -> Bool  {
   cap_raise_standing_blocks(
     standing: CapRaiseBlockedUnobserved { cause: "unobserved" }
   )
@@ -125,7 +125,7 @@ fn observed_existing_caps() -> List<CapMember> {
 // EMPTY desired set against this owned observed member MUST produce a removal. Without this row the
 // withholding rows below prove nothing: they would be satisfied by a member that can never be
 // removed, which is exactly the defect this fixture had.
-test fn an_empty_desired_set_would_remove_the_owned_cap() -> Bool {
+test fn an_empty_desired_set_would_remove_the_owned_cap() -> Bool  {
   match caps_effects(desired: [], observed: observed_existing_caps()) {
     EffectsReady { effects: es } => es.length() == 1
     ApplyRefused { refusals: _ } => false
@@ -135,7 +135,7 @@ test fn an_empty_desired_set_would_remove_the_owned_cap() -> Bool {
 // AND NOW THE REPAIR: withholding does NOT take that path. The standing distinguishes a withheld
 // empty from a reconcile-refused empty, so this asserts the WITHHELD arm by name rather than
 // asserting an empty list that either arm could produce.
-test fn a_withheld_decision_withholds_rather_than_removing_the_owned_cap() -> Bool {
+test fn a_withheld_decision_withholds_rather_than_removing_the_owned_cap() -> Bool  {
   match authorized_caps_effect_standing(
     decision: CapConvergeWithheld { cause: "unobserved" },
     host: operator_host_srv4,
@@ -147,7 +147,7 @@ test fn a_withheld_decision_withholds_rather_than_removing_the_owned_cap() -> Bo
   }
 }
 
-test fn an_unobserved_surplus_withholds_rather_than_removing() -> Bool {
+test fn an_unobserved_surplus_withholds_rather_than_removing() -> Bool  {
   match authorized_caps_effect_standing(
     decision: cap_converge_decision(
       host: operator_host_srv4,
@@ -167,7 +167,7 @@ test fn an_unobserved_surplus_withholds_rather_than_removing() -> Bool {
 // only checked that the decision carried two desired members, so making
 // `authorized_caps_effect_standing` return nothing unconditionally would have left the whole suite
 // green -- the name promised more than the body established.
-test fn an_authorized_decision_produces_nonempty_cap_effects() -> Bool {
+test fn an_authorized_decision_produces_nonempty_cap_effects() -> Bool  {
   match authorized_caps_effect_standing(
     decision: cap_converge_decision(
       host: operator_host_srv4,
@@ -185,7 +185,7 @@ test fn an_authorized_decision_produces_nonempty_cap_effects() -> Bool {
 
 // AN AUTHORIZATION FOR ANOTHER HOST IS NOT USABLE HERE. This is finding 1's discriminating red: a
 // decision honestly produced from srv4's completed retirement, spent against srv1.
-test fn an_authorization_for_another_host_is_refused() -> Bool {
+test fn an_authorization_for_another_host_is_refused() -> Bool  {
   match authorized_caps_effect_standing(
     decision: cap_converge_decision(
       host: operator_host_srv4,
@@ -206,7 +206,7 @@ test fn an_authorization_for_another_host_is_refused() -> Bool {
 
 // AN OMITTED REQUIRED RETIREE. This is the counterexample that admitted before the required set was
 // carried: no standings supplied at all projects to an empty surplus and used to read as done.
-test fn an_omitted_required_retiree_blocks_rather_than_admits() -> Bool {
+test fn an_omitted_required_retiree_blocks_rather_than_admits() -> Bool  {
   match cap_raise_standing(
     required_retiring: ["actions-runner@srv1-14.service" as NonEmptyStr],
     observation: SurplusSlotsObserved { retired: [], still_present: [] },
@@ -220,7 +220,7 @@ test fn an_omitted_required_retiree_blocks_rather_than_admits() -> Bool {
 
 // DUPLICATE EVIDENCE MUST NOT SUBSTITUTE FOR A MISSING RETIREE. Two completions for slot 14 do not
 // retire slot 15, and a coverage check that counted rather than joined on identity would pass this.
-test fn duplicate_evidence_does_not_cover_a_second_retiree() -> Bool {
+test fn duplicate_evidence_does_not_cover_a_second_retiree() -> Bool  {
   match cap_raise_standing(
     required_retiring: [
       "actions-runner@srv1-14.service" as NonEmptyStr,
@@ -243,7 +243,7 @@ test fn duplicate_evidence_does_not_cover_a_second_retiree() -> Bool {
 
 // A MISMATCHED IDENTITY IS NOT COVERAGE. Retiring a slot nobody asked about leaves the required one
 // outstanding.
-test fn a_mismatched_retirement_identity_does_not_cover() -> Bool {
+test fn a_mismatched_retirement_identity_does_not_cover() -> Bool  {
   match cap_raise_standing(
     required_retiring: ["actions-runner@srv1-14.service" as NonEmptyStr],
     observation: SurplusSlotsObserved {
@@ -261,7 +261,7 @@ test fn a_mismatched_retirement_identity_does_not_cover() -> Bool {
 // AN INDEPENDENTLY ESTABLISHED EMPTY REQUIRED SET IS LEGITIMATE, INCLUDING THE SECOND PASS. A host
 // with nothing to retire must admit, or convergence would never be idempotent -- refusing every
 // empty list would make the no-change second pass impossible to reach.
-test fn an_empty_required_set_admits_so_convergence_is_idempotent() -> Bool {
+test fn an_empty_required_set_admits_so_convergence_is_idempotent() -> Bool  {
   match cap_raise_standing(
     required_retiring: [],
     observation: SurplusSlotsObserved { retired: [], still_present: [] },

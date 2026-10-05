@@ -193,21 +193,21 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
-test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
+test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool  {
   silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
 }
 
-test fn floor_generic_instantiation_monomorphic_control_refuses() -> Bool {
+test fn floor_generic_instantiation_monomorphic_control_refuses() -> Bool  {
   row_holds(probe: floor_generic_instantiation_monomorphic_control_probe, source: generic_instantiation_monomorphic_source)
     && blocking_count(source: generic_instantiation_monomorphic_source, wanted: "TypeMismatch") == 1
 }
 
-test fn floor_generic_instantiation_green_control_is_clean() -> Bool {
+test fn floor_generic_instantiation_green_control_is_clean() -> Bool  {
   row_holds(probe: floor_generic_instantiation_green_probe, source: generic_instantiation_green_source)
     && total_row_count_is_zero(census: census_of(source: generic_instantiation_green_source))
 }
 
-test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control() -> Bool {
+test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control() -> Bool  {
   match active_probe_row(probe: floor_generic_instantiation_monomorphic_control_probe) {
     Present { value: control_row } =>
       !probe_row_expectation_holds(census: census_of(source: generic_instantiation_hole_source), row: control_row)
@@ -215,52 +215,52 @@ test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control()
   }
 }
 
-test fn floor_field_through_generics_type_variable_refuses() -> Bool {
+test fn floor_field_through_generics_type_variable_refuses() -> Bool  {
   row_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)
     && blocking_count(source: field_through_generics_hole_source, wanted: "InternalError") >= 1
 }
 
-test fn floor_field_through_generics_declared_record_control_refuses() -> Bool {
+test fn floor_field_through_generics_declared_record_control_refuses() -> Bool  {
   row_holds(probe: floor_field_through_generics_record_control_probe, source: field_through_generics_record_source)
     && blocking_count(source: field_through_generics_record_source, wanted: "InternalError") == 1
 }
 
-test fn floor_field_through_generics_green_control_is_clean() -> Bool {
+test fn floor_field_through_generics_green_control_is_clean() -> Bool  {
   row_holds(probe: floor_field_through_generics_green_probe, source: field_through_generics_green_source)
     && total_row_count_is_zero(census: census_of(source: field_through_generics_green_source))
 }
 
-test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> Bool {
+test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> Bool  {
   silent_hole_holds(probe: floor_exhaustiveness_type_variable_hole_probe, source: exhaustiveness_type_variable_hole_source)
     && blocking_count(source: exhaustiveness_type_variable_hole_source, wanted: "NonExhaustiveMatch") == 0
 }
 
-test fn floor_record_completeness_missing_field_refuses_blocking() -> Bool {
+test fn floor_record_completeness_missing_field_refuses_blocking() -> Bool  {
   row_holds(probe: floor_record_completeness_red_probe, source: record_completeness_red_source)
     && blocking_count(source: record_completeness_red_source, wanted: "MissingField") == 1
 }
 
-test fn floor_record_completeness_green_control_is_clean() -> Bool {
+test fn floor_record_completeness_green_control_is_clean() -> Bool  {
   row_holds(probe: floor_record_completeness_green_probe, source: record_completeness_green_source)
     && total_row_count_is_zero(census: census_of(source: record_completeness_green_source))
 }
 
-test fn floor_parse_list_separator_omission_is_still_silent() -> Bool {
+test fn floor_parse_list_separator_omission_is_still_silent() -> Bool  {
   silent_hole_holds(probe: floor_parse_list_separator_hole_probe, source: parse_list_separator_hole_source)
     && blocking_count(source: parse_list_separator_hole_source, wanted: "ParseError") == 0
 }
 
-test fn floor_parse_list_separator_doubled_separator_control_refuses() -> Bool {
+test fn floor_parse_list_separator_doubled_separator_control_refuses() -> Bool  {
   row_holds(probe: floor_parse_list_separator_control_probe, source: parse_list_separator_double_source)
     && blocking_count(source: parse_list_separator_double_source, wanted: "ParseError") == 1
 }
 
-test fn floor_parse_list_separator_green_control_is_clean() -> Bool {
+test fn floor_parse_list_separator_green_control_is_clean() -> Bool  {
   row_holds(probe: floor_parse_list_separator_green_probe, source: parse_list_separator_green_source)
     && total_row_count_is_zero(census: census_of(source: parse_list_separator_green_source))
 }
 
-test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
+test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool  {
   match active_v1_compile_probe_row(probe: floor_record_completeness_red_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
@@ -278,7 +278,7 @@ test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
   }
 }
 
-test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
+test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool  {
   match active_v1_compile_probe_row(probe: floor_generic_instantiation_hole_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
@@ -297,7 +297,7 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
 // row without declaring it here impossible. A number in the name is maintenance with no consumer.
-test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
+test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool  {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
     floor_generic_instantiation_hole_probe as String,
@@ -311,7 +311,7 @@ test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   every_hole_declared && every_declared_is_a_hole
 }
 
-test fn every_declared_floor_class_has_registry_rows() -> Bool {
+test fn every_declared_floor_class_has_registry_rows() -> Bool  {
   let classes = [
     floor_closed_match_exhaustiveness_class as String,
     floor_field_through_generics_class as String,

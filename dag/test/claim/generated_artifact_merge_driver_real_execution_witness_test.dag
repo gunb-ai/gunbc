@@ -138,7 +138,7 @@ data witness_retired_take_ours_driver_value: String = "true"
 // An empty delegated population emits the ordinary author-repair route directly. It must not
 // serialize an empty shell case pattern (`case ... in )`), which would replace the intended typed
 // merge refusal with a shell syntax error before any diagnostic ran.
-test fn empty_heal_delegation_population_emits_valid_default_route() -> Bool {
+test fn empty_heal_delegation_population_emits_valid_default_route() -> Bool  {
   let script = expected_generated_artifact_merge_driver_sh(
     regen_command: generated_artifact_author_regen_command,
     heal_regenerated_paths: []
@@ -148,7 +148,7 @@ test fn empty_heal_delegation_population_emits_valid_default_route() -> Bool {
     && string_contains(s: script, pattern: "exit 1")
 }
 
-test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
+test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool  {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: true,
@@ -161,7 +161,7 @@ test fn divergent_generated_artifact_merge_refuses_by_real_execution() -> Bool {
     && !string_contains(s: observed.worktree_content, pattern: "<<<<<<<")
 }
 
-test fn divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution() -> Bool {
+test fn divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution() -> Bool  {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_retired_take_ours_driver_value,
     ours_touches_artifact: true,
@@ -173,7 +173,7 @@ test fn divergent_generated_artifact_merge_under_true_driver_silently_drops_thei
     && observed.worktree_content == witness_ours_content
 }
 
-test fn one_sided_generated_artifact_change_merges_clean_by_real_execution() -> Bool {
+test fn one_sided_generated_artifact_change_merges_clean_by_real_execution() -> Bool  {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: false,
@@ -335,7 +335,7 @@ data witness_unrostered_identity: String = "not_a_rostered_row_identity"
 // need a directory Filesystem.Write cannot create and would make the witness depend on the live
 // ledger's shape. The step text is unparameterized, so what this arm prints for the witness path is
 // byte-identical to what it prints for every real one.
-test fn driver_printed_step_two_carries_the_row_extractor_by_real_execution() -> Bool {
+test fn driver_printed_step_two_carries_the_row_extractor_by_real_execution() -> Bool  {
   let observed = observe_generated_artifact_merge(
     driver_value: witness_refusing_driver_value(),
     ours_touches_artifact: true,
@@ -355,7 +355,7 @@ test fn driver_printed_step_two_carries_the_row_extractor_by_real_execution() ->
 // nothing is NOT automatically an acquisition failure -- a complete read may have correctly
 // established that the rows are gone -- so collapsing the two would manufacture an explanation for a
 // refusal rather than report one.
-test fn row_extractor_reconciles_with_both_rosters_by_real_execution() -> Bool {
+test fn row_extractor_reconciles_with_both_rosters_by_real_execution() -> Bool  {
   let expected = witness_rostered_rows()
   let extraction = witness_extraction_names(
     failure_modes: witness_failure_mode_rows(),
@@ -370,7 +370,7 @@ test fn row_extractor_reconciles_with_both_rosters_by_real_execution() -> Bool {
 // THE REMOVAL CASE: one row of EACH spelling deleted, and both must be named. It is the consumer
 // consequence the recipe actually promises -- the difference names WHICH rows went dark -- and it is
 // the one control that says nothing about count-versus-identity, which is why the two below exist.
-test fn row_extractor_names_a_row_that_went_dark_by_real_execution() -> Bool {
+test fn row_extractor_names_a_row_that_went_dark_by_real_execution() -> Bool  {
   let expected = witness_rostered_rows()
   let dark_rung_drop = witness_dark_rung_drop_row()
   let extraction = witness_extraction_names(
@@ -388,7 +388,7 @@ test fn row_extractor_names_a_row_that_went_dark_by_real_execution() -> Bool {
 // MUTATION A -- SUBSTITUTION, AND THE COUNT IS UNCHANGED. One expected identity is removed and one
 // unrostered identity is added in its place, so extracted == rostered exactly as in the accepting
 // control. A cardinality check passes here. The join must name BOTH sides of the substitution.
-test fn row_extractor_refuses_a_substituted_identity_by_real_execution() -> Bool {
+test fn row_extractor_refuses_a_substituted_identity_by_real_execution() -> Bool  {
   let expected = witness_rostered_rows()
   let extraction = witness_extraction_names(
     failure_modes: append(
@@ -411,7 +411,7 @@ test fn row_extractor_refuses_a_substituted_identity_by_real_execution() -> Bool
 // another is written twice, so the extraction still carries exactly as many names as the rosters do.
 // A cardinality check passes here too. Only a multiplicity-aware join sees it, which is why the
 // duplicate set is a THIRD set rather than a property of the other two.
-test fn row_extractor_refuses_a_duplicated_identity_by_real_execution() -> Bool {
+test fn row_extractor_refuses_a_duplicated_identity_by_real_execution() -> Bool  {
   let expected = witness_rostered_rows()
   let dark_rung_drop = witness_dark_rung_drop_row()
   let extraction = witness_extraction_names(

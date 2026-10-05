@@ -72,7 +72,7 @@ fn synth_receipt(path_id: String) -> GuaranteeMeasurementReceipt {
   }
 }
 
-test fn receipt_round_trip_joins_exactly_its_path() -> Bool {
+test fn receipt_round_trip_joins_exactly_its_path() -> Bool  {
   let paths = [synth_path(id: "v1-compile-rust"), synth_interp_path(id: "v1-interp")]
   let r = synth_receipt(path_id: "v1-compile-rust")
   match join_receipt_to_path(receipt: r, paths: paths) {
@@ -82,7 +82,7 @@ test fn receipt_round_trip_joins_exactly_its_path() -> Bool {
   }
 }
 
-test fn receipt_naming_absent_path_refuses_unknown() -> Bool {
+test fn receipt_naming_absent_path_refuses_unknown() -> Bool  {
   let paths = [synth_path(id: "v1-compile-rust")]
   let r = synth_receipt(path_id: "no-such-path")
   match join_receipt_to_path(receipt: r, paths: paths) {
@@ -92,7 +92,7 @@ test fn receipt_naming_absent_path_refuses_unknown() -> Bool {
   }
 }
 
-test fn duplicate_path_registry_refuses_never_first_pick() -> Bool {
+test fn duplicate_path_registry_refuses_never_first_pick() -> Bool  {
   let paths = [synth_path(id: "dup"), synth_interp_path(id: "dup")]
   let r = synth_receipt(path_id: "dup")
   match join_receipt_to_path(receipt: r, paths: paths) {
@@ -102,7 +102,7 @@ test fn duplicate_path_registry_refuses_never_first_pick() -> Bool {
   }
 }
 
-test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
+test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool  {
   let paths = [
     synth_path(id: "a"),
     synth_interp_path(id: "b"),
@@ -122,19 +122,19 @@ test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
   resolved && unknown
 }
 
-test fn duplicate_class_id_reds_uniqueness() -> Bool {
+test fn duplicate_class_id_reds_uniqueness() -> Bool  {
   let clean = ["call-shape" as GuaranteeClassId, "method-existence" as GuaranteeClassId]
   let dirty = ["call-shape" as GuaranteeClassId, "call-shape" as GuaranteeClassId]
   guarantee_class_ids_unique(ids: clean) && !guarantee_class_ids_unique(ids: dirty)
 }
 
-test fn duplicate_path_id_reds_uniqueness() -> Bool {
+test fn duplicate_path_id_reds_uniqueness() -> Bool  {
   let clean = [synth_path(id: "a"), synth_interp_path(id: "b")]
   let dirty = [synth_path(id: "a"), synth_interp_path(id: "a")]
   guarantee_path_ids_unique(paths: clean) && !guarantee_path_ids_unique(paths: dirty)
 }
 
-test fn probe_set_digest_is_input_determined() -> Bool {
+test fn probe_set_digest_is_input_determined() -> Bool  {
   let one = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
   let same = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
   let fewer = [ "p1" as GuaranteeProbeId ]
@@ -157,7 +157,7 @@ fn obs_count_view(o: ProbeObservation) -> Int {
   )
 }
 
-test fn fold_discriminates_every_arm_and_carries_payloads() -> Bool {
+test fn fold_discriminates_every_arm_and_carries_payloads() -> Bool  {
   obs_count_view(o: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 7 }) == 7
     && obs_count_view(o: AcceptedClean) == 90
     && obs_count_view(o: AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as NonEmptyStr, count: 3 }) == 3
@@ -165,7 +165,7 @@ test fn fold_discriminates_every_arm_and_carries_payloads() -> Bool {
     && obs_count_view(o: ProbeNotRunnable { cause: "harness build failed" as NonEmptyStr }) == 92
 }
 
-test fn not_runnable_is_ignorance_never_a_verdict() -> Bool {
+test fn not_runnable_is_ignorance_never_a_verdict() -> Bool  {
   let verdicts = [
     RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
     AcceptedClean,

@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the terminal statement (with the errors that preceded it retained, in order). The errors are
 // read at the grain a remedy needs: a sector read failure names the DEVICE, a kernel-not-loaded is
 // its own arm, and an unmodeled error is carried verbatim rather than guessed at.
-test fn grub_console_reads_nothing_banner_trying_and_failed() -> Bool {
+test fn grub_console_reads_nothing_banner_trying_and_failed() -> Bool  {
   (match grub_console_report(lines: ["Checkpoint 98", "Checkpoint AD"]) { GrubNothingStated => true  _ => false })
     && (match grub_console_report(lines: ["GNU GRUB  version 2.12", "      Press enter to boot the selected OS"]) { GrubBannerOnly => true  _ => false })
     && (match grub_console_report(lines: ["GNU GRUB  version 2.12", "error: failure reading sector 0xc5130 from `cd0'."]) {

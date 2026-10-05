@@ -25,7 +25,7 @@ type ProbeRecord {
 
 data probe_record_literal: ProbeRecord = ProbeRecord { alpha: true, beta: false }
 
-test fn w_map_typed_literal_is_a_map_test() -> Bool {
+test fn w_map_typed_literal_is_a_map_test() -> Bool  {
   let keys = map_keys(probe_keyed_literal) |> sort_by(k => k)
   (keys |> count) == 3
     && keys == ["alpha", "beta", "gamma"]
@@ -34,11 +34,11 @@ test fn w_map_typed_literal_is_a_map_test() -> Bool {
 
 // The control that keeps the fix from over-converting: a literal in a NAMED
 // record position stays a record, with ordinary field access.
-test fn w_record_literal_is_still_a_record_test() -> Bool {
+test fn w_record_literal_is_still_a_record_test() -> Bool  {
   probe_record_literal.alpha && !probe_record_literal.beta
 }
 
-test fn w_tiny_valid_subject_compiles_clean_test() -> Bool {
+test fn w_tiny_valid_subject_compiles_clean_test() -> Bool  {
   compile_dag_rust_emit_check(
     "module tiny_subject\nfn probe() -> Bool { true }\n",
     "src/tiny_subject.rs",
@@ -50,7 +50,7 @@ test fn w_tiny_valid_subject_compiles_clean_test() -> Bool {
 // The discriminating arm: a producer fabricating a clean observation, or one
 // that never fed the subject to the front end at all, stays green on the arm
 // above and reds here.
-test fn w_broken_subject_fails_to_compile_test() -> Bool {
+test fn w_broken_subject_fails_to_compile_test() -> Bool  {
   !compile_dag_rust_emit_check(
     "module tiny_broken\nfn probe( -> Bool { true }\n",
     "src/tiny_broken.rs",

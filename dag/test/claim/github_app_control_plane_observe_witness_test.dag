@@ -60,7 +60,7 @@ fn sealed(app_outcome: RestOutcome, app_seen: DeclaredGitHubApp, installation_ou
 }
 
 // POSITIVE CONTROL: GitHub accepts the key as gunbai-ci and the installation grants what is required.
-test fn witness_accepted_key_and_granting_installation_seal_the_grant() -> Bool {
+test fn witness_accepted_key_and_granting_installation_seal_the_grant() -> Bool  {
   match sealed(app_outcome: RestOk, app_seen: gunbai_ci_declared, installation_outcome: RestOk) {
     InstallationGrantObserved { installation: i } => i.installation_id.value == gunbai_ci_declared_installation_id.value
     _ => false
@@ -69,7 +69,7 @@ test fn witness_accepted_key_and_granting_installation_seal_the_grant() -> Bool 
 
 // THE DISCRIMINATING RED: a key GitHub does not accept is a 401 at GET /app, and it is a KEY
 // rejection -- not an unobserved registration, not a missing installation.
-test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool {
+test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool  {
   match signer_custody_of_app_read(
     key: key,
     observed_at: 1790000000,
@@ -92,7 +92,7 @@ test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool {
 }
 
 // THE OTHER RED: a key GitHub accepts, but as a DIFFERENT App, refuses by name.
-test fn witness_a_key_accepted_as_another_app_refuses_by_name() -> Bool {
+test fn witness_a_key_accepted_as_another_app_refuses_by_name() -> Bool  {
   match sealed(app_outcome: RestOk, app_seen: gunbai_bot_declared, installation_outcome: RestOk) {
     SignerCustodyUnresolved { app: _, custody } => match custody {
       SignerReadbackFailed { cause } => match cause {
@@ -107,7 +107,7 @@ test fn witness_a_key_accepted_as_another_app_refuses_by_name() -> Bool {
 }
 
 // A refusal that is not about the key (403, transport) is NOT reported as a rejected key.
-test fn witness_a_non_401_refusal_is_unreached_not_rejected() -> Bool {
+test fn witness_a_non_401_refusal_is_unreached_not_rejected() -> Bool  {
   match signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: RestStatusRefused { status: 403, body: "rate limited" }, record: app_record(app: gunbai_ci_declared)) {
     SignerReadbackFailed { cause } => match cause {
       SignerReadbackNotReached { detail: _ } => true
@@ -124,7 +124,7 @@ test fn witness_a_non_401_refusal_is_unreached_not_rejected() -> Bool {
 }
 
 // Custody observed, installation read refused: InstallationUnobserved, never a grant.
-test fn witness_an_unread_installation_is_unobserved() -> Bool {
+test fn witness_an_unread_installation_is_unobserved() -> Bool  {
   match sealed(app_outcome: RestOk, app_seen: gunbai_ci_declared, installation_outcome: RestStatusRefused { status: 404, body: "Not Found" }) {
     InstallationUnobserved { app: _, reason: _ } => true
     _ => false

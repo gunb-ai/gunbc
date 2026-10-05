@@ -69,16 +69,16 @@ data gunbc_ci_deploy_invoke_srv1_wrong_entry_golden: String = concat(
 // either way: the YAML block-scalar emitter normalizes the block body, and the measured
 // fleet-converge.yml diff carries no whitespace change at any bound step.
 
-test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool {
+test fn gunbc_invoke_deploy_matches_pre_migration_golden_holds() -> Bool  {
   concat(gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage), "\n") ==
     gunbc_ci_deploy_invoke_srv1_pre_migration_golden
 }
 
-test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool {
+test fn gunbc_invoke_deploy_pre_migration_golden_red_on_wrong_entry_holds() -> Bool  {
   gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage) != gunbc_ci_deploy_invoke_srv1_wrong_entry_golden
 }
 
-test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool {
+test fn gunbc_invoke_source_root_flags_authority_holds() -> Bool  {
   witness_layer_source_flags(roots: witness_layer_roots) ==
     source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootBare)
     && source_roots_shell_flags(roots: witness_layer_roots, style: SourceRootRooted { root_var: "$ROOT" }) ==
@@ -89,7 +89,7 @@ fn transport_argv_contains_flag(argv: List<String>, flag: String) -> Bool {
   fold(argv, init: false, f: (acc, arg) => acc || arg == flag)
 }
 
-test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
+test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool  {
   let script = claim_executor_verify_artifacts_shell(artifact_paths: ["\"$ROOT/target/release/gunbc\""])
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\"")
@@ -115,7 +115,7 @@ test fn gunbc_invoke_verify_artifacts_shell_nonempty_holds() -> Bool {
 // specification-without-execution one rung up (DESIGN section 4b, dissolution-on-climb applies to
 // production handling only, never the evidence).
 
-test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
+test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool  {
   let refused = gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/evil.dag; rm -rf /",
@@ -130,7 +130,7 @@ test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
     && string_contains(s: refused, pattern: "dag/gunbc/evil.dag__rm_-rf_/")
 }
 
-test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
+test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool  {
   let admitted = gunbc_run_step_script(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
@@ -144,7 +144,7 @@ test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
     && string_contains(s: admitted, pattern: "cat \"$ROOT/target/fleet-reach-probe-receipt.txt\"")
 }
 
-test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
+test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool  {
   let argv = gunbc_run_transport_argv(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",

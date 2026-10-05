@@ -12,7 +12,7 @@ import gunbc.harness.harness_cli { harness_turn_exit }
 // THE EPOCH BOUNDARY IS AN ANNOUNCEMENT, NOT AN ADJUDICATION. The harness emits one durable event
 // naming the chain fingerprint the attempt spawned with, and the outcome is typed -- no provider
 // call, no worker self-report, no verdict minted inside the worker loop (review 5354823380).
-test fn the_checkpoint_due_event_binds_the_chain_fingerprint() -> Bool {
+test fn the_checkpoint_due_event_binds_the_chain_fingerprint() -> Bool  {
   let event = harness_event_alignment_checkpoint_due(steps_taken: 40, chain_fingerprint: "fnv1a64:abc123")
   event.contains("turn.alignment_checkpoint_due")
     && event.contains("fnv1a64:abc123")
@@ -22,7 +22,7 @@ test fn the_checkpoint_due_event_binds_the_chain_fingerprint() -> Bool {
 // CHECKPOINT DUE IS ITS OWN OUTCOME, spelled so no consumer can read it as failure, completion, or
 // a spent budget -- and its exit standing is the distinct admitted code 3, a planned control
 // transfer, never the generic failure code 1 (review 5358022153).
-test fn checkpoint_due_is_neither_failure_nor_budget_exhaustion() -> Bool {
+test fn checkpoint_due_is_neither_failure_nor_budget_exhaustion() -> Bool  {
   let due = TurnAlignmentCheckpointDue { steps_taken: 40 }
   let spent = TurnStepBudgetExhausted { steps_taken: 40 }
   harness_outcome_label(outcome: due) == "alignment-checkpoint-due"
@@ -35,7 +35,7 @@ test fn checkpoint_due_is_neither_failure_nor_budget_exhaustion() -> Bool {
 // THE ROUND NOTICE SAYS WHAT ZERO MEANS. A chainless turn ends at zero; a chain-carrying turn
 // returns control for independent adjudication there (review 5358022153) -- the notice must
 // neither threaten a finish line that does not exist nor claim the harness itself runs a check.
-test fn the_notice_names_the_checkpoint_when_the_turn_carries_a_chain() -> Bool {
+test fn the_notice_names_the_checkpoint_when_the_turn_carries_a_chain() -> Bool  {
   let chained = harness_budget_notice_text(steps_remaining: 3, checkpointed: true)
   let chainless = harness_budget_notice_text(steps_remaining: 3, checkpointed: false)
   chained.contains("independent alignment checkpoint")

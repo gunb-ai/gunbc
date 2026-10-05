@@ -30,20 +30,20 @@ fn three_clocked_rounds() -> String {
   ], "\n")
 }
 
-test fn three_clocked_rounds_measure_the_exact_rate() -> Bool {
+test fn three_clocked_rounds_measure_the_exact_rate() -> Bool  {
   match throughput_centi_tokens_per_second(t: harness_throughput_from_events(body: three_clocked_rounds())) {
     Present { value: centi } => centi == 12500
     Absent => false
   }
 }
 
-test fn the_rate_renders_with_two_decimal_places() -> Bool {
+test fn the_rate_renders_with_two_decimal_places() -> Bool  {
   throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) == "125.00 tok/s"
 }
 
 // THE FIRST ROUND IS EXCLUDED FROM THE NUMERATOR. If it were counted the numerator would be 600 and
 // the rate 150.00, so this witness goes red exactly if that decision is silently reversed.
-test fn the_first_rounds_tokens_are_not_credited_to_the_interval() -> Bool {
+test fn the_first_rounds_tokens_are_not_credited_to_the_interval() -> Bool  {
   throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) != "150.00 tok/s"
 }
 
@@ -51,7 +51,7 @@ test fn the_first_rounds_tokens_are_not_credited_to_the_interval() -> Bool {
 // rather than reporting a rate over a zero-width window. The row is fully populated on purpose: a
 // fixture missing a required count would refuse for the READER's reason and this witness would
 // stop failing on the axis it names.
-test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
+test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool  {
   match harness_throughput_from_events(
     body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
   ) {
@@ -63,7 +63,7 @@ test fn a_single_clocked_round_refuses_rather_than_dividing() -> Bool {
 // DISCRIMINATING RED. A usage row whose clock read was refused carries clock_refused and no
 // epoch_ms; it must not be absorbed as if it had a time -- nor, as the interior-round red below
 // shows, dropped as if it had not happened.
-test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool {
+test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool  {
   match harness_throughput_from_events(
     body: "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"clock_refused\":\"no clock\"}",
   ) {
@@ -73,7 +73,7 @@ test fn an_unclocked_usage_row_is_not_counted_as_a_reading() -> Bool {
 }
 
 // A stream carrying no usage rows at all refuses; it does not report zero.
-test fn an_event_stream_without_usage_rows_refuses() -> Bool {
+test fn an_event_stream_without_usage_rows_refuses() -> Bool  {
   match harness_throughput_from_events(body: "{\"type\":\"turn.started\"}") {
     ThroughputUnobserved { reason: _ } => true
     ThroughputObserved { output_tokens: _, elapsed_ms: _, rounds: _ } => false
@@ -82,7 +82,7 @@ test fn an_event_stream_without_usage_rows_refuses() -> Bool {
 
 // The band boundary is a declared policy; this pins the measured rate to its symbol so a boundary
 // edit is a visible change rather than a silent one.
-test fn a_fast_rate_lands_in_the_top_band() -> Bool {
+test fn a_fast_rate_lands_in_the_top_band() -> Bool  {
   match throughput_band(t: harness_throughput_from_events(body: three_clocked_rounds())) {
     Present { value: b } => throughput_band_word(band: b) == "sprinting"
     Absent => false
@@ -101,7 +101,7 @@ fn three_rounds_one_write() -> String {
   ], "\n")
 }
 
-test fn n_rounds_paint_n_minus_one_segments() -> Bool {
+test fn n_rounds_paint_n_minus_one_segments() -> Bool  {
   list_length(items: round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))) == 2
 }
 
@@ -112,7 +112,7 @@ fn playback_expected(p: RoundPlayback) -> Bool {
   else { false }
 }
 
-test fn playback_compresses_the_run_into_a_fixed_window_with_a_floor() -> Bool {
+test fn playback_compresses_the_run_into_a_fixed_window_with_a_floor() -> Bool  {
   let segs = [
     RoundSegment { step: 2, duration_ms: 1000, output_tokens: 1, kind: ReadRound },
     RoundSegment { step: 3, duration_ms: 3000, output_tokens: 1, kind: ReadRound },
@@ -122,14 +122,14 @@ test fn playback_compresses_the_run_into_a_fixed_window_with_a_floor() -> Bool {
   list_length(items: plays) == 3 && fold(plays, init: true, f: (acc, p) => acc && playback_expected(p: p))
 }
 
-test fn segment_width_is_the_interval_that_ended_at_its_round() -> Bool {
+test fn segment_width_is_the_interval_that_ended_at_its_round() -> Bool  {
   fold(round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write())),
        init: true, f: (ok, seg) => ok && seg.duration_ms == 2000)
 }
 
 // DISCRIMINATING: a rise in the cumulative count is a write; an unchanged count is a read. A level
 // test would call round 3 a write for the wrong reason and would call every later round a write.
-test fn a_round_that_raised_files_changed_is_a_write_and_the_prior_is_a_read() -> Bool {
+test fn a_round_that_raised_files_changed_is_a_write_and_the_prior_is_a_read() -> Bool  {
   let segs = round_segments(ledger: harness_round_ledger_from_events(body: three_rounds_one_write()))
   match segs.first() {
     Absent => false
@@ -143,7 +143,7 @@ test fn a_round_that_raised_files_changed_is_a_write_and_the_prior_is_a_read() -
 }
 
 // An older stream with no files_changed paints unmeasured, never read -- the two are different claims.
-test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool {
+test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool  {
   match round_segments(ledger: harness_round_ledger_from_events(body: three_clocked_rounds())).first() {
     Absent => false
     Present { value: seg } => round_segment_kind_word(k: seg.kind) == "unmeasured"
@@ -152,7 +152,7 @@ test fn a_round_without_a_files_changed_count_is_unmeasured() -> Bool {
 
 // DISCRIMINATING: a round that carried no tool call is a reasoning round; the same round with one
 // call and no file delta is a read, and a round from an older stream with no count stays a read.
-test fn a_round_with_zero_tool_calls_is_reasoning_and_one_call_is_a_read() -> Bool {
+test fn a_round_with_zero_tool_calls_is_reasoning_and_one_call_is_a_read() -> Bool  {
   let body = join([
     "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":1000,\"files_changed\":0,\"tool_calls\":1}",
     "{\"type\":\"round.usage\",\"step\":2,\"input_tokens\":1,\"output_tokens\":1,\"epoch_ms\":2000,\"files_changed\":0,\"tool_calls\":0}",
@@ -163,7 +163,7 @@ test fn a_round_with_zero_tool_calls_is_reasoning_and_one_call_is_a_read() -> Bo
   join(words, ",") == "reasoning,read,read"
 }
 
-test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool {
+test fn the_unspent_budget_is_projected_at_the_mean_pace() -> Bool  {
   let ledger = RoundsObserved { rounds: [
     RoundObservation { step: 1, input_tokens: 1, output_tokens: 1, epoch_ms: 0, files_changed: Present { value: 0 }, tool_calls: none },
     RoundObservation { step: 2, input_tokens: 1, output_tokens: 1, epoch_ms: 1000, files_changed: Present { value: 0 }, tool_calls: none },
@@ -199,7 +199,7 @@ fn throughput_refusal_naming(t: HarnessThroughput, fragment: String) -> Bool {
   }
 }
 
-test fn a_usage_row_without_output_tokens_does_not_become_a_zero_token_clocked_round() -> Bool {
+test fn a_usage_row_without_output_tokens_does_not_become_a_zero_token_clocked_round() -> Bool  {
   throughput_refusal_naming(
     t: harness_throughput_from_events(body: three_rounds_with_an_unreadable_count()),
     fragment: "output_tokens",
@@ -211,7 +211,7 @@ test fn a_usage_row_without_output_tokens_does_not_become_a_zero_token_clocked_r
 // pass while still lying: a ledger missing the rows it could not read is a shorter run that looks
 // complete, and every projection over it -- rate, strip, budget track -- renders confidently from a
 // population nobody was told had shrunk.
-test fn an_unreadable_row_refuses_the_whole_ledger_rather_than_shortening_it() -> Bool {
+test fn an_unreadable_row_refuses_the_whole_ledger_rather_than_shortening_it() -> Bool  {
   match harness_round_ledger_from_events(body: three_rounds_with_an_unreadable_count()) {
     RoundsUnobserved { reason: _ } => true
     RoundsObserved { rounds: _ } => false
@@ -221,7 +221,7 @@ test fn an_unreadable_row_refuses_the_whole_ledger_rather_than_shortening_it() -
 // A DUPLICATED COUNT IS NOT AN ABSENT ONE HERE EITHER, and the cause must say which happened: the
 // reader this module now shares with the writer separates them, and a wildcard reinstated in either
 // place would put back one sentence for two wire facts.
-test fn a_duplicated_output_tokens_member_says_duplicated() -> Bool {
+test fn a_duplicated_output_tokens_member_says_duplicated() -> Bool  {
   throughput_refusal_naming(
     t: harness_throughput_from_events(body: join([
       "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
@@ -235,7 +235,7 @@ test fn a_duplicated_output_tokens_member_says_duplicated() -> Bool {
 // still absent-is-an-answer. files_changed is not carried by older writers and its absence paints
 // `unmeasured`, which the strip witness above pins; without this control the repair would read as
 // "refuse any row that is not fully populated" and would blank every historical run.
-test fn an_older_row_without_the_optional_counts_still_reads() -> Bool {
+test fn an_older_row_without_the_optional_counts_still_reads() -> Bool  {
   match harness_round_ledger_from_events(body: three_clocked_rounds()) {
     RoundsUnobserved { reason: _ } => false
     RoundsObserved { rounds } => list_length(items: rounds) == 3
@@ -261,14 +261,14 @@ fn three_rounds_with_an_unclocked_middle() -> String {
   ], "\n")
 }
 
-test fn an_unclocked_interior_round_is_not_dropped_from_the_rate() -> Bool {
+test fn an_unclocked_interior_round_is_not_dropped_from_the_rate() -> Bool  {
   let t = harness_throughput_from_events(body: three_rounds_with_an_unclocked_middle())
   throughput_refusal_naming(t: t, fragment: "epoch_ms")
     && throughput_rate_text(t: t) != "75.00 tok/s"
     && throughput_rate_text(t: t) == "-- tok/s"
 }
 
-test fn an_unclocked_interior_round_does_not_shorten_the_ledger() -> Bool {
+test fn an_unclocked_interior_round_does_not_shorten_the_ledger() -> Bool  {
   match harness_round_ledger_from_events(body: three_rounds_with_an_unclocked_middle()) {
     RoundsUnobserved { reason: _ } => true
     RoundsObserved { rounds: _ } => false
@@ -279,7 +279,7 @@ test fn an_unclocked_interior_round_does_not_shorten_the_ledger() -> Bool {
 // carrying `type` twice used to answer "not a usage row" and be skipped, so its counts never
 // reached the reader that refuses -- the same class one frame earlier, in the test that decides
 // whether a measurement is ours to read.
-test fn a_row_with_a_duplicated_type_member_refuses_rather_than_being_skipped() -> Bool {
+test fn a_row_with_a_duplicated_type_member_refuses_rather_than_being_skipped() -> Bool  {
   throughput_refusal_naming(
     t: harness_throughput_from_events(body: join([
       "{\"type\":\"round.usage\",\"step\":1,\"input_tokens\":10,\"output_tokens\":100,\"epoch_ms\":1000}",
@@ -291,6 +291,6 @@ test fn a_row_with_a_duplicated_type_member_refuses_rather_than_being_skipped() 
 
 // AND A RECOGNISED NON-USAGE EVENT IS STILL SKIPPED, not refused: the stream carries turn.started
 // and round.usage_unavailable by design, and the fixture at the top of this file leads with one.
-test fn another_event_type_is_still_skipped_rather_than_refusing() -> Bool {
+test fn another_event_type_is_still_skipped_rather_than_refusing() -> Bool  {
   throughput_rate_text(t: harness_throughput_from_events(body: three_clocked_rounds())) == "125.00 tok/s"
 }

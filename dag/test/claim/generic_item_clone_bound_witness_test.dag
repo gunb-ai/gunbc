@@ -115,39 +115,39 @@ fn w_unbounded_declared_container_propagates_nothing() -> Bool {
   )
 }
 
-test fn containment_path_clone_bound_positive() -> Bool {
+test fn containment_path_clone_bound_positive() -> Bool  {
   w_containment_path_emits_clone_bound()
 }
 
-test fn unused_generic_param_negative_control() -> Bool {
+test fn unused_generic_param_negative_control() -> Bool  {
   w_unused_param_no_spurious_clone_bound()
 }
 
-test fn declared_generic_type_propagation_positive() -> Bool {
+test fn declared_generic_type_propagation_positive() -> Bool  {
   w_bound_propagates_through_declared_generic_type()
 }
 
-test fn coproduct_well_formedness_propagation_positive() -> Bool {
+test fn coproduct_well_formedness_propagation_positive() -> Bool  {
   w_bound_propagates_into_coproduct_item()
 }
 
-test fn coproduct_bare_payload_negative_control() -> Bool {
+test fn coproduct_bare_payload_negative_control() -> Bool  {
   w_coproduct_bare_payload_param_stays_bare()
 }
 
-test fn unbounded_declared_generic_negative_control() -> Bool {
+test fn unbounded_declared_generic_negative_control() -> Bool  {
   w_unbounded_declared_generic_type_propagates_nothing()
 }
 
-test fn recursive_declared_type_saturation_positive() -> Bool {
+test fn recursive_declared_type_saturation_positive() -> Bool  {
   w_recursive_declared_type_saturates()
 }
 
-test fn both_triggers_render_single_bound() -> Bool {
+test fn both_triggers_render_single_bound() -> Bool  {
   w_both_triggers_render_one_bound()
 }
 
-test fn unbounded_declared_container_negative_control() -> Bool {
+test fn unbounded_declared_container_negative_control() -> Bool  {
   w_unbounded_declared_container_propagates_nothing()
 }
 
@@ -195,15 +195,15 @@ fn w_impl_accessor_inherits_item_bound_once() -> Bool {
   )
 }
 
-test fn fn_wf_bound_propagation_positive() -> Bool {
+test fn fn_wf_bound_propagation_positive() -> Bool  {
   w_fn_wf_bound_propagates_to_bare_generic()
 }
 
-test fn fn_wf_no_trigger_negative_control() -> Bool {
+test fn fn_wf_no_trigger_negative_control() -> Bool  {
   w_fn_no_wf_trigger_stays_bare()
 }
 
-test fn impl_accessor_inherits_item_bound_once() -> Bool {
+test fn impl_accessor_inherits_item_bound_once() -> Bool  {
   w_impl_accessor_inherits_item_bound_once()
 }
 
@@ -230,11 +230,11 @@ fn w_fn_measure_phantom_qty_scale_stay_bare() -> Bool {
   )
 }
 
-test fn fn_phantom_type_param_negative_control() -> Bool {
+test fn fn_phantom_type_param_negative_control() -> Bool  {
   w_fn_phantom_type_param_stays_bare()
 }
 
-test fn fn_measure_phantom_qty_scale_negative_control() -> Bool {
+test fn fn_measure_phantom_qty_scale_negative_control() -> Bool  {
   w_fn_measure_phantom_qty_scale_stay_bare()
 }
 
@@ -256,11 +256,11 @@ fn w_fn_value_box_alpha_renamed_gets_clone() -> Bool {
   )
 }
 
-test fn fn_phantom_alpha_renamed_negative_control() -> Bool {
+test fn fn_phantom_alpha_renamed_negative_control() -> Bool  {
   w_fn_phantom_alpha_renamed_stays_bare()
 }
 
-test fn fn_value_box_alpha_renamed_positive_control() -> Bool {
+test fn fn_value_box_alpha_renamed_positive_control() -> Bool  {
   w_fn_value_box_alpha_renamed_gets_clone()
 }
 
@@ -282,11 +282,11 @@ fn w_fn_nested_value_wrapper_gets_clone() -> Bool {
   )
 }
 
-test fn fn_nested_phantom_wrapper_negative_control() -> Bool {
+test fn fn_nested_phantom_wrapper_negative_control() -> Bool  {
   w_fn_nested_phantom_wrapper_stays_bare()
 }
 
-test fn fn_nested_value_wrapper_positive_control() -> Bool {
+test fn fn_nested_value_wrapper_positive_control() -> Bool  {
   w_fn_nested_value_wrapper_gets_clone()
 }
 
@@ -400,11 +400,11 @@ fn w_freemonoid_supplemental_enum_hand_written_impls() -> Bool {
   )
 }
 
-test fn freemonoid_supplemental_struct_hand_written_impls() -> Bool {
+test fn freemonoid_supplemental_struct_hand_written_impls() -> Bool  {
   w_freemonoid_supplemental_struct_hand_written_impls()
 }
 
-test fn freemonoid_supplemental_enum_hand_written_impls() -> Bool {
+test fn freemonoid_supplemental_enum_hand_written_impls() -> Bool  {
   w_freemonoid_supplemental_enum_hand_written_impls()
 }
 
@@ -458,11 +458,11 @@ fn w_set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
   )
 }
 
-test fn set_struct_hand_written_impls_carry_header_bounds() -> Bool {
+test fn set_struct_hand_written_impls_carry_header_bounds() -> Bool  {
   w_set_struct_hand_written_impls_carry_header_bounds()
 }
 
-test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool {
+test fn set_coproduct_hand_written_impls_stay_at_the_bare_header() -> Bool  {
   w_set_coproduct_hand_written_impls_stay_at_the_bare_header()
 }
 
@@ -512,10 +512,10 @@ fn w_fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
   )
 }
 
-test fn fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool {
+test fn fn_value_stored_generic_fn_forwards_its_clone_bound() -> Bool  {
   w_fn_value_stored_generic_fn_forwards_its_clone_bound()
 }
 
-test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool {
+test fn fn_value_forwarding_bounds_only_the_instantiated_generic() -> Bool  {
   w_fn_value_forwarding_bounds_only_the_instantiated_generic()
 }

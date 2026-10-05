@@ -125,34 +125,34 @@ fn w_both_clone_and_supplemental_traits_route_independently() -> Bool {
   )
 }
 
-test fn enum_direct_set_field_positive() -> Bool {
+test fn enum_direct_set_field_positive() -> Bool  {
   w_enum_direct_set_field_stays_header_bare_gets_hand_written_impl()
 }
 
-test fn non_set_container_negative_control() -> Bool {
+test fn non_set_container_negative_control() -> Bool  {
   w_non_set_container_stays_bare()
 }
 
-test fn list_container_negative_control() -> Bool {
+test fn list_container_negative_control() -> Bool  {
   w_list_container_stays_bare()
 }
 
-test fn bare_field_negative_control() -> Bool {
+test fn bare_field_negative_control() -> Bool  {
   w_bare_field_stays_bare()
 }
 
-test fn struct_propagation_positive() -> Bool {
+test fn struct_propagation_positive() -> Bool  {
   w_struct_propagates_ord_through_declared_coproduct_field()
 }
 
-test fn fn_generic_over_set_element_carries_ord() -> Bool {
+test fn fn_generic_over_set_element_carries_ord() -> Bool  {
   w_fn_generic_over_set_element_carries_ord()
 }
 
-test fn propagation_one_hop_only_negative_control() -> Bool {
+test fn propagation_one_hop_only_negative_control() -> Bool  {
   w_propagation_is_one_hop_only()
 }
 
-test fn clone_supplemental_trait_routes_independently() -> Bool {
+test fn clone_supplemental_trait_routes_independently() -> Bool  {
   w_both_clone_and_supplemental_traits_route_independently()
 }

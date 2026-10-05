@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shared_input_digest: ContentHash = content_hash_of_value(value: "hermetic-fixture-witness-shared-input-digest")
 
-test fn witness_file_handler_is_content_addressed_reference() -> Bool {
+test fn witness_file_handler_is_content_addressed_reference() -> Bool  {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   (catalog_key_derivation_classification(kd: hermetic_fixture_file_facts.key_derivation) == ContentAddressedByValue)
     && f.key_derivation.content_verified_on_read
@@ -38,7 +38,7 @@ test fn witness_file_handler_is_content_addressed_reference() -> Bool {
     && (f.value_shape == StructuredArtifact)
 }
 
-test fn witness_in_process_handler_is_content_addressed_converged() -> Bool {
+test fn witness_in_process_handler_is_content_addressed_converged() -> Bool  {
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
   (catalog_key_derivation_classification(kd: hermetic_fixture_in_process_facts.key_derivation) == ContentAddressedByValue)
     && m.key_derivation.content_verified_on_read
@@ -46,7 +46,7 @@ test fn witness_in_process_handler_is_content_addressed_converged() -> Bool {
     && (m.value_shape == StructuredArtifact)
 }
 
-test fn witness_handlers_converged_on_key_derivation() -> Bool {
+test fn witness_handlers_converged_on_key_derivation() -> Bool  {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
   let f_class = catalog_key_derivation_classification(kd: hermetic_fixture_file_facts.key_derivation)
@@ -58,7 +58,7 @@ test fn witness_handlers_converged_on_key_derivation() -> Bool {
     && !(f.locality == m.locality)
 }
 
-test fn witness_handlers_share_kernel_invariants() -> Bool {
+test fn witness_handlers_share_kernel_invariants() -> Bool  {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
   (f.value_shape == m.value_shape)
@@ -66,7 +66,7 @@ test fn witness_handlers_share_kernel_invariants() -> Bool {
     && (m.miss_semantics == MissIsDiagnostic)
 }
 
-test fn witness_one_artifact_routes_to_both_backends() -> Bool {
+test fn witness_one_artifact_routes_to_both_backends() -> Bool  {
   let id = ArtifactIdentity {
     subject_digest: shared_input_digest,
     artifact_kind: hermetic_fixture_artifact_kind,

@@ -108,7 +108,7 @@ fn committed_equals_memory_admission(host: HostIdentity) -> Bool {
 // pin from both directions at the live width.
 data witness_srv1_fixture_slot_count: Int = 10
 
-test fn allocation_conserves_when_pools_fit() -> Bool {
+test fn allocation_conserves_when_pools_fit() -> Bool  {
   witness_allocation_conserves(
     host: usable_ram_of(host: operator_host_srv1),
     overhead: byte_size(17179869184),
@@ -249,7 +249,7 @@ fn conserves_at_width(host: HostIdentity, slots: Int) -> Bool {
 // guard was testing for -- so the guard was re-stating, per row, the reason the row now cannot
 // exist. The bounding row below still pins WHICH host is excused, and it pins it against the
 // reservation policy directly rather than against this fold.
-test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool {
+test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool  {
   all(
     gunbc_admitted_runner_slot_allocations(),
     a => conserves_at_width(host: a.host, slots: a.slots_per_host)
@@ -261,7 +261,7 @@ test fn committed_width_fits_on_every_host_with_an_established_charge() -> Bool 
 // host. A conditional that excuses a host from a wall is only honest if something independently
 // pins WHICH hosts it excuses -- otherwise "all established hosts conserve" is satisfied by there
 // being none, which is the vacuous-green shape this module already had to remove once.
-test fn exactly_one_enrolled_host_lacks_an_established_session_charge() -> Bool {
+test fn exactly_one_enrolled_host_lacks_an_established_session_charge() -> Bool  {
   !session_charge_is_established(host: operator_host_srv2)
     && session_charge_is_established(host: operator_host_srv1)
     && session_charge_is_established(host: operator_host_srv3)
@@ -271,7 +271,7 @@ test fn exactly_one_enrolled_host_lacks_an_established_session_charge() -> Bool 
 // AND THE SKIPPED HOST MINTS NO VERDICT AT ALL, rather than a false one. This is the arm the
 // deleted host_session_slice_bytes would have answered by charging zero and reporting a
 // conservation result computed from a charge nobody established.
-test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
+test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool  {
   match live_conservation_at_width(
     host: operator_host_srv2,
     slots: 5,
@@ -288,7 +288,7 @@ test fn an_unsized_host_yields_no_committed_width_verdict() -> Bool {
 // runner_width_disk_preflight — so memory admission and committed width both read 7; the control
 // stays on the memory axis where it belongs.
 
-test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
+test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool  {
   all(
     gunbc_admitted_runner_slot_allocations(),
     a => !conserves_at_width(host: a.host, slots: host_memory_admitted_width(host: a.host) + 1)
@@ -300,7 +300,7 @@ test fn one_more_slot_than_memory_admits_refuses_on_every_host() -> Bool {
 // gunbc_runner_committed_width with the comparison inverted, which is the one edit that would turn a
 // constraint into a grant.
 
-test fn committed_width_never_exceeds_memory_admission() -> Bool {
+test fn committed_width_never_exceeds_memory_admission() -> Bool  {
   all(
     gunbc_admitted_runner_slot_allocations(),
     a => a.slots_per_host <= host_memory_admitted_width(host: a.host)
@@ -327,7 +327,7 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
 // it). The property this row is FOR is that srv4 commits its MEMORY width with disk gated at apply
 // rather than lowering allocation -- which is a relation, holds at any width, and is what is
 // asserted now.
-test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
+test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool  {
   committed_equals_memory_admission(host: operator_host_srv4)
     && committed_equals_memory_admission(host: operator_host_srv3)
     && match host_disk_admitted_width(host: operator_host_srv4) {
@@ -356,7 +356,7 @@ test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
 // hold measured MemTotals within about 1.4 KB of each other, so srv1 refusing a width srv3 accepts
 // cannot be explained by the machines and is the sessions charge showing through. That is the claim,
 // and it survives any slot size.
-test fn session_hosts_refuse_the_managed_width() -> Bool {
+test fn session_hosts_refuse_the_managed_width() -> Bool  {
   conserves_at_width(host: operator_host_srv3, slots: host_memory_admitted_width(host: operator_host_srv3))
     && !conserves_at_width(host: operator_host_srv3, slots: host_memory_admitted_width(host: operator_host_srv3) + 1)
     && !conserves_at_width(host: operator_host_srv1, slots: host_memory_admitted_width(host: operator_host_srv3))
@@ -392,7 +392,7 @@ test fn session_hosts_refuse_the_managed_width() -> Bool {
 // WHAT WOULD HAVE HIDDEN THIS: nothing in the diff. The witness compiled, ran, and passed. It was
 // found by asking why a row the operator ruling had called correctly dead was reporting alive.
 
-test fn allocation_unsound_when_runner_pool_overcommits() -> Bool {
+test fn allocation_unsound_when_runner_pool_overcommits() -> Bool  {
   !witness_allocation_conserves(
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
@@ -418,7 +418,7 @@ fn sessions_fixture_at(session_pool: ByteSize) -> Bool {
   )
 }
 
-test fn sessions_subtract_from_the_same_budget() -> Bool {
+test fn sessions_subtract_from_the_same_budget() -> Bool  {
   sessions_fixture_at(session_pool: byte_size(0))
     && !sessions_fixture_at(session_pool: byte_size(42949672960))
 }
@@ -479,14 +479,14 @@ fn synthetic_bytes_of(host: HostIdentity) -> Int {
   }
 }
 
-test fn every_enrolled_host_resolves_its_own_usable_ram() -> Bool {
+test fn every_enrolled_host_resolves_its_own_usable_ram() -> Bool  {
   byte_size_count(b: usable_ram_of(host: operator_host_srv1)) > 0
     && byte_size_count(b: usable_ram_of(host: operator_host_srv2)) > 0
     && byte_size_count(b: usable_ram_of(host: operator_host_srv3)) > 0
     && byte_size_count(b: usable_ram_of(host: operator_host_srv4)) > 0
 }
 
-test fn perturbing_one_host_moves_only_that_host() -> Bool {
+test fn perturbing_one_host_moves_only_that_host() -> Bool  {
   synthetic_bytes_of(host: operator_host_srv3) == 268435456000
     && synthetic_bytes_of(host: operator_host_srv1) == byte_size_count(b: usable_ram_of(host: operator_host_srv1))
     && synthetic_bytes_of(host: operator_host_srv2) == byte_size_count(b: usable_ram_of(host: operator_host_srv2))
@@ -514,7 +514,7 @@ data bound_arm_fixture: HostUsableRam = HostUsableRamConservativeLowerBound {
   basis: "CONSTRUCTED FIXTURE, not a fleet row. It reproduces the shape the deleted fleet-wide bound had -- the MemTotal-shaped figure captured on srv3 on 2026-07-16 -- so the two controls below keep an authored subject after every real host was promoted to a measurement.",
 }
 
-test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
+test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool  {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamUnmeasured => false
@@ -528,7 +528,7 @@ test fn a_larger_host_reading_is_not_admissible_as_a_lower_bound() -> Bool {
 // row carries the KERNEL figure. It goes red if anyone ever writes the Redfish nominal number
 // into this carrier -- the specific error that became possible the day the BMC started reporting
 // a bigger number than the budget had ever seen.
-test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool {
+test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool  {
   match gunbc_ci_host_usable_ram_for(host: operator_host_srv3) {
     HostUsableRamMeasured { bytes: b, provenance: _ } =>
       byte_size_count(b: b) == 539282522112
@@ -538,7 +538,7 @@ test fn measured_usable_ram_is_the_kernel_figure_not_the_dimm_total() -> Bool {
   }
 }
 
-test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
+test fn unclassified_host_refuses_rather_than_borrowing() -> Bool  {
   match host_usable_ram_or_refusal(
     host: "srv-not-enrolled" as HostIdentity,
     r: gunbc_ci_host_usable_ram_for(host: "srv-not-enrolled" as HostIdentity)
@@ -550,7 +550,7 @@ test fn unclassified_host_refuses_rather_than_borrowing() -> Bool {
 
 // Re-pointed to srv2 for the same reason as the control above: it is now the host that carries
 // the bound. The arm itself is unchanged and still reachable.
-test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
+test fn middle_arm_is_a_bound_not_a_measurement() -> Bool  {
   match bound_arm_fixture {
     HostUsableRamMeasured { bytes: _, provenance: _ } => false
     HostUsableRamConservativeLowerBound { bytes: b, basis: _ } => byte_size_count(b: b) == 134217728000
@@ -561,7 +561,7 @@ test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
 // AND EVERY REAL HOST IS NOW ON THE MEASURED ARM, which is the claim the two fixture-backed controls
 // above can no longer make. This is the row that would go red if a future host were enrolled without
 // its own read, or if one of these four were quietly demoted back to a borrowed figure.
-test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool {
+test fn every_enrolled_host_carries_its_own_measured_reading() -> Bool  {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match gunbc_ci_host_usable_ram_for(host: h) {
@@ -674,7 +674,7 @@ fn discriminator_between_widths(host: HostIdentity, width_with: Int, width_witho
 // THE TWO ARMS MUST DISAGREE AT THE PROBE WIDTH, which is what makes the charge load-bearing rather
 // than merely present. Asserting only that the widths differ would pass on arithmetic that never
 // reaches the conservation wall.
-test fn the_live_session_charge_is_decisive_on_a_derived_boundary() -> Bool {
+test fn the_live_session_charge_is_decisive_on_a_derived_boundary() -> Bool  {
   match live_session_charge_discriminator(host: operator_host_srv1) {
     LiveDiscriminatorFound { host: h, width_with: _, width_without: _, probe: w } =>
       !conserves_at_width(host: h, slots: w)
@@ -695,7 +695,7 @@ test fn the_live_session_charge_is_decisive_on_a_derived_boundary() -> Bool {
 // A HOST THAT RUNS NO SESSIONS HAS NO DECISIVE CHARGE, and saying so is not the same as failing to
 // find one. This arm keeps LiveDiscriminatorUnavailable honest: it must be occupied by hosts where
 // the question genuinely does not apply, not only by hosts where the search came up empty.
-test fn a_session_free_host_reports_no_discriminator_rather_than_a_width() -> Bool {
+test fn a_session_free_host_reports_no_discriminator_rather_than_a_width() -> Bool  {
   match live_session_charge_discriminator(host: operator_host_srv3) {
     LiveDiscriminatorFound { host: _, width_with: _, width_without: _, probe: _ } => false
     LiveDiscriminatorUnavailable { host: _, cause: _ } => true
@@ -705,7 +705,7 @@ test fn a_session_free_host_reports_no_discriminator_rather_than_a_width() -> Bo
 // AN UNSIZED HOST REPORTS UNAVAILABLE FOR ITS OWN REASON, not a fabricated width. This is the arm
 // the deleted host_session_slice_bytes would have answered with a zero charge, producing a width
 // difference of zero and a silently green control.
-test fn an_unsized_host_reports_no_discriminator() -> Bool {
+test fn an_unsized_host_reports_no_discriminator() -> Bool  {
   match live_session_charge_discriminator(host: operator_host_srv2) {
     LiveDiscriminatorFound { host: _, width_with: _, width_without: _, probe: _ } => false
     LiveDiscriminatorUnavailable { host: _, cause: _ } => true
@@ -735,7 +735,7 @@ test fn an_unsized_host_reports_no_discriminator() -> Bool {
 // derived_width_reproduces_the_surviving_host_classes carries the class partition and the binding
 // axis.
 
-test fn the_srv2_width_derivation_is_unestablished() -> Bool {
+test fn the_srv2_width_derivation_is_unestablished() -> Bool  {
   derived_width_is_unestablished(s: derived_memory_admitted_width(host: operator_host_srv2))
 }
 
@@ -762,7 +762,7 @@ test fn the_srv2_width_derivation_is_unestablished() -> Bool {
 // the binding axis anywhere it can be computed. Both are relations rather than transcriptions, so
 // neither ages out when a slot size or a DIMM population moves; and the second goes RED exactly
 // when memory becomes binding again, which is the event a reader of this file needs to know about.
-test fn derived_width_reproduces_the_surviving_host_classes() -> Bool {
+test fn derived_width_reproduces_the_surviving_host_classes() -> Bool  {
   derived_width_is_unestablished(s: derived_memory_admitted_width(host: operator_host_srv2))
     && derived_width_establishes(host: operator_host_srv1)
     && derived_width_establishes(host: operator_host_srv3)
@@ -888,7 +888,7 @@ fn admitted_width_search(host: HostIdentity, control_plane: ByteSize) -> WidthSe
 // the served-deployment slices nor the shakedown slot's charge, so on srv1 it answered 15 while the
 // wall admitted fewer, and this row was red on main for that reason. A literal here would have been
 // a measurement copied from the tree it is asserted against, which DESIGN 5 rules out as an oracle.
-test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
+test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool  {
   let short = match admitted_width_search_within(
     host: operator_host_srv3, control_plane: byte_size(0), range: [1, 2, 3], bound: 3
   ) {
@@ -911,7 +911,7 @@ test fn saturation_refuses_rather_than_reporting_the_ceiling() -> Bool {
 // it is reachable from this operation's own denominator (the row above proves it), and nothing
 // currently occupies it. If a future upgrade takes a host past 40 this goes red, which is the entire
 // reason the arm is typed rather than absorbed.
-test fn no_enrolled_host_saturates_the_standard_search_bound() -> Bool {
+test fn no_enrolled_host_saturates_the_standard_search_bound() -> Bool  {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match admitted_width_search(host: h, control_plane: byte_size(0)) {
@@ -998,7 +998,7 @@ data control_plane_probe_bytes: ByteSize = byte_size(2147483648)
 // specifically. That is acceptable because the exact clause establishes the charge is applied and is
 // linear in its size, which is the property a sub-slot monotonicity was standing in for; it is not
 // acceptable to pretend the coverage is identical.
-test fn the_control_plane_reaches_the_commitment_only_where_memory_still_binds() -> Bool {
+test fn the_control_plane_reaches_the_commitment_only_where_memory_still_binds() -> Bool  {
   admitted_width_is_unestablished(host: operator_host_srv2, control_plane: control_plane_probe_bytes)
     && a_full_slot_charge_costs_exactly_one_slot(host: operator_host_srv1)
     && a_full_slot_charge_costs_exactly_one_slot(host: operator_host_srv3)
@@ -1021,7 +1021,7 @@ fn a_full_slot_charge_costs_exactly_one_slot(host: HostIdentity) -> Bool {
 // literal would have read those two failure codes as "not 25" and reported them identically to a
 // width that merely moved. Requiring a positive width separates a search that answered from a search
 // that could not.
-test fn the_uncharged_widths_are_what_the_charged_ones_are_measured_against() -> Bool {
+test fn the_uncharged_widths_are_what_the_charged_ones_are_measured_against() -> Bool  {
   admitted_width_charging(host: operator_host_srv1, control_plane: byte_size(0)) > 0
     && admitted_width_is_unestablished(host: operator_host_srv2, control_plane: byte_size(0))
     && admitted_width_charging(host: operator_host_srv3, control_plane: byte_size(0)) > 0
@@ -1032,7 +1032,7 @@ test fn the_uncharged_widths_are_what_the_charged_ones_are_measured_against() ->
 // fifteen gibibytes of room. Unmeasured is not a small number and a host with margin is not a reason
 // to skip the question -- the refusal is about ignorance, not capacity, and merging those two is how
 // a fabricated cap gets chosen to keep a plan green.
-test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_ones() -> Bool {
+test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_ones() -> Bool  {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match live_conservation_at_width(
@@ -1075,7 +1075,7 @@ fn zero_memory_slot_shape() -> RunnerSlotDesired {
   }
 }
 
-test fn w_zero_memory_slot_shape_admits_no_runners() -> Bool {
+test fn w_zero_memory_slot_shape_admits_no_runners() -> Bool  {
   match runner_slot_shape_standing(d: zero_memory_slot_shape()) {
     RunnerSlotShapeRefusedZeroMemoryMax => true
     RunnerSlotShapeAdmitted => false
@@ -1083,7 +1083,7 @@ test fn w_zero_memory_slot_shape_admits_no_runners() -> Bool {
 }
 
 // THE POSITIVE CONTROL, so the refusal above is known to discriminate rather than to be unconditional.
-test fn w_live_slot_shape_is_admitted() -> Bool {
+test fn w_live_slot_shape_is_admitted() -> Bool  {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeAdmitted => true
     RunnerSlotShapeRefusedZeroMemoryMax => false
@@ -1101,7 +1101,7 @@ test fn w_live_slot_shape_is_admitted() -> Bool {
 // clause; an axis that stopped consulting the catalog (a 128 written here) fails the second the day
 // the catalog row moves; and the third clause is the ruling's whole consequence -- with the CPU
 // axis at 128 the memory admission IS the committed width on every derived host.
-test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool {
+test fn w_cpu_axis_admits_the_catalog_core_count_at_one_core_per_slot() -> Bool  {
   hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 1
     && match host_cpu_admitted_width(host: operator_host_srv1) {
       CpuWidthDerived { slots: n } => n == altra_max_m12830_catalog.cores
@@ -1129,7 +1129,7 @@ fn witness_srv1_shaped_conserves(runner_pool: ByteSize) -> Bool {
   )
 }
 
-test fn the_shakedown_charge_separates_conserves_from_oversubscribed() -> Bool {
+test fn the_shakedown_charge_separates_conserves_from_oversubscribed() -> Bool  {
   witness_srv1_shaped_conserves(runner_pool: gunbc_runner_slice_cap_for_width(slots: 11))
     && !witness_srv1_shaped_conserves(runner_pool: host_runner_pool_charge(host: operator_host_srv1, slots: 11))
 }

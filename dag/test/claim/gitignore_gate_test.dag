@@ -2,13 +2,13 @@ module test.claim.gitignore_gate
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_has_cargo_patterns() -> Bool {
+test fn witness_has_cargo_patterns() -> Bool  {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: "/target/")
     && string_contains(s: eg, pattern: "/target-codex/")
 }
 
-test fn witness_has_editor_and_os_patterns() -> Bool {
+test fn witness_has_editor_and_os_patterns() -> Bool  {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: ".idea/")
     && string_contains(s: eg, pattern: ".DS_Store")
@@ -19,7 +19,7 @@ test fn witness_has_editor_and_os_patterns() -> Bool {
 // projection carries is prose that reads as coverage, and it goes stale silently -- nothing else
 // in the file disagrees with it. Asserting each home by name means adding an arm without
 // announcing it turns this witness red.
-test fn witness_has_header() -> Bool {
+test fn witness_has_header() -> Bool  {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: "generated via gunbc.gitignore_emit")
     && string_contains(s: eg, pattern: "do not hand-edit")
@@ -30,11 +30,11 @@ test fn witness_has_header() -> Bool {
     && string_contains(s: eg, pattern: "THREE ARMS")
 }
 
-test fn witness_clean_does_not_drift() -> Bool {
+test fn witness_clean_does_not_drift() -> Bool  {
   !(gitignore_drifted(committed: expected_gitignore()))
 }
 
-test fn witness_gitignore_gate_drift_receipt() -> Bool {
+test fn witness_gitignore_gate_drift_receipt() -> Bool  {
   let eg = expected_gitignore()
   !gitignore_drifted(committed: eg)
     && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
@@ -44,7 +44,7 @@ test fn witness_gitignore_gate_drift_receipt() -> Bool {
 // passes and a filter that never fires emit the same green. The private rows must appear, a
 // materialisation of a PUBLIC repository must produce no row at all, and a path that merely
 // contains the word private must stay trackable.
-test fn witness_private_material_rows_are_derived() -> Bool {
+test fn witness_private_material_rows_are_derived() -> Bool  {
   let eg = expected_gitignore()
   string_contains(s: eg, pattern: "\n/private_repo\n")
     && string_contains(s: eg, pattern: "\n/private_overlay\n")
@@ -81,7 +81,7 @@ data private_sourced_materialisation: WorkspaceMaterialisation = WorkspaceMateri
 // under any behaviour of the code. A clause that cannot go red carries no information and is worse
 // than absent, because it will be counted as coverage (DESIGN section 4b). The discriminating work
 // is done by the three conjuncts that remain, over a list this witness controls.
-test fn witness_public_source_derives_no_ignore_row() -> Bool {
+test fn witness_public_source_derives_no_ignore_row() -> Bool  {
   let both = [public_sourced_materialisation, private_sourced_materialisation]
   let kept = untracked_materialisations(all: both)
   count(kept) == 1
@@ -94,7 +94,7 @@ test fn witness_public_source_derives_no_ignore_row() -> Bool {
 // names a prefix AT THE WORKSPACE ROOT, so a same-named directory NESTED somewhere else is outside
 // the declared scope and must stay trackable — it may be ordinary public material, a fixture most
 // obviously. The pair is the discriminator: same spelling, two depths, opposite verdicts.
-test fn witness_materialisation_patterns_are_root_anchored() -> Bool {
+test fn witness_materialisation_patterns_are_root_anchored() -> Bool  {
   path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
     && path_is_ignored(path: "private_repo")
     && path_is_ignored(path: "privdag")
@@ -103,7 +103,7 @@ test fn witness_materialisation_patterns_are_root_anchored() -> Bool {
     && !path_is_ignored(path: "vendor/private_repo/readme.md")
 }
 
-test fn witness_private_material_paths_are_ignored() -> Bool {
+test fn witness_private_material_paths_are_ignored() -> Bool  {
   path_is_ignored(path: "private_overlay/dag/strategy/plan.dag")
     && path_is_ignored(path: "private_repo/dag/finance/model.dag")
     && path_is_ignored(path: "base_overlay/dag/x.dag")

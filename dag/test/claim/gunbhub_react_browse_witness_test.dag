@@ -17,6 +17,6 @@ fn gunbhub_browse_page_serializes_holds() -> Bool {
     "<html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>"
 }
 
-test fn gunbhub_browse_keystone_holds() -> Bool {
+test fn gunbhub_browse_keystone_holds() -> Bool  {
   gunbhub_browse_page_serializes_holds()
 }

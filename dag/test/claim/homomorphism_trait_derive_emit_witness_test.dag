@@ -29,10 +29,10 @@ fn w_unknown_type_head_still_refuses() -> Bool {
   )
 }
 
-test fn item_own_generic_param_applied_type_positive() -> Bool {
+test fn item_own_generic_param_applied_type_positive() -> Bool  {
   w_item_own_generic_param_applied_type_emits()
 }
 
-test fn unknown_type_head_refusal_negative_control() -> Bool {
+test fn unknown_type_head_refusal_negative_control() -> Bool  {
   w_unknown_type_head_still_refuses()
 }

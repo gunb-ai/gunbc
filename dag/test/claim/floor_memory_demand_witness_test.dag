@@ -55,7 +55,7 @@ data no_events: CgroupMemoryEvents = CgroupMemoryEvents {
 // GREEN: the uncensored run is a demand. An exit code of 1 does not withhold completion -- the
 // floor refused two of its own witnesses, which is a statement about the workload and not about
 // whether memory was held.
-test fn the_uncensored_run_qualifies_as_a_demand_holds() -> Bool {
+test fn the_uncensored_run_qualifies_as_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_demand(
       peak: byte_size(count: 28962353152),
@@ -70,7 +70,7 @@ test fn the_uncensored_run_qualifies_as_a_demand_holds() -> Bool {
 // RED SIDE OF THE SAME PAIR: the censored run must NOT qualify, and it is the same binary on the
 // same tree. This is the assertion that would have stopped the 2026-09-12 reading from travelling
 // as a demand.
-test fn the_throttled_run_does_not_qualify_as_a_demand_holds() -> Bool {
+test fn the_throttled_run_does_not_qualify_as_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_demand(
       peak: byte_size(count: 17181028352),
@@ -86,7 +86,7 @@ test fn the_throttled_run_does_not_qualify_as_a_demand_holds() -> Bool {
 // sitting EXACTLY on the throttle line with the counters still reading zero. Every figure behind
 // the old 16/15 row had this shape. If the judgment consulted only memory.events this would read
 // as a demand.
-test fn a_peak_pinned_to_the_line_with_zero_events_is_not_a_demand_holds() -> Bool {
+test fn a_peak_pinned_to_the_line_with_zero_events_is_not_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_demand(
       peak: byte_size(count: 16106127360),
@@ -101,7 +101,7 @@ test fn a_peak_pinned_to_the_line_with_zero_events_is_not_a_demand_holds() -> Bo
 // A KILLED PROCESS NEVER FINISHED WANTING MEMORY, so its peak is a lower bound even when it sits
 // far below every limit and no counter ticked -- which is what an abort or an external SIGKILL
 // looks like from the supervisor.
-test fn a_killed_run_is_not_a_demand_even_far_below_its_limits_holds() -> Bool {
+test fn a_killed_run_is_not_a_demand_even_far_below_its_limits_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_demand(
       peak: byte_size(count: 1073741824),
@@ -115,7 +115,7 @@ test fn a_killed_run_is_not_a_demand_even_far_below_its_limits_holds() -> Bool {
 
 // NOT KNOWING HOW A PROCESS ENDED IS NOT EVIDENCE THAT IT ENDED WELL. The fail-closed reading of
 // an unobserved termination is a lower bound.
-test fn an_unobserved_termination_is_not_a_demand_holds() -> Bool {
+test fn an_unobserved_termination_is_not_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_demand(
       peak: byte_size(count: 1073741824),
@@ -128,7 +128,7 @@ test fn an_unobserved_termination_is_not_a_demand_holds() -> Bool {
 }
 
 // THE ARM THE WHOLE INSTRUMENT EXISTS TO KEEP DISTINCT: could-not-read must not render as it-fit.
-test fn an_unreadable_cgroup_is_not_a_demand_holds() -> Bool {
+test fn an_unreadable_cgroup_is_not_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: DemandUnreadable {
       cause: CgroupValueUnparseable { file: "memory.peak" as NonEmptyStr, body: "-1" },
@@ -141,7 +141,7 @@ test fn an_unreadable_cgroup_is_not_a_demand_holds() -> Bool {
 // drives it through `qualify_floor_memory_from_readings` exactly as the host does -- so the
 // refusal is evidence about the production route rather than about this witness's ability to
 // spell a constructor.
-test fn a_negative_count_refuses_through_the_host_entry_point_holds() -> Bool {
+test fn a_negative_count_refuses_through_the_host_entry_point_holds() -> Bool  {
   match qualify_floor_memory_from_readings(
     peak_bytes: 0 - 1,
     limit_max_body: "max",
@@ -162,7 +162,7 @@ test fn a_negative_count_refuses_through_the_host_entry_point_holds() -> Bool {
 // "this line did not bind", so a clean exit with zero events published DemandObserved for a run
 // whose throttle line was UNKNOWN. Both limit files get a case, because the guard has to cover
 // each one separately and a single-file check would leave the other widening.
-test fn an_unparseable_high_limit_is_not_a_demand_holds() -> Bool {
+test fn an_unparseable_high_limit_is_not_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_from_readings(
       peak_bytes: 1073741824,
@@ -177,7 +177,7 @@ test fn an_unparseable_high_limit_is_not_a_demand_holds() -> Bool {
   ) == false
 }
 
-test fn an_unparseable_max_limit_is_not_a_demand_holds() -> Bool {
+test fn an_unparseable_max_limit_is_not_a_demand_holds() -> Bool  {
   qualification_is_a_demand(
     q: qualify_floor_memory_from_readings(
       peak_bytes: 1073741824,
@@ -195,7 +195,7 @@ test fn an_unparseable_max_limit_is_not_a_demand_holds() -> Bool {
 // AND IT REFUSES RATHER THAN MERELY DECLINING TO CALL IT A DEMAND. DemandBounded would also answer
 // false above, so without this the repair could have been a silent downgrade to "lower bound" for
 // a reading that cannot be interpreted at all.
-test fn an_unparseable_limit_lands_in_demand_unreadable_holds() -> Bool {
+test fn an_unparseable_limit_lands_in_demand_unreadable_holds() -> Bool  {
   match qualify_floor_memory_from_readings(
     peak_bytes: 1073741824,
     limit_max_body: "68719476736",

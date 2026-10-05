@@ -60,14 +60,14 @@ fn rate_micros_eq(a: ListedRateStanding, b: ListedRateStanding) -> Bool {
 
 // THE OBSERVED LISTING IS FOURTEEN ROWS. A count alone is a change detector, so it is asserted
 // beside the identity of the row the derivations below actually select.
-test fn w_listing_carries_the_fourteen_observed_rows() -> Bool {
+test fn w_listing_carries_the_fourteen_observed_rows() -> Bool  {
   count(hetzner_listed_catalog()) == 14
 }
 
 // EACH FIGURE MATCHES THE OPERATOR'S READING OF THE LISTING. These are vendor prices, so a pinned
 // literal here is an oracle grounded in an external authority rather than a measurement of our own
 // tree - the distinction DESIGN section 5 draws between an oracle and a change detector.
-test fn w_row_figures_match_the_cited_listing() -> Bool {
+test fn w_row_figures_match_the_cited_listing() -> Bool  {
   hetzner_listed_monthly_micros(row: hetzner_ax41_listed) == 59000000
     && hetzner_listed_setup_micros(row: hetzner_ax41_listed) == 0
     && hetzner_listed_monthly_micros(row: hetzner_ex63_listed) == 149000000
@@ -78,7 +78,7 @@ test fn w_row_figures_match_the_cited_listing() -> Bool {
 
 // A SETUP FEE ENTERS A MONTHLY RATE ONLY THROUGH A DECLARED HOLDING PERIOD, and the two horizons
 // must differ - otherwise the parameter is decorative and the fee is being ignored.
-test fn w_setup_fee_amortizes_over_the_declared_horizon() -> Bool {
+test fn w_setup_fee_amortizes_over_the_declared_horizon() -> Bool  {
   let twelve = hetzner_listed_effective_monthly(row: hetzner_ex63_listed, holding: amortization_months(12))
   let thirtysix = hetzner_listed_effective_monthly(row: hetzner_ex63_listed, holding: amortization_months(36))
   rate_micros_is(s: twelve, expected: 149000000 + 74000000 / 12)
@@ -90,7 +90,7 @@ test fn w_setup_fee_amortizes_over_the_declared_horizon() -> Bool {
 // THE CHEAPEST CPU-ONLY CORE IS EX63'S, asserted by IDENTITY and not only by magnitude: the fold
 // must select the same row the per-row derivation prices, so swapping the fold for a wrong row at
 // a coincidentally similar figure still reds.
-test fn w_cheapest_core_is_the_ex63_row() -> Bool {
+test fn w_cheapest_core_is_the_ex63_row() -> Bool  {
   rate_micros_eq(
     a: hetzner_listed_cheapest_per_core(holding: amortization_months(12)),
     b: hetzner_listed_per_physical_core(row: hetzner_ex63_listed, holding: amortization_months(12)),
@@ -98,7 +98,7 @@ test fn w_cheapest_core_is_the_ex63_row() -> Bool {
     && rate_micros_is(s: hetzner_listed_cheapest_per_core(holding: amortization_months(12)), expected: 7758333)
 }
 
-test fn w_cheapest_base_gb_is_the_ax41_row() -> Bool {
+test fn w_cheapest_base_gb_is_the_ax41_row() -> Bool  {
   rate_micros_is(
     s: hetzner_listed_cheapest_per_base_gb(holding: amortization_months(12)),
     expected: 59000000 / 64,
@@ -108,7 +108,7 @@ test fn w_cheapest_base_gb_is_the_ax41_row() -> Bool {
 // THE DISCRIMINATING RED FOR THE GPU GUARD. Both GPU rows must refuse a per-core rate. Delete the
 // workload guard in hetzner_listed_per_physical_core and both of these return a number, so
 // this witness is the executing evidence that the guard is present rather than described.
-test fn w_gpu_rows_refuse_a_per_core_rate() -> Bool {
+test fn w_gpu_rows_refuse_a_per_core_rate() -> Bool  {
   rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_gex45_listed, holding: amortization_months(12)))
     && rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_gex131_listed, holding: amortization_months(12)))
     && rate_is_refused(s: hetzner_listed_per_physical_core(row: hetzner_ex63_listed, holding: amortization_months(12))) == false
@@ -117,7 +117,7 @@ test fn w_gpu_rows_refuse_a_per_core_rate() -> Bool {
 // THE ABSENCE OF ARM ON THE LISTING IS LOAD-BEARING AND IS CONSUMED, not merely recorded: this
 // vendor may not be cited as an arm64 cost floor while the standing says its arm products were not
 // on the listing that was read.
-test fn w_hetzner_refuses_to_stand_as_an_arm64_cost_floor() -> Bool {
+test fn w_hetzner_refuses_to_stand_as_an_arm64_cost_floor() -> Bool  {
   hetzner_admissible_as_arm64_cost_floor() == false
 }
 
@@ -128,7 +128,7 @@ test fn w_hetzner_refuses_to_stand_as_an_arm64_cost_floor() -> Bool {
 // untouched and was then compared against dollars, and nothing anywhere went red. Restore that
 // implementation and the first line below fails.
 // ---------------------------------------------------------------------------------------------
-test fn w_currency_identity_is_not_the_minor_unit_exponent() -> Bool {
+test fn w_currency_identity_is_not_the_minor_unit_exponent() -> Bool  {
   currency_code_eq(a: Eur, b: Usd) == false
     && currency_minor_unit_exponent(c: Eur) == currency_minor_unit_exponent(c: Usd)
     && currency_code_eq(a: Eur, b: Eur)
@@ -143,7 +143,7 @@ fn converted_or(c: FxConversion) -> Int {
   }
 }
 
-test fn w_eur_converts_to_usd_at_the_cited_reference_rate() -> Bool {
+test fn w_eur_converts_to_usd_at_the_cited_reference_rate() -> Bool  {
   converted_or(c: convert_money(amount: money_amount_micro(count: 1000000), from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 1162200
     && money_amount_micro_count(m: ecb_eur_usd_2026_09_04.quote_per_base_unit) == 1162200
     && count(ecb_reference_rates()) == 1
@@ -151,7 +151,7 @@ test fn w_eur_converts_to_usd_at_the_cited_reference_rate() -> Bool {
 
 // A RATE ROW IS DIRECTIONAL. Converting the other way must refuse rather than invent an inverse,
 // and a same-currency conversion must pass the amount through untouched.
-test fn w_reverse_direction_refuses_and_identity_passes_through() -> Bool {
+test fn w_reverse_direction_refuses_and_identity_passes_through() -> Bool  {
   converted_or(c: convert_money(amount: money_amount_micro(count: 1000000), from: Usd, to: Eur, rate: ecb_eur_usd_2026_09_04)) < 0
     && converted_or(c: convert_money(amount: money_amount_micro(count: 4242), from: Usd, to: Usd, rate: ecb_eur_usd_2026_09_04)) == 4242
 }
@@ -164,7 +164,7 @@ test fn w_reverse_direction_refuses_and_identity_passes_through() -> Bool {
 // superseded on 2026-06-15 while citing the document that says so, and no type could tell. Point
 // cax41_catalog back at 50500 / 31490000 and this witness fails - which is the whole content of
 // adding TariffStanding.
-test fn w_cax41_current_tariff_is_the_new_price_column() -> Bool {
+test fn w_cax41_current_tariff_is_the_new_price_column() -> Bool  {
   money_amount_micro_count(m: cax41_catalog.hourly) == 65700
     && money_amount_micro_count(m: cax41_catalog.monthly_cap) == 40990000
     && tariff_is_current(t: cax41_catalog.tariff)
@@ -178,7 +178,7 @@ test fn w_cax41_current_tariff_is_the_new_price_column() -> Bool {
 // ECB reference rate lands within three per cent of the vendor's own 48490000 micro-USD. Join the
 // SUPERSEDED euro row to the current dollar row instead and the gap blows out past thirty per
 // cent - the arithmetic that manufactured the premium.
-test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Bool {
+test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Bool  {
   let current = convert_money(amount: cax41_catalog.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)
   let superseded = convert_money(amount: cax41_catalog_superseded.monthly_cap, from: Eur, to: Usd, rate: ecb_eur_usd_2026_09_04)
   let usd_listed = money_amount_micro_count(m: cax41_catalog_usd.monthly_cap)
@@ -198,7 +198,7 @@ test fn w_published_currencies_are_fx_consistent_within_the_same_tariff() -> Boo
   }
 }
 
-test fn w_cloud_listing_is_eight_rows_with_one_orderable() -> Bool {
+test fn w_cloud_listing_is_eight_rows_with_one_orderable() -> Bool  {
   count(hetzner_cloud_listed_catalog()) == 8
     && count(hetzner_orderable_observations()) == 1
     && hetzner_supply_coverage_is_complete()
@@ -207,7 +207,7 @@ test fn w_cloud_listing_is_eight_rows_with_one_orderable() -> Bool {
 
 // THE SUPPLY CONSEQUENCE, CONSUMED RATHER THAN RECORDED: no arm row may be cited as a purchasable
 // floor while every arm row is unorderable.
-test fn w_no_arm_row_is_a_purchasable_floor() -> Bool {
+test fn w_no_arm_row_is_a_purchasable_floor() -> Bool  {
   hetzner_arm_rows_orderable() == false
     && admissible_as_purchasable_floor(
       o: HetznerSupplyObservation { server: cax41_listed, availability: hetzner_cax_line_unavailable },

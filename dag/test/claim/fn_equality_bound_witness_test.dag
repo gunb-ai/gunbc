@@ -28,7 +28,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // Over-approximation is not free here: adding a bound TIGHTENS the emitted signature, so a spurious
 // bound is a real break, while a missed bound only leaves the pre-existing E0369 in place.
 
-test fn earning_comparison_bounds_its_generic_param() -> Bool {
+test fn earning_comparison_bounds_its_generic_param() -> Bool  {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.earning\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_has<K>(row: CapRow<K>, shape: ShapeTag, key: K) -> Bool {\n  row.shape == shape && (row.keys |> any(k => k == key))\n}\n",
     "src/fn_equality_witness_earning.rs",
@@ -37,7 +37,7 @@ test fn earning_comparison_bounds_its_generic_param() -> Bool {
   )
 }
 
-test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
+test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool  {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.concrete\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_shape_is<K>(row: CapRow<K>, shape: ShapeTag) -> Bool {\n  row.shape == shape\n}\n",
     "src/fn_equality_witness_concrete.rs",
@@ -65,7 +65,7 @@ test fn concrete_only_comparison_leaves_generic_param_bare() -> Bool {
 // than on the callee's own resolved-type verdict bounds K there and breaks every caller
 // instantiating K with a non-PartialEq type.
 
-test fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
+test fn forwarding_caller_inherits_callee_equality_bound() -> Bool  {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.forwarding\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_has<K>(row: CapRow<K>, shape: ShapeTag, key: K) -> Bool {\n  row.shape == shape && (row.keys |> any(k => k == key))\n}\n\nfn cap_table_complete<K>(row: CapRow<K>, shape: ShapeTag, required: List<K>) -> Bool {\n  required |> all(k => cap_row_has(row: row, shape: shape, key: k))\n}\n",
     "src/fn_equality_witness_forwarding.rs",
@@ -74,7 +74,7 @@ test fn forwarding_caller_inherits_callee_equality_bound() -> Bool {
   )
 }
 
-test fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool {
+test fn forwarding_into_unbounded_callee_leaves_generic_param_bare() -> Bool  {
   compile_dag_rust_emit_check(
     "module fn_equality_witness.forwarding_bare\n\ntype ShapeTag = ShapeAlpha | ShapeBeta\n\ntype CapRow<K> {\n  shape: ShapeTag\n  keys: List<K>\n}\n\nfn cap_row_shape_is<K>(row: CapRow<K>, shape: ShapeTag) -> Bool {\n  row.shape == shape\n}\n\nfn cap_table_shape_is<K>(row: CapRow<K>, shapes: List<ShapeTag>) -> Bool {\n  shapes |> all(s => cap_row_shape_is(row: row, shape: s))\n}\n",
     "src/fn_equality_witness_forwarding_bare.rs",

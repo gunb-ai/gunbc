@@ -60,7 +60,7 @@ fn design_record(mode: String, stage: String) -> String {
 
 // THE POSITIVE CONTROL. A tracked regular file decodes to its mode and blob, or every refusal below
 // is satisfied by a reader that never admits anything.
-test fn witness_a_tracked_regular_file_decodes_to_its_blob_and_mode() -> Bool {
+test fn witness_a_tracked_regular_file_decodes_to_its_blob_and_mode() -> Bool  {
   match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100644", stage: "0")) {
     BaseIndexBlob { mode, oid: observed } =>
       match mode {
@@ -72,7 +72,7 @@ test fn witness_a_tracked_regular_file_decodes_to_its_blob_and_mode() -> Bool {
   }
 }
 
-test fn witness_a_tracked_executable_file_keeps_its_mode() -> Bool {
+test fn witness_a_tracked_executable_file_keeps_its_mode() -> Bool  {
   match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100755", stage: "0")) {
     BaseIndexBlob { mode, oid: _ } =>
       match mode {
@@ -87,7 +87,7 @@ test fn witness_a_tracked_executable_file_keeps_its_mode() -> Bool {
 // AN EMPTY LISTING IS AN ABSENCE, NOT A MALFORMED ONE. git prints nothing for a path the index does
 // not carry, which is the state of a newly registered artifact on a branch that never committed it;
 // reading that as a decode failure would turn every added path into a refusal.
-test fn witness_an_empty_listing_is_an_absence() -> Bool {
+test fn witness_an_empty_listing_is_an_absence() -> Bool  {
   match base_index_observation(path: "docs/plans/new.md", raw: "") {
     BaseIndexAbsent => true
     BaseIndexBlob { mode: _, oid: _ } => false
@@ -95,7 +95,7 @@ test fn witness_an_empty_listing_is_an_absence() -> Bool {
   }
 }
 
-test fn witness_a_listing_for_another_path_refuses() -> Bool {
+test fn witness_a_listing_for_another_path_refuses() -> Bool  {
   match base_index_observation(path: "ROADMAP.md", raw: design_record(mode: "100644", stage: "0")) {
     BaseIndexRefused { detail: _ } => true
     BaseIndexAbsent => false
@@ -104,7 +104,7 @@ test fn witness_a_listing_for_another_path_refuses() -> Bool {
 }
 
 // AN UNMERGED PATH HAS NO ONE BLOB, so it is refused rather than read at whichever stage came first.
-test fn witness_an_unmerged_path_refuses() -> Bool {
+test fn witness_an_unmerged_path_refuses() -> Bool  {
   match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "100644", stage: "2")) {
     BaseIndexRefused { detail: _ } => true
     BaseIndexAbsent => false
@@ -112,7 +112,7 @@ test fn witness_an_unmerged_path_refuses() -> Bool {
   }
 }
 
-test fn witness_a_symlink_where_a_generated_file_belongs_refuses() -> Bool {
+test fn witness_a_symlink_where_a_generated_file_belongs_refuses() -> Bool  {
   match base_index_observation(path: "DESIGN.md", raw: design_record(mode: "120000", stage: "0")) {
     BaseIndexRefused { detail: _ } => true
     BaseIndexAbsent => false
@@ -120,7 +120,7 @@ test fn witness_a_symlink_where_a_generated_file_belongs_refuses() -> Bool {
   }
 }
 
-test fn witness_more_than_one_matching_entry_refuses() -> Bool {
+test fn witness_more_than_one_matching_entry_refuses() -> Bool  {
   let two = join([design_record(mode: "100644", stage: "0"), design_record(mode: "100644", stage: "0")], "")
   match base_index_observation(path: "DESIGN.md", raw: two) {
     BaseIndexRefused { detail: _ } => true
@@ -136,7 +136,7 @@ fn decision_for(base: BaseIndexObservation, proposed: String) -> CandidateEntryD
 }
 
 // EQUAL IDS ARE NO DRIFT. This is the arm that keeps a clean tree from producing a candidate at all.
-test fn witness_an_unchanged_blob_is_not_drift() -> Bool {
+test fn witness_an_unchanged_blob_is_not_drift() -> Bool  {
   match decision_for(base: BaseIndexBlob { mode: GitRegularBlobMode, oid: oid(hex: base_hex) }, proposed: base_hex) {
     EntryUnchanged => true
     EntryDrifted { entry: _ } => false
@@ -144,7 +144,7 @@ test fn witness_an_unchanged_blob_is_not_drift() -> Bool {
   }
 }
 
-test fn witness_a_changed_blob_carries_its_base_and_mode() -> Bool {
+test fn witness_a_changed_blob_carries_its_base_and_mode() -> Bool  {
   match decision_for(base: BaseIndexBlob { mode: GitExecutableBlobMode, oid: oid(hex: base_hex) }, proposed: proposed_hex) {
     EntryDrifted { entry } =>
       match entry.base_blob {
@@ -161,7 +161,7 @@ test fn witness_a_changed_blob_carries_its_base_and_mode() -> Bool {
 
 // AN ADDED PATH CARRIES NO BASE AND IS A REGULAR FILE, which is exactly what the publisher admits
 // for a path absent at the head it is publishing onto.
-test fn witness_an_absent_path_is_added_as_a_regular_file_with_no_base() -> Bool {
+test fn witness_an_absent_path_is_added_as_a_regular_file_with_no_base() -> Bool  {
   match decision_for(base: BaseIndexAbsent, proposed: proposed_hex) {
     EntryDrifted { entry } =>
       match entry.base_blob {
@@ -175,7 +175,7 @@ test fn witness_an_absent_path_is_added_as_a_regular_file_with_no_base() -> Bool
 
 // A REFUSED BASE STAYS A REFUSAL, never an addition: a path whose index entry could not be read is
 // not a path known to be absent, and publishing it as an addition would overwrite whatever is there.
-test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
+test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool  {
   match decision_for(base: BaseIndexRefused { detail: "the index listing did not decode" }, proposed: proposed_hex) {
     EntryDecisionRefused { detail } => string_contains(s: detail, pattern: "DESIGN.md")
     EntryUnchanged => false
@@ -191,7 +191,7 @@ test fn witness_an_unreadable_base_refuses_rather_than_adding() -> Bool {
 // enrolment against the 302ms margin. The property itself is what matters and it does not need the
 // real list to be established: given a list containing a workflow projection and an ordinary
 // artifact, the filter must drop the former and keep the latter.
-test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool {
+test fn witness_the_filter_drops_workflow_paths_and_keeps_others() -> Bool  {
   let supplied = [".github/workflows/heal.yml", "DESIGN.md", ".github/workflows/witnesses.yml", "ROADMAP.md"]
   let kept = proposable_paths_of(paths: supplied)
   count(kept) == 2

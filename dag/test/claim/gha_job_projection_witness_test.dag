@@ -104,7 +104,7 @@ fn minimal_yaml() -> String {
   emitted_yaml_text(v: job_yaml(job: minimal_job()))
 }
 
-test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
+test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool  {
   let y = all_fields_yaml()
   string_contains(s: y, pattern: "name: Every Optional Field Populated")
     && string_contains(s: y, pattern: "runs-on: ubuntu-latest")
@@ -133,7 +133,7 @@ test fn every_populated_job_field_reaches_the_emitted_yaml() -> Bool {
 // single one starts emitting an empty key. The trailing keys (env, continue-on-error) sit after
 // steps and are checked separately at top-level indent.
 
-test fn absent_job_fields_emit_no_key() -> Bool {
+test fn absent_job_fields_emit_no_key() -> Bool  {
   let y = minimal_yaml()
   string_contains(s: y, pattern: "runs-on: ubuntu-latest\nsteps:")
     && !string_contains(s: y, pattern: "\nenv:")
@@ -142,7 +142,7 @@ test fn absent_job_fields_emit_no_key() -> Bool {
     && !string_contains(s: y, pattern: "\nconcurrency:")
 }
 
-test fn queue_max_emits_the_queue_key() -> Bool {
+test fn queue_max_emits_the_queue_key() -> Bool  {
   let y = all_fields_yaml()
   string_contains(s: y, pattern: "queue: max")
     && string_contains(s: y, pattern: "group: probe-queue-max-group")
@@ -196,7 +196,7 @@ fn queue_max_only_job() -> Job {
   }
 }
 
-test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool {
+test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool  {
   let qmax = emitted_yaml_text(v: job_yaml(job: queue_max_only_job()))
   let qnot = emitted_yaml_text(v: job_yaml(job: queue_not_max_job()))
   !(qmax == qnot)
@@ -204,7 +204,7 @@ test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool {
     && !string_contains(s: qnot, pattern: "queue: max")
 }
 
-test fn scalar_concurrency_group_still_projects_as_a_bare_string() -> Bool {
+test fn scalar_concurrency_group_still_projects_as_a_bare_string() -> Bool  {
   let j = Job {
     id: "scalar",
     name: none,

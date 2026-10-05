@@ -46,14 +46,14 @@ fn all_generated_projection_paths_have_merge_rows() -> Bool {
   }
 }
 
-test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool {
+test fn witness_all_committed_paths_have_merge_rows_holds() -> Bool  {
   count(committed_generated_artifact_paths()) > 0
     && all_generated_projection_paths_have_merge_rows()
     && expected_gitattributes_has_merge_row_for(path: ".gitattributes")
     && expected_gitattributes_has_merge_row_for(path: "src/v1/stage0/src/v1_interpreter_dispatch_generated.rs")
 }
 
-test fn witness_projection_population_contains_dispatch_generated() -> Bool {
+test fn witness_projection_population_contains_dispatch_generated() -> Bool  {
   match deterministic_generated_projection_paths() {
     GeneratedProjectionPathsRefused { cause: _ } => false
     GeneratedProjectionPathsAccepted { paths } =>
@@ -61,7 +61,7 @@ test fn witness_projection_population_contains_dispatch_generated() -> Bool {
   }
 }
 
-test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
+test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool  {
   match deterministic_generated_projection_paths_from_rows(rows: [
     GeneratedProjectionPathRow { path: "same/path.rs" },
     GeneratedProjectionPathRow { path: "same/path.rs" }
@@ -72,7 +72,7 @@ test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
   }
 }
 
-test fn witness_presentation_policy_row_present_holds() -> Bool {
+test fn witness_presentation_policy_row_present_holds() -> Bool  {
   match expected_gitattributes() {
     GitattributesGenerationRefused => false
     GitattributesGenerated { content } => string_contains(
@@ -82,7 +82,7 @@ test fn witness_presentation_policy_row_present_holds() -> Bool {
   }
 }
 
-test fn witness_committed_matches_emit_holds() -> Bool {
+test fn witness_committed_matches_emit_holds() -> Bool  {
   let committed = Filesystem.Read(path: artifact_path(a: GitattributesArtifact))
   match expected_gitattributes() {
     GitattributesGenerationRefused => false
@@ -90,11 +90,11 @@ test fn witness_committed_matches_emit_holds() -> Bool {
   }
 }
 
-test fn witness_red_missing_merge_row_fails() -> Bool {
+test fn witness_red_missing_merge_row_fails() -> Bool  {
   !expected_gitattributes_has_merge_row_for(path: "__gunbc_red_control_missing_path__")
 }
 
-test fn witness_red_perturbed_emit_drifts() -> Bool {
+test fn witness_red_perturbed_emit_drifts() -> Bool  {
   let committed = Filesystem.Read(path: artifact_path(a: GitattributesArtifact))
   match expected_gitattributes() {
     GitattributesGenerationRefused => false
