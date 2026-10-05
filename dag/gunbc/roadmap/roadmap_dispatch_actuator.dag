@@ -200,7 +200,7 @@ import gunbc.roadmap_provider_events {
 }
 import gunbc.repo_identity { gunbc_merge_target_ref }
 import gunbc.codex_harness_credential { codex_worker_turn_custody_host, codex_worker_turn_codex_home, codex_harness_turn_argv }
-import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnEnvNameRefused }
+import gunbc.cursor_harness_credential { cursor_worker_turn_custody_host, cursor_worker_turn_argv, CursorWorkerTurnArgvReady, CursorWorkerTurnRefused }
 import gunbc.roadmap_dispatch_destination {
   node_dispatch_destination,
   DispatchDestinationResolved,
@@ -2367,10 +2367,7 @@ fn dispatch_provider_inner_argv_for_instance(
       } else {
         match cursor_worker_turn_argv(worktree_path: worktree_path, prompt: brief as NonEmptyStr) {
           CursorWorkerTurnArgvReady { argv } => DispatchProviderInnerArgvReady { argv: argv }
-          CursorWorkerTurnEnvNameRefused { spelling } =>
-            CursorProviderCredentialUnbound {
-              reason: join(["the cursor credential variable name ", spelling, " is not a POSIX shell name"], "") as NonEmptyStr,
-            }
+          CursorWorkerTurnRefused { reason } => CursorProviderCredentialUnbound { reason: reason }
         }
       }
     GunbcHarnessProvider =>
