@@ -20,6 +20,7 @@ import gunbc.spark.native_serving_apply {
   spark_native_leftover_decision_of_leg,
   spark_native_leftover_resolve_script, spark_native_leftover_observe_script,
   spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_script,
+  spark_native_host_apply_script, spark_native_transport_announcement_script, spark_native_front_door_script,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
 
@@ -388,4 +389,67 @@ test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
   ])
   (match whole { RecoverRolledBack { holder: t } => t == "T1"  AdoptNothing => false  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
     && (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "RECOVERY-PARTIAL")  AdoptNothing => false  RecoverRolledBack { holder: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
+}
+
+// ── THE TRANSACTION'S OWN START IS NOT REFUSED BY THE START LIMIT; NOTHING ELSE IS EXEMPTED ─────
+//
+// THE INCIDENT: run 37241423753 (2026-10-04). The nvfp4-8 bounded experiment failed readback, and the
+// rollback restored the fp8-16 unit file under the SAME unit name and ran `systemctl restart`, which
+// systemd refused on all four hosts: the bounded unit's StartLimitBurst=1 / StartLimitIntervalSec=600
+// counted the apply's start, and the limit is per unit NAME, so it outlived the unit-file replacement.
+// The repair clears the counter as a declared step IMMEDIATELY before each of the transaction's two
+// deliberate starts (apply, restore) and nowhere else, so 'one attempt per launch' stays true: the unit
+// keeps Restart=no and StartLimitBurst=1 (native_serving_realization_witness_test reads that from the
+// rendered unit), and an unrelated crash -- no transaction start -- meets the limit unchanged.
+
+fn reset_then_start(unit: String, indent: String) -> String {
+  join([indent, "systemctl reset-failed ", unit, "\n", indent, "systemctl restart ", unit], "")
+}
+
+test fn w_the_restore_clears_the_start_limit_immediately_before_its_own_start() -> Bool {
+  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
+  let rollback = spark_native_rollback_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
+  string_contains(s: rollback, pattern: reset_then_start(unit: unit as String, indent: "  "))
+}
+
+test fn w_the_apply_clears_the_start_limit_immediately_before_its_own_start() -> Bool {
+  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
+  let apply = spark_native_host_apply_script(unit_name: unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name)
+  string_contains(s: apply, pattern: reset_then_start(unit: unit as String, indent: ""))
+}
+
+// THE CONTROL: no script that does NOT start the unit clears its start-limit state. If any of these
+// did, a crash loop between transactions could be restarted past the limit by an unrelated leg.
+test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
+  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
+  let others = [
+    spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_commit_script(unit_name: unit, transaction_id: "T"),
+    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800),
+    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1800, container: glm_native_container_name),
+  ]
+  all(others, t => !string_contains(s: t, pattern: "reset-failed"))
+}
+
+// ── THE TRANSPORT VERDICT WAITS FOR ITS ANNOUNCEMENT, UNDER THE ONE INCARNATION WAIT ──────────
+//
+// THE INCIDENT: the same run. Ranks 1-3 verified IB; the head's `Using network` line was logged after
+// the single capture, so the head refused 'transport verdict unread' and the arm rolled back.
+
+test fn w_the_announcement_wait_polls_for_both_facts_the_verdict_folds() -> Bool {
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1800)
+  string_contains(s: t, pattern: "'Using network '")
+    && string_contains(s: t, pattern: "' via NET/'")
+    && string_contains(s: t, pattern: "nccl-transport-announcement-observed-after")
+}
+
+// ONE WAIT AUTHORITY: the announcement wait and the front door carry the SAME deadline the caller
+// derives from VLLM_ENGINE_READY_TIMEOUT_S, and the same incarnation stop. A second number would show
+// here as a deadline the caller did not pass.
+test fn w_the_announcement_and_front_door_share_one_deadline_and_incarnation_stop() -> Bool {
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within_seconds: 1234)
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, ready_within_seconds: 1234, container: glm_native_container_name)
+  all([t, d], s => string_contains(s: s, pattern: "deadline=$(( start + 1234 ))")
+    && string_contains(s: s, pattern: "READBACK-REFUSED-incarnation-changed-before-")
+    && !string_contains(s: s, pattern: "1800"))
 }

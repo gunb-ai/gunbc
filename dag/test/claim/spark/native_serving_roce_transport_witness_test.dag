@@ -12,7 +12,7 @@ import gunbc.spark.native_serving_realization {
   glm_native_launch_lines, glm_native_unit_exec_words,
 }
 import gunbc.spark.native_serving_apply {
-  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps, spark_native_front_door_plans,
+  SparkNativeArmSteps, NativeArmSteps, NativeArmStepsRefused, spark_native_arm_steps, spark_native_front_door_plans, spark_native_transport_announcement_plans,
   spark_native_preflight_script, spark_native_preserve_script, spark_native_rollback_script,
   spark_native_metadata_cleanup_script, spark_native_front_door_script, spark_native_commit_script,
   SparkNativeHostDisposition, HostIncumbentExecStarted, HostUnitRemovedAndContainerAbsent,
@@ -483,8 +483,30 @@ test fn w_the_front_door_waits_for_the_engine_ready_timeout_on_one_incarnation()
       length(plans) == 1
         && length(timeouts) == length(steps)
         && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
-             && string_contains(s: p.script, pattern: "READBACK-REFUSED-head-incarnation-changed")
+             && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-front-door")
              && string_contains(s: p.script, pattern: "until curl"))
+    }
+  }
+}
+
+// THE TRANSPORT VERDICT IS READ AFTER ITS ANNOUNCEMENT (run 37241423753: the head's `Using network`
+// line was logged after the single capture). Over the REAL arm steps: one announcement wait per rank,
+// each bounded by that rank's own VLLM_ENGINE_READY_TIMEOUT_S through the same incarnation wait as the
+// front door. RED: a readback with no announcement plans, or a plan with a deadline of its own.
+test fn w_every_rank_waits_for_its_nccl_announcement_under_its_engine_ready_timeout() -> Bool {
+  match spark_native_arm_steps() {
+    NativeArmStepsRefused { cause: _ } => false
+    NativeArmSteps { steps: steps, master_endpoint: _ } => {
+      let plans = spark_native_transport_announcement_plans(steps: steps)
+      let timeouts = flat_map(steps, st => match engine_ready_timeout_for(env: st.launch.container.env) {
+        EngineReadyTimeoutResolved { timeout: t } => [to_string(second_count(s: t))]
+        EngineReadyTimeoutUnreadable { cause: _ } => [] as List<String>
+      })
+      length(plans) == length(steps)
+        && length(timeouts) == length(steps)
+        && all(plans, p => any(timeouts, t => string_contains(s: p.script, pattern: join(["deadline=$(( start + ", t, " ))"], "")))
+             && string_contains(s: p.script, pattern: "READBACK-REFUSED-incarnation-changed-before-nccl-transport-announcement")
+             && string_contains(s: p.script, pattern: "'Using network '"))
     }
   }
 }

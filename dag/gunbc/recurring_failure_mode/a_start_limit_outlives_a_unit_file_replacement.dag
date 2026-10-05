@@ -1,0 +1,18 @@
+module gunbc.recurring_failure_mode.a_start_limit_outlives_a_unit_file_replacement
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data a_start_limit_outlives_a_unit_file_replacement: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_start_limit_outlives_a_unit_file_replacement" as NonEmptyStr,
+
+  receipts: [
+    "A START LIMIT OUTLIVED A UNIT-FILE REPLACEMENT AND REFUSED THE TRANSACTION'S OWN ROLLBACK. systemd keys StartLimitBurst / StartLimitIntervalSec on the unit NAME, not on the unit file's contents, so a transaction that applies a successor unit and then restores the incumbent under the same name has spent the counter on the apply's start. The bounded-experiment unit renders StartLimitBurst=1 over 600 s (gunbc.spark.native_serving_realization arm_unit_directives ArmBoundedExperiment) to mean 'one attempt per launch'; the rollback's `systemctl restart` was a second start inside the window, systemd refused it ('Start request repeated too quickly'), and under `set -e` the rollback stopped with the fence still held: the arm was left down with its disposition unestablished, the outcome rollback exists to prevent.",
+
+    "SPECIMEN, 2026-10-04, Group A nvfp4-8 launch run 37241423753: readback refused the head (the transport-verdict race filed under readiness_read_as_a_single_probe), rollback restored the fp8-16 unit file on all four hosts and every restart failed on the start limit; observe 37242217295 read no containers and zero GPU processes on srv5-srv8. Recovered through the leftover stage's FenceOnly resolution after the 2 h live-transaction horizon (fp8-16 relaunch run 37252898518), by which time the 10-minute window had long expired -- that recovery is not evidence for the repair.",
+
+    "THE REPAIR AND WHY THIS ONE: the transaction clears the counter as a declared step (`systemctl reset-failed <unit>`) IMMEDIATELY before each of its two deliberate starts -- the apply (spark_native_host_apply_script) and the restore (spark_native_rollback_script) -- and nowhere else. The alternative, a limit that does not span a unit-file replacement, would need a fresh unit NAME per incarnation, which breaks the declared-incumbent model the preserve/restore pair relies on. Clearing it at the deliberate start keeps 'one attempt per launch' true: Restart=no and StartLimitBurst=1 are unchanged, so a crash between transactions still meets the limit. Witnesses w_the_restore_clears_the_start_limit_immediately_before_its_own_start, w_the_apply_clears_the_start_limit_immediately_before_its_own_start, and the control w_no_non_starting_transaction_script_clears_the_start_limit (native_serving_resumable_apply_witness_test); the rendered unit's StartLimitBurst=1 is read by native_serving_realization_witness_test. RUNG FOUND AT: mitigatable (refused loudly, left the arm down). RUNG NOW: mechanically preventable (script-text witnesses). CEILING: structurally guaranteed -- a start operation carrier whose only constructor pairs the clear with the start. NEXT-RUNG TRIGGER: a modeled systemd start operation in extdeps.systemd that the transaction consumes instead of spelling `systemctl restart` in shell.",
+  ],
+
+  evidence: [],
+}
