@@ -656,8 +656,8 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
   concat(enum_name, "::", variant_name)
 }
 
-fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummaryLookup {
-  type_summary_lookup(index: emit_info.type_summaries, key: type_name)
+fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
+  type_summary_decided(index: emit_info.type_summaries, key: type_name)
 }
 
 // A YES/NO QUESTION ABOUT A NAME TWO DECLARATIONS OWN is still decided when every declaration gives
