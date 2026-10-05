@@ -4209,7 +4209,7 @@ fn anonymous_record_lit_surface_name(n: Node, source_indices: Map<String, Newlin
         Absent =>
           let rt = resolved_type(n: n)
           let rt_name = authored_name_at(source_indices: source_indices, node: rt)
-          if rt.ident_span != none && map_contains_key(type_summaries, rt_name) { rt_name } else { "" }
+          if rt.ident_span != none && (type_summary_decided(index: type_summaries, key: rt_name) != none) { rt_name } else { "" }
       }
   }
 }
@@ -4324,7 +4324,7 @@ fn collect_anonymous_record_lit_heads(n: Node, source_indices: Map<String, Newli
         Present { value: _ } => []
         Absent =>
           let inferred = emit_inferred_type_leaf_name(n: n, source_indices: source_indices)
-          if inferred != "" && map_contains_key(type_summaries, inferred) { [inferred] } else {
+          if inferred != "" && (type_summary_decided(index: type_summaries, key: inferred) != none) { [inferred] } else {
             let anon = anonymous_record_lit_surface_name(n: n, source_indices: source_indices, type_summaries: type_summaries)
             if anon != "" { [anon] } else { [] }
           }
@@ -15113,7 +15113,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
     Present { value: sn } => Present { value: sn }
     Absent =>
       let rt_name = authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type)
-      if resolved_type.ident_span != none && map_contains_key(emit_info.type_summaries, rt_name) {
+      if resolved_type.ident_span != none && (type_summary_decided(index: emit_info.type_summaries, key: rt_name) != none) {
         Present { value: rt_name }
       } else { none }
   }
@@ -15198,7 +15198,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       if keyed_container_has_target_inhabitant(container_name: tn, target: Rust) {
         return "panic!(\"record-shaped carrier has no realization in the selected Rust target inhabitant\")"
       }
-      let tn_is_known_struct = map_contains_key(emit_info.type_summaries, tn)
+      let tn_is_known_struct = (type_summary_decided(index: emit_info.type_summaries, key: tn) != none)
       let ctor_name = if tn_is_known_struct { tn }
         else {
           let resolved_struct = resolve_node(n: resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
