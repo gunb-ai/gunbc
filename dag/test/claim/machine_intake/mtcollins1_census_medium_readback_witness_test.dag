@@ -3,14 +3,16 @@ module test.claim.machine_intake.mtcollins1_census_medium_readback_witness_test
 import gunbc.machine_intake_mtcollins1_boot_milestone { mtcollins1_census_stages, mtcollins1_one_socket_workload, mtcollins1_dual_socket_workload }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, NonEmptyStr, String }
-import gunbc.machine_intake_mtcollins1_boot_authorization { MtCollins1CensusMedium, MtCollins1StockInstallerMedium }
-import gunbc.machine_intake_mtcollins1_census_image {
+import gunbc.boot_medium { BootImageExport, BootMedium, stock_installer_boot_medium }
+import gunbc.fleet_known_hosts_anchor { SshTarget }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_census_boot_medium,
   mtcollins1_census_image, Mtcollins1CensusImage, Mtcollins1CensusImageDerived, Mtcollins1CensusImageRefused,
   mtcollins1_census_image_stem, mtcollins1_census_volume_id, mtcollins1_seeded_image_input,
 }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput }
 import gunbc.machine_intake_mtcollins1_census_medium_readback {
-  CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus,
+  CensusMediumReadback, CensusMediumReadbackAgreed, CensusMediumReadbackDiverged, CensusMediumReadbackNotCensus, CensusMediumReadbackExporterUnsupported,
+  mtcollins1_census_medium_readback,
   CensusMediumReadbackRecordUnreadable, CensusMediumReadbackRecordMalformed, CensusMediumReadbackRecordDisagrees,
   CensusMediumReadbackImageUnreadable, CensusMediumReadbackMeasureMalformed,
   RemoteAnswer, mtcollins1_census_medium_readback_from_answers, mtcollins1_census_readback_refusal,
@@ -29,8 +31,29 @@ data recorded: NonEmptyStr = "30ca88d43f8913995078f6c2c917d5049842f927f3fc886a10
 data other: String = "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555"
 // 64 characters, not hexadecimal: the RED that separates "64 long" from "a digest".
 data sixty_four_non_hex: String = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
-data census: MtCollins1CensusMedium = MtCollins1CensusMedium { output_digest: recorded }
+data census: BootMedium = mtcollins1_census_boot_medium(output_digest: recorded)
 data srv2: NonEmptyStr = "srv2"
+
+// THE SAME CENSUS MEDIUM -- genuine name, digest, directory and label -- NAMING ANOTHER EXPORTER. Only the
+// export's SSH target differs: another endpoint, or another principal at the supported endpoint. Its
+// bytes live on an exporter these readers never read, so a successful readback from the supported one
+// would answer for bytes the medium did not name (side-chat review at cad3011782).
+fn census_at(endpoint: String, principal: String) -> BootMedium {
+  BootMedium {
+    image_name: census.image_name,
+    digest: census.digest,
+    export: BootImageExport { target: SshTarget { endpoint: endpoint as NonEmptyStr, principal: principal as NonEmptyStr }, dir: census.export.dir },
+    terminal: census.terminal,
+  }
+}
+
+fn census_at_other_endpoint() -> BootMedium {
+  census_at(endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+}
+
+fn census_as_other_principal() -> BootMedium {
+  census_at(endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
 
 fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
 fn failed(code: Int, stderr: String) -> RemoteAnswer { RemoteAnswer { exit_code: code, stdout: "", stderr: stderr } }
@@ -154,7 +177,7 @@ test fn a_file_whose_bytes_differ_from_the_record_diverges() -> Bool {
 }
 
 test fn the_stock_medium_has_no_census_readback() -> Bool {
-  match mtcollins1_census_medium_readback_from_answers(medium: MtCollins1StockInstallerMedium, host: srv2, record: record_ok(), measure: measure_ok()) {
+  match mtcollins1_census_medium_readback_from_answers(medium: stock_installer_boot_medium, host: srv2, record: record_ok(), measure: measure_ok()) {
     CensusMediumReadbackNotCensus => true
     _ => false
   }
@@ -192,4 +215,51 @@ test fn remote_answer_of_carries_a_converged_result_field_for_field_and_a_refusa
       CensusMediumReadbackImageUnreadable { served_path: _, reason: why } => string_contains(s: why, pattern: "exit=255") && string_contains(s: why, pattern: "transport refused")
       _ => false
     })
+}
+
+fn exporter_unsupported_naming(r: CensusMediumReadback, endpoint: String, principal: String) -> Bool {
+  match r {
+    CensusMediumReadbackExporterUnsupported { supported: sup, named: n } =>
+      (n.target.endpoint as String) == endpoint && (n.target.principal as String) == principal
+        && (sup.target.endpoint as String) == (census.export.target.endpoint as String)
+        && (sup.target.principal as String) == (census.export.target.principal as String)
+    _ => false
+  }
+}
+
+// RED: ANOTHER ENDPOINT. The record and the image answer exactly as the supported exporter would, and
+// the readback still refuses, because those answers are not from the exporter the medium names. The
+// production entry refuses before any leg is dispatched (no SSH context is prepared), so this executes
+// the real route; the answers composition shows the healthy answers cannot buy agreement.
+test fn a_census_medium_naming_another_exporter_endpoint_is_refused_not_read_back() -> Bool {
+  let m = census_at_other_endpoint()
+  exporter_unsupported_naming(r: mtcollins1_census_medium_readback(medium: m), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+    && (match mtcollins1_census_readback_refusal_before_filing(readback: mtcollins1_census_medium_readback(medium: m)) { Present { value: w } => string_contains(s: w, pattern: "fixture-other-exporter") && string_contains(s: w, pattern: "controller untouched")  Absent => false })
+}
+
+// RED: ANOTHER PRINCIPAL AT THE SAME ENDPOINT. The same host reached as another account is another
+// export (the account decides what may be read and written), so it is refused the same way.
+test fn a_census_medium_naming_another_principal_at_the_same_endpoint_is_refused_not_read_back() -> Bool {
+  let m = census_as_other_principal()
+  exporter_unsupported_naming(r: mtcollins1_census_medium_readback(medium: m), endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
+
+// THE SAME TWO REDS OVER THE PURE COMPOSITION: the record and the image answer exactly as the supported
+// exporter would, and the readback still refuses for both changed exporters. These carry no effect, so
+// they discriminate on the qualification alone (the production-entry claims above additionally pin
+// that no leg is dispatched).
+test fn healthy_answers_cannot_buy_agreement_for_a_medium_naming_another_exporter() -> Bool {
+  exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: census_at_other_endpoint(), host: srv2, record: record_ok(), measure: measure_ok()), endpoint: "fixture-other-exporter", principal: census.export.target.principal as String)
+    && exporter_unsupported_naming(r: mtcollins1_census_medium_readback_from_answers(medium: census_as_other_principal(), host: srv2, record: record_ok(), measure: measure_ok()), endpoint: census.export.target.endpoint as String, principal: "fixture-other-principal")
+}
+
+// CONTROL: THE UNCHANGED EXPORT IS ADMITTED. The same constructor with the supported endpoint and
+// principal reproduces the census medium, and the same answers agree -- so the two reds above are the
+// exporter, not the helper.
+test fn the_census_medium_at_its_supported_export_is_admitted_and_agrees() -> Bool {
+  let m = census_at(endpoint: census.export.target.endpoint as String, principal: census.export.target.principal as String)
+  match mtcollins1_census_medium_readback_from_answers(medium: m, host: srv2, record: record_ok(), measure: measure_ok()) {
+    CensusMediumReadbackAgreed { host: _, build_key: _, recorded_digest: r, image_name: _, served_path: _, measured_digest: d } => (r as String) == (recorded as String) && (d as String) == (recorded as String)
+    _ => false
+  }
 }

@@ -17,9 +17,11 @@ import gunbc.machine_intake_mtcollins1_boot_run {
   mtcollins1_sol_release_owned, SolReleaseOutcome, SolReleased, SolReleaseForeignRecord, SolReleaseNoRecord,
   mtcollins1_sol_collector_observe, SolCollectorHeld, SolCollectorExited, mtcollins1_sol_notice_watcher_path,
 }
-import gunbc.machine_intake_mtcollins1_boot_authorization { mtcollins1_boot_subject }
+import gunbc.machine_intake_mtcollins1_census_image { mtcollins1_boot_medium }
+import gunbc.managed_host_boot { AdmittedBootSubject, BootSubjectAdmitted, BootSubjectRefused, boot_subject_admission_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
-import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverNotStarted }
+import gunbc.machine_intake_megarac_kvm_still { KvmObserverNotStarted }
 import gunbc.machine_intake_mtcollins1_boot_run { SolCollectorUnrecorded }
 import gunbc.machine_intake_mtcollins1_sol_notice {
   SolNoticePaths, SolNoticeDelivery, SolNoticeDelivered, SolNoticeDeliveryFailed, SolNoticeLiveLog,
@@ -121,13 +123,23 @@ fn observer_alive(run: ProbeLaunch) -> Bool {
   observer.launched && Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: read_or_empty(path: concat(dir, "/observer.pid"))).success
 }
 
-fn watch(run: ProbeLaunch) -> TerminalWatch {
+// A WITNESS SUBJECT IS MINTED THROUGH THE REAL ADMISSION over mtcollins1's real managed-host row with
+// the medium it boots; there is no other mint (gunbc.managed_host_boot AdmittedBootSubject is
+// sole_constructor).
+fn admitted_witness_subject() -> AdmittedBootSubject? {
+  match boot_subject_admission_for(host: operator_host_mtcollins1, medium: mtcollins1_boot_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr) {
+    BootSubjectAdmitted { subject: s } => Present { value: s }
+    BootSubjectRefused { host: _, cause: _ } => none
+  }
+}
+
+fn watch(run: ProbeLaunch, subject: AdmittedBootSubject) -> TerminalWatch {
   let _observed = observer_alive(run: run)
   mtcollins1_boot_await_capture_terminal(
     remaining: 4,
     capture_path: run.capture_path,
     pid_path: run.pid_path,
-    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    subject: subject,
     password_file: "",
     smpro_census: SmproNotTaken { reason: "wet control" },
     last_live_at: "",
@@ -193,13 +205,18 @@ test fn an_end_written_before_exit_is_judged_on_the_final_bytes() -> Bool {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: end_then_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 2))
-  let w = watch(run: run)
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
   let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
   let _removed = shell.Remove.RecursiveForce(path: dir)
   run.launched
     && string_contains(s: outcome_reason(w: w), pattern: "host qualification REFUSED")
     && !string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost")
     && incident == ""
+  }
+  }
 }
 
 // INCOMPLETE AT EXIT, THROUGH THE REAL WATCH: the collector leaves with the envelope open, the watch
@@ -209,13 +226,18 @@ test fn a_collector_gone_with_the_envelope_open_is_channel_lost_and_frozen() -> 
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
-  let w = watch(run: run)
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
   let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
   let _removed = shell.Remove.RecursiveForce(path: dir)
   run.launched
     && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
     && string_contains(s: incident, pattern: "ObservationChannelLost")
     && string_contains(s: incident, pattern: "the collector exited with status 0")
+  }
+  }
 }
 
 // THE LOSS ASKS THE SCREEN, AND THE ASK NEVER DECIDES (operator ruling 2026-09-27). Through the same
@@ -227,13 +249,18 @@ test fn a_channel_loss_asks_the_screen_and_the_ask_does_not_change_the_verdict()
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: incomplete_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
-  let w = watch(run: run)
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
   let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
   let _removed = shell.Remove.RecursiveForce(path: dir)
   run.launched
     && string_contains(s: outcome_reason(w: w), pattern: "ObservationChannelLost while the boot was being watched")
     && string_contains(s: outcome_reason(w: w), pattern: "screen: the KVM observer is not established, so no still could be asked")
     && string_contains(s: incident, pattern: "ObservationChannelLost")
+  }
+  }
 }
 
 // AN AUTHENTIC CLIENT EXIT: the client's own stderr diagnostic and exit status reach the incident,
@@ -242,7 +269,10 @@ test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
   let dir = scratch_dir()
   let run = probe_launch(dir: dir, script: client_exit_probe(), pid_path: concat(dir, "/collector.pid"))
   let _waited = sleep_delay_seconds_second_carrier_projection(duration: second(count: 3))
-  let w = watch(run: run)
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
+  let w = watch(run: run, subject: subject)
   let incident = read_or_empty(path: mtcollins1_sol_incident_path(capture_path: run.capture_path))
   let capture = read_or_empty(path: run.capture_path)
   let _removed = shell.Remove.RecursiveForce(path: dir)
@@ -252,6 +282,8 @@ test fn an_authentic_client_exit_is_classified_by_its_own_words() -> Bool {
     && string_contains(s: incident, pattern: "does not say which side ended the session")
     && !string_contains(s: incident, pattern: "the BMC closed")
     && !string_contains(s: capture, pattern: "SOL session closed")
+  }
+  }
 }
 
 // OUR OWN DEACTIVATE IS AN ATTRIBUTED EVENT, AND THE EVIDENCE BEFORE IT IS KEPT. The teardown record
@@ -626,16 +658,19 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
   let run = probe_launch(dir: dir, script: "#!/bin/sh\nsleep 30\n", pid_path: concat(dir, "/collector.pid"))
   let _published = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
   let dead = Filesystem.Write(path: mtcollins1_sol_notice_watcher_path(capture_path: run.capture_path), content: "999999 1\n").success
+  match admitted_witness_subject() {
+  Absent => false
+  Present { value: subject } => {
   let stopped = mtcollins1_boot_await_capture_terminal(
     remaining: 3, capture_path: run.capture_path, pid_path: run.pid_path,
-    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    subject: subject,
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
     screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
   let live_ok = observer_alive(run: run)
   let pending = mtcollins1_boot_await_capture_terminal(
     remaining: 0, capture_path: run.capture_path, pid_path: run.pid_path,
-    subject: mtcollins1_boot_subject(execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr),
+    subject: subject,
     password_file: "", smpro_census: SmproNotTaken { reason: "wet control" }, last_live_at: "",
     screen: KvmObserverNotStarted { reason: "wet control: no KVM observer" }, screen_reported: [],
   )
@@ -645,6 +680,8 @@ test fn the_capture_watch_stops_when_its_observer_dies_and_waits_while_it_lives(
     && string_contains(s: outcome_reason(w: stopped), pattern: "the SOL notice watcher is required before a further BMC effect")
     && string_contains(s: outcome_reason(w: stopped), pattern: "observed during the capture watch")
     && string_contains(s: outcome_reason(w: pending), pattern: "deadline reached without a host-capture terminal")
+  }
+  }
 }
 
 // THE RELEASE SIGNALS ONLY THE RECORDED INSTANCE, EXECUTED. A live probe collector is left running when

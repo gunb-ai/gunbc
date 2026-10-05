@@ -7,7 +7,7 @@ import std.types { Int, List, NonEmptyStr, String }
 import std.measure { ObservationRoundCount, Second, observation_round_count, percent, second, second_count }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_policy_standing {
   FanDutyCeilingVerdict,
   ExcursionBound,
@@ -25,7 +25,8 @@ import product.fan_policy_standing {
   fan_policy_standing_of_sample,
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint }
-import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_secured_account }
+import gunbc.managed_host { managed_host_account_driving, managed_host_binding_for }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.machine_intake_bmc_fan_observation {
   FanObservationRefused,
   FanObservationRound,
@@ -82,7 +83,7 @@ data mtcollins1_fan_policy_authority: FanPolicyAuthority = FanPolicyAuthority {
 data mtcollins1_fan_transition_window: Second = second(count: 60)
 
 // THE BARE `import extdeps.shell` ABOVE IS WHAT MAKES shell.Env.Get RESOLVABLE AT RUN TIME, for the
-// reason gunbc.machine_intake_mtcollins1_actuate's header states at length: service operations
+// reason gunbc.managed_host_boot_handoff's header states at length: service operations
 // register from the import closure, so without it this function refuses with
 // `Unimplemented { what: "unknown service operation: shell.Env.Get" }` - naming the operation
 // rather than the import, which is why that module hit it first and this one hit it second.
@@ -207,9 +208,9 @@ fn render_round_standings(round: FanObservationRound, first_posted: Int?, interv
 // machine fact is how "the fans could not be observed" becomes "the fans are not reporting".
 fn mtcollins1_fan_observe_wet() -> ProcessExit
 {
-  match mtcollins1_secured_account() {
+  match managed_host_account_driving(lookup: managed_host_binding_for(host: operator_host_mtcollins1 as NonEmptyStr), endpoint: mtcollins1_endpoint) {
     Absent =>
-      return exit_failure(reason: "mtcollins1 fan observation: the BMC is not BmcSecured, so this run holds no account to read sensors with; contacting NO host")
+      return exit_failure(reason: "mtcollins1 fan observation: the managed host does not bind (not BmcSecured, or its observed controller is not the secured one), so this run holds no account to read sensors with; contacting NO host")
     Present { value: username } =>
       match mtcollins1_fan_credential_path() {
         FanCredentialPathUnset =>

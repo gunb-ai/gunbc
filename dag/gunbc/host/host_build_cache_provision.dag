@@ -14,7 +14,7 @@ import gunbc.host_build_cache_catalog_gate {
 import gunbc.host_effect { HostEffect, EnsureBuildCacheInstance }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import gunbc.build_cache_instance { ci_cache_instance }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 
 // NAMING HAZARD, RECORD BEFORE TOUCHING EITHER FILE. This module (host_build_cache_provision.dag)
 // and the now-deleted host_build_cache_provision_script.dag differed by one suffix, held unrelated

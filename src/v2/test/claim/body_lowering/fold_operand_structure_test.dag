@@ -210,9 +210,9 @@ fn fos_decision_holds(parsed: Optional<Node>) -> Bool {
 
 // ONE PARSE PER SOURCE, EVERY VERDICT READ OFF IT. Each claim below inspects one Bool of this value,
 // and each would otherwise pay its own tokenize, parse and lowering -- the ingest the claims are not
-// about. The producer is rostered in v2.workflow.floor_pure_producer_share
-// floor_cross_claim_pure_producers_warm, like v2.test.claim.fold_lowering flp_outcomes; the value is
-// six Bools, portable for that roster's reason.
+// about. The producer is shared by v2.workflow.floor_pure_producer_share
+// derive_cross_claim_share, like v2.test.claim.fold_lowering flp_outcomes; the value is
+// six Bools, so it reifies portably.
 type FosOutcomes {
   and_reader_over_loop: Bool
   and_walker_over_loop: Bool

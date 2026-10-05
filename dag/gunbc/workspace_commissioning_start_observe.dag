@@ -1,0 +1,71 @@
+module gunbc.workspace_commissioning_start_observe
+
+import std.types { String, NonEmptyStr, Bool }
+import v2.std.algebra { for_all, filter }
+import extdeps.systemd { IdProperty, LoadState, ActiveState, MainPID, InvocationIDProperty, JobProperty }
+import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_property_value }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.command_runner { run_shell_command_capture }
+
+// systemctl's named output distinguishes Job= (no queued job) from a missing/unsupported
+// property. --value erases that distinction. systemd v255 systemctl-show.c prints Job's
+// numeric identifier when nonzero and an empty named value otherwise (lines 1022-1034).
+// https://github.com/systemd/systemd/blob/v255/src/systemctl/systemctl-show.c
+// This is a read, not a start permit: the enclosing executor must still establish exclusive
+// ownership and settle the previous submitting actor before deriving permission to retry.
+type WorkspaceCommissioningStartSnapshot {
+  unit: NonEmptyStr
+  invocation: String
+  load: String
+  active: String
+  main_pid: String
+  job: String
+}
+
+type WorkspaceCommissioningStartObservation
+  = WorkspaceCommissioningStartObserved { snapshot: WorkspaceCommissioningStartSnapshot }
+  | WorkspaceCommissioningStartUnreadable { reason: String }
+
+fn workspace_commissioning_start_decode(unit: NonEmptyStr, text: String) -> WorkspaceCommissioningStartObservation {
+  let keys = ["Id", "LoadState", "ActiveState", "MainPID", "InvocationID", "Job"]
+  if !for_all(keys, key => count(filter(split(s: text, delimiter: "\n"), line => starts_with(s: line, prefix: concat(key, "=")))) == 1) {
+    WorkspaceCommissioningStartUnreadable { reason: "start observation omits or duplicates a required named property" }
+  } else { match systemctl_show_property_value(text: text, key: "Id") {
+    Present { value: id } => if id != (unit as String) {
+      WorkspaceCommissioningStartUnreadable { reason: "start observation names a different unit" }
+    } else { match systemctl_show_property_value(text: text, key: "InvocationID") {
+      Present { value: invocation } => match systemctl_show_property_value(text: text, key: "LoadState") {
+        Present { value: load } => match systemctl_show_property_value(text: text, key: "ActiveState") {
+          Present { value: active } => match systemctl_show_property_value(text: text, key: "MainPID") {
+            Present { value: pid } => match systemctl_show_property_value(text: text, key: "Job") {
+              Present { value: job } => WorkspaceCommissioningStartObserved { snapshot: WorkspaceCommissioningStartSnapshot {
+                unit: unit, invocation: invocation, load: load, active: active, main_pid: pid, job: job,
+              } }
+              Absent => WorkspaceCommissioningStartUnreadable { reason: "Job property unreadable" }
+            }
+            Absent => WorkspaceCommissioningStartUnreadable { reason: "MainPID property unreadable" }
+          }
+          Absent => WorkspaceCommissioningStartUnreadable { reason: "ActiveState property unreadable" }
+        }
+        Absent => WorkspaceCommissioningStartUnreadable { reason: "LoadState property unreadable" }
+      }
+      Absent => WorkspaceCommissioningStartUnreadable { reason: "InvocationID property unreadable" }
+    } }
+    Absent => WorkspaceCommissioningStartUnreadable { reason: "Id property unreadable" }
+  } }
+}
+
+fn workspace_commissioning_start_observe(unit: NonEmptyStr) -> WorkspaceCommissioningStartObservation {
+  match run_shell_command_capture(command: systemctl_show_properties_command(unit: unit,
+    properties: [IdProperty, LoadState, ActiveState, MainPID, InvocationIDProperty, JobProperty]), transport: LocalExec) {
+    ProcessOutputPresent { text } => workspace_commissioning_start_decode(unit: unit, text: text)
+    ProcessOutputAbsent => WorkspaceCommissioningStartUnreadable { reason: "systemd start observation command failed or returned no output" }
+    ProcessRefused { exit_code: _, stderr: _ } => WorkspaceCommissioningStartUnreadable { reason: "systemd start observation command failed or returned no output" }
+  }
+}
+
+fn workspace_commissioning_start_quiescent(snapshot: WorkspaceCommissioningStartSnapshot) -> Bool {
+  snapshot.load == "loaded" && (snapshot.active == "inactive" || snapshot.active == "failed")
+    && snapshot.main_pid == "0" && snapshot.job == ""
+}
