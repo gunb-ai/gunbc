@@ -12259,9 +12259,10 @@ pub fn run_required_floor(
     let union_observed = crate::cli_run::fixture_closure_union_emit_receipt(&union)?;
     eprintln!(
         "[floor-phase] phase=fixture-closure-union-emit state=held fixture_compiles={} \
-         members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
+         memo_hits={} members={} digest={} outside_prepared={outside_prepared} files={} emit_diagnostics={} \
          cpu_ms={} wall_ms={}",
         union.fixture_compiles,
+        union.memo_hits,
         union_observed.members,
         union_observed.digest,
         union_observed.files,

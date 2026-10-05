@@ -143,6 +143,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        record_fixture_closure_memo_hit(&memo_key);
         return hit;
     }
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -164,7 +165,9 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // halves still sum to what it actually spent.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
+    begin_fixture_closure_fill();
     let census = compile_dag_diagnostic_census_uncached(source);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
@@ -2029,6 +2032,7 @@ pub fn compile_dag_rust_emit_check(
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        record_fixture_closure_memo_hit(&memo_key);
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2037,7 +2041,9 @@ pub fn compile_dag_rust_emit_check(
     // — the claim loop does the split, this only says how much of the cost was a fill.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
+    begin_fixture_closure_fill();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
@@ -2920,8 +2926,9 @@ mod fixture_render_selection_probe {
 /// THE POPULATION IS THE INSTRUMENT'S OUTPUT, NOT A LIST. It is exactly the closures the fixture
 /// instruments resolved on this run, recorded at the one seam both of them pass through
 /// (`resolve_virtual_source_with_imports` over the floor's module index), so it cannot name a module
-/// no fixture reached and cannot omit one a fixture did. Memo hits record nothing because the miss
-/// that filled them already did, for the same source and the same inventory digest.
+/// no fixture reached and cannot omit one a fixture did. A memo hit replays the closure its fill
+/// recorded ([`record_fixture_closure_memo_hit`]), so the union stays complete on a later run in the
+/// same process, where every fixture call may be a hit.
 ///
 /// One path recorded with two different byte contents is not unioned by picking one: it is kept as
 /// a conflict, and the receipt refuses on it (DESIGN §5, refuse rather than widen or choose).
@@ -2930,18 +2937,116 @@ pub(crate) struct FixtureClosureUnion {
     pub members: BTreeMap<String, String>,
     pub conflicts: BTreeSet<String>,
     pub fixture_compiles: usize,
+    /// Fixture calls answered by a memo hit, whose closures were replayed rather than resolved.
+    pub memo_hits: usize,
 }
 
 static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(None);
 
+/// WHAT A MEMO HIT REPLAYS. The two fixture memos are process-lived and thread-local, while the
+/// union is per run (`run_required_floor` resets it). A later run in the same process whose fixture
+/// compiles all hit the memo would otherwise record nothing and render an empty union green. So a
+/// fill stores its closure's paths under its memo key, and every hit replays them into the union
+/// ([`record_fixture_closure_memo_hit`]). Contents are held once per path, keyed by path; the memo key
+/// carries the prepared inventory digest, so a key can only be hit while the bytes it read are
+/// the bytes on disk.
+#[derive(Default)]
+struct FixtureClosureMemoReplay {
+    paths_by_memo_key: std::collections::HashMap<String, Vec<String>>,
+    content_by_path: std::collections::HashMap<String, String>,
+}
+
+static FIXTURE_CLOSURE_MEMO_REPLAY: Mutex<Option<FixtureClosureMemoReplay>> = Mutex::new(None);
+
+thread_local! {
+    /// The paths the last [`record_fixture_closure`] on this thread recorded, taken by the memo
+    /// wrapper that triggered the fill. Cleared before each fill so a fill that panicked before
+    /// resolving cannot inherit an earlier fill's closure.
+    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// Called by a memo wrapper just before it fills.
+pub(crate) fn begin_fixture_closure_fill() {
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = None);
+}
+
+/// Called by a memo wrapper after it filled `memo_key`: the closure the fill recorded becomes what
+/// a later hit on that key replays.
+pub(crate) fn finish_fixture_closure_fill(memo_key: &str) {
+    let Some(paths) = LAST_RECORDED_FIXTURE_CLOSURE.with(|l| l.borrow_mut().take()) else {
+        return;
+    };
+    let mut guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard
+        .get_or_insert_with(FixtureClosureMemoReplay::default)
+        .paths_by_memo_key
+        .insert(memo_key.to_string(), paths);
+}
+
+/// A memo hit on `memo_key`: replay the closure its fill recorded into this run's union.
+pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
+    let guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(replay) = guard.as_ref() else {
+        return;
+    };
+    let Some(paths) = replay.paths_by_memo_key.get(memo_key) else {
+        return;
+    };
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = paths
+        .iter()
+        .filter_map(|path| {
+            replay.content_by_path.get(path).map(|content| {
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: path.clone(),
+                    content: content.clone(),
+                })
+            })
+        })
+        .collect();
+    drop(guard);
+    record_into_union(&sources, true);
+}
+
 /// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
 /// instruments' uncached paths with the exact source vector they compile.
 pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let paths: Vec<String> = sources
+        .iter()
+        .filter(|source| source.path != FIXTURE_SOURCE_PATH)
+        .map(|source| source.path.clone())
+        .collect();
+    {
+        let mut replay = FIXTURE_CLOSURE_MEMO_REPLAY
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let replay = replay.get_or_insert_with(FixtureClosureMemoReplay::default);
+        for source in sources {
+            if source.path != FIXTURE_SOURCE_PATH {
+                replay
+                    .content_by_path
+                    .entry(source.path.clone())
+                    .or_insert_with(|| source.content.clone());
+            }
+        }
+    }
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = Some(paths));
+    record_into_union(sources, false);
+}
+
+fn record_into_union(sources: &[Rc<v1_compiler_compile::SourceFile>], memo_hit: bool) {
     let mut guard = FIXTURE_CLOSURE_UNION
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let union = guard.get_or_insert_with(FixtureClosureUnion::default);
-    union.fixture_compiles += 1;
+    if memo_hit {
+        union.memo_hits += 1;
+    } else {
+        union.fixture_compiles += 1;
+    }
     for source in sources {
         if source.path == FIXTURE_SOURCE_PATH {
             continue;
@@ -3108,6 +3213,9 @@ pub(crate) fn fixture_closure_union_emit_receipt(
 mod fixture_closure_union_tests {
     use super::*;
 
+    /// The recorder and the union are process-wide; tests that touch them run one at a time.
+    static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
     /// A union built the way a fixture compile builds its closure: the entry's imports resolved
     /// over the live module index. The entry is given a corpus path (not [`FIXTURE_SOURCE_PATH`]),
     /// so it is a MEMBER of the union, the way a corpus module reached by a fixture is.
@@ -3168,9 +3276,40 @@ mod fixture_closure_union_tests {
         );
     }
 
+    /// A LATER RUN IN THE SAME PROCESS WHOSE FIXTURE CALLS ALL HIT THE MEMO still reaches the
+    /// union: the hit replays the closure its fill recorded (review 76318). Without the replay the
+    /// second union is empty and the receipt would hold having rendered nothing.
+    #[test]
+    fn a_memo_hit_on_a_later_run_replays_its_closure() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[
+            file("dag/replay_a.dag", "module replay_a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        finish_fixture_closure_fill("replay-test-key");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-test-key");
+        let second_run = take_fixture_closure_union();
+        assert_eq!(second_run.fixture_compiles, 0);
+        assert_eq!(second_run.memo_hits, 1);
+        assert_eq!(
+            second_run.members.keys().collect::<Vec<_>>(),
+            vec!["dag/replay_a.dag"]
+        );
+    }
+
     /// The recorder skips the fixture source itself and keeps a content conflict.
     #[test]
     fn the_recorder_excludes_the_fixture_and_keeps_conflicts() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         drop(take_fixture_closure_union());
         let file = |path: &str, content: &str| {
             Rc::new(v1_compiler_compile::SourceFile {
