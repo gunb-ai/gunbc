@@ -20,6 +20,7 @@ import gunbc.bmc_fan_program_observation {
   srv3_program_json,
   srv4_program_json,
 }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
