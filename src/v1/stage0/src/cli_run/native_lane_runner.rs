@@ -2628,12 +2628,22 @@ pub fn run_native_serve_program(
     // handler is pointed at, so the answered arm is produced by a real exchange. Its port is the
     // one fact only it can publish, so the reader module is asked for the requests only after it.
     let mut peer = native_serve_start(&prepared.binary_path, entry, release_revision)?;
-    let peer_port = peer
+    let peer_port = match peer
         .address
         .as_deref()
         .and_then(|address| address.rsplit(':').next())
         .and_then(|port| port.parse::<i64>().ok())
-        .unwrap_or(0);
+    {
+        Some(port) => port,
+        None => {
+            let peer_stderr = peer.stop();
+            return Err(format!(
+                "NATIVE-SERVE REFUSAL cause=PeerUnannounced entry={entry} announcement={:?} — the peer instance printed no bound address, so no request can name its port{}",
+                peer.announcement,
+                if peer_stderr.is_empty() { String::new() } else { format!(" (stderr: {})", peer_stderr.trim_end()) }
+            ));
+        }
+    };
     let requests = match requests_for_peer_port(peer_port) {
         Ok(requests) => requests,
         Err(cause) => {
