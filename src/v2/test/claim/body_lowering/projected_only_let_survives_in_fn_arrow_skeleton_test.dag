@@ -4,75 +4,67 @@ module v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skele
 // node_local_reference_name, the permissive companion of node_references_param).
 //
 // The skeleton marshal's let-liveness set is fed by node_local_reference_name, which counted only
-// `ExprVar` and `ExprCall` as value reads. A FIELD projection (`read.success`) reads its base just
-// as much, but did not count -- so a `let read = Filesystem.Read(path: p)` whose bound record is
-// only projected fell out of the live set, the let was treated as dead, and its RHS -- the raw wire
-// read itself -- was grafted OUT of the body skeleton. FnArrowDecl.output and the .dag decl facts
-// are built by that same marshal (marshal_fn_body_skeleton), so this shape vanished from the only
-// body grain the .dag substrate exposes, for EVERY consumer of marshal_fn_body_skeleton and
-// fn_arrow_output_skeleton -- not for any one lens.
+// `ExprVar` and `ExprCall` as value reads. A FIELD projection (`pair.left`) reads its base just as
+// much, but did not count -- so a `let pair = <named call>` whose bound record is only projected
+// fell out of the live set, and the let's RHS -- the producing call itself -- was grafted OUT of
+// the body skeleton. The continuation survives (the downstream trim call is still there), but the
+// skeleton now shows a call consuming a projection of a binding whose producing node is absent.
+// FnArrowDecl.output and the .dag decl facts are built by that same marshal (marshal_fn_body_
+// skeleton), so this shape is missing from the only body grain the .dag substrate exposes, for
+// EVERY consumer of marshal_fn_body_skeleton and fn_arrow_output_skeleton.
+//
+// Why a named-call RHS and not a raw wire read: the dump instrument (por_skeleton_probe, scratch)
+// shows that callee identity atoms are BARE fn names (T:Atom(por_sink), T:Atom(trim)), and that a
+// service operation like Filesystem.Read emits no callee atom and no C: node at all -- a projected
+// wire-read let loses its RHS invisibly at node grain. A NAMED-CALL RHS makes the same loss
+// atom-observable: pre-fix the specimen's skeleton lacks T:Atom(por_mk_pair); post-fix it is
+// present. That asymmetry is the discriminator.
+//
+// THE POSITIVE CONTROL is the mirror shape: the same bound record passed WHOLE to a receiver. Its
+// let was always live by the old analysis too, so its producing call's atom must be present both
+// before and after the fix -- proving the enumeration route sees live-call residue and the red is
+// not a route artifact.
 //
 // The fix under test: a field projection counts as a live reference to its base (the function's own
 // documented contract is "every value read"), resolved through nested projections to the base
 // binding's authored name. Atom emission is untouched -- identity atoms stay on the strict
-// node_references_param -- so reachability queries see no new atoms; only previously dropped
-// let-RHS structure comes back.
-//
-// THE DISCRIMINATOR is the specimen's CONTINUATION residue. probe5 established the collapse for
-// exactly this shape: with the let dead, marshal_stmt_sequence drops it, and the continuation that
-// consumes the binding by projection cannot marshal either -- the whole body grain collapses to the
-// parameter identity atom, losing the conditional AND the named `trim` call. So the claim requires
-// the `trim` callee atom in the specimen's own skeleton: absent today (the red), present once a
-// field projection counts as a reference to its base. (The wire read itself contributes no callee
-// atom -- it is a service operation, not a named call -- so the wire id is deliberately NOT the
-// probe on either side.)
-//
-// The positive control is the mirror shape: the same bound record passed WHOLE to a receiver. Its
-// let was always live by the old analysis too, so its consumption residue -- the `por_sink` callee
-// atom -- must be present both before and after the fix, proving the enumeration route sees live
-// call residue and the red is not a route artifact.
+// node_references_param -- so reachability queries see no new atoms on genuine param-reference
+// sites; only previously dropped let-RHS structure comes back.
 
 import std.algebra { trim }
 import v2.std.algebra { list_find_first }
 import v2.std.node { Node, Symbol, symbol_lexeme }
 import v2.std.fn_index { atom_identities_in_subtree, fn_arrow_decl_facts_live }
-import v2.std.optional { Absent, Optional, Present }
+import v2.std.optional { Absent, Present }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import extdeps.filesystem.filesystem_io {
-  Filesystem,
-  FilesystemReadOutcome,
-  FilesystemReadRefused,
-  FilesystemReadSucceeded,
-}
 
 data por_pool_roots: List<String> = []
 data por_pool_files: List<String> = ["src/v2/test/claim/body_lowering/projected_only_let_survives_in_fn_arrow_skeleton_test.dag"]
 
-// THE SPECIMEN (the red): a bound wire read whose record is used only through field projections.
+data por_pair: PorPair = PorPair { left: String, right: String }
+
+fn por_mk_pair(s: String) -> PorPair {
+  PorPair { left: trim(s), right: s }
+}
+
+// THE SPECIMEN (the red): a bound named call whose record is used only through field projections.
 fn por_projected_only_record(p: String) -> String {
-  let read = Filesystem.Read(path: p)
-  if read.success {
-    trim(read.content)
-  } else {
-    ""
-  }
+  let pair = por_mk_pair(s: p)
+  trim(pair.right)
 }
 
 // POSITIVE CONTROL: the same bound record passed WHOLE to a receiver. Always live, old and new.
 fn por_record_passed_whole(p: String) -> String {
-  let read = Filesystem.Read(path: p)
-  por_sink(r: read)
+  let pair = por_mk_pair(s: p)
+  por_sink_pair(x: pair)
 }
 
-fn por_sink(r: FilesystemReadOutcome) -> String {
-  match r {
-    FilesystemReadRefused { error: _ } => ""
-    FilesystemReadSucceeded { content } => content
-  }
+fn por_sink_pair(x: PorPair) -> String {
+  x.right
 }
 
-data por_trim_callee_id: String = "std.algebra::trim"
-data por_sink_callee_id: String = "v2.test.claim.body_lowering.projected_only_let_survives_in_fn_arrow_skeleton::por_sink"
+data por_mk_pair_callee_id: String = "por_mk_pair"
+data por_sink_pair_callee_id: String = "por_sink_pair"
 
 fn por_symbol_seen(symbols: List<Symbol>, callee_id: String) -> Bool {
   match list_find_first(xs: symbols, predicate: fn(s) { symbol_lexeme(sym: s) == callee_id }) {
@@ -97,19 +89,26 @@ fn por_projected_only_let_survives_in_fn_arrow_skeleton() -> ProcessExit {
         Present { value: por_wd } => {
           let por_projected_ids = atom_identities_in_subtree(node: por_pd.output)
           let por_whole_ids = atom_identities_in_subtree(node: por_wd.output)
-          let por_specimen_has_trim = por_symbol_seen(symbols: por_projected_ids, callee_id: por_trim_callee_id)
-          let por_control_has_sink = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_callee_id)
-          if por_control_has_sink {
-            if por_specimen_has_trim {
-              ExitSuccess
+          let por_specimen_has_producer = por_symbol_seen(symbols: por_projected_ids, callee_id: por_mk_pair_callee_id)
+          let por_control_has_producer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_mk_pair_callee_id)
+          let por_control_has_consumer = por_symbol_seen(symbols: por_whole_ids, callee_id: por_sink_pair_callee_id)
+          if por_control_has_producer {
+            if por_control_has_consumer {
+              if por_specimen_has_producer {
+                ExitSuccess
+              } else {
+                exit_failure(
+                  reason: "RED: a projected-only let lost its producing call from the fn-arrow skeleton -- the body grain carries the projection's consumer but not the call that produced the binding",
+                )
+              }
             } else {
               exit_failure(
-                reason: "RED: a projected-only let collapsed its whole continuation out of the fn-arrow skeleton -- the body grain carries neither the wire read nor the trim call that consumes it (probe5's shape: the skeleton is just the parameter atom)",
+                reason: "control skeleton lacks the por_sink_pair callee; the whole-record control's consumption is not visible, so the discriminator proves nothing",
               )
             }
           } else {
             exit_failure(
-              reason: "control skeleton lacks the por_sink callee; a whole-record live call's residue is not visible, so the enumeration route is broken",
+              reason: "control skeleton lacks the por_mk_pair callee; the whole-record let itself is not live, so the enumeration route is broken",
             )
           }
         }
