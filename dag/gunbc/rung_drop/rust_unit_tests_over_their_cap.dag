@@ -1,7 +1,7 @@
 module gunbc.rung_drop.rust_unit_tests_over_their_cap
 
 import std.types { List, NonEmptyStr, String }
-import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
 // DECLARED 2026-10-05, operator-approved (escalation msg_e83c070f, option A: the owner raises the
@@ -10,20 +10,22 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // (gunbc.compiler_gate_workflow compiler_gate_unit_test_timeout). The step overran that cap on every
 // head, #12951's own included, cut off inside required_floor_runner changed_witness_projection_tests
 // with no test failed -- so the lane's red carried no information about the diff and refused every
-// merge. The lane row is now LaneAnnouncedNotBlocking: the job still runs on every pull request and
-// merge_group and reports its result, and the aggregate no longer needs it.
+// merge. While this row stood (2026-10-05 to 2026-10-06) the lane row was LaneAnnouncedNotBlocking:
+// the job ran on every pull request and merge_group and reported, and the aggregate did not need it.
 //
 // THE TRIGGER IS THE CAPABILITY, NOT THE CAP. Raising the literal does not retire this row; a cap
 // raised past a wall nobody measured is the same red waiting for a slower head. What retires it is
 // the suite completing under its cap on the fleet, every head, read from the lane's own runs.
 
-// STILL STANDING AFTER THE LANE RE-BLOCKED (2026-10-06). The lane blocks again with a 15-minute
-// cap derived from the post-gunbc#13452 walls (compiler_gate_unit_test_timeout), but the suite fits
-// because #13452 DELETED 190 tests, and this row's trigger refuses deleting tests as a route. So
-// this row does not retire on that evidence. The deleted population is declared separately as
-// gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane. This row retires only on its own
-// trigger, or by an explicit operator supersession saying why that population left the subject and
-// where its guarantees now live.
+// RETIRED BY OPERATOR SUPERSESSION, NOT BY ITS TRIGGER (2026-10-06). The trigger refuses
+// shrinking the suite by deleting tests, and gunbc#13452 did exactly that, so the trigger has NOT
+// fired and this row does not claim it did. What ended it is the owner ruling #13452 carries
+// (2026-10-06: every v1 unit test is under 100ms, the v1 Rust tests are being wound down, and
+// integration tests in the lane are deleted rather than rewritten), confirmed as superseding this
+// row through gentle-dove-36 (#13474). That ruling took the deleted population out of this row's
+// subject; its loss is held by gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane and
+// nowhere else. Over the population that remains, the lane blocks again with a cap re-derived from
+// the post-#13452 walls (gunbc.compiler_gate_workflow compiler_gate_unit_test_timeout).
 data rust_unit_tests_over_their_cap_population: List<String> = [
   "the fleet rust-unit-tests job of gunbc.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate",
 ]
@@ -32,7 +34,7 @@ data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
   identity: "rust_unit_tests_over_their_cap" as NonEmptyStr,
   subject: "the v1 --lib unit-test lane blocks a merge: a failing v1-compiler unit test turns the required witnesses context red",
   declared: "2026-10-05",
-  standing: Standing,
+  standing: Retired { trigger_fired: "NOT BY ITS TRIGGER: superseded by the owner ruling of 2026-10-06 carried by gunbc#13452 (v1 unit tests over 100ms are deleted, not rewritten), which removed the deleted population from this subject; that loss is declared once, as gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane. Over the remaining population the lane blocks again (LaneBlocks, gunbc#13474) with a 15-minute step cap derived from the post-#13452 maximum wall, witnesses run 37459768899 at 457s; re-derive by instrument (gh run list --workflow witnesses.yml for runs after 2026-10-06T01:02Z, then each run rust-unit-tests step times)." as NonEmptyStr },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
