@@ -38,13 +38,13 @@ fn expected_install_command() -> String {
 // This is the join between the two authorities: if DeploymentServiceConfig were populated from
 // anything but dashboard_instance_provider_state_root, the deploy would create a directory the
 // provider preflight does not read.
-test fn the_spec_derives_the_instance_provider_state_path() -> Bool {
+test fn the_spec_derives_the_instance_provider_state_path() -> Bool  {
   (deployment_provider_state_path(spec: deployment_spec_srv1()) as String) == srv1_provider_state_root()
 }
 
 // PRESENCE IN THE EMITTED SET, at the producer: the ensure lowers to the owned install command for
 // the model's path and owner.
-test fn the_provider_state_ensure_emits_the_owned_install() -> Bool {
+test fn the_provider_state_ensure_emits_the_owned_install() -> Bool  {
   string_contains(
     s: pipeline_steps_text(steps: provider_state_ensure_steps(spec: deployment_spec_srv1())),
     pattern: expected_install_command(),
@@ -54,7 +54,7 @@ test fn the_provider_state_ensure_emits_the_owned_install() -> Bool {
 // INHABITANCE: that producer is reached by the production apply. The preamble is what every apply
 // emits before any member effect, so this asserts the ROUTE and not only the command text --
 // deleting the call from deploy_apply_preamble_steps reds this while the claim above stays green.
-test fn the_production_apply_preamble_carries_the_provider_state_ensure() -> Bool {
+test fn the_production_apply_preamble_carries_the_provider_state_ensure() -> Bool  {
   let spec = deployment_spec_srv1()
   match ci_deploy_srv1_access_or_refusal() {
     DeployAccessReady { access: access } =>
@@ -68,7 +68,7 @@ test fn the_production_apply_preamble_carries_the_provider_state_ensure() -> Boo
 
 // The same directory is read back as a member, so a host whose provider login has nowhere to write
 // reports a member to create rather than a converged host.
-test fn the_provider_state_root_is_a_read_back_directory_member() -> Bool {
+test fn the_provider_state_root_is_a_read_back_directory_member() -> Bool  {
   any(deployment_member_roster(spec: deployment_spec_srv1()), m => match m {
     DirectoryRoot { path } => (path as String) == srv1_provider_state_root()
     _ => false
@@ -76,6 +76,6 @@ test fn the_provider_state_root_is_a_read_back_directory_member() -> Bool {
 }
 
 // Ensured, not owned: retract never tears down the provider login.
-test fn retract_never_owns_the_provider_state_root() -> Bool {
+test fn retract_never_owns_the_provider_state_root() -> Bool  {
   !any(spec_owned_identities(spec: deployment_spec_srv1()), id => string_contains(s: id, pattern: srv1_provider_state_root()))
 }

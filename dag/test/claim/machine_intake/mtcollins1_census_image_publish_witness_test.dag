@@ -60,7 +60,7 @@ fn published_clean(ok: Bool) -> SeededImagePublication {
 }
 
 // POSITIVE: the pinned digest reproduced on srv2 with both directories removed holds, and gates the publish open.
-test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool {
+test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool  {
   let a = census_publish_attempt_of(regression: reproduced(), publish: ok => published_clean(ok: ok))
   census_regression_holds(r: reproduced())
     && census_publish_attempt_holds(a: a)
@@ -70,7 +70,7 @@ test fn a_reproduced_pinned_digest_holds_and_the_publish_runs() -> Bool {
 
 // RED: a rebuild that gives other bytes (the host-dependence this gate exists for) stops the run and
 // the publication is NEVER consulted.
-test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
+test fn a_diverged_rebuild_stops_before_any_publication() -> Bool  {
   let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: other_build), chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
   let a = census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok))
   !census_regression_holds(r: r)
@@ -82,13 +82,13 @@ test fn a_diverged_rebuild_stops_before_any_publication() -> Bool {
 }
 
 // A reproduced digest whose scratch removal was not confirmed does NOT hold: residue on srv2 stops the run.
-test fn a_reproduced_digest_with_unconfirmed_scratch_removal_does_not_hold() -> Bool {
+test fn a_reproduced_digest_with_unconfirmed_scratch_removal_does_not_hold() -> Bool  {
   let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned), chain: p => stock_chain(), scratch: RemovalUnconfirmed { dir: scratch_removed_dir as NonEmptyStr, exit_code: 255, stderr: "Connection closed" })
   !census_regression_holds(r: r)
     && match census_publish_attempt_of(regression: r, publish: ok => published_clean(ok: ok)) { CensusPublishStoppedAtRegression { regression: _ } => true _ => false }
 }
 
-test fn an_unbuilt_rebuild_stops_the_run() -> Bool {
+test fn an_unbuilt_rebuild_stops_the_run() -> Bool  {
   let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: SeededInstallMediaStageRefused { reason: "xorriso -osirrox extract: failed exit=5", work: Removed { dir: work_removed as NonEmptyStr } }, chain: p => stock_chain(), scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
   !census_regression_holds(r: r)
     && match r { RegressionUnbuilt { reason: why, build_work: _, scratch: _ } => string_contains(s: why, pattern: "extract") _ => false }
@@ -96,7 +96,7 @@ test fn an_unbuilt_rebuild_stops_the_run() -> Bool {
 
 // A PUBLICATION THAT LEAVES RESIDUE DOES NOT HOLD even after a held regression: a staging file left in
 // the export, or a build work directory not removed, is reported and fails the run.
-test fn a_publication_with_staging_residue_does_not_hold() -> Bool {
+test fn a_publication_with_staging_residue_does_not_hold() -> Bool  {
   let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
     Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
     Present { value: b } => SeededImagePublished { built: b, path: "/srv/bmc/x.iso", work: Removed { dir: work_removed as NonEmptyStr }, staging_residue: Present { value: "/srv/bmc/x.iso.gunbc-staging: failed exit=1" } }
@@ -104,7 +104,7 @@ test fn a_publication_with_staging_residue_does_not_hold() -> Bool {
   !census_publish_attempt_holds(a: a) && string_contains(s: render_census_publish_attempt(a: a), pattern: "staging_residue=")
 }
 
-test fn a_refused_publication_does_not_hold() -> Bool {
+test fn a_refused_publication_does_not_hold() -> Bool  {
   let a = census_publish_attempt_of(regression: reproduced(), publish: ok => SeededImagePublicationRefused { reason: "publication into /srv/bmc not admitted", work: CreationUnconfirmed { exit_code: 255, stdout: "", stderr: "" } })
   !census_publish_attempt_holds(a: a)
     && string_contains(s: render_census_publish_attempt(a: a), pattern: "publication=refused")
@@ -115,7 +115,7 @@ test fn a_refused_publication_does_not_hold() -> Bool {
 // file's removal was not confirmed, and then the derivation record's write did not converge. Built
 // through the production composition (seeded_image_publication_after_record), the receipt keeps the
 // staging obligation AND says the record's state is unknown -- never that it "was not written".
-test fn a_staging_residue_survives_a_later_record_write_failure() -> Bool {
+test fn a_staging_residue_survives_a_later_record_write_failure() -> Bool  {
   let a = census_publish_attempt_of(regression: reproduced(), publish: ok => match census_built() {
     Absent => SeededImagePublicationRefused { reason: "no derivation", work: CreationNotRequested }
     Present { value: b } =>
@@ -137,7 +137,7 @@ test fn a_staging_residue_survives_a_later_record_write_failure() -> Bool {
 }
 
 // A record write refused before anything was sent is reported as refused, beside the same obligations.
-test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() -> Bool {
+test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() -> Bool  {
   match census_built() {
     Absent => false
     Present { value: b } => {
@@ -150,7 +150,7 @@ test fn a_refused_record_write_is_reported_as_refused_with_the_residue_kept() ->
 
 // GATE (b): a digest that matches the hermetic receipt is not enough -- a rebuilt image whose kernel
 // differs from stock does not hold, and the publication is never consulted.
-test fn a_reproduced_digest_whose_kernel_differs_from_stock_does_not_hold() -> Bool {
+test fn a_reproduced_digest_whose_kernel_differs_from_stock_does_not_hold() -> Bool  {
   let r = census_regression_of(build_key: pinned_key, expected: pinned, staged: staged(digest: pinned),
     chain: p => BootChainFirstDifference { stock_iso: "2ee2163c9b901ff5926400e80759088ff3b879982a3956c02100495b489fd555", census_iso: pinned, member: CasperKernel, stock: "k0", census: "k1" },
     scratch: Removed { dir: scratch_removed_dir as NonEmptyStr })
@@ -163,7 +163,7 @@ test fn a_reproduced_digest_whose_kernel_differs_from_stock_does_not_hold() -> B
 // names a login the export-ownership admission resolves to its required owner principal. Run 36613515243
 // passed both gates as the bootstrap principal and could not write /srv/bmc; retargeting to anything the
 // admission does not name would reopen that, and this goes red.
-test fn the_export_host_target_is_the_principal_the_ownership_admission_requires() -> Bool {
+test fn the_export_host_target_is_the_principal_the_ownership_admission_requires() -> Bool  {
   match srv2_account_key_for_name(name: mtcollins1_boot_export_host_target().principal) {
     Absent => false
     Present { value: k } => fleet_account_key_matches(a: k, b: boot_image_export_ownership_requirement.required_owner)

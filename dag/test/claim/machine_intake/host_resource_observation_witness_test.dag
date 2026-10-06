@@ -65,7 +65,7 @@ fn eligibility(o: HostResourceObservation, needed: Shape) -> HostWorkloadEligibi
 // THE CASE THE REDESIGN EXISTS FOR: 80 CPUs, all on socket 0. It is observed as 80 (not refused),
 // the shortfall against the 160 intent is a FINDING, and work that fits 80 threads is eligible
 // with that finding attached.
-test fn an_eighty_cpu_boot_offers_eighty_and_carries_the_shortfall_as_a_finding() -> Bool {
+test fn an_eighty_cpu_boot_offers_eighty_and_carries_the_shortfall_as_a_finding() -> Bool  {
   let o = observed(nproc: "80", numa: numa_socket0_of_eighty())
   let threads_read = match o.threads { ObservationEstablished { observed: t } => hardware_thread_count_value(t: t) == 80  _ => false }
   let finding = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) {
@@ -83,7 +83,7 @@ test fn an_eighty_cpu_boot_offers_eighty_and_carries_the_shortfall_as_a_finding(
 
 // Scheduling is against what CAME UP: 100 threads do not fit an 80-thread host, and the refusal
 // names the observed 80, not the intended 160.
-test fn work_larger_than_the_observed_host_is_not_covered_at_the_observed_count() -> Bool {
+test fn work_larger_than_the_observed_host_is_not_covered_at_the_observed_count() -> Bool  {
   match eligibility(o: observed(nproc: "80", numa: numa_socket0_of_eighty()), needed: work(threads: 100, gib: 16)) {
     WorkloadNotCovered { unmet: us } =>
       any(us, u => match u { ThreadsNotCovered { required: _, offered: o } => hardware_thread_count_value(t: o) == 80  _ => false })
@@ -92,7 +92,7 @@ test fn work_larger_than_the_observed_host_is_not_covered_at_the_observed_count(
 }
 
 // Positive control: the intended configuration is satisfied, and the same 100-thread work fits.
-test fn the_intended_configuration_is_satisfied_and_admits_without_findings() -> Bool {
+test fn the_intended_configuration_is_satisfied_and_admits_without_findings() -> Bool  {
   let o = observed(nproc: "160", numa: numa_both_of_eighty())
   let satisfied = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalSatisfied { evidence: _ } => true  _ => false }
   let eligible = match eligibility(o: o, needed: work(threads: 100, gib: 16)) { WorkloadEligible { offered: _, findings: fs } => count(fs) == 0  _ => false }
@@ -101,7 +101,7 @@ test fn the_intended_configuration_is_satisfied_and_admits_without_findings() ->
 
 // A malformed nproc is UNKNOWN, never zero: the field refuses with its cause, health is
 // indeterminate (not diverged), and eligibility reports capacity unknown rather than "does not fit".
-test fn a_malformed_count_stays_unknown_and_is_never_read_as_zero() -> Bool {
+test fn a_malformed_count_stays_unknown_and_is_never_read_as_zero() -> Bool  {
   let o = observed(nproc: "80 CPUs", numa: numa_socket0_of_eighty())
   let unread = match o.threads { ObservationRefused { cause: SectionUnparsed { section: _, detail: _ } } => true  _ => false }
   let indeterminate = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
@@ -110,14 +110,14 @@ test fn a_malformed_count_stays_unknown_and_is_never_read_as_zero() -> Bool {
 }
 
 // A section the capture never carried is ABSENT, a different cause from one that printed garbage.
-test fn an_absent_section_is_distinct_from_an_unparsed_one() -> Bool {
+test fn an_absent_section_is_distinct_from_an_unparsed_one() -> Bool  {
   let o = host_resource_observation(nproc: Absent, numa: Absent, meminfo: Absent)
   match o.threads { ObservationRefused { cause: SectionAbsent { section: _ } } => true  _ => false }
 }
 
 // Health withholding does not erase capacity: the offer is still built from the reading, and a
 // reserve larger than available memory refuses rather than clamping to an empty offer.
-test fn a_reserve_beyond_available_memory_refuses_rather_than_offering_nothing() -> Bool {
+test fn a_reserve_beyond_available_memory_refuses_rather_than_offering_nothing() -> Bool  {
   let o = observed(nproc: "80", numa: numa_socket0_of_eighty())
   match host_offered_shape(observed: o, reserve: kibibyte(count: 300000000), architecture: none) {
     ObservationRefused { cause: ReserveExceedsAvailable { reserve: _, available: _ } } => true
@@ -125,7 +125,7 @@ test fn a_reserve_beyond_available_memory_refuses_rather_than_offering_nothing()
   }
 }
 
-test fn an_unread_topology_withholds_fitting_work_on_health_not_on_capacity() -> Bool {
+test fn an_unread_topology_withholds_fitting_work_on_health_not_on_capacity() -> Bool  {
   let o = observed(nproc: "80", numa: ["0-1", "available: 2 nodes (0-1)"])
   match eligibility(o: o, needed: work(threads: 8, gib: 1)) {
     WorkloadHealthWithheld { known: ks, unknowns: us } =>
@@ -142,28 +142,28 @@ fn numa_refused_inconsistent(o: HostResourceObservation) -> Bool {
 // THE REVIEWER'S COUNTEREXAMPLE (review 5328289461): 160 threads over "two" rows that are both node
 // 0. Counting rows would read two nodes and reach GoalSatisfied; the duplicate node refuses, so the
 // assessment is indeterminate and never satisfied.
-test fn a_node_listed_twice_is_inconsistent_and_never_satisfies_the_goal() -> Bool {
+test fn a_node_listed_twice_is_inconsistent_and_never_satisfies_the_goal() -> Bool  {
   let o = observed(nproc: "160", numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), concat("node 0 cpus: ", second_eighty_cpus)])
   let never_satisfied = match host_topology_assessment(goal: mtcollins1_topology_goal, observed: o) { GoalIndeterminate { known_deviations: _, unknowns: _ } => true  _ => false }
   numa_refused_inconsistent(o: o) && never_satisfied
 }
 
-test fn a_cpu_on_two_nodes_is_inconsistent() -> Bool {
+test fn a_cpu_on_two_nodes_is_inconsistent() -> Bool  {
   numa_refused_inconsistent(o: observed(nproc: "160", numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), concat("node 1 cpus: ", eighty_cpus)]))
 }
 
-test fn a_node_line_with_a_non_integer_cpu_is_unparsed_not_counted() -> Bool {
+test fn a_node_line_with_a_non_integer_cpu_is_unparsed_not_counted() -> Bool  {
   match observed(nproc: "80", numa: ["node 0 cpus: 0 1 two 3"]).numa { ObservationRefused { cause: SectionUnparsed { section: _, detail: _ } } => true  _ => false }
 }
 
-test fn two_nproc_lines_are_inconsistent_with_no_first_or_last_pick() -> Bool {
+test fn two_nproc_lines_are_inconsistent_with_no_first_or_last_pick() -> Bool  {
   match observed_with(nproc: ["80", "160"], numa: numa_both_of_eighty(), meminfo: meminfo_of(total_kb: 263000000, avail_kb: 250000000)).threads {
     ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true
     _ => false
   }
 }
 
-test fn a_repeated_meminfo_field_is_inconsistent() -> Bool {
+test fn a_repeated_meminfo_field_is_inconsistent() -> Bool  {
   match observed_with(nproc: ["160"], numa: numa_both_of_eighty(), meminfo: concat(meminfo_of(total_kb: 263000000, avail_kb: 250000000), ["MemTotal:  1 kB"])).memory {
     ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true
     _ => false
@@ -172,7 +172,7 @@ test fn a_repeated_meminfo_field_is_inconsistent() -> Bool {
 
 // MemAvailable above MemTotal is a contradiction: the memory reading refuses, so no offer is built
 // from it (no clamp to total, no zero).
-test fn more_available_than_total_memory_refuses_the_reading_and_the_offer() -> Bool {
+test fn more_available_than_total_memory_refuses_the_reading_and_the_offer() -> Bool  {
   let o = observed_with(nproc: ["160"], numa: numa_both_of_eighty(), meminfo: meminfo_of(total_kb: 100, avail_kb: 200))
   let refused = match o.memory { ObservationRefused { cause: SectionInconsistent { section: _, detail: _ } } => true  _ => false }
   let no_offer = match host_offered_shape(observed: o, reserve: kibibyte(count: 0), architecture: none) { ObservationRefused { cause: _ } => true  _ => false }
@@ -201,17 +201,17 @@ fn missing_colon_withholds_with_the_shortfall(numa: List<String>) -> Bool {
   unread && indeterminate && withheld
 }
 
-test fn a_cpu_record_missing_its_colon_after_a_valid_row_is_kept_as_malformed() -> Bool {
+test fn a_cpu_record_missing_its_colon_after_a_valid_row_is_kept_as_malformed() -> Bool  {
   missing_colon_withholds_with_the_shortfall(numa: ["0-1", concat("node 0 cpus: ", eighty_cpus), missing_colon_row])
 }
 
-test fn a_cpu_record_missing_its_colon_before_a_valid_row_is_kept_as_malformed() -> Bool {
+test fn a_cpu_record_missing_its_colon_before_a_valid_row_is_kept_as_malformed() -> Bool  {
   missing_colon_withholds_with_the_shortfall(numa: ["0-1", missing_colon_row, concat("node 0 cpus: ", eighty_cpus)])
 }
 
 // The other numactl lines are NOT CPU records and do not make the section malformed: size/free
 // lines, the distances header and table, and an empty CPU list all sit beside a satisfied topology.
-test fn numactl_non_cpu_lines_and_an_empty_cpu_list_are_not_malformed() -> Bool {
+test fn numactl_non_cpu_lines_and_an_empty_cpu_list_are_not_malformed() -> Bool  {
   let o = observed(nproc: "160", numa: [
     "0-2", "available: 3 nodes (0-2)",
     concat("node 0 cpus: ", eighty_cpus), "node 0 size: 128000 MB", "node 0 free: 120000 MB",

@@ -124,12 +124,12 @@ fn seed_runner_loudness_probe_failure_receipt() -> String {
   )
 }
 
-test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool {
+test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool  {
   failure_receipt_companion(function: "extdeps_scope_placement_gate_passes")
     == "extdeps_scope_placement_gate_failure_receipt"
 }
 
-test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
+test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool  {
   let detail = seed_runner_bool_false_failure_detail(
     witness: "seed_runner_loudness_probe_passes"
   )
@@ -139,7 +139,7 @@ test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
     && string_contains(s: detail, pattern: "dag/extdeps/browser/opera.dag")
 }
 
-test fn red_membership_fixture_names_change_and_path() -> Bool {
+test fn red_membership_fixture_names_change_and_path() -> Bool  {
   reason_names_all(
     exit: scope_placement_membership_verdict(
       observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
@@ -148,7 +148,7 @@ test fn red_membership_fixture_names_change_and_path() -> Bool {
   )
 }
 
-test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
+test fn red_freeze_fixture_names_manifest_smuggling() -> Bool  {
   match read_manifest_rows().first() {
     Present { value: probe } =>
       reason_names_all(
@@ -178,7 +178,7 @@ fn synthetic_manifest_add_diff() -> String {
   ], "\n")
 }
 
-test fn red_manifest_lines_added_fixture_names_row() -> Bool {
+test fn red_manifest_lines_added_fixture_names_row() -> Bool  {
   let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
   match observation {
     ManifestLinesAdded { rows: rows } =>
@@ -196,7 +196,7 @@ test fn red_manifest_lines_added_fixture_names_row() -> Bool {
   }
 }
 
-test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool {
+test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool  {
   let manifest = legacy_extdeps_scope_frontier_manifest_path
   let truncated = join([
     concat("diff --git a/", manifest, " b/", manifest),
@@ -214,7 +214,7 @@ test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool {
   }
 }
 
-test fn red_failure_reason_never_empty_on_refusal() -> Bool {
+test fn red_failure_reason_never_empty_on_refusal() -> Bool  {
   exit_is_failure(
     e: scope_placement_membership_verdict(
       observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }

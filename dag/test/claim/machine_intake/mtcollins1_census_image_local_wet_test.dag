@@ -141,7 +141,7 @@ fn attempt_three_axes_hold(capture: String) -> Bool {
 
 // THE RED IS ON A KEPT SECTION OF THE SAME BYTES: nproc's 160 edited to 159 must fail the excerpt,
 // so excising the unread sections cannot have excised what the claim asserts.
-test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
+test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool  {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
   let nproc_line = concat(host_capture_argv_open, "nproc: nproc\n")
   let corrupted = join(split(s: read.content, delimiter: concat(nproc_line, "160\n")), concat(nproc_line, "159\n"))
@@ -155,7 +155,7 @@ test fn the_attempt_three_capture_binds_and_reads_by_real_execution() -> Bool {
 // capture (sha256sum through a real process, which is also why it runs on the local-wet schedule and
 // not the hermetic floor), then binds all of them on every axis: the excerpt above is a transform of
 // exactly these bytes, and this is the claim that the whole file still binds.
-test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool {
+test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool  {
   let path = census_historical_capture.path
   let identical = match sha256sum_file_digest_via_shell(path: path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
@@ -176,7 +176,7 @@ test fn the_attempt_three_full_capture_binds_by_real_execution() -> Bool {
 // subject, and this claim's is the ARGV lines (gunbc.machine_intake_host_capture_historical_binding
 // host_capture_text_section_argv). The RED is live on the same bytes: the roster with nproc's command
 // mutated fails against the file, so the claim still discriminates by execution.
-test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool {
+test fn the_historical_binding_holds_against_the_committed_capture_by_real_execution() -> Bool  {
   let read = Filesystem.Read(path: census_historical_capture.path as String)
   read.success
     && bindings_hold_against_capture_text(capture: read.content, stages: mtcollins1_census_stages)
@@ -189,7 +189,7 @@ test fn the_historical_binding_holds_against_the_committed_capture_by_real_execu
 // the byte count the census observation committed are checked against the bytes on disk, and this
 // is the claim that goes red on the brief's digest-disagreement refusal. It also makes the identity
 // row load-bearing: before this, the row named a digest that nothing compared anything to.
-test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() -> Bool {
+test fn the_committed_capture_matches_its_recorded_identity_by_real_execution() -> Bool  {
   let path = census_historical_capture.path
   let digest_holds = match sha256sum_file_digest_via_shell(path: path) {
     Sha256FileDigestUnavailable { path: _, reason: _ } => false
@@ -221,7 +221,7 @@ data census_round_trip_stages: List<HostCaptureStage> = [
   HostCaptureStage { name: "boot-media", command: "echo 'it'\\''s quoted'; exit 3" },
 ]
 
-test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> Bool {
+test fn the_rendered_program_runs_and_its_output_parses_by_real_execution() -> Bool  {
   let program = host_capture_program(
     machine: "witness",
     console_device: "/dev/stdout",
@@ -274,7 +274,7 @@ fn census_image_path_in(dir: NonEmptyStr, digest: NonEmptyStr) -> NonEmptyStr {
 // into the free name), never as diverged; an image holding OTHER bytes under the recorded name is
 // diverged (nothing is replaced); and the positive control -- the record naming the file's own
 // measured digest -- resolves. The digest is read off the written file, not authored beside it.
-test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool {
+test fn a_removed_image_is_absent_not_diverged_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let d = dir.path as NonEmptyStr
   let probe_path = concat(dir.path as String, "/probe") as NonEmptyStr
@@ -365,7 +365,7 @@ fn workload_stub_disagree(dir: String) -> String {
   concat("sha256sum() { n=$(cat ", dir, "/counter 2>/dev/null || echo 0); n=$((n+1)); echo $n > ", dir, "/counter; for f in \"$@\"; do echo \"dead$n  $f\"; done; };")
 }
 
-test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool {
+test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_execution() -> Bool  {
   let complete = workload_case(stubs: concat(workload_stub_dd, workload_stub_complete))
   workload_emitted_the_token(o: complete) && complete.exit_code == 0
 }
@@ -382,7 +382,7 @@ test fn the_workload_emits_its_token_only_on_a_complete_agreeing_pass_by_real_ex
 // ABSENCE IS ASSERTED AS A SUBSTRING, not as a whole line: substring-absence is the STRONGER
 // claim -- it also rules out the token appearing with anything appended -- and a RED may not be
 // weakened to share a helper with the positive case.
-test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool {
+test fn a_failed_or_partial_or_disagreeing_workload_emits_no_token_by_real_execution() -> Bool  {
   let dir = workload_scratch()
   let empty = workload_case(stubs: concat(workload_stub_dd, workload_stub_both_empty))
   let partial = workload_case(stubs: concat(workload_stub_dd, workload_stub_partial))
@@ -407,7 +407,7 @@ fn workload_stub_dd_marks(marker: String) -> String {
   concat("dd() { echo dd-ran > ", marker, "; }; rm() { :; }; mkdir() { :; };")
 }
 
-test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution() -> Bool  {
   let dir = workload_scratch()
   let marker = concat(dir, "/dd-marker")
   let big = workload_case_of(stubs: concat(workload_stub_dd_marks(marker: marker), workload_stub_capacity_16gib, workload_stub_complete), workload: mtcollins1_dual_socket_workload)
@@ -429,7 +429,7 @@ test fn a_workload_larger_than_capacity_refuses_at_preflight_by_real_execution()
 }
 
 // AN UNREADABLE CAPACITY REFUSES, it is not read as room: df printing no figure must not fit.
-test fn an_unreadable_capacity_refuses_at_preflight_by_real_execution() -> Bool {
+test fn an_unreadable_capacity_refuses_at_preflight_by_real_execution() -> Bool  {
   let o = workload_case(stubs: concat(workload_stub_io, "df() { :; }; awk() { printf 17179869184; };", workload_stub_complete))
   string_contains(s: o.stdout, pattern: "workload-preflight=refused") && o.exit_code != 0
     && string_contains(s: o.stdout, pattern: "workload-digest-stable=yes") == false

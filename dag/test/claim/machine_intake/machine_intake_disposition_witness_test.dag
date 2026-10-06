@@ -236,7 +236,7 @@ fn ledger_without(subject: QualificationSubject, omitted: IntakePhase) -> List<I
 // three per-transaction rosters name has exactly one rank, and the ranks are
 // distinct. The validator's Unranked arm stays as fail-closed coverage for a
 // phase variant added without being placed in the required ordering.
-test fn every_current_phase_has_exactly_one_rank() -> Bool {
+test fn every_current_phase_has_exactly_one_rank() -> Bool  {
   let all = concat(arrival_phases_all, concat(provisioning_phases_all, placement_phases_all))
   let ranked = fold(
     all,
@@ -329,7 +329,7 @@ fn not_admissible_missing_count(standing: FleetAdmissionStanding?) -> Int {
 
 // POSITIVE CONTROL — a complete, current, LINKED ledger derives admission, so
 // every refusal below is discriminating rather than the derivation refusing all.
-test fn complete_current_ledger_is_admissible() -> Bool {
+test fn complete_current_ledger_is_admissible() -> Bool  {
   admitted(standing: admission_over(subject: subject_before, receipts: full_ledger(subject: subject_before)))
 }
 
@@ -337,14 +337,14 @@ test fn complete_current_ledger_is_admissible() -> Bool {
 // receipts: an EMPTY ledger is not even a ledger (validation refuses), and a
 // ledger with one phase omitted refuses naming that phase. Admitted is
 // reachable only through derivation over a validated ledger.
-test fn empty_ledger_is_refused_by_validation() -> Bool {
+test fn empty_ledger_is_refused_by_validation() -> Bool  {
   match validate_intake_receipt_ledger(receipts: []) {
     LedgerRefused { cause: c } => c == LedgerEmpty
     LedgerValidated { ledger: _ } => false
   }
 }
 
-test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
+test fn one_missing_phase_blocks_admission_and_is_named() -> Bool  {
   let omitted = Arrival { phase: MemoryAuthoritativeQualify }
   match admission_over(subject: subject_before, receipts: ledger_without(subject: subject_before, omitted: omitted)) {
     Present { value: a } =>
@@ -361,7 +361,7 @@ test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
 // CONTROL 1 (disposition side) — a repair changed one DIMM; the pre-repair
 // ledger is complete and linked, and the machine is STILL not admissible
 // because every receipt's subject is stale against the subject observed now.
-test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool {
+test fn prior_admission_does_not_survive_a_dimm_swap() -> Bool  {
   match admission_over(subject: subject_after, receipts: full_ledger(subject: subject_before)) {
     Present { value: a } =>
       match a {
@@ -395,7 +395,7 @@ fn currency_of(standing: FleetAdmissionStanding?) -> SubjectCurrency? {
 // the three parallel Booleans to List<StaleAxis>). (A validated ledger carries exactly one subject, so
 // receipts of two different stale subjects cannot share a ledger — that case
 // refuses at validation, see mixed_attempt_ids_on_one_subject_are_refused.)
-test fn stale_currency_names_the_axes_that_moved() -> Bool {
+test fn stale_currency_names_the_axes_that_moved() -> Bool  {
   let flash_only = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_before))) {
     Present { value: c } =>
       match c {
@@ -421,7 +421,7 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
 
 // Re-running from a stale attempt after a repair: the phase standing reports
 // the subject mismatch rather than reading the old receipt as satisfaction.
-test fn stale_attempt_receipt_reports_subject_mismatch() -> Bool {
+test fn stale_attempt_receipt_reports_subject_mismatch() -> Bool  {
   let phase = Arrival { phase: BootDeliveryEstablish }
   match phase_standing(phase: phase, subject: subject_after, receipts: [satisfied_receipt(phase: phase, subject: subject_before, previous: none)]) {
     PhaseReceiptSubjectMismatch { receipt: _, currency: _ } => true
@@ -438,7 +438,7 @@ fn disposition_over(subject: QualificationSubject, receipts: List<IntakeReceiptE
 
 // CONTROL 5 — a staging failure is a PartsHold owned by StagingInfrastructure,
 // never a ReturnWindow hardware defect, even with the return window open.
-test fn staging_failure_is_parts_hold_not_return_window() -> Bool {
+test fn staging_failure_is_parts_hold_not_return_window() -> Bool  {
   let phase = Arrival { phase: BootDeliveryEstablish }
   let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: StagingInfrastructure, cause: "artifact service unreachable")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
@@ -458,7 +458,7 @@ test fn staging_failure_is_parts_hold_not_return_window() -> Bool {
 // Positive control for control 5: the SAME shape of refusal owned by the
 // hardware, inside an open window, IS a ReturnWindow — so the owner is what
 // decides, not the phase.
-test fn hardware_defect_in_open_window_is_return_window() -> Bool {
+test fn hardware_defect_in_open_window_is_return_window() -> Bool  {
   let phase = Arrival { phase: MemoryAuthoritativeQualify }
   let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: UnitHardware, cause: "new uncorrectable error")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
@@ -471,7 +471,7 @@ test fn hardware_defect_in_open_window_is_return_window() -> Bool {
   }
 }
 
-test fn hardware_defect_outside_window_is_repair_or_cull() -> Bool {
+test fn hardware_defect_outside_window_is_repair_or_cull() -> Bool  {
   let phase = Arrival { phase: AcceptanceSoak }
   let receipts = ledger_stopped_at(subject: subject_before, phase: phase, owner: UnitHardware, cause: "thermal runaway")
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowClosed) {
@@ -490,7 +490,7 @@ test fn hardware_defect_outside_window_is_repair_or_cull() -> Bool {
 
 // Arrival and provisioning complete, placement not yet run: the state between
 // the two gates is PartsHold { PlacementQualificationPending }, not Admitted.
-test fn placement_pending_is_parts_hold_not_admitted() -> Bool {
+test fn placement_pending_is_parts_hold_not_admitted() -> Bool  {
   let done = concat(arrival_phases_all, provisioning_phases_all)
   let receipts = fold(done, init: [], f: (acc, p) => concat(acc, [satisfied_receipt(phase: p, subject: subject_before, previous: none)]))
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
@@ -521,7 +521,7 @@ fn receipts_under_digest(subject: QualificationSubject, digest: ContentHash) -> 
 
 // review 65171: a digest mismatch is not a BmcSecure inheritance failure.
 // A Production ledger under the DevelopmentAndTest bar must name the bar.
-test fn production_ledger_under_dev_test_bar_names_the_bar_not_bmc_secure() -> Bool {
+test fn production_ledger_under_dev_test_bar_names_the_bar_not_bmc_secure() -> Bool  {
   let digest = intake_qualification_policy_digest(policy: production_qualification_policy())
   match disposition_over(subject: subject_before, receipts: receipts_under_digest(subject: subject_before, digest: digest), window: ReturnWindowClosed) {
     Present { value: d } =>
@@ -541,7 +541,7 @@ test fn production_ledger_under_dev_test_bar_names_the_bar_not_bmc_secure() -> B
   }
 }
 
-test fn dev_test_ledger_under_production_bar_names_the_environments_not_bmc_secure() -> Bool {
+test fn dev_test_ledger_under_production_bar_names_the_environments_not_bmc_secure() -> Bool  {
   match validate_intake_receipt_ledger(receipts: chain(receipts: full_ledger(subject: subject_before))) {
     LedgerRefused { cause: _ } => false
     LedgerValidated { ledger: l } =>
@@ -575,7 +575,7 @@ fn ledger_refusal(receipts: List<IntakeReceiptEnvelope>) -> IntakeLedgerRefusalC
 // admission producer's only input, and each way a ledger can lie refuses:
 // a second genesis, a broken link, reordered (non-monotone) receipts, a mixed
 // attempt id on the same qualification subject.
-test fn disconnected_genesis_receipts_are_refused() -> Bool {
+test fn disconnected_genesis_receipts_are_refused() -> Bool  {
   let unlinked = full_ledger(subject: subject_before)
   match ledger_refusal(receipts: unlinked) {
     Present { value: c } =>
@@ -587,7 +587,7 @@ test fn disconnected_genesis_receipts_are_refused() -> Bool {
   }
 }
 
-test fn broken_link_is_refused() -> Bool {
+test fn broken_link_is_refused() -> Bool  {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let tampered = fold(linked, init: [], f: fn(acc, r) {
     if list_length(items: acc) == 3 {
@@ -606,7 +606,7 @@ test fn broken_link_is_refused() -> Bool {
   }
 }
 
-test fn reordered_receipts_are_refused() -> Bool {
+test fn reordered_receipts_are_refused() -> Bool  {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let rewound = fold(linked, init: [], f: fn(acc, r) {
     if list_length(items: acc) == 2 {
@@ -625,7 +625,7 @@ test fn reordered_receipts_are_refused() -> Bool {
   }
 }
 
-test fn mixed_attempt_ids_on_one_subject_are_refused() -> Bool {
+test fn mixed_attempt_ids_on_one_subject_are_refused() -> Bool  {
   let phase_a = Arrival { phase: BootDeliveryEstablish }
   let phase_b = Arrival { phase: MemoryAuthoritativeQualify }
   let mixed = chain(receipts: [
@@ -647,7 +647,7 @@ test fn mixed_attempt_ids_on_one_subject_are_refused() -> Bool {
 // first attempt's receipt. The retry sits at the phase's own rank — an
 // immediate retry — because a re-run appended after later phases is exactly
 // the regression the validator now refuses (see the counterexample REDs).
-test fn later_refusal_supersedes_earlier_success() -> Bool {
+test fn later_refusal_supersedes_earlier_success() -> Bool  {
   let phase = Arrival { phase: MemoryAuthoritativeQualify }
   let receipts = full_ledger_retrying(subject: subject_before, phase: phase, first: ReceiptSatisfied, retry: ReceiptRefused { owner: UnitHardware, cause: "new corrected errors on retry" })
   match admission_over(subject: subject_before, receipts: receipts) {
@@ -668,7 +668,7 @@ test fn later_refusal_supersedes_earlier_success() -> Bool {
 // preserves provenance: it binds the phase to the RETRY's fingerprint (not the
 // first receipt's), names the validated ledger's terminal fingerprint, and
 // carries the attempt's policy digest.
-test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
+test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool  {
   let phase = Arrival { phase: MemoryAuthoritativeQualify }
   let receipts = chain(receipts: full_ledger_retrying(subject: subject_before, phase: phase, first: ReceiptRefused { owner: UnitHardware, cause: "corrected errors" }, retry: ReceiptSatisfied))
   let retry_fingerprint = fold(receipts, init: none, f: fn(acc, r) {
@@ -707,7 +707,7 @@ test fn immediate_same_rank_retry_validates_and_binds_the_retry() -> Bool {
 // RULING 3 §4 COUNTEREXAMPLE 1 — every required receipt in REVERSE phase
 // order, increasing timestamps, every link recomputed: link-valid, and refused
 // at index 1 as a phase-rank regression. Before the rank rule this admitted.
-test fn reverse_phase_order_with_valid_links_is_refused() -> Bool {
+test fn reverse_phase_order_with_valid_links_is_refused() -> Bool  {
   let reversed = fold(full_ledger(subject: subject_before), init: [], f: (acc, r) => concat([r], acc))
   match ledger_refusal(receipts: chain(receipts: reversed)) {
     Present { value: c } =>
@@ -723,7 +723,7 @@ test fn reverse_phase_order_with_valid_links_is_refused() -> Bool {
 // fresh successful AccessDiscover: last-wins would make that discovery current
 // while every downstream qualification predates it. Refused as a regression at
 // the appended index; retrying an earlier phase requires a new attempt.
-test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool {
+test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool  {
   let full = full_ledger(subject: subject_before)
   let appended = concat(full, [satisfied_receipt(phase: Arrival { phase: AccessDiscover }, subject: subject_before, previous: none)])
   match ledger_refusal(receipts: chain(receipts: appended)) {
@@ -738,7 +738,7 @@ test fn fresh_access_discover_after_complete_lifecycle_is_refused() -> Bool {
 
 // RED — a receipt whose started_at exceeds its ended_at is refused at its
 // index, before any link is read.
-test fn inverted_receipt_interval_is_refused() -> Bool {
+test fn inverted_receipt_interval_is_refused() -> Bool  {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let inverted = fold(linked, init: [], f: fn(acc, r) {
     let here = list_length(items: acc) == 3
@@ -760,7 +760,7 @@ test fn inverted_receipt_interval_is_refused() -> Bool {
 
 // RED — a policy digest that differs from the genesis receipt's is refused at
 // its index: one attempt runs under one policy.
-test fn policy_digest_change_across_attempt_is_refused() -> Bool {
+test fn policy_digest_change_across_attempt_is_refused() -> Bool  {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let changed = fold(linked, init: [], f: fn(acc, r) {
     let here = list_length(items: acc) == 2
@@ -783,7 +783,7 @@ test fn policy_digest_change_across_attempt_is_refused() -> Bool {
 // RED — a producer identity that differs from the genesis receipt's (here the
 // intake binary) is refused at its index: no producer-transition receipt is
 // modeled, so a change of producer is a new attempt.
-test fn producer_change_across_attempt_is_refused() -> Bool {
+test fn producer_change_across_attempt_is_refused() -> Bool  {
   let linked = chain(receipts: full_ledger(subject: subject_before))
   let other = IntakeProducerIdentity { intake_binary: content_hash_of_value(value: "intake-binary-upgraded"), staging_service_identity: "intake-staging", agent_artifact: none }
   let changed = fold(linked, init: [], f: fn(acc, r) {
@@ -806,7 +806,7 @@ test fn producer_change_across_attempt_is_refused() -> Bool {
 
 // Receipt chain: a correctly linked pair validates; a pair whose second link
 // names the wrong predecessor does not.
-test fn receipt_chain_link_is_checked_by_fingerprint() -> Bool {
+test fn receipt_chain_link_is_checked_by_fingerprint() -> Bool  {
   let first = satisfied_receipt(phase: Arrival { phase: BootDeliveryEstablish }, subject: subject_before, previous: none)
   let second_ok = receipt_at(phase: Arrival { phase: MemoryAuthoritativeQualify }, subject: subject_before, attempt: attempt_one, result: ReceiptSatisfied, started_at: 1788000005000, previous: Present { value: intake_receipt_structural_fingerprint(envelope: first) })
   let second_bad = receipt_at(phase: Arrival { phase: MemoryAuthoritativeQualify }, subject: subject_before, attempt: attempt_one, result: ReceiptSatisfied, started_at: 1788000005000, previous: Present { value: content_hash_of_value(value: "not-the-first") })
@@ -887,7 +887,7 @@ fn agent_receipt_on(nonce: NonEmptyStr, artifact: NonEmptyStr, serial: NonEmptyS
 // The activity is the reason this matters: media redirection plus an NFS plateau
 // with no callback is precisely when someone would want to conclude "it did not
 // boot", and precisely when the population's completeness is load-bearing.
-test fn no_observed_callback_does_not_establish_absence() -> Bool {
+test fn no_observed_callback_does_not_establish_absence() -> Bool  {
   match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: []), supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: n, population_evidence: e, supporting: s } =>
       n == 0 && e.label == "callback-endpoint-log" && list_length(items: s) == 2
@@ -903,7 +903,7 @@ test fn no_observed_callback_does_not_establish_absence() -> Bool {
 // survive, because a hidden sibling turns it into a replay. So a matching
 // callback yields Unestablished naming what was seen, and a wrong nonce yields a
 // definite AgentCallbackNonceMismatch -- same call, differing only in the callback.
-test fn a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses() -> Bool {
+test fn a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses() -> Bool  {
   let good = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
   let bad = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [agent_receipt(nonce: "nonce-0000", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
   match good {
@@ -919,7 +919,7 @@ test fn a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses() -> Bool
   }
 }
 
-test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
+test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool  {
   let wrong_artifact = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "some-other-iso", serial: "BRD-000123")]), supporting: [])
   let wrong_unit = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999")]), supporting: [])
   let a = match wrong_artifact {
@@ -945,7 +945,7 @@ test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
 
 // RED CONTROL — the receipt's architecture was carried and never compared, so
 // an x86-64 agent callback would have attested an AArch64 unit's issuance.
-test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
+test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool  {
   let wrong = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [agent_receipt_on(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123", arch: X86_64)]), supporting: [])
   match wrong {
     DiagnosticBootNotAttested { cause: c, population_evidence: _ } =>
@@ -961,7 +961,7 @@ test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
 // RED CONTROL — the nonce is a ONE-TIME callback token. A second callback on
 // the same issuance is a replay and is refused even when it is identical to
 // the first: honouring one of two would be an absorbing fallback (§5).
-test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
+test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool  {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
   let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [one, one]), supporting: [])
   match replay {
@@ -980,7 +980,7 @@ test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
 // digest beside X86_64 is not a state a fixture can construct -- which is why
 // this asserts the projection relation rather than trying to build the invalid
 // pair and watch it refuse.
-test fn the_issued_digest_and_architecture_come_from_one_artifact() -> Bool {
+test fn the_issued_digest_and_architecture_come_from_one_artifact() -> Bool  {
   content_hash_equal(left: issued.artifact.digest, right: issued_artifact.digest)
     && issued.artifact.architecture == issued_artifact.architecture
 }
@@ -996,7 +996,7 @@ test fn the_issued_digest_and_architecture_come_from_one_artifact() -> Bool {
 // was observed is only half the property: the record has to name which issuance
 // it is the population OF, or an honest observation of one attempt could be
 // presented against a different attempt's nonce.
-test fn a_population_observed_for_another_issuance_does_not_attest() -> Bool {
+test fn a_population_observed_for_another_issuance_does_not_attest() -> Bool  {
   let foreign = observed_agent_callback_population(
     issuance_nonce: "nonce-0000" as IntakeAttemptNonce,
     callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")],
@@ -1017,7 +1017,7 @@ test fn a_population_observed_for_another_issuance_does_not_attest() -> Bool {
 // populations identical in every way EXCEPT their acquisition record produce
 // outcomes carrying their own record, which is what makes this a discriminating
 // read of the field rather than a check that some constant is present.
-test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool {
+test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool  {
   let other_record = EvidenceRef {
     label: "other-endpoint-log",
     digest: content_hash_of_value(value: "some-other-endpoint-log"),
@@ -1052,7 +1052,7 @@ test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool {
 // respect except which acquisition record they were observed in, each preserving
 // its own. Replacing the wrapper's population_evidence with a constant reds the
 // second half while the first stays green.
-test fn a_definite_refusal_carries_the_acquiring_record_it_was_read_from() -> Bool {
+test fn a_definite_refusal_carries_the_acquiring_record_it_was_read_from() -> Bool  {
   let other_record = EvidenceRef {
     label: "second-endpoint-log",
     digest: content_hash_of_value(value: "second-endpoint-log-bytes"),
@@ -1089,7 +1089,7 @@ test fn a_definite_refusal_carries_the_acquiring_record_it_was_read_from() -> Bo
 // AND THE DUPLICATE REFUSAL STILL LOCATES ITS RECORD, from the wrapper rather than
 // from a second copy inside the cause. Moving it up is what makes the provenance
 // claim structural; this control is the check that the move did not lose it.
-test fn a_duplicate_refusal_reads_its_record_from_the_wrapper() -> Bool {
+test fn a_duplicate_refusal_reads_its_record_from_the_wrapper() -> Bool  {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
   match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: observed_population(callbacks: [one, one]), supporting: []) {
     DiagnosticBootNotAttested { cause: c, population_evidence: e } =>

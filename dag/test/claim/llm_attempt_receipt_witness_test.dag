@@ -155,14 +155,14 @@ data mixed_roster: List<LlmAttemptReceipt> = [
   usage_unobserved_attempt,
 ]
 
-test fn decode_throughput_derives_from_counts_and_duration() -> Bool {
+test fn decode_throughput_derives_from_counts_and_duration() -> Bool  {
   match derive_decode_throughput(receipt: accepted_attempt) {
     DecodeThroughputDerived { throughput: t } => t.num == 1000 && t.denom == 1000000000
     DecodeThroughputRefused { cause: _ } => false
   }
 }
 
-test fn decode_throughput_floor_projects_tokens_per_second() -> Bool {
+test fn decode_throughput_floor_projects_tokens_per_second() -> Bool  {
   match derive_decode_throughput(receipt: accepted_attempt) {
     DecodeThroughputDerived { throughput: t } =>
       match throughput_per_second_floor(t: t) {
@@ -173,7 +173,7 @@ test fn decode_throughput_floor_projects_tokens_per_second() -> Bool {
   }
 }
 
-test fn unobserved_usage_refuses_throughput_without_refusing_the_attempt() -> Bool {
+test fn unobserved_usage_refuses_throughput_without_refusing_the_attempt() -> Bool  {
   let refused = match derive_decode_throughput(receipt: usage_unobserved_attempt) {
     DecodeThroughputRefused { cause: ThroughputUsageUnobserved } => true
     _ => false
@@ -181,14 +181,14 @@ test fn unobserved_usage_refuses_throughput_without_refusing_the_attempt() -> Bo
   refused && attempt_is_accepted(d: usage_unobserved_attempt.disposition)
 }
 
-test fn absent_decode_duration_refuses_rather_than_fabricating() -> Bool {
+test fn absent_decode_duration_refuses_rather_than_fabricating() -> Bool  {
   match derive_decode_throughput(receipt: decode_unobserved_attempt) {
     DecodeThroughputRefused { cause: DecodeDurationUnobserved } => true
     _ => false
   }
 }
 
-test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool {
+test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool  {
   match derive_decode_throughput(receipt: zero_decode_attempt) {
     DecodeThroughputRefused { cause: ZeroDecodeDuration } => true
     _ => false
@@ -199,53 +199,53 @@ test fn zero_decode_duration_refuses_rather_than_fabricating() -> Bool {
 // reads; a bare construct at the call argument infers its own instantiation from the literals.
 data zero_denominator_throughput: TokenThroughput = FieldOfFractions { num: 1000, denom: 0 }
 
-test fn zero_denominator_floor_projection_returns_none() -> Bool {
+test fn zero_denominator_floor_projection_returns_none() -> Bool  {
   match throughput_per_second_floor(t: zero_denominator_throughput) {
     none => true
     Present { value: _ } => false
   }
 }
 
-test fn goodput_counts_accepted_attempts_only() -> Bool {
+test fn goodput_counts_accepted_attempts_only() -> Bool  {
   accepted_attempt_count(receipts: mixed_roster) == 2
     && escalated_attempt_count(receipts: mixed_roster) == 1
 }
 
-test fn accepted_goodput_derives_over_the_observation_window() -> Bool {
+test fn accepted_goodput_derives_over_the_observation_window() -> Bool  {
   match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 4000000000)) {
     AcceptedGoodputDerived { goodput: g } => g.num == 2 && g.denom == 4000000000
     AcceptedGoodputRefused { cause: _ } => false
   }
 }
 
-test fn empty_roster_refuses_goodput() -> Bool {
+test fn empty_roster_refuses_goodput() -> Bool  {
   match derive_accepted_goodput(receipts: [], window: nanosecond(count: 4000000000)) {
     AcceptedGoodputRefused { cause: EmptyAttemptRoster } => true
     _ => false
   }
 }
 
-test fn zero_window_refuses_goodput() -> Bool {
+test fn zero_window_refuses_goodput() -> Bool  {
   match derive_accepted_goodput(receipts: mixed_roster, window: nanosecond(count: 0)) {
     AcceptedGoodputRefused { cause: ZeroObservationWindow } => true
     _ => false
   }
 }
 
-test fn escalation_fraction_is_exact_over_the_roster() -> Bool {
+test fn escalation_fraction_is_exact_over_the_roster() -> Bool  {
   match derive_escalation_fraction(receipts: mixed_roster) {
     EscalationFractionDerived { fraction: f } => f.num == 1 && f.denom == 4
     EscalationFractionRefused { cause: _ } => false
   }
 }
 
-test fn empty_roster_refuses_escalation_fraction() -> Bool {
+test fn empty_roster_refuses_escalation_fraction() -> Bool  {
   match derive_escalation_fraction(receipts: []) {
     EscalationFractionRefused { cause: EmptyAttemptRoster } => true
     _ => false
   }
 }
 
-test fn token_count_round_trips_its_magnitude() -> Bool {
+test fn token_count_round_trips_its_magnitude() -> Bool  {
   token_count_value(t: token_count(count: 32000)) == 32000
 }

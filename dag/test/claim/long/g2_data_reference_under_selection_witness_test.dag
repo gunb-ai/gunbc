@@ -100,7 +100,7 @@ fn specimen_projection() -> LiveReadSelectionProjection {
   }
 }
 
-test fn specimen_classifies_as_runtime_read() -> Bool {
+test fn specimen_classifies_as_runtime_read() -> Bool  {
   match specimen_projection() {
     LiveReadSelectionClassified { classification: c } =>
       classification_has_runtime_read(classification: c)
@@ -132,7 +132,7 @@ test fn specimen_classifies_as_runtime_read() -> Bool {
 // to expected-red across today's population (exact_witness_admission_witness_test
 // every_declared_long_budget_row_is_also_expected_red_today). Asserting the desired
 // state keeps this inside that population instead of retiring that claim.
-test fn specimen_does_not_classify_as_local_read() -> Bool {
+test fn specimen_does_not_classify_as_local_read() -> Bool  {
   match specimen_projection() {
     LiveReadSelectionClassified { classification: c } =>
       match c {

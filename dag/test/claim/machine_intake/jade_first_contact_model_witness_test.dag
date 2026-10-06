@@ -65,7 +65,7 @@ fn manager_with(oem: List<String>) -> ManagerIdentityObservation {
 // THE FOLD THAT MAY CONSTRUCT A FAMILY, EXERCISED IN ALL FOUR DIRECTIONS. Each conjunct fails on a
 // different real defect: dropping either Oem discriminator, collapsing the both-keys case into a
 // family, or letting an unrecognised Manager answer anything but indeterminate.
-test fn w_manager_oem_key_discriminates_exactly_one_family() -> Bool {
+test fn w_manager_oem_key_discriminates_exactly_one_family() -> Bool  {
   match discriminate_family(observation: manager_with(oem: [openbmc_oem_key as String])) {
     FamilyDiscriminated { family: OpenBmc, basis: _ } => true
     FamilyDiscriminated { family: _, basis: _ } => false
@@ -95,7 +95,7 @@ test fn w_manager_oem_key_discriminates_exactly_one_family() -> Bool {
 // ONLY A DISCRIMINATED FAMILY BECOMES OBSERVED. The red is a fold that promotes ambiguity or an
 // unrecognised Manager into FamilyObserved, which would select a rotation route against a stack
 // nobody identified.
-test fn w_only_discrimination_promotes_to_family_observed() -> Bool {
+test fn w_only_discrimination_promotes_to_family_observed() -> Bool  {
   match family_standing_from_discrimination(
     discrimination: FamilyDiscriminated { family: OpenBmc, basis: "fixture" },
   ) {
@@ -137,7 +137,7 @@ fn fixture_lease(deadline_nanos: Nat) -> LeasedSegmentAddress {
 // THE ONLY DISPOSITION IN WHICH SRV1 WAS NOT LEFT AS FOUND IS A REFUSED RELEASE. The red is a fold
 // that reports a failed `ip addr del` as clean, which is exactly the leak this lease exists to
 // prevent - an address still on a production interface while the run returns findings.
-test fn w_only_a_refused_release_leaves_the_host_changed() -> Bool {
+test fn w_only_a_refused_release_leaves_the_host_changed() -> Bool  {
   host_was_left_as_found(
     disposition: SegmentAddressReleased {
       lease: fixture_lease(deadline_nanos: 100),
@@ -169,7 +169,7 @@ test fn w_only_a_refused_release_leaves_the_host_changed() -> Bool {
 // AN ACQUISITION THE RUN DID NOT PLACE PAIRS TO A DISPOSITION WITHOUT TOUCHING THE DEVICE, and a
 // placed one has no such shortcut. The red is a pairing that hands SegmentAddressPlaced a
 // disposition the run never earned by actually deleting the address.
-test fn w_unplaced_acquisitions_pair_without_a_delete() -> Bool {
+test fn w_unplaced_acquisitions_pair_without_a_delete() -> Bool  {
   match disposition_for_unplaced(
     acquisition: SegmentAddressAlreadyPresent {
       device: "enP3p3s0f1",
@@ -202,7 +202,7 @@ test fn w_unplaced_acquisitions_pair_without_a_delete() -> Bool {
 
 // THE DEADLINE REFUSES ACROSS CLOCK DOMAINS RATHER THAN GUESSING. The red is a comparison that
 // calls an incomparable pair either live or expired.
-test fn w_lease_deadline_is_three_valued_across_clock_domains() -> Bool {
+test fn w_lease_deadline_is_three_valued_across_clock_domains() -> Bool  {
   match lease_time_standing(
     lease: fixture_lease(deadline_nanos: 100),
     now: fixture_instant(basis: WallClock, nanos: 50),
@@ -236,7 +236,7 @@ test fn w_lease_deadline_is_three_valued_across_clock_domains() -> Bool {
 // THE UNIT DIVERGES FROM ITS OWN SHIPPING DOCUMENT, and the fold says so in both directions rather
 // than only about this unit. The red is a comparison that files an observed static under a
 // document expecting DHCP as agreement.
-test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool {
+test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool  {
   match mtjade1_factory_bmc_network_standing {
     FactoryNetworkDivergesFromDocument { expectation: _, observed: _, divergence: _ } => true
     FactoryNetworkMatchesDocument { expectation: _ } => false
@@ -281,7 +281,7 @@ test fn w_observed_static_diverges_from_the_gsg_dhcp_expectation() -> Bool {
 // the three modules this roster is about fails the scope conjunct; and a dissolution bound forward
 // to a symbol this closure cannot name fails the last one. No cardinality literal: a count cannot
 // tell a dropped row from a dropped-and-replaced one, which is the failure the roster exists for.
-test fn w_first_contact_frontier_is_keyed_scoped_and_unbound() -> Bool {
+test fn w_first_contact_frontier_is_keyed_scoped_and_unbound() -> Bool  {
   frontier_rows_well_formed(rows: jade_first_contact_frontier_rows)
     && match frontier_rows_keyed_roster_build(rows: jade_first_contact_frontier_rows) {
       KeyedRosterBuilt { rows: _ } => true

@@ -47,7 +47,7 @@ fn scan_of(fields: List<String>) -> String {
 
 // ---------------------------------------------------------------- the clean pole
 
-test fn empty_status_scans_clean() -> Bool {
+test fn empty_status_scans_clean() -> Bool  {
   let s = scan_checkout_status(entries_nul: "")
   length(s.staged) == 0
     && length(s.tracked) == 0
@@ -58,7 +58,7 @@ test fn empty_status_scans_clean() -> Bool {
 
 // ---------------------------------------------------------------- the three dirty axes, separated
 
-test fn an_unstaged_tracked_edit_lands_on_the_tracked_axis_only() -> Bool {
+test fn an_unstaged_tracked_edit_lands_on_the_tracked_axis_only() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: [" M dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.tracked) == 1
     && join(s.tracked, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
@@ -67,7 +67,7 @@ test fn an_unstaged_tracked_edit_lands_on_the_tracked_axis_only() -> Bool {
     && !s.malformed
 }
 
-test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool {
+test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["M  dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.staged) == 1
     && join(s.staged, ",") == "dag/gunbc/roadmap/roadmap_component.dag"
@@ -78,7 +78,7 @@ test fn a_staged_edit_lands_on_the_staged_axis_only() -> Bool {
 
 // The both-columns case is the one a single `dirty: Bool` would erase: the index and the working tree
 // disagree with HEAD in different ways, and the operator needs both remedies, not one bit.
-test fn a_file_staged_and_then_edited_again_lands_on_both_axes() -> Bool {
+test fn a_file_staged_and_then_edited_again_lands_on_both_axes() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["MM dag/gunbc/roadmap/roadmap_component.dag"]))
   length(s.staged) == 1
     && length(s.tracked) == 1
@@ -87,7 +87,7 @@ test fn a_file_staged_and_then_edited_again_lands_on_both_axes() -> Bool {
     && !s.malformed
 }
 
-test fn an_untracked_deployed_file_lands_on_the_untracked_axis() -> Bool {
+test fn an_untracked_deployed_file_lands_on_the_untracked_axis() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["?? dag/gunbc/stowaway.dag"]))
   length(s.untracked) == 1
     && join(s.untracked, ",") == "dag/gunbc/stowaway.dag"
@@ -101,7 +101,7 @@ test fn an_untracked_deployed_file_lands_on_the_untracked_axis() -> Bool {
 // An untracked file the sync EXCLUDES is not a candidate defect: those bytes never leave the runner. A
 // refusal that fired here would fire on nearly every real build (target/ is enormous and always untracked),
 // and an arm that reds on the safe state is the one that gets suppressed.
-test fn an_untracked_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool {
+test fn an_untracked_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: [
     "?? target/release/gunbc",
     "?? .git/COMMIT_EDITMSG",
@@ -111,14 +111,14 @@ test fn an_untracked_file_under_an_excluded_prefix_is_not_a_deployed_path() -> B
 
 // The RED for the line above: same status shape, path outside the excluded prefixes. If the scope filter
 // were widened to swallow everything, this claim reds.
-test fn an_untracked_file_outside_the_excluded_prefixes_is_a_deployed_path() -> Bool {
+test fn an_untracked_file_outside_the_excluded_prefixes_is_a_deployed_path() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["?? targets_of_opportunity.dag"]))
   length(s.untracked) == 1 && join(s.untracked, ",") == "targets_of_opportunity.dag"
 }
 
 // A prefix must match a path SEGMENT, not a character run. `targetish/` starts with `target` but is not
 // under it, and a naive starts_with would have excluded it from the deploy's view while rsync shipped it.
-test fn the_prefix_filter_matches_segments_not_character_runs() -> Bool {
+test fn the_prefix_filter_matches_segments_not_character_runs() -> Bool  {
   path_is_deployed(path: "targetish/x.dag")
     && path_is_deployed(path: "dag/target/x.dag")
     && !path_is_deployed(path: "target/x.dag")
@@ -129,7 +129,7 @@ test fn the_prefix_filter_matches_segments_not_character_runs() -> Bool {
 // ---------------------------------------------------------------- renames, the stateful half of the parse
 
 // A rename emits TWO fields and the second is a bare path. Reading it as a record would invent a status.
-test fn a_rename_consumes_its_source_field_without_inventing_a_record() -> Bool {
+test fn a_rename_consumes_its_source_field_without_inventing_a_record() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: [
     "R  dag/gunbc/new_name.dag",
     "dag/gunbc/old_name.dag",
@@ -145,7 +145,7 @@ test fn a_rename_consumes_its_source_field_without_inventing_a_record() -> Bool 
 // The discriminating case for the stateful parse specifically: a rename SOURCE whose own text would pass
 // the "third character is a space" record test. A shape-first parser reads `ab cdef` as a record with
 // status `ab` and files a phantom path; the state machine consumes it as the source it is.
-test fn a_rename_source_that_looks_like_a_record_is_still_consumed_as_a_source() -> Bool {
+test fn a_rename_source_that_looks_like_a_record_is_still_consumed_as_a_source() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: [
     "R  dag/gunbc/new_name.dag",
     "ab cdef",
@@ -158,14 +158,14 @@ test fn a_rename_source_that_looks_like_a_record_is_still_consumed_as_a_source()
 
 // A truncated rename record is not clean and is not dirty — it is unreadable, and saying so is the whole
 // point. Dropping the dangling state would report the tree as clean on a status we could not finish parsing.
-test fn a_rename_record_with_no_source_field_leaves_the_scan_expecting_one() -> Bool {
+test fn a_rename_record_with_no_source_field_leaves_the_scan_expecting_one() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["R  dag/gunbc/new_name.dag"]))
   s.expect_rename_source
 }
 
 // ---------------------------------------------------------------- unreadable, which is neither pole
 
-test fn a_field_that_is_neither_record_nor_source_is_malformed() -> Bool {
+test fn a_field_that_is_neither_record_nor_source_is_malformed() -> Bool  {
   let s = scan_checkout_status(entries_nul: scan_of(fields: ["nonsense"]))
   s.malformed
 }
@@ -176,7 +176,7 @@ test fn a_field_that_is_neither_record_nor_source_is_malformed() -> Bool {
 // AND sits inside a source root the compiled graph reads, so before this axis existed it was copied by rsync
 // while `git status --untracked-files=all` reported nothing at all — the admission called the tree clean and
 // every later comparison agreed with itself about bytes HEAD does not name.
-test fn an_ignored_file_inside_a_source_root_is_a_deployed_path() -> Bool {
+test fn an_ignored_file_inside_a_source_root_is_a_deployed_path() -> Bool  {
   let scanned = scan_ignored_deployed_paths(
     paths_nul: scan_of(fields: ["src/v2/test/claim/manual/sg2_scratch_probe.dag"])
   )
@@ -187,7 +187,7 @@ test fn an_ignored_file_inside_a_source_root_is_a_deployed_path() -> Bool {
 // from the sync, so an ignored build artifact there is NOT installed and must not by itself refuse a deploy.
 // Every developer checkout has thousands of these; refusing on them would make the admission unusable and
 // would teach an operator to route around it.
-test fn an_ignored_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool {
+test fn an_ignored_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Bool  {
   let scanned = scan_ignored_deployed_paths(
     paths_nul: scan_of(fields: ["target/release/gunbc", "target/debug/build/x/out"])
   )
@@ -199,7 +199,7 @@ test fn an_ignored_file_under_an_excluded_prefix_is_not_a_deployed_path() -> Boo
 // wildcard spelling no prefix can express, and the probe inside a read source root. `.gunbc/ledger.json`
 // moved to the dropped side when local tool state joined the exclusions; it is local state no revision
 // names, so the deploy does not install it and admission has nothing to refuse on.
-test fn the_ignored_scan_keeps_deployed_paths_and_drops_excluded_ones() -> Bool {
+test fn the_ignored_scan_keeps_deployed_paths_and_drops_excluded_ones() -> Bool  {
   let scanned = scan_ignored_deployed_paths(paths_nul: scan_of(fields: [
     ".env",
     "target/release/gunbc",
@@ -213,13 +213,13 @@ test fn the_ignored_scan_keeps_deployed_paths_and_drops_excluded_ones() -> Bool 
 
 // The prefix filter matches whole path SEGMENTS, not character runs — a directory merely beginning with the
 // letters "target" is deployed and must still refuse.
-test fn an_ignored_path_under_a_targetish_directory_is_still_deployed() -> Bool {
+test fn an_ignored_path_under_a_targetish_directory_is_still_deployed() -> Bool  {
   let scanned = scan_ignored_deployed_paths(paths_nul: scan_of(fields: ["targetish/x.dag"]))
   join(scanned, ",") == "targetish/x.dag"
 }
 
 // An empty answer is the clean state, and it must not be reachable from a non-empty one by dropping fields.
-test fn no_ignored_files_yields_no_deployed_paths() -> Bool {
+test fn no_ignored_files_yields_no_deployed_paths() -> Bool  {
   length(scan_ignored_deployed_paths(paths_nul: "")) == 0
 }
 
@@ -250,7 +250,7 @@ test fn no_ignored_files_yields_no_deployed_paths() -> Bool {
 
 // ---------------------------------------------------------------- the refusal carries the location
 
-test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
+test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool  {
   let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
     tracked_changes: ["dag/a.dag"],
     staged_changes: ["dag/b.dag"],
@@ -270,7 +270,7 @@ test fn the_not_clean_refusal_names_every_axis_and_its_paths() -> Bool {
 
 // An empty axis renders as (none) rather than as nothing at all, so a reader can tell "no staged changes"
 // from "the staged list was omitted".
-test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
+test fn an_empty_axis_is_named_rather_than_dropped() -> Bool  {
   let d = candidate_unobservable_detail(cause: CandidateCheckoutNotClean {
     tracked_changes: [],
     staged_changes: ["dag/b.dag"],
@@ -283,7 +283,7 @@ test fn an_empty_axis_is_named_rather_than_dropped() -> Bool {
     && string_contains(s: d, pattern: "ignored-deployed=(none)")
 }
 
-test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
+test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool  {
   let refused = candidate_unobservable_detail(cause: CandidateCheckoutStatusRefused { detail: "boom" })
   let head = candidate_unobservable_detail(cause: CandidateHeadCommitRefused)
   string_contains(s: refused, pattern: "CandidateCheckoutStatusRefused")
@@ -298,7 +298,7 @@ test fn the_status_refusal_is_distinct_from_the_not_clean_refusal() -> Bool {
 // checkout and the launcher writes its receipt channel under the cwd; the first deploy through the verb
 // refused CandidateCheckoutNotClean on the previous attempt's receipt. Both bootstrap channels are host
 // state the deploy neither ships nor admits on, and the segment rule still holds beside them.
-test fn the_bootstrap_receipt_channels_are_not_deployed() -> Bool {
+test fn the_bootstrap_receipt_channels_are_not_deployed() -> Bool  {
   !path_is_deployed(path: ".gunbc-converge-receipts/receipt-446101-0")
     && !path_is_deployed(path: ".gunbc-build-receipts/receipt-1-0")
     && path_is_deployed(path: ".gunbc-converge-receiptsx/y")
@@ -309,7 +309,7 @@ test fn the_bootstrap_receipt_channels_are_not_deployed() -> Bool {
 // CandidateCheckoutNotClean, before any mutation. Agent session state and local tool caches are host state
 // by construction: no revision ever names them, so the deploy must not ship them and admission must not
 // refuse on them either.
-test fn agent_session_and_local_tool_state_is_not_deployed() -> Bool {
+test fn agent_session_and_local_tool_state_is_not_deployed() -> Bool  {
   !path_is_deployed(path: ".claude")
     && !path_is_deployed(path: ".claude/settings.local.json")
     && !path_is_deployed(path: ".claude/worktrees/agent-a08ba29cba32fef1b/dag/x.dag")
@@ -323,7 +323,7 @@ test fn agent_session_and_local_tool_state_is_not_deployed() -> Bool {
 // otherwise a later widening could silence them and nothing would notice. `.env.*.local` is a wildcard the
 // prefix carrier cannot spell, and shipped .env bytes are secrets; the scratch probe sits inside a source
 // root the graph reads, where excluding it would change what the host compiles.
-test fn the_env_family_and_the_read_source_root_probe_are_still_refused() -> Bool {
+test fn the_env_family_and_the_read_source_root_probe_are_still_refused() -> Bool  {
   path_is_deployed(path: ".env")
     && path_is_deployed(path: ".env.local")
     && path_is_deployed(path: ".env.production.local")
@@ -332,7 +332,7 @@ test fn the_env_family_and_the_read_source_root_probe_are_still_refused() -> Boo
 
 // Segment matching must survive the widening: a dotted prefix is the easy place to regress into a character
 // run, because `.claudex/` and `.envy` both start with a listed spelling.
-test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -> Bool {
+test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -> Bool  {
   path_is_deployed(path: ".claudex/x.dag")
     && path_is_deployed(path: "dag/.claude/x.dag")
     && path_is_deployed(path: "target-codexish/x")
@@ -340,7 +340,7 @@ test fn the_appended_dotted_prefixes_still_match_segments_not_character_runs() -
 
 // THE COMPILER-DERIVED ROSTER IS NOT SHIPPED AND ITS SIBLING ROWS ARE: the exclusion is the exact
 // derived path, so the authored row files beside it stay in the deployed tree.
-test fn the_derived_failure_mode_roster_is_excluded_as_a_file_not_a_prefix() -> Bool {
+test fn the_derived_failure_mode_roster_is_excluded_as_a_file_not_a_prefix() -> Bool  {
   !path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag")
     && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/empty_capture_read_as_clean_result.dag")
     && path_is_deployed(path: "dag/gunbc/recurring_failure_mode/roster.dag.bak")

@@ -90,7 +90,7 @@ data firmware_v2: FirmwareManifest = FirmwareManifest {
 
 // CONTROL 1 — same board serial, one DIMM changed: the prior admission's
 // subject is stale on exactly the assembly axis.
-test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
+test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool  {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
@@ -101,13 +101,13 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
 }
 
 // Positive control for control 1: the same manifests re-observed are current.
-test fn unchanged_manifests_are_current() -> Bool {
+test fn unchanged_manifests_are_current() -> Bool  {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   compare_qualification_subject(admitted: admitted, observed: observed) == SubjectCurrent
 }
 
-test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
+test fn changed_bios_version_is_a_new_firmware_subject() -> Bool  {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
@@ -119,7 +119,7 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
 
 // CONTROL 2 — a changed BMC IP does not create a new unit: two identity
 // inputs differing only in endpoint bind the same key.
-test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool {
+test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool  {
   let one = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [])
   let two = bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_two, board_serial_observations: agreeing_serials }, other_units: [])
   match one {
@@ -134,14 +134,14 @@ test fn changed_bmc_endpoint_binds_the_same_unit() -> Bool {
 
 // CONTROL 3 — absent, contradictory, or duplicated board serial refuses; no
 // key is fabricated from the endpoint or anything else.
-test fn absent_board_serial_refuses() -> Bool {
+test fn absent_board_serial_refuses() -> Bool  {
   match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: [] }, other_units: []) {
     UnitKeyRefused { cause: c } => c == BoardSerialAbsent
     UnitKeyBound { key: _ } => false
   }
 }
 
-test fn contradictory_board_serial_refuses() -> Bool {
+test fn contradictory_board_serial_refuses() -> Bool  {
   let observations = [
     BoardSerialObservation { source: BmcFru, serial: serial_a },
     BoardSerialObservation { source: HostSmbios, serial: "BRD-000999" },
@@ -156,7 +156,7 @@ test fn contradictory_board_serial_refuses() -> Bool {
   }
 }
 
-test fn board_serial_already_keying_another_unit_refuses() -> Bool {
+test fn board_serial_already_keying_another_unit_refuses() -> Bool  {
   match bind_unit_key(inputs: UnitIdentityInputs { bmc_endpoint: endpoint_one, board_serial_observations: agreeing_serials }, other_units: [serial_a as UnitKey]) {
     UnitKeyRefused { cause: c } =>
       match c {
@@ -169,7 +169,7 @@ test fn board_serial_already_keying_another_unit_refuses() -> Bool {
 
 // A hand-written DIMM label without an SPD serial is not an electronic
 // identity, and the binding says so rather than promoting the label.
-test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool {
+test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool  {
   let unbound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialAbsent, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
   let bound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialRead { serial: "SPD-A1-OLD" }, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
   let unbound_electronic = match unbound.spd_serial {
@@ -206,7 +206,7 @@ fn is_assembly_then_firmware(currency: SubjectCurrency) -> Bool {
   }
 }
 
-test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool {
+test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool  {
   let assembly_only = compare_qualification_subject(admitted: merge_base, observed: merge_assembly_moved)
   let firmware_only = compare_qualification_subject(admitted: merge_base, observed: merge_firmware_moved)
   is_assembly_then_firmware(currency: merge_subject_currency(left: assembly_only, right: firmware_only))
@@ -235,7 +235,7 @@ test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool 
 // pins the PUBLIC MINT BOUNDARY that any importer can reach, where the merge
 // witness pins the merge law THROUGH that boundary, and only this one fails if
 // the mint is weakened while every internal caller keeps reducing.
-test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool {
+test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool  {
   let noncanonical = subject_currency_of_axes(
     axes: [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale],
   )

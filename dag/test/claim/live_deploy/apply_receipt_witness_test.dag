@@ -26,7 +26,7 @@ fn fixture_dashboard_receipt() -> LiveDeployApplyReceipt {
   }
 }
 
-test fn witness_dashboard_receipt_round_trips() -> Bool {
+test fn witness_dashboard_receipt_round_trips() -> Bool  {
   let r = fixture_dashboard_receipt()
   match live_deploy_apply_receipt_decode(raw: serialize_json(v: live_deploy_apply_receipt_json(r: r))) {
     LiveDeployApplyReceiptDecoded { receipt: back } =>
@@ -39,7 +39,7 @@ test fn witness_dashboard_receipt_round_trips() -> Bool {
   }
 }
 
-test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool {
+test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool  {
   let base = fixture_dashboard_receipt()
   let r = LiveDeployApplyReceipt {
     run: base.run, target: base.target, instance_id: base.instance_id, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
@@ -56,7 +56,7 @@ test fn witness_dashboard_receipt_not_converged_round_trips_its_reason() -> Bool
 }
 
 // RED: a tampered candidate revision fails the identity check.
-test fn witness_dashboard_receipt_with_tampered_candidate_refuses() -> Bool {
+test fn witness_dashboard_receipt_with_tampered_candidate_refuses() -> Bool  {
   let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
   let tampered = replace(wire, join(["\"candidate_revision\": \"", apply_receipt_fixture_r, "\""], ""), "\"candidate_revision\": \"89abcdef0123456789abcdef0123456789abcdef\"")
   tampered != wire
@@ -66,7 +66,7 @@ test fn witness_dashboard_receipt_with_tampered_candidate_refuses() -> Bool {
     })
 }
 
-test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool {
+test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool  {
   let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
   let tampered = replace(wire, "\"completed_at\"", "\"finished_at\"")
   match live_deploy_apply_receipt_decode(raw: tampered) {
@@ -82,7 +82,7 @@ test fn witness_dashboard_receipt_without_completed_at_refuses() -> Bool {
 // by construction, carrying no information, and worse than absent because it reads as coverage.
 
 // RED: a substituted predecessor receipt identity fails the identity check (review 5061891290 P1-4).
-test fn witness_dashboard_receipt_with_tampered_plan_receipt_identity_refuses() -> Bool {
+test fn witness_dashboard_receipt_with_tampered_plan_receipt_identity_refuses() -> Bool  {
   let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
   let tampered = replace(wire, "1111111111111111", "9999999999999999")
   tampered != wire

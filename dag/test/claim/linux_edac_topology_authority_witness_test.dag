@@ -53,7 +53,7 @@ data dmesg_firmware_first_fixture: String = "[    0.352441] GHES: APEI firmware 
 // fixture exists to red.
 data dmesg_without_marker_fixture: String = "[    0.211003] GHES: Failed to enable APEI firmware first mode.\n[    0.352443] EDAC MC0: Giving out device to module ghes_edac.c\n"
 
-test fn ghes_edac_is_not_a_topology_authority_holds() -> Bool {
+test fn ghes_edac_is_not_a_topology_authority_holds() -> Bool  {
   match edac_driver_topology_authority(binding: GhesEdac) {
     ErrorAttributionOnly => true
     MemoryControllerEnumerated => false
@@ -61,7 +61,7 @@ test fn ghes_edac_is_not_a_topology_authority_holds() -> Bool {
   }
 }
 
-test fn native_driver_is_a_topology_authority_holds() -> Bool {
+test fn native_driver_is_a_topology_authority_holds() -> Bool  {
   match edac_driver_topology_authority(binding: skx_binding) {
     MemoryControllerEnumerated => true
     ErrorAttributionOnly => false
@@ -69,7 +69,7 @@ test fn native_driver_is_a_topology_authority_holds() -> Bool {
   }
 }
 
-test fn unbound_edac_is_no_authority_holds() -> Bool {
+test fn unbound_edac_is_no_authority_holds() -> Bool  {
   match edac_driver_topology_authority(binding: NoEdacDriverBound) {
     NoEdacAuthority => true
     MemoryControllerEnumerated => false
@@ -77,7 +77,7 @@ test fn unbound_edac_is_no_authority_holds() -> Bool {
   }
 }
 
-test fn ghes_edac_exposes_no_channel_topology_holds() -> Bool {
+test fn ghes_edac_exposes_no_channel_topology_holds() -> Bool  {
   match edac_channel_topology_availability(binding: GhesEdac).availability {
     ChannelTopologyAbsent { cause: FirmwareFirstErrorAttributionShim } => true
     ChannelTopologyAbsent { cause: NoMemoryControllerDriverBound } => false
@@ -85,7 +85,7 @@ test fn ghes_edac_exposes_no_channel_topology_holds() -> Bool {
   }
 }
 
-test fn native_driver_exposes_channel_topology_holds() -> Bool {
+test fn native_driver_exposes_channel_topology_holds() -> Bool  {
   match edac_channel_topology_availability(binding: skx_binding).availability {
     ChannelTopologyEnumerated { kernel_module: m } => m as String == "skx_edac"
     ChannelTopologyAbsent { cause: _ } => false
@@ -95,7 +95,7 @@ test fn native_driver_exposes_channel_topology_holds() -> Bool {
 // THE LOAD-BEARING DISTINCTION. Both absences are absences; only one of them ends the errand. If
 // this fold ever collapsed the two causes onto one standing, this law reds — which is the whole
 // reason the causes are separate variants rather than one "unavailable".
-test fn the_two_absences_have_different_standings_holds() -> Bool {
+test fn the_two_absences_have_different_standings_holds() -> Bool  {
   (match edac_channel_topology_absence_standing(cause: FirmwareFirstErrorAttributionShim) {
     AbsentOnEveryBoot => true
     AbsentUntilDriverBound => false
@@ -106,7 +106,7 @@ test fn the_two_absences_have_different_standings_holds() -> Bool {
     })
 }
 
-test fn ghes_edac_dimm_nodes_come_from_smbios_holds() -> Bool {
+test fn ghes_edac_dimm_nodes_come_from_smbios_holds() -> Bool  {
   match edac_dimm_node_source(binding: GhesEdac) {
     Present { value: SmbiosType17MemoryDeviceTable } => true
     Present { value: MemoryControllerEnumeration } => false
@@ -114,7 +114,7 @@ test fn ghes_edac_dimm_nodes_come_from_smbios_holds() -> Bool {
   }
 }
 
-test fn native_driver_dimm_nodes_come_from_the_controller_holds() -> Bool {
+test fn native_driver_dimm_nodes_come_from_the_controller_holds() -> Bool  {
   match edac_dimm_node_source(binding: skx_binding) {
     Present { value: MemoryControllerEnumeration } => true
     Present { value: SmbiosType17MemoryDeviceTable } => false
@@ -122,7 +122,7 @@ test fn native_driver_dimm_nodes_come_from_the_controller_holds() -> Bool {
   }
 }
 
-test fn unbound_edac_has_no_dimm_node_source_holds() -> Bool {
+test fn unbound_edac_has_no_dimm_node_source_holds() -> Bool  {
   match edac_dimm_node_source(binding: NoEdacDriverBound) {
     Absent => true
     Present { value: _ } => false
@@ -133,7 +133,7 @@ test fn unbound_edac_has_no_dimm_node_source_holds() -> Bool {
 // discriminating half is the other arm: a native driver's count must NOT come back as a
 // driver-fixed number, because this module does not know it and inventing one would be the
 // fabricated-plausible-output failure with a Nat on it.
-test fn ghes_edac_registers_exactly_one_controller_holds() -> Bool {
+test fn ghes_edac_registers_exactly_one_controller_holds() -> Bool  {
   match edac_registered_controller_count(binding: GhesEdac) {
     ControllerCountFixedByDriver { count: n } => memory_controller_count_value(c: n) == 1
     ControllerCountIsAPlatformReading => false
@@ -141,7 +141,7 @@ test fn ghes_edac_registers_exactly_one_controller_holds() -> Bool {
   }
 }
 
-test fn native_driver_controller_count_is_not_fixed_by_the_driver_holds() -> Bool {
+test fn native_driver_controller_count_is_not_fixed_by_the_driver_holds() -> Bool  {
   match edac_registered_controller_count(binding: skx_binding) {
     ControllerCountIsAPlatformReading => true
     ControllerCountFixedByDriver { count: _ } => false
@@ -149,7 +149,7 @@ test fn native_driver_controller_count_is_not_fixed_by_the_driver_holds() -> Boo
   }
 }
 
-test fn unbound_edac_has_no_controller_count_holds() -> Bool {
+test fn unbound_edac_has_no_controller_count_holds() -> Bool  {
   match edac_registered_controller_count(binding: NoEdacDriverBound) {
     ControllerCountNotApplicable => true
     ControllerCountFixedByDriver { count: _ } => false
@@ -161,7 +161,7 @@ test fn unbound_edac_has_no_controller_count_holds() -> Bool {
 // The claim this module exists to make -- that the absence is structural rather than a missing
 // driver -- is falsifiable only against a stated kernel, since a mainline that grew a native Altra
 // memory-controller driver would answer ChannelTopologyEnumerated for the same question.
-test fn every_reading_carries_the_release_it_was_read_at_holds() -> Bool {
+test fn every_reading_carries_the_release_it_was_read_at_holds() -> Bool  {
   (edac_channel_topology_availability(binding: GhesEdac).read_at_release as String == "6.8.0")
     && (edac_channel_topology_availability(binding: skx_binding).read_at_release
       == edac_topology_model_read_at_release)
@@ -169,10 +169,10 @@ test fn every_reading_carries_the_release_it_was_read_at_holds() -> Bool {
       == edac_topology_model_read_at_release)
 }
 
-test fn firmware_first_detector_reads_the_real_dmesg_line_holds() -> Bool {
+test fn firmware_first_detector_reads_the_real_dmesg_line_holds() -> Bool  {
   apei_firmware_first_from_dmesg(dmesg: dmesg_firmware_first_fixture)
 }
 
-test fn firmware_first_detector_red_control_holds() -> Bool {
+test fn firmware_first_detector_red_control_holds() -> Bool  {
   !apei_firmware_first_from_dmesg(dmesg: dmesg_without_marker_fixture)
 }

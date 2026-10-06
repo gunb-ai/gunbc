@@ -23,19 +23,19 @@ data unary_element_called_source: String = "module lcv_unary\n\nfn sum_applied(f
 
 data map_element_called_source: String = "module lcv_map\n\nfn run_all(rs: List<fn() -> Int>) -> List<Int> {\n  rs |> map(r => r())\n}\n"
 
-test fn a_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
+test fn a_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool  {
   total_blocking_count_for(source: fold_lambda_param_called_source) == 0
 }
 
-test fn a_unary_callable_element_is_callable() -> Bool {
+test fn a_unary_callable_element_is_callable() -> Bool  {
   total_blocking_count_for(source: unary_element_called_source) == 0
 }
 
-test fn a_map_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool {
+test fn a_map_lambda_parameter_bound_to_a_callable_element_is_callable() -> Bool  {
   total_blocking_count_for(source: map_element_called_source) == 0
 }
 
-test fn a_lambda_list_literal_realizes_each_element_at_the_arrow_carrier() -> Bool {
+test fn a_lambda_list_literal_realizes_each_element_at_the_arrow_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module lcvlist\n\nfn first_some(rs: List<fn() -> Int?>) -> Int? {\n  fold(rs, init: none, f: (acc, r) => match acc {\n    Present { value: a } => Present { value: a }\n    Absent => r()\n  })\n}\n\nfn pick() -> Int? {\n  first_some(rs: [fn() { none }, fn() { Present { value: 7 } }])\n}\n",
     "src/lcvlist.rs",
@@ -44,7 +44,7 @@ test fn a_lambda_list_literal_realizes_each_element_at_the_arrow_carrier() -> Bo
   )
 }
 
-test fn a_let_bound_lambda_is_emitted_with_typed_parameters() -> Bool {
+test fn a_let_bound_lambda_is_emitted_with_typed_parameters() -> Bool  {
   compile_dag_rust_emit_check(
     "module lcvlet\n\nfn apply_it(g: fn(Int) -> Int, v: Int) -> Int {\n  g(v)\n}\n\nfn go() -> Int {\n  let h: fn(Int) -> Int = fn(x) { x * 2 }\n  h(3) + apply_it(g: h, v: 4)\n}\n",
     "src/lcvlet.rs",

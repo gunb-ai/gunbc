@@ -188,7 +188,7 @@ fn any_contains(xs: List<String>, pattern: String) -> Bool {
 
 // ── THE REDFISH MODEL ────────────────────────────────────────────────────────────────────────
 
-test fn an_absent_slot_parses_to_state_absent_on_its_socket() -> Bool {
+test fn an_absent_slot_parses_to_state_absent_on_its_socket() -> Bool  {
   match redfish_memory_member_of(body: memory_member_absent_fixture) {
     ObservationEstablished { observed: m } =>
       m.status.state == StateAbsent && (m.id as String) == "DIMM_S1_A1" && match m.memory_location {
@@ -199,7 +199,7 @@ test fn an_absent_slot_parses_to_state_absent_on_its_socket() -> Bool {
   }
 }
 
-test fn an_unlisted_state_is_carried_not_defaulted() -> Bool {
+test fn an_unlisted_state_is_carried_not_defaulted() -> Bool  {
   match redfish_memory_member_of(body: "{\"Id\": \"X\", \"Status\": {\"State\": \"Frobbed\", \"Health\": \"Critical\"}}") {
     ObservationEstablished { observed: m } =>
       (match m.status.state { StateUnrecognized { rendering: r } => (r as String) == "Frobbed" _ => false }) && m.status.health == HealthCritical
@@ -207,7 +207,7 @@ test fn an_unlisted_state_is_carried_not_defaulted() -> Bool {
   }
 }
 
-test fn a_member_without_id_refuses() -> Bool {
+test fn a_member_without_id_refuses() -> Bool  {
   match redfish_memory_member_of(body: "{\"Status\": {\"State\": \"Enabled\"}}") {
     ObservationRefused { cause: c } => contains(c as String, "Id")
     ObservationEstablished { observed: _ } => false
@@ -222,7 +222,7 @@ fn eight_links(page_index: Int) -> List<String> {
   map([0, 1, 2, 3, 4, 5, 6, 7], k => concat("/redfish/v1/Systems/Self/Memory/DIMM_", to_string(page_index * 8 + k)))
 }
 
-test fn a_page_keeps_each_members_exact_odata_id() -> Bool {
+test fn a_page_keeps_each_members_exact_odata_id() -> Bool  {
   match redfish_collection_page_of(body: "{\"Members\": [{\"@odata.id\": \"/redfish/v1/Systems/Self/Memory/0x1a%20DIMM/Sub\"}], \"Members@odata.count\": 32, \"Members@odata.nextLink\": \"/redfish/v1/Systems/Self/Memory?$skip=1\"}") {
     ObservationEstablished { observed: p } =>
       p.member_links == ["/redfish/v1/Systems/Self/Memory/0x1a%20DIMM/Sub"] && p.member_count == Present { value: 32 }
@@ -231,7 +231,7 @@ test fn a_page_keeps_each_members_exact_odata_id() -> Bool {
   }
 }
 
-test fn a_collection_without_members_is_not_an_empty_collection() -> Bool {
+test fn a_collection_without_members_is_not_an_empty_collection() -> Bool  {
   match redfish_collection_page_of(body: "{\"@odata.id\": \"/redfish/v1/Systems/Self/Processors\"}") {
     ObservationRefused { cause: c } => contains(c as String, "Members")
     ObservationEstablished { observed: _ } => false
@@ -239,7 +239,7 @@ test fn a_collection_without_members_is_not_an_empty_collection() -> Bool {
 }
 
 // count=32 served 8 per page through nextLink: complete only when every page is followed.
-test fn thirty_two_members_across_four_pages_assemble_complete() -> Bool {
+test fn thirty_two_members_across_four_pages_assemble_complete() -> Bool  {
   match redfish_collection_assembly(pages: [
     page(links: eight_links(page_index: 0), total: Present { value: 32 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=8" }),
     page(links: eight_links(page_index: 1), total: Present { value: 32 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=16" }),
@@ -252,49 +252,49 @@ test fn thirty_two_members_across_four_pages_assemble_complete() -> Bool {
 }
 
 // The first page alone, still naming a next page, is incomplete -- never "8 members".
-test fn a_first_page_with_a_pending_next_link_is_incomplete() -> Bool {
+test fn a_first_page_with_a_pending_next_link_is_incomplete() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: eight_links(page_index: 0), total: Present { value: 32 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=8" })], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "still carries Members@odata.nextLink; 8 of 32")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_short_page_without_next_link_does_not_reconcile_with_its_count() -> Bool {
+test fn a_short_page_without_next_link_does_not_reconcile_with_its_count() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: eight_links(page_index: 0), total: Present { value: 32 }, next: none)], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "Members@odata.count 32 but 8 member link(s)")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_page_without_a_count_cannot_establish_completeness() -> Bool {
+test fn a_page_without_a_count_cannot_establish_completeness() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: eight_links(page_index: 0), total: none, next: none)], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "no Members@odata.count")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_count_over_the_member_bound_refuses_before_any_member_read() -> Bool {
+test fn a_count_over_the_member_bound_refuses_before_any_member_read() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: eight_links(page_index: 0), total: Present { value: 4096 }, next: none)], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "exceeds the member bound 40")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_foreign_member_link_refuses_the_collection() -> Bool {
+test fn a_foreign_member_link_refuses_the_collection() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: ["https://evil.example/redfish/v1/Systems/Self/Memory/1"], total: Present { value: 1 }, next: none)], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "not a same-origin path")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_link_is_used_exactly_or_refused_never_rebuilt() -> Bool {
+test fn a_link_is_used_exactly_or_refused_never_rebuilt() -> Bool  {
   (match redfish_same_origin_link(link: "/redfish/v1/Systems/Self/Memory/0x1a%20DIMM/Sub") { RedfishLinkSameOrigin { path: p } => (p as String) == "/redfish/v1/Systems/Self/Memory/0x1a%20DIMM/Sub" _ => false })
     && (match redfish_same_origin_link(link: "//evil.example/redfish/v1/x") { RedfishLinkRefused { cause: _ } => true _ => false })
     && (match redfish_same_origin_link(link: "/redfish/v1/Systems/../../etc") { RedfishLinkRefused { cause: _ } => true _ => false })
 }
 
 // An incomplete collection is an unread section, so no short-inventory finding can be minted from it.
-test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bool {
+test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bool  {
   let cause = BmcCollectionIncomplete { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory", at: "2026-09-23T01:00:00Z", detail: "Members@odata.nextLink not followed" }
   let b = bundle_socket1_absent()
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro,
@@ -310,11 +310,11 @@ test fn an_incomplete_memory_collection_mints_no_short_inventory_finding() -> Bo
 // gunbc.machine_intake_ampere_smpro_observation smpro_pass_read_order) x (20 s + 5 s
 // kill-after) + 48 Redfish reads x 15 s + 60 s publish. The SMpro term was the literal 10 until #13058
 // grew the read order to 24 registers per socket, which left this claim red on main.
-test fn the_allowance_is_the_sum_of_the_bounds() -> Bool {
+test fn the_allowance_is_the_sum_of_the_bounds() -> Bool  {
   (second_count(s: mtcollins1_boot_diagnostics_allowance()) as Int) == (4 + 2 * count(smpro_pass_read_order)) * 25 + mtcollins1_boot_redfish_read_budget * 15 + 60
 }
 
-test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool {
+test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool  {
   (match redfish_budget_refusal(url: "https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20", at: "t", left: 0, not_reached: member_not_reached(total: 32, read: 20)) {
     Present { value: BmcDeadlineReached { endpoint: _, at: _, not_reached: n } } => n == "12 of 32 member read(s)"
     _ => false
@@ -322,7 +322,7 @@ test fn a_spent_budget_refuses_the_read_and_names_what_was_not_reached() -> Bool
     && redfish_budget_refusal(url: "https://192.168.1.228/x", at: "t", left: 1, not_reached: "") == none
 }
 
-test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool {
+test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool  {
   let b = bundle_socket1_absent()
   let cause = BmcDeadlineReached { endpoint: "https://192.168.1.228/redfish/v1/Systems/Self/Memory/DIMM_20", at: "t", not_reached: member_not_reached(total: 32, read: 20) }
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro,
@@ -333,7 +333,7 @@ test fn a_partial_bundle_renders_the_reads_not_reached() -> Bool {
 
 // ── READ CAUSES ──────────────────────────────────────────────────────────────────────────────
 
-test fn curl_exit_codes_type_the_bmc_failure() -> Bool {
+test fn curl_exit_codes_type_the_bmc_failure() -> Bool  {
   let e: NonEmptyStr = "https://192.168.1.228/redfish/v1/Systems"
   let t: NonEmptyStr = "2026-09-23T01:00:00Z"
   (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 7, stderr: "") { BmcUnreachable { endpoint: ep, at: at, detail: _ } => (ep as String) == (e as String) && (at as String) == (t as String) _ => false })
@@ -342,7 +342,7 @@ test fn curl_exit_codes_type_the_bmc_failure() -> Bool {
     && (match bmc_curl_read_cause(endpoint: e, at: t, exit_code: 22, stderr: "curl: (22) The requested URL returned error: 404") { BmcHttpRefused { endpoint: _, at: _, detail: _ } => true _ => false })
 }
 
-test fn an_ipmi_session_failure_is_not_split_into_a_guess() -> Bool {
+test fn an_ipmi_session_failure_is_not_split_into_a_guess() -> Bool  {
   match bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T01:00:00Z", exit_code: 1, stderr: "Error: Unable to establish IPMI v2 / RMCP+ session") {
     BmcSessionUnestablished { endpoint: _, at: _, detail: _ } => true
     _ => false
@@ -351,20 +351,20 @@ test fn an_ipmi_session_failure_is_not_split_into_a_guess() -> Bool {
 
 // ── THE SEL DELTA OVER THIS BMC'S OWN ROWS ───────────────────────────────────────────────────
 
-test fn the_real_threshold_rows_of_this_bmc_are_read_not_refused() -> Bool {
+test fn the_real_threshold_rows_of_this_bmc_are_read_not_refused() -> Bool  {
   match sel_read(text: sel_before_fixture) {
     ObservationEstablished { observed: w } => count(w.events) == 2
     ObservationRefused { cause: _ } => false
   }
 }
 
-test fn the_delta_names_the_memory_event_and_not_the_cpu_voltage_sensor() -> Bool {
+test fn the_delta_names_the_memory_event_and_not_the_cpu_voltage_sensor() -> Bool  {
   let findings = found(bundle: bundle_socket1_absent())
   any_contains(xs: findings, pattern: "Memory DIMM_S1_A1 | Memory training failure")
     && !any_contains(xs: findings, pattern: "Voltage CPU1_0V75_PCP")
 }
 
-test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -> Bool {
+test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -> Bool  {
   let text = mtcollins1_boot_bundle_text(bundle: bundle_socket1_absent())
   contains(text, "delta: 3 new record(s) (1 OEM, kept opaque)")
     && contains(text, "OEM record, manufacturer 00cd3a, bytes 0fde70330102 (OEM-defined; not decoded)")
@@ -376,7 +376,7 @@ test fn the_render_keeps_raw_records_beside_the_decode_and_counts_oem_opaque() -
 // A SHORTFALL IS JUDGED AGAINST THE ATTEMPT'S RECEIPT, never the historical census (law 6). With the
 // production receipt (nothing recorded) none is minted and the open question says so; a receipt that
 // does expect two sockets finds the one listed processor short.
-test fn with_no_recorded_topology_a_missing_processor_is_a_question_not_a_shortfall() -> Bool {
+test fn with_no_recorded_topology_a_missing_processor_is_a_question_not_a_shortfall() -> Bool  {
   let f = found(bundle: bundle_socket1_absent())
   !any_contains(xs: f, pattern: "Processor member(s);") && any_contains(xs: f, pattern: "the expected topology was not recorded for this attempt")
 }
@@ -400,13 +400,13 @@ fn processor_also_socket0() -> List<RedfishProcessorMember> {
   }
 }
 
-test fn a_receipt_expecting_two_sockets_finds_socket_1_missing() -> Bool {
+test fn a_receipt_expecting_two_sockets_finds_socket_1_missing() -> Bool  {
   any(processor_anomalies(processors: MembersRead { members: processors_socket0_only() }, receipt: expecting_two_sockets()), a => match a { ProcessorMissingOnExpectedSocket { socket: k } => k == 1 _ => false })
 }
 
 // RED (count is not completeness): two members, both naming socket 0, against an expectation of [0, 1]
 // -- a count would call it complete; per socket, socket 0 is duplicated and socket 1 is missing.
-test fn two_members_both_on_socket_0_leave_socket_1_missing_and_socket_0_duplicated() -> Bool {
+test fn two_members_both_on_socket_0_leave_socket_1_missing_and_socket_0_duplicated() -> Bool  {
   let xs = processor_anomalies(processors: MembersRead { members: concat(processors_socket0_only(), processor_also_socket0()) }, receipt: expecting_two_sockets())
   any(xs, a => match a { ProcessorMissingOnExpectedSocket { socket: k } => k == 1 _ => false })
     && any(xs, a => match a { ProcessorSocketDuplicated { socket: k, members: ms } => k == 0 && count(ms) == 2 _ => false })
@@ -427,18 +427,18 @@ fn socket1_absent_kind(xs: List<BmcAnomaly>) -> Bool {
 
 // RED (the union of sockets): the receipt records one DIMM on socket 1 and the collection is complete
 // with members on socket 0 only -- socket 1 never appears in the collection, and is still reported.
-test fn a_recorded_socket_the_collection_never_mentions_is_reported() -> Bool {
+test fn a_recorded_socket_the_collection_never_mentions_is_reported() -> Bool  {
   socket1_absent_kind(xs: memory_anomalies(memory: MembersRead { members: parsed_memory(body: memory_member_present_fixture) }, receipt: receipt_with_rows(rows: [SlotRow { label: "DIMM 1", socket: 1, populated: true }])))
 }
 
-test fn an_absent_member_is_an_anomaly_only_against_a_recorded_population() -> Bool {
+test fn an_absent_member_is_an_anomaly_only_against_a_recorded_population() -> Bool  {
   let members = MembersRead { members: concat(parsed_memory(body: memory_member_present_fixture), socket1_absent_members()) }
   !any_contains(xs: found(bundle: bundle_socket1_absent()), pattern: "socket-1 Memory member(s) State=Absent")
     && socket1_absent_kind(xs: memory_anomalies(memory: members, receipt: receipt_with_rows(rows: [SlotRow { label: "DIMM 1", socket: 1, populated: true }])))
     && !socket1_absent_kind(xs: memory_anomalies(memory: members, receipt: receipt_with_rows(rows: [SlotRow { label: "DIMM 1", socket: 1, populated: false }])))
 }
 
-test fn the_findings_reach_the_one_line_refusal() -> Bool {
+test fn the_findings_reach_the_one_line_refusal() -> Bool  {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_findings(bundle: bundle_socket1_absent())) {
     ExitFailure { code: _, reason: r } => contains(r, "mtcollins1 boot: host qualification REFUSED | power-on account: ") && contains(r, "sensor CPU1_CPU_VCORE status ns")
     ExitSuccess => false
@@ -447,12 +447,12 @@ test fn the_findings_reach_the_one_line_refusal() -> Bool {
 
 // ── THE BUNDLE NEVER FLIPS THE VERDICT ───────────────────────────────────────────────────────
 
-test fn findings_never_turn_a_success_into_a_failure() -> Bool {
+test fn findings_never_turn_a_success_into_a_failure() -> Bool  {
   count(found(bundle: bundle_socket1_absent())) > 0 && match mtcollins1_boot_outcome_with_findings(outcome: ExitSuccess, findings: mtcollins1_boot_findings(bundle: bundle_socket1_absent())) { ExitSuccess => true _ => false }
 }
 
 // A REFUSAL KEEPS ITS OWN REASON FIRST; the account is appended, never substituted.
-test fn a_refusal_keeps_its_reason_first() -> Bool {
+test fn a_refusal_keeps_its_reason_first() -> Bool  {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "r"), findings: mtcollins1_boot_findings(bundle: bundle_bmc_silent())) {
     ExitFailure { code: _, reason: r } => starts_with(s: r, prefix: "r | power-on account: ")
     ExitSuccess => false
@@ -463,14 +463,14 @@ test fn a_refusal_keeps_its_reason_first() -> Bool {
 
 // IPMI's session failure cannot say "did not answer", so beside a Redfish connect failure the
 // aggregate names both kinds instead of a verdict on the BMC.
-test fn an_ambiguous_ipmi_failure_is_not_rendered_as_did_not_answer() -> Bool {
+test fn an_ambiguous_ipmi_failure_is_not_rendered_as_did_not_answer() -> Bool  {
   let findings = found(bundle: bundle_bmc_silent())
   any_contains(xs: findings, pattern: "every BMC read failed (no IPMI session (unreachable and credential-refused are indistinguishable); unreachable); first: no IPMI session at ipmi lanplus 192.168.1.228 (2026-09-23T00:59:00Z")
     && !any_contains(xs: findings, pattern: "did not answer")
 }
 
 // Only an aggregate made wholly of definitive no-answer causes says the BMC did not answer.
-test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool {
+test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool  {
   let b = bundle_bmc_silent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T00:59:00Z", exit_code: 124, stderr: "")
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: SelSnapshotUnread { cause: timeout }, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: SdrCacheUnread { cause: timeout }, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
@@ -480,7 +480,7 @@ test fn only_definitive_no_answers_say_the_bmc_did_not_answer() -> Bool {
 // THE DISCRIMINATING CONTROL for the aggregate: the SDR dump and the sensor read answer while
 // both SEL reads and both Redfish reads fail. The BMC answered, so this is not "every read failed",
 // and each failed section still carries its own cause.
-test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool {
+test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool  {
   let b = bundle_bmc_silent()
   let good = bundle_socket1_absent()
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after,
@@ -493,13 +493,13 @@ test fn a_bmc_that_answered_on_the_sensor_channel_is_not_all_failed() -> Bool {
 
 // The same bundle with the sensor channel failing too is all-failed, and names every failed channel;
 // the sensor read that was never attempted (no cache) is not listed as failed.
-test fn the_all_failed_finding_names_its_channels() -> Bool {
+test fn the_all_failed_finding_names_its_channels() -> Bool  {
   let findings = found(bundle: bundle_bmc_silent())
   any_contains(xs: findings, pattern: "; failed channels: ipmi sel before, ipmi sel after, ipmi sdr dump, redfish memory, redfish processors")
     && !any_contains(xs: findings, pattern: "ipmi sdr elist")
 }
 
-test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool {
+test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool  {
   let text = mtcollins1_boot_bundle_text(bundle: bundle_bmc_silent())
   contains(text, "before: UNREAD: no IPMI session")
     && contains(text, "processors: UNREAD: BMC unreachable at https://192.168.1.228/redfish/v1/Systems (2026-09-23T01:10:00Z)")
@@ -511,7 +511,7 @@ test fn a_silent_bmc_still_renders_every_section_with_its_cause() -> Bool {
 // THE MUTATION CONTROL. Deleting any one section's line from mtcollins1_boot_bundle_text turns
 // this claim red, because it asserts each section by its header AND by the reading it carries on
 // an arm where nothing was read.
-test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_section() -> Bool {
+test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_section() -> Bool  {
   let why: NonEmptyStr = "the attempt ended before the BMC credential was read (refused: mtcollins1 boot: approval window expired; controller untouched)"
   let bundle = MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(),
     attempt: AttemptRunId { run_id: "1" },
@@ -540,7 +540,7 @@ test fn a_bundle_from_an_attempt_that_never_reached_the_bmc_names_why_in_every_s
 // THE REAL PRODUCER OF AN EARLY TERMINAL: mtcollins1_boot_ended_before_bmc is what every
 // pre-credential return in mtcollins1_boot_wet_on_srv1 goes through, and its reason is what the
 // bundle's NOT TAKEN sections carry.
-test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool {
+test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool  {
   match mtcollins1_boot_ended_before_bmc(outcome: exit_failure(reason: "mtcollins1 boot: GITHUB_SHA is unset")).bmc {
     BmcAccessNotReached { reason: r } => contains(r as String, "GITHUB_SHA is unset")
     _ => false
@@ -549,14 +549,14 @@ test fn an_early_refusal_carries_its_own_reason_into_the_bmc_sections() -> Bool 
 
 // ── THE PRE-OS CONSOLE ───────────────────────────────────────────────────────────────────────
 
-test fn a_capture_outside_the_uploaded_glob_is_reported_not_retained() -> Bool {
+test fn a_capture_outside_the_uploaded_glob_is_reported_not_retained() -> Bool  {
   match mtcollins1_boot_console_reading(path: "/tmp/sol.capture", size: byte_size(count: 1), capture: "x", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
     ConsoleNotRetained { path: _ } => true
     _ => false
   }
 }
 
-test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
+test fn a_retained_capture_reports_its_firmware_statement() -> Bool  {
   let capture = "ERROR: Non-identical DIMM mixture NOT supported!\n"
   match mtcollins1_boot_console_reading(path: "/w/artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 51), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
     ConsoleRetained { path: _, size: b, lines: _, firmware: f, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: _, nvparam: _, span_readings: _ } => (byte_size_count(b: b) as Int) == 51 && match f { TrainingRefusedByFirmware { statement: _, locus: _ } => true _ => false }
@@ -566,7 +566,7 @@ test fn a_retained_capture_reports_its_firmware_statement() -> Bool {
 
 // THE BOUND IS DECIDED ON stat's BYTE COUNT, not on the String: a capture whose stat size exceeds
 // the bound is reported over it even when its content is short.
-test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool {
+test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool  {
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 16777217), capture: "", read_ok: true, read_error: "", capture_digest: unread_digest, reference: no_reference) {
     ConsoleExceedsBound { path: _, size: s, bound: b } => (byte_size_count(b: s) as Int) == 16777217 && (byte_size_count(b: b) as Int) == 16777216
     _ => false
@@ -575,7 +575,7 @@ test fn a_capture_over_the_byte_bound_is_reported_whole() -> Bool {
 
 // ── THE ATTEMPT'S IDENTITY ───────────────────────────────────────────────────────────────────
 
-test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
+test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool  {
   (match mtcollins1_boot_attempt_identity(read: ActionsVariableAbsent { variable: "GITHUB_RUN_ID", detail: "not set" }) {
     AttemptIdentityUnavailable { variable: v, detail: d } => (v as String) == "GITHUB_RUN_ID" && d == "not set"
     _ => false
@@ -583,7 +583,7 @@ test fn a_missing_run_id_is_a_typed_unavailable_identity_not_a_blank() -> Bool {
     && (match mtcollins1_boot_attempt_identity(read: ActionsVariablePresent { value: "35801475989" }) { AttemptRunId { run_id: r } => (r as String) == "35801475989" _ => false })
 }
 
-test fn the_unavailable_identity_is_rendered_as_such() -> Bool {
+test fn the_unavailable_identity_is_rendered_as_such() -> Bool  {
   let b = bundle_bmc_silent()
   let bundle = MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptIdentityUnavailable { variable: "GITHUB_RUN_ID", detail: "not set" }, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: b.console, run: no_run(), screen: no_screen() }
   contains(mtcollins1_boot_bundle_text(bundle: bundle), "attempt=UNAVAILABLE: GITHUB_RUN_ID could not be read: not set")
@@ -591,7 +591,7 @@ test fn the_unavailable_identity_is_rendered_as_such() -> Bool {
 
 // THE DRAM FIRMWARE'S EMPTY SOCKET REACHES THE ONE-LINE REFUSAL through the real console route
 // (mtcollins1_boot_console_reading -> ampere_dram_console_observation -> bundle findings).
-test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool {
+test fn an_empty_dram_socket_in_the_console_reaches_the_refusal() -> Bool  {
   let capture = "NOTICE:  DRAM FW version 210525\r\nMEMC param:\r\n  mcu_enable_mask = 00000011 [default: 000000ff]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[b3:80] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\n"
   let bundle = MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(),
     attempt: AttemptRunId { run_id: "35801475989" },
@@ -626,24 +626,24 @@ fn reference_of(text: String) -> ReferenceCaptureRead {
   ReferenceCaptureRead { text: text, ok: true, error: "", digest: unread_digest }
 }
 
-test fn a_dark_socket_rail_reaches_the_refusal_through_the_bundle() -> Bool {
+test fn a_dark_socket_rail_reaches_the_refusal_through_the_bundle() -> Bool  {
   match mtcollins1_boot_outcome_with_findings(outcome: exit_failure(reason: "mtcollins1 boot: host qualification REFUSED"), findings: mtcollins1_boot_findings(bundle: bundle_socket1_absent())) {
     ExitFailure { code: _, reason: r } => contains(r, "sensor CPU1_CPU_VCORE status ns") && contains(r, "sensor CPU1_0V75_PCP status ns") && !contains(r, "CPU0_")
     ExitSuccess => false
   }
 }
 
-test fn the_sensor_section_is_rendered_per_socket() -> Bool {
+test fn the_sensor_section_is_rendered_per_socket() -> Bool  {
   let text = mtcollins1_boot_bundle_text(bundle: bundle_socket1_absent())
   contains(text, "== bmc sensors (ipmi sdr elist) ==") && contains(text, "socket 1 (CPU1_ sensors: 2 with a reading, 0 without)")
     && contains(text, "socket 0 (CPU0_ sensors: 2 with a reading, 1 without)")
 }
 
-test fn an_unread_sensor_section_says_why() -> Bool {
+test fn an_unread_sensor_section_says_why() -> Bool  {
   contains(mtcollins1_boot_bundle_text(bundle: bundle_bmc_silent()), "NOT TAKEN: no SDR cache was dumped")
 }
 
-test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
+test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool  {
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Number of active cores      : 80\r\n    Socket[0]: Core voltage     : 1065\r\n[    0.08] {2}[Hardware Error]: Hardware error from APEI Generic Hardware Error Source: 2\r\n[    0.08] {2}[Hardware Error]: event severity: info\r\n[    0.08] {2}[Hardware Error]:   section type: unknown, e8ed898d-df16-43cc-8ecc-54f060ef157f\r\n[    0.08] {2}[Hardware Error]:   00000000: 000003ce 22440074 00000000 00000000  ....t.D\"........\r\n"
   let b = bundle_socket1_absent()
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory,
@@ -655,7 +655,7 @@ test fn a_one_socket_firmware_summary_reaches_the_refusal() -> Bool {
 }
 
 // A supplied two-socket reference reaches the bundle's text as named differences.
-test fn a_supplied_reference_renders_its_differences() -> Bool {
+test fn a_supplied_reference_renders_its_differences() -> Bool  {
   let reference = "UEFI RC version: 1.08\r\n    Number of active sockets    : 2\r\n    Inter Socket Connection 0   : Width: x16 / Speed 25 GT/s\r\n    Socket[0]: Core voltage     : 1065\r\n    Socket[1]: Core voltage     : 1035\r\n"
   let capture = "UEFI RC version: 1.08\r\n    Number of active sockets    : 1\r\n    Socket[0]: Core voltage     : 1065\r\n"
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 100), capture: capture, read_ok: true, read_error: "", capture_digest: unread_digest, reference: reference_of(text: reference)) {
@@ -677,7 +677,7 @@ fn smpro_raw(socket: Int, register: NonEmptyStr, exit_code: Int, stdout: String,
   SmproProbeRaw { sequence: 0, socket: socket, register: register, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-24T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
 
-test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
+test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool  {
   let b = bundle_socket1_absent()
   let outcomes = [
     smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: "cd 3a", stderr: "")),
@@ -696,7 +696,7 @@ test fn a_socket_one_smpro_stage_reaches_the_refusal() -> Bool {
 
 // A NAK FROM THE BMC IS AN ANSWER: a pass where SEL, SDR and Redfish all failed but the SMpro probe
 // came back with completion code 83h is not "every BMC read failed".
-test fn an_smpro_nak_means_the_bmc_answered() -> Bool {
+test fn an_smpro_nak_means_the_bmc_answered() -> Bool  {
   let b = bundle_bmc_silent()
   let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
@@ -708,7 +708,7 @@ test fn an_smpro_nak_means_the_bmc_answered() -> Bool {
 // AN EXIT-ZERO RESPONSE THAT DID NOT PARSE IS STILL THE BMC ANSWERING: with SEL, SDR and Redfish all
 // failed and the SMpro returning one byte, neither 'every BMC read failed' nor 'did not answer' is
 // rendered, and the probe keeps its MALFORMED standing in the dossier.
-test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool {
+test fn a_malformed_smpro_answer_means_the_bmc_answered() -> Bool  {
   let b = bundle_bmc_silent()
   let bad = smpro_probe_outcome(raw: smpro_raw(socket: 0, register: smpro_manufacturer_id_reg.name, exit_code: 0, stdout: " cd\n", stderr: ""))
   let bundle = MtCollins1BootDiagnosticBundle { configuration: b.configuration, attempt: b.attempt, outcome: b.outcome, sel_before: b.sel_before, sel_after: b.sel_after, sdr_cache: b.sdr_cache, sensors: b.sensors,
@@ -730,14 +730,14 @@ data link_b: NonEmptyStr = "/redfish/v1/Systems/Self/Memory/DIMM_B"
 
 data memory_collection_path: NonEmptyStr = "/redfish/v1/Systems/Self/Memory"
 
-test fn duplicate_member_links_refuse_the_collection() -> Bool {
+test fn duplicate_member_links_refuse_the_collection() -> Bool  {
   match redfish_collection_assembly(pages: [page(links: [link_a as String, link_a as String], total: Present { value: 2 }, next: none)], member_bound: 40) {
     CollectionRefused { detail: d } => contains(d as String, "is listed more than once")
     CollectionComplete { links: _ } => false
   }
 }
 
-test fn a_later_page_disagreeing_on_the_count_refuses_the_collection() -> Bool {
+test fn a_later_page_disagreeing_on_the_count_refuses_the_collection() -> Bool  {
   match redfish_collection_assembly(pages: [
     page(links: [link_a as String], total: Present { value: 2 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=1" }),
     page(links: [link_b as String], total: Present { value: 3 }, next: none),
@@ -747,7 +747,7 @@ test fn a_later_page_disagreeing_on_the_count_refuses_the_collection() -> Bool {
   }
 }
 
-test fn two_links_returning_one_id_leave_the_section_unread() -> Bool {
+test fn two_links_returning_one_id_leave_the_section_unread() -> Bool  {
   match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
     MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
     MemberBody { link: link_b, body: dimm_body(odata_id: link_b as String, id: "DIMM_A", socket: 0) },
@@ -757,7 +757,7 @@ test fn two_links_returning_one_id_leave_the_section_unread() -> Bool {
   }
 }
 
-test fn a_member_answering_as_another_resource_leaves_the_section_unread() -> Bool {
+test fn a_member_answering_as_another_resource_leaves_the_section_unread() -> Bool  {
   match assemble_memory_members(collection: memory_collection_path, at: "t", bodies: [
     MemberBody { link: link_a, body: dimm_body(odata_id: link_a as String, id: "DIMM_A", socket: 0) },
     MemberBody { link: link_b, body: dimm_body(odata_id: link_a as String, id: "DIMM_B", socket: 0) },
@@ -768,7 +768,7 @@ test fn a_member_answering_as_another_resource_leaves_the_section_unread() -> Bo
 }
 
 // CONTROL: two distinct links, a stable total and distinct matching ids are complete and read.
-test fn distinct_links_stable_total_and_matching_ids_are_complete() -> Bool {
+test fn distinct_links_stable_total_and_matching_ids_are_complete() -> Bool  {
   let links = match redfish_collection_assembly(pages: [
     page(links: [link_a as String], total: Present { value: 2 }, next: Present { value: "/redfish/v1/Systems/Self/Memory?$skip=1" }),
     page(links: [link_b as String], total: Present { value: 2 }, next: none),
@@ -790,14 +790,14 @@ fn system_body(odata_id: String) -> String {
   concat("{\"@odata.id\": \"", odata_id, "\", \"Id\": \"Self\", \"Memory\": {\"@odata.id\": \"/redfish/v1/Systems/Self/Memory\"}, \"Processors\": {\"@odata.id\": \"/redfish/v1/Systems/Self/Processors\"}}")
 }
 
-test fn a_system_answering_as_another_resource_is_refused() -> Bool {
+test fn a_system_answering_as_another_resource_is_refused() -> Bool  {
   match mtcollins1_system_inventory_links(requested: system_link_a, body: system_body(odata_id: "/redfish/v1/Systems/Other")) {
     ObservationRefused { cause: c } => contains(c as String, "system link /redfish/v1/Systems/Self returned the resource /redfish/v1/Systems/Other")
     ObservationEstablished { observed: _ } => false
   }
 }
 
-test fn a_system_answering_at_its_own_link_yields_its_inventory_links() -> Bool {
+test fn a_system_answering_at_its_own_link_yields_its_inventory_links() -> Bool  {
   match mtcollins1_system_inventory_links(requested: system_link_a, body: system_body(odata_id: "/redfish/v1/Systems/Self")) {
     ObservationEstablished { observed: l } => l.memory == Present { value: "/redfish/v1/Systems/Self/Memory" } && l.processors == Present { value: "/redfish/v1/Systems/Self/Processors" }
     ObservationRefused { cause: _ } => false
@@ -812,7 +812,7 @@ test fn a_system_answering_at_its_own_link_yields_its_inventory_links() -> Bool 
 // supplies byte_size(count: <literal>), so the one Int-to-Nat crossing on the real path was never
 // evaluated by any claim. This one evaluates it on the size stat(1) prints: restoring `n as Nat`
 // turns it red with the run's own error.
-test fn a_stat_size_crosses_to_its_byte_size() -> Bool {
+test fn a_stat_size_crosses_to_its_byte_size() -> Bool  {
   match console_size_of_stat(size_text: "31449\n") {
     Present { value: b } => (byte_size_count(b: b) as Int) == 31449
     Absent => false
@@ -820,7 +820,7 @@ test fn a_stat_size_crosses_to_its_byte_size() -> Bool {
 }
 
 // CONTROL: a size stat(1) cannot have printed is no size, never its magnitude or a zero.
-test fn a_negative_or_non_numeric_stat_size_is_no_size() -> Bool {
+test fn a_negative_or_non_numeric_stat_size_is_no_size() -> Bool  {
   (match console_size_of_stat(size_text: "-1") { Absent => true Present { value: _ } => false })
     && (match console_size_of_stat(size_text: "stat: cannot statx") { Absent => true Present { value: _ } => false })
 }
@@ -828,7 +828,7 @@ test fn a_negative_or_non_numeric_stat_size_is_no_size() -> Bool {
 // THE SPECIMEN'S SEL SHAPE: before read, after timed out. The bundle renders the typed timeout in
 // the after section, mints no SEL delta from half a window, and the verdict is the one the rest
 // of the attempt supports: a success stays a success, a refusal keeps its reason.
-test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() -> Bool {
+test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() -> Bool  {
   let b = bundle_socket1_absent()
   let timeout = bmc_ipmitool_read_cause(endpoint: "ipmi lanplus 192.168.1.228", at: "2026-09-23T15:12:43Z", exit_code: 124, stderr: "")
   let bundle = MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptRunId { run_id: "35871654468" }, outcome: "accepted", sel_before: b.sel_before, sel_after: SelSnapshotUnread { cause: timeout }, sdr_cache: b.sdr_cache, sensors: b.sensors, smpro: b.smpro, inventory: b.inventory, console: ConsoleNotConfigured, run: no_run(), screen: no_screen() }
@@ -845,7 +845,7 @@ test fn a_post_boot_sel_timeout_is_a_typed_after_section_and_moves_no_verdict() 
 // only DSP0266's fixed service root and follows the Systems link that root publishes. The bodies are
 // SPEC-SHAPED (DMTF ServiceRoot schema), not observed: no service-root response from mtcollins1 is in
 // the corpus.
-test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool {
+test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool  {
   match mtcollins1_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Systems\": {\"@odata.id\": \"/redfish/v1/Systems\"}}", at: "t") {
     ObservationEstablished { observed: p } => (p as String) == "/redfish/v1/Systems"
     ObservationRefused { cause: _ } => false
@@ -853,7 +853,7 @@ test fn the_systems_collection_is_the_link_the_service_root_publishes() -> Bool 
 }
 
 // A root that publishes no Systems link is that typed absence, not an empty inventory.
-test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool {
+test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool  {
   match mtcollins1_systems_link(root_body: "{\"@odata.id\": \"/redfish/v1/\", \"Managers\": {\"@odata.id\": \"/redfish/v1/Managers\"}}", at: "t") {
     ObservationRefused { cause: BmcLinkUnpublished { endpoint: e, at: _, property: p } } => (p as String) == "Systems" && (e as String) == "https://192.168.1.228/redfish/v1/"
     _ => false
@@ -861,7 +861,7 @@ test fn a_service_root_without_a_systems_link_is_an_unpublished_link() -> Bool {
 }
 
 // A Systems link off the service's own origin is refused before a credential is presented to it.
-test fn a_cross_origin_systems_link_is_refused() -> Bool {
+test fn a_cross_origin_systems_link_is_refused() -> Bool  {
   match mtcollins1_systems_link(root_body: "{\"Systems\": {\"@odata.id\": \"https://elsewhere.example/redfish/v1/Systems\"}}", at: "t") {
     ObservationRefused { cause: BmcResponseMalformed { endpoint: _, at: _, detail: d } } => contains(d, "service root Systems link refused")
     _ => false
@@ -897,34 +897,34 @@ fn consumption(before: String, after: String) -> BootOverrideConsumption {
   consumption_with(before: before, after: after, census_ended: true)
 }
 
-test fn an_override_gone_after_a_census_boot_is_consumed_by_it() -> Bool {
+test fn an_override_gone_after_a_census_boot_is_consumed_by_it() -> Bool  {
   match consumption(before: p5_consumed, after: p5_consumed) { OverrideConsumedByCensusBoot => true _ => false }
     && count(override_harness(c: consumption(before: p5_consumed, after: p5_consumed))) == 0
 }
 
 // REVIEW 71115: an override no longer pending is not a consumption without the discriminator. The
 // BMC's own valid-bit timeout, a power-off or another writer clears it too.
-test fn an_override_gone_without_a_census_boot_is_only_no_longer_pending() -> Bool {
+test fn an_override_gone_without_a_census_boot_is_only_no_longer_pending() -> Bool  {
   match consumption_with(before: p5_consumed, after: p5_consumed, census_ended: false) { OverrideNoLongerPendingAfterAttempt => true _ => false }
 }
 
-test fn an_override_still_pending_after_the_attempt_was_not_consumed() -> Bool {
+test fn an_override_still_pending_after_the_attempt_was_not_consumed() -> Bool  {
   match consumption(before: p5_consumed, after: p5_pending()) { OverrideStillPendingAfterAttempt => true _ => false }
     && count(override_harness(c: consumption(before: p5_consumed, after: p5_pending()))) == 1
 }
 
-test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it() -> Bool {
+test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it() -> Bool  {
   match consumption(before: p5_pending(), after: p5_consumed) { OverridePendingBeforeAttempt => true _ => false }
 }
 
-test fn consumption_without_a_read_is_never_minted() -> Bool {
+test fn consumption_without_a_read_is_never_minted() -> Bool  {
   match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: mtcollins1_cdrom_selection, booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }
 }
 
-test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Bool {
+test fn power_off_after_the_census_end_marker_is_expected_not_a_finding() -> Bool  {
   let expected = power_after_attempt(observation: ChassisPowerRead { power_on: false }, census_ended: true)
   let unexpected = power_after_attempt(observation: ChassisPowerRead { power_on: false }, census_ended: false)
   (match expected { PoweredOffAfterCensusEnd => true _ => false })
@@ -955,7 +955,7 @@ data run_37069907299_sel_after: String = " c20 | 10/02/2026 | 05:58:34 PM UTC | 
 // the firmware summary's first line, all the route needs; excerpt sha256 f12b720e3e71d24ab05746ae4b7c8a91faae505759220faeccfb2942bb04e258.
 data run_37069907299_firmware: String = "[SOL Session operational.  Use ~? for help]\nCheckpoint B4\r\n\0NOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nNOTICE:  DRAM FW version 210525\r\nCP: 0ff00900\r\nMEMC param:\r\n  mcu_enable_mask = 00000001 [default: 000000ff]\r\nMCU param:\r\n  ecc_en = 00000002 [default: 00000001]\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM[ad:80] 16GB 2666 ECC 1R x4 RCD[32:86] HMA82GR7AFR4N-VK    \r\nCP: 3ff00100\r\nCP: 3ff00200\r\nCP: 00f01902\r\nCP: 0ff00a00\r\nCP: 0ff00b01\r\nCP: 00f01901\r\nCP: 00f01904\r\nCP: 00f02901\r\nCP: 00f01905\r\nCP: 00f02902\r\nCP: 00f02903\r\nCP: 00f02904\r\nCP: 00f01907\r\nCP: 00f01906\r\nCP: 00f01908\r\nCP: 00f01909\r\nCP: 0ff00b02\r\nCP: 0ff00c00\r\nCP: 3ff00300\r\nCP: 00001a02\r\nCP: 00001a03\r\nCP: 00001a04\r\nCP: 00001a05\r\nCP: 00f01a07\r\nCP: 00001a09\r\nCP: 00001a0a\r\nCP: 00001a0b\r\nCP: 00001a0c\r\nCP: 00001a0c\r\nCP: 3ff00400\r\nCP: 0ff01000\r\nCP: 0ff01101\r\nDRAM ECC Initialization: [6] [ ==>                  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [12] [ ===>                 ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [18] [ ====>                ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [25] [ ======>              ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [31] [ =======>             ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [37] [ ========>            ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [43] [ =========>           ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [50] [ ===========>         ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [56] [ ============>        ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [62] [ =============>       ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [68] [ ==============>      ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [75] [ ================>    ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [81] [ =================>   ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [87] [ ==================>  ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [93] [ ===================> ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08DRAM ECC Initialization: [100] [ ==================== ]\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\x08\r\nCP: 0ff01200\r\nCP: 3ff00800\r\nDRAM memory regions:\r\n  Node[0] Region[0]: 0x000080000000 - 0x0000bfffffff \r\n  Node[0] Region[1]: 0x080000000000 - 0x08007fffffff \r\n  Node[0] Region[2]: 0x0800c0000000 - 0x0803ffffffff \r\nDRAM: 16GB DDR4 2666 SYMBOL ECC\r\nCheckpoint 2F\r\nCheckpoint 2E\r\nCheckpoint 31\r\nCheckpoint 32\r\nUEFI RC version: 1.08\r\n"
 
-test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool {
+test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool  {
   let b = bundle_bmc_silent()
   let bundle = MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(), attempt: AttemptRunId { run_id: "37069907299" }, outcome: b.outcome,
     sel_before: SelSnapshotRead { raw: run_37069907299_sel_before, at: "2026-10-02T22:12:06Z" }, sel_after: SelSnapshotRead { raw: run_37069907299_sel_after, at: "2026-10-02T22:21:30Z" },
@@ -970,7 +970,7 @@ test fn the_real_route_binds_two_dram_spans_to_two_typed_cycles() -> Bool {
 
 // GAP 4: THE ERROR-RECORD REGISTERS ARE THEIR OWN CARRIER. CUR/BOOTSTAGE read while GPI_RAS_ERR and the
 // record words refused is a read progress carrier and a refused or partial error-record carrier.
-test fn refused_error_registers_beside_a_read_stage_pair_are_their_own_coverage_gap() -> Bool {
+test fn refused_error_registers_beside_a_read_stage_pair_are_their_own_coverage_gap() -> Bool  {
   let b = bundle_socket1_absent()
   let nak = "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"
   let outcomes = [

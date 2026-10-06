@@ -431,7 +431,7 @@ fn refused_with(standing: BmcSecureStanding, expected: BmcSecureRefusalCause) ->
 // rotation advanced the epoch, the managed credential authenticates after it,
 // the published credential does not — and the phase is satisfied. Without this
 // arm every refusal below would also pass on a function that refused always.
-test fn nominal_rotation_secures_the_bmc() -> Bool {
+test fn nominal_rotation_secures_the_bmc() -> Bool  {
   let standing = derive_dev(observation: nominal_rotation())
   let satisfied = match standing.outcome {
     BmcSecured { endpoint: e, reference: r, evidence: ev, latest_admitted_probe_at: at, published_credential: acc } =>
@@ -443,7 +443,7 @@ test fn nominal_rotation_secures_the_bmc() -> Bool {
 
 // review 65080: last census member used to overwrite latest_admitted_probe_at.
 // ch1 observed later than ch8; the standing must carry the max, not census order.
-test fn latest_admitted_probe_at_is_max_not_census_order() -> Bool {
+test fn latest_admitted_probe_at_is_max_not_census_order() -> Bool  {
   let later_on_first = CredentialRejected { evidence: evidence(label: "published-login-401"), observed_at: 1788000009000 }
   let earlier_on_second = CredentialRejected { evidence: evidence(label: "published-login-401-231"), observed_at: 1788000005500 }
   let standing = derive_dev(
@@ -473,7 +473,7 @@ test fn latest_admitted_probe_at_is_max_not_census_order() -> Bool {
 // working after rotation | BmcSecure refuses"). Identical to the positive
 // control in every other reading; the published credential still opens a
 // session, and the phase refuses.
-test fn published_credential_still_working_refuses() -> Bool {
+test fn published_credential_still_working_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -495,7 +495,7 @@ test fn published_credential_still_working_refuses() -> Bool {
 // UNESTABLISHED IS NOT RETIRED. An account service that did not answer must
 // not certify that the published credential stopped working; widening the
 // unknown into the good arm is the absorbing fallback DESIGN §5 names.
-test fn published_credential_retirement_unestablished_refuses() -> Bool {
+test fn published_credential_retirement_unestablished_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -519,7 +519,7 @@ test fn published_credential_retirement_unestablished_refuses() -> Bool {
 // A REJECTION READ BEFORE THE ROTATION IS NOT EVIDENCE ABOUT IT. The reading
 // is the right one and the ordering makes it worthless: it describes whatever
 // the controller answered before this attempt changed anything.
-test fn published_probe_before_rotation_refuses() -> Bool {
+test fn published_probe_before_rotation_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -543,7 +543,7 @@ test fn published_probe_before_rotation_refuses() -> Bool {
 // RED 1. Census of two addresses: .228 rejects, .231 accepts. Count of probes
 // equals members; identity join still refuses because one member accepts.
 // MUTATION: adjudicate_published_probe Accepted+require_closed -> Admitted mints BmcSecured.
-test fn split_lan_census_one_accepting_refuses() -> Bool {
+test fn split_lan_census_one_accepting_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -565,7 +565,7 @@ test fn split_lan_census_one_accepting_refuses() -> Bool {
 // adjudicate. MUTATION: replace CensusNotTaken with the retired single-host
 // path (sole rejecting probe mints BmcSecured). Deleting the arm so the
 // fold proceeds still refuses NoAddressableLanMember and is VOID.
-test fn single_address_without_census_refuses() -> Bool {
+test fn single_address_without_census_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -585,7 +585,7 @@ test fn single_address_without_census_refuses() -> Bool {
 
 // Equal probe/member counts without identity coverage is not coverage: ch8
 // has no matching probe, a probe for a third address does not cover it.
-test fn census_member_unprobed_refuses() -> Bool {
+test fn census_member_unprobed_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -609,7 +609,7 @@ test fn census_member_unprobed_refuses() -> Bool {
 // review 65057: a probe that agrees on channel and contradicts the assigned
 // IPv4 used to cover the member (OR join). A rejection at lan_228 cannot
 // close lan_231.
-test fn probe_that_agrees_on_channel_but_not_address_does_not_cover() -> Bool {
+test fn probe_that_agrees_on_channel_but_not_address_does_not_cover() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -630,7 +630,7 @@ test fn probe_that_agrees_on_channel_but_not_address_does_not_cover() -> Bool {
   )
 }
 
-test fn published_probe_unmatched_refuses() -> Bool {
+test fn published_probe_unmatched_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -650,7 +650,7 @@ test fn published_probe_unmatched_refuses() -> Bool {
   )
 }
 
-test fn published_probe_duplicate_refuses() -> Bool {
+test fn published_probe_duplicate_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -672,7 +672,7 @@ test fn published_probe_duplicate_refuses() -> Bool {
   )
 }
 
-test fn serial_only_census_is_not_vacuous_secure() -> Bool {
+test fn serial_only_census_is_not_vacuous_secure() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -692,7 +692,7 @@ test fn serial_only_census_is_not_vacuous_secure() -> Bool {
 
 // Discriminating pair: unaddressed LAN + ADMINISTRATOR refuses (the channel
 // would expose the factory account the moment it got an address).
-test fn unaddressed_lan_with_administrator_access_refuses() -> Bool {
+test fn unaddressed_lan_with_administrator_access_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -711,7 +711,7 @@ test fn unaddressed_lan_with_administrator_access_refuses() -> Bool {
 }
 
 // Discriminating pair: unaddressed LAN + NO ACCESS closes. Unit 1 channel 7.
-test fn unaddressed_lan_with_no_access_secures() -> Bool {
+test fn unaddressed_lan_with_no_access_secures() -> Bool  {
   let standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -732,7 +732,7 @@ test fn unaddressed_lan_with_no_access_secures() -> Bool {
 
 // review 65645: Get User Access is (channel, user). NO ACCESS for a different
 // user cannot close the published factory account on an unaddressed LAN member.
-test fn unaddressed_lan_no_access_for_other_user_does_not_close() -> Bool {
+test fn unaddressed_lan_no_access_for_other_user_does_not_close() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -753,7 +753,7 @@ test fn unaddressed_lan_no_access_for_other_user_does_not_close() -> Bool {
 // review 65304 / 65557: a census taken before rotation is not the join universe,
 // including when every member is assigned LAN. MUTATION: drop the
 // census_observed_at < applied_at arm in adjudicate_published_census_join.
-test fn census_before_rotation_refuses() -> Bool {
+test fn census_before_rotation_refuses() -> Bool  {
   let observation = observed_bmc_credential_rotation(
     subject: intake_subject,
     endpoint: controller,
@@ -774,7 +774,7 @@ test fn census_before_rotation_refuses() -> Bool {
   )
 }
 
-test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
+test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool  {
   let observation = observed_bmc_credential_rotation(
     subject: intake_subject,
     endpoint: controller,
@@ -799,7 +799,7 @@ test fn unaddressed_no_access_census_before_rotation_refuses() -> Bool {
 // label taken before rotation plus post-rotation rejecting LAN probes must not
 // mint BmcSecured. MUTATION: drop the account_at < applied_at arm in
 // adjudicate_published_census and this witness greens while still claiming Retired.
-test fn published_account_before_rotation_refuses() -> Bool {
+test fn published_account_before_rotation_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -820,7 +820,7 @@ test fn published_account_before_rotation_refuses() -> Bool {
   )
 }
 
-test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
+test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool  {
   let standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -839,7 +839,7 @@ test fn serial_channel_no_access_does_not_block_lan_secure() -> Bool {
   is_secured(standing: standing)
 }
 
-test fn serial_channel_with_administrator_access_refuses() -> Bool {
+test fn serial_channel_with_administrator_access_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -857,7 +857,7 @@ test fn serial_channel_with_administrator_access_refuses() -> Bool {
   )
 }
 
-test fn disabled_not_retired_is_a_secured_residual() -> Bool {
+test fn disabled_not_retired_is_a_secured_residual() -> Bool  {
   let standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -880,7 +880,7 @@ test fn disabled_not_retired_is_a_secured_residual() -> Bool {
   }
 }
 
-test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
+test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool  {
   let standing = derive_bmc_secure(
     subject: intake_subject,
     observation: rotation_observed(
@@ -903,7 +903,7 @@ test fn disabled_administrator_reenable_is_a_secured_residual() -> Bool {
   }
 }
 
-test fn break_glass_retention_secures_dev_test() -> Bool {
+test fn break_glass_retention_secures_dev_test() -> Bool  {
   let standing = derive_dev(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -922,7 +922,7 @@ test fn break_glass_retention_secures_dev_test() -> Bool {
   }
 }
 
-test fn retained_credential_refuses_under_production() -> Bool {
+test fn retained_credential_refuses_under_production() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -940,7 +940,7 @@ test fn retained_credential_refuses_under_production() -> Bool {
   )
 }
 
-test fn published_factory_retention_secures_dev_test_only_when_explicit() -> Bool {
+test fn published_factory_retention_secures_dev_test_only_when_explicit() -> Bool  {
   let standing = derive_dev(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -959,7 +959,7 @@ test fn published_factory_retention_secures_dev_test_only_when_explicit() -> Boo
   }
 }
 
-test fn published_factory_retention_refuses_under_production() -> Bool {
+test fn published_factory_retention_refuses_under_production() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -979,7 +979,7 @@ test fn published_factory_retention_refuses_under_production() -> Bool {
 
 // review 65136: a DevTest factory-retention standing is BMC-secured on purpose,
 // but derive_fleet_admission under the Production bar must not mint FleetAdmissible.
-test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -> Bool {
+test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -> Bool  {
   let standing = derive_dev(observation: rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1002,7 +1002,7 @@ test fn factory_retention_dev_test_ledger_is_not_production_fleet_admissible() -
   }
 }
 
-test fn factory_retention_without_acceptance_is_not_retained() -> Bool {
+test fn factory_retention_without_acceptance_is_not_retained() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1020,7 +1020,7 @@ test fn factory_retention_without_acceptance_is_not_retained() -> Bool {
   )
 }
 
-test fn managed_credential_rejected_refuses() -> Bool {
+test fn managed_credential_rejected_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1035,7 +1035,7 @@ test fn managed_credential_rejected_refuses() -> Bool {
   refused_with(standing: derive_dev(observation: observation), expected: ManagedCredentialRejected)
 }
 
-test fn managed_credential_unestablished_refuses() -> Bool {
+test fn managed_credential_unestablished_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1053,7 +1053,7 @@ test fn managed_credential_unestablished_refuses() -> Bool {
   )
 }
 
-test fn managed_probe_before_rotation_refuses() -> Bool {
+test fn managed_probe_before_rotation_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1074,7 +1074,7 @@ test fn managed_probe_before_rotation_refuses() -> Bool {
 // A ROTATION THAT RE-WRITES THE GENERATION THE UNIT ALREADY STOOD AT reports
 // progress it did not make, and every other reading in this observation is the
 // nominal one.
-test fn credential_epoch_not_advanced_refuses() -> Bool {
+test fn credential_epoch_not_advanced_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 1,
@@ -1092,7 +1092,7 @@ test fn credential_epoch_not_advanced_refuses() -> Bool {
   )
 }
 
-test fn rotation_not_attempted_refuses() -> Bool {
+test fn rotation_not_attempted_refuses() -> Bool  {
   let observation = observed_bmc_credential_rotation(
     subject: intake_subject,
     endpoint: controller,
@@ -1110,7 +1110,7 @@ test fn rotation_not_attempted_refuses() -> Bool {
   refused_with(standing: derive_dev(observation: observation), expected: CredentialRotationNotApplied)
 }
 
-test fn account_management_unavailable_refuses() -> Bool {
+test fn account_management_unavailable_refuses() -> Bool  {
   let observation = observed_bmc_credential_rotation(
     subject: intake_subject,
     endpoint: controller,
@@ -1134,7 +1134,7 @@ test fn account_management_unavailable_refuses() -> Bool {
 // A BOOTSTRAP CREDENTIAL THAT NO LONGER WORKS IS AN ACCESS STATE, NOT A PASS.
 // The controller is off its published default for some reason this attempt did
 // not produce, so the attempt cannot certify the retirement.
-test fn bootstrap_credential_already_rejected_refuses() -> Bool {
+test fn bootstrap_credential_already_rejected_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1149,7 +1149,7 @@ test fn bootstrap_credential_already_rejected_refuses() -> Bool {
   refused_with(standing: derive_dev(observation: observation), expected: PreviouslyRotatedCredentialRequired)
 }
 
-test fn bootstrap_credential_state_unknown_refuses() -> Bool {
+test fn bootstrap_credential_state_unknown_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1169,7 +1169,7 @@ test fn bootstrap_credential_state_unknown_refuses() -> Bool {
 
 // A ROTATION OBSERVED FOR ANOTHER ATTEMPT is not evidence about this one, even
 // on the same unit with every reading nominal.
-test fn rotation_observation_for_other_attempt_refuses() -> Bool {
+test fn rotation_observation_for_other_attempt_refuses() -> Bool  {
   let observation = rotation_observed(
     subj: other_attempt_subject,
     previous_epoch: 0,
@@ -1264,7 +1264,7 @@ fn refusal_cause_ordinal(cause: BmcSecureRefusalCause) -> Int {
 // from zero. Distinctness is what makes the length meaningful — copies of one
 // cause would satisfy a bare count — and contiguity is what
 // makes a rostered-but-misnumbered entry red.
-test fn roster_covers_every_refusal_cause() -> Bool {
+test fn roster_covers_every_refusal_cause() -> Bool  {
   let ordinals = fold(every_refusal_cause, init: [], f: (acc, c) => concat(acc, [refusal_cause_ordinal(cause: c)]))
   let distinct = fold(
     ordinals,
@@ -1280,7 +1280,7 @@ test fn roster_covers_every_refusal_cause() -> Bool {
 // UnitHardware refusal to a return clock against the seller. Measured over the
 // rostered causes, which is every cause the module declares today; the
 // forcing function that brings a new one here is described above.
-test fn no_credential_refusal_is_a_hardware_defect() -> Bool {
+test fn no_credential_refusal_is_a_hardware_defect() -> Bool  {
   let hardware_owned = fold(
     every_refusal_cause,
     init: 0,
@@ -1392,7 +1392,7 @@ fn disposition_with_bmc_secure(standing: BmcSecureStanding) -> MachineIntakeDisp
 // return window open, is a PartsHold owned by OperatorAction — never Admitted,
 // and never a ReturnWindow, which would file a credential the operator did not
 // rotate as a defect of the machine.
-test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
+test fn published_credential_still_working_blocks_fleet_admission() -> Bool  {
   let observation = rotation_observed(
     subj: intake_subject,
     previous_epoch: 0,
@@ -1422,7 +1422,7 @@ test fn published_credential_still_working_blocks_fleet_admission() -> Bool {
 // THE MATCHING POSITIVE. The same ledger with the retirement actually observed
 // admits, so the refusal above is attributable to the published credential and
 // not to anything else in the roster.
-test fn rotated_bmc_admits_the_unit() -> Bool {
+test fn rotated_bmc_admits_the_unit() -> Bool  {
   match disposition_with_bmc_secure(standing: derive_dev(observation: nominal_rotation())) {
     Present { value: d } =>
       match d {
@@ -1437,7 +1437,7 @@ test fn rotated_bmc_admits_the_unit() -> Bool {
 // The refused receipt carries the retirement failure as its cause, and the
 // satisfied one carries the four readings it rests on — so a reader of the
 // durable spine can tell which rotation secured the unit without this module.
-test fn phase_receipt_projects_the_standing() -> Bool {
+test fn phase_receipt_projects_the_standing() -> Bool  {
   let secured = derive_dev(observation: nominal_rotation())
   let good = bmc_secure_phase_receipt(standing: secured, producer: producer, started_at: 1788000000000, ended_at: 1788000009000, previous_receipt: none)
   let refused_standing = derive_bmc_secure(
@@ -1478,7 +1478,7 @@ test fn phase_receipt_projects_the_standing() -> Bool {
 // which is the point -- so what is executed is that the two attempts produce
 // receipts that a ledger tells apart: attempt one's receipt placed inside a
 // ledger whose genesis is attempt two's is refused on the subject it bears.
-test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
+test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool  {
   let standing_one = derive_dev(observation: nominal_rotation())
   let standing_two = derive_bmc_secure(
     subject: other_attempt_subject,
@@ -1511,7 +1511,7 @@ test fn a_standing_cannot_be_replayed_onto_another_attempt() -> Bool {
   both_secured && carries_own_attempt && mixed
 }
 
-test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool {
+test fn dev_test_standing_cannot_be_inherited_for_production() -> Bool  {
   let standing = derive_dev(observation: nominal_rotation())
   let bmc_receipt = bmc_secure_phase_receipt(
     standing: standing,

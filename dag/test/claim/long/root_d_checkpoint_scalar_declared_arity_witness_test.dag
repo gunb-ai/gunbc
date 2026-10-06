@@ -32,7 +32,7 @@ fn w_arity_authority_answers_for_both_fixtures() -> Bool {
     && !is_container_type(name: "Int")
 }
 
-test fn root_d_checkpoint_scalar_declared_arity_witness_holds() -> Bool {
+test fn root_d_checkpoint_scalar_declared_arity_witness_holds() -> Bool  {
   w_declared_arity_leaf_is_not_a_checkpoint_scalar()
     && w_arity_zero_checkpoint_scalar_still_strips_phantom_arguments()
     && w_arity_authority_answers_for_both_fixtures()

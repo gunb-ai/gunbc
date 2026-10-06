@@ -436,183 +436,183 @@ fn w_empty_string_literal_call_arg_non_empty_red() -> Bool {
   )
 }
 
-test fn where_refinement_direct_return_literal_refuses() -> Bool {
+test fn where_refinement_direct_return_literal_refuses() -> Bool  {
   !w_positive_int_direct_return_red()
 }
 
-test fn where_refinement_negated_int_literal_refuses() -> Bool {
+test fn where_refinement_negated_int_literal_refuses() -> Bool  {
   !w_positive_int_negated_literal_red()
 }
 
-test fn where_refinement_record_field_literal_refuses() -> Bool {
+test fn where_refinement_record_field_literal_refuses() -> Bool  {
   !w_positive_int_record_field_red()
 }
 
-test fn where_refinement_record_field_literal_accepts() -> Bool {
+test fn where_refinement_record_field_literal_accepts() -> Bool  {
   w_positive_int_record_field_green()
 }
 
-test fn where_refinement_non_empty_string_literal_refuses() -> Bool {
+test fn where_refinement_non_empty_string_literal_refuses() -> Bool  {
   !w_non_empty_string_record_field_red()
 }
 
-test fn where_refinement_non_empty_string_literal_accepts() -> Bool {
+test fn where_refinement_non_empty_string_literal_accepts() -> Bool  {
   w_non_empty_string_record_field_green()
 }
 
-test fn where_refinement_non_literal_int_var_compile_clean() -> Bool {
+test fn where_refinement_non_literal_int_var_compile_clean() -> Bool  {
   w_positive_int_non_literal_var_compile_clean_green()
 }
 
-test fn where_refinement_direct_return_var_compile_clean() -> Bool {
+test fn where_refinement_direct_return_var_compile_clean() -> Bool  {
   w_positive_int_direct_var_return_compile_clean_green()
 }
 
-test fn where_refinement_data_init_non_literal_compile_clean() -> Bool {
+test fn where_refinement_data_init_non_literal_compile_clean() -> Bool  {
   w_positive_int_data_init_non_literal_compile_clean_green()
 }
 
-test fn where_refinement_range_non_literal_compile_clean() -> Bool {
+test fn where_refinement_range_non_literal_compile_clean() -> Bool  {
   w_range_predicate_non_literal_compile_clean_green()
 }
 
-test fn where_refinement_cast_literal_positive_int_refuses() -> Bool {
+test fn where_refinement_cast_literal_positive_int_refuses() -> Bool  {
   !w_positive_int_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_positive_int_accepts() -> Bool {
+test fn where_refinement_cast_literal_positive_int_accepts() -> Bool  {
   w_positive_int_cast_literal_green()
 }
 
-test fn where_refinement_cast_literal_discard_refuses() -> Bool {
+test fn where_refinement_cast_literal_discard_refuses() -> Bool  {
   !w_positive_int_cast_literal_discard_red()
 }
 
-test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool {
+test fn where_refinement_cast_literal_non_empty_string_refuses() -> Bool  {
   !w_non_empty_string_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_lower_hex_64_refuses() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_64_refuses() -> Bool  {
   !w_lower_hex_64_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_lower_hex_64_accepts() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_64_accepts() -> Bool  {
   w_lower_hex_64_cast_literal_green()
 }
 
-test fn where_refinement_cast_literal_lower_hex_40_refuses() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_40_refuses() -> Bool  {
   !w_lower_hex_40_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_lower_hex_40_accepts() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_40_accepts() -> Bool  {
   w_lower_hex_40_cast_literal_green()
 }
 
-test fn where_refinement_cast_literal_lower_hex_16_refuses() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_16_refuses() -> Bool  {
   !w_lower_hex_16_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_lower_hex_16_accepts() -> Bool {
+test fn where_refinement_cast_literal_lower_hex_16_accepts() -> Bool  {
   w_lower_hex_16_cast_literal_green()
 }
 
-test fn where_refinement_cast_literal_oci_other_digest_algorithm_refuses() -> Bool {
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_refuses() -> Bool  {
   !w_oci_other_digest_algorithm_cast_literal_red()
 }
 
-test fn where_refinement_cast_literal_oci_other_digest_algorithm_accepts() -> Bool {
+test fn where_refinement_cast_literal_oci_other_digest_algorithm_accepts() -> Bool  {
   w_oci_other_digest_algorithm_cast_literal_green()
 }
 
-test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool {
+test fn where_refinement_declaration_ref_empty_bind_refuses() -> Bool  {
   !w_declaration_ref_empty_bind_red()
 }
 
-test fn where_refinement_branded_nonempty_alias_literal_refuses() -> Bool {
+test fn where_refinement_branded_nonempty_alias_literal_refuses() -> Bool  {
   !w_branded_nonempty_alias_literal_red()
 }
 
-test fn where_refinement_depth2_wrong_base_type_record_field_refuses() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_record_field_refuses() -> Bool  {
   !w_depth2_wrong_base_type_record_field_red()
 }
 
-test fn where_refinement_depth2_wrong_base_type_record_field_accepts() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_record_field_accepts() -> Bool  {
   w_depth2_wrong_base_type_record_field_green()
 }
 
-test fn where_refinement_depth3_wrong_base_type_record_field_refuses() -> Bool {
+test fn where_refinement_depth3_wrong_base_type_record_field_refuses() -> Bool  {
   !w_depth3_wrong_base_type_record_field_red()
 }
 
-test fn where_refinement_depth3_wrong_base_type_record_field_accepts() -> Bool {
+test fn where_refinement_depth3_wrong_base_type_record_field_accepts() -> Bool  {
   w_depth3_wrong_base_type_record_field_green()
 }
 
-test fn where_refinement_depth2_wrong_base_type_call_arg_refuses() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_call_arg_refuses() -> Bool  {
   !w_depth2_wrong_base_type_call_arg_red()
 }
 
-test fn where_refinement_depth2_wrong_base_type_call_arg_accepts() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_call_arg_accepts() -> Bool  {
   w_depth2_wrong_base_type_call_arg_green()
 }
 
-test fn where_refinement_symbol_literal_call_arg_accepts() -> Bool {
+test fn where_refinement_symbol_literal_call_arg_accepts() -> Bool  {
   w_symbol_literal_call_arg_non_empty_green()
 }
 
-test fn where_refinement_empty_string_literal_call_arg_refuses() -> Bool {
+test fn where_refinement_empty_string_literal_call_arg_refuses() -> Bool  {
   !w_empty_string_literal_call_arg_non_empty_red()
 }
 
-test fn where_refinement_depth2_wrong_base_type_data_init_refuses() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_data_init_refuses() -> Bool  {
   !w_depth2_wrong_base_type_data_init_red()
 }
 
-test fn where_refinement_depth2_wrong_base_type_data_init_accepts() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_data_init_accepts() -> Bool  {
   w_depth2_wrong_base_type_data_init_green()
 }
 
-test fn where_refinement_depth2_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool  {
   depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: 0 }\n") == 1
   && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype Box { s: S2 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
 }
 
-test fn where_refinement_depth3_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool {
+test fn where_refinement_depth3_wrong_base_type_record_field_pins_type_mismatch_cause() -> Bool  {
   depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: 0 }\n") == 1
   && depth_wrong_base_type_mismatch_count(source: "module whereref_depth3_wrong_base_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ntype S3 = S2 where brand(\"S3\")\ntype Box { s: S3 }\ndata b: Box = Box { s: \"ok\" }\n") == 0
 }
 
-test fn where_refinement_depth2_wrong_base_type_call_arg_pins_type_mismatch_cause() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_call_arg_pins_type_mismatch_cause() -> Bool  {
   depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn bad() -> Bool { takes(x: 0) }\n") == 1
   && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_callarg_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\nfn takes(x: S2) -> Bool { true }\nfn ok() -> Bool { takes(x: \"hello\") }\n") == 0
 }
 
-test fn where_refinement_depth2_wrong_base_type_data_init_pins_type_mismatch_cause() -> Bool {
+test fn where_refinement_depth2_wrong_base_type_data_init_pins_type_mismatch_cause() -> Bool  {
   depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_red\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = 0\n") == 1
   && depth_wrong_base_type_mismatch_count(source: "module whereref_depth2_data_init_green\ntype S1 = String where string_non_empty\ntype S2 = S1 where brand(\"S2\")\ndata d: S2 = \"ok\"\n") == 0
 }
 
-test fn where_refinement_wrong_kind_literal_int_pred_data_init_refuses() -> Bool {
+test fn where_refinement_wrong_kind_literal_int_pred_data_init_refuses() -> Bool  {
   !w_wrong_kind_literal_int_pred_data_init_red()
 }
 
-test fn where_refinement_wrong_kind_literal_int_pred_data_init_accepts() -> Bool {
+test fn where_refinement_wrong_kind_literal_int_pred_data_init_accepts() -> Bool  {
   w_wrong_kind_literal_int_pred_data_init_green()
 }
 
-test fn where_refinement_wrong_kind_literal_string_pred_data_init_refuses() -> Bool {
+test fn where_refinement_wrong_kind_literal_string_pred_data_init_refuses() -> Bool  {
   !w_wrong_kind_literal_string_pred_data_init_red()
 }
 
-test fn where_refinement_wrong_kind_literal_string_pred_data_init_accepts() -> Bool {
+test fn where_refinement_wrong_kind_literal_string_pred_data_init_accepts() -> Bool  {
   w_wrong_kind_literal_string_pred_data_init_green()
 }
 
-test fn where_refinement_wrong_kind_literal_direct_return_refuses() -> Bool {
+test fn where_refinement_wrong_kind_literal_direct_return_refuses() -> Bool  {
   !w_wrong_kind_literal_direct_return_red()
 }
 
-test fn where_refinement_wrong_kind_literal_direct_return_accepts() -> Bool {
+test fn where_refinement_wrong_kind_literal_direct_return_accepts() -> Bool  {
   w_wrong_kind_literal_direct_return_green()
 }
 
@@ -704,24 +704,24 @@ fn where_refinement_advisory_count(source: String) -> Int {
   }
 }
 
-test fn where_refinement_lower_hex_40_implies_non_empty_credits_evidence() -> Bool {
+test fn where_refinement_lower_hex_40_implies_non_empty_credits_evidence() -> Bool  {
   where_refinement_advisory_count(
     source: "module whereref_minlen_implies\nimport std.types { NonEmptyStr }\ntype Sha1Hex = String where lower_hex_40\nfn f(h: Sha1Hex) -> NonEmptyStr { h as NonEmptyStr }\n"
   ) == 0
 }
 
-test fn where_refinement_bare_string_at_non_empty_stays_advisory() -> Bool {
+test fn where_refinement_bare_string_at_non_empty_stays_advisory() -> Bool  {
   where_refinement_advisory_count(
     source: "module whereref_minlen_bare\nimport std.types { NonEmptyStr }\nfn f(s: String) -> NonEmptyStr { s as NonEmptyStr }\n"
   ) == 1
 }
 
-test fn where_refinement_exact_length_predicate_is_not_a_min_length_demander() -> Bool {
+test fn where_refinement_exact_length_predicate_is_not_a_min_length_demander() -> Bool  {
   where_refinement_advisory_count(
     source: "module whereref_minlen_failopen_control\ntype Hex128 = String where lower_hex_128\ntype Hex64 = String where lower_hex_64\nfn f(h: Hex128) -> Hex64 { h as Hex64 }\n"
   ) == 1
 }
 
-test fn where_refinement_min_length_implication_does_not_relax_literal_refusal() -> Bool {
+test fn where_refinement_min_length_implication_does_not_relax_literal_refusal() -> Bool  {
   !w_non_empty_string_cast_literal_red()
 }

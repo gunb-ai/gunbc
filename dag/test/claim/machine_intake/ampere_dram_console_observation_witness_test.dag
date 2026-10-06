@@ -35,7 +35,7 @@ fn any_contains(xs: List<String>, pattern: String) -> Bool {
 
 // ── POSITIVE, OVER THE REAL BYTES ────────────────────────────────────────────────────────────
 
-test fn run_35801475989_reads_version_params_and_two_sk0_dimms() -> Bool {
+test fn run_35801475989_reads_version_params_and_two_sk0_dimms() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_last_block)) {
     AmpereDramBlockObserved { block: b, blocks_printed: n } =>
       (b.firmware_version as String) == "210525" && n == 1
@@ -47,7 +47,7 @@ test fn run_35801475989_reads_version_params_and_two_sk0_dimms() -> Bool {
   }
 }
 
-test fn run_35793279839_reads_eight_sk0_dimms_one_per_controller() -> Bool {
+test fn run_35793279839_reads_eight_sk0_dimms_one_per_controller() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: capture_35793279839_last_block)) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } =>
       ampere_dram_dimms_on_socket(block: b, socket: 0) == 8
@@ -59,39 +59,39 @@ test fn run_35793279839_reads_eight_sk0_dimms_one_per_controller() -> Bool {
   }
 }
 
-test fn the_nul_before_the_first_notice_does_not_hide_the_block() -> Bool {
+test fn the_nul_before_the_first_notice_does_not_hide_the_block() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_first_block)) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
     AmpereDramBlockNotPrinted => false
   }
 }
 
-test fn only_the_empty_socket_is_untrained_over_the_real_capture() -> Bool {
+test fn only_the_empty_socket_is_untrained_over_the_real_capture() -> Bool  {
   ampere_dram_untrained_sockets(observation: ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_last_block)), expected_sockets: [0, 1]) == [1]
 }
 
 // A PARAM DIFFERING FROM ITS PRINTED DEFAULT IS AN OBSERVATION, NEVER A FINDING.
-test fn a_non_default_param_is_rendered_but_never_a_finding() -> Bool {
+test fn a_non_default_param_is_rendered_but_never_a_finding() -> Bool  {
   let o = ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_last_block))
   (match o { AmpereDramBlockObserved { block: b, blocks_printed: _ } => count(b.malformed) == 0 AmpereDramBlockNotPrinted => false })
     && ampere_dram_untrained_sockets(observation: o, expected_sockets: [0, 1]) == [1]
     && contains(ampere_dram_console_text(observation: o, expected_sockets: [0, 1]), "  MEMC mcu_enable_mask = 00000011 [default 000000ff] (differs from printed default)")
 }
 
-test fn the_render_carries_the_roster_by_socket() -> Bool {
+test fn the_render_carries_the_roster_by_socket() -> Bool  {
   contains(ampere_dram_console_text(observation: ampere_dram_console_observation(lines: lines_of(text: capture_35793279839_last_block)), expected_sockets: [0, 1]), "trained dimms by socket: SK0=8 SK1=0")
 }
 
 // ── REDS: THE REAL BYTES WITH ONE THING CHANGED ──────────────────────────────────────────────
 
 // MUTATION: the SK0 rows dropped from the real capture make socket 0 empty too.
-test fn dropping_the_sk0_rows_makes_socket_0_untrained() -> Bool {
+test fn dropping_the_sk0_rows_makes_socket_0_untrained() -> Bool  {
   let kept = filter(lines_of(text: capture_35801475989_last_block), l => !contains(l, "  SK0 "))
   ampere_dram_untrained_sockets(observation: ampere_dram_console_observation(lines: kept), expected_sockets: [0, 1]) == [0, 1]
 }
 
 // MUTATION: the param rows dropped leave no params, and that changes no finding.
-test fn dropping_the_param_rows_leaves_no_params() -> Bool {
+test fn dropping_the_param_rows_leaves_no_params() -> Bool  {
   let kept = filter(lines_of(text: capture_35801475989_last_block), l => !contains(l, " = "))
   match ampere_dram_console_observation(lines: kept) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => count(b.params) == 0 && count(b.malformed) == 0 && ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
@@ -100,14 +100,14 @@ test fn dropping_the_param_rows_leaves_no_params() -> Bool {
 }
 
 // THE JOINED SPELLING THE FIRST DRAFT EXPECTED IS NOT THE FIRMWARE'S: it reads as no subsection.
-test fn the_joined_spelling_is_not_read_as_a_roster() -> Bool {
+test fn the_joined_spelling_is_not_read_as_a_roster() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: "NOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs: SK0 MC0 S0: RDIMM\r\n")) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => count(b.dimms) == 0
     AmpereDramBlockNotPrinted => false
   }
 }
 
-test fn an_unparsable_row_inside_the_roster_is_a_typed_malformed_finding() -> Bool {
+test fn an_unparsable_row_inside_the_roster_is_a_typed_malformed_finding() -> Bool  {
   let text = "NOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  socket0/mc0/slot0 RDIMM\r\n  SK0 MC1 S0: RDIMM\r\nCP: 3ff00100\r\n"
   let o = ampere_dram_console_observation(lines: lines_of(text: text))
   (match o {
@@ -117,7 +117,7 @@ test fn an_unparsable_row_inside_the_roster_is_a_typed_malformed_finding() -> Bo
     && ampere_dram_untrained_sockets(observation: o, expected_sockets: [0]) == []
 }
 
-test fn an_unindented_line_closes_the_roster() -> Bool {
+test fn an_unindented_line_closes_the_roster() -> Bool  {
   let text = "NOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM\r\nCP: 3ff00100\r\n  SK1 MC0 S0: not a roster row\r\n"
   match ampere_dram_console_observation(lines: lines_of(text: text)) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => ampere_dram_dimms_on_socket(block: b, socket: 1) == 0 && count(b.malformed) == 0
@@ -125,13 +125,13 @@ test fn an_unindented_line_closes_the_roster() -> Bool {
   }
 }
 
-test fn a_capture_without_the_block_asserts_no_roster() -> Bool {
+test fn a_capture_without_the_block_asserts_no_roster() -> Bool  {
   let o = ampere_dram_console_observation(lines: lines_of(text: "CP: 3ff00100\r\n  SK0 MC0 S0: RDIMM\r\n"))
   (match o { AmpereDramBlockNotPrinted => true _ => false })
     && ampere_dram_untrained_sockets(observation: o, expected_sockets: [0, 1]) == []
 }
 
-test fn a_reset_loop_reads_the_last_block() -> Bool {
+test fn a_reset_loop_reads_the_last_block() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: concat(capture_35793279839_last_block, capture_35801475989_last_block))) {
     AmpereDramBlockObserved { block: b, blocks_printed: n } => n == 2 && ampere_dram_dimms_on_socket(block: b, socket: 0) == 2
     AmpereDramBlockNotPrinted => false
@@ -141,7 +141,7 @@ test fn a_reset_loop_reads_the_last_block() -> Bool {
 // ── ROSTER STANDING: ONLY A CLOSED ROSTER ESTABLISHES AN UNTRAINED SOCKET ────────────────────
 
 // The complete real block closes its roster at the `CP: 3ff00100` line.
-test fn the_complete_real_block_has_a_closed_roster() -> Bool {
+test fn the_complete_real_block_has_a_closed_roster() -> Bool  {
   match ampere_dram_console_observation(lines: lines_of(text: capture_35801475989_first_block)) {
     AmpereDramBlockObserved { block: b, blocks_printed: _ } => match b.roster { RosterClosed => true _ => false }
     AmpereDramBlockNotPrinted => false
@@ -150,7 +150,7 @@ test fn the_complete_real_block_has_a_closed_roster() -> Bool {
 
 // The real bytes cut after the SK0 rows (the closing `CP:` line dropped): the roster is open,
 // SK0's two rows are kept, and socket 1 is NOT reported untrained.
-test fn a_capture_cut_mid_roster_is_open_and_mints_no_empty_socket() -> Bool {
+test fn a_capture_cut_mid_roster_is_open_and_mints_no_empty_socket() -> Bool  {
   let cut = filter(lines_of(text: capture_35801475989_first_block), l => !contains(l, "CP: 3ff00100"))
   let o = ampere_dram_console_observation(lines: cut)
   (match o {
@@ -162,7 +162,7 @@ test fn a_capture_cut_mid_roster_is_open_and_mints_no_empty_socket() -> Bool {
 }
 
 // A block cut before its roster header has no roster at all, and so no untrained socket.
-test fn a_block_without_a_roster_header_mints_no_empty_socket() -> Bool {
+test fn a_block_without_a_roster_header_mints_no_empty_socket() -> Bool  {
   let cut = filter(lines_of(text: capture_35801475989_last_block), l => !contains(l, "DRAM populated DIMMs:") && !contains(l, "  SK0 "))
   let o = ampere_dram_console_observation(lines: cut)
   (match o {
@@ -173,7 +173,7 @@ test fn a_block_without_a_roster_header_mints_no_empty_socket() -> Bool {
 }
 
 // A new block header closes the previous block's roster; the last block's roster, cut, stays open.
-test fn a_new_block_header_closes_the_previous_roster() -> Bool {
+test fn a_new_block_header_closes_the_previous_roster() -> Bool  {
   let text = "NOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM\r\nNOTICE:  DRAM FW version 210525\r\nDRAM populated DIMMs:\r\n  SK0 MC0 S0: RDIMM\r\n"
   match ampere_dram_console_observation(lines: lines_of(text: text)) {
     AmpereDramBlockObserved { block: b, blocks_printed: n } => n == 2 && match b.roster { RosterOpen => true _ => false }

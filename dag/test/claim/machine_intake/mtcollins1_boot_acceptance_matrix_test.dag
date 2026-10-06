@@ -306,7 +306,7 @@ fn census_ended(a: MtCollins1BootAttempt) -> Bool {
 // real attempt of 2026-09-27 recorded (run 36335369059). Route: the collector is started before any
 // other controller write; the media start precedes the boot override, which precedes the one power
 // action; every controller write is under the hold; the collector is torn down last.
-test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
+test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool  {
   match run_attempt(world: world_with_console(lines: [])) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
@@ -326,7 +326,7 @@ test fn a_host_that_never_prints_a_census_refuses_at_the_deadline() -> Bool {
 // is now the control that the repair holds. Route: the SOL deactivate, then the hold's ReleaseHeld
 // of the recorded instance, then the retirement of its pid file and activation receipt; every
 // controller write under the unit hold.
-test fn a_healthy_census_completes_and_releases_its_collector() -> Bool {
+test fn a_healthy_census_completes_and_releases_its_collector() -> Bool  {
   match run_attempt(world: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))) {
     WitnessReturned { value, route } =>
       census_ended(a: value)
@@ -355,7 +355,7 @@ fn no_observer_and_no_power_action(route: List<DispatchRecord>) -> Bool {
     && reached_no_power_action(route: route)
 }
 
-test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -> Bool {
+test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -> Bool  {
   match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: not_ready_toolchain()) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
@@ -365,7 +365,7 @@ test fn a_toolchain_that_is_not_ready_starts_no_observer_and_no_power_action() -
   }
 }
 
-test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool {
+test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool  {
   match run_attempt_with_toolchain(world: world_with_console(lines: []), toolchain: unresolved_toolchain()) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "the required KVM observer was not established")
@@ -380,7 +380,7 @@ test fn an_unresolved_toolchain_starts_no_observer_and_no_power_action() -> Bool
 // refused at the hold with the controller untouched: no controller write of any kind appears in its
 // route, and it never starts a SOL collector. The other run is still running -- its process is in
 // procfs -- so it is a live holder, not a dead one to recover.
-test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool {
+test fn a_second_run_for_a_held_unit_writes_nothing_to_the_controller() -> Bool  {
   let base = world_with_console(lines: [])
   let other_running = with_fs(w: base, fs: fs_with_file(fs: base.fs, path: proc_stat_path(pid: 2900), content: proc_stat_line(p: worker_process(pid: 2900, start_ticks: 100))))
   let prior = evaluate_in_witness_frame(
@@ -432,7 +432,7 @@ fn reached_no_power_action(route: List<DispatchRecord>) -> Bool {
 
 // THE IMAGE IS ALREADY PRESENTED AND READY. Convergence has nothing to do: no stop, no start, and the
 // attempt proceeds to the boot exactly as from a fresh attach.
-test fn an_already_presented_image_is_not_attached_again() -> Bool {
+test fn an_already_presented_image_is_not_attached_again() -> Bool  {
   let presented = MegaRacCdRow { image_name: desired_image(), redirection_status: 1, media_index: 0, session_index: 0, ready_at: none }
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: presented, ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
     WitnessReturned { value, route } =>
@@ -446,7 +446,7 @@ test fn an_already_presented_image_is_not_attached_again() -> Bool {
 
 // READINESS SLOWER THAN THE WAIT. The controller keeps the row connecting past the readiness budget;
 // the attempt refuses without setting the boot override or touching power.
-test fn media_that_never_becomes_ready_refuses_before_any_power_action() -> Bool {
+test fn media_that_never_becomes_ready_refuses_before_any_power_action() -> Bool  {
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 600, withdraw_after_ready: no_withdrawal()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
@@ -460,7 +460,7 @@ test fn media_that_never_becomes_ready_refuses_before_any_power_action() -> Bool
 // THE SAME FILENAME ON THE WRONG SHARE. The listing offers an image with the desired name, but the
 // controller's CD share is bound to another server. It refuses before any power action; a start, if
 // one is issued, must not be followed by the boot.
-test fn the_right_filename_on_the_wrong_share_refuses_before_any_power_action() -> Bool {
+test fn the_right_filename_on_the_wrong_share_refuses_before_any_power_action() -> Bool  {
   let wrong = MegaRacShare { server: "192.168.1.99", source_path: "/srv/bmc", share_type: "nfs" }
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: wrong, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
     WitnessReturned { value, route } =>
@@ -475,7 +475,7 @@ test fn the_right_filename_on_the_wrong_share_refuses_before_any_power_action() 
 // THE LISTING NAMES THE IMAGE TWICE. Taking either row would let the controller's order choose which
 // file is attached, so nothing is started and nothing is powered. The cause is its own and names both
 // offered identities; the red is the old "not valid JSON" label (finding 5, repaired in #12553).
-test fn a_listing_that_names_the_image_twice_starts_nothing() -> Bool {
+test fn a_listing_that_names_the_image_twice_starts_nothing() -> Bool  {
   let twice = [MegaRacImage { image_name: desired_image(), image_index: 5 }, MegaRacImage { image_name: desired_image(), image_index: 6 }]
   match run_attempt(world: media_varied(media: media_with(images: twice, share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: no_withdrawal()))) {
     WitnessReturned { value, route } =>
@@ -491,7 +491,7 @@ test fn a_listing_that_names_the_image_twice_starts_nothing() -> Bool {
 // the handoff. Measured window: a loss 3 to 8 seconds after readiness falls here; 1 second falls between
 // two readiness looks (the attach never sees it ready), and 12 seconds or more falls after the handoff.
 // The pre-handoff re-observation must see it gone and refuse without the boot override or power.
-test fn a_presentation_lost_after_readiness_stops_the_handoff() -> Bool {
+test fn a_presentation_lost_after_readiness_stops_the_handoff() -> Bool  {
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 5) }))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "pre-handoff recheck did not admit it")
@@ -506,7 +506,7 @@ test fn a_presentation_lost_after_readiness_stops_the_handoff() -> Bool {
 // reaches its deadline, but a post-handoff look (after-handoff, or end-of-attempt when the handoff
 // finished before the withdrawal) affirmed the loss, so the outcome names it and keeps the deadline
 // beside it; which look sees it is the unit witnesses' subject, not this case's (#12423 media: presentation withdrawal). The red is the bare deadline.
-test fn a_presentation_lost_after_the_handoff_is_the_reported_cause() -> Bool {
+test fn a_presentation_lost_after_the_handoff_is_the_reported_cause() -> Bool  {
   match run_attempt(world: media_varied(media: media_with(images: [MegaRacImage { image_name: desired_image(), image_index: 5 }], share: real_share, cd: megarac_cleared_cd(), ready_after: 12, withdraw_after_ready: Present { value: second(count: 20) }))) {
     WitnessReturned { value, route } =>
       (string_contains(s: outcome_reason(a: value), pattern: "media presentation lost at after-handoff (")
@@ -523,7 +523,7 @@ test fn a_presentation_lost_after_the_handoff_is_the_reported_cause() -> Bool {
 // controller's refusal on its stderr, and the attempt refuses with that typed cause -- read from the
 // client diagnostics, never the host capture -- before any other controller write, and without
 // deactivating a session this hold did not establish.
-test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool {
+test fn a_sol_session_held_elsewhere_refuses_before_the_attach() -> Bool  {
   let w = world_with_console(lines: [])
   match run_attempt(world: with_bmc(w: w, bmc: bmc_with_sol_session(world: w.bmc, open: true))) {
     WitnessReturned { value, route } =>
@@ -563,7 +563,7 @@ fn teardown_within(route: List<DispatchRecord>, bound: Int) -> Bool {
   }
 }
 
-test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
+test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool  {
   let w = world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240))
   let dropping = with_bmc(w: w, bmc: bmc_with_sol_drop_after_boot(world: w.bmc, after: second(count: 30)))
   match evaluate_in_witness_frame(frame: matrix_frame(world: dropping), subject: fn(_scope) { boot_with_toolchain(toolchain: ready_toolchain()) }) {
@@ -588,7 +588,7 @@ test fn a_sol_loss_mid_boot_is_reported_before_the_deadline() -> Bool {
 // refused terminal is reported at the powered-on stage, not as a census that ended.
 data two_socket_census_capture: String = "=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 begin 2026-09-18T00:00:00Z=====\n----SECTION boot-media----\n----ARGV boot-media: ls -l /dev/disk/by-label; blkid\nLABEL=\"GUNBC_MTC1_CENSUS_2404_3\"\n----EXIT boot-media: 0\n----SECTION nproc----\n----ARGV nproc: nproc\n160\n----EXIT nproc: 0\n----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0-1\navailable: 2 nodes (0-1)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 1 cpus: 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159\n----EXIT numa: 0\n----SECTION edac-before----\n----ARGV edac-before: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-before: 0\n----SECTION workload----\n----ARGV workload: (the rendered workload command)\nworkload-bytes=4294967296\nworkload-shm-avail-bytes=8373932032\nworkload-mem-available-bytes=15032385536\nworkload-preflight=fits\nworkload-write-rc=0\nworkload-digest-stable=yes\n----EXIT workload: 0\n----SECTION edac-after----\n----ARGV edac-after: (counters)\n== /sys/devices/system/edac/mc/mc0/ce_count == 0\n== /sys/devices/system/edac/mc/mc0/ue_count == 0\n----EXIT edac-after: 0\n=====GUNBC-HOST-CAPTURE mtcollins1 attempt=1 end 2026-09-18T00:04:00Z====="
 
-test fn a_two_socket_answer_is_a_truthful_topology_refusal() -> Bool {
+test fn a_two_socket_answer_is_a_truthful_topology_refusal() -> Bool  {
   match run_attempt(world: world_with_console(lines: console_of(capture: two_socket_census_capture, begin_after: 60, end_after: 240))) {
     WitnessReturned { value, route } =>
       !census_ended(a: value)
@@ -673,7 +673,7 @@ fn fresh_realization() -> OperationRealization<MtCollins1BootWorld> {
   mtcollins1_boot_dry_realization(identity: realization_identity, initial: world_with_console(lines: []), epoch: virtual_clock_origin())
 }
 
-test fn an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() -> Bool {
+test fn an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() -> Bool  {
   match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
     Present { value: WitnessReturned { value, route } } =>
       !string_contains(s: outcome_reason(a: value), pattern: "is held by")
@@ -682,7 +682,7 @@ test fn an_interrupted_attempts_dead_hold_is_recovered_by_the_next_one() -> Bool
   }
 }
 
-test fn a_live_holder_still_blocks_the_next_attempt() -> Bool {
+test fn a_live_holder_still_blocks_the_next_attempt() -> Bool  {
   match resumed_after(realization: stopped_after_start_media(realization: fresh_realization()), refuse_holder_stat: false) {
     Present { value: WitnessReturned { value, route } } =>
       string_contains(s: outcome_reason(a: value), pattern: "which is alive")
@@ -691,7 +691,7 @@ test fn a_live_holder_still_blocks_the_next_attempt() -> Bool {
   }
 }
 
-test fn an_unobservable_holder_is_refused_not_recovered() -> Bool {
+test fn an_unobservable_holder_is_refused_not_recovered() -> Bool  {
   match resumed_after(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: true) {
     Present { value: WitnessReturned { value, route } } =>
       string_contains(s: outcome_reason(a: value), pattern: "whose liveness could not be observed")
@@ -704,7 +704,7 @@ test fn an_unobservable_holder_is_refused_not_recovered() -> Bool {
 // /proc entry gone, exactly as in the recovery case above; the only difference is that the next run
 // reads a different /proc/self/ns/pid. From there a missing pid proves nothing, so the hold is
 // refused, never recovered, and nothing is written. The red is recovery across namespaces.
-test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() -> Bool {
+test fn a_successor_in_another_pid_namespace_refuses_rather_than_recovering() -> Bool  {
   match resumed_in(realization: killed_after_start_media(realization: fresh_realization()), refuse_holder_stat: false, pid_namespace: "pid:[4026532999]") {
     Present { value: WitnessReturned { value, route } } =>
       string_contains(s: outcome_reason(a: value), pattern: "its pid cannot be looked up from here")
@@ -729,7 +729,7 @@ fn with_clock_jump(w: MtCollins1BootWorld, at: Second, by: Int) -> MtCollins1Boo
 // reading goes backwards. The wait refuses as unable to bound itself -- the production
 // ReadinessClockIncoherent arm -- rather than waiting on a window it can no longer measure, and
 // nothing after the attach is written.
-test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bool {
+test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bool  {
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 0 - 60)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "the clock cannot bound the readiness wait")
@@ -746,7 +746,7 @@ test fn a_wall_clock_stepping_back_during_readiness_refuses_as_unbounded() -> Bo
 // power-on account's pre-power hpm check read (one virtual second, after admission) joined the prefix
 // -- so a later change to that prefix moves it again; what the case holds is the refusal at the look
 // after the jump.
-test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool {
+test fn a_wall_clock_jumping_forward_during_readiness_closes_the_window() -> Bool  {
   match run_attempt(world: with_clock_jump(w: world_with_console(lines: []), at: second(count: 20), by: 600)) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "did not reach Started with a bound session")
@@ -798,7 +798,7 @@ fn presenting(image_name: String) -> MegaRacCdRow {
 // 16 is a named stop reason, so the attach proceeds with no stop; the presentation reaches Started with
 // 16 still read, which the vendor does not consult beside a Started row, so it is recorded and the
 // attempt proceeds to the boot.
-test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() -> Bool {
+test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_recorded() -> Bool  {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
@@ -812,7 +812,7 @@ test fn cd_error_16_with_nothing_presented_attaches_and_boots_with_the_code_reco
 // A CODE OUTSIDE THE VENDOR'S TABLE WITH THE HOST ALREADY ON. 99 names nothing in rmedia:status_1..17, so
 // it is a knowledge refusal; the fresh-presentation experiment that could settle it would stop the
 // medium the host may be running from, so it is not admitted and nothing is written at all.
-test fn an_uncatalogued_cd_error_with_the_host_on_writes_nothing() -> Bool {
+test fn an_uncatalogued_cd_error_with_the_host_on_writes_nothing() -> Bool  {
   let w = media_varied(media: media_errored(code: 99, clears: true, after_ready: no_error_after_ready(), cd: megarac_cleared_cd()))
   match run_attempt(world: with_bmc(w: w, bmc: bmc_with_power(world: w.bmc, power: BmcPowerOn))) {
     WitnessReturned { value, route } =>
@@ -825,7 +825,7 @@ test fn an_uncatalogued_cd_error_with_the_host_on_writes_nothing() -> Bool {
 
 // A CODE THAT APPEARS WITH READINESS. The presentation reads Started while the general route reports
 // 16 at readiness: a Started row is ready whatever the code says, so the attempt proceeds to the boot.
-test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
+test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool  {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: Present { value: 16 }, cd: megarac_cleared_cd()))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
@@ -837,7 +837,7 @@ test fn cd_error_appearing_with_readiness_is_recorded_and_booted() -> Bool {
 
 // THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Mount Error". The attempt refuses by the
 // vendor's name, as a presentation failure, with no handoff.
-test fn a_start_that_stops_with_mount_error_refuses_by_name() -> Bool {
+test fn a_start_that_stops_with_mount_error_refuses_by_name() -> Bool  {
   match run_attempt(world: media_varied(media: media_stopping(code: 11))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Mount Error (cd_error_code 11; a presentation failure")
@@ -850,7 +850,7 @@ test fn a_start_that_stops_with_mount_error_refuses_by_name() -> Bool {
 // THE START IS ACCEPTED AND THE ROW FALLS BACK TO "Stopped - Device Ejected". 16 is a no-fault stop --
 // the consumer let the medium go -- but nothing is presented, so there is nothing to boot from: the
 // attempt refuses by name, classed no-fault, with no handoff.
-test fn a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() -> Bool {
+test fn a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() -> Bool  {
   match run_attempt(world: media_varied(media: media_stopping(code: 16))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "is Stopped - Device Ejected (cd_error_code 16; no fault")
@@ -862,7 +862,7 @@ test fn a_start_that_stops_with_device_ejected_refuses_by_name_as_no_fault() -> 
 // A STALE IMAGE OF THIS LANE IS PRESENTED WITH CODE 16 AND THE HOST OFF, AND THE STOP CLEARS THE CODE.
 // The attempt stops the stale image, attaches the desired one, and proceeds to the boot: stop, then
 // start, then the override, then power.
-test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() -> Bool {
+test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() -> Bool  {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
@@ -875,7 +875,7 @@ test fn a_stale_lane_image_with_a_code_the_stop_clears_is_replaced_and_booted() 
 
 // THE SAME STALE IMAGE, BUT THE STOP DOES NOT CLEAR THE CODE. The replacement reaches Started with the
 // code still 16, a latched reason beside a Started row, and the attempt proceeds to the boot.
-test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() -> Bool {
+test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_booted() -> Bool  {
   match run_attempt(world: media_varied(media: media_errored(code: 16, clears: false, after_ready: no_error_after_ready(), cd: presenting(image_name: stale_lane_image)))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "deadline reached without a host-capture terminal")
@@ -888,7 +888,7 @@ test fn a_stale_lane_image_with_a_code_the_stop_does_not_clear_is_replaced_and_b
 
 // A FOREIGN IMAGE IS PRESENTED -- not a census image of this lane. It is not this workflow's to stop:
 // the attempt refuses and writes nothing to the media.
-test fn a_foreign_presented_image_is_not_stopped() -> Bool {
+test fn a_foreign_presented_image_is_not_stopped() -> Bool  {
   match run_attempt(world: media_varied(media: media_errored(code: 0, clears: true, after_ready: no_error_after_ready(), cd: presenting(image_name: "gunbc-mtcollins1-census-older.iso")))) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "it is not this workflow's to stop, so nothing was written")
@@ -910,7 +910,7 @@ fn with_named_receipt(w: MtCollins1BootWorld, path: String, nonce: String) -> Mt
   }
 }
 
-test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool {
+test fn a_refused_named_receipt_reads_no_baseline_and_writes_nothing() -> Bool  {
   match run_attempt(world: with_named_receipt(w: world_with_console(lines: console_of(capture: one_socket_census_capture, begin_after: 60, end_after: 240)), path: "artifacts/receipts/../escape.json", nonce: "n1")) {
     WitnessReturned { value, route } =>
       string_contains(s: outcome_reason(a: value), pattern: "attempt receipt refused")
