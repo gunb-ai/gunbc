@@ -70,7 +70,16 @@ type ColdBuildVerdict
 fn subject_is_cold(subject: ColdBuildSubject) -> Bool {
   match subject.architecture {
     Aarch64 => subject.cargo_home_wiped && !subject.sccache_reachable
-    _ => false
+    X86_64 => false
+    X86 => false
+    Arm => false
+    Armv7 => false
+    Mips => false
+    Mipsel => false
+    Mips64 => false
+    Mips64el => false
+    Riscv64 => false
+    Wasm32 => false
   }
 }
 

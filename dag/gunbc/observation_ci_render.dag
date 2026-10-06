@@ -951,6 +951,7 @@ type CiWitnessRuntimeCause
   | WitnessCauseShellOutputLimitExceeded
   | WitnessCauseShellSpawnRefused
   | WitnessCauseCallContractMismatch
+  | WitnessCauseHostIoFailed
   | WitnessCauseMappedOutcomeEscaped
 
 // Stable kebab tokens, chosen so a reader extracts identity-and-cause pairs with a pattern that
@@ -981,6 +982,7 @@ fn ci_witness_runtime_cause_token(cause: CiWitnessRuntimeCause) -> String {
     WitnessCauseShellOutputLimitExceeded => "shell-output-limit-exceeded"
     WitnessCauseShellSpawnRefused => "shell-spawn-refused"
     WitnessCauseCallContractMismatch => "call-contract-mismatch"
+    WitnessCauseHostIoFailed => "host-io-failed"
     WitnessCauseMappedOutcomeEscaped => "mapped-outcome-escaped"
   }
 }
@@ -1070,6 +1072,53 @@ fn ci_witness_claim_result_text(
   concat(padded, ci_witness_claim_suffix(verdict: verdict, wall: wall))
 }
 
+// WHERE A THROW WAS RAISED, as the declaration that was running. The ERROR row above names the
+// class (`cause=`) and nothing else, so a runtime error reached the floor unlocated: the message
+// was dropped at the verdict projection, and most interpreter error arms carry no source position
+// at their raise site anyway. What every arm CAN carry is the innermost declaration being
+// evaluated when the error was raised plus the call path out to the claim, each frame naming the
+// declaration and its own position (`decl@file:byte`, the declaration's span, not the raise
+// site's). That is what this frame is, and it says so rather than passing for a raise-site span.
+type CiRaiseFrame {
+  decl: String
+  file: String
+  start: Nat
+}
+
+fn ci_raise_frame_text(frame: CiRaiseFrame) -> String {
+  join([frame.decl, "@", frame.file, ":", to_string(frame.start)], "")
+}
+
+// A SEPARATE LINE, NOT A LONGER ROW. The ERROR row's bytes and its trailing `cause=` key stay as
+// they are, so every existing reader of that row is untouched; the location rides on its own line
+// that repeats the target label, so a reader pairs the two by identity and never by adjacency.
+// Every field is key-tagged and space-free except `message=`, which is last and runs to the end of
+// the line, with its newlines escaped so one throw stays one line. An empty frame list renders
+// `raised_in=unrecorded` -- loud, never a blank that reads as a location.
+fn ci_witness_runtime_error_detail_text(
+  subject: String,
+  function: String,
+  frames: List<CiRaiseFrame>,
+  elided: Nat,
+  message: String,
+) -> String {
+  let label = ci_witness_bazel_target_label(subject: subject, function: function)
+  let innermost = fold(frames, init: "", f: (acc, fr) =>
+    if acc == "" { ci_raise_frame_text(frame: fr) } else { acc })
+  let path = fold(frames, init: "", f: (acc, fr) =>
+    if acc == "" { ci_raise_frame_text(frame: fr) } else { join([acc, "<-", ci_raise_frame_text(frame: fr)], "") })
+  let raised = if innermost == "" { "unrecorded" } else { innermost }
+  let call_path = if path == "" { "unrecorded" } else { path }
+  let elided_field = if elided == 0 { "" } else { concat(" elided=", to_string(elided)) }
+  join([
+    label,
+    " error-at raised_in=", raised,
+    " call_path=", call_path,
+    elided_field,
+    " message=", replace(message, "\n", "\\n")
+  ], "")
+}
+
 // RETIRED 2026-08-20 with the warn tier itself. ci_witness_budget_warn_text rendered the floor
 // fold's [floor-witness-slow] line; the tier it served is deleted at its authority
 // (v2.workflow.required_floor, see the deletion note there), so the renderer has no subject. Its
@@ -1156,6 +1205,48 @@ fn ci_shared_fill_row_text(
               )
               )
             )
+          )
+        )
+      )
+    )
+  )
+}
+
+// WHICH FRAME A READ WITH NO OBSERVED FILL CAME FROM. The total line's unattributed_hits is an
+// aggregate nobody can disposition; these two arms split it by where the read happened, and the
+// per-key line below names the identity, so "does preparation read this producer?" is answered
+// by identity rather than by comparing two runs' wall time.
+type SharedFillUnattributedFrame
+  = UnattributedHitOutsideFold
+  | UnattributedHitInClaimWithoutFill
+
+fn shared_fill_unattributed_frame_tag(frame: SharedFillUnattributedFrame) -> String {
+  match frame {
+    UnattributedHitOutsideFold => "outside-fold"
+    UnattributedHitInClaimWithoutFill => "in-claim-without-fill"
+  }
+}
+
+// One line per (frame, phase, cache, key). `phase` is the floor seam current when the read
+// happened (a preparation warm reads under its seam), or `claim` for an in-claim read.
+fn ci_shared_fill_unattributed_text(
+  frame: SharedFillUnattributedFrame,
+  phase: String,
+  cache: String,
+  key: String,
+  hits: Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill-unattributed] frame=",
+    concat(
+      shared_fill_unattributed_frame_tag(frame: frame),
+      concat(
+        " phase=",
+        concat(
+          phase,
+          concat(
+            " cache=",
+            concat(cache, concat(" key=", concat(key, concat(" hits=", to_string(hits)))))
           )
         )
       )

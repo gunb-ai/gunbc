@@ -35,7 +35,7 @@ import gunbc.fleet_ssh_credential_verify {
   fleet_ssh_credential_verification_refusal_reason,
 }
 import extdeps.ssh.session { ssh_session_exec_portable_words }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, filter }
 import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6 }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
@@ -57,7 +57,14 @@ import gunbc.spark.managed_access_bootstrap {
   spark_bootstrap_effect_label,
   spark_bootstrap_plan_effects,
 }
-import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
+import gunbc.spark.managed_grant_reconcile {
+  spark_managed_grant_report,
+  SparkInspectDropinShape, SharedInspectDropinShape, PerContainerInspectDropinShape, InspectDropinShapeUnobserved,
+  spark_sudoers_dropin_listing_argv, spark_inspect_dropin_shape_of_listing,
+  spark_inspect_dropin_shape_wire,
+}
+import gunbc.spark.dgx_procurement { dgx_spark_procurement_intent }
+import gunbc.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused }
 import product.host_identity { HostIdentity }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
@@ -443,6 +450,7 @@ type SparkGrantRow {
   host: String
   principal: String
   outcome: SparkGrantOutcome
+  inspect_dropins: SparkInspectDropinShape
 }
 
 // Head-plus-tail: a grant probe that observed no host has no constructor, because "every host is
@@ -455,6 +463,10 @@ fn spark_exact_grant_row(context: FleetSshExecutionContext, host: String, princi
   SparkGrantRow {
     host: host,
     principal: principal,
+    inspect_dropins: match probe_leg(context: context, host: host, principal: principal, raw_words: spark_sudoers_dropin_listing_argv()) {
+      Absent => InspectDropinShapeUnobserved { cause: "non-portable-remote-word" as NonEmptyStr }
+      Present { value: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+    },
     outcome: match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
       Absent => GrantProbeRefused { cause: "non-portable-remote-word" }
       Present { value: r } =>
@@ -496,6 +508,7 @@ fn spark_grant_row_text(row: SparkGrantRow) -> String {
   join([
     spark_grant_row_listing_text(row: row),
     spark_managed_grant_report(host: row.host as HostIdentity, outcome: row.outcome),
+    spark_inspect_dropin_shape_wire(host: row.host, shape: row.inspect_dropins),
   ], "")
 }
 
@@ -559,6 +572,31 @@ fn spark_exact_grant_probe_wet(attempt_raw: String) -> ProcessExit
   )
 }
 
+// THE CONVERGENCE ROUTE (fleet-converge mode spark_grants_observe). The operator approved reading
+// every Spark's grant listing on condition that convergence reads it, so this is the entry the mode
+// runs: the in-run ssh-agent context every Spark mode uses, then the exact-grant report over
+// spark_standing_hosts -- all procured Sparks -- written to its receipt. It installs and removes
+// nothing. A host whose managed account cannot be reached is a row reporting the failure, never a
+// skipped host; only a probe that could not be asked at all fails the step.
+data spark_grant_probe_ci_attempt_raw: String = "spark-grant-probe-ci"
+
+fn spark_exact_grant_probe_ci_wet() -> ProcessExit
+{
+  let report = match prepare_fleet_ssh_agent_context(attempt_raw: spark_grant_probe_ci_attempt_raw) {
+    FleetSshContextRefused { cause: c } => GrantProbeNotAttempted { cause: c }
+    FleetSshContextReady { context: context, receipt: _ } => spark_exact_grant_report(context: context)
+  }
+  let w = Filesystem.Write(path: spark_grant_probe_receipt_path, content: spark_grant_report_text(report: report))
+  if !w.success {
+    exit_failure(reason: join(["exact-grant probe receipt write failed: ", w.error], ""))
+  } else {
+    match spark_grant_report_refusal(report: report) {
+      Present { value: c } => exit_failure(reason: join(["spark exact-grant probe could not run: ", c], ""))
+      Absent => ExitSuccess
+    }
+  }
+}
+
 // ── The derived standing, from the same legs the receipt above reports ──────────────────────────
 
 // One typed observation per (host, principal), which is the grain the account model already uses.
@@ -619,7 +657,20 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 
 // The Spark hosts only: this derivation is about the serving fleet, and running it over srv1..srv4
 // would produce bootstrap plans for hosts whose managed access is a different lane's question.
-data spark_standing_hosts: List<String> = ["srv5", "srv6"]
+//
+// DERIVED FROM THE PROCURED ROSTER, NOT LISTED. Until 2026-10-05 this was a hand list of srv5 and
+// srv6, so every other procured Spark's sudo state was ASSUMED by any run that reached it -- which is
+// how Group B kept the pre-#13040 shared inspect drop-in with no receipt saying so. The operator
+// approved (2026-10-05, relayed by valiant-crab-775) reading every Spark's grant listing by
+// convergence, so the roster is gunbc.spark.dgx_procurement dgx_spark_procurement_intent
+// reserved_identities itself: a procured Spark left out of the probe has no constructor. A host whose
+// managed account cannot be reached is not skipped -- its row reports the failure, its grant
+// standings read GrantStandingUnobserved with the ssh cause, and the managed-access standing types it.
+fn spark_standing_hosts_of(roster: List<HostIdentity>) -> List<String> {
+  map(roster, h => h as String)
+}
+
+data spark_standing_hosts: List<String> = spark_standing_hosts_of(roster: dgx_spark_procurement_intent.reserved_identities)
 
 fn spark_managed_access_standing_wet() -> ProcessExit
 {

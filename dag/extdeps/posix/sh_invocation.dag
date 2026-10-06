@@ -2,11 +2,19 @@ module extdeps.posix.sh_invocation
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 
-import std.types { String, NonEmptyStr }
+import std.types { String, NonEmptyStr, List, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.posix.shell_command_language { PosixShellName }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_lit, bash_build_word_var, bash_build_word_cmdsubst, bash_build_command_with_words,
+  bash_build_assign, bash_build_exit, bash_build_or_else, bash_build_command_from_lits,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -54,10 +62,28 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // program which exits nonzero while printing nothing, and reaches for `sh -c "exit 3"` because no
 // utility has that as its contract.
 //
-// DISSOLVE-ON: those bodies become modeled programs through the shell -> dag route, at which
-// point this builder loses its last caller and is deleted with them. It is NOT an escape hatch for a
-// new argv: a caller reaching for it to run a single program with flags is spelling that program's
-// argv inside a string, which review must refuse exactly as it refuses the record literal.
+// DISSOLVED (DP-M2 PR3, session witty-wren-554, 2026-10-04): the ten production sites are cut
+// over. The getent|cut home pipeline became a typed getent invocation plus a pure field
+// extraction (extdeps.posix.getent, gunbc.fleet_probe_identity_observe passwd_home_observation);
+// the env echoes became shell.Env.Get reads; the `command -v` presence checks became
+// shell.PosixCommandV.Check; the gcloud auth list became the typed
+// extdeps.tools.gcloud.gcloud_auth_list_accounts_command; the `test -f` check became
+// extdeps.posix.test_utility.test_regular_file_command through a named exit-status ruling; the
+// authorized_keys greps became modeled reads decided by
+// authorized_keys_admits_line (whole-line semantics kept); the ssh-config pin and the
+// mkdir/chmod/touch/cat>> bootstrap became declared sequences over shell.Env.Get, a captured pwd
+// (extdeps.tools.gnu_coreutils pwd_command), the put-if-absent create, and typed chmod builders.
+// WHAT REMAINS is a measurement, not a count: `git grep -n "posix_sh_program_command("` is the
+// instrument (the ROADMAP DP-M2 row names it). The PRODUCTION sites are gone on this head; the
+// remaining callers are the manual receipt test above and the wet-lane test fixtures that still
+// build shell text as strings (the approval_ntfy, machine_intake, and spark witness tests among
+// them). When every remaining caller has moved -- the manual test's exit-nonzero-print-nothing
+// contract settled (the fabric compute reorganization that
+// gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall names for the
+// neighboring lane, or any future lane), and the fixture scripts rebuilt on typed carriers -- the
+// instrument returns zero and this builder is deleted with its last call. It is NOT an escape hatch for a new argv: a caller reaching for it to run a single
+// program with flags is spelling that program's argv inside a string, which review must refuse
+// exactly as it refuses the record literal.
 fn posix_sh_program_command(script: String) -> ArgvCommand {
   argv_command(program: posix_sh_program(), arguments: ["-c", script])
 }
@@ -78,3 +104,95 @@ fn posix_sh_script_command(path: NonEmptyStr) -> ArgvCommand {
 // criterion for climbing to an absolute row, and the counter-example that makes the distinction
 // load-bearing are recorded once at extdeps.exec.command program_spelling_is_an_observation_claim.
 fn posix_sh_program() -> ProgramIdentity = uncataloged_program(invocation: "sh")
+
+// EXPORT ONE VARIABLE FROM A FILE, THEN EXEC A COMMAND (POSIX sh: command substitution, export,
+// exec). The value is read by the shell itself and placed only in the exec'd command's environment;
+// it never appears in any process's argument vector, which every local user can read. The file path
+// is $0 and the command is "$@", so neither is ever spliced into the program; the name is a
+// PosixShellName. A file that cannot be read exits 78 before the command runs, never an empty value
+// exported.
+//
+// THE PROGRAM IS A NODE, NOT A STRING (reviews 76293, 76372, 76385). It is built from the bash grammar
+// constructors (v2.extdeps.languages.bash_build) and serialized by the grammar-row emitter
+// (v2.workflow.bash_emit bash_emit_stmts), which renders, for name N:
+//   N=$('cat' '--' "$0") || exit 78
+//   'export' 'N'
+//   'exec' "$@"
+// -- measured under dash. An emitter refusal is a typed arm, never a fallback spelling.
+//
+// WHY THIS IS HOMED IN extdeps AND NOT IN THE CREDENTIAL LAYER (review 76372 point 3, stated
+// divergence). The ArgvCommand mint (extdeps.exec.command argv_command) admits only per-tool builders
+// homed in the tool's own extdeps module, and this is one POSIX sh operation parameterized by a name,
+// a path and a command. The POLICY (which variable, which credential, which custody file) is supplied
+// by the caller -- gunbc.claude_code_credential owns all three for the Claude credential.
+data posix_sh_export_from_file_unreadable_exit: Int = 78
+
+// WHETHER THE FILE OUTLIVES THE READ. A one-shot snapshot (one credential, one child) is removed by
+// the shell right after it is read and before the exec, so the value exists afterwards only in that
+// child's environment; a file another reader still needs is kept. A SUCCESSFUL REMOVAL IS A
+// PRECONDITION OF THE EXEC (side-chat finding, 2026-10-05): measured under dash with the parent
+// directory readable but not writable, a bare `rm -f` failed and the command still ran, and a second
+// launch ran again with the same value. So the removal carries its own failure arm and a snapshot
+// that cannot be consumed refuses the launch with exit 79 -- distinct from 78 (unreadable).
+data posix_sh_export_from_file_unremovable_exit: Int = 79
+type PosixShFileDisposition
+  = PosixShKeepFile
+  | PosixShRemoveFileAfterRead
+
+fn posix_sh_export_remove_statements(disposition: PosixShFileDisposition) -> List<Node> {
+  match disposition {
+    PosixShKeepFile => []
+    PosixShRemoveFileAfterRead =>
+      [
+        bash_build_or_else(
+          left: bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")]),
+          right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unremovable_exit)),
+        ),
+      ]
+  }
+}
+
+fn posix_sh_export_from_file_then_exec_program(name: PosixShellName, disposition: PosixShFileDisposition) -> Outcome<String> {
+  let spelling = name.spelling as String
+  bash_emit_stmts(
+    statements: concat(concat([
+      bash_build_or_else(
+        left: bash_build_assign(
+          name: spelling,
+          value: bash_build_word_cmdsubst(
+            body: bash_build_command_with_words(
+              words: [bash_build_word_lit(text: "cat"), bash_build_word_lit(text: "--"), bash_build_word_var(name: "0")],
+            ),
+          ),
+        ),
+        right: bash_build_exit(code: to_string(value: posix_sh_export_from_file_unreadable_exit)),
+      ),
+    ], posix_sh_export_remove_statements(disposition: disposition)), [
+      bash_build_command_from_lits(lits: ["export", spelling]),
+      bash_build_command_with_words(words: [bash_build_word_lit(text: "exec"), bash_build_word_var(name: "@")]),
+    ]),
+    set_e: false,
+  )
+}
+
+type PosixShExportExecCommand
+  = PosixShExportExecReady { command: ArgvCommand }
+  | PosixShExportExecEmitRefused { name: NonEmptyStr }
+
+fn posix_sh_export_from_file_then_exec_command(
+  name: PosixShellName,
+  path: NonEmptyStr,
+  command: List<String>,
+  disposition: PosixShFileDisposition,
+) -> PosixShExportExecCommand {
+  match posix_sh_export_from_file_then_exec_program(name: name, disposition: disposition) {
+    Accepted { value: program, diagnostics: _ } =>
+      PosixShExportExecReady {
+        command: argv_command(
+          program: posix_sh_program(),
+          arguments: concat(["-c", program, path as String], command),
+        ),
+      }
+    Rejected { diagnostics: _ } => PosixShExportExecEmitRefused { name: name.spelling }
+  }
+}

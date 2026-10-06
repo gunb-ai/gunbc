@@ -1,0 +1,292 @@
+module test.claim.fleet.fleet_posix_cutover_witness_test
+
+import std.types { String, Bool }
+import std.algebra { trim }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import gunbc.fleet_probe_identity_observe {
+  passwd_home_observation,
+  passwd_home_of,
+  passwd_home_receipt_text,
+  adc_env_value,
+  adc_file_observation_text,
+  PasswdHomeObserved,
+  PasswdHomeAbsent,
+  PasswdHomeRefused,
+}
+import gunbc.fleet_host_key_enrollment {
+  authorized_keys_admits_line,
+  pinned_config_content,
+  PinConfigAlreadyPinned,
+  PinConfigNextContent,
+  cwd_capture_stdout,
+  self_enroll_presence_decision,
+  SelfEnrollAlreadyPresent,
+  SelfEnrollApply,
+  SelfEnrollRefuse,
+}
+import extdeps.filesystem.filesystem_io {
+  FilesystemExactPathRead,
+  FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable,
+  FilesystemExactPathKindUnrecognized,
+  FilesystemPermissionDenied,
+}
+
+// WITNESSES FOR THE FLEET PROBE/ENROLLMENT POSIX CUTOVER (DP-M2, PR3). Every shell row these
+// retire — the getent|cut pipeline, `echo "$HOME"`, `command -v gcloud || echo absent`, the
+// compound gcloud auth-list probe, ${GOOGLE_APPLICATION_CREDENTIALS:-absent}, the `test -f` ADC
+// check, the two authorized_keys grep verdicts, the ssh-config pin, the mkdir/chmod/touch/cat>>
+// bootstrap — is replaced by a typed carrier whose DECISION lives in a pure function. These
+// witnesses supply the values (DESIGN 3: a witness discriminates at one interface) and pin each
+// decision: each one goes red if its carrier is deleted or degraded, and the positive controls
+// pin the admitted side. No witness here runs a process, an ssh leg, sudo, or DNS.
+
+// POSITIVE CONTROL: a whoami admission and a well-formed passwd line admit the home.
+test fn witness_passwd_home_observation_admits_the_database_line() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+  ) {
+    PasswdHomeObserved { home: h } =>
+      h == "/home/srvuser"
+        && passwd_home_of(obs: passwd_home_observation(
+          user: ProcessOutputPresent { text: "srvuser\n" },
+          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+        )) == "/home/srvuser"
+        && passwd_home_receipt_text(obs: passwd_home_observation(
+          user: ProcessOutputPresent { text: "srvuser\n" },
+          passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User:/home/srvuser:/bin/bash\n" } },
+        )) == "/home/srvuser"
+    _ => false
+  }
+}
+
+// RED WITHOUT THE ARM: a passwd line with no sixth field is refused, not truncated to "".
+test fn witness_passwd_home_refuses_a_line_without_a_home_field() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User\n" } },
+  ) {
+    PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "no home field")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE GUARD: the account database is keyed only by an admitted user probe. The
+// deleted pipeline keyed it with whatever the substitution produced, including nothing.
+test fn witness_passwd_home_refuses_when_the_user_probe_was_not_admitted() -> Bool {
+  match passwd_home_observation(user: ProcessOutputPresent { text: "" }, passwd: Absent) {
+    PasswdHomeRefused { cause: c } => string_contains(s: c, pattern: "account database not keyed")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE ARM: an empty home field answers absent, and no path is opened from it.
+test fn witness_passwd_home_absent_when_the_home_field_is_empty() -> Bool {
+  match passwd_home_observation(
+    user: ProcessOutputPresent { text: "srvuser\n" },
+    passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+  ) {
+    PasswdHomeAbsent => passwd_home_of(obs: passwd_home_observation(
+      user: ProcessOutputPresent { text: "srvuser\n" },
+      passwd: Present { value: ProcessOutputPresent { text: "srvuser:x:1000:1000:SRV User::\n" } },
+    )) == ""
+    _ => false
+  }
+}
+
+// ${VAR:-absent} (POSIX 2.6.2): the default answers for unset AND for empty; a non-empty value
+// passes through trimmed. Three vectors, one decision.
+test fn witness_adc_env_default_answers_unset_or_empty() -> Bool {
+  adc_env_value(v: Absent) == "absent"
+    && adc_env_value(v: Present { value: "" }) == "absent"
+    && adc_env_value(v: Present { value: " /home/srvuser/adc.json\n" }) == "/home/srvuser/adc.json"
+}
+
+// test -f ANSWERS IN ITS EXIT STATUS (test(1)): exit zero is "present" even though the utility
+// prints nothing (the capture's Absent arm), exit 1 IS the answer "absent" -- not a refusal --
+// and a status the question does not use is a refusal. Red without the exit-code split.
+test fn witness_adc_file_exit_one_is_the_answer_absent() -> Bool {
+  adc_file_observation_text(outcome: ProcessOutputAbsent) == "present"
+    && adc_file_observation_text(outcome: ProcessRefused { exit_code: 1, stderr: "" }) == "absent"
+    && string_contains(s: adc_file_observation_text(outcome: ProcessRefused { exit_code: 126, stderr: "permission denied" }), pattern: "refused")
+}
+
+// POSITIVE CONTROL: the enrolled line, exactly, is admitted.
+test fn witness_authorized_keys_admits_the_enrolled_line() -> Bool {
+  authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+}
+
+// RED WITHOUT THE -x SEMANTICS: substring containment must not count. The scan-side test uses
+// string_contains deliberately; the enrollment verdict requires a WHOLE line to equal the key
+// line, so a line that merely contains the material (a key with an appended comment, a foreign
+// line quoting it) is not the enrolled line the registry wrote.
+test fn witness_authorized_keys_requires_the_whole_line() -> Bool {
+  !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai rotated-2026\nforeign line\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(content: "", line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai")
+}
+
+// RED WITHOUT THE RAW-LINE COMPARISON: grep -x compared the file's RAW lines. A line that only
+// EQUALS the key line after trimming is not the enrolled line: padding is not what the registry
+// wrote, and a file whose line ends in CR (edited on Windows) does not carry the enrolled line
+// either. Each of these must NOT be admitted; a trim-tolerant comparison goes red here.
+test fn witness_authorized_keys_rejects_padded_and_crlf_lines() -> Bool {
+  !authorized_keys_admits_line(
+    content: "  ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai \n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+    && !authorized_keys_admits_line(
+    content: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai\r\n",
+    line: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIhqL fleet-automation@gunbai",
+  )
+}
+
+// RED WITHOUT THE MARKER GUARD: a config already carrying the pin is left byte-identical. This
+// is the idempotence the shell's `if ! grep -q` gave the pin; degrading the check to
+// always-append would double the Host block and go red here.
+test fn witness_pinned_config_is_idempotent() -> Bool {
+  match pinned_config_content(
+    existing: "# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n",
+    endpoints: "srv2.invalid srv3.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigAlreadyPinned => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: an unpinned, newline-terminated config's answer is the APPEND PAYLOAD -- the
+// marker line directly, as the deleted shell's `echo '# gunbc-fleet-pin' >> CFG` wrote it, then
+// the three pin lines with the absolute fragment path in the fourth. The payload does NOT include
+// the file's existing bytes: the caller appends it (tee -a), so the config's other lines are never
+// rewritten, and NO separator is added when the file already ends in a newline -- the payload is
+// byte-identical to the shell's block in this case.
+test fn witness_pinned_config_payload_carries_the_four_lines() -> Bool {
+  match pinned_config_content(
+    existing: "Host github.com\n  User git\n",
+    endpoints: "srv2.invalid srv3.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { payload: payload } =>
+      payload == "# gunbc-fleet-pin\nHost srv2.invalid srv3.invalid\n  StrictHostKeyChecking yes\n  UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment\n"
+        && string_contains(s: payload, pattern: "# gunbc-fleet-pin")
+        && string_contains(s: payload, pattern: "StrictHostKeyChecking yes")
+        && string_contains(s: payload, pattern: "UserKnownHostsFile /run/checkout/target/fleet-known-hosts-fragment")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE EMPTY-FILE ARM: an EMPTY config gets no separator -- the payload starts with the
+// marker, exactly the shell's bytes.
+test fn witness_pinned_config_payload_of_an_empty_config_has_no_separator() -> Bool {
+  match pinned_config_content(
+    existing: "",
+    endpoints: "srv2.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { payload: payload } =>
+      starts_with(s: payload, prefix: "# gunbc-fleet-pin")
+    _ => false
+  }
+}
+
+// THE INTENTIONAL REPAIR, PINNED: a config that does NOT end in a newline gets exactly one
+// separating newline before the marker -- without it the pin would glue onto the last line, the
+// one case the deleted shell's bytes got wrong. Red if the separator vanishes or doubles.
+test fn witness_pinned_config_payload_repairs_an_unterminated_config() -> Bool {
+  match pinned_config_content(
+    existing: "Host github.com\n  User git",
+    endpoints: "srv2.invalid",
+    fragment_path: "/run/checkout/target/fleet-known-hosts-fragment",
+  ) {
+    PinConfigNextContent { payload: payload } =>
+      starts_with(s: payload, prefix: "\n# gunbc-fleet-pin")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE GUARD: a refused pwd capture yields "" -- the pin refuses an absolute path it
+// cannot establish rather than pinning a relative UserKnownHostsFile that ssh would resolve
+// against the user's home. The deleted script's $(pwd) could silently pin an empty substitution.
+test fn witness_cwd_capture_answers_empty_unless_admitted() -> Bool {
+  cwd_capture_stdout(outcome: ProcessOutputPresent { text: " /run/checkout \n" }) == "/run/checkout"
+    && cwd_capture_stdout(outcome: ProcessRefused { exit_code: 1, stderr: "no tty" }) == ""
+    && trim(s: cwd_capture_stdout(outcome: ProcessOutputAbsent)) == ""
+}
+
+// THE PRESENCE VERDICT, PURE OVER A SUPPLIED READ. The deleted script answered
+// `grep -qxF ... 2>/dev/null && echo present || echo absent`: a MISSING key file folded into the
+// same `||` as a non-matching one and the apply branch created it, so a fresh home enrolled. The
+// typed read keeps that route and refuses only what the old script never distinguished. These
+// witnesses pin each verdict; each goes red if the arm is deleted or degraded.
+
+// RED WITHOUT THE ABSENT ARM: a missing key file routes to the apply, exactly as the deleted
+// grep's `|| echo absent` did -- a fresh home enrolls rather than being refused.
+test fn witness_self_enroll_presence_absent_applies() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathAbsent { path: "/home/srvuser/.ssh/authorized_keys" },
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollApply => true
+    _ => false
+  }
+}
+
+// POSITIVE CONTROL: an admitted read whose lines already carry the key answers already-present --
+// no write is planned for that verdict.
+test fn witness_self_enroll_presence_admitted_read_already_present() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA fleet\n" },
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollAlreadyPresent => true
+    _ => false
+  }
+}
+
+// RED WITHOUT THE APPLY-ON-MISSING-KEY ARM: an admitted read that does not carry the key falls to
+// the apply -- the create-or-append the deleted script's grep-not-present branch took.
+test fn witness_self_enroll_presence_admitted_read_without_the_key_applies() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathRead { path: "/home/srvuser/.ssh/authorized_keys", content: "ssh-ed25519 AAAA other\n" },
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollApply => true
+    _ => false
+  }
+}
+
+// RED WITHOUT THE UNREADABLE REFUSAL: a file that exists but cannot be read refuses with the
+// cause named -- the state the deleted grep could not tell from absent, where the remedy is the
+// opposite (stop, not write).
+test fn witness_self_enroll_presence_unreadable_refuses() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathUnreadable { path: "/home/srvuser/.ssh/authorized_keys", kind: FilesystemPermissionDenied, error: "open refused" },
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unreadable")
+    _ => false
+  }
+}
+
+// RED WITHOUT THE KIND TABLE: a host error kind the table does not know refuses with the kind
+// named, instead of guessing absent (and writing) or present (and skipping).
+test fn witness_self_enroll_presence_kind_unrecognized_refuses() -> Bool {
+  match self_enroll_presence_decision(
+    observed: FilesystemExactPathKindUnrecognized { path: "/home/srvuser/.ssh/authorized_keys", observed: "E_GREETING", error: "mystery" },
+    line: "ssh-ed25519 AAAA fleet",
+  ) {
+    SelfEnrollRefuse { cause: c } => string_contains(s: c, pattern: "unrecognized")
+    _ => false
+  }
+}

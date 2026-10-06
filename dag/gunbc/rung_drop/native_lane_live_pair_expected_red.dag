@@ -1,6 +1,6 @@
 module gunbc.rung_drop.native_lane_live_pair_expected_red
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Retired, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 

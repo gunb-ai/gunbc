@@ -1,6 +1,7 @@
 module test.claim.roadmap.roadmap_dogfood_route_wet_witness
 
 import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.process { ExitSuccess, ExitFailure }
 import std.durable_compare_and_set { ExpectSlotAbsent, CasCommitted, CasPreconditionFailed, CasStoreRefused }
@@ -19,6 +20,23 @@ import gunbc.roadmap_dogfood_route {
   dogfood_route_acceptance_holds_on,
   DogfoodStartRecord, DogfoodStartRecorded, DogfoodStartAlreadyRecorded, DogfoodStartNoCompleteAttempt, DogfoodStartRefused,
 }
+import gunbc.roadmap_attempt_metering { AttemptMeteringRecord, MeteredRoleUsage, MeteredWorker, TokensObserved, SeatReleased, ComputeNotAttributable, MeteringObserved }
+import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved }
+import gunbc.roadmap.roadmap_event_carrier { SnapshotNotOpened }
+import gunbc.roadmap_service_evidence { ServiceEvidenceReceipt, ServiceEvidenceInputs, SessionPlacementRead, MeteringRead, ResultReturnedRead, AttemptBinding, service_evidence_receipt_wire }
+import gunbc.roadmap_session_placement { SessionPlacementAbsent }
+import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string, json_int }
+import std.content_hash { content_hash_of_value }
+import std.materialization_provider { wire_content_hash_to_hex }
+import gunbc.roadmap_dispatch_actuator { dispatch_attempt_launch_path_for_instance, dispatch_attempt_state_path_for_instance }
+import gunbc.roadmap_launch_admission { LaunchIdentity, attempt_launch_record_json, launch_identity_null_revision, Operator }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, attempt_request_binding_path_for_instance, RequestClaimBound }
+import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
+import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
+import product.capacity.event_chain { PartitionId }
+import std.measure { token_count }
 import gunbc.roadmap_belt_tick_cli { belt_start_record_exit }
 
 // WET CONTROLS FOR THE DOGFOOD START RECEIPT'S STORE (side-chat ruling on #13077 at e7e9ca9b). Each
@@ -45,6 +63,20 @@ fn fresh_instance(tag: String) -> HostDashboardInstance {
   )
 }
 
+// THE ATTEMPT'S LAUNCH RECORD, as the belt writes it at launch: the durable binding a pinned
+// snapshot is judged against (instance, node, attempt and the null launch revision the fixtures use).
+fn request_wire() -> String {
+  attempt_request_binding_json(binding: RequestClaimBound { claim: "evt-claim" as NonEmptyStr as RoadmapEventId })
+}
+
+fn plant_launch(instance: HostDashboardInstance) -> Bool {
+  let path = dispatch_attempt_launch_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1")
+  let _dir = shell.Mkdir.Parents(path: dispatch_attempt_state_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1") as FilePath)
+  let id = LaunchIdentity { node_id: "n1" as NonEmptyStr as RoadmapNodeId, cause: Operator, mode: ManualReady, instance_id: instance.instance_id, revision: launch_identity_null_revision() }
+  Filesystem.Write(path: path, content: serialize_json(v: attempt_launch_record_json(id: id, attempt_key: "k1" as NonEmptyStr))).success
+    && Filesystem.Write(path: attempt_request_binding_path_for_instance(instance: instance, node_id: "n1" as NonEmptyStr as RoadmapNodeId, attempt_key: "k1"), content: request_wire()).success
+}
+
 fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
   let _made = shell.Mkdir.Parents(path: dashboard_instance_dispatch_attempt_state_root(instance: instance))
   instance
@@ -52,13 +84,66 @@ fn converge_root(instance: HostDashboardInstance) -> HostDashboardInstance {
 
 data head: String = "b04485cffb000000000000000000000000000000"
 
-fn wire(pr: String) -> String {
-  join([
-    "{\"schema\": \"dogfood-start-receipt/v2\", \"node_id\": \"n1\", \"attempt_key\": \"k1\", \"head_sha\": \"", head,
-    "\", \"submission_digest\": \"d1\", \"review_subject\": \"n1@", head,
-    "\", \"review_plan_revision\": \"plan-r1\", \"review_digest\": \"rd1\", \"pr_number\": ", pr,
-    ", \"pr_url\": \"https://github.com/gunb-ai/gunbc/pull/4242\", \"grant_identity\": \"evt-7\", \"fence_generation\": 7, \"cleanup_outcome\": \"released\", \"established_at\": \"2026-10-03T07:00:00Z\"}",
-  ], "")
+// THE PINNED EVIDENCE ESTABLISHES G3 AND G4: the live encoder's wire for this attempt over a Final
+// metering record and a published result -- the encoder's own output for observed inputs, so the
+// pinned check reads what production would pin.
+fn final_metering() -> AttemptMeteringRecord {
+  AttemptMeteringRecord {
+    node_id: "n1", attempt_key: "k1", metered_at: 1000, sealed_roster: Present { value: "seal" },
+    roles: [MeteredRoleUsage {
+      role: MeteredWorker,
+      tokens: TokensObserved { rounds: 1, input_tokens: token_count(count: 10), output_tokens: token_count(count: 5), terminal: true },
+      seat: SeatReleased { pointer: HarnessSeatPointer { partition: "group-b" as NonEmptyStr as PartitionId, reference: "ref" as NonEmptyStr, owner: "owner" as NonEmptyStr }, granted_at: 100, released_at: 142 },
+    }],
+    compute: ComputeNotAttributable { reason: "fixture" as NonEmptyStr },
+  }
+}
+
+fn published_result() -> ResultReturnedObservation {
+  ResultReturnedObserved {
+    node: "n1" as NonEmptyStr as RoadmapNodeId, attempt: "k1" as NonEmptyStr, event: "evt-result" as NonEmptyStr as RoadmapEventId, claim: "evt-claim" as NonEmptyStr as RoadmapEventId,
+    return_to: LegacyEmailPrincipal { email: "requester@example.com" as NonEmptyStr, authentication_unestablished: true },
+    outcome: ResultPublished { pr: "https://github.com/gunb-ai/gunbc/pull/4242" as NonEmptyStr, head: head as NonEmptyStr }, recorded_at: "2026-10-03T07:00:00Z",
+  }
+}
+
+fn evidence_wire(instance_id: String) -> String {
+  service_evidence_receipt_wire(r: ServiceEvidenceReceipt {
+    binding: AttemptBinding { instance_id: instance_id as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+    inputs: ServiceEvidenceInputs {
+      session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "gunbc-session-n1-k1" } },
+      metering: MeteringRead { observation: MeteringObserved { record: final_metering() } },
+      result_returned: ResultReturnedRead { observation: published_result(), close: SnapshotNotOpened },
+    },
+  })
+}
+
+fn wire(pr: String) -> String { wire_for(pr: pr, instance_id: "dogfood-wet") }
+
+fn wire_for(pr: String, instance_id: String) -> String {
+  let ev = evidence_wire(instance_id: instance_id)
+  serialize_json(v: json_object([
+    json_kv(key: "schema", value: json_string(s: "dogfood-start-receipt/v6")),
+    json_kv(key: "node_id", value: json_string(s: "n1")),
+    json_kv(key: "attempt_key", value: json_string(s: "k1")),
+    json_kv(key: "head_sha", value: json_string(s: head)),
+    json_kv(key: "submission_digest", value: json_string(s: "d1")),
+    json_kv(key: "review_subject", value: json_string(s: join(["n1@", head], ""))),
+    json_kv(key: "review_plan_revision", value: json_string(s: "plan-r1")),
+    json_kv(key: "review_digest", value: json_string(s: "rd1")),
+    json_kv(key: "pr_number", value: json_int(n: if pr == "0" { 0 } else { 4242 })),
+    json_kv(key: "pr_url", value: json_string(s: "https://github.com/gunb-ai/gunbc/pull/4242")),
+    json_kv(key: "grant_identity", value: json_string(s: "evt-7")),
+    json_kv(key: "fence_generation", value: json_int(n: 7)),
+    json_kv(key: "cleanup_outcome", value: json_string(s: "released")),
+    json_kv(key: "request_binding_wire", value: json_string(s: request_wire())),
+    json_kv(key: "result_event", value: json_string(s: "evt-result")),
+    json_kv(key: "result_claim", value: json_string(s: "evt-claim")),
+    json_kv(key: "metering_compute", value: json_string(s: "not-attributable")),
+    json_kv(key: "service_evidence_digest", value: json_string(s: wire_content_hash_to_hex(hash: content_hash_of_value(value: ev as NonEmptyStr)))),
+    json_kv(key: "service_evidence_wire", value: json_string(s: ev)),
+    json_kv(key: "established_at", value: json_string(s: "2026-10-03T07:00:00Z")),
+  ]))
 }
 
 fn is_refused(r: DogfoodStartRecord) -> Bool {
@@ -99,20 +184,46 @@ fn plant(root: NonEmptyStr, bytes: String) -> Bool {
   }
 }
 
-// A VALID RECEIPT IN THE SLOT is read as recorded: the recorder stops without rewriting it, and the
-// acceptance read holds.
-test fn a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted() -> Bool {
+// A RECEIPT VALID IN EVERY PINNED FACT IS STILL NOT THIS ATTEMPT'S START WHEN ITS LIVE RECORDS DO NOT
+// AGREE: the pinned evidence is the encoder's wire over a Final meter and a published result, and the
+// attempt has its launch and request records but no live returned-result event, so the instance-bound
+// read refuses at the durable G4 join and acceptance does not hold.
+test fn a_pinned_valid_receipt_without_live_g3_g4_records_is_refused() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "recorded"))
-  plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
-    && (match dogfood_start_record_for_instance(instance: instance) { DogfoodStartAlreadyRecorded => true  DogfoodStartRecorded { receipt: _ } => false  DogfoodStartNoCompleteAttempt => false  DogfoodStartRefused { reason: _ } => false })
-    && dogfood_route_acceptance_holds_on(instance: instance)
+  plant_launch(instance: instance)
+    && plant(root: dogfood_start_store_root(instance: instance), bytes: wire(pr: "4242"))
+    && refused_at_the_durable_result_join(r: dogfood_start_record_for_instance(instance: instance))
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER: the refusal is the occupied-slot judgment's durable G4 join -- the
+// pinned receipt decoded and its request record matched -- not a decode failure of the pinned wire.
+fn refused_at_the_durable_result_join(r: DogfoodStartRecord) -> Bool {
+  match r {
+    DogfoodStartRefused { reason } => string_contains(s: reason, pattern: "not this instance's start: the attempt") && string_contains(s: reason, pattern: "returned result")
+    DogfoodStartRecorded { receipt: _ } => false
+    DogfoodStartAlreadyRecorded => false
+    DogfoodStartNoCompleteAttempt => false
+  }
 }
 
 // AN INVALID RECEIPT IN THE SLOT IS NOT A START: the recorder refuses rather than reporting a
 // recorded start, and the acceptance read does not hold.
 test fn an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded() -> Bool {
   let instance = converge_root(instance: fresh_instance(tag: "invalid"))
-  plant(root: dogfood_start_store_root(instance: instance), bytes: "{\"schema\": \"dogfood-start-receipt/v2\", \"attempt_key\": \"fabricated\"}")
+  plant(root: dogfood_start_store_root(instance: instance), bytes: "{\"schema\": \"dogfood-start-receipt/v3\", \"attempt_key\": \"fabricated\"}")
     && is_refused(r: dogfood_start_record_for_instance(instance: instance))
     && !dogfood_route_acceptance_holds_on(instance: instance)
 }
+
+// EVIDENCE FROM ANOTHER INSTANCE IS NOT THIS INSTANCE'S START: a receipt whose pinned service evidence
+// names another instance, copied into this instance's slot, is refused by the recorder and does not
+// satisfy the acceptance read, even though node and attempt match.
+test fn a_receipt_pinning_another_instances_evidence_is_not_a_start_here() -> Bool {
+  let instance = converge_root(instance: fresh_instance(tag: "foreign"))
+  plant_launch(instance: instance)
+    && plant(root: dogfood_start_store_root(instance: instance), bytes: wire_for(pr: "4242", instance_id: "some-other-instance"))
+    && is_refused(r: dogfood_start_record_for_instance(instance: instance))
+    && !dogfood_route_acceptance_holds_on(instance: instance)
+}
+

@@ -1,0 +1,144 @@
+module test.claim.materialization_store_local_seal_witness
+
+import std.types { Bool, Int, String }
+import gunbc.compile_census_probe { blocking_subject_count_for }
+
+// A FAMILY MUTATION WITHOUT THE FAMILY HOLD IS UNWRITABLE. Every mutator of
+// extdeps.realization.materialization_store_local takes a LocalStoreFamilyHeld (or, for the sweep, a
+// LocalStoreAllFamiliesHeld), and both are sole_constructor records minted only by the hold
+// acquisitions. So a caller that wants to write without holding the family has to spell one of them,
+// and that spelling is a located compile refusal. Each probe asserts EXACTLY ONE refusal on its subject.
+
+fn seal_violations(source: String, subject: String) -> Int {
+  blocking_subject_count_for(source: source, wanted_class: "SoleConstructorViolation", wanted_subject: subject)
+}
+
+fn admission_refusals(source: String, callee: String) -> Int {
+  blocking_subject_count_for(source: source, wanted_class: "ConstructorCallAdmissionRefused", wanted_subject: callee)
+}
+
+data forged_family_hold_source: String = "module probe_store_forged_family_hold\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld }\nfn forged(h: LocalStoreFamilyHeld) -> LocalStoreFamilyHeld {\n  LocalStoreFamilyHeld { root_path: h.root_path, family: h.family, owner: h.owner, generation: h.generation, retention: h.retention }\n}\n"
+
+data forged_all_families_source: String = "module probe_store_forged_all_families\nimport extdeps.realization.materialization_store_local { LocalStoreAllFamiliesHeld }\nfn forged(a: LocalStoreAllFamiliesHeld) -> LocalStoreAllFamiliesHeld {\n  LocalStoreAllFamiliesHeld { root_path: a.root_path, held: a.held }\n}\n"
+
+test fn a_forged_family_hold_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_family_hold_source, subject: "LocalStoreFamilyHeld") == 1
+}
+
+test fn a_forged_all_families_hold_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_all_families_source, subject: "LocalStoreAllFamiliesHeld") == 1
+}
+
+
+// FORGED ADMISSION: the publish half takes what a reservation admitted, and only local_store_reserve
+// mints it, so skipping admission means spelling one.
+data forged_admission_source: String = "module probe_store_forged_admission\nimport extdeps.realization.materialization_store_local { LocalStoreAdmission }\nfn forged(a: LocalStoreAdmission) -> LocalStoreAdmission {\n  LocalStoreAdmission { budget: a.budget, evicted: a.evicted, retired: a.retired, reclamation: a.reclamation }\n}\n"
+
+test fn a_forged_reservation_admission_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_admission_source, subject: "LocalStoreAdmission") == 1
+}
+
+// THE RAW HELPERS ARE SEALED TO THE BRACKET'S OWN PATH: a caller outside it is an admission refusal,
+// even holding a real held value.
+data direct_write_index_source: String = "module probe_store_direct_write_index\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreIndex, LocalStoreIndexWrite, local_store_write_index }\nimport std.durable_compare_and_set { CasExpectation }\nfn direct(h: LocalStoreFamilyHeld, e: CasExpectation, i: LocalStoreIndex) -> LocalStoreIndexWrite {\n  local_store_write_index(held: h, expected: e, index: i)\n}\n"
+
+data direct_acquire_settled_source: String = "module probe_store_direct_acquire_settled\nimport std.types { Bool, NonEmptyStr }\nimport std.cache_identity { ArtifactKindId }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasGenerationWindow }\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreHoldAcquisition, local_store_acquire_settled }\nfn direct(b: LocalStoreBinding, f: ArtifactKindId, k: NonEmptyStr, o: DurableHoldOwnerRef, w: CasGenerationWindow) -> LocalStoreHoldAcquisition {\n  local_store_acquire_settled(binding: b, family: f, key: k, owner: o, window: w, recovered: false)\n}\n"
+
+test fn a_direct_index_write_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_write_index_source, callee: "local_store_write_index") == 1
+}
+
+test fn a_direct_settled_acquire_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_acquire_settled_source, callee: "local_store_acquire_settled") == 1
+}
+
+// THE PART PUBLICATION HELPERS ARE SEALED TOO: publishing a part copy, or settling against a verified
+// record, outside the commit's own path would write records or parts no index names.
+data direct_copy_and_link_source: String = "module probe_store_direct_copy_and_link\nimport std.types { String }\nimport std.materialization_object { ArtifactBlobPart }\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreStagedPart, local_store_copy_and_link }\nfn direct(h: LocalStoreFamilyHeld, r: String, p: LocalStoreStagedPart, b: ArtifactBlobPart) -> String? {\n  local_store_copy_and_link(held: h, record: r, part: p, staged: b)\n}\n"
+
+data direct_commit_verified_source: String = "module probe_store_direct_commit_verified\nimport std.types { String }\nimport std.content_hash { ContentHash }\nimport std.materialization_object { OpenedMaterializationStore }\nimport std.materialization_provider { ArtifactRequest, ResultContentIdentity }\nimport extdeps.realization.materialization_store_local { LocalStoreFamilyHeld, LocalStoreCommit, local_store_commit_verified }\nfn direct(h: LocalStoreFamilyHeld, s: OpenedMaterializationStore, q: ArtifactRequest, k: ContentHash, n: String, o: String, d: ContentHash, r: ResultContentIdentity) -> LocalStoreCommit {\n  local_store_commit_verified(held: h, store: s, req: q, key: k, name: n, object: o, offered: d, offered_result: r)\n}\n"
+
+test fn a_direct_part_copy_publish_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_copy_and_link_source, callee: "local_store_copy_and_link") == 1
+}
+
+test fn a_direct_verified_settle_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_commit_verified_source, callee: "local_store_commit_verified") == 1
+}
+
+// THE REMAINING EFFECTFUL HELPERS ARE SEALED: creating a store file, and reclaiming a slot's
+// generations, are reachable only from the store's own paths -- a direct call could write an
+// unindexed file, or apply this store's window to a slot that keeps every generation.
+data direct_create_new_source: String = "module probe_store_direct_create_new\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { FilesystemCreateNew }\nimport extdeps.realization.materialization_store_local { local_store_create_new }\nfn direct(p: String, c: String) -> FilesystemCreateNew {\n  local_store_create_new(path: p, content: c)\n}\n"
+
+data direct_settle_slot_source: String = "module probe_store_direct_settle_slot\nimport std.types { String, NonEmptyStr }\nimport extdeps.realization.materialization_store_local { LocalStoreSlotSettlement, local_store_settle_slot }\nfn direct(r: String, k: NonEmptyStr) -> LocalStoreSlotSettlement {\n  local_store_settle_slot(root_path: r, key: k)\n}\n"
+
+test fn a_direct_store_file_create_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_create_new_source, callee: "local_store_create_new") == 1
+}
+
+test fn a_direct_slot_settle_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_settle_slot_source, callee: "local_store_settle_slot") == 1
+}
+
+// THE OPENED STORE IS UNFORGEABLE. A capability is a verified binding plus its clean-sweep proof, minted
+// only by the open after its sweep cleared every orphan. A pre-open (what marker verification alone
+// yields) cannot be promoted by spelling a capability around its binding, a binding cannot be
+// spelled with different budgets, and a clean-sweep proof cannot be spelled for a sweep that never ran.
+data forged_capability_source: String = "module probe_store_forged_capability\nimport extdeps.realization.materialization_store_local { LocalStoreCapability, LocalStorePreOpen }\nfn forged(p: LocalStorePreOpen, c: LocalStoreCapability) -> LocalStoreCapability {\n  LocalStoreCapability { binding: p.binding, sweep: c.sweep }\n}\n"
+
+data forged_binding_source: String = "module probe_store_forged_binding\nimport extdeps.realization.materialization_store_local { LocalStoreBinding, LocalStoreCapability }\nfn forged(c: LocalStoreCapability) -> LocalStoreBinding {\n  LocalStoreBinding { root: c.binding.root, store: c.binding.store, budgets: [] }\n}\n"
+
+data forged_clean_sweep_source: String = "module probe_store_forged_clean_sweep\nimport extdeps.realization.materialization_store_local { LocalStoreCleanSweep }\nfn forged() -> LocalStoreCleanSweep {\n  LocalStoreCleanSweep { removed: [], releases: [] }\n}\n"
+
+test fn a_forged_store_capability_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_capability_source, subject: "LocalStoreCapability") == 1
+}
+
+test fn a_forged_store_binding_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_binding_source, subject: "LocalStoreBinding") == 1
+}
+
+test fn a_forged_clean_sweep_proof_is_refused_at_compile() -> Bool {
+  seal_violations(source: forged_clean_sweep_source, subject: "LocalStoreCleanSweep") == 1
+}
+
+// THE WINDOWED CONTRACT IS THE STORE'S ALONE. Keep-all callers use the unchanged file_compare_and_set
+// family; the windowed operations, and the raw helpers beneath both contracts, admit only their named
+// callers. Each probe below is a module outside that list calling one of them, and each is exactly one
+// ConstructorCallAdmissionRefused naming the callee.
+
+// a keep-all caller committing through the windowed operation
+data direct_windowed_compare_and_set_source: String = "module probe_direct_windowed_compare_and_set\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasGenerationWindow, CasFileWrite, file_compare_and_set_windowed }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, v: VerifiedCasAttempt, w: CasGenerationWindow) -> CasFileWrite {\n  file_compare_and_set_windowed(root: r, publication: p, verified: v, window: w)\n}\n"
+
+// a hold taken on a windowed slot outside the store
+data direct_windowed_hold_source: String = "module probe_direct_windowed_hold\nimport std.types { NonEmptyStr }\nimport std.durable_exclusive_hold { DurableHoldOwnerRef }\nimport gunbc.durable_cas_file_store { CasGenerationWindow }\nimport gunbc.durable_exclusive_hold_file_store { FileHoldAcquireOutcome, file_hold_acquire_windowed }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, o: DurableHoldOwnerRef, w: CasGenerationWindow) -> FileHoldAcquireOutcome {\n  file_hold_acquire_windowed(root: r, slot_key: k, requested_owner: o, window: w)\n}\n"
+
+// the raw commit with a caller-chosen retention
+data direct_raw_outcome_source: String = "module probe_direct_raw_outcome\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasGenerationPublication, VerifiedCasAttempt, CasSlotRetention, cas_compare_and_set_outcome }\nimport std.durable_compare_and_set { CasOutcome }\nfn direct(r: NonEmptyStr, p: CasGenerationPublication, t: CasSlotRetention, v: VerifiedCasAttempt) -> CasOutcome<NonEmptyStr> {\n  cas_compare_and_set_outcome(root: r, publication: p, retention: t, verified: v)\n}\n"
+
+// the raw observation with a caller-chosen retention
+data direct_raw_observe_source: String = "module probe_direct_raw_observe\nimport std.types { NonEmptyStr }\nimport gunbc.durable_cas_file_store { CasSlotRetention, CasSlotProbe, cas_observe_retained_slot }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, t: CasSlotRetention) -> CasSlotProbe {\n  cas_observe_retained_slot(root: r, key: k, retention: t)\n}\n"
+
+// deleting an audit slot's generations below a caller-chosen head
+data direct_raw_reclaim_source: String = "module probe_direct_raw_reclaim\nimport std.types { NonEmptyStr }\nimport std.durable_compare_and_set { CasGeneration }\nimport gunbc.durable_cas_file_store { CasGenerationWindow, CasWindowReclamation, cas_reclaim_below }\nfn direct(r: NonEmptyStr, k: NonEmptyStr, w: CasGenerationWindow, h: CasGeneration) -> CasWindowReclamation {\n  cas_reclaim_below(root: r, key: k, window: w, head: h)\n}\n"
+
+test fn a_direct_windowed_compare_and_set_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_windowed_compare_and_set_source, callee: "file_compare_and_set_windowed") == 1
+}
+
+test fn a_direct_windowed_hold_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_windowed_hold_source, callee: "file_hold_acquire_windowed") == 1
+}
+
+test fn a_direct_raw_outcome_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_outcome_source, callee: "cas_compare_and_set_outcome") == 1
+}
+
+test fn a_direct_raw_observe_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_observe_source, callee: "cas_observe_retained_slot") == 1
+}
+
+test fn a_direct_raw_reclaim_call_is_an_admission_refusal() -> Bool {
+  admission_refusals(source: direct_raw_reclaim_source, callee: "cas_reclaim_below") == 1
+}

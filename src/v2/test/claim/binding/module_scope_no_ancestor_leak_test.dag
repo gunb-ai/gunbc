@@ -1,0 +1,173 @@
+module v2.test.claim.binding.module_scope_no_ancestor_leak
+
+import std.types { List }
+import std.algebra { Empty }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.compiler.normalized_tree { no_record_declarations, no_resource_declarations }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.extdeps.languages.dag { dag_grammar_atom, dag_surface_edge }
+import v2.std.algebra { fold_list_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Authored, Conj, Disj, Edge, Node, Symbol, TypeNode }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string, qualified_name_snoc }
+import v2.std.symbol_index {
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalLookup,
+  LexicalUnbound,
+  SymbolIndex,
+  empty_symbol_index,
+  symbol_index_bind_at,
+  symbol_index_entry_at,
+  symbol_index_lexical_collect,
+  symbol_index_lexical_selection
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A MODULE SEES ONLY ITS OWN DECLARATIONS AND ITS OWN IMPORTS (operator ruling 2026-10-04: accuracy,
+// no ambiguity, no shadowing). The lexical walk (symbol_index_lexical_collect) ascends the containment
+// chain of the referencing position and STOPS at the referencing module's root, which the fill marks
+// (symbol_index_mark_module_root). Before that mark, `v2.test.leak_parent.child` saw every
+// declaration and import of the module `v2.test.leak_parent` -- the leak behind most of R1 in
+// docs/plans/native-resolve-frontier-root-causes.md.
+//
+// THE ROUTE: both modules are filled through the production fill (symbol_index_fill_module_root),
+// the parent's import is bound through symbol_index_bind_at (the writer the fill's binding rows use),
+// and every claim runs the real chain walk and the real selection. The positive controls hold the
+// other half of the ruling: the module's own declarations, reached by ascending WITHIN the module,
+// and its own imports stay in scope.
+
+data leak_parent_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.leak_parent")
+data leak_child_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.leak_parent.child")
+data leak_home_qn: List<Symbol> = qualified_name_from_dotted_string(dotted: "v2.test.leak_home")
+
+fn leak_atom(name: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: name } },
+    children: [],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn leak_type_edge(type_sym: Symbol, variants: List<Symbol>) -> Edge {
+  Edge {
+    label: Authored { name: type_sym },
+    target: Node {
+      kind: TypeNode { connective: Disj },
+      children: fold(variants, init: [], f: fn(acc, variant_sym) {
+        concat(acc, [Edge { label: Authored { name: variant_sym }, target: leak_atom(name: variant_sym) }])
+      }),
+      occurrence_id: OccurrenceSynthetic
+    }
+  }
+}
+
+fn leak_module_root(qn: List<Symbol>, decls: List<Edge>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: concat(
+      [
+        dag_surface_edge(edge: ^dag_surface_module_header,
+          target: dag_grammar_atom(id: ^dag_surface_module_header)
+        ),
+        dag_surface_edge(edge: ^dag_surface_module_header_qualified_name,
+          target: fold_list_node(xs: qn, item_node: fn(sym) { leak_atom(name: sym) })
+        )
+      ],
+      decls
+    ),
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+fn leak_fill(index: SymbolIndex, root: Node) -> SymbolIndex {
+  symbol_index_fill_module_root(
+    index: index,
+    root: root,
+    record_declarations: no_record_declarations(), resource_declarations: no_resource_declarations()
+  )
+}
+
+// The parent DECLARES ParentDeclared and IMPORTS Imported from leak_home; the child declares Local
+// (variant Leaf) and imports nothing.
+fn leak_index() -> SymbolIndex {
+  let filled = leak_fill(
+    index: leak_fill(
+      index: leak_fill(index: empty_symbol_index(), root: leak_module_root(qn: leak_home_qn, decls: [leak_type_edge(type_sym: ^Imported, variants: [^ImportedArm])])),
+      root: leak_module_root(qn: leak_parent_qn, decls: [leak_type_edge(type_sym: ^ParentDeclared, variants: [^ParentArm])])
+    ),
+    root: leak_module_root(qn: leak_child_qn, decls: [leak_type_edge(type_sym: ^Local, variants: [^Leaf])])
+  )
+  let home_imported = qualified_name_snoc(qn: leak_home_qn, segment: ^Imported)
+  symbol_index_bind_at(
+    index: filled,
+    binding_path: qualified_name_snoc(qn: leak_parent_qn, segment: ^Imported),
+    declaring_path: home_imported,
+    resolved: match symbol_index_entry_at(index: filled, qualified_path: home_imported) {
+      Present { value: node } => node
+      Absent => leak_atom(name: ^absent)
+    }
+  )
+}
+
+// A reference written inside the child's type Local.
+fn leak_lookup(index: SymbolIndex, name: Symbol) -> LexicalLookup {
+  symbol_index_lexical_selection(
+    candidates: symbol_index_lexical_collect(
+      index: index,
+      position: qualified_name_snoc(qn: leak_child_qn, segment: ^Local),
+      name: name,
+      acc: Empty
+    )
+  )
+}
+
+fn leak_is_unbound(l: LexicalLookup) -> Bool {
+  match l {
+    LexicalUnbound => true
+    LexicalHit { node: _, path: _ } => false
+    LexicalAmbiguous { candidates: _ } => false
+  }
+}
+
+fn leak_hits(l: LexicalLookup, path: QualifiedName) -> Bool {
+  match l {
+    LexicalHit { node: _, path: p } => p == path
+    LexicalUnbound => false
+    LexicalAmbiguous { candidates: _ } => false
+  }
+}
+
+// RED BEFORE: the walk reached v2.test.leak_parent and answered a Hit on the parent's import.
+test fn an_ancestor_modules_import_is_not_in_scope_in_a_contained_module() -> Bool {
+  leak_is_unbound(l: leak_lookup(index: leak_index(), name: ^Imported))
+}
+
+// RED BEFORE: the walk reached v2.test.leak_parent and answered a Hit on the parent's declaration.
+test fn an_ancestor_modules_declaration_is_not_in_scope_in_a_contained_module() -> Bool {
+  leak_is_unbound(l: leak_lookup(index: leak_index(), name: ^ParentDeclared))
+}
+
+// POSITIVE: the walk still ascends WITHIN the module -- from inside Local to the child's root -- and
+// finds the child's own declaration.
+test fn a_modules_own_declaration_is_in_scope_from_inside_it() -> Bool {
+  leak_hits(l: leak_lookup(index: leak_index(), name: ^Local), path: qualified_name_snoc(qn: leak_child_qn, segment: ^Local))
+}
+
+// POSITIVE: the module's own import is in scope -- the same binding that must not leak downward
+// resolves for the module that wrote it.
+test fn a_modules_own_import_is_in_scope_in_that_module() -> Bool {
+  leak_hits(
+    l: symbol_index_lexical_selection(
+      candidates: symbol_index_lexical_collect(
+        index: leak_index(),
+        position: qualified_name_snoc(qn: leak_parent_qn, segment: ^ParentDeclared),
+        name: ^Imported,
+        acc: Empty
+      )
+    ),
+    path: qualified_name_snoc(qn: leak_home_qn, segment: ^Imported)
+  )
+}

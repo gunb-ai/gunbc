@@ -31,7 +31,11 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
   commit_at_reference,
+  mint_intake_base, IntakeBaseMinted, IntakeBaseAllocatorInvalid, IntakeBaseRootRefused, IntakeBaseLineExists,
+  mint_intake_advance, IntakeAdvanceMinted, IntakeAdvanceAllocatorInvalid, IntakeAdvanceParentMissing, IntakeAdvanceRootRefused,
+  IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
 }
+import gunbc.scm.intake { IntakeRevision, CaptureWork }
 import gunbc.scm.squash_merge {
   squash_merge,
   SquashMerged,
@@ -48,6 +52,12 @@ import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision,
   stage_source_at_path,
+  commit_staged_capture, StagedCapture, StagedCaptureCommitted, StagedCaptureWithoutBase, StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
+  candidate_record, CandidateRecordIs, CandidateRecordRefused,
+}
+import gunbc.scm.object_store {
+  path_unique_of_record, path_unique_with_path_removed, store_path_unique_manifest, UniqueManifestStored, UniqueManifestLocatorCollision,
 }
 
 // THE FIXTURE IS FALLIBLE FOR THE REASON THE STAGING FIXTURE'S HEADER GIVES AND THIS FILE INHERITS
@@ -134,6 +144,120 @@ fn mb_commit(build: MbBuild, message: String) -> MbBuild {
             RepositoryCommitMintRootIsAuthoredSource { root: _ } => MbSetupFailed
             RepositoryCommitMintRootIsSemanticNode { root: _ } => MbSetupFailed
             RepositoryCommitMintParentMissing { parent: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// THE INTAKE STEPS: the staged manifest frozen as an intake base (a root commit) or as an advance of
+// the cursor's line, through the production intake mints and nothing else. The cursor and the stage
+// move to the new commit exactly as mb_commit moves them; a refusal is a broken fixture.
+fn mb_settle(repository: RepositoryEnvelope, reference: RepositoryCommitRef) -> MbBuild {
+  match commit_at_reference(commits: repository.commits, reference: reference) {
+    Absent => MbSetupFailed
+    Present { value: c } =>
+      MbBuilt {
+        repository: RepositoryEnvelope {
+          store: repository.store,
+          commits: repository.commits,
+          commit_allocator: repository.commit_allocator,
+          checked_out: Present { value: reference },
+          staged: Present { value: c.root },
+        },
+        at: Present { value: reference },
+      }
+  }
+}
+
+fn mb_intake_base(build: MbBuild, message: String, revision: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match repository.staged {
+        Absent => MbSetupFailed
+        Present { value: candidate } =>
+          match mint_intake_base(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, revision: revision) {
+            IntakeBaseMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            IntakeBaseAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            IntakeBaseRootRefused { cause: _ } => MbSetupFailed
+            IntakeBaseLineExists { base: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+fn mb_intake_advance(build: MbBuild, message: String, from: IntakeRevision, to: IntakeRevision) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match at {
+        Absent => MbSetupFailed
+        Present { value: parent } =>
+          match repository.staged {
+            Absent => MbSetupFailed
+            Present { value: candidate } =>
+              match mint_intake_advance(repository: repository, root: CorpusManifestTarget { locator: candidate.locator }, message: message, parent: parent, from: from, to: to) {
+                IntakeAdvanceMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+                IntakeAdvanceAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+                IntakeAdvanceParentMissing { parent: _ } => MbSetupFailed
+                IntakeAdvanceRootRefused { cause: _ } => MbSetupFailed
+                IntakeAdvanceDoesNotMove { revision: _ } => MbSetupFailed
+                IntakeAdvanceDiscontinuous { parent: _, line: _ } => MbSetupFailed
+                IntakeAdvanceRevisionAlreadyPlaced { commits: _ } => MbSetupFailed
+                IntakeAdvanceLineAlreadyAdvanced { commit: _ } => MbSetupFailed
+              }
+          }
+      }
+  }
+}
+
+// A CAPTURE: the staged manifest frozen through the production capture verb, recording the unit of
+// work it captured (gunbc.scm.write_spine commit_staged_capture). The cursor and the stage then move
+// to the new commit exactly as mb_commit leaves them.
+fn mb_capture(build: MbBuild, message: String, work: CaptureWork) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: _ } =>
+      match commit_staged_capture(repository: repository, message: message, work: work) {
+        StagedCaptureWithoutBase => MbSetupFailed
+        StagedCaptureCommitted(staged) =>
+          match staged {
+            StagedCommitMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            StagedCommitCandidateRefused { cause: _ } => MbSetupFailed
+            StagedCommitNothingToFreeze => MbSetupFailed
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            StagedCommitSourceUnrecoverable { cause: _ } => MbSetupFailed
+          }
+      }
+  }
+}
+
+// A DELETION STAGED THE WAY THE BELT'S CAPTURE STAGES ONE: the candidate's entries with exactly one
+// path removed (gunbc.scm.object_store path_unique_with_path_removed), stored as the new stage.
+fn mb_remove(build: MbBuild, path: String) -> MbBuild {
+  match build {
+    MbSetupFailed => MbSetupFailed
+    MbBuilt { repository: repository, at: at } =>
+      match candidate_record(repository: repository) {
+        CandidateRecordRefused { cause: _ } => MbSetupFailed
+        CandidateRecordIs(subject) =>
+          match subject.base {
+            Absent => MbSetupFailed
+            Present { value: record } =>
+              match store_path_unique_manifest(store: repository.store, unique: path_unique_with_path_removed(unique: path_unique_of_record(base: record), path: path as NonEmptyStr)) {
+                UniqueManifestLocatorCollision { identity: _, existing: _, incoming: _ } => MbSetupFailed
+                UniqueManifestStored { store: stored, manifest } =>
+                  MbBuilt {
+                    repository: RepositoryEnvelope {
+                      store: stored,
+                      commits: repository.commits,
+                      commit_allocator: repository.commit_allocator,
+                      checked_out: repository.checked_out,
+                      staged: Present { value: manifest },
+                    },
+                    at: at,
+                  }
+              }
           }
       }
   }

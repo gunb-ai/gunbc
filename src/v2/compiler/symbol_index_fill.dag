@@ -43,6 +43,7 @@ import v2.std.symbol_index {
   symbol_index_mark_namespace_body,
   VariantArmPayload,
   symbol_index_bind_at,
+  symbol_index_mark_module_root,
   symbol_index_declaring_path_of,
   symbol_index_insert,
   symbol_index_lookup,
@@ -92,21 +93,31 @@ data symbol_index_containment_disposition: Disposition = Scaffold {
 // declarations of the alias, and a binder is never a declared identity.
 // The node a declared name binds to, and the member the index descends into when the declaration
 // declares members -- one dispatch on the view for both.
-// type_params: a GENERIC declaration binds its member, which cannot carry its binders, so they ride
-// beside it (v2.std.symbol_index symbol_index_mark_declared_type_params). Empty for every other arm:
-// an alias or bodyless declaration binds its wrapper, which still carries them.
+// binders: a GENERIC declaration binds its member, which cannot carry its binders, so they ride
+// beside it (v2.std.symbol_index symbol_index_mark_declared_type_params). An alias or bodyless
+// declaration binds its wrapper and its binders are recorded beside it too, so every declaration that
+// binds type parameters answers v2.std.symbol_index symbol_index_declared_binders_at the same way --
+// the read resolve's type-application check (v2.std.type_binder type_application_conformance) takes.
+// Absent only for a plain member, which binds none.
 type SymbolIndexDeclared {
   bound: Node
   members: Optional<Node>
-  type_params: List<Symbol>
+  binders: Optional<Node>
 }
 
 fn symbol_index_declared(target: Node) -> SymbolIndexDeclared {
   match type_decl_view(target: target) {
-    GenericTypeDecl { binders: _, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), type_params: type_param_names(n: target) }
-    TypeAlias { binders: _, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), type_params: Empty }
-    OpaqueTypeDecl { binders: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), type_params: Empty }
-    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), type_params: Empty }
+    GenericTypeDecl { binders: b, member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_present(value: b) }
+    TypeAlias { binders: b, aliased: _ } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    OpaqueTypeDecl { binders: b } => SymbolIndexDeclared { bound: target, members: optional_absent(), binders: optional_present(value: b) }
+    PlainTypeDecl { member: m } => SymbolIndexDeclared { bound: m, members: optional_present(value: m), binders: optional_absent() }
+  }
+}
+
+fn symbol_index_mark_declared_binders(index: SymbolIndex, qualified_path: QualifiedName, binders: Optional<Node>) -> SymbolIndex {
+  match binders {
+    Present { value: b } => symbol_index_mark_declared_type_params(index: index, qualified_path: qualified_path, params: b)
+    Absent => index
   }
 }
 
@@ -115,14 +126,14 @@ fn symbol_index_fill_declared_child(index: SymbolIndex, path: QualifiedName, seg
   let child_path = qualified_name_snoc(qn: path, segment: segment)
   let declared = symbol_index_declared(target: symbol_index_binder_type_or_target(target: edge.target))
   let with_binding = symbol_index_mark_namespace_body_if(
-    index: symbol_index_mark_declared_type_params(
+    index: symbol_index_mark_declared_binders(
       index: symbol_index_insert(
         index: index,
         qualified_path: child_path,
         resolved: declared.bound
       ),
       qualified_path: child_path,
-      params: declared.type_params
+      binders: declared.binders
     ),
     qualified_path: child_path,
     target: edge.target
@@ -210,6 +221,15 @@ fn symbol_index_fill_containment_edge(
 // is intentionally NOT a typed refusal so lowered members nested under top_level_item shells remain
 // reachable. New TypeNode connectives that carry real named bindings must get an explicit arm
 // before relying on this fallback.
+fn symbol_index_fill_containment_children(
+  index: SymbolIndex,
+  path: QualifiedName,
+  node: Node
+) -> SymbolIndex {
+  fold(node.children, init: index, f: fn(acc, edge) {
+    symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
+  })
+}
 
 // AN ARROW'S DOMAIN IS A PARAMETER LIST, NEVER A NAMESPACE SPINE SEGMENT. The Arrow arm indexes the
 // domain's binders under the Arrow's path by label, directly, rather than handing the domain to the
@@ -264,19 +284,19 @@ fn symbol_index_fill_containment_node(
               fold(domain.children, init: index, f: fn(acc, edge) {
                 symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
               })
-            _ =>
-              symbol_index_fill_containment_node(
-                index: index,
-                path: path,
-                node: domain
-              )
+            TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Disj } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Arrow } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Cardinality } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            TypeNode { connective: Instantiation } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
+            ComputationNode { behavior: _ } => symbol_index_fill_containment_node(index: index, path: path, node: domain)
           }
         FirstPositionalAbsent => index
       }
-    _ =>
-      fold(node.children, init: index, f: fn(acc, edge) {
-        symbol_index_fill_containment_edge(index: acc, path: path, edge: edge)
-      })
+    TypeNode { connective: Atom { identity: _ } } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    TypeNode { connective: Cardinality } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    TypeNode { connective: Instantiation } => symbol_index_fill_containment_children(index: index, path: path, node: node)
+    ComputationNode { behavior: _ } => symbol_index_fill_containment_children(index: index, path: path, node: node)
   }
 }
 
@@ -309,7 +329,12 @@ fn disj_variant_counts_in_module(root: Node) -> Map<Symbol, Int> {
               Positional => c
             }
           })
-        _ => counts
+        TypeNode { connective: Atom { identity: _ } } => counts
+        TypeNode { connective: Conj } => counts
+        TypeNode { connective: Arrow } => counts
+        TypeNode { connective: Cardinality } => counts
+        TypeNode { connective: Instantiation } => counts
+        ComputationNode { behavior: _ } => counts
       }
     }
   )
@@ -467,7 +492,12 @@ fn symbol_index_fill_unique_variant_aliases(
               Positional => a2
             }
           })
-        _ => acc
+        TypeNode { connective: Atom { identity: _ } } => acc
+        TypeNode { connective: Conj } => acc
+        TypeNode { connective: Arrow } => acc
+        TypeNode { connective: Cardinality } => acc
+        TypeNode { connective: Instantiation } => acc
+        ComputationNode { behavior: _ } => acc
       }
     }
   )
@@ -501,7 +531,7 @@ fn symbol_index_fill_module_declarations(
         xs: record_declarations,
         empty: symbol_index_fill_unique_variant_aliases(
           index: symbol_index_fill_containment_node(
-            index: index,
+            index: symbol_index_mark_module_root(index: index, qualified_path: module_qn),
             path: module_qn,
             node: root
           ),

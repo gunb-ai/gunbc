@@ -263,17 +263,30 @@ test fn a_coproducts_own_absent_arm_at_its_declared_positions_still_compiles() -
     )
 }
 
-// THE DECLARED RESIDUAL, ENROLLED AS WHAT IT IS. An index access types as optional and realizes in
-// Rust as the bare element, so its optionality is not established across the two acceptance paths
-// and these positions raise no cardinality obligation for it (v1.compiler.infer
-// expr_value_is_index_access; the seed's own tokenizer returns `chars[pos]` at a declared Int).
-// This claim pins the admission so the residual is an executed fact rather than a sentence: it
-// goes red the day the index model and its realization are reconciled and the wall reaches index
-// values, and on that day it flips to a refusal count, it does not retire.
-fn oar_index_residual_source() -> String {
-  "module oar.index_residual\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  xs[0]\n}\n\nfn probe_field(xs: List<Int>) -> Code {\n  Code { code: xs[0] }\n}\n"
+// AN INDEX AT A REQUIRED POSITION REFUSES. `xs[i]` types as optional (v1.compiler.infer_access
+// check_index_access_node) and its Rust realization is the optional `.get(i).cloned()`, so the two
+// acceptance paths agree and the index carve-out this claim used to pin as a declared residual is
+// deleted (gunbc.recurring_failure_mode list_index_typed_optional_but_realized_as_the_bare_element).
+// The red is the declared return and the record-literal field; the positive control is the same
+// read eliminated by a match, which the Rust emitter must realize as a compilable program.
+fn oar_index_negative_source() -> String {
+  "module oar.index_negative\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  xs[0]\n}\n\nfn probe_field(xs: List<Int>) -> Code {\n  Code { code: xs[0] }\n}\n"
 }
 
-test fn an_index_access_at_a_required_position_is_the_declared_residual() -> Bool {
-  not_inhabited_blocking_count(source: oar_index_residual_source()) == 0
+fn oar_index_positive_source() -> String {
+  "module oar.index_positive\n\nimport std.types { Int, String }\n\ntype Code { code: Int }\n\nfn probe(xs: List<Int>) -> Int {\n  match xs[0] {\n    Present { value: v } => v\n    Absent => 0\n  }\n}\n\nfn probe_field(xs: List<Int>) -> Code? {\n  match xs[0] {\n    Present { value: v } => Present { value: Code { code: v } }\n    Absent => none\n  }\n}\n"
+}
+
+test fn an_index_access_at_a_required_position_refuses() -> Bool {
+  not_inhabited_blocking_count(source: oar_index_negative_source()) >= 2
+}
+
+test fn an_index_access_eliminated_by_a_match_compiles_as_rust() -> Bool {
+  not_inhabited_blocking_count(source: oar_index_positive_source()) == 0
+    && compile_dag_rust_emit_check(
+      oar_index_positive_source(),
+      "src/oar_index_positive.rs",
+      [],
+      []
+    )
 }
