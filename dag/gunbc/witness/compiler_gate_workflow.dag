@@ -158,7 +158,10 @@ import gunbc.emitted_subject_build_gate {
   emit_build_standing, emit_build_standing_notice_for,
   emitted_subject_build_rows,
   emitted_subject_build_command,
-  emitted_subject_build_step_name
+  emitted_subject_build_step_name,
+  native_fault_experiment_env_name,
+  native_fault_experiment_skip_value,
+  native_fault_experiment_run_value
 }
 // THE EPOCH TRAVELS IN THESE BYTES. gunbc.required_ci_epoch_observation parses
 // GUNBC_REQUIRED_CI_CONTRACT_EPOCH structurally out of .github/workflows/witnesses.yml AT THE
@@ -374,6 +377,15 @@ fn compiler_gate_unit_test_capability_closure_holds() -> Bool {
   )
 }
 
+// THE UNIT LANE RUNS ON merge_group AND workflow_dispatch ONLY (operator 2026-10-06, CI short-term
+// relief): it is non-blocking under gunbc.rung_drop rust_unit_tests_over_their_cap, so a per-push
+// pull_request run paid a runner for a verdict nothing read. The pull_request exclusion is part of
+// that drop's population; the queue's composed revision still runs it. Fork pull requests are
+// excluded by the same clause.
+fn compiler_gate_unit_test_job_condition() -> String {
+  join(["github.event_name != '", github_event_name_pull_request, "'"], "")
+}
+
 fn compiler_gate_unit_test_job() -> Job {
   Job {
     id: compiler_gate_unit_test_job_id,
@@ -384,7 +396,7 @@ fn compiler_gate_unit_test_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: Present { value: compiler_gate_floor_job_condition() },
+    if_condition: Present { value: compiler_gate_unit_test_job_condition() },
     timeout_minutes: Present { value: minute_count(compiler_gate_unit_test_job_timeout()) },
     continue_on_error: none,
     concurrency: none,
@@ -1100,7 +1112,14 @@ fn compiler_gate_emit_build_step(row: EmittedSubjectBuildRow) -> Step {
       "\n"
     ),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(
+          key: native_fault_experiment_env_name,
+          value: yaml_string(s: join(["${{ github.event_name == 'pull_request' && '", native_fault_experiment_skip_value, "' || '", native_fault_experiment_run_value, "' }}"], ""))
+        )
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -1517,7 +1536,7 @@ fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
       job_id: compiler_gate_unit_test_job_id,
       var_name: "RUST_UNIT_TESTS",
       arm: GateArmSkippableOnFork {
-        notice: "the v1 unit-test lane is skipped for a fork pull request: it runs on the fleet",
+        notice: "the v1 unit-test lane does not run on pull_request: it runs on merge_group and workflow_dispatch on the fleet",
         unobserved_error: "the v1 unit-test lane produced no success"
       },
       standing: LaneAnnouncedNotBlocking {

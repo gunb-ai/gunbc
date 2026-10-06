@@ -13,12 +13,16 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // merge. The lane row is now LaneAnnouncedNotBlocking: the job still runs on every pull request and
 // merge_group and reports its result, and the aggregate no longer needs it.
 //
+// 2026-10-06 (operator, CI short-term relief): the job no longer runs on pull_request at all; it runs
+// on merge_group and workflow_dispatch only (compiler_gate_unit_test_job_condition). A unit-test red
+// is therefore observed at the queue's composed revision and reported, never read by the aggregate.
+//
 // THE TRIGGER IS THE CAPABILITY, NOT THE CAP. Raising the literal does not retire this row; a cap
 // raised past a wall nobody measured is the same red waiting for a slower head. What retires it is
 // the suite completing under its cap on the fleet, every head, read from the lane's own runs.
 
 data rust_unit_tests_over_their_cap_population: List<String> = [
-  "the fleet rust-unit-tests job of gunbc.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate",
+  "the fleet rust-unit-tests job of gunbc.compiler_gate_workflow (runs on merge_group and workflow_dispatch only, not pull_request): cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate",
 ]
 
 data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
