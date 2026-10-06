@@ -7,14 +7,16 @@ module test.claim.roadmap.roadmap_belt_recapture_witness_test
 // generation-guarded save) is the wet inhabitance
 // test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.
 
-import std.types { Bool, String, NonEmptyStr }
+import std.types { Bool, String, NonEmptyStr, List, Int }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.roadmap_belt_actuate {
   belt_scm_recapture_preconditions,
   RecaptureAdmitted, RecaptureWorktreeDirty, RecaptureHasNoCommittedRevision, RecaptureBaseUnobservable,
   WorktreeHeadObserved, WorktreeHeadUnobserved,
   BaseShaObserved, BaseShaUnobserved,
+  belt_scm_recapture_freshness, RecaptureFresh, RecaptureNotFresh, RecaptureStandingPoisoned,
 }
+import gunbc.scm.repository_envelope { RepositoryCommit }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -68,5 +70,29 @@ test fn a_clean_committed_tree_with_a_recorded_base_is_admitted() -> Bool {
     RecaptureWorktreeDirty => false
     RecaptureHasNoCommittedRevision { detail: _ } => false
     RecaptureBaseUnobservable { detail: _ } => false
+  }
+}
+
+fn freshness_tag(commits: List<RepositoryCommit>, ordinal: Int) -> String {
+  match belt_scm_recapture_freshness(commits: commits, ordinal: ordinal) {
+    RecaptureFresh => "fresh"
+    RecaptureNotFresh { source: _ } => "not_fresh"
+    RecaptureStandingPoisoned { detail: _ } => "poisoned"
+  }
+}
+
+test fn a_fresh_recapture_and_a_stale_capture_are_distinct_freshness_arms() -> Bool {
+  match legacy_corrective_scene() {
+    Absent => false
+    Present { value: scene } =>
+      freshness_tag(commits: scene.commits, ordinal: 5) == "fresh"
+        && freshness_tag(commits: scene.commits, ordinal: 1) == "not_fresh"
+  }
+}
+
+test fn an_underivable_standing_poisons_rather_than_reporting_not_fresh() -> Bool {
+  match legacy_unconverted() {
+    Absent => false
+    Present { value: legacy } => freshness_tag(commits: legacy.commits, ordinal: 1) == "poisoned"
   }
 }

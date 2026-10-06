@@ -12066,11 +12066,17 @@ fn belt_scm_recapture_preconditions(
   }
 }
 
-fn belt_scm_recapture_is_fresh(commits: List<RepositoryCommit>, ordinal: Int) -> Bool {
+type BeltRecaptureFreshness
+  = RecaptureFresh
+  | RecaptureNotFresh { source: RepositoryCommitRef }
+  | RecaptureStandingPoisoned { detail: String }
+
+fn belt_scm_recapture_freshness(commits: List<RepositoryCommit>, ordinal: Int) -> BeltRecaptureFreshness {
   match belt_capture_standing(commits: commits, candidate: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }) {
-    CaptureOnBase => true
-    CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } => false
-    CaptureStandingUnderivable { detail: _ } => false
+    CaptureOnBase => RecaptureFresh
+    CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } =>
+      RecaptureNotFresh { source: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } } }
+    CaptureStandingUnderivable { detail } => RecaptureStandingPoisoned { detail: detail }
   }
 }
 
@@ -12126,25 +12132,25 @@ fn belt_scm_recapture(
                   ScmCaptureMintRefused { detail } => RecaptureRefused { detail: detail }
                   ScmCaptureMintPoisoned { detail } => RecapturePoisoned { detail: detail }
                   ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } =>
-                    if !belt_scm_recapture_is_fresh(commits: repository.commits, ordinal: commit_ordinal) {
-                      RecaptureRefused {
-                        detail: belt_supersession_refusal_detail(cause: SupersessionSourceNotFresh {
-                          source: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
-                        }),
-                      }
-                    } else {
-                      match belt_scm_persist_capture(mint: ScmCandidateMinted {
-                        repository: repository,
-                        generation: generation,
-                        path: path,
-                        commit_ordinal: commit_ordinal,
-                        commit_root_locator: commit_root_locator,
-                      }) {
-                        ScmCaptureRefused { detail } => RecaptureRefused { detail: detail }
-                        ScmCapturePoisoned { detail } => RecapturePoisoned { detail: detail }
-                        ScmCandidateCaptured { repository_path, commit_ordinal: saved, commit_root_locator: _ } =>
-                          Recaptured { commit_ordinal: saved, repository_path: repository_path }
-                      }
+                    match belt_scm_recapture_freshness(commits: repository.commits, ordinal: commit_ordinal) {
+                      RecaptureStandingPoisoned { detail } => RecapturePoisoned { detail: detail }
+                      RecaptureNotFresh { source } =>
+                        RecaptureRefused {
+                          detail: belt_supersession_refusal_detail(cause: SupersessionSourceNotFresh { source: source }),
+                        }
+                      RecaptureFresh =>
+                        match belt_scm_persist_capture(mint: ScmCandidateMinted {
+                          repository: repository,
+                          generation: generation,
+                          path: path,
+                          commit_ordinal: commit_ordinal,
+                          commit_root_locator: commit_root_locator,
+                        }) {
+                          ScmCaptureRefused { detail } => RecaptureRefused { detail: detail }
+                          ScmCapturePoisoned { detail } => RecapturePoisoned { detail: detail }
+                          ScmCandidateCaptured { repository_path, commit_ordinal: saved, commit_root_locator: _ } =>
+                            Recaptured { commit_ordinal: saved, repository_path: repository_path }
+                        }
                     }
                 }
             }
