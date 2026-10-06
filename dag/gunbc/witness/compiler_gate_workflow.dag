@@ -1063,7 +1063,7 @@ fn compiler_gate_base_compiler_fetch_script() -> String {
     ]),
     wait: PollForCandidate {
       polls: compiler_gate_base_compiler_polls(),
-      interval_seconds: second_count(s: compiler_gate_base_compiler_poll_interval()) as Int,
+      interval: compiler_gate_base_compiler_poll_interval(),
     },
     export: CandidateStandingToBaseCompilerEnv,
   ))

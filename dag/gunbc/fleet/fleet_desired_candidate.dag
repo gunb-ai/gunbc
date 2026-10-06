@@ -1,6 +1,7 @@
 module gunbc.fleet_desired_candidate
 
-import std.types { String, List }
+import std.types { String, List, Int }
+import std.measure { Second, second_count }
 import v2.std.node { Node }
 import v2.std.diagnostic { Outcome, Accepted, Rejected }
 import v2.workflow.bash_emit { bash_emit_stmts }
@@ -105,7 +106,7 @@ fn fleet_desired_candidate_fetch_statements() -> List<Node> {
 // anything executes.
 type CandidateWait
   = NoCandidateWait
-  | PollForCandidate { polls: Int, interval_seconds: Int }
+  | PollForCandidate { polls: Int, interval: Second }
 
 // WHERE THE STANDING GOES. fleet-desired branches on a step output; the required floor also hands
 // the standing to claim_executor through the job environment (cli_run::base_facts), which is the
@@ -117,21 +118,21 @@ type CandidateStandingExport
 fn candidate_run_status_filter(wait: CandidateWait) -> String {
   match wait {
     NoCandidateWait => "&status=success"
-    PollForCandidate { polls: _, interval_seconds: _ } => ""
+    PollForCandidate { polls: _, interval: _ } => ""
   }
 }
 
 fn candidate_run_absent_reason(wait: CandidateWait) -> String {
   match wait {
     NoCandidateWait => "no successful merge_group run of the required workflow on this revision"
-    PollForCandidate { polls: _, interval_seconds: _ } => "no merge_group run of the required workflow on this revision: it landed without the queue"
+    PollForCandidate { polls: _, interval: _ } => "no merge_group run of the required workflow on this revision: it landed without the queue"
   }
 }
 
 fn candidate_artifact_absent_reason(wait: CandidateWait) -> String {
   match wait {
     NoCandidateWait => "the newest successful merge_group run of this revision holds no unexpired candidate artifact"
-    PollForCandidate { polls: _, interval_seconds: _ } => "the newest merge_group run of this revision holds no unexpired candidate artifact"
+    PollForCandidate { polls: _, interval: _ } => "the newest merge_group run of this revision holds no unexpired candidate artifact"
   }
 }
 
@@ -183,7 +184,7 @@ fn artifact_query_statements() -> List<Node> {
 
 // ONE POLL, UNROLLED: a bounded, forward sequence rather than a loop, so the wait's bound is the
 // statement count. A run that has COMPLETED with no artifact will never have one: that is absence.
-fn poll_statements(interval_seconds: Int, export: CandidateStandingExport) -> List<Node> {
+fn poll_statements(interval: Second, export: CandidateStandingExport) -> List<Node> {
   [
     bash_build_if(
       cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
@@ -200,26 +201,26 @@ fn poll_statements(interval_seconds: Int, export: CandidateStandingExport) -> Li
           cond: test_words(ws: [var(n: "RUN_STATUS"), lit(t: "="), lit(t: "completed")]),
           body: stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export),
         ),
-        cmd(ws: [lit(t: "sleep"), lit(t: to_string(interval_seconds))]),
+        cmd(ws: [lit(t: "sleep"), lit(t: to_string(second_count(s: interval)))]),
       ], artifact_query_statements())),
     ),
   ]
 }
 
-fn repeat_polls(n: Int, interval_seconds: Int, export: CandidateStandingExport) -> List<Node> {
-  if n <= 0 { [] } else { concat(poll_statements(interval_seconds: interval_seconds, export: export), repeat_polls(n: n - 1, interval_seconds: interval_seconds, export: export)) }
+fn repeat_polls(n: Int, interval: Second, export: CandidateStandingExport) -> List<Node> {
+  if n <= 0 { [] } else { concat(poll_statements(interval: interval, export: export), repeat_polls(n: n - 1, interval: interval, export: export)) }
 }
 
 fn wait_statements(wait: CandidateWait, export: CandidateStandingExport) -> List<Node> {
   match wait {
     NoCandidateWait => []
-    PollForCandidate { polls: n, interval_seconds: i } => concat(repeat_polls(n: n, interval_seconds: i, export: export), [
+    PollForCandidate { polls: n, interval: i } => concat(repeat_polls(n: n, interval: i, export: export), [
       bash_build_if(
         cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
         body: stop_with(
-          message: join(["the revision's merge_group run is still in flight and uploaded no candidate within ", to_string(n * i), "s"], ""),
+          message: join(["the revision's merge_group run is still in flight and uploaded no candidate within ", to_string(n * (second_count(s: i) as Int)), "s"], ""),
           standing: "pending",
-          detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: join([" waited=", to_string(n * i), "s"], ""))]),
+          detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: join([" waited=", to_string(n * (second_count(s: i) as Int)), "s"], ""))]),
           export: export,
         ),
       ),
