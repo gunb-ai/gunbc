@@ -103,7 +103,7 @@ fn fixture_facts_dump() -> ProcessExit {
 }
 
 fn fact_row(f: ArgvWordsFact) -> String {
-  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(length(xs: f.candidates) as String, concat("\t", concat(joined_words(xs: f.candidates), concat("\t", concat(length(xs: f.flag_words) as String, concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(f.list_string_params as String, concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(length(xs: f.candidates) as String, concat("\t", concat(join(xs: f.candidates, separator: ","), concat("\t", concat(length(xs: f.flag_words) as String, concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(f.list_string_params as String, concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
 }
 
 fn kind_name(k: ArgvWordsDeclKind) -> String {
@@ -118,10 +118,6 @@ fn bool_word(b: Bool) -> String {
     true => "true"
     false => "false"
   }
-}
-
-fn joined_words(xs: List<String>) -> String {
-  fold_list(xs: xs, empty: "", cons: fn(acc, w) { match acc { "" => w, _ => concat(acc, concat(",", w)) } })
 }
 
 fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> {
