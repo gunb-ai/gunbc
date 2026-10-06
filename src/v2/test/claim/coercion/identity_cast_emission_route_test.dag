@@ -129,12 +129,14 @@ test fn an_int_identity_cast_is_an_identity_crossing_holds() -> Bool {
 
 // The same crossing to Bool -- a kernel type Int has no structural witness into -- is refused by
 // coercion's mismatch at v2.std.coercion, not by a parse, resolve or emission failure. Asserting
-// NoTargetCandidate is what makes this a control of admission. The door's refusal inhabitance is
+// NoTargetCandidate is what makes this a control of admission. coercion_wrap_find_witness_rejection
+// places that typed mismatch at the head; diagnostics_fatal_reason is the last upstream
+// find_witness_reason_no_candidate. The door's refusal inhabitance is
 // a_cast_with_no_witness_refuses_before_realization_holds on this module.
 test fn an_int_to_bool_cast_has_no_witness_holds() -> Bool {
   match identity_cast_supplied_crossing(target: identity_cast_supplied_bool()) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == discriminant(v: NoTargetCandidate)
+    Rejected { diagnostics: d } => d.head.reason == discriminant(v: NoTargetCandidate)
   }
 }
 
