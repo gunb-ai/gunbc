@@ -12,8 +12,12 @@ type PlacedMass {id:String,mass:Gram,at:Point3}
 type SupportRectangle {half_x_um:Micrometer,half_z_um:Micrometer}
 type LoadScenario {components:List<PlacedMass>,support:SupportRectangle,push_height_um:Micrometer}
 // feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
+// feature:signed-force-carrier — dissolve-on: std.measure Force/Millinewton inhabit Nat, so a negative tip margin and corner reaction cannot be those types
+// feature:signed-moment-carrier — dissolve-on: std.measure gains a signed force×length (torque) carrier; restoring_*_mn_mm has none today
+// feature:signed-acceleration-carrier — dissolve-on: std.measure Acceleration/MicrometrePerSecondSquared inhabit Nat, so a signed base acceleration cannot be that type
 // Restoring moments, tip push, base acceleration and corner reactions stay Int: they are signed
-// (CG outside the support yields a negative margin) and std.measure has no signed force/moment/acceleration carrier.
+// (CG outside the support yields a negative margin). Wrapping them in Nat-backed Millinewton would
+// drop the discriminating negative arm, not consume the unit authority.
 type LoadScreen
  = InvalidLoadScenario {reason:NonEmptyStr}
  | RigidBodyScreen {mass_g:Gram,cg_x_um:Int,cg_y_um:Int,cg_z_um:Int,
