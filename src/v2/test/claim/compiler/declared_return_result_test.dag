@@ -20,7 +20,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.inhabitance { TypeVariableInstance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Arrow, Atom, Authored, Conj, Edge, Instantiation, Node, OccurrenceSynthetic, Positional, Symbol, TypeNode, node_synthetic }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.algebra { length, list_map }
 import std.algebra { Cons, list_snoc_item }
 import std.types { List, String }
