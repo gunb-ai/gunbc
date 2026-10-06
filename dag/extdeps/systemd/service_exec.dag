@@ -1,0 +1,185 @@
+module extdeps.systemd.service_exec
+
+import std.types { String, NonEmptyStr, List, Bool }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri { Uri, Https }
+import extdeps.exec.command { ArgvCommand, argv_words }
+
+// WHAT THE SERVICE MANAGER HANDS A STOP COMMAND, and how a command line is spelled to it. Two
+// upstream facts, both from systemd's own manuals, and nothing about any one consumer: which unit
+// carries a stop hook, what it writes and where are workflow facts that live with the workflow.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#Environment%20Variables%20Set%20or%20Propagated%20by%20the%20Service%20Manager"
+  }
+}
+
+data systemd_service_command_lines_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.service.html#Command%20lines"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.systemd.service_exec",
+      decl_name: "ServiceStopVariable",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [systemd_service_command_lines_authority]
+}
+
+// systemd.exec(5), "Environment Variables Set or Propagated by the Service Manager":
+//   $INVOCATION_ID  -- set for every process the manager spawns for the unit: the unit's current
+//                      invocation, a 128-bit id formatted as 32 lowercase hex characters.
+//   $SERVICE_RESULT -- set for ExecStop= and ExecStopPost= only: the service's result, one of the
+//                      words below.
+//   $EXIT_CODE      -- set for ExecStop= and ExecStopPost= only: how the main process ended:
+//                      "exited", "killed" or "dumped" (empty if it never ran).
+//   $EXIT_STATUS    -- set for ExecStop= and ExecStopPost= only: the numeric exit status when
+//                      $EXIT_CODE is "exited", otherwise the signal NAME (e.g. "TERM").
+// They exist only while the stop command runs, so a record of the main process's end that survives
+// the unit has to be written by that command, from these values.
+type ServiceStopVariable
+  = InvocationIdVariable
+  | ServiceResultVariable
+  | ExitCodeVariable
+  | ExitStatusVariable
+
+fn service_stop_variable_name(variable: ServiceStopVariable) -> NonEmptyStr {
+  match variable {
+    InvocationIdVariable => "INVOCATION_ID" as NonEmptyStr
+    ServiceResultVariable => "SERVICE_RESULT" as NonEmptyStr
+    ExitCodeVariable => "EXIT_CODE" as NonEmptyStr
+    ExitStatusVariable => "EXIT_STATUS" as NonEmptyStr
+  }
+}
+
+// $SERVICE_RESULT's documented words (systemd.exec(5)). An unlisted word is carried, not dropped:
+// a manager newer than this model may add one, and the reader must say so rather than guess.
+type ServiceResult
+  = ServiceResultSuccess
+  | ServiceResultProtocol
+  | ServiceResultTimeout
+  | ServiceResultExitCode
+  | ServiceResultSignal
+  | ServiceResultCoreDump
+  | ServiceResultWatchdog
+  | ServiceResultStartLimitHit
+  | ServiceResultResources
+  | ServiceResultOomKill
+  | ServiceResultUnlisted { word: String }
+
+fn service_result_of_wire(word: String) -> ServiceResult {
+  if word == "success" { ServiceResultSuccess }
+  else if word == "protocol" { ServiceResultProtocol }
+  else if word == "timeout" { ServiceResultTimeout }
+  else if word == "exit-code" { ServiceResultExitCode }
+  else if word == "signal" { ServiceResultSignal }
+  else if word == "core-dump" { ServiceResultCoreDump }
+  else if word == "watchdog" { ServiceResultWatchdog }
+  else if word == "start-limit-hit" { ServiceResultStartLimitHit }
+  else if word == "resources" { ServiceResultResources }
+  else if word == "oom-kill" { ServiceResultOomKill }
+  else { ServiceResultUnlisted { word: word } }
+}
+
+// $EXIT_CODE's documented words. "Exited" carries a numeric status; the other two carry a signal
+// name, and the two are different facts -- a process killed by SIGTERM did not exit 15.
+type ServiceExitCode
+  = ServiceExitCodeExited
+  | ServiceExitCodeKilled
+  | ServiceExitCodeDumped
+  | ServiceExitCodeUnlisted { word: String }
+
+fn service_exit_code_of_wire(word: String) -> ServiceExitCode {
+  if word == "exited" { ServiceExitCodeExited }
+  else if word == "killed" { ServiceExitCodeKilled }
+  else if word == "dumped" { ServiceExitCodeDumped }
+  else { ServiceExitCodeUnlisted { word: word } }
+}
+
+// ONE PIECE OF A COMMAND-LINE WORD: text the manager passes through unchanged, or a variable it
+// substitutes. systemd.service(5), "Command lines": "${FOO}" used as part of a word is replaced by
+// the variable's value with no word splitting, which is the form used here; the bare "$FOO" form
+// word-splits and is not modeled. Keeping the two pieces apart is what lets the renderer refuse a
+// literal that would be read as an expansion, instead of trusting that a string happens not to
+// contain one.
+type ExecWordPart
+  = ExecLiteral { text: String }
+  | ExecVariable { variable: ServiceStopVariable }
+
+type ExecWordRendering
+  = ExecWordRendered { word: NonEmptyStr }
+  | ExecWordRefused { reason: NonEmptyStr }
+
+// A literal is refused, never escaped, when it holds a character the command-line parser would
+// treat as syntax: whitespace or a quote (word boundaries), a backslash (escapes), "$" (expansion)
+// or "%" (unit specifiers). Escaping would be a second grammar to get right; every literal this
+// repository mints is a path or an identifier that has no need of those characters.
+fn exec_literal_admissible(text: String) -> Bool {
+  !(string_contains(s: text, pattern: " ") || string_contains(s: text, pattern: "\t") || string_contains(s: text, pattern: "\n") || string_contains(s: text, pattern: "\"")
+    || string_contains(s: text, pattern: "'") || string_contains(s: text, pattern: "\\") || string_contains(s: text, pattern: "$") || string_contains(s: text, pattern: "%"))
+}
+
+fn exec_word_render(parts: List<ExecWordPart>) -> ExecWordRendering {
+  let refused = parts |> flat_map(p => match p {
+    ExecLiteral { text } => if exec_literal_admissible(text: text) { [] as List<String> } else { [text] }
+    ExecVariable { variable: _ } => [] as List<String>
+  })
+  match refused.first() {
+    Present { value: bad } =>
+      ExecWordRefused { reason: join(["command-line literal carries a character systemd would read as syntax: ", bad], "") as NonEmptyStr }
+    Absent => {
+      let word = join(parts |> map(p => match p {
+        ExecLiteral { text } => text
+        ExecVariable { variable } => join(["${", service_stop_variable_name(variable: variable) as String, "}"], "")
+      }), "")
+      if string_length(s: word) == 0 {
+        ExecWordRefused { reason: "an empty command-line word cannot be spelled to systemd" as NonEmptyStr }
+      } else {
+        ExecWordRendered { word: word as NonEmptyStr }
+      }
+    }
+  }
+}
+
+type ExecCommandLineRendering
+  = ExecCommandLineRendered { line: NonEmptyStr }
+  | ExecCommandLineRefused { reason: NonEmptyStr }
+
+// AN ARGV AS ONE ExecStart=/ExecStopPost= VALUE. The manager splits the value on whitespace into
+// words, the first naming the program, and runs it directly: no shell is involved at any point
+// (systemd.service(5), "Command lines"), which is why a typed argv can be handed over at all. Every
+// word passes the same admissibility test as a literal part, except that a word rendered from parts
+// by exec_word_render may carry the "${...}" its variables were spelled as; that form is re-checked
+// below rather than trusted.
+fn exec_command_line(command: ArgvCommand) -> ExecCommandLineRendering {
+  let words = argv_words(command: command)
+  let refused = words |> filter(w => !exec_literal_admissible(text: w) && !exec_word_is_rendered_expansion(word: w))
+  match refused.first() {
+    Present { value: bad } =>
+      ExecCommandLineRefused { reason: join(["argv word carries a character systemd would read as syntax: ", bad], "") as NonEmptyStr }
+    Absent => ExecCommandLineRendered { line: join(words, " ") as NonEmptyStr }
+  }
+}
+
+// A WORD WHOSE ONLY SYNTAX IS "${NAME}" FOR A MODELED VARIABLE. Re-reading the rendered word, not
+// trusting a flag beside it: strip every modeled expansion, and the remainder must be an
+// admissible literal. A "$" anywhere else -- an unmodeled variable, a bare $FOO -- survives the
+// strip and refuses.
+fn exec_word_is_rendered_expansion(word: String) -> Bool {
+  let stripped = fold(
+    [InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable],
+    init: word,
+    f: (acc, v) => replace(acc, join(["${", service_stop_variable_name(variable: v) as String, "}"], ""), ""),
+  )
+  stripped != word && exec_literal_admissible(text: stripped)
+}
