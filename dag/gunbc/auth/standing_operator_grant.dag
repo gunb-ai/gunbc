@@ -35,13 +35,15 @@ import gunbc.auth.authorization_pattern_selection { StandingDestructiveAuthoriza
 // nothing reads would pre-authorize what no wall asks about.
 //
 // MTJADE1 LIVE OPS (operator ruling 2026-10-06, msg_7402f8df-7917-4b24-bb86-c4e7d51991f7) names BMC
-// reads/writes, boots, and firmware qualification. Those classes are declared frontiers until a gate
-// calls standing_grant_covers for a named arm: O1c-3's BmcSecure authorization discharge, managed_host_boot
-// admission/authorization, MegaRAC per-build operation evidence / admit_megarac_host_at_current_build.
-// The prior-life archive is a BMC read (it writes only our store) and has no grant arm. The mtjade1
-// grant's effects list is empty until one of those gates lands in the same closure as the arm.
-// The interlock is InterlockPending until a consuming gate names a hold: that state refuses to
-// discharge irreversibility, so a bindable boot under this row does not select federation.
+// reads/writes, boots, and firmware qualification. Those classes are a declared frontier: the first
+// consuming gate lands in gunbc#13497 (stern-ibex-771 route A -- bindable fleet-converge principal,
+// effect arm in the same closure as the secret/cell fetch) and must call standing_grant_covers for a
+// named arm -- O1c-3's BmcSecure authorization discharge, managed_host_boot admission/authorization,
+// or MegaRAC per-build operation evidence / admit_megarac_host_at_current_build. The prior-life archive
+// is a BMC read (it writes only our store) and has no grant arm. The mtjade1 grant's effects list is
+// empty until that change lands the arm. The interlock is InterlockPending until a consuming gate names
+// a hold: that state refuses to discharge irreversibility, so a bindable boot under this row does not
+// select federation.
 type StandingGrantEffect
   = StandingD0ReleaseToFleet
   | StandingArmLaunch
