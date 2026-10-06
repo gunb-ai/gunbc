@@ -53,7 +53,7 @@ on:
       credential:
         description: "host_credential_custody_converge only: which rostered custody row to deliver (gunbc.host_credential_custody_converge). A closed choice, never a free-text secret name: each option carries its own SecretRef, path, owner, group, mode and directory, and a row scoped to one host refuses any other"
         required: false
-        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key]
+        options: [controller_app_key, approval_ntfy_publisher_token, fabric_state_writer_key, claude_code_oauth_harness_token]
         type: choice
       d0_consent:
         description: "pair_serving_d0 only (Cut D, Group A on srv1; expected_revision is required and frozen with the filing): the escalation id the consent is filed under. It names the transaction, and a rerun after a crash MUST name the same id to find its frozen filing and held claim -- a fresh id is a new consent"
@@ -2249,7 +2249,7 @@ jobs:
           GUNBC_ARM_STAIRCASE_STEP: ${{ github.event.inputs.staircase_step }}
           GUNBC_ARM_INCUMBENT: ${{ github.event.inputs.incumbent }}
         if: github.event.inputs.mode == 'spark_arm_group_launch'
-        timeout-minutes: 60
+        timeout-minutes: 110
       - name: Spark arm group load (the staircase step named by the closed inputs, loaded at its cold floor and its ceiling from its head; stop rules judged; calibration receipt folded)
         id: spark_arm_group_load
         run: |-
