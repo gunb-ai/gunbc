@@ -17083,9 +17083,9 @@ fn emit_shell_stderr_policy_binding(op_node: Node, source_indices: Map<String, N
     concat(
       "let __stderr_complete_limit: Option<usize> = match &*stderr_capture {\n",
       "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => {\n",
-      "        match std::env::var(\"GUNBC_MEMORY_BUDGET_BYTES\") {\n",
-      "                        Ok(raw) => Some(raw.parse::<usize>().map_err(|cause| format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: {}\", cause))?),\n",
-            "            Err(cause) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({})\", cause).into()),\n",
+      "        match v1_rt::read_host_budget_bytes() {\n",
+      "            (Some(n), _) => Some(n as usize),\n",
+      "            (None, source) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({})\", source).into()),\n",
       "        }\n",
       "    }\n",
       "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => {\n",

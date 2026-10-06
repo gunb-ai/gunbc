@@ -1614,3 +1614,106 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
+
+/// Host memory planning ceiling as `(bytes, source label)`.
+/// Authority: `gunbc.host_budget_source`. Same join as the interpreter.
+pub fn read_host_budget_bytes() -> (Option<u64>, String) {
+    let env = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let high = host_budget_tightest_cgroup("memory.high");
+    let max = host_budget_tightest_cgroup("memory.max");
+    let observed = [
+        high.map(|(d, b)| (format!("cgroup memory.high ({})", d), b)),
+        max.map(|(d, b)| (format!("cgroup memory.max ({})", d), b)),
+    ]
+    .into_iter()
+    .flatten()
+    .min_by_key(|(_, b)| *b);
+    if let Some((label, bytes)) = observed {
+        let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);
+        let source = match env {
+            Some(requested) => format!(
+                "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
+                effective, requested, label, bytes
+            ),
+            None => label,
+        };
+        return (Some(effective), source);
+    }
+    if let Some(bytes) = host_budget_darwin_physical() {
+        let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);
+        let label = "sysctl hw.memsize";
+        let source = match env {
+            Some(requested) => format!(
+                "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
+                effective, requested, label, bytes
+            ),
+            None => label.to_string(),
+        };
+        return (Some(effective), source);
+    }
+    if let Some(requested) = env {
+        return (
+            Some(requested),
+            format!(
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit",
+                requested
+            ),
+        );
+    }
+    (
+        None,
+        format!(
+            "unreadable: no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
+            std::env::consts::OS
+        ),
+    )
+}
+
+fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
+    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    let root = std::path::Path::new("/sys/fs/cgroup");
+    let mut dir = root.join(&rel);
+    let mut best: Option<(u64, std::path::PathBuf)> = None;
+    loop {
+        if let Ok(s) = std::fs::read_to_string(dir.join(limit_file)) {
+            let s = s.trim();
+            if s != "max" {
+                if let Ok(v) = s.parse::<u64>() {
+                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
+                    if take {
+                        best = Some((v, dir.clone()));
+                    }
+                }
+            }
+        }
+        if dir == root || !dir.pop() {
+            break;
+        }
+    }
+    best.map(|(v, d)| (d.display().to_string(), v))
+}
+
+fn host_budget_darwin_physical() -> Option<u64> {
+    if std::env::consts::OS != "macos" {
+        return None;
+    }
+    let out = std::process::Command::new("sysctl")
+        .args(["-n", "hw.memsize"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8(out.stdout)
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|v| *v > 0)
+}

@@ -1379,7 +1379,8 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // The three capture-accounting channels are REAL shell channels. The rust
 // realization handler (v1.compiler.emit_rust emit_shell_call) implements the
 // declared WitnessStderrCapturePolicy: concurrent drain, BoundedTail retains a
-// tail, Complete retains within the active GUNBC_MEMORY_BUDGET_BYTES ceiling or
+// tail, Complete retains within the host budget
+// (`v1_rt::read_host_budget_bytes`, the same join as the interpreter) or
 // refuses. Python and go still realize no capture policy, so they refuse these
 // three at field grain rather than answering false / raw length (that answer
 // would assert the declared policy ran).

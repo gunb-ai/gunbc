@@ -1361,8 +1361,7 @@ pub fn read_host_budget_resolution() -> HostBudgetResolution {
 /// RUNG: *mitigatable*. The `.dag` authority states the correct rule and the Rust path does not
 /// enforce it; nothing detects the divergence today.
 pub fn read_host_budget_bytes() -> (Option<u64>, String) {
-    let resolution = read_host_budget_resolution();
-    (resolution.bytes(), resolution.label())
+    crate::v1_rt::read_host_budget_bytes()
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable

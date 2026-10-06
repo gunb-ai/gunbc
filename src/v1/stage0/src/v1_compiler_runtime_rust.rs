@@ -164,8 +164,112 @@ pub fn rust_runtime_source() -> String {
             ),
             rt_realization_measurement(),
         ),
-        rt_accelerator_demo_kernel(),
+        v1_rt::concat(rt_accelerator_demo_kernel(), rt_host_budget()),
     )
+}
+
+pub fn rt_host_budget() -> String {
+    "/// Host memory planning ceiling as `(bytes, source label)`.\n\
+     /// Authority: `gunbc.host_budget_source`. Same join as the interpreter.\n\
+     pub fn read_host_budget_bytes() -> (Option<u64>, String) {\n\
+         let env = std::env::var(\"GUNBC_MEMORY_BUDGET_BYTES\")\n\
+             .ok()\n\
+             .and_then(|s| s.trim().parse::<u64>().ok());\n\
+         let high = host_budget_tightest_cgroup(\"memory.high\");\n\
+         let max = host_budget_tightest_cgroup(\"memory.max\");\n\
+         let observed = [\n\
+             high.map(|(d, b)| (format!(\"cgroup memory.high ({})\", d), b)),\n\
+             max.map(|(d, b)| (format!(\"cgroup memory.max ({})\", d), b)),\n\
+         ]\n\
+         .into_iter()\n\
+         .flatten()\n\
+         .min_by_key(|(_, b)| *b);\n\
+         if let Some((label, bytes)) = observed {\n\
+             let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);\n\
+             let source = match env {\n\
+                 Some(requested) => format!(\n\
+                     \"effective planning minimum {} bytes (env request {}; observed {}={} bytes)\",\n\
+                     effective, requested, label, bytes\n\
+                 ),\n\
+                 None => label,\n\
+             };\n\
+             return (Some(effective), source);\n\
+         }\n\
+         if let Some(bytes) = host_budget_darwin_physical() {\n\
+             let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);\n\
+             let label = \"sysctl hw.memsize\";\n\
+             let source = match env {\n\
+                 Some(requested) => format!(\n\
+                     \"effective planning minimum {} bytes (env request {}; observed {}={} bytes)\",\n\
+                     effective, requested, label, bytes\n\
+                 ),\n\
+                 None => label.to_string(),\n\
+             };\n\
+             return (Some(effective), source);\n\
+         }\n\
+         if let Some(requested) = env {\n\
+             return (\n\
+                 Some(requested),\n\
+                 format!(\n\
+                     \"declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit\",\n\
+                     requested\n\
+                 ),\n\
+             );\n\
+         }\n\
+         (\n\
+             None,\n\
+             format!(\n\
+                 \"unreadable: no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.\",\n\
+                 std::env::consts::OS\n\
+             ),\n\
+         )\n\
+     }\n\n\
+     fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {\n\
+         let self_cg = std::fs::read_to_string(\"/proc/self/cgroup\").ok()?;\n\
+         let rel = self_cg\n\
+             .lines()\n\
+             .find_map(|l| l.strip_prefix(\"0::\"))\n\
+             .map(|p| p.trim().trim_start_matches('/').to_string())?;\n\
+         let root = std::path::Path::new(\"/sys/fs/cgroup\");\n\
+         let mut dir = root.join(&rel);\n\
+         let mut best: Option<(u64, std::path::PathBuf)> = None;\n\
+         loop {\n\
+             if let Ok(s) = std::fs::read_to_string(dir.join(limit_file)) {\n\
+                 let s = s.trim();\n\
+                 if s != \"max\" {\n\
+                     if let Ok(v) = s.parse::<u64>() {\n\
+                         let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);\n\
+                         if take {\n\
+                             best = Some((v, dir.clone()));\n\
+                         }\n\
+                     }\n\
+                 }\n\
+             }\n\
+             if dir == root || !dir.pop() {\n\
+                 break;\n\
+             }\n\
+         }\n\
+         best.map(|(v, d)| (d.display().to_string(), v))\n\
+     }\n\n\
+     fn host_budget_darwin_physical() -> Option<u64> {\n\
+         if std::env::consts::OS != \"macos\" {\n\
+             return None;\n\
+         }\n\
+         let out = std::process::Command::new(\"sysctl\")\n\
+             .args([\"-n\", \"hw.memsize\"])\n\
+             .output()\n\
+             .ok()?;\n\
+         if !out.status.success() {\n\
+             return None;\n\
+         }\n\
+         String::from_utf8(out.stdout)\n\
+             .ok()?\n\
+             .trim()\n\
+             .parse::<u64>()\n\
+             .ok()\n\
+             .filter(|v| *v > 0)\n\
+     }\n"
+        .to_string()
 }
 
 pub fn rt_accelerator_demo_kernel() -> String {
