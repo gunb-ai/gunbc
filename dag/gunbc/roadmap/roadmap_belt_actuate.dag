@@ -454,7 +454,8 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
   repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
-  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal }
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal,
+  repository_generation_of_content, RepositoryEncoded, RepositoryEncodeRefused }
 import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
@@ -466,6 +467,7 @@ import gunbc.scm.write_spine {
 import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, materialize_if_rostered, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
   save_repository_sharded_guarded,
+  sharded_save_plan,
   RepositoryGuardedSaveOutcome,
   RepositoryStaleGenerationRefused,
   RepositoryGuardedSaveUnobservable,
@@ -6725,8 +6727,11 @@ fn belt_scm_entries_zip(paths: List<NonEmptyStr>, sources: List<AuthoredSourceOb
 // SeedRefused is transient (gather/exec/read/save I/O), SeedPoisoned is durable (store or
 // envelope damage, an unsatisfiable base). The seed is the capture's first half, so the split
 // is born here rather than re-classified where the seed's verdict joins the capture's.
-// SeedReady carries the generation expectation the envelope observation minted: the delta
-// capture's save must compare against what THIS tick observed, whatever the seed did in between.
+// SeedReady carries the generation the capture persist must compare against. When this
+// seed wrote, that is the generation of the index this seed wrote -- not the pre-seed
+// observation, which a first save from absence would make stale on the capture persist.
+// When the envelope already held commits, the seed did not write, and the observation
+// this tick loaded remains the expectation.
 type BeltSeedOutcome
   = SeedReady { envelope: RepositoryEnvelope, generation: RepositoryGenerationExpectation }
   | SeedRefused { detail: String }
@@ -6746,6 +6751,14 @@ type BeltSeedOutcome
 // On the commit_staged arms -- THE MINT'S DURABLE REFUSALS. Given the same staged tree and store
 // these recompute to the same refusal every time, so retry buys nothing; the save arms below them
 // are I/O and stay transient.
+fn belt_scm_generation_of_written_envelope(repo: RepositoryEnvelope) -> RepositoryGenerationExpectation? {
+  match sharded_save_plan(repo: repo).encoded {
+    RepositoryEncodeRefused { cause: _ } => none
+    RepositoryEncoded { value: v } =>
+      Present { value: GenerationExpected(repository_generation_of_content(content: serialize_json(v: v))) }
+  }
+}
+
 fn belt_scm_envelope_seeded(
   instance: HostDashboardInstance,
   worktree: String,
@@ -6805,7 +6818,13 @@ fn belt_scm_envelope_seeded(
                     }
                     match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
                       RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
-                        SeedReady { envelope: seeded, generation: generation }
+                        match belt_scm_generation_of_written_envelope(repo: seeded) {
+                          Absent =>
+                            SeedRefused {
+                              detail: "the base commit was persisted but the capture persist's generation expectation could not be derived from the same encoding the seed wrote",
+                            }
+                          Present { value: written } => SeedReady { envelope: seeded, generation: written }
+                        }
                       RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
                       RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
