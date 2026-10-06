@@ -21,7 +21,7 @@ import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_
 import std.content_hash { content_hash_of_value }
 import std.materialization_provider { wire_content_hash_to_hex }
 import gunbc.roadmap.roadmap_attempt_request_record { attempt_request_binding_json, AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestClaimBound, RequestAutonomous }
-import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed }
+import gunbc.roadmap.roadmap_result_returned { ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventId, LegacyEmailPrincipal, ResultPublished }
 import gunbc.roadmap_attempt_metering { AttemptMeteringObservation, AttemptMeteringRecord, MeteredRoleUsage, MeteredWorker, TokensObserved, SeatReleased, ComputeNotAttributable, MeteringObserved, MeteringProvisional, MeteringRefused }
 import gunbc.harness.harness_seat_pointer { HarnessSeatPointer }
@@ -695,6 +695,23 @@ test fn a_live_result_read_through_a_failed_close_is_a_read_boundary_defect() ->
           result_returned: ResultReturnedRead { observation: result_published(claim: "evt-claim", h: head), close: SnapshotCloseFailed { worktree: "/tmp/w" as FilePath, exit_code: 1, stderr: "busy" } },
         },
       } }) { Present { value: _ } => true  Absent => false }
+  }
+}
+
+// AN EMPTY UPSTREAM REASON IS STILL A DEFECT: the durable joins are String?, so an unobserved result
+// whose reader gave no reason text refuses rather than reading as "no defect".
+test fn an_unobserved_live_result_with_an_empty_reason_is_still_a_defect() -> Bool {
+  match dogfood_start_receipt_decode(payload: good()) {
+    StartReceiptInvalid { reason: _ } => false
+    StartReceiptDecoded { receipt } =>
+      match dogfood_durable_g3_g4_defect(receipt: receipt, service: ServiceEvidenceJoined { receipt: ServiceEvidenceReceipt {
+        binding: AttemptBinding { instance_id: "i1" as NonEmptyStr, node_id: "n1" as NonEmptyStr, attempt_key: "k1" as NonEmptyStr, revision_hex: "0000000000000000000000000000000000000000" as NonEmptyStr },
+        inputs: ServiceEvidenceInputs {
+          session_placement: SessionPlacementRead { observation: SessionPlacementAbsent { unit: "u" } },
+          metering: MeteringRead { observation: MeteringNotYetWritten },
+          result_returned: ResultReturnedRead { observation: ResultReturnedUnobserved { step: "history", reason: "" }, close: SnapshotNotOpened },
+        },
+      } }) { Present { value } => string_contains(s: value, pattern: "returned result is unobserved")  Absent => false }
   }
 }
 

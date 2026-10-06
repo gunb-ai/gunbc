@@ -952,12 +952,12 @@ fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt:
 fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEvidenceObservation) -> String? {
   match service {
     ServiceEvidenceAttemptUnlaunched => Present { value: "the attempt has no launch record to read its G3 and G4 records under" }
-    ServiceEvidenceRefused { reason } => Present { value: reason }
+    ServiceEvidenceRefused { reason } => Present { value: join(["the attempt's G3 and G4 records are unreadable: ", reason], "") }
     ServiceEvidenceJoined { receipt: live } => {
       let result_defect = match live.inputs.result_returned {
         ResultReturnedRead { observation, close } =>
           match close {
-            SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => "the attempt's result was read through a snapshot that failed to close"
+            SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => Present { value: "the attempt's result was read through a snapshot that failed to close" }
             SnapshotNotOpened => dogfood_durable_result_defect(receipt: receipt, observation: observation)
             SnapshotClosed => dogfood_durable_result_defect(receipt: receipt, observation: observation)
           }
@@ -965,49 +965,50 @@ fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEv
       let metering_defect = match live.inputs.metering {
         MeteringRead { observation } => dogfood_durable_metering_defect(receipt: receipt, observation: observation)
       }
-      if result_defect != "" { Present { value: result_defect } }
-      else if metering_defect != "" { Present { value: metering_defect } }
-      else { none }
+      match result_defect {
+        Present { value: why } => Present { value: why }
+        Absent => metering_defect
+      }
     }
   }
 }
 
-fn dogfood_durable_result_defect(receipt: DogfoodStartReceipt, observation: ResultReturnedObservation) -> String {
+fn dogfood_durable_result_defect(receipt: DogfoodStartReceipt, observation: ResultReturnedObservation) -> String? {
   match observation {
     ResultReturnedObserved { node, attempt, event, claim, return_to: _, outcome, recorded_at } =>
-      if (node as String) != receipt.node_id || (attempt as String) != receipt.attempt_key { "the attempt's returned result names another node or attempt" }
-      else if (event as String) != receipt.result_event || (claim as String) != receipt.result_claim { "the attempt's returned result is another event or claim than the pinned one" }
-      else if (match service_evidence_snapshot_published_result(snapshot: receipt.service_evidence) { Absent => true  Present { value } => value.recorded_at != recorded_at }) { "the attempt's returned result was recorded at another time than the pinned completion_time" }
+      if (node as String) != receipt.node_id || (attempt as String) != receipt.attempt_key { Present { value: "the attempt's returned result names another node or attempt" } }
+      else if (event as String) != receipt.result_event || (claim as String) != receipt.result_claim { Present { value: "the attempt's returned result is another event or claim than the pinned one" } }
+      else if (match service_evidence_snapshot_published_result(snapshot: receipt.service_evidence) { Absent => true  Present { value } => value.recorded_at != recorded_at }) { Present { value: "the attempt's returned result was recorded at another time than the pinned completion_time" } }
       else {
         match outcome {
-          ResultPublished { pr, head } => if (pr as String) != receipt.pr_url || (head as String) != receipt.head_sha { "the attempt's returned result publishes another PR or head than the pinned one" } else { "" }
-          ResultVerificationFailed { head: _, cause: _ } => "the attempt's returned result is a verification failure"
-          ResultHandedBack { reason: _ } => "the attempt's returned result hands the attempt back"
+          ResultPublished { pr, head } => if (pr as String) != receipt.pr_url || (head as String) != receipt.head_sha { Present { value: "the attempt's returned result publishes another PR or head than the pinned one" } } else { none }
+          ResultVerificationFailed { head: _, cause: _ } => Present { value: "the attempt's returned result is a verification failure" }
+          ResultHandedBack { reason: _ } => Present { value: "the attempt's returned result hands the attempt back" }
         }
       }
-    ResultNotReturned { attempt_key: _ } => "the attempt has no returned result"
-    ResultNotOwed { reason: _ } => "no result is owed for the attempt"
-    ResultReturnedUnobserved { step: _, reason } => reason
+    ResultNotReturned { attempt_key: _ } => Present { value: "the attempt has no returned result" }
+    ResultNotOwed { reason: _ } => Present { value: "no result is owed for the attempt" }
+    ResultReturnedUnobserved { step: _, reason } => Present { value: join(["the attempt's returned result is unobserved: ", reason], "") }
   }
 }
 
-fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: AttemptMeteringObservation) -> String {
+fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: AttemptMeteringObservation) -> String? {
   match observation {
     MeteringObserved { record } =>
       match dogfood_metering_reading(m: MeteringObserved { record: record }) {
-        MeteringGap { gap: _ } => "the attempt's Final metering record has incomplete totals"
+        MeteringGap { gap: _ } => Present { value: "the attempt's Final metering record has incomplete totals" }
         MeteringEstablished { evidence: m } =>
           match service_evidence_snapshot_final_metering(snapshot: receipt.service_evidence) {
-            Absent => "the pinned service evidence has no Final metering"
+            Absent => Present { value: "the pinned service evidence has no Final metering" }
             Present { value: pinned } =>
-              if m.input_tokens != pinned.input_tokens || m.output_tokens != pinned.output_tokens || m.seat_time != pinned.seat_time { "the attempt's Final metering totals are not the pinned ones" }
-              else if dogfood_compute_word(c: m.compute) != receipt.metering_compute { "the attempt's metering compute standing is not the pinned one" }
-              else { "" }
+              if m.input_tokens != pinned.input_tokens || m.output_tokens != pinned.output_tokens || m.seat_time != pinned.seat_time { Present { value: "the attempt's Final metering totals are not the pinned ones" } }
+              else if dogfood_compute_word(c: m.compute) != receipt.metering_compute { Present { value: "the attempt's metering compute standing is not the pinned one" } }
+              else { none }
           }
       }
-    MeteringProvisional { record: _ } => "the attempt's metering record is provisional"
-    MeteringNotYetWritten => "the attempt has no metering record"
-    MeteringRefused { cause } => cause
+    MeteringProvisional { record: _ } => Present { value: "the attempt's metering record is provisional" }
+    MeteringNotYetWritten => Present { value: "the attempt has no metering record" }
+    MeteringRefused { cause } => Present { value: join(["the attempt's metering record is refused: ", cause], "") }
   }
 }
 
