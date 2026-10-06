@@ -12,7 +12,11 @@ pub use crate::extdeps_version::{
 };
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_checked_arithmetic::checked_int_to_nat;
+pub use crate::std_checked_arithmetic::CheckedInt;
+use crate::std_checked_arithmetic::CheckedInt::{CheckedIntOverflow, CheckedIntReady};
+pub use crate::std_checked_arithmetic::{
+    checked_int_add, checked_int_multiply, checked_int_to_nat,
+};
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
@@ -368,26 +372,51 @@ pub fn semver_numeric_run_without_leading_zero(cps: Rc<Vec<i64>>) -> bool {
     }
 }
 
-pub fn semver_digits_to_int(mut __tco_loop_cps: Rc<Vec<i64>>, mut __tco_loop_acc: i64) -> i64 {
+pub fn semver_digits_to_int(
+    mut __tco_loop_cps: Rc<Vec<i64>>,
+    mut __tco_loop_acc: i64,
+) -> Option<i64> {
     loop {
         #[allow(unused_mut)]
         let mut cps = __tco_loop_cps;
         #[allow(unused_mut)]
         let mut acc = __tco_loop_acc;
         if ((cps.clone().len() as i64) == 0) {
-            break acc.clone();
+            break Some(acc.clone());
         } else {
             match cps.clone().first().cloned() {
                 Some(h) => {
-                    let __tco_0 = Rc::new(cps.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                    let __tco_1 =
-                        v1_rt::int_add(v1_rt::int_mul(acc, 10), v1_rt::int_sub(h.clone(), 48));
-                    __tco_loop_cps = __tco_0;
-                    __tco_loop_acc = __tco_1;
-                    continue;
+                    match (*crate::std_checked_arithmetic::checked_int_multiply(acc.clone(), 10))
+                        .clone()
+                    {
+                        CheckedInt::CheckedIntReady { value: times, .. } => {
+                            match (*crate::std_checked_arithmetic::checked_int_add(
+                                times.clone(),
+                                v1_rt::int_sub(h.clone(), 48),
+                            ))
+                            .clone()
+                            {
+                                CheckedInt::CheckedIntReady { value: next, .. } => {
+                                    let __tco_0 = Rc::new(
+                                        cps.iter().cloned().skip(1 as usize).collect::<Vec<_>>(),
+                                    );
+                                    let __tco_1 = next.clone();
+                                    __tco_loop_cps = __tco_0;
+                                    __tco_loop_acc = __tco_1;
+                                    continue;
+                                }
+                                CheckedInt::CheckedIntOverflow { cause: _, .. } => {
+                                    break std::option::Option::None;
+                                }
+                            }
+                        }
+                        CheckedInt::CheckedIntOverflow { cause: _, .. } => {
+                            break std::option::Option::None;
+                        }
+                    }
                 }
                 std::option::Option::None => {
-                    break acc.clone();
+                    break Some(acc.clone());
                 }
             }
         }
@@ -398,7 +427,10 @@ pub fn semver_nat_field(cps: Rc<Vec<i64>>) -> Option<NonNegativeInt> {
     if !semver_numeric_run_without_leading_zero(cps.clone()) {
         std::option::Option::None
     } else {
-        crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(cps.clone(), 0))
+        match semver_digits_to_int(cps.clone(), 0) {
+            std::option::Option::None => std::option::Option::None,
+            Some(digits) => crate::std_checked_arithmetic::checked_int_to_nat(digits.clone()),
+        }
     }
 }
 
@@ -425,38 +457,38 @@ pub fn semver_core_fields_parse(
                 std::option::Option::None
             }
         } else {
-            match semver_index_of(46, cps.clone()) {
-                Some(i) => match semver_nat_field(Rc::new(
-                    cps.clone()
-                        .iter()
-                        .cloned()
-                        .take(i.clone() as usize)
-                        .collect::<Vec<_>>(),
-                )) {
+            if (remaining.clone() == 1) {
+                match semver_nat_field(cps.clone()) {
                     std::option::Option::None => std::option::Option::None,
-                    Some(v) => match semver_core_fields_parse(
-                        Rc::new(
-                            cps.clone()
-                                .iter()
-                                .cloned()
-                                .skip(v1_rt::int_add(i.clone(), 1) as usize)
-                                .collect::<Vec<_>>(),
-                        ),
-                        v1_rt::int_sub(remaining.clone(), 1),
-                    ) {
+                    Some(v) => Some(Rc::new(vec![v.clone()])),
+                }
+            } else {
+                match semver_index_of(46, cps.clone()) {
+                    Some(i) => match semver_nat_field(Rc::new(
+                        cps.clone()
+                            .iter()
+                            .cloned()
+                            .take(i.clone() as usize)
+                            .collect::<Vec<_>>(),
+                    )) {
                         std::option::Option::None => std::option::Option::None,
-                        Some(rest) => Some(v1_rt::concat(Rc::new(vec![v.clone()]), rest.clone())),
-                    },
-                },
-                std::option::Option::None => {
-                    if (remaining.clone() == 1) {
-                        match semver_nat_field(cps.clone()) {
+                        Some(v) => match semver_core_fields_parse(
+                            Rc::new(
+                                cps.clone()
+                                    .iter()
+                                    .cloned()
+                                    .skip(v1_rt::int_add(i.clone(), 1) as usize)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            v1_rt::int_sub(remaining.clone(), 1),
+                        ) {
                             std::option::Option::None => std::option::Option::None,
-                            Some(v) => Some(Rc::new(vec![v.clone()])),
-                        }
-                    } else {
-                        std::option::Option::None
-                    }
+                            Some(rest) => {
+                                Some(v1_rt::concat(Rc::new(vec![v.clone()]), rest.clone()))
+                            }
+                        },
+                    },
+                    std::option::Option::None => std::option::Option::None,
                 }
             }
         }
@@ -512,14 +544,16 @@ pub fn semver_identifier_parse(
             std::option::Option::None
         } else {
             if semver_numeric_run_without_leading_zero(cps.clone()) {
-                match crate::std_checked_arithmetic::checked_int_to_nat(semver_digits_to_int(
-                    cps.clone(),
-                    0,
-                )) {
+                match semver_digits_to_int(cps.clone(), 0) {
                     std::option::Option::None => std::option::Option::None,
-                    Some(n) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
-                        value: n.clone(),
-                    })),
+                    Some(digits) => {
+                        match crate::std_checked_arithmetic::checked_int_to_nat(digits.clone()) {
+                            std::option::Option::None => std::option::Option::None,
+                            Some(n) => Some(Rc::new(SemVerIdentifier::SemVerNumericIdentifier {
+                                value: n.clone(),
+                            })),
+                        }
+                    }
                 }
             } else {
                 if (strict_numeric.clone() && semver_all_digits(cps.clone())) {
