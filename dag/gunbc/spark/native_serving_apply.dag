@@ -633,7 +633,7 @@ fn spark_native_commit_expiry_lines(unit_name: NonEmptyStr, lifetime: ArmUnitLif
     ArmUnitPersistent => "e=none\n"
     ArmUnitBounded { bound: b } => join([
       "a=$(systemctl show ", unit_name as String, " --property=ActiveEnterTimestamp --timestamp=unix --value)\n",
-      "a=${a#@}\n",
+      "a=$(printf '%s' \"$a\" | tr -d '@')\n",
       "case \"$a\" in ''|*[!0-9]*) echo COMMIT-REFUSED-unit-start-unread; exit 1;; esac\n",
       "e=$(( a + ", to_string(second_count(s: b)), " ))\n",
     ], "")
