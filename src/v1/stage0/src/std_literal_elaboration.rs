@@ -420,6 +420,64 @@ pub fn kernel_mint_ownership(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum KernelNamedImportStanding {
+    KernelNamedImportAdmitted,
+    KernelNamedImportCollides { kernel_declaration_module: String },
+    KernelNamedImportMintAmbiguous { row_count: i64 },
+}
+impl KernelNamedImportStanding {
+    pub fn kernel_declaration_module(&self) -> String {
+        match self {
+            KernelNamedImportStanding::KernelNamedImportCollides {
+                kernel_declaration_module: __val,
+                ..
+            } => __val.clone(),
+            _ => panic!("no kernel_declaration_module on this variant"),
+        }
+    }
+    pub fn row_count(&self) -> i64 {
+        match self {
+            KernelNamedImportStanding::KernelNamedImportMintAmbiguous { row_count: __val, .. } => {
+                __val.clone()
+            }
+            _ => panic!("no row_count on this variant"),
+        }
+    }
+}
+
+pub fn kernel_named_import_standing(
+    imported_name: String,
+    import_path: String,
+    module_declares_type: bool,
+    rows: Rc<Vec<Rc<KernelMintDeclaration>>>,
+) -> Rc<KernelNamedImportStanding> {
+    if !module_declares_type {
+        Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+    } else {
+        match (*kernel_mint_declaration_for(rows.clone(), imported_name.clone())).clone() {
+            KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
+                if d.module_path == import_path && d.decl_name == imported_name {
+                    Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+                } else {
+                    Rc::new(KernelNamedImportStanding::KernelNamedImportCollides {
+                        kernel_declaration_module: d.module_path.clone(),
+                    })
+                }
+            }
+            KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
+                Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
+            }
+            KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: n, .. } => {
+                Rc::new(KernelNamedImportStanding::KernelNamedImportMintAmbiguous {
+                    row_count: n.clone(),
+                })
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KernelIntLiteral;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

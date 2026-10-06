@@ -1,7 +1,15 @@
 module test.claim.infer_kernel_import_collision_witness
 
 import extdeps.filesystem.filesystem_io
-import std.types { String, Bool, Int, List }
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.decl_ref { decl_ref }
+import std.literal_elaboration {
+  KernelMintDeclaration,
+  kernel_named_import_standing,
+  KernelNamedImportAdmitted,
+  KernelNamedImportCollides,
+  KernelNamedImportMintAmbiguous,
+}
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import tools.multi_module_compile_fixture {
   MultiModuleCompileFixture,
@@ -109,8 +117,55 @@ test fn importing_a_non_kernel_name_from_the_same_module_is_accepted() -> Bool {
 }
 
 test fn importing_the_kernel_mint_optional_is_accepted() -> Bool {
-  match outcome_rows(o: compile_mint_import()) {
-    Absent => false
-    Present { value: rows } => fixture_has_class(rows: rows, wanted: collision_class) == false
+  outcome_clean(o: compile_mint_import())
+}
+
+fn owner_maybe_mint_rows() -> List<KernelMintDeclaration> {
+  [KernelMintDeclaration {
+    minted_name: "Optional" as NonEmptyStr,
+    declaration: decl_ref(module_path: "owner", decl_name: "Maybe")
+  }]
+}
+
+test fn a_mint_row_for_owner_maybe_does_not_exempt_importing_owner_optional() -> Bool {
+  match kernel_named_import_standing(
+    imported_name: "Optional",
+    import_path: "owner",
+    module_declares_type: true,
+    rows: owner_maybe_mint_rows()
+  ) {
+    KernelNamedImportCollides { kernel_declaration_module: m } => m == "owner"
+    KernelNamedImportAdmitted => false
+    KernelNamedImportMintAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn importing_the_mint_declaration_itself_is_admitted() -> Bool {
+  match kernel_named_import_standing(
+    imported_name: "Optional",
+    import_path: "v2.std.optional",
+    module_declares_type: true,
+    rows: [KernelMintDeclaration {
+      minted_name: "Optional" as NonEmptyStr,
+      declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional")
+    }]
+  ) {
+    KernelNamedImportAdmitted => true
+    KernelNamedImportCollides { kernel_declaration_module: _ } => false
+    KernelNamedImportMintAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn an_ambiguous_mint_row_set_is_its_own_refusal() -> Bool {
+  let doubled = concat(owner_maybe_mint_rows(), owner_maybe_mint_rows())
+  match kernel_named_import_standing(
+    imported_name: "Optional",
+    import_path: "owner",
+    module_declares_type: true,
+    rows: doubled
+  ) {
+    KernelNamedImportMintAmbiguous { row_count: n } => n == 2
+    KernelNamedImportAdmitted => false
+    KernelNamedImportCollides { kernel_declaration_module: _ } => false
   }
 }

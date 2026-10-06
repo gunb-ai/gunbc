@@ -386,31 +386,50 @@ fn imported_type_collides_with_kernel_mint(
     import_path: String,
     target_module: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    if !module_declares_type_named(target_module.clone(), name.clone(), source_indices) {
-        return None;
-    }
-    match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+) -> Rc<crate::std_literal_elaboration::KernelNamedImportStanding> {
+    crate::std_literal_elaboration::kernel_named_import_standing(
+        name.clone(),
+        import_path,
+        module_declares_type_named(target_module.clone(), name, source_indices),
         crate::gunbc_structural_realization_bindings::kernel_mint_declaration_rows(),
-        name,
-    ))
-    .clone()
-    {
-        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationFound {
-            declaration: d,
-        } => {
-            if d.module_path == import_path {
-                None
-            } else {
-                Some(d.module_path.clone())
-            }
+    )
+}
+
+fn kernel_named_import_diags(
+    standing: Rc<crate::std_literal_elaboration::KernelNamedImportStanding>,
+    name: String,
+    import_path: String,
+    importing_module: String,
+    span: Rc<crate::v1_std_core::SourceSpan>,
+) -> Vec<Rc<ErrorNode>> {
+    match (*standing).clone() {
+        crate::std_literal_elaboration::KernelNamedImportStanding::KernelNamedImportAdmitted => {
+            Vec::new()
         }
-        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
-            None
-        }
-        crate::std_literal_elaboration::KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
-            ..
-        } => Some(import_path),
+        crate::std_literal_elaboration::KernelNamedImportStanding::KernelNamedImportCollides {
+            kernel_declaration_module: kernel_mod,
+        } => vec![crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::ImportCollidesWithKernelName {
+                name,
+                module_path: import_path,
+                importing_module: importing_module.clone(),
+                kernel_declaration_module: kernel_mod,
+                span,
+            }),
+            importing_module,
+        )],
+        crate::std_literal_elaboration::KernelNamedImportStanding::KernelNamedImportMintAmbiguous {
+            row_count: n,
+        } => vec![crate::v1_std_core::make_error_node(
+            Rc::new(CompilerDiagnostic::KernelMintDeclarationAmbiguousAtImport {
+                name,
+                module_path: import_path,
+                importing_module: importing_module.clone(),
+                row_count: n,
+                span,
+            }),
+            importing_module,
+        )],
     }
 }
 
@@ -559,26 +578,19 @@ pub fn resolve_import(
                                             source_indices.clone(),
                                             item.clone(),
                                         );
-                                        if let Some(kernel_mod) =
+                                        for diag in kernel_named_import_diags(
                                             imported_type_collides_with_kernel_mint(
                                                 name.clone(),
                                                 import_path.clone(),
                                                 target_mod.clone(),
                                                 source_indices.clone(),
-                                            )
-                                        {
-                                            __result.push(crate::v1_std_core::make_error_node(
-                                                Rc::new(
-                                                    CompilerDiagnostic::ImportCollidesWithKernelName {
-                                                        name,
-                                                        module_path: import_path.clone(),
-                                                        importing_module: importing_module.clone(),
-                                                        kernel_declaration_module: kernel_mod,
-                                                        span: import.span.clone(),
-                                                    },
-                                                ),
-                                                importing_module.clone(),
-                                            ));
+                                            ),
+                                            name,
+                                            import_path.clone(),
+                                            importing_module.clone(),
+                                            import.span.clone(),
+                                        ) {
+                                            __result.push(diag);
                                         }
                                     }
                                 }
@@ -588,24 +600,19 @@ pub fn resolve_import(
                                         source_indices.clone(),
                                         child.clone(),
                                     );
-                                    if let Some(kernel_mod) = imported_type_collides_with_kernel_mint(
-                                        name.clone(),
+                                    for diag in kernel_named_import_diags(
+                                        imported_type_collides_with_kernel_mint(
+                                            name.clone(),
+                                            import_path.clone(),
+                                            target_mod.clone(),
+                                            source_indices.clone(),
+                                        ),
+                                        name,
                                         import_path.clone(),
-                                        target_mod.clone(),
-                                        source_indices.clone(),
+                                        importing_module.clone(),
+                                        child.span.clone(),
                                     ) {
-                                        __result.push(crate::v1_std_core::make_error_node(
-                                            Rc::new(
-                                                CompilerDiagnostic::ImportCollidesWithKernelName {
-                                                    name,
-                                                    module_path: import_path.clone(),
-                                                    importing_module: importing_module.clone(),
-                                                    kernel_declaration_module: kernel_mod,
-                                                    span: child.span.clone(),
-                                                },
-                                            ),
-                                            importing_module.clone(),
-                                        ));
+                                        __result.push(diag);
                                     }
                                 }
                             }
