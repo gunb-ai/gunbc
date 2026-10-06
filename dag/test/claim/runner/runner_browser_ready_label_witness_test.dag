@@ -85,10 +85,16 @@ fn words_carry_no_sudo(words: List<String>) -> Bool {
   }
 }
 
+fn grant_reload_skipped(r: BrowserReadyLabelsReload) -> Bool {
+  match r {
+    ReadyLabelsReloadPostureSkipped { cause: c } => string_contains(s: c, pattern: "unprivileged posture")
+    ReadyLabelsReloadRun { command: _ } => false
+  }
+}
+
 fn grant_reload_is_posture_skipped(p: BrowserReadyLabelsPlan) -> Bool {
   match p {
-    BrowserReadyLabelsGrantReady { write: _, content: _, reload: ReadyLabelsReloadPostureSkipped { cause: c } } =>
-      string_contains(s: c, pattern: "unprivileged posture")
+    BrowserReadyLabelsGrantReady { write: _, content: _, reload: r } => grant_reload_skipped(r: r)
     BrowserReadyLabelsRevokeReady { remove: _, reload: _ } => false
     BrowserReadyLabelsUnrenderable { cause: _ } => false
   }
