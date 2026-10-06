@@ -870,8 +870,8 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.coercion.identity_cast_emission_route",
     claims: [
-      SingleClaimFillDebtClaim { claim: "a_cast_with_no_witness_refuses_before_realization_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } },
-      SingleClaimFillDebtClaim { claim: "an_admitted_identity_cast_emits_through_the_closure_route_holds", standing: RetiredFillDebt { disposition: RestructuredPerWitnessRule } }
+      SingleClaimFillDebtClaim { claim: "a_cast_with_no_witness_refuses_before_realization_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } },
+      SingleClaimFillDebtClaim { claim: "an_admitted_identity_cast_emits_through_the_closure_route_holds", standing: RetiredFillDebt { disposition: ClaimDeleted } }
     ]
   },
   SingleClaimFillDebtModule {

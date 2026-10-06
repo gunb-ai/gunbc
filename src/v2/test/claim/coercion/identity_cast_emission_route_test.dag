@@ -116,8 +116,9 @@ fn identity_cast_supplied_crossing(target: Node) -> Outcome<CoercionResult> {
 // The admitted identity cast, at coercion's interface over SUPPLIED Int atoms: the crossing is
 // Identity. A Exact/Widened admission, or a refusal, is false. Inhabitance of the closure door
 // (source text through emit_closure_from_ingest_located, `fn f(x: i32) -> i32`) is
-// identity_cast_route_admitted_holds on identity_cast_route_verdict in the native partner.
-test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Bool {
+// identity_cast_route_admitted_holds on identity_cast_route_verdict in the native partner, under
+// gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
+test fn an_int_identity_cast_is_an_identity_crossing_holds() -> Bool {
   match identity_cast_supplied_crossing(target: identity_cast_supplied_int()) {
     Accepted { value: r, diagnostics: _ } =>
       match r.quality {
@@ -131,8 +132,9 @@ test fn an_admitted_identity_cast_emits_through_the_closure_route_holds() -> Boo
 // The same crossing to Bool -- a kernel type Int has no structural witness into -- is refused by
 // coercion's mismatch at v2.std.coercion, not by a parse, resolve or emission failure. Asserting
 // NoTargetCandidate is what makes this a control of admission. Inhabitance on the closure door is
-// identity_cast_route_refused_holds on refused_cast_route_verdict in the native partner.
-test fn a_cast_with_no_witness_refuses_before_realization_holds() -> Bool {
+// identity_cast_route_refused_holds on refused_cast_route_verdict in the native partner, under
+// gunbc.rung_drop identity_cast_closure_inhabitance_off_the_required_gate.
+test fn an_int_to_bool_cast_has_no_witness_holds() -> Bool {
   match identity_cast_supplied_crossing(target: identity_cast_supplied_bool()) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == discriminant(v: NoTargetCandidate)
