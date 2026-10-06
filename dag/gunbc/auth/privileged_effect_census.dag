@@ -245,7 +245,7 @@ fn accessor_grant(subject: NonEmptyStr) -> PrivilegedEffect {
 data mtcollins1_operator_ruling: StandingDestructiveAuthorization = StandingDestructiveAuthorization {
   ruling_text: "the fleet-converge mtcollins1_boot and host_reset_return modes, dispatched from gunb-ai/gunbc main under their workload identity, may attach media to, set the boot device of, power-cycle and capture the console of Mt. Collins unit 1 on every dispatch with no per-run or standing approval, provided each run first takes the unit's maintenance hold. Operator chat rulings 2026-09-23 ('we technically don't even need my approval - would you mind getting rid of that step or making WIF just trust this workflow') and 2026-09-25 ('no I don't want that - can you just remove that check asap')" as NonEmptyStr,
   effect_subject: "mtcollins1 destructive controller effect: BMC virtual-media attach, one-shot boot-device set, power cycle and SOL capture" as NonEmptyStr,
-  interlock: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof"),
+  interlock: Present { value: decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof") },
 }
 
 data mtcollins1_operator_ruling_roots: List<DeclarationRef> = [
@@ -408,21 +408,30 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
 data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.spark.pair_serving_d0_door", decl_name: "d0_standing_grant_for"),
-    hold: group_a_dev_standing_grant.ruling.interlock,
+    hold: match group_a_dev_standing_grant.ruling.interlock {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_claim_grant")
+    },
     refusal: site(module_path: "gunbc.spark.pair_serving_d0", decl_name: "d0_decide_release"),
     premise: "the release runs only under D0's durable claim of the consent slot and its pending state, and refuses (D0HostNotQuiescent) unless a fresh reading taken at filing time finds every host quiescent; an unanswering host refuses as unobserved" as NonEmptyStr,
     hold_owning_roots: [] as List<InterlockRoot>,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),
-    hold: mtcollins1_operator_ruling.interlock,
+    hold: match mtcollins1_operator_ruling.interlock {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof")
+    },
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "the boot takes the unit's one durable exclusive hold before any BMC write and refuses FileHoldOccupied naming the holder" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
   PrivilegedEffectInterlock {
     site: site(module_path: "gunbc.host_reset_return_run", decl_name: "host_reset_return_wet"),
-    hold: mtcollins1_operator_ruling.interlock,
+    hold: match mtcollins1_operator_ruling.interlock {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.managed_host_unit_hold", decl_name: "UnitHoldProof")
+    },
     refusal: site(module_path: "gunbc.managed_host_unit_hold", decl_name: "unit_hold_acquire"),
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
@@ -440,7 +449,11 @@ fn rulings_without_a_rostered_interlock() -> List<DeclarationRef> {
     match row.effect.witness_discharge {
       NoWitnessDischarge => []
       StandingRulingUnderInterlock { ruling: r } =>
-        if ruling_interlock_is_rostered(site_ref: row.site, interlock: r.interlock) { [] } else { [row.site] }
+        match r.interlock {
+          Absent => []
+          Present { value: i } =>
+            if ruling_interlock_is_rostered(site_ref: row.site, interlock: i) { [] } else { [row.site] }
+        }
     })
 }
 
