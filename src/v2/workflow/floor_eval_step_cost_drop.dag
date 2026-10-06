@@ -36,7 +36,7 @@ import std.types { NonEmptyStr, List }
 //     approval-request constructor (`approval_intent_digest_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dag_text_round_trip_rows`: the two nested-Bind text round trips
 //     of the dag target (`dag_text_round_trip_nested_bind_new_witness_eval_step_cost`).
-//   - `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`: the seven coproduct declaration
+//   - `floor_eval_step_cost_drop_coproduct_fragment_normalize_rows`: the three coproduct type-declaration
 //     fragment-lowering claims (`coproduct_fragment_normalize_new_witness_eval_step_cost`).
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
@@ -422,11 +422,11 @@ data floor_eval_step_cost_drop_dag_text_round_trip_rows: List<EvalStepCostDropMe
 ]
 
 // THE COPRODUCT FRAGMENT-LOWERING CLAIMS (v2.test.parse census phase 3; `gunbc.rung_drop`
-// `coproduct_fragment_normalize_new_witness_eval_step_cost`). Seven identities, each parsing ONE type or
-// fn declaration fragment at its production and lowering it with normalize_node (two, for the two
+// `coproduct_fragment_normalize_new_witness_eval_step_cost`). Three identities, each parsing ONE type
+// declaration fragment at its production and lowering it with normalize_node (two, for the two
 // equality claims). The fragment is the smallest text carrying the construct each claim names, so it
-// cannot shrink without dropping the route. The module's other nine claims measure under the budget
-// and are not here.
+// cannot shrink without dropping the route. The module's other claims measure under the budget and are
+// not here; its four fn-fragment claims exceed the CPU enrolment margin and are not gated at all.
 data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.parse_test_coproduct_leading_pipe.positional_payload_variants_parse_and_normalize_holds" as NonEmptyStr,
@@ -439,22 +439,6 @@ data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepC
   EvalStepCostDropMeasurement {
     identity: "test.claim.parse_test_coproduct_leading_pipe.distinct_alternatives_do_not_normalize_to_the_same_tree_holds" as NonEmptyStr,
     measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions distinct_alternatives_do_not_normalize_to_the_same_tree_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.positional_payload_without_leading_pipe_with_construction_normalizes_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions positional_payload_without_leading_pipe_with_construction_normalizes_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.positional_pattern_binder_normalizes_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions positional_pattern_binder_normalizes_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.positional_wildcard_pattern_still_normalizes_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions positional_wildcard_pattern_still_normalizes_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
-  },
-  EvalStepCostDropMeasurement {
-    identity: "test.claim.parse_test_coproduct_leading_pipe.braced_pattern_binder_still_normalizes_holds" as NonEmptyStr,
-    measured_by: "v2.test.parse census phase 3, claim_batch BuildBuddy invocation acf43cce at main plus gunbc#13410 plus this change: verdict pass, over the new-witness budget; re-derived by claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/parse/parse_test_coproduct_leading_pipe_test.dag --functions braced_pattern_binder_still_normalizes_holds. The billed work is one real parse of one declaration fragment at its production and its lowering by normalize_node; the scaling is read in BuildBuddy invocations d04df9ae and b01c394f" as NonEmptyStr,
   },
 ]
 

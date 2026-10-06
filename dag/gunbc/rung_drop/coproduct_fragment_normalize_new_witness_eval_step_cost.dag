@@ -14,6 +14,10 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_coprodu
 // executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
 // overrun is reported under this drop rather than refusing. The budget is not raised.
 //
+// THE POPULATION WAS SEVEN AND IS THREE. The four fn-fragment claims also exceed the floor's CPU
+// enrolment margin, which this drop does not lower, so they are not gated (gunbc.recurring_failure_mode
+// fn_fragment_lowering_exceeds_the_enrolment_margin); a drop covers only claims the gate runs.
+//
 // WHY A DROP AND NOT A SMALLER CLAIM. Each claim already lowers ONE declaration fragment parsed at
 // its own production (test.claim.parse_test_coproduct_leading_pipe cp_lowered), not a whole module.
 // A scaling probe (claim_batch, BuildBuddy invocation d04df9ae) read body lowering of one fn_decl as
@@ -28,7 +32,7 @@ data coproduct_fragment_normalize_new_witness_eval_step_cost_population: List<St
 data coproduct_fragment_normalize_new_witness_eval_step_cost: RungDrop = RungDrop {
   identity: "coproduct_fragment_normalize_new_witness_eval_step_cost" as NonEmptyStr,
 
-  subject: "new-witness eval-step cost gate over the seven coproduct lowering claims of test.claim.parse_test_coproduct_leading_pipe (one type or fn declaration fragment parsed at its production and lowered by normalize): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+  subject: "new-witness eval-step cost gate over the three coproduct type-declaration lowering claims of test.claim.parse_test_coproduct_leading_pipe (one type declaration fragment parsed at its production and lowered by normalize): they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
 
   declared: "2026-10-05",
 
@@ -41,6 +45,6 @@ data coproduct_fragment_normalize_new_witness_eval_step_cost: RungDrop = RungDro
       replacement: "honest linear cost of parsing and lowering one declaration fragment at the interpreted route: a fixed term per lowered declaration plus a per-token term; owner: grammar program (stern-bear-500)",
     },
     population: coproduct_fragment_normalize_new_witness_eval_step_cost_population,
-    restoration_trigger: "THE CAPABILITY: normalize (body lowering) of a single fn_decl or type_decl fragment costs at most 1.0k eval steps per source token plus at most 20k fixed, measured as in claim_batch BuildBuddy invocations d04df9ae and b01c394f (normalize cost = lowered minus parse-only). WHAT IT MUST BE SUFFICIENT FOR: each of the seven identities, still parsing its own declaration fragment at its production on the real prepared grammar and lowering it with normalize_node, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking a fragment below the construct it names, supplying its parse or its lowered tree, or bundling it into a shared producer does not satisfy this trigger.",
+    restoration_trigger: "THE CAPABILITY: normalize (body lowering) of a single type_decl fragment costs at most 1.0k eval steps per source token plus at most 20k fixed, measured as in claim_batch BuildBuddy invocations d04df9ae and b01c394f (normalize cost = lowered minus parse-only). WHAT IT MUST BE SUFFICIENT FOR: each of the three identities, still parsing its own declaration fragment at its production on the real prepared grammar and lowering it with normalize_node, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Deleting an identity, shrinking a fragment below the construct it names, supplying its parse or its lowered tree, or bundling it into a shared producer does not satisfy this trigger.",
   }
 }
