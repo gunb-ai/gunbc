@@ -62,10 +62,28 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // program which exits nonzero while printing nothing, and reaches for `sh -c "exit 3"` because no
 // utility has that as its contract.
 //
-// DISSOLVE-ON: those bodies become modeled programs through the shell -> dag route, at which
-// point this builder loses its last caller and is deleted with them. It is NOT an escape hatch for a
-// new argv: a caller reaching for it to run a single program with flags is spelling that program's
-// argv inside a string, which review must refuse exactly as it refuses the record literal.
+// DISSOLVED (DP-M2 PR3, session witty-wren-554, 2026-10-04): the ten production sites are cut
+// over. The getent|cut home pipeline became a typed getent invocation plus a pure field
+// extraction (extdeps.posix.getent, gunbc.fleet_probe_identity_observe passwd_home_observation);
+// the env echoes became shell.Env.Get reads; the `command -v` presence checks became
+// shell.PosixCommandV.Check; the gcloud auth list became the typed
+// extdeps.tools.gcloud.gcloud_auth_list_accounts_command; the `test -f` check became
+// extdeps.posix.test_utility.test_regular_file_command through a named exit-status ruling; the
+// authorized_keys greps became modeled reads decided by
+// authorized_keys_admits_line (whole-line semantics kept); the ssh-config pin and the
+// mkdir/chmod/touch/cat>> bootstrap became declared sequences over shell.Env.Get, a captured pwd
+// (extdeps.tools.gnu_coreutils pwd_command), the put-if-absent create, and typed chmod builders.
+// WHAT REMAINS is a measurement, not a count: `git grep -n "posix_sh_program_command("` is the
+// instrument (the ROADMAP DP-M2 row names it). The PRODUCTION sites are gone on this head; the
+// remaining callers are the manual receipt test above and the wet-lane test fixtures that still
+// build shell text as strings (the approval_ntfy, machine_intake, and spark witness tests among
+// them). When every remaining caller has moved -- the manual test's exit-nonzero-print-nothing
+// contract settled (the fabric compute reorganization that
+// gunbc.guarantee_stall.compile_pool_provision_wired_but_unreachable_stall names for the
+// neighboring lane, or any future lane), and the fixture scripts rebuilt on typed carriers -- the
+// instrument returns zero and this builder is deleted with its last call. It is NOT an escape hatch for a new argv: a caller reaching for it to run a single
+// program with flags is spelling that program's argv inside a string, which review must refuse
+// exactly as it refuses the record literal.
 fn posix_sh_program_command(script: String) -> ArgvCommand {
   argv_command(program: posix_sh_program(), arguments: ["-c", script])
 }

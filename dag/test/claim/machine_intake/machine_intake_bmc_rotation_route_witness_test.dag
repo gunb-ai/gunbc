@@ -1,6 +1,6 @@
 module test.claim.machine_intake_bmc_rotation_route_witness_test
 
-import std.types { Bool, NonEmptyStr, String, Timestamp }
+import std.types { Bool, Int, List, NonEmptyStr, String, Timestamp }
 import std.decl_ref { decl_field_ref }
 import std.scoped_authorization { AttemptIdentity }
 import std.content_hash { content_hash_of_value }
@@ -17,12 +17,14 @@ import gunbc.auth.approval_capability { ApprovalCapabilityClaims, ProposeApprove
 import gunbc.auth.approval_broker { Redemption, RedemptionAdmitted }
 import gunbc.auth.authorization_pattern_selection { OperatorApprovedCapability, PatternSelected, select_authorization_pattern }
 import gunbc.auth.privileged_effect_census { Conforms, privileged_effect_census, site_verdict }
-import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts }
+import gunbc.bmc_model { BmcWorld, BmcIpmiUser, BmcPowerOn, bmc_world, bmc_with_ipmi_users, bmc_ipmi_user_accepts, bmc_ipmi_get_user_access, bmc_ipmi_set_user_access }
+import extdeps.bmc.ipmi_channel { IpmiChannelPrivilegeLimit, IpmiPrivilegeNoAccess, IpmiPrivilegeAdministrator, IpmiPrivilegeOperator, IpmiPrivilegeUser, IpmiUserChannelAccess, ipmi_user_channel_access }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_firmware }
 import gunbc.machine_intake_mtcollins1_bmc_secure_observation { mtcollins1_user3_route_digest }
 import gunbc.machine_intake_mtjade1_access_observation { read_mtjade1_recorded_manager_identity }
 import gunbc.machine_intake_bmc_rotation_route {
-  BmcRotationRouteStanding, BmcAccountWriteRequest, IpmiSetUserPassword, RedfishAccountPasswordWrite,
+  RouteQualificationRequestAdmission,
+  BmcRotationRouteStanding, BmcAccountWriteRequest, IpmiSetUserPassword, IpmiSetUserPrivilegeLimit, RedfishAccountPasswordWrite,
   ObservedSurfaceRead, PublicStandardOperation,
   RouteGroundedByExecutedRequest, RouteGroundedByCitedSource, RouteQualificationCandidate, RouteUngrounded,
   RouteQualified, RouteQualificationRefused, RouteQualificationSubject, HistoricalRotationRouteObservation,
@@ -32,8 +34,13 @@ import gunbc.machine_intake_bmc_rotation_route {
   QualificationResponseForAnotherSubject, QualificationRequestUnrealized,
   QualificationRequestNotCompleted, QualificationReadbackRefused,
   RotationApplyAdmitted, RotationApplyRouteNotGrounded, RotationApplyRouteForAnotherController,
-  RotationApplyRouteForAnotherBuild, RotationApplyApprovalRefused, RotationApplyApprovalDenied,
-  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest,
+  RotationApplyRouteForAnotherBuild, RotationApplyRouteForAnotherOperation, RotationApplyRouteEffectUnobserved, RotationApplyApprovalRefused,
+  EffectObserved, AcceptedEffectUnobserved, RouteEffectStanding, rotation_route_executed_fixture, RotationApplyApprovalDenied,
+  RotationApplyApprovalForAnotherAuthority, RotationApplyApprovalForAnotherRequest, RotationApplyWouldLeaveNoAdministrator,
+  ManagedAdministratorReadback, managed_administrator_readback_fixture, ManagedReadbackAbsent, ManagedReadbackFromAnotherController, ManagedReadbackFromAnotherBuild, ManagedReadbackFromAnotherRun, ManagedAccountIsTheClosedAccount, ManagedAccountNotAdministratorOnChannel, ManagedReadbackDuplicateRow, QualificationTargetIsNotTheManagedAccount,
+  RouteQualificationRequestAdmitted, RouteQualificationRequestRefused, QualificationRequestForAnotherOperation,
+  QualificationRequestRefusedByClassifier, QualificationRequestWouldLeaveNoAdministrator,
+  admit_password_route_qualification, admit_privilege_limit_route_qualification,
   route_qualification_authority, rotation_apply_authority,
   rotation_route_ungrounded, rotation_route_candidate, rotation_route_from_citation,
   rotation_route_request_identity, rotation_route_is_grounded,
@@ -41,7 +48,7 @@ import gunbc.machine_intake_bmc_rotation_route {
   account_write_request_eq, redfish_account_password_write,
 }
 import gunbc.machine_intake_bmc_rotation_route_evidence {
-  mtcollins1_rotation_route_standing, mtjade1_historical_rotation_route_observation, historical_route_observation_from_manager_read,
+  mtcollins1_rotation_route_standing, mtcollins1_channel_access_route_standing, mtjade1_historical_rotation_route_observation, historical_route_observation_from_manager_read,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -71,7 +78,7 @@ fn approval(authority: NonEmptyStr, revision: NonEmptyStr) -> Redemption {
 
 fn standing_request(s: BmcRotationRouteStanding) -> BmcAccountWriteRequest {
   match s.grounding {
-    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _ } => r
+    RouteGroundedByExecutedRequest { request: r, request_receipt: _, response_receipt: _, effect: _ } => r
     RouteGroundedByCitedSource { request: r, citation: _ } => r
     RouteQualificationCandidate { request: r, evidence: _ } => r
     RouteUngrounded => IpmiSetUserPassword { user: 3 }
@@ -140,7 +147,7 @@ fn refusal_name(c: RouteQualificationRefusal) -> String {
 // The modeled verdict for a candidate, an approval and a modeled run against `answered`.
 fn modeled_verdict(candidate: BmcRotationRouteStanding, approval_value: Redemption, world: BmcWorld, answered: RouteQualificationSubject) -> String {
   match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: dry_route_qualification_request(world: world, subject: answered, password: "new-Secret!1").response) {
-    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: _ } => "would-qualify"
     ModeledQualificationRefused { cause: c } => refusal_name(c: c)
   }
 }
@@ -150,21 +157,28 @@ fn refusal_of(world: BmcWorld, request: BmcAccountWriteRequest, approval_value: 
 }
 
 fn apply_verdict(standing: BmcRotationRouteStanding, target: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, approval_value: Redemption) -> String {
-  match admit_rotation_apply(standing: standing, target_endpoint: target, target_firmware: firmware, approval: approval_value) {
+  apply_verdict_for(standing: standing, target: target, firmware: firmware, request: standing_request(s: standing), approval_value: approval_value)
+}
+
+fn apply_verdict_for(standing: BmcRotationRouteStanding, target: BmcControllerEndpoint, firmware: BmcFirmwareReleaseIdentity, request: BmcAccountWriteRequest, approval_value: Redemption) -> String {
+  match admit_rotation_apply(standing: standing, target_endpoint: target, target_firmware: firmware, request: request, managed_readback: none, approval: approval_value) {
     RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
     RotationApplyRouteNotGrounded { standing: _ } => "route-not-grounded"
     RotationApplyRouteForAnotherController { route_endpoint: _, target_endpoint: _ } => "another-controller"
     RotationApplyRouteForAnotherBuild { route_firmware: _, target_firmware: _ } => "another-build"
+    RotationApplyRouteForAnotherOperation { grounded: _, requested: _ } => "another-operation"
+    RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
     RotationApplyApprovalRefused { cause: _ } => "approval-refused"
     RotationApplyApprovalDenied => "approval-denied"
     RotationApplyApprovalForAnotherAuthority { authority: _ } => "another-authority"
     RotationApplyApprovalForAnotherRequest { approved: _, requested: _ } => "another-request"
+    RotationApplyWouldLeaveNoAdministrator { channel: _, cause: _ } => "would-leave-no-administrator"
   }
 }
 
 fn grounding_kind(standing: BmcRotationRouteStanding) -> String {
   match standing.grounding {
-    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _ } => "executed"
+    RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => "executed"
     RouteGroundedByCitedSource { request: _, citation: _ } => "cited"
     RouteQualificationCandidate { request: _, evidence: _ } => "candidate"
     RouteUngrounded => "ungrounded"
@@ -186,9 +200,10 @@ test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
   (s.endpoint.host as String) == "192.168.1.228"
     && (s.firmware.raw_version as String) == "0.32"
     && match s.grounding {
-      RouteGroundedByExecutedRequest { request: r, request_receipt: q, response_receipt: p } =>
+      RouteGroundedByExecutedRequest { request: r, request_receipt: q, response_receipt: p, effect: _ } =>
         match r {
           IpmiSetUserPassword { user: u } => (u as Int) == 3
+          IpmiSetUserPrivilegeLimit { access: _ } => false
           RedfishAccountPasswordWrite { transport_operation: _, action_shape: _ } => false
         }
           && q.digest == mtcollins1_user3_route_digest
@@ -335,7 +350,7 @@ test fn requests_differing_only_in_transport_or_action_shape_are_different_reque
 
 fn classify_names(candidate: BmcRotationRouteStanding, approval_value: Redemption) -> String {
   match classify_modeled_route_qualification(standing: candidate, approval: approval_value, response: none) {
-    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _ } => "would-qualify"
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: _ } => "would-qualify"
     ModeledQualificationRefused { cause: c } => refusal_name(c: c)
   }
 }
@@ -372,7 +387,7 @@ test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
 // over its stated characteristics: the selection returns the operator-approved capability, and the
 // row's realization (an admitted Redemption) conforms to it.
 test fn the_qualification_effect_is_classified_operator_approved_and_conforms() -> Bool {
-  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "qualify_rotation_route")
+  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "admit_password_route_qualification")
   length(rows) == 1
     && all(rows, r =>
       match select_authorization_pattern(e: r.effect) {
@@ -413,4 +428,271 @@ test fn a_rotation_approval_for_one_controller_does_not_admit_another() -> Bool 
   apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "another-request"
     && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: rotation_approval_for(s: lab)) == "admitted"
     && apply_verdict(standing: lab, target: lab_endpoint, firmware: lab_firmware(), approval_value: denied) == "approval-denied"
+}
+
+// ── cut O1a-2: the channel-access request shape ─────────────────────────────────────────────────
+
+fn access_write(user: Int, channel: Int, privilege: IpmiChannelPrivilegeLimit) -> BmcAccountWriteRequest {
+  IpmiSetUserPrivilegeLimit { access: ipmi_user_channel_access(channel: channel, user: user, privilege: privilege) }
+}
+
+// EVERY FIELD IS IN THE IDENTITY. Set User Access requests differing ONLY in the channel, ONLY in the
+// privilege limit, or ONLY in the user are different requests: unequal, and an approval for the base
+// request refuses each as another request.
+test fn channel_access_requests_differing_in_any_one_field_are_different_requests() -> Bool {
+  let base = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  let other_channel = access_write(user: 2, channel: 3, privilege: IpmiPrivilegeNoAccess)
+  let other_privilege = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeUser)
+  let other_user = access_write(user: 4, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  let c_channel = lab_candidate(request: other_channel)
+  let c_privilege = lab_candidate(request: other_privilege)
+  let c_user = lab_candidate(request: other_user)
+  account_write_request_eq(a: base, b: base)
+    && !account_write_request_eq(a: base, b: other_channel)
+    && !account_write_request_eq(a: base, b: other_privilege)
+    && !account_write_request_eq(a: base, b: other_user)
+    && classify_names(candidate: c_channel, approval_value: qualification_approval_for(standing: c_channel, request: base)) == "another-request"
+    && classify_names(candidate: c_privilege, approval_value: qualification_approval_for(standing: c_privilege, request: base)) == "another-request"
+    && classify_names(candidate: c_user, approval_value: qualification_approval_for(standing: c_user, request: base)) == "another-request"
+}
+
+// mtcollins1's channel-access route is a candidate on its CURRENT controller and build (0.45.3, not
+// the 0.32 its password route was executed on), naming the NON-DESTRUCTIVE qualifying request (the
+// managed account, user 3, re-asserted at ADMINISTRATOR on channel 1), with the public standard as its
+// only evidence. It is not grounded, and an Apply refuses it.
+test fn mtcollins1_channel_access_route_is_an_ungrounded_candidate_on_its_current_build() -> Bool {
+  let s = mtcollins1_channel_access_route_standing()
+  (s.endpoint.host as String) == "192.168.1.228"
+    && (s.firmware.raw_version as String) == "0.45.3"
+    && !rotation_route_is_grounded(standing: s)
+    && match s.grounding {
+      RouteQualificationCandidate { request: r, evidence: e } =>
+        account_write_request_eq(a: r, b: access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator))
+          && match e { PublicStandardOperation { authority: _ } => true  ObservedSurfaceRead { surface: _, receipt: _ } => false }
+      RouteGroundedByExecutedRequest { request: _, request_receipt: _, response_receipt: _, effect: _ } => false
+      RouteGroundedByCitedSource { request: _, citation: _ } => false
+      RouteUngrounded => false
+    }
+    && apply_verdict(standing: s, target: s.endpoint, firmware: s.firmware, approval_value: rotation_approval_for(s: s)) == "route-not-grounded"
+}
+
+// THE MODELED CHANNEL-ACCESS RUN: the Set User Access transition sets exactly that (channel, user)
+// row, Get User Access reads it back, and the classifier says it would qualify -- with no standing.
+// A user the IPMI table does not hold is not completed.
+test fn a_modeled_channel_access_run_would_qualify_but_grounds_nothing() -> Bool {
+  let request = access_write(user: 3, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  let candidate = lab_candidate(request: request)
+  let step = dry_route_qualification_request(world: lab_world_with_user3(), subject: subject_at(endpoint: lab_endpoint, request: request), password: "unused")
+  match bmc_ipmi_get_user_access(world: step.world, user: 3, channel: 2) {
+    Present { value: p } => match p { IpmiPrivilegeNoAccess => true  _ => false }
+    Absent => false
+  }
+    && match bmc_ipmi_get_user_access(world: step.world, user: 3, channel: 3) { Absent => true  Present { value: _ } => false }
+    && modeled_verdict(candidate: candidate, approval_value: qualification_approval_for(standing: candidate, request: request), world: lab_world_with_user3(), answered: subject_at(endpoint: lab_endpoint, request: request)) == "would-qualify"
+    && grounding_kind(standing: candidate) == "candidate"
+    && refusal_of(world: lab_world_with_user3(), request: access_write(user: 9, channel: 2, privilege: IpmiPrivilegeNoAccess), approval_value: qualification_approval_for(standing: lab_candidate(request: access_write(user: 9, channel: 2, privilege: IpmiPrivilegeNoAccess)), request: access_write(user: 9, channel: 2, privilege: IpmiPrivilegeNoAccess))) == "not-completed"
+}
+
+// A GROUNDED ROUTE FOR ONE OPERATION DOES NOT ADMIT ANOTHER. mtcollins1's grounded Set User Password
+// route, on its own controller and build, with an exact approval of a Set User Access write, refuses
+// as another operation; the same route with an exact approval of a password write is admitted.
+test fn a_grounded_password_route_does_not_admit_a_channel_access_apply() -> Bool {
+  let collins = mtcollins1_rotation_route_standing()
+  let access = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  apply_verdict_for(standing: collins, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, request: access, approval_value: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: collins, request: access))) == "another-operation"
+    && apply_verdict_for(standing: collins, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, request: IpmiSetUserPassword { user: 3 }, approval_value: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: collins, request: IpmiSetUserPassword { user: 3 }))) == "admitted"
+}
+
+// The census row for qualifying the channel-access shape, classified by EXECUTING the selection over
+// its own characteristics (not the password row's): the selection returns the operator-approved
+// capability and the row's realization conforms.
+test fn the_channel_access_qualification_effect_is_classified_by_executing_the_selection() -> Bool {
+  let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "admit_privilege_limit_route_qualification")
+  length(rows) == 1
+    && all(rows, r =>
+      match select_authorization_pattern(e: r.effect) {
+        PatternSelected { pattern: p, receipt: _ } => match p { OperatorApprovedCapability => true  _ => false }
+        _ => false
+      }
+        && match site_verdict(row: r).conformance { Conforms => true  _ => false })
+}
+
+// THE LOCKOUT HAZARD IS UNPLANNABLE. On a grounded channel-access route (a cited one, the grounded
+// arm a witness may construct), closing user 2 on channel 2 with an exact approval of that write:
+// with no managed readback -> refused; with the managed account (user 3) read back at ADMINISTRATOR on
+// channel 2 in the approval's own attempt -> admitted; the same readback from another run, a readback
+// whose managed account IS the closed one, and a managed account at ADMINISTRATOR only on another
+// channel -> each refused with its own typed cause.
+fn lockout_verdict(readback: ManagedAdministratorReadback?) -> String {
+  let request = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  let route = rotation_route_from_citation(
+    endpoint: lab_endpoint,
+    firmware: lab_firmware(),
+    request: access_write(user: 2, channel: 3, privilege: IpmiPrivilegeNoAccess),
+    citation: ExternalAuthority { uri: uri_https(locator: "example.invalid/route-witness-citation" as NonEmptyStr) },
+  )
+  match admit_rotation_apply(
+    standing: route,
+    target_endpoint: lab_endpoint,
+    target_firmware: lab_firmware(),
+    request: request,
+    managed_readback: readback,
+    approval: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: request)),
+  ) {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyWouldLeaveNoAdministrator { channel: ch, cause: c } =>
+      if (ch as Int) != 2 { "wrong-channel" } else {
+        match c {
+          ManagedReadbackAbsent => "readback-absent"
+          ManagedReadbackFromAnotherController { readback: _, route: _ } => "another-controller"
+          ManagedReadbackFromAnotherBuild { readback: _, route: _ } => "another-build"
+          ManagedReadbackFromAnotherRun { readback: _, approved: _ } => "another-run"
+          ManagedAccountIsTheClosedAccount { user: _ } => "managed-is-closed"
+          ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
+          ManagedReadbackDuplicateRow { managed_user: _, count: _ } => "duplicate-row"
+          QualificationTargetIsNotTheManagedAccount { target: _, managed_user: _ } => "target-not-managed"
+        }
+      }
+    _ => "other-refusal"
+  }
+}
+
+// Every readback below is minted by managed_administrator_readback_fixture IN THE CLAIM THAT CONSUMES IT:
+// the fixture admits exactly those claims, and no function here returns a readback or a standing.
+test fn a_channel_access_write_that_could_lock_out_every_administrator_is_unplannable() -> Bool {
+  let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  lockout_verdict(readback: none) == "readback-absent"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "admitted"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-0" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-run"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 2, access: [ipmi_user_channel_access(channel: 2, user: 2, privilege: IpmiPrivilegeAdministrator)]) }) == "managed-is-closed"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) }) == "not-administrator-on-channel"
+}
+
+// A READBACK FROM CONTROLLER A CANNOT UNLOCK A CLOSE ON CONTROLLER B, nor one from another build of the
+// same controller: the same readback that admits the close on its own controller and build refuses on
+// the route's controller B and on build 0.33.
+test fn a_readback_from_another_controller_or_build_does_not_unlock_a_close() -> Bool {
+  let admin_on_2 = [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-controller"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.33" as NonEmptyStr), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "another-build"
+    && lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_2) }) == "admitted"
+}
+
+// A DUPLICATE (channel, user) RESULT REFUSES: an ADMINISTRATOR row beside a contradictory NO ACCESS row
+// for the same managed user and channel is not a unique reading.
+test fn a_duplicated_managed_readback_row_refuses() -> Bool {
+  lockout_verdict(readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [
+    ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator),
+    ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeNoAccess),
+  ]) }) == "duplicate-row"
+}
+
+// ── THE PRE-WRITE QUALIFICATION ADMISSION (side-chat review of 7887d74ed2, item 1) ──────────────────
+
+fn prewrite_verdict(a: RouteQualificationRequestAdmission) -> String {
+  match a {
+    RouteQualificationRequestAdmitted { request: _ } => "admitted"
+    RouteQualificationRequestRefused { cause: c } =>
+      match c {
+        QualificationRequestForAnotherOperation { candidate: _ } => "another-operation"
+        QualificationRequestRefusedByClassifier { cause: k } => refusal_name(c: k)
+        QualificationRequestWouldLeaveNoAdministrator { cause: k } =>
+          match k {
+            ManagedReadbackAbsent => "readback-absent"
+            ManagedReadbackFromAnotherController { readback: _, route: _ } => "another-controller"
+            QualificationTargetIsNotTheManagedAccount { target: _, managed_user: _ } => "target-not-managed"
+            ManagedAccountNotAdministratorOnChannel { managed_user: _ } => "not-administrator-on-channel"
+            _ => "retention-refused"
+          }
+      }
+  }
+}
+
+// THE MTCOLLINS1 CANDIDATE CANNOT REACH A TRANSPORT CALL WITHOUT A CURRENT RECEIPT. With its exact
+// qualification approval and no managed-administrator readback, the privilege-limit entrypoint refuses
+// before any write: no AdmittedRouteQualificationRequest exists, and that sealed value is the only input
+// the live transport is permitted. The password entrypoint refuses the candidate as another operation.
+test fn the_mtcollins1_channel_access_candidate_cannot_issue_a_request_without_a_current_receipt() -> Bool {
+  let s = mtcollins1_channel_access_route_standing()
+  let exact = qualification_approval_for(standing: s, request: standing_request(s: s))
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: s, approval: exact, readback: none)) == "readback-absent"
+    && prewrite_verdict(a: admit_password_route_qualification(standing: s, approval: exact)) == "another-operation"
+}
+
+// THE POSITIVE, ON A LAB CANDIDATE WITH THE NON-DESTRUCTIVE SHAPE: re-asserting the managed account's
+// ADMINISTRATOR limit on channel 1, with the exact approval and a same-run readback showing it already
+// ADMINISTRATOR there, is admitted; the same with a readback from another controller refuses; and a
+// rotation approval refuses at the classifier.
+test fn the_prewrite_admission_admits_only_with_the_same_run_receipt() -> Bool {
+  let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let c = lab_candidate(request: request)
+  let exact = qualification_approval_for(standing: c, request: request)
+  let admin_on_1 = [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "admitted"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint_b, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "another-controller"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: rotation_approval_for(s: c), readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: admin_on_1) })) == "another-authority"
+}
+
+// ── WHAT A QUALIFICATION GROUNDS: acceptance, and effect only when the run could tell ───────────────
+
+fn modeled_effect(candidate: BmcRotationRouteStanding, world: BmcWorld, request: BmcAccountWriteRequest) -> String {
+  match classify_modeled_route_qualification(standing: candidate, approval: qualification_approval_for(standing: candidate, request: request), response: dry_route_qualification_request(world: world, subject: subject_at(endpoint: lab_endpoint, request: request), password: "unused").response) {
+    ModeledQualificationWouldQualify { subject: _, request_receipt: _, response_receipt: _, effect: e } => match e { EffectObserved => "observed"  AcceptedEffectUnobserved => "accepted-only" }
+    ModeledQualificationRefused { cause: _ } => "refused"
+  }
+}
+
+fn world_with_user3_admin_on_1() -> BmcWorld {
+  bmc_ipmi_set_user_access(world: lab_world_with_user3(), access: ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)).world
+}
+
+// THE IDEMPOTENT QUALIFYING REQUEST GROUNDS ACCEPTANCE ONLY. Re-asserting a value already present reads
+// back identically whether applied or ignored: the modeled run reports accepted-only. The same request
+// against a world where the value differed beforehand reports the effect observed.
+test fn an_idempotent_qualifying_write_grounds_acceptance_only() -> Bool {
+  let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let c = lab_candidate(request: request)
+  modeled_effect(candidate: c, world: world_with_user3_admin_on_1(), request: request) == "accepted-only"
+    && modeled_effect(candidate: c, world: lab_world_with_user3(), request: request) == "observed"
+}
+
+// AN ACCEPT-ONLY GROUNDING DOES NOT ADMIT THE CLOSING WRITE. A grounded privilege-limit route whose
+// effect was unobserved, with an exact approval of closing user 2 on channel 2 and a valid same-run
+// managed-administrator readback, refuses as effect-unobserved; the same with EffectObserved is admitted.
+fn closing_verdict(route: BmcRotationRouteStanding, readback: ManagedAdministratorReadback?) -> String {
+  let close = access_write(user: 2, channel: 2, privilege: IpmiPrivilegeNoAccess)
+  match admit_rotation_apply(
+    standing: route,
+    target_endpoint: lab_endpoint,
+    target_firmware: lab_firmware(),
+    request: close,
+    managed_readback: readback,
+    approval: approval(authority: rotation_apply_authority, revision: rotation_route_request_identity(standing: route, request: close)),
+  ) {
+    RotationApplyAdmitted { standing: _, request: _, decided_by: _ } => "admitted"
+    RotationApplyRouteEffectUnobserved { standing: _ } => "effect-unobserved"
+    _ => "other-refusal"
+  }
+}
+
+test fn an_accept_only_grounding_does_not_admit_the_closing_write() -> Bool {
+  let qualifying = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let readback = Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 2, user: 3, privilege: IpmiPrivilegeAdministrator)]) }
+  closing_verdict(route: rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: qualifying, receipt: lab_surface_receipt, effect: AcceptedEffectUnobserved), readback: readback) == "effect-unobserved"
+    && closing_verdict(route: rotation_route_executed_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), request: qualifying, receipt: lab_surface_receipt, effect: EffectObserved), readback: readback) == "admitted"
+}
+
+// THE NON-DESTRUCTIVE QUALIFICATION RE-ASSERTS THE MANAGED ACCOUNT'S OWN CURRENT VALUE (side-chat review
+// of 6d277411fd, item 2). For the target (user 3, channel 1, ADMINISTRATOR): a receipt for managed user 4
+// -- ADMINISTRATOR on channel 1, and even carrying an ADMINISTRATOR row for user 3 -- issues no request,
+// refused only because the target is not the managed account; a receipt for user 3 whose channel-1 row
+// is OPERATOR issues none; user 3's exact current ADMINISTRATOR reading is admitted.
+test fn the_idempotent_qualification_requires_the_target_pair_to_already_hold_the_value() -> Bool {
+  let request = access_write(user: 3, channel: 1, privilege: IpmiPrivilegeAdministrator)
+  let c = lab_candidate(request: request)
+  let exact = qualification_approval_for(standing: c, request: request)
+  prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 4, access: [ipmi_user_channel_access(channel: 1, user: 4, privilege: IpmiPrivilegeAdministrator), ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]) })) == "target-not-managed"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeOperator)]) })) == "not-administrator-on-channel"
+    && prewrite_verdict(a: admit_privilege_limit_route_qualification(standing: c, approval: exact, readback: Present { value: managed_administrator_readback_fixture(endpoint: lab_endpoint, firmware: lab_firmware(), attempt: "attempt-1" as AttemptIdentity, managed_user: 3, access: [ipmi_user_channel_access(channel: 1, user: 3, privilege: IpmiPrivilegeAdministrator)]) })) == "admitted"
 }

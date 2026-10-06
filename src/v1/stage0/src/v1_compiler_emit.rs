@@ -396,7 +396,10 @@ pub fn emit_simple_expr(
                     for child in expr.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
                             ExprData::ExprLiteral { ref value, .. }
-                                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                                if matches!(
+                                    value.as_ref(),
+                                    LiteralValue::LitStr { value: _, .. }
+                                ) =>
                             {
                                 let LiteralValue::LitStr { value: text, .. } = value.as_ref()
                                 else {
@@ -5243,7 +5246,7 @@ pub fn child_from_key(
         .clone()
         {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5361,7 +5364,7 @@ pub fn file_transport_declared_verb(
     match crate::v1_std_core::transport_verb(t.clone(), source_indices.clone()) {
         Some(v) => match (*v.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
@@ -5457,7 +5460,7 @@ pub fn file_transport_path_is_renderable(
     match crate::v1_std_core::transport_base_path(t.clone(), source_indices.clone()) {
         Some(p) => match (*p.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
-                if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
             {
                 let LiteralValue::LitStr { value: _, .. } = value.as_ref() else {
                     unreachable!()
@@ -5849,6 +5852,169 @@ pub fn unmodeled_file_transport_diagnostics(
     }
 }
 
+pub fn target_realizes_rest_result(target: RenderTarget) -> bool {
+    match target.clone() {
+        RenderTarget::Rust => true,
+        RenderTarget::Python => false,
+        RenderTarget::Go => false,
+        RenderTarget::Dag => false,
+    }
+}
+
+pub fn rest_result_not_realized_fact(target: RenderTarget) -> String {
+    v1_rt::concat(v1_rt::concat("the ".to_string(), render_target_name(target.clone())), " target has no realization of extdeps.transports.rest RestResult: a rest operation's answered and refused arms are lowered only by the rust renderer".to_string())
+}
+
+pub fn rest_result_module_in_closure(typed: Rc<ResolvedGraph>) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed.modules.clone().iter().cloned() {
+            if (crate::v1_compiler_infer_env::authored_name(tm.type_env.clone(), tm.module.clone())
+                == "extdeps.transports.rest".to_string())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn rest_emission_refusal_fact(
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Option<String> {
+    if !target_realizes_rest_result(target.clone()) {
+        Some(rest_result_not_realized_fact(target.clone()))
+    } else {
+        if !result_module_in_closure.clone() {
+            Some("extdeps.transports.rest is not in the emitted closure, so the operation's RestResult has no emitted declaration: import RestResult from extdeps.transports.rest in the module that declares this service".to_string())
+        } else {
+            std::option::Option::None
+        }
+    }
+}
+
+pub fn unmodeled_rest_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+    result_module_in_closure: bool,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name =
+            crate::v1_compiler_infer_env::authored_name(env.clone(), tm.module.clone());
+        let service_name = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend(
+                    (*{
+                        let t = effective_operation_transport(op_node.clone(), fallback.clone());
+                        match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
+                            Some(TransportKind::RestTransport) => match rest_emission_refusal_fact(
+                                target.clone(),
+                                result_module_in_closure.clone(),
+                            ) {
+                                Some(fact) => Rc::new(vec![crate::v1_std_core::make_error_node(
+                                    Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+                                        transport_kind: "rest".to_string(),
+                                        service: service_name.clone(),
+                                        operation: crate::v1_compiler_infer_env::authored_name(
+                                            env.clone(),
+                                            op_node.clone(),
+                                        ),
+                                        declaring_module: module_name.clone(),
+                                        target: render_target_name(target.clone()),
+                                        missing_realization_fact: fact.clone(),
+                                        span: op_node.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                                std::option::Option::None => Rc::new(vec![]),
+                            },
+                            _ => Rc::new(vec![]),
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_rest_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => {
+            let in_closure = rest_result_module_in_closure(typed.clone());
+            Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    __result.extend(
+                        (*Rc::new({
+                            let mut __result = Vec::new();
+                            for item in Rc::new({
+                                let mut __result = Vec::new();
+                                for item in tm.items.clone().iter().cloned() {
+                                    if (item.module_item_kind.clone()
+                                        == ParsedModuleItemKind::ModuleItemService)
+                                    {
+                                        __result.push(item);
+                                    }
+                                }
+                                __result
+                            })
+                            .iter()
+                            .cloned()
+                            {
+                                __result.extend(
+                                    (*unmodeled_rest_transport_operation_diagnostics(
+                                        tm.clone(),
+                                        item.clone(),
+                                        target.clone(),
+                                        in_closure.clone(),
+                                    ))
+                                    .iter()
+                                    .cloned(),
+                                );
+                            }
+                            __result
+                        }))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            })
+        }
+    }
+}
+
+pub fn emit_unrealized_rest_result_refusal(op_name: String, target: RenderTarget) -> String {
+    emit_error_expr(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    "rest transport emission is not modeled for operation '".to_string(),
+                    op_name.clone(),
+                ),
+                "' -- ".to_string(),
+            ),
+            rest_result_not_realized_fact(target.clone()),
+        ),
+        target.clone(),
+    )
+}
+
 pub fn emit_unmodeled_file_transport_refusal_with_cause(
     op_name: String,
     target: RenderTarget,
@@ -5979,7 +6145,7 @@ pub fn extract_string_interp_parts(expr: Rc<Node>) -> Rc<Vec<Rc<StringPart>>> {
         for child in expr.children.clone().iter().cloned() {
             __result.push(match (*child.expr_data.clone()).clone() {
                 ExprData::ExprLiteral { ref value, .. }
-                    if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
+                    if matches!(value.as_ref(), LiteralValue::LitStr { value: _, .. }) =>
                 {
                     let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                         unreachable!()

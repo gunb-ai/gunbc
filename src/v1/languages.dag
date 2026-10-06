@@ -407,7 +407,7 @@ fn rust_spec() -> LanguageSpec {
       borrow_arg_template: "&{0}"
     },
     indexing: IndexingSemantics {
-      list_index: "{0}[({1}) as usize].clone()",
+      list_index: "({0}).get(({1}) as usize).cloned()",
       map_index: "({0}).get(&{1}).cloned()",
       string_index: "v1_rt::char_at(&{0}, {1})",
       list_slice: "Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())",
@@ -857,7 +857,7 @@ fn dag_spec() -> LanguageSpec {
       borrow_arg_template: "&{0}"
     },
     indexing: IndexingSemantics {
-      list_index: "{0}[({1}) as usize].clone()",
+      list_index: "({0}).get(({1}) as usize).cloned()",
       map_index: "({0}).get(&{1}).cloned()",
       string_index: "v1_rt::char_at(&{0}, {1})",
       list_slice: "Rc::new((*{0})[{1} as usize..{2} as usize].to_vec())",

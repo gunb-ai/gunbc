@@ -373,6 +373,7 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/github/app.dag",
   "dag/extdeps/github/effect.dag",
   "dag/extdeps/github/push_event.dag",
+  "dag/extdeps/github/merge_group_event.dag",
   "dag/extdeps/instrument/pip_boy_3000.dag",
   "dag/extdeps/instrument/pip_boy_3000_mk_v.dag",
   "dag/extdeps/instrument/fs_box_v4.dag",
@@ -609,6 +610,8 @@ data scope_carrier_paths: List<String> = [
   "dag/extdeps/network/ipv6.dag",
   "dag/extdeps/github/gists.dag",
   "dag/extdeps/filesystem/posix.dag",
+  "dag/extdeps/docker/endpoint.dag",
+  "dag/extdeps/cloud/gcp/iam.dag",
 ]
 
 data scope_machinery_exempt_paths: List<String> = [
