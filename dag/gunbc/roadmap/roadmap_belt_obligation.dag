@@ -1,0 +1,208 @@
+module gunbc.roadmap.roadmap_belt_obligation
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import gunbc.roadmap_workflow_stage {
+  WorkflowSegment, WorkflowSegmentKind, WorkflowSegmentState,
+  SubmissionWorkflowSegment, VerificationWorkflowSegment, PublicationWorkflowSegment, ReviewWorkflowSegment, GoalAuditWorkflowSegment,
+  WorkflowSegmentPending, WorkflowSegmentActive, WorkflowSegmentComplete, WorkflowSegmentFailed, WorkflowSegmentRefused, WorkflowSegmentStopped,
+  workflow_segment_of_kind,
+}
+import gunbc.roadmap_provider_events {
+  ProviderExecutionState, ProviderNotStarted, ProviderStarting, ProviderAwaitingSeat, ProviderRunning,
+  ProviderCompleted, ProviderFailed, ProviderBudgetSpent, ProviderEventsRefused,
+}
+
+// THE BELT'S WORK AS OBLIGATIONS, NOT PHASES (dogfood interventions #6 and #4, gunbc#13124; the
+// "belt demoted" owner ruling of 2026-09-22 in docs/plans/harness-work-lifecycle.md; the design at
+// docs/plans/belt-event-driven-obligations.md).
+//
+// The tick used to run capture, verify, review, audit, publish and metering over EVERY attempt, in
+// that order, inside one process, followed by the result return, the served observation and the
+// dogfood start record. Each of those is a separate fact owed to a separate subject, and fusing them
+// made every stage's latency every other stage's latency: on srv2 on 2026-10-03 one slow capture
+// held every tick at its 90-minute bound for ten hours, so nothing behind it ran for any attempt.
+//
+// An obligation is (kind, subject). Its subject is an attempt for the per-attempt kinds and the
+// instance for the instance kinds. WHETHER IT IS OUTSTANDING IS DERIVED, never stored: it is read off
+// the attempt's own durable evidence -- the segments gunbc.roadmap_workflow_progress already projects
+// from the attempt's receipts -- so there is no second record of what the receipts say (bold-bee-114
+// ruling, Q1). A queued obligation is only its identity.
+
+type BeltAttemptObligationKind
+  = CaptureObligation
+  | VerifyObligation
+  | ReviewObligation
+  | AuditObligation
+  | PublishObligation
+
+// THE ORDER IN WHICH ONE ATTEMPT'S OBLIGATIONS BECOME ELIGIBLE. It is the evidence dependency, not a
+// schedule: verify needs a captured submission, review and audit need a verified head, publish needs
+// a reviewed one. Review and audit are siblings -- both launch asynchronous units and neither waits on
+// the other -- and they are listed in a fixed order only so a run is deterministic.
+data belt_attempt_obligation_order: List<BeltAttemptObligationKind> = [
+  CaptureObligation, VerifyObligation, ReviewObligation, AuditObligation, PublishObligation,
+]
+
+fn belt_attempt_obligation_kind_key(kind: BeltAttemptObligationKind) -> String {
+  match kind {
+    CaptureObligation => "capture"
+    VerifyObligation => "verify"
+    ReviewObligation => "review"
+    AuditObligation => "audit"
+    PublishObligation => "publish"
+  }
+}
+
+fn belt_attempt_obligation_kind_rank(kind: BeltAttemptObligationKind) -> Int {
+  match kind {
+    CaptureObligation => 0
+    VerifyObligation => 1
+    ReviewObligation => 2
+    AuditObligation => 2
+    PublishObligation => 3
+  }
+}
+
+// THE INSTANCE'S OBLIGATIONS: each a fold over the instance's durable records, owed whenever any
+// attempt's record moves. None of them is a phase of any other and none waits on one.
+type BeltInstanceObligationKind
+  = ServedObservationObligation
+  | ResultReturnObligation
+  | MeteringObligation
+  | DogfoodStartRecordObligation
+  | SnapshotCensusObligation
+
+data belt_instance_obligation_kinds: List<BeltInstanceObligationKind> = [
+  MeteringObligation, ResultReturnObligation, ServedObservationObligation, DogfoodStartRecordObligation, SnapshotCensusObligation,
+]
+
+fn belt_instance_obligation_kind_key(kind: BeltInstanceObligationKind) -> String {
+  match kind {
+    ServedObservationObligation => "observe"
+    ResultReturnObligation => "result-return"
+    MeteringObligation => "metering"
+    DogfoodStartRecordObligation => "dogfood-start"
+    SnapshotCensusObligation => "snapshot-census"
+  }
+}
+
+fn belt_instance_obligation_kind_of_key(key: String) -> BeltInstanceObligationKind? {
+  belt_instance_obligation_kinds |> filter(k => belt_instance_obligation_kind_key(kind: k) == key) |> first()
+}
+
+// A STAGE IS SETTLED WHEN ITS EVIDENCE HAS A VERDICT. Complete, Failed, Refused and Stopped are
+// verdicts; Pending and Active are not. A failed or refused stage is NOT outstanding: it stops the
+// line for that attempt, loudly, and is resumed by the operator (2026-10-03 manual-resume ruling) --
+// re-running it automatically on every discovery would be the retry loop that ruling refuses.
+fn belt_segment_unsettled(segments: List<WorkflowSegment>, kind: WorkflowSegmentKind) -> Bool {
+  match workflow_segment_of_kind(segments: segments, kind: kind) {
+    Absent => false
+    Present { value: s } =>
+      match s.state {
+        WorkflowSegmentPending => true
+        WorkflowSegmentActive => true
+        WorkflowSegmentComplete => false
+        WorkflowSegmentFailed => false
+        WorkflowSegmentRefused => false
+        WorkflowSegmentStopped => false
+      }
+  }
+}
+
+fn belt_segment_complete(segments: List<WorkflowSegment>, kind: WorkflowSegmentKind) -> Bool {
+  match workflow_segment_of_kind(segments: segments, kind: kind) {
+    Absent => false
+    Present { value: s } =>
+      match s.state {
+        WorkflowSegmentComplete => true
+        WorkflowSegmentPending => false
+        WorkflowSegmentActive => false
+        WorkflowSegmentFailed => false
+        WorkflowSegmentRefused => false
+        WorkflowSegmentStopped => false
+      }
+  }
+}
+
+// THE WORKER HAS ENDED when the provider's own evidence says so -- the same three arms
+// gunbc.roadmap.roadmap_belt_commit belt_commit_decision treats as terminal, so capture is outstanding
+// exactly when the capture core would act.
+fn belt_provider_terminal(provider: ProviderExecutionState) -> Bool {
+  match provider {
+    ProviderCompleted { activity: _ } => true
+    ProviderFailed { activity: _, detail: _ } => true
+    ProviderBudgetSpent { activity: _, detail: _ } => true
+    ProviderNotStarted => false
+    ProviderStarting { activity: _ } => false
+    ProviderAwaitingSeat { detail: _ } => false
+    ProviderRunning { activity: _ } => false
+    ProviderEventsRefused { activity: _, detail: _ } => false
+  }
+}
+
+// ONE ATTEMPT'S OUTSTANDING OBLIGATIONS, in eligibility order. Pure over the attempt's projected
+// evidence, so it is the ONE derivation behind both the event chain (after an obligation runs, its
+// attempt is re-observed and this says what is next) and the anti-entropy discovery (which applies it
+// to every observed attempt).
+fn belt_attempt_outstanding(provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> List<BeltAttemptObligationKind> {
+  belt_attempt_obligation_order |> filter(kind => belt_attempt_obligation_outstanding(kind: kind, provider: provider, segments: segments))
+}
+
+fn belt_attempt_obligation_outstanding(kind: BeltAttemptObligationKind, provider: ProviderExecutionState, segments: List<WorkflowSegment>) -> Bool {
+  match kind {
+    CaptureObligation => belt_provider_terminal(provider: provider) && belt_segment_unsettled(segments: segments, kind: SubmissionWorkflowSegment)
+    VerifyObligation => belt_segment_complete(segments: segments, kind: SubmissionWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: VerificationWorkflowSegment)
+    ReviewObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: ReviewWorkflowSegment)
+    AuditObligation => belt_segment_complete(segments: segments, kind: VerificationWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: GoalAuditWorkflowSegment)
+    PublishObligation => belt_segment_complete(segments: segments, kind: ReviewWorkflowSegment) && belt_segment_unsettled(segments: segments, kind: PublicationWorkflowSegment)
+  }
+}
+
+// AFTER `ran` HAS RUN, ONLY WHAT LIES STRICTLY DOWNSTREAM OF IT IS NEXT. The chain never re-invokes
+// the kind that just ran or anything before it: an obligation that ran and is still unsettled (a
+// capture that found nothing to commit, a verify still deferred) is waiting on something outside
+// this process, and re-running it here would be a loop. Its next chance is its own event or the
+// discovery backstop.
+fn belt_attempt_next_after(ran: BeltAttemptObligationKind, outstanding: List<BeltAttemptObligationKind>) -> List<BeltAttemptObligationKind> {
+  outstanding |> filter(k => belt_attempt_obligation_kind_rank(kind: k) > belt_attempt_obligation_kind_rank(kind: ran))
+}
+
+// ── IDENTITY ────────────────────────────────────────────────────────────────────────────────────
+//
+// ONE UNIT PER ATTEMPT, ONE PER INSTANCE OBLIGATION. Every `gunbc run` loads the corpus, so a unit per
+// (kind, attempt) would pay that load once per kind; the attempt's unit runs its outstanding kinds in
+// order, each still its own ensure with its own receipt. Unrelated attempts never share a unit, so a
+// long verify on one cannot delay another's publish. THE UNIT NAME IS THE EXCLUSIVE HOLD: the user
+// manager refuses a second unit of a loaded name, so a second trigger while one runs is a no-op and
+// two processes never act on one attempt at once. systemd unit names admit [A-Za-z0-9:_.-]; node ids
+// are kebab-case and attempt keys hex, so the name needs no escaping, and an id outside that alphabet
+// is refused by the manager rather than reinterpreted.
+fn belt_attempt_obligation_unit_name(node_id: String, attempt_key: String) -> NonEmptyStr {
+  join(["gunbc-obligation-attempt-", node_id, "-", attempt_key, ".service"], "") as NonEmptyStr
+}
+
+fn belt_instance_obligation_unit_name(instance_id: String, kind: BeltInstanceObligationKind) -> NonEmptyStr {
+  join(["gunbc-obligation-", instance_id, "-", belt_instance_obligation_kind_key(kind: kind), ".service"], "") as NonEmptyStr
+}
+
+// WHAT ONE ENQUEUE DID. Started: the unit was handed the obligation and owns it now. Held: a unit of
+// that name is already loaded, so the obligation is already being worked -- a no-op, not a failure.
+// Refused: the manager would not start it, located.
+type BeltObligationEnqueue
+  = BeltObligationStarted { unit: NonEmptyStr }
+  | BeltObligationHeld { unit: NonEmptyStr }
+  | BeltObligationEnqueueRefused { unit: NonEmptyStr, reason: String }
+
+fn belt_obligation_enqueue_refused(e: BeltObligationEnqueue) -> Bool {
+  match e {
+    BeltObligationStarted { unit: _ } => false
+    BeltObligationHeld { unit: _ } => false
+    BeltObligationEnqueueRefused { unit: _, reason: _ } => true
+  }
+}
+
+// THE ANTI-ENTROPY BOUND. Discovery reads every attempt's evidence (it must, to know which are owed)
+// but hands at most this many attempts to units in one pass: it discovers and queues, it never does the
+// work, and a bound keeps one pass from starting more corpus loads than the host has room for. Attempts
+// past the bound are still outstanding and are found by the next pass or by their own events.
+data belt_discovery_attempt_bound: Int = 8

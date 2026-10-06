@@ -139,6 +139,7 @@ fn systemd_property_writability(property: SystemdUnitProperty) -> SystemdPropert
     Result => ObservationOnly
     ExecMainStatus => ObservationOnly
     ExecStartProperty => SettableDirective
+    ExecStopPostProperty => SettableDirective
     User => SettableDirective
     WorkingDirectoryProperty => SettableDirective
     RuntimeDirectoryProperty => SettableDirective
@@ -191,7 +192,7 @@ fn systemd_property_is_settable(property: SystemdUnitProperty) -> Bool {
 data systemd_unit_property_members: List<SystemdUnitProperty> = [
   MemoryMax, MemorySwapMax, MemoryHigh, CPUWeight, CPUQuota, CPUQuotaPerSecUSec, TasksMax,
   MemoryCurrent, MemoryPeak, TasksCurrent, ControlGroup, SliceProperty, ActiveEnterTimestampMonotonic, ActiveState, MainPID,
-  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty,
+  LoadState, UnitFileState, SubState, Result, ExecMainStatus, ExecStartProperty, ExecStopPostProperty,
   User, WorkingDirectoryProperty, RuntimeDirectoryProperty, Unit, NextElapseUSecMonotonic, AccuracyUSec, TimersMonotonic, NeedDaemonReload,
   IdProperty, KillModeProperty, ExitTypeProperty,
   EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty, AfterProperty, WantsProperty,

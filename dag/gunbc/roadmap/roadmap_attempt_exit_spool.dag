@@ -8,6 +8,7 @@ import extdeps.systemd.service_exec {
   ServiceExitCodeExited, ServiceExitCodeKilled, ServiceExitCodeDumped, ServiceExitCodeUnlisted,
   ExecWordPart, ExecLiteral, ExecVariable, ExecWordRendered, ExecWordRefused, exec_word_render,
   ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
+  exec_command_line_full_privileges,
 }
 import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
 import extdeps.filesystem.filesystem_io {
@@ -32,13 +33,26 @@ import extdeps.filesystem.filesystem_io {
 // run at the moment the worker exits. The entry is on disk under the instance root and is written
 // at exit, which is the event the capture obligation waits on.
 //
-// THE SEPARATOR IS "+". The name's parts are a roadmap node id (kebab-case), an attempt key (hex),
-// an invocation id (32 hex), a $SERVICE_RESULT word (lowercase, may contain "-"), an $EXIT_CODE word
-// and an $EXIT_STATUS (decimal or a signal name). None of those can contain "+", so the name splits
-// into exactly six parts or it is not a record; nothing is guessed from a partial split.
+// THE SEPARATOR IS "+". The name's parts are a roadmap node id (kebab-case), an attempt key (hex), the
+// unit's ROLE within the attempt (AttemptUnitRole), an invocation id (32 hex), a $SERVICE_RESULT word
+// (lowercase, may contain "-"), an $EXIT_CODE word and an $EXIT_STATUS (decimal or a signal name).
+// None of those can contain "+", so the name splits into exactly seven parts or it is not a record;
+// nothing is guessed from a partial split.
+//
+// THE ROLE IS IN THE NAME BECAUSE ONE ATTEMPT RUNS SEVERAL UNITS: its worker, one reviewer per
+// criterion and an auditor, each of which now ends with an exit record (bold-bee-114 ruling,
+// 2026-10-06: a reviewer finishing is the event its attempt's next obligation waits on, exactly as a
+// worker finishing is). The role names one LAUNCH: the worker once per attempt, a reviewer once per
+// (criterion, head), the auditor once per head -- so (node, attempt, role) identifies one unit run.
 
 data attempt_exit_entry_separator: String = "+"
 
+// THE STOP HOOK RUNS OUTSIDE THE UNIT'S SANDBOX ("+", extdeps.systemd.service_exec
+// exec_command_line_full_privileges). A reviewer's or auditor's process may write only its own review
+// directory; were the inbox added to its ReadWritePaths, the process it confines could create an exit
+// record for any unit of any attempt. With the prefix, the hook writes the inbox and the confined
+// process still cannot -- the record is the manager's statement, not the worker's.
+//
 // THE STOP HOOK'S ARGV, as one ExecStopPost= value. Refuses rather than renders if any literal part
 // would be read as command-line syntax (extdeps.systemd.service_exec exec_word_render); a refused hook
 // is a refused spawn, because a worker started without its exit record would leave its capture with
@@ -47,9 +61,25 @@ type AttemptExitHook
   = AttemptExitHookRendered { exec_line: NonEmptyStr }
   | AttemptExitHookRefused { reason: NonEmptyStr }
 
-fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String) -> List<ExecWordPart> {
+// THE UNIT'S ROLE WITHIN ITS ATTEMPT, rendered as one '+'-free token.
+// A reviewer is launched per (criterion, head) and an auditor per head, so their roles carry the head:
+// a re-review of a new head is a new launch with its own record, not a second record for one launch.
+type AttemptUnitRole
+  = AttemptWorkerRole
+  | AttemptReviewerRole { criterion_key: String, head_sha: String }
+  | AttemptAuditorRole { head_sha: String }
+
+fn attempt_unit_role_token(role: AttemptUnitRole) -> String {
+  match role {
+    AttemptWorkerRole => "worker"
+    AttemptReviewerRole { criterion_key, head_sha } => join(["review.", criterion_key, ".", head_sha], "")
+    AttemptAuditorRole { head_sha } => join(["audit.", head_sha], "")
+  }
+}
+
+fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> List<ExecWordPart> {
   [
-    ExecLiteral { text: join([inbox, "/", node_id, attempt_exit_entry_separator, attempt_key, attempt_exit_entry_separator], "") },
+    ExecLiteral { text: join([inbox, "/", node_id, attempt_exit_entry_separator, attempt_key, attempt_exit_entry_separator, attempt_unit_role_token(role: role), attempt_exit_entry_separator], "") },
     ExecVariable { variable: InvocationIdVariable },
     ExecLiteral { text: attempt_exit_entry_separator },
     ExecVariable { variable: ServiceResultVariable },
@@ -60,11 +90,11 @@ fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String)
   ]
 }
 
-fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String) -> AttemptExitHook {
-  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key)) {
+fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitHook {
+  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key, role: role)) {
     ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
     ExecWordRendered { word } =>
-      match exec_command_line(command: mkdir_create_only_command(path: word as String)) {
+      match exec_command_line_full_privileges(command: mkdir_create_only_command(path: word as String)) {
         ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
         ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
       }
@@ -80,6 +110,7 @@ type AttemptProcessEnd
 type AttemptExitRecord {
   node_id: String
   attempt_key: String
+  role: String
   invocation_id: String
   result: ServiceResult
   end: AttemptProcessEnd
@@ -121,17 +152,18 @@ fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
 
 fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   let parts = entry_name.split(delimiter: attempt_exit_entry_separator)
-  if count(parts) != 6 {
-    AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has six '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
+  if count(parts) != 7 {
+    AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has seven '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
   } else {
     let node_id = attempt_exit_entry_part(parts: parts, index: 0)
     let attempt_key = attempt_exit_entry_part(parts: parts, index: 1)
-    let invocation_id = attempt_exit_entry_part(parts: parts, index: 2)
-    let result_word = attempt_exit_entry_part(parts: parts, index: 3)
-    let code = service_exit_code_of_wire(word: attempt_exit_entry_part(parts: parts, index: 4))
-    let status = attempt_exit_entry_part(parts: parts, index: 5)
-    if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: invocation_id) == 0 {
-      AttemptExitEntryMalformed { entry_name: entry_name, reason: "an exit record names its node, attempt and invocation; one of them is empty" }
+    let role = attempt_exit_entry_part(parts: parts, index: 2)
+    let invocation_id = attempt_exit_entry_part(parts: parts, index: 3)
+    let result_word = attempt_exit_entry_part(parts: parts, index: 4)
+    let code = service_exit_code_of_wire(word: attempt_exit_entry_part(parts: parts, index: 5))
+    let status = attempt_exit_entry_part(parts: parts, index: 6)
+    if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: role) == 0 || string_length(s: invocation_id) == 0 {
+      AttemptExitEntryMalformed { entry_name: entry_name, reason: "an exit record names its node, attempt, role and invocation; one of them is empty" }
     } else {
       match attempt_process_end_of(code: code, status: status) {
         AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
@@ -140,6 +172,7 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
             record: AttemptExitRecord {
               node_id: node_id,
               attempt_key: attempt_key,
+              role: role,
               invocation_id: invocation_id,
               result: service_result_of_wire(word: result_word),
               end: end,
@@ -151,8 +184,8 @@ fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
   }
 }
 
-fn attempt_exit_record_is_for(record: AttemptExitRecord, node_id: String, attempt_key: String) -> Bool {
-  record.node_id == node_id && record.attempt_key == attempt_key
+fn attempt_exit_record_is_for(record: AttemptExitRecord, node_id: String, attempt_key: String, role: AttemptUnitRole) -> Bool {
+  record.node_id == node_id && record.attempt_key == attempt_key && record.role == attempt_unit_role_token(role: role)
 }
 
 // WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
@@ -196,12 +229,24 @@ fn attempt_exit_stage_listing(listing: FilesystemListingObservation) -> AttemptE
 }
 
 // PURE OVER THE THREE LISTINGS, so the decision is exercised on supplied listings and the wet read
-// below is only the listing. The FIRST record for the attempt wins in stage order; a unit runs once,
-// so a second record for one attempt is a second invocation of one attempt's unit, which the
-// dispatch path does not do -- it is reported, not chosen between.
+// below is only the listing. A launch runs once per (attempt, role), so a second record for one subject
+// is a second invocation of one unit, which the dispatch path does not do -- it is reported as
+// unreadable, never chosen between.
 fn attempt_exit_record_from_listings(
   node_id: String,
   attempt_key: String,
+  role: AttemptUnitRole,
+  listings: List<AttemptExitStageListing>,
+) -> AttemptExitRecordObservation {
+  attempt_exit_record_matching(matches: r => attempt_exit_record_is_for(record: r, node_id: node_id, attempt_key: attempt_key, role: role), listings: listings)
+}
+
+// THE SAME DECISION OVER ANY SUBJECT PREDICATE: the placement settlement knows a worker by its unit
+// name, and the unit name is minted above this module (gunbc.roadmap_dispatch_actuator
+// dispatch_attempt_unit_name), so the caller supplies the predicate rather than this module
+// re-deriving the name.
+fn attempt_exit_record_matching(
+  matches: fn(AttemptExitRecord) -> Bool,
   listings: List<AttemptExitStageListing>,
 ) -> AttemptExitRecordObservation {
   let unreadable = listings |> flat_map(l => match l {
@@ -217,7 +262,7 @@ fn attempt_exit_record_from_listings(
           AttemptExitStageUnreadable { reason: _ } => [] as List<String>
         })
         |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
-          AttemptExitEntryDecoded { record } => if attempt_exit_record_is_for(record: record, node_id: node_id, attempt_key: attempt_key) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptExitEntryDecoded { record } => if matches(record) { [record] } else { [] as List<AttemptExitRecord> }
           AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
         })
       if count(records) > 1 {
@@ -238,14 +283,14 @@ fn attempt_exit_stage_list(instance_root: String, stage: AttemptExitSpoolStage) 
   attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error))
 }
 
-fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_key: String) -> AttemptExitRecordObservation {
-  attempt_exit_record_from_listings(
-    node_id: node_id,
-    attempt_key: attempt_key,
-    listings: [
-      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitInbox),
-      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitQueued),
-      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitDone),
-    ],
-  )
+fn attempt_exit_stage_listings(instance_root: String) -> List<AttemptExitStageListing> {
+  [
+    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitInbox),
+    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitQueued),
+    attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitDone),
+  ]
+}
+
+fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_key: String, role: AttemptUnitRole) -> AttemptExitRecordObservation {
+  attempt_exit_record_from_listings(node_id: node_id, attempt_key: attempt_key, role: role, listings: attempt_exit_stage_listings(instance_root: instance_root))
 }

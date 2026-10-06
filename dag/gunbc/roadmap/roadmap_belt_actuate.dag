@@ -13,6 +13,7 @@ import std.types { String, Int, Bool, List, NonEmptyStr, FilePath, CommitSha, Gi
 import gunbc.roadmap_attempt_metering {
   MeteringPersist, MeteringPersisted, MeteringAlreadyFinal, MeteringNotDue, MeteringPersistRefused, metering_persist_for_attempt,
   RosterAdmitted, RosterAdmissionRefused, MeteredReviewer, MeteredAuditor, MeteredSupervisor, metering_roster_admit,
+  MeteredRole, metered_role_eq, metering_roster_for_attempt, metering_roster_launches, RosterRefused,
   MeteredAttemptsObserved, MeteredAttemptsRefused, metering_attempt_index, metering_attempt_index_admit,
 }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId, node_criteria_digest, node_sizing_derivation }
@@ -525,7 +526,18 @@ import std.content_hash {
   content_hash_combine_structural,
   as_content_hash_structural,
 }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  AttemptUnitRole, AttemptReviewerRole, AttemptAuditorRole,
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused,
+  attempt_exit_record_observe, AttemptExitRecordNone, AttemptExitRecordFound, AttemptExitRecordUnreadable,
+}
+import gunbc.roadmap_dispatch_actuator {
+  AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
+  attempt_worker_unit_observation_of,
+  AttemptUnitObservation, AttemptUnitAbsent, AttemptUnitActive, AttemptUnitFinished, AttemptUnitUnreadable,
+}
 import gunbc.roadmap_session_placement {
+  attempt_worker_unit_observe_for_instance,
   SessionPlacementGrant, SessionPlacementStores, SessionStoresResolution, SessionStoresResolved, SessionStoresUnresolved, session_placement_stores,
   session_placement_acquire, SessionPlacementGranted, SessionPlacementRefused,
   session_placement_begin_launch, SessionLaunchAdmitted, SessionLaunchRefused, session_placement_abandon,
@@ -5142,9 +5154,12 @@ fn belt_attempt_occurrences_observe_for_instance(instance: HostDashboardInstance
 //
 // The order is pane-then-unit only because the pane observation is already in hand; it is not a
 // preference between them. A vendor attempt whose pane is genuinely gone asks the manager, gets
-// not-found, and answers WorkerProcessAbsent exactly as before -- so this adds a population without
-// changing the answer for the one that already worked.
+// not-found, finds no exit record and no placement record, and answers WorkerProcessAbsent exactly as
+// before -- so this adds a population without changing the answer for the one that already worked. A
+// harness attempt whose unit has been collected is read from its exit record
+// (gunbc.roadmap_session_placement attempt_worker_unit_observe_for_instance).
 fn attempt_process_for_node(
+  instance: HostDashboardInstance,
   panes: BeltAttemptPanes,
   node_id: String,
   attempt_key: String,
@@ -5162,7 +5177,7 @@ fn attempt_process_for_node(
         Absent => {
           let unit = dispatch_attempt_unit_name(node_id: node_id, attempt_key: attempt_key)
           worker_process_from_attempt_unit(
-            observation: attempt_unit_observation(unit: unit),
+            observation: attempt_worker_unit_observe_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
             unit: unit,
           )
         }
@@ -5652,6 +5667,7 @@ fn belt_workflow_attempt_evidence_without_modeled_state(
     provider_events: "",
     provider_events_error: provider_events_error,
     process: attempt_process_for_node(
+      instance: instance,
       panes: panes,
       node_id: attempt.node_id,
       attempt_key: attempt.attempt_key,
@@ -5891,6 +5907,7 @@ fn belt_workflow_attempt_evidence_for_key(
       observation: events,
     ),
     process: attempt_process_for_node(
+      instance: instance,
       panes: panes,
       node_id: attempt.node_id,
       attempt_key: current_key,
@@ -10189,11 +10206,17 @@ fn belt_audit_evidence(
     FilesystemFileObservationsDisagree { path: _, cause } => ReviewReceiptUnreadable { detail: cause }
     FilesystemFileSubjectRefused { directory: _, name: _, cause } => ReviewReceiptUnreadable { detail: cause }
   }
-  let unit = dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key)
   [ CriterionReviewEvidence {
     criterion_key: goal_audit_criterion_key,
     source: source,
-    process: worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit),
+    process: belt_launch_process(
+      instance: instance,
+      node_id: node_id as String,
+      attempt_key: attempt_key,
+      unit: dispatch_audit_unit_name(node_id: node_id as String, attempt_key: attempt_key),
+      role: AttemptAuditorRole { head_sha: head_sha },
+      metered: MeteredAuditor { head: head_sha as NonEmptyStr },
+    ),
   } ]
 }
 
@@ -10284,17 +10307,21 @@ fn belt_audit_spawn(instance: HostDashboardInstance, progress: WorkflowAttemptPr
                 verdict_path: dispatch_attempt_audit_verdict_path_for_instance(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, head_sha: head),
               )
               let unit = dispatch_audit_unit_name(node_id: progress.node_id, attempt_key: progress.attempt_key)
-              match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
-                RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
-                RosterAdmitted =>
-                  match belt_exec(
-                  cmd: dispatch_audit_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head),
-                  workdir: worktree,
-                ) {
-                  ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
-                  ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-                  ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
-                }
+              match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: progress.node_id, attempt_key: progress.attempt_key, role: AttemptAuditorRole { head_sha: head }) {
+                AttemptExitHookRefused { reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: its exit hook could not be rendered: ", reason as String], "") }
+                AttemptExitHookRendered { exec_line } =>
+                  match metering_roster_admit(instance: instance, node_id: node_id, attempt_key: progress.attempt_key, role: MeteredAuditor { head: head as NonEmptyStr }) {
+                    RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor was not launched: ", roster_cause], "") }
+                    RosterAdmitted =>
+                      match belt_exec(
+                      cmd: dispatch_audit_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: node_id, attempt_key: progress.attempt_key, worktree_path: worktree, brief: brief, head_sha: head, exit_hook: exec_line),
+                      workdir: worktree,
+                    ) {
+                      ExecOk { stdout: _ } => ReviewSpawned { node_id: progress.node_id, criterion: goal_audit_criterion_key, unit: unit as String }
+                      ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: join(["the auditor unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+                      ExecRefused { program: _, reason } => ReviewFailed { node_id: progress.node_id, criterion: goal_audit_criterion_key, detail: reason }
+                    }
+                  }
               }
             }
           }
@@ -10370,7 +10397,7 @@ fn belt_review_observations(
       subject_id: review_subject_id(s: plan.subject),
       plan_revision: plan.revision,
       source: belt_review_receipt_source(instance: instance, node_id: node_id, attempt_key: attempt_key, head_sha: head_sha, criterion_key: key),
-      process: belt_review_process(node_id: node_id as String, attempt_key: attempt_key, criterion_key: key),
+      process: belt_review_process(instance: instance, node_id: node_id as String, attempt_key: attempt_key, criterion_key: key, head_sha: head_sha),
     }
   })
 }
@@ -10412,9 +10439,50 @@ fn belt_review_receipt_source(
   }
 }
 
-fn belt_review_process(node_id: String, attempt_key: String, criterion_key: String) -> WorkerProcessEvidence {
-  let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key)
-  worker_process_from_attempt_unit(observation: attempt_unit_observation(unit: unit), unit: unit)
+fn belt_review_process(instance: HostDashboardInstance, node_id: String, attempt_key: String, criterion_key: String, head_sha: String) -> WorkerProcessEvidence {
+  belt_launch_process(
+    instance: instance,
+    node_id: node_id,
+    attempt_key: attempt_key,
+    unit: dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: criterion_key),
+    role: AttemptReviewerRole { criterion_key: criterion_key, head_sha: head_sha },
+    metered: MeteredReviewer { criterion_key: criterion_key as NonEmptyStr, head: head_sha as NonEmptyStr },
+  )
+}
+
+// A REVIEWER'S OR AUDITOR'S PROCESS, now that its unit is collected when it ends (the exit record
+// replaced RemainAfterExit, gunbc.roadmap_dispatch_actuator dispatch_review_unit_properties): the
+// manager while the unit is loaded, else the launch's exit record, else -- only when both are silent
+// -- whether the launch was ever admitted. The launch's START RECEIPT is its metering roster entry,
+// which belt_review_spawn and the audit spawn commit before the unit is started, so a launch with a
+// roster entry and no record is a hook that did not write (indeterminate, and never respawned), and
+// only a launch with no roster entry answers absent -- the arm on which the review pass spawns.
+fn belt_launch_process(instance: HostDashboardInstance, node_id: String, attempt_key: String, unit: NonEmptyStr, role: AttemptUnitRole, metered: MeteredRole) -> WorkerProcessEvidence {
+  let loaded = attempt_unit_observation(unit: unit)
+  let observation = match loaded {
+    AttemptUnitAbsent => {
+      let record = attempt_exit_record_observe(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: role)
+      match record {
+        AttemptExitRecordNone =>
+          attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: belt_launch_start_standing(instance: instance, node_id: node_id, attempt_key: attempt_key, metered: metered))
+        AttemptExitRecordFound { record: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+        AttemptExitRecordUnreadable { reason: _ } => attempt_worker_unit_observation_of(unit: unit, loaded: loaded, record: record, start: AttemptUnitStartRecorded)
+      }
+    }
+    AttemptUnitActive => loaded
+    AttemptUnitFinished { exit_status: _ } => loaded
+    AttemptUnitUnreadable { reason: _ } => loaded
+  }
+  worker_process_from_attempt_unit(observation: observation, unit: unit)
+}
+
+fn belt_launch_start_standing(instance: HostDashboardInstance, node_id: String, attempt_key: String, metered: MeteredRole) -> AttemptUnitStartStanding {
+  let roster = metering_roster_for_attempt(instance: instance, node_id: node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: attempt_key)
+  match roster {
+    RosterRefused { cause } => AttemptUnitStartUnread { reason: join(["the launch roster could not be read: ", cause], "") }
+    _ =>
+      if any(metering_roster_launches(roster: roster), r => metered_role_eq(a: r, b: metered)) { AttemptUnitStartRecorded } else { AttemptUnitNeverStarted }
+  }
 }
 
 // THE REVIEW PASS: for every attempt whose verification passed and whose head has no verdict and no
@@ -10523,10 +10591,10 @@ fn belt_review_call(instance: HostDashboardInstance, node_id: String, attempt_ke
     ReviewReceiptPresent { text: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a verdict is recorded for this head, plan revision and criterion" }
     ReviewReceiptUnreadable { detail } => ReviewFailed { node_id: node_id, criterion: call.id, detail: detail }
     ReviewReceiptAbsent =>
-      match belt_review_process(node_id: node_id, attempt_key: attempt_key, criterion_key: key) {
+      match belt_review_process(instance: instance, node_id: node_id, attempt_key: attempt_key, criterion_key: key, head_sha: head) {
         WorkerProcessRunning { command: _ } => ReviewSkipped { node_id: node_id, criterion: call.id, reason: "a reviewer is running" }
         WorkerProcessExited { exit_code, last_command: _ } =>
-          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its unit is retained for inspection"], "") }
+          ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer exited ", to_string(exit_code), " without writing a verdict; its exit record and journal are retained for inspection"], "") }
         WorkerProcessUnobserved { reason } => ReviewDeferred { node_id: node_id, criterion: call.id, reason: reason as String }
         WorkerProcessAbsent =>
           belt_review_spawn(instance: instance, node_id: node_id, attempt_key: attempt_key, worktree: worktree, head: head, plan: plan, call: call)
@@ -10543,17 +10611,21 @@ fn belt_review_spawn(instance: HostDashboardInstance, node_id: String, attempt_k
       let verdict_path = dispatch_attempt_review_verdict_path_for_instance(instance: instance, node_id: nid, attempt_key: attempt_key, head_sha: head, criterion_key: key)
       let brief = join([call.brief, review_verdict_instruction(verdict_path: verdict_path)], "")
       let unit = dispatch_review_unit_name(node_id: node_id, attempt_key: attempt_key, criterion_key: key)
-      match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
-        RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
-        RosterAdmitted =>
-          match belt_exec(
-          cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key),
-          workdir: worktree,
-        ) {
-          ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
-          ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
-          ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
-        }
+      match attempt_exit_hook(instance_root: instance.instance_root as String, node_id: node_id, attempt_key: attempt_key, role: AttemptReviewerRole { criterion_key: key, head_sha: head }) {
+        AttemptExitHookRefused { reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: its exit hook could not be rendered: ", reason as String], "") }
+        AttemptExitHookRendered { exec_line } =>
+          match metering_roster_admit(instance: instance, node_id: nid, attempt_key: attempt_key, role: MeteredReviewer { criterion_key: key as NonEmptyStr, head: head as NonEmptyStr }) {
+            RosterAdmissionRefused { cause: roster_cause } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer was not launched: ", roster_cause], "") }
+            RosterAdmitted =>
+              match belt_exec(
+              cmd: dispatch_review_unit_argv(systemd_run_program: systemd_run, instance: instance, node_id: nid, attempt_key: attempt_key, worktree_path: worktree, brief: brief, head_sha: head, criterion_key: key, exit_hook: exec_line),
+              workdir: worktree,
+            ) {
+              ExecOk { stdout: _ } => ReviewSpawned { node_id: node_id, criterion: call.id, unit: unit as String }
+              ExecFailed { program: _, exit_code, stderr } => ReviewFailed { node_id: node_id, criterion: call.id, detail: join(["the reviewer unit could not be started (exit ", to_string(exit_code), "): ", stderr], "") }
+              ExecRefused { program: _, reason } => ReviewFailed { node_id: node_id, criterion: call.id, detail: reason }
+            }
+          }
       }
     }
   }

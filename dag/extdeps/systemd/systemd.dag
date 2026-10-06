@@ -71,6 +71,7 @@ type SystemdUnitProperty
   | Result
   | ExecMainStatus
   | ExecStartProperty
+  | ExecStopPostProperty
   | User
   | WorkingDirectoryProperty
   | RuntimeDirectoryProperty
@@ -140,6 +141,7 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
     ExecStartProperty => "ExecStart" as NonEmptyStr
+    ExecStopPostProperty => "ExecStopPost" as NonEmptyStr
     User => "User" as NonEmptyStr
     WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
     RuntimeDirectoryProperty => "RuntimeDirectory" as NonEmptyStr

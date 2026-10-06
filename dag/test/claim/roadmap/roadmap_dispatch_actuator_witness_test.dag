@@ -1175,6 +1175,7 @@ test fn witness_review_unit_argv_mints_per_criterion_attempt_identity() -> Bool 
     brief: "brief",
     head_sha: "abc123",
     criterion_key: "conformance-external-facts",
+    exit_hook: "+mkdir -- /i/attempt-exit-spool/inbox/x" as NonEmptyStr,
   )
   string_contains(s: join(cmd.args, separator: "\0"), pattern: "attempt_identity=reviewer:6.node-1.12.att-20260920.26.conformance-external-facts.6.abc123")
 }

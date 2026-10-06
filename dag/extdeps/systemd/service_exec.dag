@@ -171,6 +171,22 @@ fn exec_command_line(command: ArgvCommand) -> ExecCommandLineRendering {
   }
 }
 
+// THE "+" COMMAND-LINE PREFIX, from the special executable prefixes systemd.service(5) documents
+// ("Command lines"): it runs that one command with full privileges -- outside the unit's file-system
+// namespacing and sandboxing (ProtectSystem=, ProtectHome=, ReadWritePaths= and the rest), while the
+// main process keeps them. That is what lets a stop hook write where the unit's own process may not.
+// In a user manager "full privileges" are the user's own; the prefix never grants more than the
+// manager's principal holds. It is the only prefix this repository uses, so it is one function rather
+// than a coproduct of one.
+data exec_full_privileges_prefix: String = "+"
+
+fn exec_command_line_full_privileges(command: ArgvCommand) -> ExecCommandLineRendering {
+  match exec_command_line(command: command) {
+    ExecCommandLineRefused { reason } => ExecCommandLineRefused { reason: reason }
+    ExecCommandLineRendered { line } => ExecCommandLineRendered { line: join([exec_full_privileges_prefix, line as String], "") as NonEmptyStr }
+  }
+}
+
 // A WORD WHOSE ONLY SYNTAX IS "${NAME}" FOR A MODELED VARIABLE. Re-reading the rendered word, not
 // trusting a flag beside it: strip every modeled expansion, and the remainder must be an
 // admissible literal. A "$" anywhere else -- an unmodeled variable, a bare $FOO -- survives the

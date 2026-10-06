@@ -1,6 +1,6 @@
 module extdeps.posix.signal
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, Int }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -47,4 +47,52 @@ service posix.Signal {
       0 => { success: true, stderr: "" } "hermetic posix.Signal.TerminateProcess"
     }
   }
+}
+
+// THE LINUX SIGNAL NUMBERS FOR THE STANDARD SIGNALS, by the name systemd reports them under
+// ($EXIT_STATUS when $EXIT_CODE is killed or dumped: the name without its SIG prefix). signal(7),
+// "Standard signals": the numbering below is the one shared by x86, ARM and most other Linux
+// architectures (the table's middle column); alpha, sparc, mips and parisc number some of these
+// differently, and no host this repository runs on is one of them. A name not listed is refused
+// with Absent rather than guessed -- including the realtime signals, which have no fixed number.
+data linux_signal_numbers_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man7/signal.7.html"
+  }
+}
+
+fn linux_standard_signal_number(name: String) -> Int? {
+  if name == "HUP" { Present { value: 1 } }
+  else if name == "INT" { Present { value: 2 } }
+  else if name == "QUIT" { Present { value: 3 } }
+  else if name == "ILL" { Present { value: 4 } }
+  else if name == "TRAP" { Present { value: 5 } }
+  else if name == "ABRT" { Present { value: 6 } }
+  else if name == "BUS" { Present { value: 7 } }
+  else if name == "FPE" { Present { value: 8 } }
+  else if name == "KILL" { Present { value: 9 } }
+  else if name == "USR1" { Present { value: 10 } }
+  else if name == "SEGV" { Present { value: 11 } }
+  else if name == "USR2" { Present { value: 12 } }
+  else if name == "PIPE" { Present { value: 13 } }
+  else if name == "ALRM" { Present { value: 14 } }
+  else if name == "TERM" { Present { value: 15 } }
+  else if name == "STKFLT" { Present { value: 16 } }
+  else if name == "CHLD" { Present { value: 17 } }
+  else if name == "CONT" { Present { value: 18 } }
+  else if name == "STOP" { Present { value: 19 } }
+  else if name == "TSTP" { Present { value: 20 } }
+  else if name == "TTIN" { Present { value: 21 } }
+  else if name == "TTOU" { Present { value: 22 } }
+  else if name == "URG" { Present { value: 23 } }
+  else if name == "XCPU" { Present { value: 24 } }
+  else if name == "XFSZ" { Present { value: 25 } }
+  else if name == "VTALRM" { Present { value: 26 } }
+  else if name == "PROF" { Present { value: 27 } }
+  else if name == "WINCH" { Present { value: 28 } }
+  else if name == "IO" { Present { value: 29 } }
+  else if name == "PWR" { Present { value: 30 } }
+  else if name == "SYS" { Present { value: 31 } }
+  else { none }
 }
