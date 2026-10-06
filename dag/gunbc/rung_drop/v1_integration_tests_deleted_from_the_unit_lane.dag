@@ -10,10 +10,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // tests that each took over 100ms -- tests that resolved, evaluated or indexed the live .dag corpus
 // inside a Rust test -- and relocated none of them. They were enrolled in the required unit lane
 // only while it blocked, so what they exposed was mechanically preventable at most and is now
-// exposed by nothing. That deletion is what brought the suite under its cap, which is why
-// gunbc.rung_drop rust_unit_tests_over_their_cap could retire; that row's trigger refuses
-// "shrinking the suite by deleting tests" as a route, so the shrinkage is this row's loss and not
-// that row's restoration.
+// exposed by nothing. That deletion is what brought the suite under its cap, and
+// gunbc.rung_drop rust_unit_tests_over_their_cap's trigger refuses "shrinking the suite by deleting
+// tests" as a route, so that row stays standing; this row is where the shrinkage itself is declared.
 //
 // The population is named at file grain because the test identities exist only in history: the
 // exact set is the #[test] items #13452's squash commit removes from these files (git show

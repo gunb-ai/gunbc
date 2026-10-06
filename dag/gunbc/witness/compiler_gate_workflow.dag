@@ -270,8 +270,9 @@ fn compiler_gate_lint_step() -> Step {
 // continue_on_error and read by the aggregate (2026-09-30, retiring gunbc.rung_drop
 // rust_unit_tests_off_the_merge_path). After gunbc#12951 its step overran its cap on every head, so
 // it was reported but not read under gunbc.rung_drop rust_unit_tests_over_their_cap (2026-10-05)
-// until gunbc#13452 brought the suite under its cap; that drop is retired and the aggregate reads
-// the lane again, so a unit-test red refuses the required context.
+// until gunbc#13452 brought the suite under its cap by deleting tests. The aggregate reads the
+// lane again, so a unit-test red refuses the required context; the drop stays standing because
+// its trigger refuses deletion as a route.
 //
 // THE FLEET COST IS THE PRICE THE OLDER REASONING DECLINED, AND IT IS NOW PAID DELIBERATELY. The
 // 2026-09-28 reasoning kept the step off the fleet because a fleet slot would pay its wall on every
@@ -1514,7 +1515,8 @@ type CompilerGateLaneRow {
 
 // THE UNIT-TEST ROW BLOCKS AGAIN. It was LaneAnnouncedNotBlocking under gunbc.rung_drop
 // rust_unit_tests_over_their_cap from 2026-10-05, when the step overran its cap on every head after
-// gunbc#12951; that drop's trigger fired after gunbc#13452 (see compiler_gate_unit_test_timeout).
+// gunbc#12951; it blocks again with a cap derived after gunbc#13452 (see compiler_gate_unit_test_timeout),
+// while that drop stays standing: #13452 shrank the suite by deletion, a route its trigger refuses.
 fn compiler_gate_lane_rows() -> List<CompilerGateLaneRow> {
   [
     CompilerGateLaneRow {
