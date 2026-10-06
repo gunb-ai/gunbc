@@ -82,6 +82,48 @@ fn fixture_facts() -> Optional<List<ArgvWordsFact>> {
   }
 }
 
+// THE FIXTURE'S OWN LENS RENDERING, WRITTEN WHERE A HUMAN READS IT: one TSV row per fact with
+// every field the fixture claims pin. The claims' expectations are checked against the lens's
+// output over the fixture -- this dump is how that output is observed, instead of trusting a
+// hand-maintained parallel list of what the lens is supposed to say. Wet-lane only: hermetic
+// lanes refuse the write by design.
+fn fixture_facts_dump() -> ProcessExit {
+  match fixture_facts() {
+    Absent => ExitFailure { code: 1, reason: "fixture facts absent: fixture unreadable or unparseable" }
+    Present { value: facts } =>
+      let rows = fold_list(xs: facts, empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
+        concat(acc, concat("\n", fact_row(f: f)))
+      })
+      let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
+      match written.success {
+        true => ExitSuccess
+        false => ExitFailure { code: 1, reason: concat("fixture facts write refused: ", written.error) }
+      }
+  }
+}
+
+fn fact_row(f: ArgvWordsFact) -> String {
+  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(length(xs: f.candidates) as String, concat("\t", concat(joined_words(xs: f.candidates), concat("\t", concat(length(xs: f.flag_words) as String, concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(f.list_string_params as String, concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+}
+
+fn kind_name(k: ArgvWordsDeclKind) -> String {
+  match k {
+    FnDecl => "FnDecl"
+    DataDecl => "DataDecl"
+  }
+}
+
+fn bool_word(b: Bool) -> String {
+  match b {
+    true => "true"
+    false => "false"
+  }
+}
+
+fn joined_words(xs: List<String>) -> String {
+  fold_list(xs: xs, empty: "", cons: fn(acc, w) { match acc { "" => w, _ => concat(acc, concat(",", w)) } })
+}
+
 fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> {
   fold_list(xs: xs, empty: Absent, cons: fn(acc, f) {
     match acc {
