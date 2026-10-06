@@ -87,30 +87,67 @@ fn absent_and_stop(reason: String) -> Node {
 }
 
 fn fleet_desired_candidate_fetch_statements() -> List<Node> {
+  compiler_pair_candidate_fetch_statements(
+    revision: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"]),
+    wait: NoCandidateWait,
+    export: CandidateStandingOutputOnly,
+  )
+}
+
+// HOW LONG A FETCH WAITS FOR A CANDIDATE THAT IS STILL BEING BUILT. fleet-desired runs after its
+// revision LANDED, so the queue run that built its candidate has finished and there is nothing to
+// wait for: it reads only successful runs. The required floor on a merge_group judges against the
+// PREVIOUS group's head, whose run is usually still in flight; there the fetch reads the run
+// whatever its status and polls for the artifact up to a declared bound
+// (gunbc.compiler_gate_workflow compiler_gate_base_compiler_wait). Trusting an unfinished run is
+// sound only because nothing trusts the run at all: the canonical consumer verifies the pack's
+// CONTENT -- kind, source closure equal to the base's tree, every member's digest -- before
+// anything executes.
+type CandidateWait
+  = NoCandidateWait
+  | PollForCandidate { polls: Int, interval_seconds: Int }
+
+// WHERE THE STANDING GOES. fleet-desired branches on a step output; the required floor also hands
+// the standing to claim_executor through the job environment (cli_run::base_facts), which is the
+// one reader that decides what an absent or pending base compiler means.
+type CandidateStandingExport
+  = CandidateStandingOutputOnly
+  | CandidateStandingToBaseCompilerEnv
+
+fn candidate_run_status_filter(wait: CandidateWait) -> String {
+  match wait {
+    NoCandidateWait => "&status=success"
+    PollForCandidate { polls: _, interval_seconds: _ } => ""
+  }
+}
+
+fn append_env(line: Node) -> Node {
+  bash_build_with_redir_to_file(
+    inner: bash_build_pipe(left: cmd(ws: [lit(t: "echo"), line]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_ENV")])),
+    path: lit(t: "/dev/null"),
+  )
+}
+
+fn standing_statements(standing: String, detail: Node, export: CandidateStandingExport) -> List<Node> {
+  concat([append_output(line: join(["standing=", standing], ""))], match export {
+    CandidateStandingOutputOnly => []
+    CandidateStandingToBaseCompilerEnv => [
+      append_env(line: lit(t: join(["GUNBC_BASE_COMPILER_STANDING=", standing], ""))),
+      append_env(line: words(ws: [lit(t: "GUNBC_BASE_COMPILER_REVISION="), var(n: "CHECKED_OUT")])),
+      append_env(line: words(ws: [lit(t: "GUNBC_BASE_COMPILER_DETAIL="), detail])),
+    ]
+  })
+}
+
+fn stop_with(message: String, standing: String, detail: Node, export: CandidateStandingExport) -> Node {
+  bash_build_stmt_list_from_nodes(stmts: concat(
+    concat([cmd(ws: [lit(t: "echo"), lit(t: join(["pair-candidate: ", standing, " (", message, ")"], ""))])], standing_statements(standing: standing, detail: detail, export: export)),
+    [bash_build_exit(code: "0")],
+  ))
+}
+
+fn artifact_query_statements() -> List<Node> {
   [
-    cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir(file: "")]),
-    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir(file: "")]),
-    assign_sub(name: "CHECKED_OUT", body: bash_build_command_from_lits(lits: ["git", "rev-parse", "HEAD"])),
-    or_refuse(
-      check: api_get(
-        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs?event=merge_group&status=success&per_page=100&head_sha="), var(n: "CHECKED_OUT")]),
-        out: dir(file: "runs.json"),
-      ),
-      name: "RunsUnreadable", message: "the Actions API did not answer the merge_group run query; that is not absence",
-    ),
-    or_refuse(
-      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.workflow_runs | length)"), dir(file: "runs.json")]),
-      name: "RunsListingTruncated", message: "the merge_group run listing for this revision is not complete on one page; an unread page is not absence",
-    ),
-    assign_sub(name: "RUN_ID", body: cmd(ws: [
-      lit(t: "jq"), lit(t: "-r"),
-      lit(t: join([
-        "[.workflow_runs[] | select(.path == \"", fleet_desired_candidate_required_workflow_path, "\")]",
-        " | sort_by(.created_at) | reverse | .[0].id // empty",
-      ], "")),
-      dir(file: "runs.json"),
-    ])),
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_and_stop(reason: "no successful merge_group run of the required workflow on this revision")),
     or_refuse(
       check: api_get(
         url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID"), lit(t: join(["/artifacts?per_page=100&name=", compiler_pair_candidate_artifact_name], ""))]),
@@ -127,7 +164,85 @@ fn fleet_desired_candidate_fetch_statements() -> List<Node> {
       lit(t: "[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | reverse | .[0].id // empty"),
       dir(file: "artifacts.json"),
     ])),
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_and_stop(reason: "the newest successful merge_group run of this revision holds no unexpired candidate artifact")),
+  ]
+}
+
+// ONE POLL, UNROLLED: a bounded, forward sequence rather than a loop, so the wait's bound is the
+// statement count. A run that has COMPLETED with no artifact will never have one: that is absence.
+fn poll_statements(interval_seconds: Int, export: CandidateStandingExport) -> List<Node> {
+  [
+    bash_build_if(
+      cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
+      body: bash_build_stmt_list_from_nodes(stmts: concat([
+        or_refuse(
+          check: api_get(
+            url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/runs/"), var(n: "RUN_ID")]),
+            out: dir(file: "run.json"),
+          ),
+          name: "RunUnreadable", message: "the Actions API did not answer the candidate run's status; that is not absence",
+        ),
+        assign_sub(name: "RUN_STATUS", body: cmd(ws: [lit(t: "jq"), lit(t: "-r"), lit(t: ".status"), dir(file: "run.json")])),
+        bash_build_if(
+          cond: test_words(ws: [var(n: "RUN_STATUS"), lit(t: "="), lit(t: "completed")]),
+          body: stop_with(message: "the revision's merge_group run completed without an unexpired candidate artifact", standing: "absent", detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: " completed with no candidate")]), export: export),
+        ),
+        cmd(ws: [lit(t: "sleep"), lit(t: to_string(interval_seconds))]),
+      ], artifact_query_statements())),
+    ),
+  ]
+}
+
+fn repeat_polls(n: Int, interval_seconds: Int, export: CandidateStandingExport) -> List<Node> {
+  if n <= 0 { [] } else { concat(poll_statements(interval_seconds: interval_seconds, export: export), repeat_polls(n: n - 1, interval_seconds: interval_seconds, export: export)) }
+}
+
+fn wait_statements(wait: CandidateWait, export: CandidateStandingExport) -> List<Node> {
+  match wait {
+    NoCandidateWait => []
+    PollForCandidate { polls: n, interval_seconds: i } => concat(repeat_polls(n: n, interval_seconds: i, export: export), [
+      bash_build_if(
+        cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]),
+        body: stop_with(
+          message: join(["the revision's merge_group run is still in flight and uploaded no candidate within ", to_string(n * i), "s"], ""),
+          standing: "pending",
+          detail: words(ws: [lit(t: "run="), var(n: "RUN_ID"), lit(t: join([" waited=", to_string(n * i), "s"], ""))]),
+          export: export,
+        ),
+      ),
+    ])
+  }
+}
+
+// THE FETCH, FOR ANY REVISION: `revision` is the command that prints the commit whose candidate is
+// wanted (fleet-desired: the checkout; the floor: its base). The wait decides only how an UNFINISHED
+// run is treated; transport and listing failures refuse identically at every revision.
+fn compiler_pair_candidate_fetch_statements(revision: Node, wait: CandidateWait, export: CandidateStandingExport) -> List<Node> {
+  concat([
+    cmd(ws: [lit(t: "rm"), lit(t: "-rf"), dir(file: "")]),
+    cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), dir(file: "")]),
+    assign_sub(name: "CHECKED_OUT", body: revision),
+    or_refuse(
+      check: api_get(
+        url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: join(["/actions/runs?event=merge_group", candidate_run_status_filter(wait: wait), "&per_page=100&head_sha="], "")), var(n: "CHECKED_OUT")]),
+        out: dir(file: "runs.json"),
+      ),
+      name: "RunsUnreadable", message: "the Actions API did not answer the merge_group run query; that is not absence",
+    ),
+    or_refuse(
+      check: cmd(ws: [lit(t: "jq"), lit(t: "-e"), lit(t: ".total_count == (.workflow_runs | length)"), dir(file: "runs.json")]),
+      name: "RunsListingTruncated", message: "the merge_group run listing for this revision is not complete on one page; an unread page is not absence",
+    ),
+    assign_sub(name: "RUN_ID", body: cmd(ws: [
+      lit(t: "jq"), lit(t: "-r"),
+      lit(t: join([
+        "[.workflow_runs[] | select(.path == \"", fleet_desired_candidate_required_workflow_path, "\")]",
+        " | sort_by(.created_at) | reverse | .[0].id // empty",
+      ], "")),
+      dir(file: "runs.json"),
+    ])),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_or_stop(reason: "no successful merge_group run of the required workflow on this revision", export: export)),
+  ], concat(artifact_query_statements(), concat(wait_statements(wait: wait, export: export), [
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_or_stop(reason: "the newest successful merge_group run of this revision holds no unexpired candidate artifact", export: export)),
     or_refuse(
       check: api_get(
         url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/artifacts/"), var(n: "ARTIFACT_ID"), lit(t: "/zip")]),
@@ -151,12 +266,23 @@ fn fleet_desired_candidate_fetch_statements() -> List<Node> {
       path: lit(t: "/dev/null"),
     ),
     cmd(ws: [lit(t: "echo"), words(ws: [lit(t: "pair-candidate: present, artifact "), var(n: "ARTIFACT_ID")])]),
-    append_output(line: "standing=present"),
-  ]
+  ], standing_statements(standing: "present", detail: words(ws: [lit(t: "artifact="), var(n: "ARTIFACT_ID")]), export: export))))
+}
+
+// fleet-desired's absence keeps its own wording and builds; the floor's is a typed standing.
+fn absent_or_stop(reason: String, export: CandidateStandingExport) -> Node {
+  match export {
+    CandidateStandingOutputOnly => absent_and_stop(reason: reason)
+    CandidateStandingToBaseCompilerEnv => stop_with(message: reason, standing: "absent", detail: lit(t: reason), export: export)
+  }
 }
 
 fn fleet_desired_candidate_fetch_script() -> String {
-  match bash_emit_stmts(statements: fleet_desired_candidate_fetch_statements(), set_e: true) {
+  compiler_pair_candidate_fetch_script(statements: fleet_desired_candidate_fetch_statements())
+}
+
+fn compiler_pair_candidate_fetch_script(statements: List<Node>) -> String {
+  match bash_emit_stmts(statements: statements, set_e: true) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => ""
   }
