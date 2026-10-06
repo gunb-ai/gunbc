@@ -174,6 +174,22 @@ test fn required_arm_after_none_arm_refuses_blocking() -> Bool {
   eq_blocking_count(source: return_lift_match_arm_swapped_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
+// CLAIMED SCOPE of the match-arm wall (ruling B, gunbc#13280): an arm whose whole body is the payload
+// binding of `Present { value: x }` is not judged, because infer types that payload single-level (see
+// nested_optional_collapsed_by_infer_carried_by_emission). The control is the mtcollins1 shape; the red
+// proves the exclusion is narrow: the same arm returning a bare non-binding value still refuses.
+data present_payload_arm_control_source: String = "module present_payload_probe\nfn g(xs: List<String?>) -> String? {\n  match xs.first() {\n    Absent => none\n    Present { value: r } => r\n  }\n}\n"
+
+data present_payload_arm_narrow_red_source: String = "module present_payload_probe_red\nfn g(xs: List<String?>, s: String) -> String? {\n  match xs.first() {\n    Absent => none\n    Present { value: r } => s\n  }\n}\n"
+
+test fn present_payload_binding_arm_stays_admitted() -> Bool {
+  eq_admitted(source: present_payload_arm_control_source)
+}
+
+test fn present_pattern_arm_with_other_bare_value_still_refuses() -> Bool {
+  eq_blocking_count(source: present_payload_arm_narrow_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
+}
+
 // THE SAME CLASS AT A DATA INITIALIZER (ruling A on gunbc#13202). A `data r: T? = <bare T>` row was
 // emitted bare against Option<..> and refused only downstream by rustc; the checker now refuses it.
 // The red's T is a coproduct with a nested-record variant, the specimen that exposed the class; the

@@ -3043,8 +3043,28 @@ fn match_arm_mixes_bare_and_optional(unified_arm_type: Node, arm_type: Node, sco
     || (match_arm_type_is_bare_concrete(t: unified_arm_type, scope: scope) && declared_type_carries_optional(declared: arm_type, scope: scope))
 }
 
+// CLAIMED SCOPE OF THE WALL (not a rung drop): the wall does not judge an arm whose whole body is the
+// payload binding of a `Present { value: x }` pattern. Infer types that payload as bare T from a
+// scrutinee carried as single-level CardOptional (join_optional_cardinality / with_required_cardinality
+// collapse nesting), so over List<T?> `first()` yields T? and the payload reads as T though emission
+// carries Option<Option<T>>; judging it would refuse a correct arm. Row:
+// nested_optional_collapsed_by_infer_carried_by_emission; trigger: a nested-optional carrier in 00_core.
+fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferScope) -> Bool {
+  match arm_pattern(n: arm.typed_arm) {
+    VariantPattern { name: "Present", parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
+      let body_name = expr_var_name_at(texpr: arm_body(n: arm.typed_arm), source_indices: scope.type_env.source_indices)
+      body_name != "" && (bindings |> any(fb => match field_binding_pattern(n: fb) {
+        Bind { declaration: declaration } => declaration.name == body_name
+        _ => false
+      }))
+    _ => false
+  }
+}
+
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
+    []
+  } else if match_arm_body_is_present_payload_binding(arm: arm, scope: scope) {
     []
   } else if match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
     [make_error_node(

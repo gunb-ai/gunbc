@@ -15,6 +15,8 @@ data bare_value_admitted_where_optional_is_declared: RecurringFailureMode = Recu
 
     "EVIDENCE: test.claim.self_host_equality_admission_witness. Reds: a bare return, a bare match arm before a none arm, a bare match arm after a none arm, and a bare data initializer, each refused as blocking DeclaredTypeNotInhabited. Controls: an explicit Present return, an absent return, and a Present-spelled data row, all admitted.",
 
+    "CLAIMED SCOPE (not a rung drop): the match-arm wall does not judge an arm whose whole body is the payload binding of a Present { value: x } pattern, because infer collapses nested optionality (see nested_optional_collapsed_by_infer_carried_by_emission). The exclusion is pinned by an admitted control and a narrowness red in test.claim.self_host_equality_admission_witness.",
+
     "RUNG FOUND AT: 1 on the Rust emission path (rustc refusal); the interpretation path accepted silently.",
 
     "RUNG NOW: 3 at three paths only -- the declared return, the data initializer, and the match-arm join -- each with an enrolled red and positive control. A bare T bound to a T? let annotation, record field, call argument or parameter is a different position whose population this change did not measure, and no rung is claimed there; the class's rung is the minimum across its in-scope paths, so it is not claimed beyond those three.",
