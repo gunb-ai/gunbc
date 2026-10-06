@@ -1,0 +1,170 @@
+module gunbc.machine_intake_dimm_physical_orientation
+
+import v2.std.algebra { filter }
+import std.types { String, List, list_length }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.roster_frontier { FrontierRow, DeclSubject }
+import std.dissolution { UnboundDissolution }
+import extdeps.boards.types { BaseboardModel }
+import product.host_identity { HostIdentity }
+import extdeps.ampere.mt_collins_product_brief.memory_population { MtCollinsDimmPopulationRow }
+import gunbc.mt_collins_dimm_physical_identity {
+  DimmDiagramIdentityResolved, DimmDiagramIdentityRefused,
+  PopulationDiagramResolved, PopulationDiagramRefused, PopulationCountDisagrees, PopulationConnectorRepeated,
+  resolve_dimm_diagram_identity,
+}
+import gunbc.managed_host { ManagedHostBinding }
+import gunbc.baseboard_dimm_figure {
+  BaseboardDimmFigure, BaseboardDimmFigureOf, BoardFigureUnmodeled,
+  baseboard_dimm_figure, figure_banks, figure_channel_pairs, figure_population_rows,
+}
+import gunbc.machine_intake_dimm_row_orientation {
+  ChassisEnd, DimmPlacementAnchor, DimmOrientationOutcome, DimmDamagedConnectorReport, DimmDamagedCandidates,
+  DamagedCandidates, DamagedCandidatesRefused, DamageFrameUnreported,
+  DimmPopulationDamageStanding, PopulationAvoidsDamage, PopulationUsesDamaged, PopulationDamageUndetermined,
+  OrientationResolved, OrientationAmbiguous, OrientationContradicted, OrientationUnevaluable, OrientationAnchorFrameUnreported, OrientationAnchorFramesDisagree,
+  DimmSlotMap, SlotMapRendered, SlotMapRefused, DimmSlotMapLine, SlotDamaged, SlotPopulated, SlotEmpty,
+  SlotMapOrientationUnresolved, SlotMapDamageUnresolved, SlotMapPopulationUsesDamaged, SlotMapPopulationUnresolved, SlotMapConnectorUnresolved,
+  resolve_orientation, damaged_connector_candidates, population_damage_standing, row_seen_from, positions, nat_member,
+  expected_firmware_readback, readback_unresolved, board_sockets, figure_population_identity, slot_colour, chassis_end_text,
+  chassis_end_landmark, trained_slot_text, figure_bet_agreement, slot_map_line_text, damage_standing_text, agreement_text, gap_text,
+}
+
+// THE PHYSICAL ORIENTATION OF A MANAGED HOST'S DIMM ROW. The board is read off the access observation
+// gunbc.managed_host managed_host_binding bound (never stored beside it), its figure is selected by
+// gunbc.baseboard_dimm_figure, and a board with no modeled figure refuses before any anchor is read.
+// The row logic is gunbc.machine_intake_dimm_row_orientation, over the figure this module hands it.
+// What a unit observed -- its boots, the frame its operator faced, its damage report, its connector
+// colours -- is supplied by the unit's own modules as parameters; nothing in this module names a unit.
+
+// THE ORIENTATION OF A BOUND HOST'S ROW, AND THE ONLY MINT OF ONE. The figure is the bound host's own
+// baseboard's: the board comes off the access observation inside the sealed ManagedHostBinding, so an
+// orientation can only ever be computed against the figure of the board the controller reported. A
+// host whose access is unobserved has no binding (managed_host_binding refuses it as
+// ManagedHostAccessUnobserved), so it is refused on that cause before this function is reachable, and
+// never collapses into BoardFigureUnmodeled. DimmOrientedHost is sole_constructor, so every reader
+// downstream -- the slot map, the population consequence -- takes its figure from here and cannot be
+// handed one host's name beside another board's figure.
+type DimmOrientedHost sole_constructor {
+  host: HostIdentity
+  board: BaseboardModel
+  figure: BaseboardDimmFigure
+  outcome: DimmOrientationOutcome
+}
+
+type HostDimmOrientation
+  = HostDimmOriented { oriented: DimmOrientedHost }
+  | HostDimmBoardUnmodeled { host: HostIdentity, board: BaseboardModel }
+
+fn host_dimm_orientation(binding: ManagedHostBinding, anchors: List<DimmPlacementAnchor>) -> HostDimmOrientation {
+  match baseboard_dimm_figure(board: binding.observation.identity.baseboard) {
+    BoardFigureUnmodeled { board: b } => HostDimmBoardUnmodeled { host: binding.host.host, board: b }
+    BaseboardDimmFigureOf { board: b, figure: f } => HostDimmOriented { oriented: DimmOrientedHost {
+      host: binding.host.host,
+      board: b,
+      figure: f,
+      outcome: resolve_orientation(anchors: anchors, banks: figure_banks(figure: f), pairs: figure_channel_pairs(figure: f)),
+    } }
+  }
+}
+
+
+// The damaged candidates on a bound host: the host's orientation and its own figure.
+fn host_damaged_candidates(oriented: DimmOrientedHost, report: DimmDamagedConnectorReport) -> DimmDamagedCandidates {
+  damaged_connector_candidates(report: report, orientation: oriented.outcome, banks: figure_banks(figure: oriented.figure))
+}
+
+
+// Every population row of the bound host's own figure, each with its damage standing.
+fn host_population_damage_standings(oriented: DimmOrientedHost, report: DimmDamagedConnectorReport) -> List<DimmPopulationDamageStanding> {
+  let candidates = host_damaged_candidates(oriented: oriented, report: report)
+  map(figure_population_rows(figure: oriented.figure), row => population_damage_standing(population: row, candidates: candidates))
+}
+
+data dimm_population_selection_frontier: FrontierRow = FrontierRow {
+  subject: DeclSubject { ref: DeclarationRef {
+    module_path: "gunbc.machine_intake_dimm_physical_orientation",
+    decl_name: "host_population_damage_standings",
+    field: WholeDeclaration,
+  } },
+  reason: "No production module selects a DIMM population for a managed host today; the tech slot map renders the standing for the population it is handed. The named later consumer is the population selection that chooses what the field tech installs on a bound host.",
+  dissolution: UnboundDissolution {
+    description: "A population selector for a bound managed host calls host_population_damage_standings and refuses PopulationUsesDamaged and PopulationDamageUndetermined rows before offering one.",
+  },
+}
+
+
+
+// No install plan is rendered unless the damaged connector is located and the population
+// avoids it: an unlocated damage or a population that uses it refuses the whole plan rather
+// than printing instructions beside a warning.
+// The plan's expected readback is what a correct install on this board reads back: every
+// socket the board has (board_sockets), never filtered by what the unit currently trains. A
+// socket that stays silent is then the finding, not an absence from the success criterion.
+// The figure, the orientation and the host label are all read off the sealed DimmOrientedHost; the
+// unit supplies only what it observed: its history lines, what is installed, its damage report and
+// the connectors its operator reported blue.
+fn host_dimm_slot_map(oriented: DimmOrientedHost, tech_end: ChassisEnd, history: List<String>, population: MtCollinsDimmPopulationRow, installed: List<Nat>, report: DimmDamagedConnectorReport, blue_connectors: List<Nat>) -> DimmSlotMap {
+  let orientation = oriented.outcome
+  let banks = figure_banks(figure: oriented.figure)
+  let pairs = figure_channel_pairs(figure: oriented.figure)
+  match orientation {
+    OrientationAmbiguous { surviving: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationContradicted => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationUnevaluable { hypothesis: _, unresolved_key: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationAnchorFrameUnreported { run_id: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationAnchorFramesDisagree { run_ids: _ } => SlotMapRefused { refusal: SlotMapOrientationUnresolved { orientation: orientation } }
+    OrientationResolved { hypothesis: h, order: order } => {
+        let tech_order = row_seen_from(end: tech_end, canonical: order)
+        let identity = figure_population_identity(figure: oriented.figure, population: population)
+        match identity {
+          PopulationDiagramRefused { unresolved: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationCountDisagrees { declared: _, listed: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationConnectorRepeated { connectors: _ } => SlotMapRefused { refusal: SlotMapPopulationUnresolved { identity: identity } }
+          PopulationDiagramResolved { population: _, slots: _, orientation: _, physical_gaps: gaps, photographed_colours: _, user_guide_citation: _, mirror_read: _ } => {
+            let candidates = damaged_connector_candidates(report: report, orientation: orientation, banks: banks)
+            match population_damage_standing(population: population, candidates: candidates) {
+            PopulationDamageUndetermined { candidates: c } => SlotMapRefused { refusal: SlotMapDamageUnresolved { candidates: c } }
+            PopulationUsesDamaged { population: _, connectors: cs } => SlotMapRefused { refusal: SlotMapPopulationUsesDamaged { connectors: cs } }
+            PopulationAvoidsDamage { population: _ } => {
+            let damaged = match candidates { DamagedCandidates { connectors: cs, hypotheses: _ } => cs  DamagedCandidatesRefused { orientation: _ } => []  DamageFrameUnreported => [] }
+            let resolved = map(positions(order: tech_order), p => match resolve_dimm_diagram_identity(connector: p.connector, banks: banks, pairs: pairs) {
+              DimmDiagramIdentityRefused { connector: _, cause: _ } => Absent
+              DimmDiagramIdentityResolved { identity: i } => Present { value: DimmSlotMapLine {
+                from_left: p.from_left,
+                colour: slot_colour(blue_connectors: blue_connectors, connector: p.connector),
+                connector: p.connector,
+                socket: i.channel.processor_socket,
+                controller: i.channel.memory_controller,
+                state: if nat_member(xs: damaged, x: p.connector) { SlotDamaged } else { if nat_member(xs: installed, x: p.connector) { SlotPopulated } else { SlotEmpty } },
+              } }
+            })
+            let lines = fold(resolved, init: [] as List<DimmSlotMapLine>, f: (acc, r) => match r { Present { value: l } => concat(acc, [l])  Absent => acc })
+            if list_length(items: lines) != list_length(items: order) || list_length(items: readback_unresolved(population: population, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)) > 0 {
+              SlotMapRefused { refusal: SlotMapConnectorUnresolved { connector: list_length(items: lines) } }
+            } else {
+              let damage = population_damage_standing(population: population, candidates: candidates)
+              let readback = expected_firmware_readback(connectors: population.connectors, live_sockets: board_sockets(banks: banks), banks: banks, pairs: pairs)
+              let place_line = concat("Install at (position from the LEFT edge, J number): ", join(map(filter(lines, l => nat_member(xs: population.connectors, x: l.connector)), l => concat(concat(concat(to_string(l.from_left + 1), " (J"), to_string(l.connector)), ")")), ", "))
+              let header = concat(concat(concat(concat(concat(
+                oriented.host as String, " DIMM slots. Standing at the "), chassis_end_text(end: tech_end)), " ("), chassis_end_landmark(end: tech_end, figure: oriented.figure)),
+                "), from LEFT edge to RIGHT edge:")
+              let readback_line = concat("Expected firmware roster for this population: ", join(map(readback.predicted, t => trained_slot_text(slot: t)), ", "))
+              let agreement = figure_bet_agreement(hypothesis: h, figure: oriented.figure)
+              SlotMapRendered {
+                end: tech_end,
+                readback: readback.predicted,
+                lines: lines,
+                damage: damage,
+                agreement: agreement,
+                text: join(concat(concat(concat(concat([header], map(lines, l => slot_map_line_text(line: l))), [damage_standing_text(standing: damage), place_line, readback_line, agreement_text(agreement: agreement)]), map(gaps, g => gap_text(gap: g))), history), "\n"),
+              }
+            }
+            }
+            }
+          }
+        }
+    }
+  }
+}

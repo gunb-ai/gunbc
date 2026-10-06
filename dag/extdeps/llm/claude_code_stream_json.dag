@@ -2,6 +2,7 @@ module extdeps.llm.claude_code_stream_json
 
 import std.types { String, List, Bool, Int, NonEmptyStr, EpochSecs }
 import std.nat { Nat }
+import std.measure { BasisPoint, basis_point }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -83,7 +84,7 @@ data claude_code_stream_json_print_args: List<String> = ["-p", "--output-format"
 
 type ClaudeCodeRateLimitWindow {
   name: NonEmptyStr
-  utilization_basis_points: Nat
+  utilization: BasisPoint
   resets_at: EpochSecs?
 }
 
@@ -165,7 +166,7 @@ fn claude_int_member(v: JsonValue, key: String) -> ClaudeIntMember {
 
 // A fraction of the window, read EXACTLY and scaled to basis points. Digits past the fourth
 // fractional place truncate toward zero, so a window at 0.99995 reads 9999 and is not mistaken
-// for exhausted; 1.0 reads 10000. Negative fractions are not a utilization and refuse.
+// for exhausted; 1.0 reads unity (std.measure basis_point_unity_count). Negative fractions are not a utilization and refuse.
 fn claude_decimal_basis_points(d: ExactDecimal) -> Nat? {
   if d.fraction_digits <= 4 {
     checked_int_to_nat(n: d.units * decimal_pow10(exponent: 4 - d.fraction_digits))
@@ -204,7 +205,7 @@ fn claude_rate_limit_window(name: NonEmptyStr, v: JsonValue) -> ClaudeWindowRead
                           ClaudeWindowReadOk {
                             window: ClaudeCodeRateLimitWindow {
                               name: name,
-                              utilization_basis_points: bp,
+                              utilization: basis_point(count: bp),
                               resets_at: Present { value: secs },
                             },
                           }
@@ -219,7 +220,7 @@ fn claude_rate_limit_window(name: NonEmptyStr, v: JsonValue) -> ClaudeWindowRead
                       ClaudeWindowReadOk {
                         window: ClaudeCodeRateLimitWindow {
                           name: name,
-                          utilization_basis_points: bp,
+                          utilization: basis_point(count: bp),
                           resets_at: Absent,
                         },
                       }

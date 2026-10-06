@@ -3,6 +3,7 @@ module test.claim.claude_code_dispatch_witness_test
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.claim_evidence { RecordedFactId }
+import std.measure { basis_point_count }
 import v2.std.optional { Present, Absent }
 import gunbc.roadmap_model { RoadmapNodeId }
 import extdeps.llm.claude_code_stream_json {
@@ -66,6 +67,9 @@ import gunbc.dispatch_selection {
   ClaudeApiKeySecretRef,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
+  ResolvedClaude,
+  ResolvedCodex,
+  ResolvedCursor,
   NoDerivedSizingExpectation,
   claude_dispatch_credential,
   inventory_with_observed_standing,
@@ -88,9 +92,7 @@ import gunbc.roadmap_dispatch_actuator {
   GunbcHarnessProvider,
   DispatchProviderInnerArgvReady,
   CodexProviderExecutableAbsent,
-  CursorProviderOffCustodyHost,
-  CursorProviderCredentialUnbound,
-  CodexProviderOffCustodyHost,
+  CursorProviderSpawnUnwired,
   GunbcHarnessSpawnNeedsInstance,
   ClaudeProviderCredentialUnbound,
   RecordedAttemptFingerprint,
@@ -161,8 +163,8 @@ test fn the_captured_rate_limit_line_decodes_both_windows_in_basis_points() -> B
     ClaudeCodeRateLimitEventLine { info } =>
       info.status as String == "allowed"
         && list_length(items: info.windows) == 2
-        && any(info.windows, w => w.name as String == "five_hour" && w.utilization_basis_points == 100)
-        && any(info.windows, w => w.name as String == "seven_day" && w.utilization_basis_points == 4500)
+        && any(info.windows, w => w.name as String == "five_hour" && basis_point_count(bp: w.utilization) == 100)
+        && any(info.windows, w => w.name as String == "seven_day" && basis_point_count(bp: w.utilization) == 4500)
     ClaudeCodeResultLine { result: _ } => false
     ClaudeCodeOtherLine { event_type: _ } => false
     ClaudeCodeLineUnreadable { gap: _ } => false
@@ -402,9 +404,7 @@ test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() ->
         && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "\"$0\""))
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderOffCustodyHost { reason: _ } => false
-    CursorProviderCredentialUnbound { reason: _ } => false
-    CodexProviderOffCustodyHost { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -418,9 +418,7 @@ test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
     ClaudeProviderCredentialUnbound { reason: _ } => true
     DispatchProviderInnerArgvReady { argv: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderOffCustodyHost { reason: _ } => false
-    CursorProviderCredentialUnbound { reason: _ } => false
-    CodexProviderOffCustodyHost { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -466,9 +464,7 @@ test fn a_snapshot_that_cannot_be_removed_refuses_the_launch() -> Bool {
       any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\" || exit 79"))
     ClaudeProviderCredentialUnbound { reason: _ } => false
     CodexProviderExecutableAbsent { reason: _ } => false
-    CursorProviderOffCustodyHost { reason: _ } => false
-    CursorProviderCredentialUnbound { reason: _ } => false
-    CodexProviderOffCustodyHost { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
     GunbcHarnessSpawnNeedsInstance { reason: _ } => false
   }
 }
@@ -533,6 +529,30 @@ test fn witness_production_claude_row_admits_no_automatic_draw() -> Bool {
 test fn an_observed_eligible_trip_makes_claude_selectable_and_an_exhausted_one_does_not() -> Bool {
   select_claude_over(inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])))
     && !select_claude_over(inventory: observed(stdout: trip(lines: [planted_rate_limit_five_hour_rejected, receipt_result_success])))
+}
+
+// THE RECEIPT NAMES THE CREDENTIAL THE PROCESS RECEIVES (review 76871): an observed-eligible explicit
+// Claude draw over the production srv1 inventory resolves with the setup-token secret, the same
+// credential claude_inner_argv_for_credential binds -- never the ambient profile tree.
+test fn the_receipt_names_the_setup_token_secret_the_spawn_binds() -> Bool {
+  match resolve_dispatch_selection(
+    inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          match s.credential {
+            ClaudeOAuthTokenSecretRef { secret_ref } => secret_ref.secret == claude_code_oauth_harness_secret_ref.secret
+            ClaudeStateRootRef { root: _ } => false
+            ClaudeApiKeySecretRef { secret_ref: _ } => false
+          }
+        ResolvedCodex { selection: _, instance: _, account_binding: _ } => false
+        ResolvedCursor { selection: _, instance: _ } => false
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+  }
 }
 
 // ── Recorded attempt fingerprint (observation and stop) ────────────────────────────────────────
@@ -610,9 +630,7 @@ test fn the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1() -> B
             && any(argv, a => a == "claude")
         ClaudeProviderCredentialUnbound { reason: _ } => false
         CodexProviderExecutableAbsent { reason: _ } => false
-        CursorProviderOffCustodyHost { reason: _ } => false
-        CursorProviderCredentialUnbound { reason: _ } => false
-        CodexProviderOffCustodyHost { reason: _ } => false
+        CursorProviderSpawnUnwired { reason: _ } => false
         GunbcHarnessSpawnNeedsInstance { reason: _ } => false
       }
   }

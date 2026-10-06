@@ -1,7 +1,7 @@
 module gunbc.claude_code_limit_standing
 
 import std.types { String, List, Bool, Int, NonEmptyStr }
-import std.measure { basis_point }
+import std.measure { basis_point_count, basis_point_unity_count }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import extdeps.llm.claude_code_stream_json {
@@ -148,11 +148,11 @@ fn claude_window_observation(
       reason: join(["claude code reported status ", info.status as String, " for window ", w.name as String], "") as NonEmptyStr,
     }
   } else {
-    if w.utilization_basis_points >= 10000 {
+    if basis_point_count(bp: w.utilization) >= basis_point_unity_count() {
       LimitExhausted { subject: subject, native_token: w.name }
     } else {
       if named && status != "allowed" {
-        LimitWarning { subject: subject, native_token: info.status, utilization_basis_points: basis_point(count: w.utilization_basis_points) }
+        LimitWarning { subject: subject, native_token: info.status, utilization_basis_points: w.utilization }
       } else {
         LimitObservedAvailable { subject: subject }
       }
