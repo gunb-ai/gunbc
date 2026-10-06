@@ -1,5 +1,7 @@
 module gunbc.megarac_operation_standing
 
+import extdeps.board_authority { board_identity_authority, board_authority_ref_eq }
+import gunbc.board_authority_binding { observed_board_authority }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import std.content_hash { ContentHash }
 import std.decl_ref { DeclarationRef, decl_ref }
@@ -37,8 +39,21 @@ fn megarac_operation_eq(a: MegaRacOperation, b: MegaRacOperation) -> Bool {
   }
 }
 
+// IDENTITY-GRADE use of the board: both readings must reach a bound authority (either standing) and
+// the SAME one. An unread, unbound or ambiguous board equals nothing, itself included.
+fn megarac_board_identity_eq(a: BmcObservedIdentity, b: BmcObservedIdentity) -> Bool {
+  match board_identity_authority(lookup: observed_board_authority(observation: a.board)) {
+    Present { value: x } =>
+      match board_identity_authority(lookup: observed_board_authority(observation: b.board)) {
+        Present { value: y } => board_authority_ref_eq(a: x, b: y)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
 fn megarac_identity_eq(a: BmcObservedIdentity, b: BmcObservedIdentity) -> Bool {
-  a.baseboard == b.baseboard && bmc_firmware_release_identity_eq(a: a.firmware, b: b.firmware)
+  megarac_board_identity_eq(a: a, b: b) && bmc_firmware_release_identity_eq(a: a.firmware, b: b.firmware)
 }
 
 // ── THE CARRIERS. Each is sole_constructor and minted only by a function sealed to the evidence rows

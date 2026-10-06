@@ -1,0 +1,48 @@
+module gunbc.ipmitool_fru_text
+
+import std.types { String, NonEmptyStr }
+import std.algebra { trim }
+import std.optional { Present, Absent }
+import v2.std.algebra { filter }
+
+// THE PURE LINE DECODE of `ipmitool fru print` text: each field is read from exactly one line.
+// Shared by every consumer of a committed FRU capture (the Mt. Jade identity read and the board
+// authority read), so the line grammar has one home.
+type FruCaptureGap
+  = FruCaptureUnreadable { error: String }
+  | FruCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
+  | FruFieldAbsent { field: NonEmptyStr }
+  | FruFieldRepeated { field: NonEmptyStr }
+  | FruFieldEmpty { field: NonEmptyStr }
+  | FruSubjectLinkUnobserved
+  | FruBoundToAnotherLink { board_extra: String }
+
+type FruFieldRead
+  = FruFieldValue { value: NonEmptyStr }
+  | FruFieldGap { gap: FruCaptureGap }
+
+fn fru_line_key(line: String) -> String {
+  match split(s: line, delimiter: " : ").first() {
+    Present { value: k } => trim(k)
+    Absent => ""
+  }
+}
+
+fn fru_line_value(line: String) -> String {
+  trim(join(split(s: line, delimiter: " : ").skip(n: 1), " : "))
+}
+
+fn fru_field(content: String, field: NonEmptyStr) -> FruFieldRead {
+  let hits = split(s: content, delimiter: "\n") |> filter(l => fru_line_key(line: l) == (field as String))
+  match hits.first() {
+    Absent => FruFieldGap { gap: FruFieldAbsent { field: field } }
+    Present { value: line } =>
+      if length(hits) > 1 {
+        FruFieldGap { gap: FruFieldRepeated { field: field } }
+      } else if fru_line_value(line: line) == "" {
+        FruFieldGap { gap: FruFieldEmpty { field: field } }
+      } else {
+        FruFieldValue { value: fru_line_value(line: line) as NonEmptyStr }
+      }
+  }
+}

@@ -12,6 +12,7 @@ import extdeps.boards.types { BaseboardCatalogRow }
 import extdeps.vendor.gigabyte { gigabyte }
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.board_authority { BoardAuthorityRef }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 
@@ -48,8 +49,16 @@ data gigabyte_mp72_hb0_marketplace_listing_authority: ExternalAuthority = Extern
   }
 }
 
+data gigabyte_mp72_hb0_board_authority: BoardAuthorityRef = BoardAuthorityRef {
+  subject: DeclarationRef {
+    module_path: "extdeps.boards.gigabyte",
+    decl_name: "gigabyte_mp72_hb0_catalog",
+    field: WholeDeclaration
+  }
+}
+
 data gigabyte_mp72_hb0_catalog: BaseboardCatalogRow = BaseboardCatalogRow {
-  model: GigabyteMp72Hb0,
+  model: gigabyte_mp72_hb0_board_authority,
   model_label: "Gigabyte MP72-HB0 (rev. 3.0)",
   vendor: gigabyte,
   bmc_firmware: OpenBmc,

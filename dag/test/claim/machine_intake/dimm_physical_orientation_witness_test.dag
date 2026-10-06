@@ -1,8 +1,12 @@
 module test.claim.machine_intake.dimm_physical_orientation_witness
 
+import extdeps.board_authority { BoardFruObservation, BoardIdentityBound, BoardUnbound }
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
+import gunbc.board_authority_binding { observed_board_authority }
+import test.fixture.board_fru_observation { collins_fru_read, jade_fru_read, asrock_fru_read }
 import std.types { Bool, NonEmptyStr, String, List }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.boards.types { BaseboardModel, AmpereMtCollins, GigabyteMp72Hb0, AsrockRackAltrad8ud1l2t }
 import extdeps.bmc.access_profile { BmcAccessObservation, BmcAccessObserved, BmcAccessUnobserved, BmcObservedIdentity }
 import gunbc.fleet_host_identity { operator_host_mtcollins1 }
 import gunbc.managed_host {
@@ -20,19 +24,22 @@ import gunbc.machine_intake_mtcollins1_physical_orientation { mtcollins1_placeme
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE FIGURE IS SELECTED BY BOARD AND ONLY A CITED BOARD HAS ONE. Mt. Collins resolves to its Getting
-// Started Guide figures; the Gigabyte MP72-HB0 (the Mt. Jade baseboard) and the ASRock Rack ALTRAD8UD
-// have no figure modeled in this repository, so each refuses on its own name.
+// Started Guide figures; the Mt. Jade board (bound by name only, so a figure is refused) and an ASRock Rack
+// ALTRAD8UD (unbound) have no figure modeled in this repository, so each refuses with its own lookup.
 test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
-  let collins = match baseboard_dimm_figure(board: AmpereMtCollins) {
-    BaseboardDimmFigureOf { board: b, figure: f } => b == AmpereMtCollins && match f { MtCollinsGettingStartedGuideFigures { guide: _ } => true }
+  let collins = match baseboard_dimm_figure(board: observed_board_authority(observation: collins_fru_read)) {
+    BaseboardDimmFigureOf { board: b, figure: f } => b == mt_collins_board_authority && match f { MtCollinsGettingStartedGuideFigures { guide: _ } => true }
     BoardFigureUnmodeled { board: _ } => false
   }
-  let jade = match baseboard_dimm_figure(board: GigabyteMp72Hb0) {
-    BoardFigureUnmodeled { board: b } => b == GigabyteMp72Hb0
+  let jade = match baseboard_dimm_figure(board: observed_board_authority(observation: jade_fru_read)) {
+    BoardFigureUnmodeled { board: l } => match l {
+      BoardIdentityBound { authority: a, discriminator_obligation: _ } => a == mt_jade_board_authority
+      _ => false
+    }
     BaseboardDimmFigureOf { board: _, figure: _ } => false
   }
-  let asrock = match baseboard_dimm_figure(board: AsrockRackAltrad8ud1l2t) {
-    BoardFigureUnmodeled { board: b } => b == AsrockRackAltrad8ud1l2t
+  let asrock = match baseboard_dimm_figure(board: observed_board_authority(observation: asrock_fru_read)) {
+    BoardFigureUnmodeled { board: l } => match l { BoardUnbound { fru: _ } => true  _ => false }
     BaseboardDimmFigureOf { board: _, figure: _ } => false
   }
   collins && jade && asrock
@@ -41,7 +48,7 @@ test fn w_only_a_board_with_a_cited_figure_selects_one() -> Bool {
 fn resolves_full_mirror(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>) -> Bool {
   match managed_host_binding(host: binding_host) {
     ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
-      HostDimmOriented { oriented: o } => (o.host as String) == (binding_host.host as String) && o.board == AmpereMtCollins && match o.outcome {
+      HostDimmOriented { oriented: o } => (o.host as String) == (binding_host.host as String) && o.board == mt_collins_board_authority && match o.outcome {
         OrientationResolved { hypothesis: h, order: _ } => h == FullMirror
         OrientationAmbiguous { surviving: _ } => false
         OrientationContradicted => false
@@ -57,10 +64,10 @@ fn resolves_full_mirror(binding_host: ManagedHost, anchors: List<DimmPlacementAn
   }
 }
 
-fn refused_unmodeled(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>, board: BaseboardModel) -> Bool {
+fn refused_unmodeled(binding_host: ManagedHost, anchors: List<DimmPlacementAnchor>, board: BoardFruObservation) -> Bool {
   match managed_host_binding(host: binding_host) {
     ManagedHostBound { binding: b } => match host_dimm_orientation(binding: b, anchors: anchors) {
-      HostDimmBoardUnmodeled { host: h, board: refused } => refused == board && (h as String) == (binding_host.host as String)
+      HostDimmBoardUnmodeled { host: h, board: refused } => refused == observed_board_authority(observation: board) && (h as String) == (binding_host.host as String)
       HostDimmOriented { oriented: _ } => false
     }
     ManagedHostAccessUnobserved { endpoint: _ } => false
@@ -69,10 +76,10 @@ fn refused_unmodeled(binding_host: ManagedHost, anchors: List<DimmPlacementAncho
   }
 }
 
-fn observed_as(o: BmcAccessObservation, board: BaseboardModel) -> BmcAccessObservation {
+fn observed_as(o: BmcAccessObservation, board: BoardFruObservation) -> BmcAccessObservation {
   BmcAccessObservation {
     endpoint: o.endpoint,
-    identity: BmcObservedIdentity { baseboard: board, chassis_part_number: o.identity.chassis_part_number, firmware: o.identity.firmware },
+    identity: BmcObservedIdentity { board: board, chassis_part_number: o.identity.chassis_part_number, firmware: o.identity.firmware },
     discovered_surfaces: o.discovered_surfaces,
     boot_control_routes: o.boot_control_routes,
     redfish_virtual_media_probe: o.redfish_virtual_media_probe,
@@ -84,7 +91,7 @@ fn observed_as(o: BmcAccessObservation, board: BaseboardModel) -> BmcAccessObser
 }
 
 // THE REAL ROUTE: the mtcollins1 row of gunbc.managed_host, its real binding, the board its controller
-// reported (AmpereMtCollins) and the unit's production anchors resolve the full mirror. This is the
+// reported (mt_collins_board_authority) and the unit's production anchors resolve the full mirror. This is the
 // inhabitance claim the discriminator below pairs with: the board read off the bound observation, not a
 // supplied figure, is what selects the figure.
 test fn w_the_bound_mtcollins1_host_is_oriented_on_the_board_its_controller_reported() -> Bool {
@@ -93,7 +100,7 @@ test fn w_the_bound_mtcollins1_host_is_oriented_on_the_board_its_controller_repo
 }
 
 // DISCRIMINATOR: THE BOARD ALONE IS VARIED. The same row, the same secured account, the same controller
-// and the same anchors, with only the observed baseboard changed to the Gigabyte MP72-HB0 or the ASRock
+// and the same anchors, with only the observed baseboard changed to the Mt. Jade board or the ASRock
 // Rack ALTRAD8UD: the binding still binds, and the orientation refuses BoardFigureUnmodeled naming that
 // board, before any anchor is read. The unchanged row in the same claim resolves, so the refusal is the
 // board's and nothing else's.
@@ -101,12 +108,12 @@ test fn w_the_same_anchors_on_another_reported_board_are_refused_unmodeled() -> 
   managed_hosts() |> all(h => match h.access {
     BmcAccessUnobserved { endpoint: _ } => false
     BmcAccessObserved { observation: o } => {
-      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: GigabyteMp72Hb0) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: AsrockRackAltrad8ud1l2t) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
-      o.identity.baseboard == AmpereMtCollins
+      let jade = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: jade_fru_read) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      let asrock = managed_host_fixture(host: h.host, access: BmcAccessObserved { observation: observed_as(o: o, board: asrock_fru_read) }, capability_row: h.capability_row, secure: h.secure, unit_hold: h.unit_hold, smpro: h.smpro)
+      o.identity.board == collins_fru_read
         && resolves_full_mirror(binding_host: h, anchors: mtcollins1_placement_anchors)
-        && refused_unmodeled(binding_host: jade, anchors: mtcollins1_placement_anchors, board: GigabyteMp72Hb0)
-        && refused_unmodeled(binding_host: asrock, anchors: mtcollins1_placement_anchors, board: AsrockRackAltrad8ud1l2t)
+        && refused_unmodeled(binding_host: jade, anchors: mtcollins1_placement_anchors, board: jade_fru_read)
+        && refused_unmodeled(binding_host: asrock, anchors: mtcollins1_placement_anchors, board: asrock_fru_read)
     }
   }) && count(managed_hosts()) == 1
 }

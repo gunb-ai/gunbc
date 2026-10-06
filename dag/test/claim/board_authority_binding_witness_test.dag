@@ -1,0 +1,128 @@
+module test.claim.board_authority_binding_witness
+
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.board_authority {
+  BoardAuthorityLookup, BoardAuthorityRef, BoardFruObservation, BoardCaptureDigestMismatch, BoardIdentityBound, BoardEvidenceBound, BoardUnbound, BoardAmbiguous, BoardNotRead,
+  BoardFruRead, BoardFruNotRead, BoardAreaAbsent, BoardAuthorityBinding, BoardFruIdentity,
+  board_authority_for, board_authority_ref_eq, board_facts_authority, board_identity_authority,
+}
+import gunbc.board_authority_binding {
+  board_authority_bindings, mt_collins_board_binding, mt_jade_board_binding, mtcollins1_fru_receipt,
+  mtjade1_fru_receipt, observed_board_authority, board_fru_observation_of_text, read_board_fru_observation,
+  board_fru_observation_of_capture,
+}
+import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
+import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
+import test.fixture.board_fru_observation { collins_fru_read, jade_fru_read, asrock_fru_read, gigabyte_fru_read }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+fn is_evidence_bound_to(l: BoardAuthorityLookup, want: BoardAuthorityRef) -> Bool {
+  match l {
+    BoardEvidenceBound { authority: a, first: _, further: _ } => board_authority_ref_eq(a: a, b: want)
+    _ => false
+  }
+}
+
+fn is_identity_bound_to(l: BoardAuthorityLookup, want: BoardAuthorityRef) -> Bool {
+  match l {
+    BoardIdentityBound { authority: a, discriminator_obligation: _ } => board_authority_ref_eq(a: a, b: want)
+    _ => false
+  }
+}
+
+fn is_unbound(l: BoardAuthorityLookup) -> Bool {
+  match l {
+    BoardUnbound { fru: _ } => true
+    _ => false
+  }
+}
+
+test fn w_mtcollins1_binds_to_the_collins_authority_on_observed_evidence() -> Bool {
+  is_evidence_bound_to(l: observed_board_authority(observation: collins_fru_read), want: mt_collins_board_authority)
+}
+
+test fn w_mtjade1_binds_to_the_mt_jade_authority_by_name_only() -> Bool {
+  is_identity_bound_to(l: observed_board_authority(observation: jade_fru_read), want: mt_jade_board_authority)
+}
+
+test fn w_a_name_only_binding_imports_no_board_facts() -> Bool {
+  let l = observed_board_authority(observation: jade_fru_read)
+  match board_facts_authority(lookup: l) {
+    Absent => match board_identity_authority(lookup: l) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    Present { value: _ } => false
+  }
+}
+
+test fn w_an_unknown_board_refuses_unbound() -> Bool {
+  is_unbound(l: observed_board_authority(observation: asrock_fru_read))
+    && is_unbound(l: observed_board_authority(observation: gigabyte_fru_read))
+}
+
+// A FRU whose manufacturer matches a bound row but whose product names another board refuses: the
+// binding needs BOTH names.
+test fn w_a_board_whose_fru_names_another_product_refuses() -> Bool {
+  let wrong_product = BoardFruRead { fru: BoardFruIdentity { manufacturer: "FOXCONN", product: "Mt. Mitchell", part_number: none } }
+  let wrong_maker = BoardFruRead { fru: BoardFruIdentity { manufacturer: "WIWYNN", product: "Mt. Collins", part_number: none } }
+  is_unbound(l: observed_board_authority(observation: wrong_product))
+    && is_unbound(l: observed_board_authority(observation: wrong_maker))
+}
+
+test fn w_a_duplicated_row_is_ambiguous_never_first_wins() -> Bool {
+  match board_authority_for(observation: collins_fru_read, bindings: [mt_collins_board_binding, mt_collins_board_binding]) {
+    BoardAmbiguous { fru: _, count: n } => n == 2
+    _ => false
+  }
+}
+
+test fn w_an_unread_board_refuses_not_read_never_a_default() -> Bool {
+  match observed_board_authority(observation: BoardFruNotRead { cause: BoardAreaAbsent }) {
+    BoardNotRead { cause: _ } => true
+    _ => false
+  }
+}
+
+// HARD-CODING MUTANT: an always-Collins lookup. It must DIFFER from the real fold on the Mt. Jade and
+// ASRock reads, so a fold that ignored the FRU would be caught here.
+fn always_collins(observation: BoardFruObservation) -> BoardAuthorityLookup {
+  board_authority_for(observation: collins_fru_read, bindings: board_authority_bindings)
+}
+
+test fn w_a_hard_coding_mutant_is_distinguished_from_the_real_lookup() -> Bool {
+  is_evidence_bound_to(l: always_collins(observation: jade_fru_read), want: mt_collins_board_authority)
+    && is_identity_bound_to(l: observed_board_authority(observation: jade_fru_read), want: mt_jade_board_authority)
+    && is_unbound(l: observed_board_authority(observation: asrock_fru_read))
+    && !is_unbound(l: always_collins(observation: asrock_fru_read))
+}
+
+// THE ONE EXECUTION OF THE REAL PATH (DESIGN section 3 pairing obligation): both committed FRU
+// captures are read from the tree, digest-checked against the receipt each binding row was authored
+// from, decoded, and bound. The route is asserted (the decode must equal the supplied fixture the
+// other witnesses use), not only the verdict.
+test fn w_the_committed_fru_captures_decode_to_the_fixtures_and_bind() -> Bool {
+  let collins = read_board_fru_observation(receipt: mtcollins1_fru_receipt)
+  let jade = read_board_fru_observation(receipt: mtjade1_fru_receipt)
+  collins == collins_fru_read
+    && jade == jade_fru_read
+    && is_evidence_bound_to(l: observed_board_authority(observation: collins), want: mt_collins_board_authority)
+    && is_identity_bound_to(l: observed_board_authority(observation: jade), want: mt_jade_board_authority)
+}
+
+test fn w_a_capture_with_the_wrong_digest_is_not_read() -> Bool {
+  match board_fru_observation_of_capture(content: "Board Mfg : X\nBoard Product : Y\n", receipt: mtcollins1_fru_receipt) {
+    BoardFruNotRead { cause: BoardCaptureDigestMismatch { expected: _, observed: _ } } => true
+    _ => false
+  }
+}
+
+test fn w_the_text_decode_reads_board_mfg_and_product() -> Bool {
+  match board_fru_observation_of_text(content: "Board Mfg : X\nBoard Product : Y\n") {
+    BoardFruRead { fru: f } => f.manufacturer == "X" && f.product == "Y"
+    BoardFruNotRead { cause: _ } => false
+  }
+}

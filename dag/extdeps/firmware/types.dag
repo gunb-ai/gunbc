@@ -1,11 +1,11 @@
 module extdeps.firmware.types
 
+import extdeps.board_authority { BoardAuthorityRef }
 import std.nat { Nat }
 import std.measure { ByteSize, byte_size }
 import std.types { Bool, EpochMs, NonEmptyStr, List, list_length }
 import std.optional { Present, Absent }
 import extdeps.crypto.hash { Digest }
-import extdeps.boards.types { BaseboardModel }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef, ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -103,7 +103,7 @@ type FirmwareImageKind
 // ON the release row so an unappliable push is refused from the catalog,
 // not discovered from a vendor shell script after the upload.
 type FirmwareReleaseRow {
-  board: BaseboardModel
+  board: BoardAuthorityRef
   target: FirmwareTarget
   version: FirmwareSemanticVersion
   released_on: EpochMs
@@ -166,7 +166,7 @@ type FirmwarePushOutcome
 // same version applied as an Instant Flash ROM never passes through the BMC
 // and so has no gating target at all. image_kind is carried for that reason.
 type FirmwarePrerequisiteObservation {
-  board: BaseboardModel
+  board: BoardAuthorityRef
   subject: FirmwareTarget
   image_kind: FirmwareImageKind
   gating_target: FirmwareTarget

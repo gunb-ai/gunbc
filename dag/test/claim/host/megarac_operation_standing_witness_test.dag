@@ -1,11 +1,11 @@
 module test.claim.megarac_operation_standing_witness
 
+import test.fixture.board_fru_observation { collins_fru_read }
 import std.types { Bool, EpochMs, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.algebra { any, filter }
 import std.content_hash { Sha256Digest, Sha256Hash }
 import std.decl_ref { decl_ref }
-import extdeps.boards.types { AmpereMtCollins }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
 import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
 import extdeps.bmc.access_profile { BmcObservedIdentity }
@@ -24,7 +24,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data controller: BmcControllerEndpoint = BmcControllerEndpoint { host: "fixture-bmc" }
 
 fn identity_at(wire: String) -> BmcObservedIdentity {
-  BmcObservedIdentity { baseboard: AmpereMtCollins, chassis_part_number: none, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: wire as NonEmptyStr) }
+  BmcObservedIdentity { board: collins_fru_read, chassis_part_number: none, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: wire as NonEmptyStr) }
 }
 
 fn evidence(label: String) -> EvidenceRef {
@@ -76,7 +76,7 @@ fn grounded_by(standings: List<MegaRacOperationStanding>, operation: MegaRacOper
 test fn w_the_committed_rows_ground_0_32_by_route_and_nothing_at_0_45_3() -> Bool {
   let ev = mtcollins1_megarac_operation_evidence()
   let standings = megarac_operation_standings(evidence: ev)
-  let later = BmcObservedIdentity { baseboard: mtcollins1_identity.baseboard, chassis_part_number: mtcollins1_identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3") }
+  let later = BmcObservedIdentity { board: mtcollins1_identity.board, chassis_part_number: mtcollins1_identity.chassis_part_number, firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "0.45.3") }
   grounded_by(standings: standings, operation: MegaRacVirtualMediaAttach, executed: true)
     && grounded_by(standings: standings, operation: MegaRacSdrSocketNaming, executed: true)
     && grounded_by(standings: standings, operation: MegaRacKvmCanvasStill, executed: false)

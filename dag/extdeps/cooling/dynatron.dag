@@ -1,12 +1,12 @@
 module extdeps.cooling.dynatron
 
+import extdeps.boards.asrock_rack { asrock_altrad8ud_board_authority }
 import std.types { NonEmptyStr, List }
 import std.measure { watt, rack_unit }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cooling.types { CpuCoolerCatalogRow }
 import extdeps.cpu.types {
   SocketedLandGrid, CpuSocket, LandGridArray }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t }
 import extdeps.vendor.dynatron { dynatron }
 import extdeps.vendor.ampere { ampere_vendor }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -26,7 +26,7 @@ data dynatron_w1_catalog: CpuCoolerCatalogRow = CpuCoolerCatalogRow {
   active_passive_switchable: true,
   minimum_rack_units: rack_unit(2),
   max_design_power: watt(250),
-  supported_motherboards: [AsrockRackAltrad8ud1l2t],
+  supported_motherboards: [asrock_altrad8ud_board_authority],
 }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {

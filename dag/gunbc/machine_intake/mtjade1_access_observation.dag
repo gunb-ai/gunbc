@@ -50,11 +50,15 @@ import gunbc.machine_intake_subject {
 import std.types { Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import gunbc.ipmitool_fru_text {
+  FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
+  FruSubjectLinkUnobserved, FruBoundToAnotherLink, FruFieldRead, FruFieldValue, FruFieldGap, fru_field, fru_line_key, fru_line_value,
+}
 import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
 import extdeps.cloud.gcp.secret_ref { SecretRef }
 
 // MT. JADE UNIT 1 BMC ACCESS. Every fact below is read from a committed capture; this module invents
-// no host, serial, or BaseboardModel arm. The unit key is not a row here: it is derived by
+// no host, serial, or board enum arm. The unit key is not a row here: it is derived by
 // gunbc.machine_intake_arrival_converge identity_bind_provisional, through bind_unit_key, from the
 // board-serial observations this module reads from the FRU and SMBIOS captures.
 
@@ -396,15 +400,6 @@ data mtjade1_fru_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-ipmitool-fru
 
 data mtjade1_fru_capture_sha256: NonEmptyStr = "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
 
-type FruCaptureGap
-  = FruCaptureUnreadable { error: String }
-  | FruCaptureDigestMismatch { expected: NonEmptyStr, observed: String }
-  | FruFieldAbsent { field: NonEmptyStr }
-  | FruFieldRepeated { field: NonEmptyStr }
-  | FruFieldEmpty { field: NonEmptyStr }
-  | FruSubjectLinkUnobserved
-  | FruBoundToAnotherLink { board_extra: String }
-
 // The fields the provisional identity reads, as the capture spells them. Nothing else in the capture
 // is consumed.
 type FruIdentityFields {
@@ -443,36 +438,6 @@ fn fru_gap_text(gap: FruCaptureGap) -> NonEmptyStr {
     FruFieldEmpty { field: f } => join(["the recorded FRU capture's ", f as String, " is empty"], "") as NonEmptyStr
     FruSubjectLinkUnobserved => "the subject unit has no observed BMC link address to bind the FRU capture to"
     FruBoundToAnotherLink { board_extra: b } => join(["the recorded FRU capture names Board Extra ", b, ", which is not this unit's observed BMC link"], "") as NonEmptyStr
-  }
-}
-
-type FruFieldRead
-  = FruFieldValue { value: NonEmptyStr }
-  | FruFieldGap { gap: FruCaptureGap }
-
-fn fru_line_key(line: String) -> String {
-  match split(s: line, delimiter: " : ").first() {
-    Present { value: k } => trim(k)
-    Absent => ""
-  }
-}
-
-fn fru_line_value(line: String) -> String {
-  trim(join(split(s: line, delimiter: " : ").skip(n: 1), " : "))
-}
-
-fn fru_field(content: String, field: NonEmptyStr) -> FruFieldRead {
-  let hits = split(s: content, delimiter: "\n") |> filter(l => fru_line_key(line: l) == (field as String))
-  match hits.first() {
-    Absent => FruFieldGap { gap: FruFieldAbsent { field: field } }
-    Present { value: line } =>
-      if length(hits) > 1 {
-        FruFieldGap { gap: FruFieldRepeated { field: field } }
-      } else if fru_line_value(line: line) == "" {
-        FruFieldGap { gap: FruFieldEmpty { field: field } }
-      } else {
-        FruFieldValue { value: fru_line_value(line: line) as NonEmptyStr }
-      }
   }
 }
 
