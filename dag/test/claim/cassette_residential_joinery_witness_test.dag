@@ -8,7 +8,7 @@ import product.printed_chassis.stack_joinery {stack_joinery,StackJoineryGeometry
 import product.printed_chassis.assembly_review_checks {within_bed,primitive_positive,review_model_checks,primitive_bounds}
 import product.printed_chassis.assembly_geometry {Printed,Purchased,Metal,Clearance}
 test fn rear_bank_has_bed_sized_interfaces_and_separate_socket_retention() -> Bool {
- match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:micrometer(count: tray_w-40000),height_um:micrometer(count: 190000),depth_um:micrometer(count: 60000)},bed_um:micrometer(count: 170000)) {
+ match select_rear_fans(candidates:rear_fan_candidates,opening:RearOpening {width_um:micrometer(count: micrometer_count(m: tray_w)-40000),height_um:micrometer(count: 190000),depth_um:micrometer(count: 60000)},bed_um:micrometer(count: 170000)) {
  RearCoolingInvalidInput=>false RearCoolingNoFit=>false
  RearFanGeometry {bank:b}=>match rear_assembly(bank:b) {
  RearAssemblyUnsupportedBank=>false RearAssemblyMountRefused=>false

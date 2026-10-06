@@ -23,12 +23,12 @@ data rear_guard_bar_um:Micrometer=micrometer(count: 3000)
 data rear_guard_pitch_um:Micrometer=micrometer(count: 10000)
 fn through_y(x:Int,z:Int) -> Primitive {round(diameter:micrometer_count(m: rear_pin_clearance_um) as Int,length:50000,axis:Axis3Y,x:x,y:0,z:z)}
 fn crossmember(side:Int,id:String) -> AssemblyPart {
- let half=tray_w/2+6000
+ let half=micrometer_count(m: tray_w)/2+6000
  let centre=side*(half+200)/2
  let foot_x=micrometer_count(m: rear_cradle_foot_x_um) as Int
  part(id:id,name:"Split rear crossmember",kind:Printed,scope:Cassette,
  adds:[block(w:half-200,h:8000,d:40000,x:0,y:0,z:0)],
- cuts:[through_y(x:side*(tray_w/2-7000)-centre,z:0),through_y(x:side*foot_x-centre,z:0)],
+ cuts:[through_y(x:side*(micrometer_count(m: tray_w)/2-7000)-centre,z:0),through_y(x:side*foot_x-centre,z:0)],
  x:centre,y:0,z:rear_beam_z,ex:side*55000,ey: -18000,ez: -50000,plane:LayOnXZ,
  notes:"Each half rests on one original support arm. Outer pin retains beam to arm; inner pin retains the one-piece cradle to beam. The cradle bridges the 0.4 mm centre gap. Prototype bearing and bending capacity unqualified.")
 }
@@ -95,7 +95,7 @@ fn rear_assembly(bank:RearFanBank) -> RearAssemblyReading {
    RearAssemblyGeometry {interfaces:rear_interfaces(),parts:[
     extension(sx: -1,id:"E1"),extension(sx:1,id:"E2"),crossmember(side: -1,id:"B140L"),crossmember(side:1,id:"B140R"),cradle(bank:bank,cuts:cuts),fan_body(bank:bank),guard(bank:bank),
     rear_socket(sx: -1,id:"S1"),rear_socket(sx:1,id:"S2"),
-    retaining_pin(x:0-tray_w/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:tray_w/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),
+    retaining_pin(x:0-micrometer_count(m: tray_w)/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:micrometer_count(m: tray_w)/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),
     retaining_pin(x: 0-foot_x,z:rear_beam_z,bottom: -4000,top:12000,id:"K6"),retaining_pin(x:foot_x,z:rear_beam_z,bottom: -4000,top:12000,id:"K7"),
    ]}
   }

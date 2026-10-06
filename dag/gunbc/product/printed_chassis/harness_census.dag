@@ -74,20 +74,20 @@ fn station_vertical_levels(plan: HarnessPlan, node: Nat) -> Nat {
   }
 }
 fn station_lateral_mm(plan: HarnessPlan) -> Nat {
-  match plan.station.placement { TopOfColumn => 0 BottomOfColumn => 0 BesideColumn => tray_w / 1000 }
+  match plan.station.placement { TopOfColumn => 0 BottomOfColumn => 0 BesideColumn => micrometer_count(m: tray_w) / 1000 }
 }
 
 // One node's branch: vertical levels times pitch, a lateral run if beside, the tray crossing if
 // the inlet is at the front and the raceway at the rear, plus the allowance.
 fn dc_branch_length(plan: HarnessPlan, node: Nat) -> Millimeter {
   let vertical = station_vertical_levels(plan: plan, node: node) * pitch_mm()
-  let crossing = match plan.inlet { InletAtRear => 0 InletAtFront => tray_d / 1000 }
+  let crossing = match plan.inlet { InletAtRear => 0 InletAtFront => micrometer_count(m: tray_d) / 1000 }
   millimeter(count: vertical + station_lateral_mm(plan: plan) + crossing + millimeter_count(m: plan.service_allowance))
 }
 
 // Inside the cassette: from the inlet to the front-edge header. Rear inlet crosses the tray.
 fn pigtail_length(plan: HarnessPlan) -> Millimeter {
-  let crossing = match plan.inlet { InletAtRear => tray_d / 1000 InletAtFront => 0 }
+  let crossing = match plan.inlet { InletAtRear => micrometer_count(m: tray_d) / 1000 InletAtFront => 0 }
   millimeter(count: crossing + millimeter_count(m: plan.service_allowance))
 }
 
@@ -101,7 +101,7 @@ fn selected_fan_harness(bank:RearFanBank,service_allowance:Millimeter) -> Select
  let current=match bank.fan.rated_current {Present {value:i}=>i Absent=>return SelectedFanHarnessOpen {reason:"Selected fan current unread"}}
  let sharing=match bank.fan.sharing {Present {value:s}=>s Absent=>return SelectedFanHarnessOpen {reason:"Selected fan sharing facts unread"}}
  let plan=FanHarnessPlan {fans:bank.count,cable_length:lead,sharing:sharing,rated_current:current,
- header_run:millimeter(count:(tray_d/2-rear_plate_z)/1000+millimeter_count(m:service_allowance)),
+ header_run:millimeter(count:(micrometer_count(m: tray_d)/2-rear_plate_z)/1000+millimeter_count(m:service_allowance)),
  pst_link_run:millimeter(count:(micrometer_count(m: bank.plate_edge_um)+micrometer_count(m: rear_plate_gap_um))/1000)}
  SelectedFanHarnessReady {plan:plan,load:fan_bank_header_load(fans:plan.fans,rated_current:plan.rated_current,sharing:plan.sharing)}
 }

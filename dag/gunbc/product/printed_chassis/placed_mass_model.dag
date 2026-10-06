@@ -1,23 +1,19 @@
 module product.printed_chassis.placed_mass_model
 import std.types {Bool,Int,List,NonEmptyStr,String}
-import std.measure {Gram,gram,gram_count,Micrometer,micrometer,micrometer_count}
+import std.measure {Gram,gram,gram_count,Micrometer,micrometer,micrometer_count,micrometre_per_second_squared_count}
 import product.printed_chassis.component_mass {MassLedger,MassIncomplete,MassComplete,lower_mass,upper_mass}
+import product.printed_chassis.stack_mechanics {standard_gravity}
 import std.affine_space {Point3,signed_frame_component_count}
 
 // Rigid-body statics for a DECLARED mass/position scenario, not FEA or admission.
 // At each interface pass the components above it, translated into that interface's
 // frame. A bottom power cassette shifts every node's y; its own mass stays at base.
-// Units: mass g, position um, moment g.um; gravity force microN = g * 9806.65.
+// Units: mass g, position um, moment g.um; gravity is stack_mechanics.standard_gravity.
 type PlacedMass {id:String,mass:Gram,at:Point3}
 type SupportRectangle {half_x_um:Micrometer,half_z_um:Micrometer}
 type LoadScenario {components:List<PlacedMass>,support:SupportRectangle,push_height_um:Micrometer}
-// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
-// feature:signed-force-carrier — dissolve-on: std.measure Force/Millinewton inhabit Nat, so a negative tip margin and corner reaction cannot be those types
-// feature:signed-moment-carrier — dissolve-on: std.measure gains a signed force×length (torque) carrier; restoring_*_mn_mm has none today
-// feature:signed-acceleration-carrier — dissolve-on: std.measure Acceleration/MicrometrePerSecondSquared inhabit Nat, so a signed base acceleration cannot be that type
-// Restoring moments, tip push, base acceleration and corner reactions stay Int: they are signed
-// (CG outside the support yields a negative margin). Wrapping them in Nat-backed Millinewton would
-// drop the discriminating negative arm, not consume the unit authority.
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier; cg_* are signed
+// feature:missing-torque-carrier — dissolve-on: std.measure has no force×length product; restoring_*_mn_mm stays Int
 type LoadScreen
  = InvalidLoadScenario {reason:NonEmptyStr}
  | RigidBodyScreen {mass_g:Gram,cg_x_um:Int,cg_y_um:Int,cg_z_um:Int,
@@ -48,15 +44,16 @@ fn placed_load_screen(case:LoadScenario) -> LoadScreen {
  let rzp=m*b-sz
  let rzn=m*b+sz
  let least=minimum(a:minimum(a:rxp,b:rxn),b:minimum(a:rzp,b:rzn))
- let corners=flat_map([-1,1],x=>map([-1,1],z=>(m*1000+x*sx*1000/a+z*sz*1000/b)*980665/400000000))
+ let g=micrometre_per_second_squared_count(a: standard_gravity)
+ let corners=flat_map([-1,1],x=>map([-1,1],z=>(m*1000+x*sx*1000/a+z*sz*1000/b)*g/4000000000))
  RigidBodyScreen {
   mass_g:gram(count: m),cg_x_um:sx/m,cg_y_um:sy/m,cg_z_um:sz/m,
-  restoring_x_positive_mn_mm:rxp*980665/100000000,
-  restoring_x_negative_mn_mm:rxn*980665/100000000,
-  restoring_z_positive_mn_mm:rzp*980665/100000000,
-  restoring_z_negative_mn_mm:rzn*980665/100000000,
-  tip_push_mn:least*980665/(push*100000),
-  tip_base_acceleration_um_s2:least*9806650/sy,
+  restoring_x_positive_mn_mm:rxp*g/1000000000,
+  restoring_x_negative_mn_mm:rxn*g/1000000000,
+  restoring_z_positive_mn_mm:rzp*g/1000000000,
+  restoring_z_negative_mn_mm:rzn*g/1000000000,
+  tip_push_mn:least*g/(push*1000000),
+  tip_base_acceleration_um_s2:least*g/sy,
   corner_reactions_mn:corners,
   boundary:"Scenario only: four equal-stiffness contacts assumed. Negative reaction requires unilateral contact solve. Sliding, cable pulls, joint bending/shear, buckling, print anisotropy and hot creep remain unqualified. No safe stack height is certified.",
  }

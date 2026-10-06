@@ -96,7 +96,7 @@ fn roster_mass(rows: List<MassRow>) -> Gram { gram(count: fold(rows, init: 0, f:
 
 // Pillars are not in the r06 cassette model yet; their mass is derived from the proposal section.
 fn pillar_set_mass(sheet: FilamentTechnicalDataSheetRow) -> Gram {
-  let side_mm = pillar_side / 1000
+  let side_mm = micrometer_count(m: pillar_side) / 1000
   gram(count: 4 * side_mm * side_mm * (pillar_height() / 1000) * kilogram_per_cubic_metre_count(d: sheet.density) / 1000000)
 }
 
@@ -147,7 +147,7 @@ fn mass_above_level(unit: Gram, station: PowerCassette, node_count: Nat, level: 
 // Euler critical load for one pillar, in millinewtons: pi^2 E I / (K L)^2 with E in MPa (N/mm^2),
 // I = a^4/12 in mm^4, L in mm, so the quotient is newtons.
 fn pillar_critical_load(sheet: FilamentTechnicalDataSheetRow, policy: StackPolicy) -> Millinewton {
-  let a = pillar_side / 1000
+  let a = micrometer_count(m: pillar_side) / 1000
   let i_mm4 = a * a * a * a / 12
   let kl = policy.effective_length_factor_percent * (pillar_height() / 1000) / 100
   let pi_squared_ten_thousandths = 98696

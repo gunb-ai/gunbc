@@ -11,8 +11,8 @@ import product.printed_chassis.cassette {tray_w,tray_d}
 // creep, layer strength and populated lifting remain unqualified.
 data post_outer_um:Micrometer=micrometer(count: 20000)
 data post_inner_um:Micrometer=micrometer(count: 12000)
-data post_x_um:Micrometer=micrometer(count: tray_w/2+17000)
-data post_z_um:Micrometer=micrometer(count: tray_d/2-14000)
+data post_x_um:Micrometer=micrometer(count: micrometer_count(m: tray_w)/2+17000)
+data post_z_um:Micrometer=micrometer(count: micrometer_count(m: tray_d)/2-14000)
 // feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
 data shoe_bottom_um:Int= -19000
 data post_split_um:Micrometer=micrometer(count: 115000)
