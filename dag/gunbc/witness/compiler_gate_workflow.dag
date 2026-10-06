@@ -1037,16 +1037,18 @@ fn compiler_gate_base_ref_env() -> YamlKeyValue {
   kv(key: "GUNBC_BASE_REF_SHA", value: yaml_string(s: "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"))
 }
 
-// THE WAIT IS DERIVED, NOT CHOSEN. On a merge_group the base is the previous group's head, whose run
-// usually started minutes before this one and uploads its candidate right after its build step --
-// observed 5-10 minutes into the run on the 2026-10-05 merge-group runs (artifact created_at against
-// run start). This step runs after THIS run's own build, so most of that wait has already elapsed.
-// The bound is twice the slow end of the observed build window, so a slow build still lands inside
-// it; past it the floor refuses BaseCompilerPending rather than ejecting on a guess. If those
-// refusals are observed, the next rung is building the base inside the floor on that miss
-// (gunbc.recurring_failure_mode base_compiler_pending_on_a_stacked_merge_group).
-fn compiler_gate_base_compiler_observed_build_window() -> Second { second(count: 10 * 60) }
-fn compiler_gate_base_compiler_wait() -> Second { second(count: 2 * second_count(s: compiler_gate_base_compiler_observed_build_window())) }
+// THE WAIT IS A DECLARED POLICY BUDGET, NOT A MEASUREMENT. On a merge_group the base is the previous
+// group's head, whose run usually started before this one and uploads its candidate right after
+// its build step; this step runs after THIS run's own build, so most of that wait has already
+// elapsed. The bound is the budget sharp-raven-357 ruled on 2026-10-06 (about two build steps), a
+// policy over how long a stacked group may wait for its base, and no figure here is an oracle:
+// the observation it is set against is re-derived, never transcribed, by reading the Actions API
+// for the compiler-pair-candidate artifacts of merge_group runs (artifact created_at against its
+// workflow run's run_started_at). Past the budget the floor refuses BaseCompilerPending rather
+// than ejecting on a guess; if those refusals are observed, the next rung is building the base
+// inside the floor on that miss (gunbc.recurring_failure_mode
+// base_compiler_pending_on_a_stacked_merge_group), never a longer wait.
+fn compiler_gate_base_compiler_wait() -> Second { second(count: 20 * 60) }
 fn compiler_gate_base_compiler_poll_interval() -> Second { second(count: 60) }
 
 fn compiler_gate_base_compiler_polls() -> Int {
