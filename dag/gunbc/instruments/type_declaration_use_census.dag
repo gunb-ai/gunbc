@@ -13,7 +13,7 @@ import v2.std.node {
 }
 import v2.std.type_binder { GenericTypeDecl, OpaqueTypeDecl, PlainTypeDecl, TypeAlias, type_decl_view, type_param_names }
 import v2.std.qualified_name { declaration_reference_path_optional, qualified_name_to_dotted_string }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.grammar { node_atom_identity_optional }
 
 import v2.compiler.infer { RefinementDeclaration, refinement_declaration_of_node }

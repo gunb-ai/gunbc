@@ -2,7 +2,7 @@ module v2.test.claim.compiler.infer_fold_member_instance
 
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { infer }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.test.claim.body_let_annotation { bla_assemble_with_peers, bla_q_artifact, bla_r_artifact, bla_source }
 import v2.compiler.source_authority { DagSourceReadWitness }
 import v2.std.collection { List }

@@ -14,8 +14,8 @@ import v2.std.collection { list_at_optional }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.communication.medium { Medium }
 import v2.std.diagnostic { Accepted, Rejected, Outcome, DeclarationLocus, Diagnostic, InvariantPortLocus, NodeLocus, NonEmptyDiagnostics, SourcePortLocus, Textual, diagnostics_fatal, diagnostics_fatal_reason }
-import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, Symbol, node_synthetic, symbol_lexeme }
-import v2.std.optional { Optional, Present, Absent }
+import v2.std.node { Node, Edge, TypeNode, Arrow, Conj, Authored, StructuralLabel, Positional, Symbol, node_synthetic, symbol_lexeme }
+import std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import std.algebra { Cons, Empty }
 import std.types { Int, List, NonEmptyStr, String }
@@ -114,14 +114,18 @@ fn first_located_file(ds: NonEmptyDiagnostics) -> String {
 fn first_arrow_in(root: Node) -> Optional<Node> {
   match root.kind {
     TypeNode { connective: Arrow } => Present { value: root }
-    _ =>
-      fold(root.children, init: Absent, f: fn(acc, e) {
-        match acc {
-          Present { value: _ } => acc
-          Absent => first_arrow_in(root: e.target)
-        }
-      })
+    TypeNode { connective: _ } => first_arrow_in_children(root: root)
+    ComputationNode { behavior: _ } => first_arrow_in_children(root: root)
   }
+}
+
+fn first_arrow_in_children(root: Node) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => first_arrow_in(root: e.target)
+    }
+  })
 }
 
 fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
@@ -136,7 +140,8 @@ fn collect_arrows(root: Node, acc: List<Node>) -> List<Node> {
             )])
           Absent => inner
         }
-      _ => inner
+      StructuralLabel { label: _ } => inner
+      Positional => inner
     }
   })
 }
@@ -241,7 +246,8 @@ fn decl_edges_named(root: Node, fn_name: Symbol, acc: List<Node>) -> List<Node> 
             Absent => inner
           }
         } else { inner }
-      _ => inner
+      StructuralLabel { label: _ } => inner
+      Positional => inner
     }
   })
   fold(root.children, init: here, f: fn(inner, e) {

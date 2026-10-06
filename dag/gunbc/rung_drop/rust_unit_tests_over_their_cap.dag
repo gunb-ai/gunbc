@@ -1,0 +1,38 @@
+module gunbc.rung_drop.rust_unit_tests_over_their_cap
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-05, operator-approved (escalation msg_e83c070f, option A: the owner raises the
+// cap or splits the run; the lane is non-blocking until it fits). gunbc#12951 made the fleet
+// `rust-unit-tests` job a required need of the witnesses aggregate with a 40-minute step cap
+// (gunbc.compiler_gate_workflow compiler_gate_unit_test_timeout). The step overran that cap on every
+// head, #12951's own included, cut off inside required_floor_runner changed_witness_projection_tests
+// with no test failed -- so the lane's red carried no information about the diff and refused every
+// merge. The lane row is now LaneAnnouncedNotBlocking: the job still runs on every pull request and
+// merge_group and reports its result, and the aggregate no longer needs it.
+//
+// THE TRIGGER IS THE CAPABILITY, NOT THE CAP. Raising the literal does not retire this row; a cap
+// raised past a wall nobody measured is the same red waiting for a slower head. What retires it is
+// the suite completing under its cap on the fleet, every head, read from the lane's own runs.
+
+data rust_unit_tests_over_their_cap_population: List<String> = [
+  "the fleet rust-unit-tests job of gunbc.compiler_gate_workflow: cargo test --release -p v1-compiler --lib (gunbc.repo_self_test_command), every #[test] it reaches -- its verdict no longer reaches the witnesses aggregate",
+]
+
+data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
+  identity: "rust_unit_tests_over_their_cap" as NonEmptyStr,
+  subject: "the v1 --lib unit-test lane blocks a merge: a failing v1-compiler unit test turns the required witnesses context red",
+  declared: "2026-10-05",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "a measured, budgeted step cap for the v1 --lib suite, or a split of the run into parts that each fit their cap, on the fleet runner"
+    },
+    population: rust_unit_tests_over_their_cap_population,
+    restoration_trigger: "THE CAPABILITY: the full v1-compiler --lib unit suite completes under its cap on the fleet runner on every head -- read from the rust_unit_tests step walls of the lane's own required runs, across heads, not one green run. WHAT THAT MUST BE SUFFICIENT FOR: the lane's red means a test failed, never that a clock ran out, so flipping the gunbc.compiler_gate_workflow lane row back to LaneBlocks refuses only diffs that broke a test. Raising the cap literal without that measurement does not retire this row, and neither does shrinking the suite by deleting or skipping tests."
+  }
+}

@@ -1,5 +1,5 @@
 module v2.test.lens_common.infer_fixture
-import v2.std.optional { optional_absent }
+import std.optional { optional_absent }
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.resolve { ClosureProviderRefusal, ResolvedTree }
@@ -12,7 +12,7 @@ import v2.std.constraints {
   CanonicalGroundingWitness
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.optional { Present }
+import std.optional { Present }
 import v2.std.witness { Holds, StructuralPropertyWitness, Witness, witness_from_optional }
 
 import v2.compiler.body_lowering_fold { body_lower_callable_arrow }
@@ -24,7 +24,7 @@ import v2.std.qualified_name { QualifiedName, declaration_reference_node, parame
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted }
 import v2.std.node { Authored, ComputationNode, Conj, Edge, Positional, Transform }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.optional { Absent, optional_present }
+import std.optional { Absent, optional_present }
 import v2.std.algebra { list_append, list_map }
 import std.algebra { Cons }
 

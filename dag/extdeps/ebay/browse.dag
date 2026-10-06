@@ -507,7 +507,8 @@ fn browse_render_filter(f: BrowseSearchFilter) -> BrowseFilterRender {
               }
               Absent => BrowseFilterConditionHasNoId { condition: c }
             }
-            _ => acc
+            BrowseFilterEmptyValueSet { field: _ } => acc
+            BrowseFilterConditionHasNoId { condition: _ } => acc
           }
         }
       ))
@@ -538,7 +539,8 @@ fn browse_render_filters(filters: List<BrowseSearchFilter>) -> BrowseFilterRende
           }
           refused => refused
         }
-        _ => acc
+        BrowseFilterEmptyValueSet { field: _ } => acc
+        BrowseFilterConditionHasNoId { condition: _ } => acc
       }
     }
   )

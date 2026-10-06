@@ -2,7 +2,7 @@ module product.capacity.redemption
 
 import std.types { String, Bool, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string }
 import product.capacity.event_json { chain_event_wire_text, chain_event_decode, member_nonempty }
 import product.capacity.event_chain {
