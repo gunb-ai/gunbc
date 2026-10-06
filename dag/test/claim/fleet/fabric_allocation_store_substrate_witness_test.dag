@@ -4,7 +4,7 @@ import gunbc.fleet_converge_scope { FabricAllocationStoreOnly }
 
 import std.types { Bool, String, NonEmptyStr }
 import std.content_hash { serialize_content_hash }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import extdeps.filesystem.filesystem_io {
   filesystem_listing_observation,
   filesystem_entry_presence,

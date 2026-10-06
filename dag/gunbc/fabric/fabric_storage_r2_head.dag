@@ -1,7 +1,7 @@
 module gunbc.fabric_storage_r2_head
 
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.durable_compare_and_set {
   CasGeneration, cas_generation_first, cas_generation_successor, CasSuccessorGeneration, CasSuccessorExhausted,

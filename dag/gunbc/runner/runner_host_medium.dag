@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Kibibyte, HardwareThreadCount, hardware_thread_count }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.toolchain.types { Architecture, Aarch64, architecture_diagnostic_name }
 import extdeps.exec.command { shell_command_render }
 import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mkdir_parents_command, cat_command, nproc_command, ls_one_per_line_command }

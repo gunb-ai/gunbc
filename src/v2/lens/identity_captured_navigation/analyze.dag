@@ -9,7 +9,7 @@ import v2.std.node_query { find_named_child }
 import v2.std.collection { list_at_optional }
 import v2.std.algebra { list_reverse }
 import v2.std.grammar { node_atom_identity_optional }
-import v2.std.optional { Optional }
+import std.optional { Optional }
 
 fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {

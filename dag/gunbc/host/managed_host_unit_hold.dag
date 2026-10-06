@@ -6,7 +6,7 @@ import gunbc.process_hold_identity {
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.durable_exclusive_hold {
   DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldObservation, DurableHoldReleaseRefusal,
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner, HoldReleaseAgainstAnotherGeneration,

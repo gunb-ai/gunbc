@@ -28,7 +28,7 @@ import v2.std.collection {
   Map,
   PointwisePower
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Present,
   Absent,

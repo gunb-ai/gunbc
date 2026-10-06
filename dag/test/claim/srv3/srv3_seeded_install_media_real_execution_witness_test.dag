@@ -4,7 +4,7 @@ import std.logic { Bool }
 import std.types { List, String, NonEmptyStr }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_grub_kernel_cmdline, srv3_seeded_install_media_input_for }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.provisioning.ubuntu_seeded_install_media { NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_write_nocloud_seed, install_media_remaster_digest }
 import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media_remaster_ensure_grub_cmdline, install_media_remaster_grub_cfg_with_cmdline, GrubCmdlineApplied, GrubCmdlineRefused }

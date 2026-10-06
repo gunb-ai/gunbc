@@ -19,7 +19,7 @@ import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.host_command_binding {
   CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
   host_command, host_command_outcome_text, host_run, host_transport_kind,

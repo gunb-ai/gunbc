@@ -11,7 +11,7 @@ import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   map_get
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
