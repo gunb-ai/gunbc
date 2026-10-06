@@ -4,7 +4,7 @@ import std.types { Int, List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.measure { ObservationRoundCount, Second, percent, second_count }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.access_profile { BmcAccessObservation }

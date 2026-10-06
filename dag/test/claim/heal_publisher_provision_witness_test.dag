@@ -18,7 +18,7 @@ import gunbc.auth.heal_publisher_provision {
 }
 import extdeps.cloud.gcp.gcp { WifPoolWire, WifProviderWire, WifOidcWire }
 import gunbc.auth.github_gcp_federation { github_wif_issuer_uri }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.transports.rest { RestResponseObserved, RestBodyRead, RestBodyUndecodable }
 import v2.std.witness_evaluation { WitnessReturned, WitnessRefused, evaluate_in_witness_frame }
 import test.claim.rest_exchange_replay_test { replay_frame, fixture_for }

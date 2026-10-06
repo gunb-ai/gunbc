@@ -256,10 +256,10 @@ test fn a_retired_v3_document_is_version_refused_with_its_tag() -> Bool {
 // observed tag is the honest whole answer.
 test fn an_unknown_format_is_version_refused_with_the_tag_it_found() -> Bool {
   match repository_convert_plan(v: json_object(members: [
-    json_kv(key: "format", value: json_string(s: "gunbc-scm-repository-v9")),
+    json_kv(key: "format", value: json_string(s: "gunbc-scm-repository-v99")),
   ])) {
     RepositoryConvertRefusePlan { cause: RepositoryConvertReadVersionRefused { found } } =>
-      found == "gunbc-scm-repository-v9"
+      found == "gunbc-scm-repository-v99"
     _ => false
   }
 }

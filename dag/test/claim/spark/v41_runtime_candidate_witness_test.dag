@@ -3,7 +3,7 @@ module test.claim.spark.v41_runtime_candidate_witness
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, NamedField, decl_field_ref }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import gunbc.spark.v41_engram_row_store { V41StoreReadback, V41StoreReadbackUnread, V41PublishedRowStoreKeyed, V41PublishedRowStoreRefused }
 import extdeps.gpu.types { GpuComputeCapability }

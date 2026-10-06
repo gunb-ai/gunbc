@@ -19,7 +19,7 @@ import gunbc.megarac_managed_host { MegaRacIpmiReadBound }
 import gunbc.machine_intake_megarac_media_attach { megarac_media_read_max_time, megarac_media_read_max_time_operand }
 import std.measure { Second, second, second_count }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { any }
 import gunbc.machine_intake_megarac_served_ui_catalog_observation { megarac_source_min_js_sha256_2026_09_27 }
 

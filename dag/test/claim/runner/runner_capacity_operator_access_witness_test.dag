@@ -24,7 +24,7 @@ import gunbc.runner_capacity_operator_access {
   PrivOpSystemdDaemonReload,
   PrivOpSystemdUnitStart,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

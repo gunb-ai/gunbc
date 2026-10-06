@@ -5,7 +5,7 @@ import std.algebra { FreeSemigroup }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { millisecond }
 import v2.std.node { Symbol }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.extdeps.languages.rust_emit_small_test { rust_emit_small_translation_claim }

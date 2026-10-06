@@ -3,7 +3,7 @@ module gunbc.megarac_managed_host
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { Second }
 import std.decl_ref { decl_ref }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import product.placement_supply { HostIdentity }
 import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint, BmcFirmwareFamily, OpenBmc }

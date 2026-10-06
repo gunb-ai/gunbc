@@ -2,7 +2,7 @@ module gunbc.machine_intake_ampere_socket_console_observation
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.languages.json.parse { json_hex_nibble }
 import extdeps.ampere.ras_error_section {
   AmpereRasSectionHeader, AmpereRasErrorTypeReading, AmpereRasTypeDefined, AmpereRasTypeUndefined,
