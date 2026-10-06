@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName, BareOccurrenceBoundByImports, bare_occurrence_binding }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   normalize_access_type_node, resolved_type,
@@ -275,26 +275,15 @@ type TypeDeclIndex {
   leaf_owners: Map<String, LeafOwner>
   identities_by_leaf: Map<String, List<String>>
   qualified_names: SymbolIndex
-  file_scopes: Map<String, TypeDeclFileScope>
 }
 
-// THE IMPORT ARM OF AN OCCURRENCE'S SCOPE: the module's named imports (leaf -> the module it is
-// imported from), read from its import nodes (v1.std.core module_imports). It is consulted only after
-// the resolver's order has passed the own-file and kernel arms (type_decl_occurrence_binding).
-type TypeDeclFileScope {
-  module_path: String
-  named_imports: Map<String, String>
-}
-
-// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: the resolver's order, read through
-// v1.compiler.infer_env bare_occurrence_binding (own file, then kernel, then imports), joined here to
-// the declaration identity this index keys on. The import arm reads the file's named imports; a whole
-// import that may bind the leaf, or a named import whose module does not declare it here (a
-// re-export this index cannot follow), is OccurrenceUndecided and refuses.
+// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: v1.compiler.infer_env bare_occurrence_binding (own file,
+// then named import, then kernel -- the typechecker's lookup_binding order), joined here to the
+// declaration identity this index keys on.
 type TypeDeclOccurrenceBinding
   = OccurrenceDeclaredHere { identity: String }
-  | OccurrenceIsKernelName
   | OccurrenceImported { identity: String }
+  | OccurrenceIsKernelName
   | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -321,7 +310,7 @@ type TypeDeclResolution
   | TypeDeclNotDeclared
 
 fn empty_type_decl_index() -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map(), qualified_names: empty_symbol_index(), file_scopes: empty_map() }
+  TypeDeclIndex { by_identity: empty_map(), identity_by_declaring_span: empty_map(), leaf_owners: empty_map(), identities_by_leaf: empty_map(), qualified_names: empty_symbol_index() }
 }
 
 fn type_decl_identity(owner_module: String, decl_name: String) -> String {
@@ -364,8 +353,7 @@ fn type_decl_index_insert(index: TypeDeclIndex, owner_module: String, decl_name:
     },
     leaf_owners: map_insert(index.leaf_owners, decl_name, type_decl_leaf_owner_after(prior: map_get(index.leaf_owners, decl_name), owner_module: owner_module)),
     identities_by_leaf: map_insert(index.identities_by_leaf, decl_name, type_decl_leaf_identities_with(prior: map_get(index.identities_by_leaf, decl_name), identity: identity)),
-    qualified_names: index.qualified_names,
-    file_scopes: index.file_scopes
+    qualified_names: index.qualified_names
   }
 }
 
@@ -531,42 +519,29 @@ fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: 
 fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
   match bare_occurrence_binding(index: index.qualified_names, name: leaf, reference: reference) {
     BareOccurrenceDeclaredInItsFile { declaration: decl } =>
-      match decl.ident_span {
-        Present { value: sp } =>
-          match map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp)) {
-            Present { value: identity } => OccurrenceDeclaredHere { identity: identity }
-            Absent => OccurrenceUndecided
-          }
+      match type_decl_identity_of_declaration(index: index, decl: decl) {
+        Present { value: identity } => OccurrenceDeclaredHere { identity: identity }
         Absent => OccurrenceUndecided
       }
-    BareOccurrenceDeclaredTwiceInItsFile => OccurrenceUndecided
+    BareOccurrenceImportedByName { declaration: decl } =>
+      match type_decl_identity_of_declaration(index: index, decl: decl) {
+        Present { value: identity } => OccurrenceImported { identity: identity }
+        Absent => OccurrenceUndecided
+      }
     BareOccurrenceIsKernelName => OccurrenceIsKernelName
-    BareOccurrenceBoundByImports => type_decl_import_binding(index: index, leaf: leaf, reference: reference)
+    BareOccurrenceUndecided => OccurrenceUndecided
   }
 }
 
-fn type_decl_import_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
-  match map_get(index.file_scopes, reference.span.file) {
-    Absent => OccurrenceUndecided
-    Present { value: scope } =>
-      match map_get(scope.named_imports, leaf) {
-        Present { value: from_module } =>
-          let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
-          match map_get(index.by_identity, imported) {
-            Present { value: _ } => OccurrenceImported { identity: imported }
-            Absent => OccurrenceUndecided
-          }
-        Absent => OccurrenceUndecided
-      }
+fn type_decl_identity_of_declaration(index: TypeDeclIndex, decl: Node) -> String? {
+  match decl.ident_span {
+    Present { value: sp } => map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp))
+    Absent => none
   }
 }
 
 fn type_decl_index_with_qualified_names(index: TypeDeclIndex, qualified_names: SymbolIndex) -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names, file_scopes: index.file_scopes }
-}
-
-fn type_decl_index_with_file_scope(index: TypeDeclIndex, file: String, scope: TypeDeclFileScope) -> TypeDeclIndex {
-  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: index.qualified_names, file_scopes: map_insert(index.file_scopes, file, scope) }
+  TypeDeclIndex { by_identity: index.by_identity, identity_by_declaring_span: index.identity_by_declaring_span, leaf_owners: index.leaf_owners, identities_by_leaf: index.identities_by_leaf, qualified_names: qualified_names }
 }
 
 data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteReferencingModuleImport, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, referencing_module_import, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then type_decl_occurrence_binding and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")

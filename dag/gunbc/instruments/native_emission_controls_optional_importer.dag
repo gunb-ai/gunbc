@@ -1,35 +1,30 @@
 module gunbc.instruments.native_emission_controls_optional_importer
 
 import std.types { Int }
-import gunbc.instruments.native_emission_controls_optional_collision { Optional }
+import gunbc.instruments.native_emission_controls_optional_collision { Optional, CollisionWrapped, CollisionEmpty, collision_row_value }
 
-// AN IMPORTED NON-KERNEL Optional NAMED BARE, which the v1 resolver binds to the KERNEL Optional today:
-// the kernel scope layer sits above direct imports (v1.compiler.infer
-// direct_import_export_precedence_note; v1.compiler.infer_env overlay_skips_kernel_name), so this
-// module's import of gunbc.instruments.native_emission_controls_optional_collision Optional is
-// ignored without a refusal. That is the recurring failure mode
-// gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name, and this fixture PINS
-// today's answer rather than endorsing it. The payload reference is a declaration-body member, so
-// gunbc.instruments.native_emission_controls receives it from the type environment's copy with no
-// carried declaration, and the emitter must reach the resolver's answer through the same order
-// (v1.compiler.infer_env bare_occurrence_binding) and realize it as the host Option. When the
-// resolver refuses the collision at the import, this module stops compiling: the control flips on
-// purpose, and the row's trigger has fired.
+// THE CROSS-MODULE COLLISION: a module that IMPORTS the non-kernel Optional of
+// gunbc.instruments.native_emission_controls_optional_collision BY NAME and names it bare in a variant
+// payload. The typechecker binds that field type to the IMPORTED coproduct (v1.compiler.infer_env
+// lookup_binding answers from the module's own bindings, its named imports included, before the
+// overlay where the kernel layer sits above imports). The payload reference is a declaration-body
+// member, so gunbc.instruments.native_emission_controls, which imports HeldChoice, receives it from
+// the type environment's copy with no carried declaration, and the emitter must reach the same
+// declaration through v1.compiler.infer_env bare_occurrence_binding. An emitter order that put the
+// kernel before the named import rebinds it to v2.std.optional, and this module is then refused or
+// realized as the host Option. That the resolver's overlay order disagrees is
+// gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name.
 type HeldChoice
-  = HeldOptional { held: Optional<Int> }
+  = HeldOptional { held: Optional }
   | HeldNothing
 
-data held_wrapped_row: HeldChoice = HeldOptional { held: Present { value: 11 } }
+data held_wrapped_row: HeldChoice = HeldOptional { held: CollisionWrapped { value: 11 } }
 
-data held_empty_row: HeldChoice = HeldOptional { held: Absent }
+data held_empty_row: HeldChoice = HeldOptional { held: CollisionEmpty }
 
 fn held_choice_value(c: HeldChoice) -> Int {
   match c {
-    HeldOptional { held: o } =>
-      match o {
-        Present { value: v } => v
-        Absent => 0
-      }
+    HeldOptional { held: o } => collision_row_value(o: o)
     HeldNothing => 0 - 1
   }
 }

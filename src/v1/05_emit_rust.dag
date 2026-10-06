@@ -184,7 +184,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName, BareOccurrenceBoundByImports, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceImportedByName, BareOccurrenceIsKernelName, BareOccurrenceUndecided, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -624,24 +624,28 @@ fn declaration_owns_host_option(module_path: String, decl_name: String) -> Bool 
 // against the corpus symbol index), so a coproduct another module declares as `Optional` is never read
 // as the host option. A reference that is neither is decided by unstamped_reference_is_host_option.
 // AN UNSTAMPED REFERENCE is decided by the one occurrence decision the type-declaration router reads
-// (v1.compiler.infer_env bare_occurrence_binding, the resolver's order): its own file's declaration, or
-// on the kernel arm the declaration the kernel mint names. No leaf comparison stands in for either.
+// (v1.compiler.infer_env bare_occurrence_binding: own file, then named import, then kernel -- the
+// typechecker's lookup_binding order): the declaration that arm names, or on the kernel arm the
+// declaration the kernel mint names. No leaf comparison stands in for any of them.
 fn unstamped_reference_is_host_option(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   let leaf = authored_name_at(source_indices: source_indices, node: n)
   match bare_occurrence_binding(index: env.symbol_index, name: leaf, reference: n) {
-    BareOccurrenceDeclaredInItsFile { declaration: decl } =>
-      match declaration_ref_of_declaration_node(decl: decl, source_indices: source_indices, env: env) {
-        Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
-        Absent => false
-      }
-    BareOccurrenceDeclaredTwiceInItsFile => false
+    BareOccurrenceDeclaredInItsFile { declaration: decl } => declaration_node_owns_host_option(decl: decl, source_indices: source_indices, env: env)
+    BareOccurrenceImportedByName { declaration: decl } => declaration_node_owns_host_option(decl: decl, source_indices: source_indices, env: env)
     BareOccurrenceIsKernelName =>
       match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
         KernelMintDeclarationFound { declaration: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
         KernelMintDeclarationAbsent => false
         KernelMintDeclarationAmbiguous { row_count: _ } => false
       }
-    BareOccurrenceBoundByImports => false
+    BareOccurrenceUndecided => false
+  }
+}
+
+fn declaration_node_owns_host_option(decl: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  match declaration_ref_of_declaration_node(decl: decl, source_indices: source_indices, env: env) {
+    Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
+    Absent => false
   }
 }
 

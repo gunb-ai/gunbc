@@ -410,15 +410,15 @@ fn optional_named_coproduct_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "optional_named_coproduct_wrapped_row_answers_its_value", held: collision_row_value(o: collision_wrapped_row) == 7 },
     NativeEmissionCase { identity: "optional_named_coproduct_red_empty_row_answers_zero", held: collision_row_value(o: collision_empty_row) == 0 },
-    NativeEmissionCase { identity: "optional_imported_name_binds_the_kernel_option_payload_answers_its_value", held: imported_payload_value(c: held_wrapped_row) == 11 },
-    NativeEmissionCase { identity: "optional_imported_name_binds_the_kernel_option_red_absent_answers_zero", held: imported_payload_value(c: held_empty_row) == 0 }
+    NativeEmissionCase { identity: "optional_imported_coproduct_payload_answers_its_value", held: imported_payload_value(c: held_wrapped_row) == 11 },
+    NativeEmissionCase { identity: "optional_imported_coproduct_red_empty_payload_answers_zero", held: imported_payload_value(c: held_empty_row) == 0 }
   ]
 }
 
-// THE IMPORTED-NAME SHADOW, read through a HeldChoice this module only imports: the payload type
+// THE IMPORTED COLLISION, read through a HeldChoice this module only imports: the payload type
 // reaches this closure from the type environment's copy of the declaration body, unstamped, and
-// realizes as the resolver binds it today -- the kernel Optional, the host Option
-// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name).
+// realizes as the declaration the typechecker binds it to -- the imported coproduct, never the host
+// Option (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name).
 fn imported_payload_value(c: HeldChoice) -> Int {
   held_choice_value(c: c)
 }
@@ -458,8 +458,8 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_red_empty_keeps_init",
   "optional_named_coproduct_wrapped_row_answers_its_value",
   "optional_named_coproduct_red_empty_row_answers_zero",
-  "optional_imported_name_binds_the_kernel_option_payload_answers_its_value",
-  "optional_imported_name_binds_the_kernel_option_red_absent_answers_zero",
+  "optional_imported_coproduct_payload_answers_its_value",
+  "optional_imported_coproduct_red_empty_payload_answers_zero",
   "list_index_in_range_yields_the_element",
   "list_index_red_in_range_is_not_another_element",
   "list_index_red_in_range_is_not_absent",

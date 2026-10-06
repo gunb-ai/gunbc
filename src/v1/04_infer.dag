@@ -191,7 +191,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState, TypeSummaryIndex, TypeSummaryLookup, TypeSummaryFound, TypeSummaryLeafAmbiguous, TypeSummaryNotDeclared, type_summary_lookup, empty_type_summary_index, is_enum_in_summaries,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names, type_decl_index_with_file_scope, TypeDeclFileScope
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, empty_type_decl_index, type_decl_index_with_qualified_names
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -14681,6 +14681,15 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     }
 }
 
+// A MODULE'S NAMED IMPORTS, leaf -> the module it is imported from, read from its import nodes: the
+// import half of v1.compiler.infer_env bare_occurrence_binding.
+fn file_named_imports_of(module_node: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
+  module_imports(n: module_node) |> filter(imp => !import_is_all(n: imp)) |> fold(init: empty_map(), f: (acc, imp) =>
+    let from_module = import_module_path_at(imp: imp, source_indices: source_indices)
+    import_specific_names_at(n: imp, source_indices: source_indices) |> fold(init: acc, f: (inner, name) => map_insert(inner, name, from_module))
+  )
+}
+
 fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
@@ -14710,7 +14719,9 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     services: folded.services,
     transparent_alias_rep: transparent_alias_representatives(
       module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
-    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices)
+    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices),
+    file_named_imports: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, module_node.span.file, file_named_imports_of(module_node: module_node, source_indices: source_indices)))
   }
 }
 
@@ -14920,7 +14931,7 @@ fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Ma
       Absent => acc
     }
   )
-  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, file_named_imports: index.file_named_imports }
 }
 
 fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -14939,7 +14950,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
     }
   )
   let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
-  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures }
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures, file_named_imports: fill.file_named_imports }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -14979,7 +14990,8 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   SymbolIndex {
     entries: closure.entries, global_bare: global2, services: services2,
     transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures),
+    file_named_imports: map_merge(tree.file_named_imports, closure.file_named_imports)
   }
 }
 
@@ -15018,7 +15030,8 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   SymbolIndex {
     entries: entries2, global_bare: closure.global_bare, services: closure.services,
     transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
+    file_named_imports: map_merge(fill.file_named_imports, closure.file_named_imports)
   }
 }
 
@@ -17125,20 +17138,6 @@ fn same_declaration_site(a: Node, b: Node) -> Bool {
 // The type-declaration index carries the closure's qualified-name authority: the corpus symbol index
 // is built once over every module (build_symbol_index_census) and every module's type environment
 // carries the same one, so the first module's is the closure's.
-// THE SCOPE ONE MODULE'S FILE GIVES A BARE NAME, read from its import nodes: what
-// v1.compiler.infer_emit_info type_decl_occurrence_binding decides an unstamped reference by.
-fn type_decl_file_scope_of(typed_module: TypedModule) -> TypeDeclFileScope {
-  let si = typed_module.type_env.source_indices
-  let imports = module_imports(n: typed_module.module)
-  TypeDeclFileScope {
-    module_path: authored_name_at(source_indices: si, node: typed_module.module),
-    named_imports: imports |> filter(imp => !import_is_all(n: imp)) |> fold(init: empty_map(), f: (acc, imp) =>
-      let from_module = import_module_path_at(imp: imp, source_indices: si)
-      import_specific_names_at(n: imp, source_indices: si) |> fold(init: acc, f: (inner, name) => map_insert(inner, name, from_module))
-    )
-  }
-}
-
 fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemInfo>) -> EmitGraphInfo {
   let qualified_names = match modules |> first {
     Present { value: m } => m.type_env.symbol_index
@@ -17161,10 +17160,7 @@ fn build_emit_graph_info(modules: List<TypedModule>, registry: Map<String, ItemI
       }
     )
   )
-  let scoped_type_decls = modules |> fold(init: built_raw.type_decl_items, f: (index, typed_module) =>
-    type_decl_index_with_file_scope(index: index, file: typed_module.module.span.file, scope: type_decl_file_scope_of(typed_module: typed_module))
-  )
-  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: scoped_type_decls, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
+  let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
   let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
     fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
       let recursive_name = intern_str(table: m.type_env.intern_table, id: ident)
