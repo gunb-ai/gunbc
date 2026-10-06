@@ -329,8 +329,11 @@ pub fn emit_base_fact(
     use super::namespace_baseline as nb;
     let value = match kind {
         BaseFactKind::CostDebtRoster => {
+            // The head's typed `BaseTreeCommit` named this revision; in the base binary it arrives
+            // as the verb's argument, so the tree is materialized from it directly.
             let tree = super::cost_debt_scratch_dir("base-fact")?;
-            let read = super::cost_debt_base_tree_extract(repo, revision, &tree)
+            let read = nb::materialize_revision_paths(repo, revision, &tree, &["dag", "src/v2"])
+                .map_err(|e| nb::environment_load_refusal_text(&e))
                 .and_then(|()| super::cost_debt_roster_in_tree(&tree));
             std::fs::remove_dir_all(&tree).ok();
             serde_json::to_value(read?).map_err(|e| e.to_string())?
