@@ -42,7 +42,7 @@ pub fn peano_literal_homomorphism(
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-            Rc::new(vec![peano_literal_homomorphism("std.nat".to_string(), "Nat".to_string(), "Zero".to_string(), "Succ".to_string(), "prev".to_string()), peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism()])
+            Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism()])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
@@ -111,6 +111,8 @@ pub fn kernel_grounding_rows() -> Rc<Vec<Rc<KernelGrounding>>> {
                 Rc::new(vec![Rc::new(KernelGrounding {
         source_kind: LiteralSourceKind::KernelIntLiteral,
         carrier: crate::std_decl_ref::decl_ref("std.nat".to_string(), "Nat".to_string()),
+        min: Some(0),
+        max: std::option::Option::None,
     })])
             };
         }
