@@ -69,8 +69,9 @@ test fn anonymous_record_type_expression_parses_holds() -> Bool {
   cb2_parses(o: cb2_parsed_4())
 }
 
-// E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed and discarded
-// (gunbc.rung_drop admit_callers_discarded_on_the_native_route).
+// E -- dag_grammar_admit_callers_clause_expr (std.integer qualified_octets). Parsed; its list is
+// captured at normalize and enforced by v2.compiler.construction_confinement (controls:
+// v2.test.claim.construction_confinement.construction_confinement).
 test fn admit_callers_clause_parses_holds() -> Bool {
   cb2_parses(o: cb2_parsed_5())
 }

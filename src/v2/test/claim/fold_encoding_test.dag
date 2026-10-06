@@ -366,7 +366,7 @@ fn fe_dropped_identities_under(drop: FeDrop) -> FreeMonoid<Symbol> {
         test_markers: tree.test_markers,
         import_bindings: tree.import_bindings,
         type_declaration_kinds: tree.type_declaration_kinds,
-        type_declaration_modifiers: tree.type_declaration_modifiers,
+        type_declaration_modifiers: tree.type_declaration_modifiers, declared_admitted_callers: tree.declared_admitted_callers,
         diagnostics: None
       ) {
         Rejected { diagnostics: _ } => Empty

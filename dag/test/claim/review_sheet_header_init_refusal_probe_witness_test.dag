@@ -16,9 +16,9 @@ module test.claim.review_sheet_header_init_refusal_probe_witness
 // hermetic values.get fixture, the authorisation from plan_header_init over it -- and reads their
 // fields, so the refusals here are construction being confined and not the types being unusable.
 //
-// RUNG HONESTY: this measures the v1 seed's acceptance path. The native v2 path parses
-// sole_constructor without enforcing it (gunbc.rung_drop
-// g0_type_decl_modifier_parse_without_sealing_property), and nothing here claims otherwise.
+// RUNG HONESTY: this measures the v1 seed's acceptance path. The native v2 path enforces
+// sole_constructor too (v2.compiler.construction_confinement; the retired drop gunbc.rung_drop
+// g0_type_decl_modifier_parse_without_sealing_property), but this probe does not run there.
 
 import std.types { Bool, String }
 import extdeps.filesystem.filesystem_io

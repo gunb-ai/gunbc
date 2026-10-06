@@ -1,7 +1,7 @@
 module v2.compiler.resolve
 import v2.std.language_model { LanguageModel }
 
-import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_resource_declarations }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_confinements, normalized_tree_resource_declarations }
 import v2.compiler.namespace_graft { namespace_graft_module_body_optional }
 import v2.std.declaration_marker {
   ReachesNoTestCode,
@@ -99,7 +99,7 @@ import v2.std.resolution_policy {
   NamespaceOnlyY,
   default_name_resolution_policy
 }
-import v2.compiler.symbol_index_fill { symbol_index_fill_module_declarations }
+import v2.compiler.symbol_index_fill { symbol_index_fill_module_confinements, symbol_index_fill_module_declarations }
 import v2.std.symbol_index {
   symbol_index_entry_at,
   LexicalAmbiguous,
@@ -883,7 +883,11 @@ fn build_program_namespace(tree: NormalizedTree, lm: LanguageModel) -> Namespace
   Namespace {
     bindings: bindings,
     canonical_symbols: lm.canonical_symbols,
-    symbol_index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
+    symbol_index: symbol_index_fill_module_confinements(
+      index: symbol_index_fill_module_declarations(index: empty_symbol_index(), root: tree.root, record_declarations: Empty, resource_declarations: normalized_tree_resource_declarations(t: tree)),
+      root: tree.root,
+      confinements: normalized_tree_confinements(t: tree)
+    ),
     module_qn: Empty,
     test_code: test_code_index_add_module(
       index: test_code_index_empty(),

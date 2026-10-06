@@ -4,6 +4,7 @@ import std.algebra { Empty, FreeMonoid, list_snoc_item }
 import v2.std.algebra { fold_list }
 import v2.std.node { Node, Symbol }
 import v2.std.qualified_name { QualifiedName }
+import v2.std.symbol_index { DeclaredConfinement }
 
 // Namespace alias surface row (docs/plans/namespace-resolution-design.md §13): alias <binding> =
 // <qualified.path> is an ordinary binding node at the declaring position — the target is encoded
@@ -30,11 +31,15 @@ type AliasBindingRow {
 // resource_declarations: the leaf names this module declares as `resource`s, carried the same way and
 // for the same reason: a lowered resource has a service's Conj shape, so the root cannot say which
 // it is (v2.compiler.body_lowering_fold DeclaredResource).
+// confinements: who may introduce each confined declaration (v2.std.symbol_index
+// ConstructionConfinement), captured at normalize because the lowered root no longer says it
+// (NormalizedTree type_declaration_modifiers, declared_admitted_callers).
 type ModuleBindingSource {
   root: Node
   import_bindings: FreeMonoid<AliasBindingRow>
   record_declarations: FreeMonoid<Symbol>
   resource_declarations: FreeMonoid<Symbol>
+  confinements: FreeMonoid<DeclaredConfinement>
 }
 
 // A BINDING ROW WAITING FOR ITS TARGET, carried with the position it binds at. Pass B cannot bind a
@@ -64,7 +69,7 @@ fn module_binding_source_roots(sources: FreeMonoid<ModuleBindingSource>) -> Free
 // this source answers Absent from v2.std.symbol_index symbol_index_declared_payload_at for every
 // path in it.
 fn module_binding_source_without_imports_or_records(root: Node) -> ModuleBindingSource {
-  ModuleBindingSource { root: root, import_bindings: Empty, record_declarations: Empty, resource_declarations: Empty }
+  ModuleBindingSource { root: root, import_bindings: Empty, record_declarations: Empty, resource_declarations: Empty, confinements: Empty }
 }
 
 fn module_binding_sources_without_imports_or_records(roots: FreeMonoid<Node>) -> FreeMonoid<ModuleBindingSource> {

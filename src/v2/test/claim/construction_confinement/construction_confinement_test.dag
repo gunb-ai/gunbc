@@ -1,0 +1,207 @@
+module v2.test.claim.construction_confinement.construction_confinement
+
+import v2.compiler.infer { infer }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import std.algebra { Cons, Empty, list_snoc_item }
+import v2.std.algebra { fold_list, length }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, Diagnostic, Outcome, Rejected }
+import v2.std.integer { Int }
+import v2.std.symbol_index { SymbolIndex }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Authored, CastTargetEdge, ComputationNode, Conj, ConstructTagEdge, Edge, Node, Symbol, Transform, TypeNode, core_edge_label }
+import v2.compiler.construction_confinement { construction_confinement_member }
+import v2.std.diagnostic { None, Some }
+import v2.std.optional { optional_present }
+import v2.std.qualified_name { QualifiedName, declaration_reference_node }
+import v2.std.symbol_index { CallersAdmitted, ConstructionSealedToModule, empty_symbol_index, symbol_index_mark_construction_confinement }
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// CONSTRUCTOR CONFINEMENT (gunbc.rung_drop g0_type_decl_modifier_parse_without_sealing_property,
+// admit_callers_discarded_on_the_native_route; the stage is v2.compiler.construction_confinement).
+//
+// TWO LAYERS, PER DESIGN SECTION 3's WITNESS RULE. The decision rows discriminate at ONE interface --
+// v2.compiler.construction_confinement construction_confinement_member: a symbol index carrying the
+// confinements, the subject's module, one top-level declaration edge in, its refusals out -- with
+// those inputs SUPPLIED, so a row costs the decision and not a front end. The pairing obligation is
+// held by ONE real-route claim (cc_real_route_refuses_exactly_the_outside_introductions_holds) that
+// runs the whole native path -- ingest, normalize (where the sole_constructor slot and the
+// admit_callers clause are captured), the closure symbol-index fill (where they become
+// confinements), resolve, and infer, whose entry asks the stage -- so deleting any link of that
+// chain makes it red, and it asserts the ROUTE: the exact count of each confinement reason. Its
+// program holds the admitted introductions BESIDE the refused ones (the inside construction, the
+// checked-constructor call, the admitted call), so exactness also proves the wall does not fire on
+// an admitted site: one extra refusal moves a count. With the infer gate removed the same program
+// still refuses, but only for grounding and coercion reasons with zero confinement reasons, so the
+// claim goes red -- a verdict-only claim would have stayed green there.
+//
+// DIFFERENTIAL REFERENCE: the seed refuses and admits the same introductions --
+// v1.compiler.infer sole_constructor_construction_diags (record-literal and cast arms) and
+// constructor_call_admission_diags. Written expecting red: before this change neither fact reached
+// any native stage.
+
+fn cc_qn(module: Symbol, decl: Symbol) -> QualifiedName {
+  Cons { head: module, tail: Cons { head: decl, tail: Empty } }
+}
+
+fn cc_module(module: Symbol) -> QualifiedName {
+  Cons { head: module, tail: Empty }
+}
+
+// a.Port is sealed to module a; a.raw admits exactly p.ok.
+fn cc_index() -> SymbolIndex {
+  symbol_index_mark_construction_confinement(
+    index: symbol_index_mark_construction_confinement(
+      index: empty_symbol_index(),
+      qualified_path: cc_qn(module: ^a, decl: ^Port),
+      confinement: ConstructionSealedToModule
+    ),
+    qualified_path: cc_qn(module: ^a, decl: ^raw),
+    confinement: CallersAdmitted { callers: Cons { head: cc_qn(module: ^p, decl: ^ok), tail: Empty } }
+  )
+}
+
+fn cc_reference(path: QualifiedName) -> Node {
+  declaration_reference_node(qn: path, occurrence_id: OccurrenceSynthetic)
+}
+
+// A construct, as resolve leaves it: a Conj whose first edge is the construct tag.
+fn cc_construct(path: QualifiedName) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [Edge { label: core_edge_label(marker: ConstructTagEdge), target: cc_reference(path: path) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// A cast, as lowering leaves it: a Transform carrying its target on the cast-target edge.
+fn cc_cast(path: QualifiedName) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: core_edge_label(marker: CastTargetEdge), target: cc_reference(path: path) }],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The reasons the stage raises for declaration `decl` of `module` whose body is `body`.
+fn cc_member_reasons(module: Symbol, decl: Symbol, body: Node) -> List<Symbol> {
+  match construction_confinement_member(
+    index: cc_index(),
+    module: optional_present(value: cc_module(module: module)),
+    edge: Edge { label: Authored { name: decl }, target: body }
+  ) {
+    None => []
+    Some { diagnostics: d } => fold_list(xs: d.tail, empty: [d.head.reason], cons: fn(acc, x) { list_snoc_item(xs: acc, item: x.reason) })
+  }
+}
+
+fn cc_exactly(reasons: List<Symbol>, reason: Symbol) -> Bool {
+  (length(xs: reasons) == 1) && fold_list(xs: reasons, empty: true, cons: fn(acc, r) { acc && (r == reason) })
+}
+
+fn cc_none(reasons: List<Symbol>) -> Bool {
+  length(xs: reasons) == 0
+}
+
+fn cc_sealed() -> Symbol { ^construction_confinement_reason_sole_constructor_outside_declaring_module }
+fn cc_caller() -> Symbol { ^construction_confinement_reason_caller_not_admitted }
+
+// OUTSIDE CONSTRUCTION refuses as sealed.
+test fn cc_outside_construction_refuses_holds() -> Bool {
+  cc_exactly(reasons: cc_member_reasons(module: ^p, decl: ^bad, body: cc_construct(path: cc_qn(module: ^a, decl: ^Port))), reason: cc_sealed())
+}
+
+// INSIDE CONSTRUCTION (the checked constructor's own body) is admitted.
+test fn cc_inside_construction_is_admitted_holds() -> Bool {
+  cc_none(reasons: cc_member_reasons(module: ^a, decl: ^port_of, body: cc_construct(path: cc_qn(module: ^a, decl: ^Port))))
+}
+
+// OUTSIDE CAST into the sealed type refuses as sealed; the same cast inside its module is admitted.
+test fn cc_outside_cast_refuses_holds() -> Bool {
+  cc_exactly(reasons: cc_member_reasons(module: ^p, decl: ^cast, body: cc_cast(path: cc_qn(module: ^a, decl: ^Port))), reason: cc_sealed())
+}
+
+test fn cc_inside_cast_is_admitted_holds() -> Bool {
+  cc_none(reasons: cc_member_reasons(module: ^a, decl: ^cast, body: cc_cast(path: cc_qn(module: ^a, decl: ^Port))))
+}
+
+// A NON-ADMITTED CALLER refuses; the admitted one (p.ok) does not.
+test fn cc_non_admitted_caller_refuses_holds() -> Bool {
+  cc_exactly(reasons: cc_member_reasons(module: ^p, decl: ^other, body: cc_reference(path: cc_qn(module: ^a, decl: ^raw))), reason: cc_caller())
+}
+
+test fn cc_admitted_caller_is_admitted_holds() -> Bool {
+  cc_none(reasons: cc_member_reasons(module: ^p, decl: ^ok, body: cc_reference(path: cc_qn(module: ^a, decl: ^raw))))
+}
+
+// THE REAL ROUTE, ONCE.
+data cc_provider_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^cc_provider_artifact, file_path: "src/v2/pilot/cc_provider.dag"
+}
+
+data cc_consumer_artifact: Artifact = Artifact {
+  kind: SourceFile, id: ^cc_consumer_artifact, file_path: "src/v2/pilot/cc_consumer.dag"
+}
+
+fn cc_provider() -> String {
+  "module a\n\ntype Port sole_constructor {\n  value: Int\n}\n\nfn port_of(n: Int) -> Port {\n  Port { value: n }\n}\n\nfn raw(n: Int) -> Int\n  admit_callers: [decl_ref(module_path: \"p\", decl_name: \"ok\")]\n  = n\n"
+}
+
+// Admitted: good (checked constructor), ok (admitted caller). Refused: bad (outside construction),
+// cast (outside cast), other (non-admitted caller).
+fn cc_consumer() -> String {
+  "module p\n\nimport a { Port, port_of, raw }\n\nfn good() -> Port {\n  port_of(n: 1)\n}\n\nfn ok() -> Int {\n  raw(n: 1)\n}\n\nfn bad() -> Port {\n  Port { value: 1 }\n}\n\nfn cast(x: Int) -> Port {\n  x as Port\n}\n\nfn other() -> Int {\n  raw(n: 1)\n}\n"
+}
+
+fn cc_count(head: Diagnostic, tail: List<Diagnostic>, reason: Symbol) -> Int {
+  fold_list(xs: tail, empty: if head.reason == reason { 1 } else { 0 }, cons: fn(n, d) { if d.reason == reason { n + 1 } else { n } })
+}
+
+// THE ROUTE'S DECIDED VALUE, read once by a nullary producer: portable Bools and Ints only, never a tree.
+type CcRealRouteReading {
+  assembled: Bool
+  inferred: Bool
+  sealed_refusals: Int
+  caller_refusals: Int
+}
+
+fn cc_real_route_reading() -> CcRealRouteReading {
+  match assemble_program_from_ingest(
+    ingest: Cons {
+      head: DagSourceReadWitness { source: Medium { carried: cc_provider(), fidelity: Lossless }, artifact: cc_provider_artifact, compilation_unit: ^cc_provider_cu, source_root: V2Tree },
+      tail: Cons {
+        head: DagSourceReadWitness { source: Medium { carried: cc_consumer(), fidelity: Lossless }, artifact: cc_consumer_artifact, compilation_unit: ^cc_consumer_cu, source_root: V2Tree },
+        tail: Empty
+      }
+    },
+    admission: Admission { subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } }, imports: Empty },
+    lm: dag_language_model()
+  ) {
+    Rejected { diagnostics: _ } => CcRealRouteReading { assembled: false, inferred: false, sealed_refusals: 0, caller_refusals: 0 }
+    Accepted { value: tree, diagnostics: _ } =>
+      match infer(tree: tree) {
+        Accepted { value: _, diagnostics: _ } => CcRealRouteReading { assembled: true, inferred: true, sealed_refusals: 0, caller_refusals: 0 }
+        Rejected { diagnostics: r } =>
+          CcRealRouteReading {
+            assembled: true,
+            inferred: false,
+            sealed_refusals: cc_count(head: r.head, tail: r.tail, reason: cc_sealed()),
+            caller_refusals: cc_count(head: r.head, tail: r.tail, reason: cc_caller())
+          }
+      }
+  }
+}
+
+test fn cc_real_route_refuses_exactly_the_outside_introductions_holds() -> Bool {
+  let r = cc_real_route_reading()
+  r.assembled && !r.inferred && (r.sealed_refusals == 2) && (r.caller_refusals == 1)
+}

@@ -137,7 +137,7 @@ fn wall_channel(marked: List<Symbol>) -> TestMarkerChannel {
 }
 
 fn wall_tree(root: Node, marked: List<Symbol>) -> Outcome<NormalizedTree> {
-  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
+  admit_normalized_tree(import_bindings: no_import_bindings(), type_declaration_kinds: no_type_declaration_kinds(), type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(), root: root, test_markers: wall_channel(marked: marked), diagnostics: None)
 }
 
 // THE PEER'S NAMES ARE BOUND, BECAUSE UNDER THE CANDIDATE RULE THAT IS THE ONLY WAY TO REACH THEM.
@@ -169,7 +169,7 @@ fn wall_tree_importing_peer(root: Node, marked: List<Symbol>) -> Outcome<Normali
   admit_normalized_tree(
     import_bindings: wall_peer_import_bindings(),
     type_declaration_kinds: no_type_declaration_kinds(),
-    type_declaration_modifiers: no_type_declaration_modifiers(),
+    type_declaration_modifiers: no_type_declaration_modifiers(), declared_admitted_callers: no_declared_admitted_callers(),
     root: root,
     test_markers: wall_channel(marked: marked),
     diagnostics: None

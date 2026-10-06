@@ -49,7 +49,9 @@ import v2.std.symbol_index {
   symbol_index_lookup,
   symbol_index_mark_declared_payload,
   symbol_index_mark_declared_resource,
-  symbol_index_mark_declared_type_params
+  symbol_index_mark_declared_type_params,
+  symbol_index_mark_construction_confinement,
+  DeclaredConfinement
 }
 import v2.std.namespace_alias { ModuleBindingSource, PendingBinding }
 import v2.extdeps.languages.dag {
@@ -570,6 +572,33 @@ fn symbol_index_fill_resource_marks(
   )
 }
 
+// WHO MAY INTRODUCE EACH CONFINED DECLARATION, marked in the same per-root step that writes the
+// declarations, from the carrier normalize captured (ModuleBindingSource confinements) and qualified
+// by the module's own name exactly as a record name is. A root whose name does not resolve
+// contributes nothing, as in symbol_index_fill_module_declarations, so no confinement can attach to
+// a declaration the index does not hold. Read by v2.compiler.construction_confinement.
+fn symbol_index_fill_module_confinements(
+  index: SymbolIndex,
+  root: Node,
+  confinements: FreeMonoid<DeclaredConfinement>
+) -> SymbolIndex {
+  match qualified_name_from_module_node(root: root) {
+    Accepted { value: module_qn, diagnostics: _ } =>
+      fold_list(
+        xs: confinements,
+        empty: index,
+        cons: fn(acc, row) {
+          symbol_index_mark_construction_confinement(
+            index: acc,
+            qualified_path: qualified_name_snoc(qn: module_qn, segment: row.name),
+            confinement: row.confinement
+          )
+        }
+      )
+    Rejected { diagnostics: _ } => index
+  }
+}
+
 // THE SINGLE-ROOT DOOR: DECLARATIONS, RECORDS, AND THE ALIAS ROWS STILL IN THE TREE -- NO IMPORT
 // BINDINGS. Import rows are left out because a binding row's target may be another root's
 // declaration, so binding ONE root in isolation can only ever see what that root itself declares;
@@ -628,11 +657,15 @@ fn symbol_index_fill_module_roots(
       xs: roots,
       empty: index,
       cons: fn(acc, tree) {
-        symbol_index_fill_module_declarations(
-          index: acc,
+        symbol_index_fill_module_confinements(
+          index: symbol_index_fill_module_declarations(
+            index: acc,
+            root: tree.root,
+            record_declarations: tree.record_declarations,
+            resource_declarations: tree.resource_declarations
+          ),
           root: tree.root,
-          record_declarations: tree.record_declarations,
-          resource_declarations: tree.resource_declarations
+          confinements: tree.confinements
         )
       }
     ),
