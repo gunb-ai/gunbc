@@ -4334,3 +4334,46 @@ mod strict_refusal_counts_blocking_diagnostics {
         result.expect("one_blocker_is_counted_and_named_and_the_advisory_is_not panicked");
     }
 }
+
+#[cfg(test)]
+mod emit_resolve_transitively_fn_controls {
+    /// Import-line BFS the emitter used to stamp into generated main. THE MUTANT.
+    fn import_only_emitted_resolve() -> &'static str {
+        "        let imports = extract_import_paths(&content);\n"
+    }
+
+    #[test]
+    fn emitted_text_calls_the_closure_authority() {
+        let text = crate::v1_compiler_emit_rust::emit_resolve_transitively_fn(
+            "v1_compiler".to_string(),
+            "v1_compiler_compile".to_string(),
+        );
+        assert!(
+            text.contains("resolve_seeded_compile_closure"),
+            "emitter must stamp the compile-closure authority, got: {text}"
+        );
+        assert!(
+            !text.contains("extract_import_paths(&content)"),
+            "emitter must not stamp the import-only walk, got: {text}"
+        );
+    }
+
+    #[test]
+    fn import_only_mutant_omits_the_authority() {
+        let mutant = import_only_emitted_resolve();
+        assert!(mutant.contains("extract_import_paths(&content)"));
+        assert!(!mutant.contains("resolve_seeded_compile_closure"));
+    }
+
+    #[test]
+    fn emitted_wrapper_still_names_the_legacy_entry() {
+        let text = crate::v1_compiler_emit_rust::emit_resolve_transitively_fn(
+            "v1_compiler".to_string(),
+            "v1_compiler_compile".to_string(),
+        );
+        assert!(
+            text.contains("fn resolve_transitively_with_seen("),
+            "generated main still looks up this name"
+        );
+    }
+}
