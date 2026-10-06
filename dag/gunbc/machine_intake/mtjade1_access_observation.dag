@@ -835,24 +835,31 @@ fn decode_rmedia_general_residue(
               if before.server_address != "" {
                 RmediaGeneralResidueRefused { gap: ResidueBeforeNotEmpty { before_server: before.server_address } }
               } else {
-                RmediaGeneralResidueObserved {
-                  residue: RmediaGeneralResidue {
-                    subject: "mtjade1",
-                    origin:
-                      if get.server_address == "" {
-                        FactoryEmpty { before_path: before_path, before_sha256: before_sha256 }
-                      } else {
-                        StickyAfterEmptyBefore {
-                          before_path: before_path,
-                          before_sha256: before_sha256,
-                          incident_receipt_path: incident_path,
-                          incident_receipt_sha256: sequence_sha256,
-                        }
+                if get.server_address == "" {
+                  RmediaGeneralResidueObserved {
+                    residue: RmediaGeneralResidue {
+                      subject: "mtjade1",
+                      origin: FactoryEmpty { before_path: before_path, before_sha256: before_sha256 },
+                      share: get,
+                      get_capture_path: get_path,
+                      get_capture_sha256: get_sha256,
+                    },
+                  }
+                } else {
+                  RmediaGeneralResidueObserved {
+                    residue: RmediaGeneralResidue {
+                      subject: "mtjade1",
+                      origin: StickyAfterEmptyBefore {
+                        before_path: before_path,
+                        before_sha256: before_sha256,
+                        incident_receipt_path: incident_path,
+                        incident_receipt_sha256: sequence_sha256,
                       },
-                    share: get,
-                    get_capture_path: get_path,
-                    get_capture_sha256: get_sha256,
-                  },
+                      share: get,
+                      get_capture_path: get_path,
+                      get_capture_sha256: get_sha256,
+                    },
+                  }
                 }
               }
           }
