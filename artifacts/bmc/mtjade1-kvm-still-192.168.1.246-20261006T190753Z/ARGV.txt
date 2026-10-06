@@ -11,4 +11,5 @@ node kvm_still.mjs
   DELETE https://192.168.1.246/api/session
 notes:
 - journal records "KVM default-screen" and no /kvm WebSocket frame; still is 800x600 JPEG from the viewer canvas as painted.
+- this is a reading of the default-screen canvas, not a live-stream still, and not an executed MegaRacKvmCanvasStill receipt at 2.11.104000.
 - source.min.js was fetched to srv1 scratch only; AMI copyright; not in this tree.
