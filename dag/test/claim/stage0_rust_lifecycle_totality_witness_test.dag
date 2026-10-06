@@ -14,19 +14,19 @@ import gunbc.stage0_rust_lifecycle_totality {
 import gunbc.stage0_rust_source_lifecycle_scaffold { path_in_list }
 import v2.std.algebra { length }
 
-test fn lifecycle_totality_note_cites_identity_join() -> Bool {
+test fn lifecycle_totality_note_cites_identity_join() -> Bool  {
   string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "identity join")
     && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "C1 carrier")
 }
 
-test fn lifecycle_totality_exact_unclassified_preserves_identity() -> Bool {
+test fn lifecycle_totality_exact_unclassified_preserves_identity() -> Bool  {
   exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "classified.rs", "b.rs"],
     classified_paths: ["classified.rs"]
   ) == ["a.rs", "b.rs"]
 }
 
-test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool {
+test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool  {
   let observation = lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
   match lifecycle_totality_receipt(observation: observation) {
     LifecycleTotalityDerived {
@@ -50,7 +50,7 @@ test fn lifecycle_totality_red_control_reports_exact_unclassified_path() -> Bool
   }
 }
 
-test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
+test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool  {
   let receipt = lifecycle_totality_receipt(
     observation: lifecycle_totality_witness_observation(extra_paths: ["orphan.rs"])
   )
@@ -58,7 +58,7 @@ test fn lifecycle_totality_discovery_and_decision_are_separate() -> Bool {
     && !lifecycle_decision_complete(receipt: receipt)
 }
 
-test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool {
+test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool  {
   length(xs: stage0_rust_lifecycle_totality_underived_axes) == 1
     && string_contains(s: stage0_rust_lifecycle_totality_note, pattern: "stage0_rust_lifecycle_totality_underived_axes")
     && string_contains(
@@ -67,7 +67,7 @@ test fn lifecycle_totality_counts_retirement_trigger_as_underived_axis() -> Bool
     )
 }
 
-test fn lifecycle_totality_positive_control_discovery_complete() -> Bool {
+test fn lifecycle_totality_positive_control_discovery_complete() -> Bool  {
   lifecycle_discovery_complete(
     receipt: lifecycle_totality_receipt(
       observation: lifecycle_totality_witness_observation(extra_paths: [])
@@ -75,7 +75,7 @@ test fn lifecycle_totality_positive_control_discovery_complete() -> Bool {
   )
 }
 
-test fn lifecycle_totality_red_control_cargo_role_without_disposition_blocks_decision() -> Bool {
+test fn lifecycle_totality_red_control_cargo_role_without_disposition_blocks_decision() -> Bool  {
   let receipt = lifecycle_totality_receipt(
     observation: lifecycle_totality_witness_observation(extra_paths: [])
   )

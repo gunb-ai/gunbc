@@ -26,7 +26,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE DIFFERENTIAL RUNS FROM THE PRODUCTION IMAGE, which carries the overlay: the binding names its config
 // digest and the build run that produced it.
-test fn the_differential_image_is_the_production_image() -> Bool {
+test fn the_differential_image_is_the_production_image() -> Bool  {
   match v41_differential_image {
     DifferentialImageBuilt { image: p } => render_oci_content_digest_wire(d: p.config) == "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3" && (p.receipt_run as String) == "36327364664"
     ImageLacksEngramOverlay { trigger: _ } => false
@@ -36,7 +36,7 @@ test fn the_differential_image_is_the_production_image() -> Bool {
 data w_owed: List<V41StoreKey> = [V41StoreKey { layer: 1, rank: 0 }, V41StoreKey { layer: 1, rank: 1 }]
 data w_equal: String = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL 1 1 rows_sampled 4096 owned 8580 unowned_below 1230 out_of_range 2390 absent_heads 4096 equal\nDIFFERENTIAL_DONE failures 0\n"
 
-test fn an_all_equal_differential_over_every_owed_store_is_admitted() -> Bool {
+test fn an_all_equal_differential_over_every_owed_store_is_admitted() -> Bool  {
   match v41_admit_differential(image_config: "sha256:ea39" as NonEmptyStr, owed: w_owed, stdout: w_equal) {
     V41DifferentialRead { image_config: _, stores: ds } => length(ds) == 2 && length(filter(ds, d => d.equal)) == 2
     V41DifferentialRefused { step: _, cause: _ } => false
@@ -52,7 +52,7 @@ fn w_refused_with(o: V41DifferentialOutcome, needle: String) -> Bool {
   }
 }
 
-test fn a_differing_or_missing_store_refuses() -> Bool {
+test fn a_differing_or_missing_store_refuses() -> Bool  {
   let differs = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL 1 1 rows_sampled 4096 owned 8580 unowned_below 1230 out_of_range 2390 absent_heads 4096 DIFFERS\nDIFFERENTIAL_DONE failures 1\n"
   let missing = "DIFFERENTIAL 1 0 rows_sampled 4096 owned 8600 unowned_below 1200 out_of_range 2400 absent_heads 4096 equal\nDIFFERENTIAL_DONE failures 0\n"
   w_refused_with(o: v41_admit_differential(image_config: "sha256:ea39" as NonEmptyStr, owed: w_owed, stdout: differs), needle: "layer 1 rank 1 DIFFERS from upstream")
@@ -60,7 +60,7 @@ test fn a_differing_or_missing_store_refuses() -> Bool {
 }
 
 // OCCUPANCY REFUSES BEFORE ANYTHING IS CLAIMED: a GPU compute process, or too little available memory.
-test fn an_occupied_host_refuses_and_a_free_one_is_admitted() -> Bool {
+test fn an_occupied_host_refuses_and_a_free_one_is_admitted() -> Bool  {
   let free_mem = "MemTotal: 127000000 kB\nMemAvailable: 120000000 kB\n"
   let low_mem = "MemTotal: 127000000 kB\nMemAvailable: 16000000 kB\n"
   let no_apps = "pid, process_name, used_gpu_memory [MiB]\n"
@@ -97,7 +97,7 @@ data w_d1: String = "11111111111111111111111111111111111111111111111111111111111
 data w_d2: String = "2222222222222222222222222222222222222222222222222222222222222222"
 data w_d3: String = "3333333333333333333333333333333333333333333333333333333333333333"
 
-test fn the_manifest_names_every_owed_store_and_refuses_a_gap_or_an_extra() -> Bool {
+test fn the_manifest_names_every_owed_store_and_refuses_a_gap_or_an_extra() -> Bool  {
   let four = [w_store(layer: 1, rank: 0, hex: w_d0), w_store(layer: 1, rank: 1, hex: w_d1), w_store(layer: 1, rank: 2, hex: w_d2), w_store(layer: 1, rank: 3, hex: w_d3)]
   let derived = match v41_engram_store_manifest(spec: w_tiny_spec(), readings: w_read(stores: four)) {
     V41StoreManifestDerived { text: t, stores: n } => n == 4 && contains(t, "\"record_bytes\": 3") && contains(t, "\"weight_bytes\": 2") && contains(t, join(["\"sha256\": \"", w_d2, "\""], "")) && contains(t, "/engram-row-stores/layer.1.rank.2.engram")
@@ -120,7 +120,7 @@ test fn the_manifest_names_every_owed_store_and_refuses_a_gap_or_an_extra() -> B
 
 // THE COMMAND: bounded twice, labelled for this lane, memory-capped, the stores mounted read-only, and
 // the overlay run as a module from the image with the manifest passed as its argument.
-test fn the_differential_runs_bounded_labelled_capped_with_read_only_stores() -> Bool {
+test fn the_differential_runs_bounded_labelled_capped_with_read_only_stores() -> Bool  {
   let argv = join(v41_differential_argv(image: "sha256:ea39" as NonEmptyStr, claim: "c1" as NonEmptyStr, manifest: "{}"), " ")
   contains(argv, "timeout -k 30 1620 ")
     && contains(argv, "/engram-row-stores:ro --label gunbc.lane=engram-differential --label gunbc.claim=c1 --memory 17179869184 --memory-swap 17179869184 --entrypoint timeout sha256:ea39 -k 30 1500 python3 -u -m vllm.models.deepseek_v4_1.nvidia.engram_file_backed --differential - --manifest-json {} --rows 4096 --tokens 2048")

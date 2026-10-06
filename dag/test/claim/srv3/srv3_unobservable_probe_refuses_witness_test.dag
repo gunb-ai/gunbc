@@ -64,7 +64,7 @@ fn predicate_is_fails(p: Srv3HostPredicate) -> Bool {
 }
 
 // THE RED. A transport with no probe arm reports Unobserved, never Fails.
-test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool {
+test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool  {
   predicate_is_unobserved(
     p: srv3_apt_tool_present(tool: xorriso_cli_tool, transport: unprobeable_transport),
   )
@@ -73,7 +73,7 @@ test fn unprobeable_transport_reports_unobserved_not_absent() -> Bool {
 // THE OTHER HALF, stated for what it actually rules out. It says the answer is not Fails --
 // which is the specific confusion that caused the privileged install -- and it is red under a
 // repair that maps the unprobeable arm to Fails.
-test fn unprobeable_transport_does_not_report_absent() -> Bool {
+test fn unprobeable_transport_does_not_report_absent() -> Bool  {
   predicate_is_fails(
     p: srv3_apt_tool_present(tool: xorriso_cli_tool, transport: unprobeable_transport),
   ) == false
@@ -107,7 +107,7 @@ fn predicate_is_holds(p: Srv3HostPredicate) -> Bool {
   }
 }
 
-test fn observed_outcomes_are_not_reported_unobserved() -> Bool {
+test fn observed_outcomes_are_not_reported_unobserved() -> Bool  {
   predicate_is_holds(p: srv3_predicate_from_typed_argv(outcome: converged_success))
     && predicate_is_fails(p: srv3_predicate_from_typed_argv(outcome: converged_failure))
     && predicate_is_unobserved(p: srv3_predicate_from_typed_argv(outcome: refused_outcome))
@@ -128,7 +128,7 @@ test fn observed_outcomes_are_not_reported_unobserved() -> Bool {
 // would NOT have gone red on the ordering bug. Naming that is the difference between a control
 // and a check that looks like one. NEXT-RUNG TRIGGER: an effect-level harness that can sequence
 // observed probe results, at which point the ordering itself becomes assertable.
-test fn receipt_outcome_words_are_distinct() -> Bool {
+test fn receipt_outcome_words_are_distinct() -> Bool  {
   string_contains(
     s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
     pattern: "outcome=Installed",

@@ -351,7 +351,7 @@ fn witness_measured_admits_and_draws() -> Bool {
        )
 }
 
-test fn spatial_knowledge_witnesses() -> Bool {
+test fn spatial_knowledge_witnesses() -> Bool  {
   witness_precision_decides_not_standing()
     && witness_same_evidence_differs_by_consuming_decision()
     && witness_reversed_interval_refuses()

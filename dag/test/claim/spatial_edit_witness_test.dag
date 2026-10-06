@@ -119,7 +119,7 @@ fn volume_of(w: World, name: String) -> Int {
 
 // A move preserves the room's volume exactly - it is a translation, and the geometry is rebuilt
 // through the same mints rather than copied with fields swapped.
-test fn a_move_relocates_a_room_without_changing_its_volume() -> Bool {
+test fn a_move_relocates_a_room_without_changing_its_volume() -> Bool  {
   match realized(edits: [MoveRoom { identity: ("kitchen" as RoomIdentity), east: 0, north: 5000, up: 0 }]) {
     Absent => false
     Present { value: w } => world_room_count(w: w) == 2 && volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2400
@@ -127,14 +127,14 @@ test fn a_move_relocates_a_room_without_changing_its_volume() -> Bool {
 }
 
 // A ceiling is set, so the new volume follows from the new height and the unchanged footprint.
-test fn raising_a_ceiling_changes_the_volume_by_the_new_height() -> Bool {
+test fn raising_a_ceiling_changes_the_volume_by_the_new_height() -> Bool  {
   match realized(edits: [SetCeilingHeight { identity: ("kitchen" as RoomIdentity), high: 2700 }]) {
     Absent => false
     Present { value: w } => volume_of(w: w, name: "kitchen") == 3000 * 4000 * 2700
   }
 }
 
-test fn adding_and_removing_rooms_lands_through_the_variant() -> Bool {
+test fn adding_and_removing_rooms_lands_through_the_variant() -> Bool  {
   match rect(x0: 0, y0: 5000, x1: 2000, y1: 7000, high: 2400) {
     Absent => false
     Present { value: study } =>
@@ -153,7 +153,7 @@ test fn adding_and_removing_rooms_lands_through_the_variant() -> Bool {
 // its own - and the world it would produce has two rooms in one volume. That is 4A's wall, reached
 // through this band's front door, and it is reported as a REALIZATION refusal rather than an edit
 // refusal because the instruction was not the thing that was wrong.
-test fn an_edit_that_would_overlap_two_rooms_is_refused_at_realization() -> Bool {
+test fn an_edit_that_would_overlap_two_rooms_is_refused_at_realization() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -181,7 +181,7 @@ test fn an_edit_that_would_overlap_two_rooms_is_refused_at_realization() -> Bool
 
 // TWO EDITS TO ONE ROOM HAVE NO FAITHFUL PATCH, and both fabrications are silent: last-writer-wins
 // drops an edit the caller asked for, composing them invents a state nobody described.
-test fn two_edits_to_one_room_in_one_batch_refuse() -> Bool {
+test fn two_edits_to_one_room_in_one_batch_refuse() -> Bool  {
   match compile_refusal(edits: [
     MoveRoom { identity: ("kitchen" as RoomIdentity), east: 0, north: 5000, up: 0 },
     SetCeilingHeight { identity: ("kitchen" as RoomIdentity), high: 2700 },
@@ -197,7 +197,7 @@ test fn two_edits_to_one_room_in_one_batch_refuse() -> Bool {
 
 // Sequencing the same two edits IS expressible - it is two patches, not one - and this is the claim
 // that keeps the refusal above from being a capability gap.
-test fn the_same_two_edits_land_when_they_are_sequenced() -> Bool {
+test fn the_same_two_edits_land_when_they_are_sequenced() -> Bool  {
   match realized(edits: [MoveRoom { identity: ("kitchen" as RoomIdentity), east: 0, north: 5000, up: 0 }]) {
     Absent => false
     Present { value: moved } =>
@@ -212,7 +212,7 @@ test fn the_same_two_edits_land_when_they_are_sequenced() -> Bool {
   }
 }
 
-test fn editing_a_room_the_base_does_not_have_refuses_at_compile() -> Bool {
+test fn editing_a_room_the_base_does_not_have_refuses_at_compile() -> Bool  {
   match compile_refusal(edits: [MoveRoom { identity: ("cellar" as RoomIdentity), east: 100, north: 0, up: 0 }]) {
     Absent => false
     Present { value: c } =>
@@ -223,7 +223,7 @@ test fn editing_a_room_the_base_does_not_have_refuses_at_compile() -> Bool {
   }
 }
 
-test fn adding_a_room_that_is_already_there_refuses_at_compile() -> Bool {
+test fn adding_a_room_that_is_already_there_refuses_at_compile() -> Bool  {
   match rect(x0: 0, y0: 0, x1: 3000, y1: 4000, high: 2400) {
     Absent => false
     Present { value: s } =>
@@ -241,7 +241,7 @@ test fn adding_a_room_that_is_already_there_refuses_at_compile() -> Bool {
 // A ceiling below the floor is not a room, and the refusal comes from the geometry authority rather
 // than from a height check written here - which is the point: this module never assembles a space
 // that the mints would not have produced.
-test fn a_ceiling_below_the_floor_refuses_at_the_geometry_authority() -> Bool {
+test fn a_ceiling_below_the_floor_refuses_at_the_geometry_authority() -> Bool  {
   match compile_refusal(edits: [SetCeilingHeight { identity: ("kitchen" as RoomIdentity), high: 0 - 100 }]) {
     Absent => false
     Present { value: c } =>

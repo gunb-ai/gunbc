@@ -87,7 +87,7 @@ fn finding_tag(f: VllmRankPopulationFinding) -> String {
 // ── THE POSITIVE CONTROL ────────────────────────────────────────────────────────────────────────
 //
 // Without this every refusal below is satisfiable by a law that refuses everything.
-test fn w_the_observed_shape_is_coherent() -> Bool {
+test fn w_the_observed_shape_is_coherent() -> Bool  {
   match w_decide(participants: w_good_participants()) {
     RankPopulationCoherent => true
     RankPopulationRefused { findings: _ } => false
@@ -97,27 +97,27 @@ test fn w_the_observed_shape_is_coherent() -> Bool {
 // ── THE REFUSAL MATRIX ──────────────────────────────────────────────────────────────────────────
 // A MISSING RANK REFUSES VIA THE COUNT, which is the pigeonhole argument doing its work: one
 // participant cannot be a world size of two, so no enumerated expected list is needed to notice.
-test fn w_a_missing_rank_refuses() -> Bool {
+test fn w_a_missing_rank_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr)],
     f: ParticipantCountDoesNotMatchWorldSize)
 }
 
-test fn w_a_duplicated_rank_refuses() -> Bool {
+test fn w_a_duplicated_rank_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    w_p(rank: 0, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
     f: RankObservedMoreThanOnce { rank: 0 })
 }
 
-test fn w_a_rank_outside_the_expected_set_refuses() -> Bool {
+test fn w_a_rank_outside_the_expected_set_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    w_p(rank: 2, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
     f: RankOutsideExpectedSet { rank: 2 })
 }
 
-test fn w_a_participant_on_an_unselected_host_refuses() -> Bool {
+test fn w_a_participant_on_an_unselected_host_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    w_p(rank: 1, host: w_host_elsewhere, birth: "w-pid-2" as NonEmptyStr)],
@@ -126,7 +126,7 @@ test fn w_a_participant_on_an_unselected_host_refuses() -> Bool {
 
 // BOTH RANKS ON ONE SELECTED HOST IS THE CASE A ONE-DIRECTION CHECK MISSES: no participant sits on an
 // unselected host, yet half the unit carries nothing.
-test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
+test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)],
@@ -135,7 +135,7 @@ test fn w_a_selected_host_carrying_no_rank_refuses() -> Bool {
 
 // TWO RANKS CLAIMING ONE PROCESS SLOT ON ONE HOST is the duplicate that matters -- a single-host
 // deployment presenting as a pair.
-test fn w_two_ranks_sharing_one_process_key_on_one_host_refuses() -> Bool {
+test fn w_two_ranks_sharing_one_process_key_on_one_host_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-same-pid" as NonEmptyStr),
                    w_p(rank: 1, host: w_host_a, birth: "w-same-pid" as NonEmptyStr)],
@@ -147,7 +147,7 @@ test fn w_two_ranks_sharing_one_process_key_on_one_host_refuses() -> Bool {
 // whenever both machines happened to birth their worker at the same number -- something this exact
 // two-host launch can produce any time. This is the discriminating RED for that scoping: it was
 // refused before the host was part of the comparison.
-test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_process_key() -> Bool {
+test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_process_key() -> Bool  {
   match w_decide(participants: [
       w_p(rank: 0, host: w_host_a, birth: "w-pid-4126" as NonEmptyStr),
       w_p(rank: 1, host: w_host_b, birth: "w-pid-4126" as NonEmptyStr)]) {
@@ -156,7 +156,7 @@ test fn w_one_pid_on_each_of_two_hosts_is_not_a_shared_process_key() -> Bool {
   }
 }
 
-test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
+test fn w_a_participant_from_another_incarnation_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    vllm_rank_participant(
@@ -167,7 +167,7 @@ test fn w_a_participant_from_another_incarnation_refuses() -> Bool {
 
 // A PARTIAL COLLECTION REFUSES RATHER THAN READING AS A SMALL POPULATION. Same participants as the
 // coherent case; only the completeness flag differs.
-test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bool {
+test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bool  {
   match decide_vllm_rank_population(
     resolved: w_tp2(), selected_unit: w_unit(),
     observation: w_obs(complete: false, participants: w_good_participants())) {
@@ -178,7 +178,7 @@ test fn w_an_incomplete_observation_refuses_even_with_every_rank_present() -> Bo
 
 // A WORLD SIZE OF 2 THAT IS PIPELINE-PARALLEL IS NOT THIS UNIT, which is the confusion a bare world
 // size cannot resolve.
-test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> Bool {
+test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> Bool  {
   match decide_vllm_rank_population(
     resolved: vllm_resolved_parallel_configuration(
       tensor_parallel_degree: 1, pipeline_parallel_degree: 2, data_parallel_degree: 1, world_size: 2),
@@ -189,7 +189,7 @@ test fn w_a_pipeline_parallel_decomposition_of_the_same_world_size_refuses() -> 
 }
 
 // AND A DECOMPOSITION THAT DOES NOT MULTIPLY TO ITS OWN WORLD SIZE REFUSES.
-test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool {
+test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool  {
   match decide_vllm_rank_population(
     resolved: vllm_resolved_parallel_configuration(
       tensor_parallel_degree: 2, pipeline_parallel_degree: 1, data_parallel_degree: 1, world_size: 4),
@@ -201,7 +201,7 @@ test fn w_a_decomposition_inconsistent_with_its_world_size_refuses() -> Bool {
 
 // THE PIGEONHOLE ACTUALLY BINDS: a population of the right SIZE whose ranks are duplicated and
 // out-of-range is still refused, so "count matches" alone is not what makes a population coherent.
-test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool {
+test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool  {
   w_refused_with(
     participants: [w_p(rank: 5, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
                    w_p(rank: 5, host: w_host_b, birth: "w-pid-2" as NonEmptyStr)],
@@ -210,7 +210,7 @@ test fn w_a_right_sized_population_with_wrong_ranks_still_refuses() -> Bool {
 
 // EVERY FINDING IS COLLECTED, NOT THE FIRST. An operator re-collecting once per finding pays a full
 // observation cycle against a service whose incarnation changes between attempts.
-test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
+test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool  {
   match decide_vllm_rank_population(
     resolved: w_tp2(), selected_unit: w_unit(),
     observation: w_obs(complete: false, participants: [
@@ -227,7 +227,7 @@ test fn w_a_population_wrong_in_several_ways_reports_all_of_them() -> Bool {
 // right count, one per selected host, distinct births, one incarnation -- read as COHERENT while
 // claiming both workers were tensor-parallel rank 0. A law named after tensor parallelism accepting
 // that is the inert-field failure, and this is its discriminating RED.
-test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> Bool {
+test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> Bool  {
   w_refused_with(
     participants: [
       vllm_rank_participant(
@@ -242,7 +242,7 @@ test fn w_a_tensor_parallel_rank_that_contradicts_its_global_rank_refuses() -> B
 
 // AND AN OUT-OF-RANGE TENSOR-PARALLEL RANK REFUSES THROUGH THE SAME ARM, which is the point of
 // checking correspondence rather than adding a separate range check that could never fire beside it.
-test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() -> Bool {
+test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() -> Bool  {
   w_refused_with(
     participants: [
       vllm_rank_participant(
@@ -263,7 +263,7 @@ test fn w_an_out_of_range_tensor_parallel_rank_refuses_through_correspondence() 
 // every participant on a selected host, every selected entry naming a host that carries a rank,
 // distinct process keys. It decided COHERENT, and the two-host claim rested entirely on the selected
 // list having two entries that name the same host. This is the discriminating RED for distinctness.
-test fn w_a_selected_unit_naming_one_host_twice_refuses() -> Bool {
+test fn w_a_selected_unit_naming_one_host_twice_refuses() -> Bool  {
   match decide_vllm_rank_population(
     resolved: w_tp2(),
     selected_unit: vllm_selected_serving_unit(participant_hosts: [w_host_a, w_host_a]),
@@ -279,7 +279,7 @@ test fn w_a_selected_unit_naming_one_host_twice_refuses() -> Bool {
 // ranks on one selected machine; what that population fails is the OTHER selected host carrying no
 // rank, never the distinctness rule. Without this, the fix above would have quietly become a law
 // forbidding co-located ranks.
-test fn w_two_ranks_on_one_host_of_a_distinct_pair_refuses_only_for_the_idle_host() -> Bool {
+test fn w_two_ranks_on_one_host_of_a_distinct_pair_refuses_only_for_the_idle_host() -> Bool  {
   match w_decide(participants: [
       w_p(rank: 0, host: w_host_a, birth: "w-pid-1" as NonEmptyStr),
       w_p(rank: 1, host: w_host_a, birth: "w-pid-2" as NonEmptyStr)]) {

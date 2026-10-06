@@ -142,7 +142,7 @@ fn w_faithful() -> V41ProducedRuntimeImage? {
 
 // THE POSITIVE CONTROL. Without it every refusal below is satisfiable by a fixture that could never
 // be admitted at all, which is the accident that makes a negative control green for the wrong reason.
-test fn an_image_built_from_this_candidates_recipe_and_tree_is_produced() -> Bool {
+test fn an_image_built_from_this_candidates_recipe_and_tree_is_produced() -> Bool  {
   match w_admit(image: w_faithful()) {
     V41RuntimeProduced { specification_runtime_key: _, image: i } =>
       (i.observed.revision_head as String) == (v41_candidate_recipe().source.full_revision as String)
@@ -155,7 +155,7 @@ test fn an_image_built_from_this_candidates_recipe_and_tree_is_produced() -> Boo
 // this candidate's recipe and patched tree. The substituted key is a real one -- the GLM 5.3 SM121
 // recipe over the same observed tree -- so this is not a malformed value being rejected for being
 // malformed; it is another image's honest key being refused for being another image's.
-test fn a_produced_image_keyed_from_another_recipe_refuses() -> Bool {
+test fn a_produced_image_keyed_from_another_recipe_refuses() -> Bool  {
   let observed = w_observed_at_recipe_revision()
   let foreign_key = v41_patched_image_build_key(r: vllm_8d09804_sm121_recipe, observed: observed)
   (serialize_content_hash(hash: foreign_key) as String) != (serialize_content_hash(hash: w_expected_key(observed: observed)) as String)
@@ -167,7 +167,7 @@ test fn a_produced_image_keyed_from_another_recipe_refuses() -> Bool {
 // A TREE AT ANOTHER REVISION IS ANOTHER RUNTIME, even when the key recomputes consistently over it:
 // the key would be self-consistent and the bytes would still be a build of something else, so the
 // head is compared to the recipe's revision rather than only folded into the hash.
-test fn a_produced_image_built_from_another_revision_refuses() -> Bool {
+test fn a_produced_image_built_from_another_revision_refuses() -> Bool  {
   let wrong = v41_observed_source_identity_of(
     revision_head: vllm_deepseek_v4_1_sm12_revision.full_revision,
     worktree_diff_sha256: w_diff_sha(),
@@ -182,7 +182,7 @@ test fn a_produced_image_built_from_another_revision_refuses() -> Bool {
 // A NAME IS NOT PRODUCTION. Everything about this record is the faithful one except that the image
 // was FOUND under the expected tag rather than built, which is the one fact a recomputation over the
 // tag and the key can never catch -- an adopted image carries exactly the right key by construction.
-test fn an_image_adopted_under_the_expected_tag_is_not_produced() -> Bool {
+test fn an_image_adopted_under_the_expected_tag_is_not_produced() -> Bool  {
   let observed = w_observed_at_recipe_revision()
   let key = w_expected_key(observed: observed)
   w_refused_with(
@@ -197,7 +197,7 @@ fn w_runtime_was_produced_of_faithful() -> Bool {
 
 // THE TAG IS DERIVED FROM THE KEY, so an image wearing a tag the key does not derive is an image
 // whose name and whose contents disagree -- and the name is what a launch would be pinned to.
-test fn a_produced_image_wearing_another_tag_refuses() -> Bool {
+test fn a_produced_image_wearing_another_tag_refuses() -> Bool  {
   let observed = w_observed_at_recipe_revision()
   let key = w_expected_key(observed: observed)
   let other_tag = vllm_image_tag_for_key(r: v41_candidate_recipe(), key: v41_patched_image_build_key(r: vllm_8d09804_sm121_recipe, observed: observed))

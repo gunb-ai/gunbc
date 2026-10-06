@@ -42,7 +42,7 @@ fn w_eight() -> List<V41StoreRun> {
   map(w_planned(), a => V41StoreEncoded { store: a, digest: w_sha(), size: byte_size(count: 270) })
 }
 
-test fn every_planned_store_digested_succeeds() -> Bool {
+test fn every_planned_store_digested_succeeds() -> Bool  {
   v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: w_eight() })
     && v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(w_eight() |> take(n: 7), [V41StorePresent { store: w_args(layer: 14, rank: 3), digest: w_sha(), size: byte_size(count: 270) }]) })
 }
@@ -50,7 +50,7 @@ test fn every_planned_store_digested_succeeds() -> Bool {
 // RED: completeness is an identity join against the PLAN, not a count -- a store whose digest read
 // failed, a failed encode, a missing store, a duplicated one, a store the plan does not name, and a
 // refusal before the run are each not success.
-test fn anything_short_of_the_planned_join_is_not_success() -> Bool {
+test fn anything_short_of_the_planned_join_is_not_success() -> Bool  {
   let seven = w_eight() |> take(n: 7)
   !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(seven, [V41StoreDigestUnread { store: w_args(layer: 14, rank: 3), encoded: true, cause: "sha256sum exited 1: gone" as NonEmptyStr }]) })
     && !v41_encode_succeeded(run: V41EncodeRan { planned: w_planned(), stores: concat(seven, [V41StoreEncodeFailed { store: w_args(layer: 14, rank: 3), cause: "the host program exited 3: short read" as NonEmptyStr }]) })
@@ -63,7 +63,7 @@ test fn anything_short_of_the_planned_join_is_not_success() -> Bool {
 
 // THE RECEIPT LINE CARRIES THE (layer, rank) KEY AND THE DIGEST, which is what is transcribed; an arm
 // with no digest says UNREAD and why.
-test fn a_store_line_names_its_key_and_digest_or_says_unread() -> Bool {
+test fn a_store_line_names_its_key_and_digest_or_says_unread() -> Bool  {
   let read = v41_store_line(r: w_read(layer: 14, rank: 2))
   let unread = v41_store_line(r: V41StoreEncodeFailed { store: w_args(layer: 1, rank: 0), cause: "the encode leg did not run" as NonEmptyStr })
   let digest_lost = v41_store_line(r: V41StoreDigestUnread { store: w_args(layer: 1, rank: 1), encoded: true, cause: "sha256sum exited 1" as NonEmptyStr })
@@ -74,7 +74,7 @@ test fn a_store_line_names_its_key_and_digest_or_says_unread() -> Bool {
 
 // PRESENCE IS THREE-VALUED: exit 0 found, exit 1 absent, anything else a failed check -- never absent,
 // which would re-encode a complete store (review 70586). Its receipt line says nothing was encoded.
-test fn a_failed_presence_check_is_not_absent_and_encodes_nothing() -> Bool {
+test fn a_failed_presence_check_is_not_absent_and_encodes_nothing() -> Bool  {
   (match v41_store_presence_of(exit_code: 0, stderr: "") { V41StoreFound => true  _ => false })
     && (match v41_store_presence_of(exit_code: 1, stderr: "") { V41StoreAbsent => true  _ => false })
     && (match v41_store_presence_of(exit_code: 2, stderr: "Permission denied") {
@@ -87,7 +87,7 @@ test fn a_failed_presence_check_is_not_absent_and_encodes_nothing() -> Bool {
 // THE SIZE CHECK (proud-deer-538, 2026-09-24): one row of 256 + 8 bytes after the 6-byte magic is 270
 // bytes; a store of any other size is a SIZE-MISMATCH carrying both figures and is not digested, and a
 // size that could not be read is not digested either.
-test fn a_store_of_the_wrong_size_is_refused_with_both_figures() -> Bool {
+test fn a_store_of_the_wrong_size_is_refused_with_both_figures() -> Bool  {
   let a = w_args(layer: 1, rank: 0)
   byte_size_count(b: v41_store_expected_size(a: a)) == 270
     && (match v41_sized(a: a, encoded: true, d: w_sha(), size: V41SizeReadOk { size: byte_size(count: 270) }) { V41StoreEncoded { store: _, digest: _, size: _ } => true  _ => false })

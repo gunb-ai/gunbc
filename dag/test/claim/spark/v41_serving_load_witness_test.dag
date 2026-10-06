@@ -42,7 +42,7 @@ fn rank_after(host: String, refault: Nat, psi_full: Nat, ticks: Nat) -> V41RankP
 data metrics_before: String = join(["vllm:num_preemptions_total{", "model_name=\"v41\"} 3.0\n"], "")
 data metrics_after: String = join(["vllm:num_preemptions_total{", "model_name=\"v41\"} 3.0\n"], "")
 
-test fn each_stop_rule_reads_its_own_worst_rank() -> Bool {
+test fn each_stop_rule_reads_its_own_worst_rank() -> Bool  {
   let before = step([rank(host: "srv5", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv6", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv7", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv8", refault: 10, psi_full: 0, ticks: 0)])
   let after = step([rank_after(host: "srv5", refault: 20, psi_full: 900, ticks: 10), rank_after(host: "srv6", refault: 11, psi_full: 5, ticks: 10), rank_after(host: "srv7", refault: 510, psi_full: 5, ticks: 10), rank_after(host: "srv8", refault: 12, psi_full: 5, ticks: 400)])
   match v41_project_step(run_id: "run-1" as NonEmptyStr, concurrency: 4, before: before, after: after, before_body: metrics_before, after_body: metrics_after, latency: ClientBenchLatencyUnread { cause: "fixture" as NonEmptyStr }) {
@@ -72,7 +72,7 @@ fn psi_after_full(r: PsiReading) -> Nat {
   }
 }
 
-test fn an_unread_rank_unprojects_the_step_and_names_it() -> Bool {
+test fn an_unread_rank_unprojects_the_step_and_names_it() -> Bool  {
   let before = step([rank(host: "srv5", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv6", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv7", refault: 10, psi_full: 0, ticks: 0), rank(host: "srv8", refault: 10, psi_full: 0, ticks: 0)])
   let after = V41StepPressure { ranks: [
     V41RankPressureObserved { pressure: rank_after(host: "srv5", refault: 20, psi_full: 9, ticks: 10) },
@@ -87,7 +87,7 @@ test fn an_unread_rank_unprojects_the_step_and_names_it() -> Bool {
   }
 }
 
-test fn every_staircase_step_addresses_the_v41_subject() -> Bool {
+test fn every_staircase_step_addresses_the_v41_subject() -> Bool  {
   let steps = v41_serving_load_steps()
   length(steps) == length(v41_staircase_concurrencies)
     && (match v41_serving_load_subject() {
@@ -97,18 +97,18 @@ test fn every_staircase_step_addresses_the_v41_subject() -> Bool {
     && all(steps, s => match s.max_concurrency { Present { value: c } => s.num_prompts == 2 * c  Absent => false })
 }
 
-test fn the_protocol_row_is_glms_shape_declared_as_v41s_own() -> Bool {
+test fn the_protocol_row_is_glms_shape_declared_as_v41s_own() -> Bool  {
   token_count_value(t: v41_serving_load_dataset.input_len) == 256
     && token_count_value(t: v41_serving_load_dataset.output_len) == 128
     && token_count_value(t: v41_serving_load_dataset.prefix_len) == 0
 }
 
-test fn findmnt_source_names_the_diskstats_device() -> Bool {
+test fn findmnt_source_names_the_diskstats_device() -> Bool  {
   (match v41_device_of_findmnt(stdout: "/dev/nvme0n1p2\n") { Present { value: d } => (d as String) == "nvme0n1p2"  Absent => false })
     && (match v41_device_of_findmnt(stdout: "overlay\n") { Present { value: _ } => false  Absent => true })
 }
 
-test fn a_request_without_a_concurrency_refuses_instead_of_judging_level_zero() -> Bool {
+test fn a_request_without_a_concurrency_refuses_instead_of_judging_level_zero() -> Bool  {
   let p = v41_serving_load_step(concurrency: 4)
   let unbound = VllmBenchServeRequest {
     backend: p.backend, base_url: p.base_url, model: p.model, tokenizer: p.tokenizer, dataset: p.dataset,

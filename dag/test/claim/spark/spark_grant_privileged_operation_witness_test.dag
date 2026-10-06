@@ -59,7 +59,7 @@ fn lease_with(standing: SparkCredentialStanding) -> AuthorizationRequest<SparkBo
 // is exactly what the credential module's 2026-08-07 operator ruling forbids -- secret names are
 // CARRIED, never DERIVED. A pending standing must therefore have no resource to name at all, rather
 // than a plausible name for a secret nobody has authored.
-test fn a_pending_administrator_credential_names_no_secret_resource() -> Bool {
+test fn a_pending_administrator_credential_names_no_secret_resource() -> Bool  {
   match lease_secret_resource(lease: lease_with(standing: CredentialMaterializationPending)) {
     Absent => true
     Present { value: _ } => false
@@ -67,7 +67,7 @@ test fn a_pending_administrator_credential_names_no_secret_resource() -> Bool {
 }
 
 // And an enrolled one names exactly the carried value, unchanged.
-test fn an_enrolled_credential_names_the_carried_secret_verbatim() -> Bool {
+test fn an_enrolled_credential_names_the_carried_secret_verbatim() -> Bool  {
   match lease_secret_resource(lease: lease_with(standing: enrolled())) {
     Absent => false
     Present { value: r } =>
@@ -78,12 +78,12 @@ test fn an_enrolled_credential_names_the_carried_secret_verbatim() -> Bool {
 
 // THE PASSWORD GOES OVER STDIN AND NOWHERE ELSE. An argv-borne credential lands in the process
 // table, in any command log, and in this repository's own receipts, which print argv verbatim.
-test fn the_privileged_argv_reads_its_credential_from_stdin() -> Bool {
+test fn the_privileged_argv_reads_its_credential_from_stdin() -> Bool  {
   let words = admitted_root_argv_words(command: ValidateStagedSudoers { staged_path: "/home/briansrls/staged" as NonEmptyStr })
   any(words, w => w == "-S") && !any(words, w => w == "-n") && any(words, w => w == "--")
 }
 
-test fn the_prompt_is_suppressed_and_options_are_terminated() -> Bool {
+test fn the_prompt_is_suppressed_and_options_are_terminated() -> Bool  {
   let words = admitted_root_argv_words(command: InstallStagedSudoers {
     staged_path: "/home/briansrls/staged" as NonEmptyStr,
     dropin_path: "/etc/sudoers.d/gunbc-reboot" as NonEmptyStr,
@@ -95,7 +95,7 @@ test fn the_prompt_is_suppressed_and_options_are_terminated() -> Bool {
 // THE ADMITTED SET IS CLOSED, which is why this is not a generic { argv, stdin } carrier: widening
 // it would reopen arbitrary script bodies through stdin under root, a far larger hole than the one
 // being closed. Only the two commands this bootstrap needs have constructors.
-test fn only_the_two_bootstrap_commands_can_run_as_root() -> Bool {
+test fn only_the_two_bootstrap_commands_can_run_as_root() -> Bool  {
   admitted_root_argv_label(command: ValidateStagedSudoers { staged_path: "p" as NonEmptyStr }) == "validate-staged-sudoers"
     && admitted_root_argv_label(command: InstallStagedSudoers {
          staged_path: "p" as NonEmptyStr, dropin_path: "d" as NonEmptyStr,
@@ -104,7 +104,7 @@ test fn only_the_two_bootstrap_commands_can_run_as_root() -> Bool {
 
 // The lease names the exact grant it authorizes, built from the same rows the installer writes, so a
 // credential materialized for one purpose cannot be read as authorization for another.
-test fn the_lease_names_the_exact_grant_it_authorizes() -> Bool {
+test fn the_lease_names_the_exact_grant_it_authorizes() -> Bool  {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     acc && string_contains(
       spark_bootstrap_credential_lease(
@@ -121,7 +121,7 @@ test fn the_lease_names_the_exact_grant_it_authorizes() -> Bool {
 // enrolment problem, an enrolled credential whose bytes this run never received is a materialization
 // problem, a rejected credential is a wrong or stale version, and a command that failed after sudo
 // admitted it is a host problem.
-test fn the_four_failure_layers_are_distinguishable() -> Bool {
+test fn the_four_failure_layers_are_distinguishable() -> Bool  {
   string_contains(
     privileged_step_outcome_wire(outcome: CredentialNotEnrolled { lease: lease_with(standing: CredentialMaterializationPending) }),
     "CREDENTIAL-NOT-ENROLLED",
@@ -149,7 +149,7 @@ test fn the_four_failure_layers_are_distinguishable() -> Bool {
 // THE REJECTED ARM CANNOT PRINT SUDO'S TEXT, because that text is produced while a credential is
 // being handled and a carrier holding it would put "is this safe to print" into a renderer, one
 // edit from disclosure. The arm has no stderr field at all, so the question cannot arise.
-test fn the_rejected_arm_carries_no_sudo_output_to_leak() -> Bool {
+test fn the_rejected_arm_carries_no_sudo_output_to_leak() -> Bool  {
   let text = privileged_step_outcome_wire(outcome: CredentialRejected { lease: lease_with(standing: enrolled()) })
   string_contains(text, "wrong or stale")
     && !string_contains(text, "incorrect password attempt")
@@ -157,7 +157,7 @@ test fn the_rejected_arm_carries_no_sudo_output_to_leak() -> Bool {
 }
 
 // A not-enrolled lease has no secret to name and must not invent one in the receipt either.
-test fn the_not_enrolled_receipt_names_no_secret() -> Bool {
+test fn the_not_enrolled_receipt_names_no_secret() -> Bool  {
   !string_contains(
     privileged_step_outcome_wire(outcome: CredentialNotEnrolled { lease: lease_with(standing: CredentialMaterializationPending) }),
     "/secrets/",
@@ -168,7 +168,7 @@ test fn the_not_enrolled_receipt_names_no_secret() -> Bool {
 // single arm until the standing became materialized on the production path, at which point the LIVE
 // failure would have told a reader to enrol a secret that was already enrolled. The receipt names
 // the enrolled secret and carries the reader's own cause, and it must not say "not enrolled".
-test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
+test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool  {
   let text = privileged_step_outcome_wire(outcome: CredentialNotMaterialized {
     lease: lease_with(standing: enrolled()),
     cause: "fixture read failure",
@@ -185,7 +185,7 @@ test fn a_credential_that_could_not_be_read_is_not_an_unenrolled_one() -> Bool {
 // A PASSWORD IS BYTES. This read once called trim and handed the result to sudo, corrupting any
 // credential whose real bytes begin or end with a space -- and the resulting sudo rejection reads as
 // a stale Secret Manager version rather than as this lane damaging the secret in transit.
-test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
+test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool  {
   match classify_credential_read(success: true, error: "", content: " password ") {
     BootstrapCredentialReady { secret: secret } => secret == " password "
     BootstrapCredentialNotMaterialized { cause: _ } => false
@@ -197,7 +197,7 @@ test fn a_credential_keeps_its_own_leading_and_trailing_spaces() -> Bool {
 // produced exactly those bytes. Whether such a value may be an administrator password belongs to
 // whatever writes the secret version, not to the consumer delivering it -- and if it is wrong, sudo
 // rejecting it as the wrong credential is the correct layer and the correct remedy.
-test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool {
+test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool  {
   let tabs = join([from_code_point(cp: 9), from_code_point(cp: 9)], "")
   match classify_credential_read(success: true, error: "", content: "  ") {
     BootstrapCredentialReady { secret: a } =>
@@ -216,7 +216,7 @@ test fn a_whitespace_only_payload_is_delivered_not_redefined_as_absent() -> Bool
 // added it; that would authenticate with a different credential than the one enrolled while
 // reporting success. sudo -S reads only the first line, so such a secret cannot be delivered by this
 // protocol at all -- and saying so is the honest arm.
-test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
+test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool  {
   let lf = from_code_point(cp: 10)
   let crlf = join([from_code_point(cp: 13), from_code_point(cp: 10)], "")
   fold([join(["password", lf], ""), join(["password", crlf], ""), lf], init: true, f: fn(acc, c) {
@@ -229,7 +229,7 @@ test fn a_trailing_line_break_refuses_rather_than_being_stripped() -> Bool {
 
 // An embedded break refuses for the same reason and is called out separately because its harm
 // differs: sudo would authenticate on the first line and feed the remainder to the command as input.
-test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
+test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool  {
   let content = join(["pass", from_code_point(cp: 10), "word"], "")
   match classify_credential_read(success: true, error: "", content: content) {
     BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "line break")
@@ -239,7 +239,7 @@ test fn an_embedded_line_break_refuses_instead_of_being_stripped() -> Bool {
 
 // A lone carriage return is a line break wherever it sits, and refuses rather than being deleted
 // from the middle or the end of a password.
-test fn a_bare_carriage_return_refuses() -> Bool {
+test fn a_bare_carriage_return_refuses() -> Bool  {
   let content = join(["password", from_code_point(cp: 13)], "")
   match classify_credential_read(success: true, error: "", content: content) {
     BootstrapCredentialNotMaterialized { cause: _ } => true
@@ -252,14 +252,14 @@ test fn a_bare_carriage_return_refuses() -> Bool {
 // bad credential and sending the reader to re-enrol a secret that was fine. This is the arm the
 // whitespace payload above is deliberately NOT routed to: no bytes and some bytes are different
 // facts, and only the first is a failed fetch.
-test fn an_empty_credential_file_is_not_a_blank_password() -> Bool {
+test fn an_empty_credential_file_is_not_a_blank_password() -> Bool  {
   match classify_credential_read(success: true, error: "", content: "") {
     BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "never a blank password")
     BootstrapCredentialReady { secret: _ } => false
   }
 }
 
-test fn only_a_succeeded_command_counts_as_success() -> Bool {
+test fn only_a_succeeded_command_counts_as_success() -> Bool  {
   privileged_step_succeeded(outcome: PrivilegedCommandSucceeded {
     command: ValidateStagedSudoers { staged_path: "p" as NonEmptyStr },
   })
@@ -272,7 +272,7 @@ test fn only_a_succeeded_command_counts_as_success() -> Bool {
 
 // A wrong password is read off sudo's diagnostic, not its exit code: sudo exits 1 for a rejected
 // credential AND for a malformed sudoers file, and those have entirely different remedies.
-test fn a_rejected_credential_is_read_from_sudos_diagnostic_not_its_exit_code() -> Bool {
+test fn a_rejected_credential_is_read_from_sudos_diagnostic_not_its_exit_code() -> Bool  {
   sudo_rejected_the_credential(stderr: "sudo: 1 incorrect password attempt")
     && !sudo_rejected_the_credential(stderr: "visudo: /home/briansrls/staged: parse error near line 1")
 }
@@ -281,7 +281,7 @@ test fn a_rejected_credential_is_read_from_sudos_diagnostic_not_its_exit_code() 
 // is readable by every child process the run spawns and is printed by any diagnostic that dumps the
 // environment -- and this repository's receipts do dump argv. A path is not the secret: whoever
 // cannot read the file learns nothing from knowing where it was.
-test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
+test fn the_environment_carries_a_path_and_not_a_credential() -> Bool  {
   string_contains(fleet_bootstrap_credential_path_env as String, "FILE")
     && !string_contains(fleet_bootstrap_credential_path_env as String, "PASSWORD")
     && !string_contains(fleet_bootstrap_credential_path_env as String, "SECRET")
@@ -289,7 +289,7 @@ test fn the_environment_carries_a_path_and_not_a_credential() -> Bool {
 
 // A read that failed is its own cause, distinct from a file that was there and empty: one is a
 // missing or unreadable materialization, the other is a materialization that produced nothing.
-test fn an_unreadable_credential_file_reports_the_read_error() -> Bool {
+test fn an_unreadable_credential_file_reports_the_read_error() -> Bool  {
   match classify_credential_read(success: false, error: "No such file or directory", content: "") {
     BootstrapCredentialNotMaterialized { cause: c } => string_contains(c as String, "No such file or directory")
     BootstrapCredentialReady { secret: _ } => false
@@ -300,7 +300,7 @@ test fn an_unreadable_credential_file_reports_the_read_error() -> Bool {
 // spelled a second time. A step fetching a different secret than the lease authorized would be a
 // second naming authority for one fact -- and the version matters: "latest" and "1" are different
 // credentials the day someone adds a version.
-test fn the_materialization_target_is_read_from_the_lease_at_an_exact_version() -> Bool {
+test fn the_materialization_target_is_read_from_the_lease_at_an_exact_version() -> Bool  {
   match lease_secret_version_resource(lease: lease_with(standing: enrolled())) {
     Absent => false
     Present { value: r } =>
@@ -309,7 +309,7 @@ test fn the_materialization_target_is_read_from_the_lease_at_an_exact_version() 
 }
 
 // A pending standing authorizes no fetch at all, so there is nothing for a step to materialize.
-test fn a_pending_standing_authorizes_no_fetch() -> Bool {
+test fn a_pending_standing_authorizes_no_fetch() -> Bool  {
   match lease_secret_version_resource(lease: lease_with(standing: CredentialMaterializationPending)) {
     Absent => true
     Present { value: _ } => false
@@ -325,7 +325,7 @@ test fn a_pending_standing_authorizes_no_fetch() -> Bool {
 //
 // Asserted for BOTH constructors rather than one: the two commands are built by the same function,
 // but a future edit could widen only one of them, and a single-arm check would not see it.
-test fn every_admitted_root_argv_survives_the_far_side_portability_wall() -> Bool {
+test fn every_admitted_root_argv_survives_the_far_side_portability_wall() -> Bool  {
   let validate = portable_remote_words(
     raws: admitted_root_argv_words(command: ValidateStagedSudoers { staged_path: "/etc/sudoers.d/x.staged" as NonEmptyStr })
   )
@@ -348,7 +348,7 @@ test fn every_admitted_root_argv_survives_the_far_side_portability_wall() -> Boo
 
 // The sentinel is the reason the wall passes, so it is pinned. An empty prompt is the exact value
 // that failed, and a witness that did not exclude it would re-admit the defect it was written for.
-test fn the_sudo_prompt_is_a_non_empty_portable_sentinel() -> Bool {
+test fn the_sudo_prompt_is_a_non_empty_portable_sentinel() -> Bool  {
   spark_sudo_prompt_sentinel != ""
     && match portable_remote_words(raws: [spark_sudo_prompt_sentinel]) {
          Absent => false

@@ -17,13 +17,13 @@ import gunbc.stage0_rust_product_reachability {
 }
 import v2.std.algebra { length }
 
-test fn product_reachability_note_forbids_tracking_as_proof() -> Bool {
+test fn product_reachability_note_forbids_tracking_as_proof() -> Bool  {
   string_contains(s: stage0_rust_product_reachability_note, pattern: "NOT proof")
     && string_contains(s: stage0_rust_product_reachability_note, pattern: "C2 carrier")
     && string_contains(s: stage0_rust_product_reachability_note, pattern: "does NOT prove non-reachability")
 }
 
-test fn product_reachability_cargo_bin_is_product_entry() -> Bool {
+test fn product_reachability_cargo_bin_is_product_entry() -> Bool  {
   match product_reachability_verdict_for_path(
     path: "src/v1/stage0/src/bin/claim_executor.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/bin/claim_executor.rs"]
@@ -35,7 +35,7 @@ test fn product_reachability_cargo_bin_is_product_entry() -> Bool {
   }
 }
 
-test fn product_reachability_test_harness_is_test_only() -> Bool {
+test fn product_reachability_test_harness_is_test_only() -> Bool  {
   match product_reachability_verdict_for_path(
     path: "src/v1/tests/foo.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -45,7 +45,7 @@ test fn product_reachability_test_harness_is_test_only() -> Bool {
   }
 }
 
-test fn product_reachability_tooling_refuses_instead_of_manufacturing_negative() -> Bool {
+test fn product_reachability_tooling_refuses_instead_of_manufacturing_negative() -> Bool  {
   match product_reachability_verdict_for_path(
     path: "dag/gunbc/instruments/foo/witness_main.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -56,7 +56,7 @@ test fn product_reachability_tooling_refuses_instead_of_manufacturing_negative()
   }
 }
 
-test fn product_reachability_red_control_refuses_unresolved_edge() -> Bool {
+test fn product_reachability_red_control_refuses_unresolved_edge() -> Bool  {
   match product_reachability_verdict_for_path(
     path: "src/v1/stage0/src/cli_run.rs",
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -67,7 +67,7 @@ test fn product_reachability_red_control_refuses_unresolved_edge() -> Bool {
   }
 }
 
-test fn product_reachability_exact_paths_refuse_on_observation_refusal() -> Bool {
+test fn product_reachability_exact_paths_refuse_on_observation_refusal() -> Bool  {
   match exact_product_reachable_paths(receipt: ProductReachabilityObservationRefused) {
     ProductReachabilityExactPathsRefused => true
     _ => false
@@ -78,7 +78,7 @@ test fn product_reachability_exact_paths_refuse_on_observation_refusal() -> Bool
     }
 }
 
-test fn product_reachability_exact_sets_partition_verdicts() -> Bool {
+test fn product_reachability_exact_sets_partition_verdicts() -> Bool  {
   let receipt = product_reachability_receipt(
     observation: product_reachability_witness_observation(
       tracked_paths: [

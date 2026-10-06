@@ -137,7 +137,7 @@ fn w_bundle(host: HostIdentity, response: VllmEvidenceRouteResponse) -> VllmHist
 // It is also the LIMIT of what the constructor binds: the route-local observations are independently
 // retained facts, and the bundle stamps that their cross-route join was not captured rather than
 // pretending this derivation established one.
-test fn w_the_refusal_host_is_derived_from_the_historical_scope_it_belongs_to() -> Bool {
+test fn w_the_refusal_host_is_derived_from_the_historical_scope_it_belongs_to() -> Bool  {
   w_bundle(host: w_fixture_host, response: w_not_served()).realization.front_door_host as String
     == w_fixture_host as String
   && w_bundle(host: operator_host_srv5, response: w_not_served()).realization.front_door_host as String
@@ -153,7 +153,7 @@ test fn w_the_refusal_host_is_derived_from_the_historical_scope_it_belongs_to() 
 //
 // Neither is caller-supplied: the constructor takes no argument for either, so this drives the real
 // constructor and a version that accepted them from outside would not compile against this call.
-test fn w_the_bundle_stamps_both_limitations_not_one() -> Bool {
+test fn w_the_bundle_stamps_both_limitations_not_one() -> Bool  {
   match w_bundle(host: w_fixture_host, response: w_not_served()).acquisition_join {
     CrossRouteAcquisitionJoinUnestablished { cause: c } => contains(c as String, "capture identity")
   }
@@ -167,7 +167,7 @@ test fn w_the_bundle_stamps_both_limitations_not_one() -> Bool {
 // identically to a parsed answer: a 200 whose body was never read. There is no parsed-configuration
 // arm to write here at all now -- the caller-authored capture was removed -- so the strongest input a
 // fixture can supply still leaves the refusal at its earliest stage.
-test fn w_an_unparsed_answer_leaves_the_refusal_at_its_earliest_stage() -> Bool {
+test fn w_an_unparsed_answer_leaves_the_refusal_at_its_earliest_stage() -> Bool  {
   match w_bundle(host: w_fixture_host, response: w_answered_unparsed()).realization.missing {
     ResolvedParallelConfigurationNotObserved => true
     JoinedRankPopulationNotObserved => false
@@ -179,7 +179,7 @@ test fn w_an_unparsed_answer_leaves_the_refusal_at_its_earliest_stage() -> Bool 
 // A refusal phrased as "rank two did not answer" would model the absence of something vLLM never
 // promised, and would go green the moment an unrelated server appeared on that port. Quantified over
 // both arms so the property belongs to the vocabulary rather than to whichever row is current.
-test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
+test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool  {
   all(
     [ResolvedParallelConfigurationNotObserved, JoinedRankPopulationNotObserved],
     m => !contains(vllm_tp_realization_missing_wire(missing: m), "port")
@@ -198,7 +198,7 @@ test fn w_no_refusal_wording_blames_an_unanswered_port() -> Bool {
 // and the witness proved only that a caller-authored payload reaches its matching branch. Nothing
 // here has a capacity capture, so the law says which KIND of source would be authoritative and stops
 // there. Both directions execute.
-test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> Bool {
+test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> Bool  {
   match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).decision {
     CapacitySourceInsufficient { cause: c } => contains(c, "not a generally sufficient")
     CapacitySourceAuthoritative => false
@@ -209,7 +209,7 @@ test fn w_cache_config_block_fields_are_insufficient_as_a_capacity_source() -> B
 // minimum "across ranks" and conflated them: the scheduler selects block_size across resolved cache
 // GROUPS, while num_blocks is separately reduced across WORKERS. The product joins values from
 // different axes, which is why it is not capacity even when it happens to coincide with it.
-test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool {
+test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool  {
   match decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).decision {
     CapacitySourceInsufficient { cause: c } =>
       contains(c, "MINIMUM ACROSS RESOLVED CACHE GROUPS") && contains(c, "ACROSS WORKERS")
@@ -217,7 +217,7 @@ test fn w_the_capacity_refusal_does_not_conflate_groups_with_ranks() -> Bool {
   }
 }
 
-test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool {
+test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool  {
   match decide_vllm_capacity_source_kind(kind: GroupAwareStartupLog).decision {
     CapacitySourceAuthoritative => true
     CapacitySourceInsufficient { cause: _ } => false
@@ -225,7 +225,7 @@ test fn w_the_group_aware_startup_log_is_the_authoritative_source_kind() -> Bool
 }
 
 // AND THE OBSERVATION MODULE ACTUALLY CONSULTS THAT LAW rather than restating it.
-test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
+test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool  {
   match vllm_capacity_from_cache_config_fields().decision {
     CapacitySourceInsufficient { cause: _ } => true
     CapacitySourceAuthoritative => false
@@ -245,7 +245,7 @@ test fn w_the_observed_capacity_path_reaches_the_refusal() -> Bool {
 // vllm_source_revision_1967a5627 in the same commit. Both halves matter: the first catches an
 // advance that forgets this row still rides the pin; the second catches a re-read of the patched
 // source that forgets to move this row forward.
-test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool {
+test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool  {
   decide_vllm_capacity_source_kind(kind: CacheConfigBlockFields).established_against.full_revision as String
     == "1967a5627bc3710b680bbec24ecb99aaddedf22b"
     && vllm_capacity_from_cache_config_fields().established_against.full_revision as String
@@ -257,7 +257,7 @@ test fn w_the_capacity_assessment_carries_the_exact_source_revision() -> Bool {
 // ── THE UPSTREAM FACTS THAT HAD NO WITNESS AT ALL ───────────────────────────────────────────────
 //
 // Each of these was previously flippable with the whole suite staying green.
-test fn w_ray_health_does_not_probe_distributed_workers() -> Bool {
+test fn w_ray_health_does_not_probe_distributed_workers() -> Bool  {
   match vllm_health_coverage_for(backend: RayDistributedExecutor) {
     HealthCoverageEstablished { coverage: c, established_against: _ } => match c {
       HealthDoesNotProbeDistributedWorkers => true
@@ -274,7 +274,7 @@ test fn w_ray_health_does_not_probe_distributed_workers() -> Bool {
 // true. The only reachable path was the Ray row, so a multiprocessing deployment would have read
 // Ray's coverage off it. This is the discriminating RED for that: it was unauthorable before the
 // lookup existed, because there was no question to ask.
-test fn w_a_backend_with_no_established_coverage_refuses_rather_than_borrowing() -> Bool {
+test fn w_a_backend_with_no_established_coverage_refuses_rather_than_borrowing() -> Bool  {
   match vllm_health_coverage_for(backend: MultiprocessingDistributedExecutor) {
     HealthCoverageNotEstablishedForBackend => true
     HealthCoverageEstablished { coverage: _, established_against: _ } => false
@@ -283,7 +283,7 @@ test fn w_a_backend_with_no_established_coverage_refuses_rather_than_borrowing()
 
 // AND HEALTH IS ORDINARILY REGISTERED, WHICH IS WHAT MAKES IT THE TEMPTING WRONG SUBSTITUTE: it is
 // reachable exactly when the evidence routes are not.
-test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bool {
+test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bool  {
   match vllm_route_health.population {
     OrdinarilyRegistered => true
     RegisteredOnlyUnderDevelopmentMode => false
@@ -305,7 +305,7 @@ test fn w_health_is_reachable_precisely_when_the_evidence_routes_are_not() -> Bo
 // a directory name does not establish what its contents are quantised to, so "the path disagrees"
 // would be a stronger claim than anything observed -- the same overreach this module already
 // retracted once about the weights.
-test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool {
+test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool  {
   vllm_served_id_is_not_derivable_from_configured_path(
     readback: vllm_readback_2026_09_03.models_route)
     && match vllm_readback_2026_09_03.realization.missing {
@@ -325,7 +325,7 @@ test fn w_the_served_id_is_not_derivable_from_the_configured_path() -> Bool {
 // A world size of 2 is consistent with TP=2, PP=2 and DP=2 alike, and a per-worker fan-out reports
 // population without saying how the parallelism decomposes. Only /server_info returns the resolved
 // configuration.
-test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> Bool {
+test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> Bool  {
   vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: ServerInfoRoute))
     && !vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: GetWorldSizeRoute))
     && !vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: CollectiveRpcRoute))
@@ -333,7 +333,7 @@ test fn w_only_the_server_info_route_bears_resolved_parallel_configuration() -> 
 
 // AND EVERY ROUTE IN THE HTTP EVIDENCE POPULATION IS ONE OF THOSE THREE IDENTITIES, so the projection
 // above covers the population rather than three rows that happen to be listed.
-test fn w_the_http_evidence_population_is_exactly_the_closed_route_identity() -> Bool {
+test fn w_the_http_evidence_population_is_exactly_the_closed_route_identity() -> Bool  {
   length(vllm_http_parallel_evidence_routes) == 3
     && any(vllm_http_parallel_evidence_routes, r =>
          vllm_evidence_kind_establishes_configuration(kind: vllm_parallel_evidence_kind(route: r)))
@@ -346,7 +346,7 @@ test fn w_the_http_evidence_population_is_exactly_the_closed_route_identity() ->
 // As captured strings these were blobs: nothing could ask whether the context length was large, or
 // whether utilization sat below unity. Both questions are now answerable, and this claim asks them --
 // so a regression back to text does not merely change a type, it stops this witness compiling.
-test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool {
+test fn w_the_numeric_readbacks_are_measures_that_can_be_compared() -> Bool  {
   token_count_value(vllm_readback_2026_09_03.models_route.max_model_len) == 262144
     && basis_point_count(vllm_readback_2026_09_03.cache_config_gauge.gpu_memory_utilization)
          < basis_point_unity_count()
@@ -383,7 +383,7 @@ data w_live_models_body: String = "\{\"object\":\"list\",\"data\":[\{\"id\":\"de
 // POSITIVE CONTROL, AND IT ASSERTS BOTH FIELDS RATHER THAN THE ARM. A decode that returned
 // ModelsRouteRead while dropping the path on the floor would satisfy "it read" and leave the carrier
 // holding nothing worth having.
-test fn the_live_models_document_decodes_to_its_path_and_context() -> Bool {
+test fn the_live_models_document_decodes_to_its_path_and_context() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: w_live_models_body),
     served_model_id: "deepseek-v4-flash:iq3s-split" as NonEmptyStr,
@@ -399,7 +399,7 @@ test fn the_live_models_document_decodes_to_its_path_and_context() -> Bool {
 // RED -- AN ID THE DOCUMENT DOES NOT ADVERTISE IS ABSENT, NOT A READBACK ABOUT SOMEBODY ELSE. This
 // is the join the selector exists for: a route advertising one model must not hand back a path for
 // a turn admitted against another.
-test fn an_unadvertised_id_is_entry_absent() -> Bool {
+test fn an_unadvertised_id_is_entry_absent() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: w_live_models_body),
     served_model_id: "some-other-model" as NonEmptyStr,
@@ -413,7 +413,7 @@ test fn an_unadvertised_id_is_entry_absent() -> Bool {
 // RED -- A MISSING root IS NAMED, NOT DEFAULTED. An upstream that stops carrying the member must
 // make this loud: an empty configured path would be a carrier filled with nothing, asserting that
 // the server was configured with "".
-test fn an_entry_without_root_names_the_field() -> Bool {
+test fn an_entry_without_root_names_the_field() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"max_model_len\":8\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -425,7 +425,7 @@ test fn an_entry_without_root_names_the_field() -> Bool {
 
 // RED -- A QUOTED NUMBER IS NOT A CONTEXT LENGTH. It is the case extdeps.languages.json.number
 // separates from an unreadable numeral, and the one a lenient decode would coerce.
-test fn a_quoted_context_length_refuses() -> Bool {
+test fn a_quoted_context_length_refuses() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -437,7 +437,7 @@ test fn a_quoted_context_length_refuses() -> Bool {
 
 // RED -- A FRACTIONAL CONTEXT LENGTH REFUSES RATHER THAN ROUNDING. A rounded bound would be a
 // fabricated limit on every turn the route serves.
-test fn a_fractional_context_length_refuses() -> Bool {
+test fn a_fractional_context_length_refuses() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8.5\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -449,7 +449,7 @@ test fn a_fractional_context_length_refuses() -> Bool {
 
 // RED -- ONE ID ADVERTISED TWICE IS A ROUTE CONTRADICTING ITSELF. Folding the matches would pick a
 // winner by list order, which is the silent-wrong-answer shape rather than a refusal.
-test fn a_duplicated_id_refuses_rather_than_picking() -> Bool {
+test fn a_duplicated_id_refuses_rather_than_picking() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"max_model_len\":8\},\{\"id\":\"m\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -463,7 +463,7 @@ test fn a_duplicated_id_refuses_rather_than_picking() -> Bool {
 // quoted "8" is a defect in the route's document and an exponent is a limit of this substrate, and
 // an operator reading the refusal has to know which one to go and fix. Asserting only that both
 // refuse would be satisfied by the collapsed spelling this replaces.
-test fn an_exponent_length_and_a_quoted_length_refuse_for_different_reasons() -> Bool {
+test fn an_exponent_length_and_a_quoted_length_refuse_for_different_reasons() -> Bool  {
   let quoted = match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":\"8\"\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -487,7 +487,7 @@ test fn an_exponent_length_and_a_quoted_length_refuse_for_different_reasons() ->
 // RED -- A DOCUMENT THAT IS NOT A MODEL LIST IS NOT "NO ENTRY FOR THIS ID". The route advertised
 // something; what it advertised could not be read, and those name different remedies. Review 64194
 // found all four of these reported as an absent entry.
-test fn a_data_member_that_is_not_an_array_is_a_document_refusal() -> Bool {
+test fn a_data_member_that_is_not_an_array_is_a_document_refusal() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":\"not-a-list\"\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -497,7 +497,7 @@ test fn a_data_member_that_is_not_an_array_is_a_document_refusal() -> Bool {
   }
 }
 
-test fn a_document_with_two_data_members_refuses_naming_the_count() -> Bool {
+test fn a_document_with_two_data_members_refuses_naming_the_count() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[],\"data\":[]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -510,7 +510,7 @@ test fn a_document_with_two_data_members_refuses_naming_the_count() -> Bool {
 // RED -- A SCALAR ENTRY HAS NO MEMBERS, WHICH IS NOT THE SAME AS OMITTING ONE. This is the
 // distinction extdeps.languages.json.parse draws in its own annotation: collapsing them would let a
 // bare string satisfy an absence check.
-test fn a_scalar_entry_is_not_reported_as_a_missing_field() -> Bool {
+test fn a_scalar_entry_is_not_reported_as_a_missing_field() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8\},\"bare\"]\}"),
     served_model_id: "nope" as NonEmptyStr,
@@ -522,7 +522,7 @@ test fn a_scalar_entry_is_not_reported_as_a_missing_field() -> Bool {
 
 // RED -- root TWICE IS A CONTRADICTION, NOT AN ABSENCE, and the count is in the cause so the reader
 // knows which it was.
-test fn a_duplicated_root_member_refuses_naming_the_count() -> Bool {
+test fn a_duplicated_root_member_refuses_naming_the_count() -> Bool  {
   match vllm_models_route_standing(
     doc: w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/a\",\"root\":\"/b\",\"max_model_len\":8\}]\}"),
     served_model_id: "m" as NonEmptyStr,
@@ -539,7 +539,7 @@ test fn a_duplicated_root_member_refuses_naming_the_count() -> Bool {
 // document and could disagree about what counts as an advertised id. This row holds them to one
 // answer on a document carrying one readable entry and one unreadable one: the id list has exactly
 // the readable id, and the readback counts the other as unexaminable rather than forgetting it.
-test fn the_advertised_ids_and_the_readback_agree_on_one_reading() -> Bool {
+test fn the_advertised_ids_and_the_readback_agree_on_one_reading() -> Bool  {
   let doc = w_models_doc(body: "\{\"data\":[\{\"id\":\"m\",\"root\":\"/w\",\"max_model_len\":8\},\{\"id\":7\}]\}")
   let ids = vllm_models_advertised_ids(doc: doc)
   count(ids) == 1

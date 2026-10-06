@@ -97,7 +97,7 @@ fn volume_of(w: World) -> Int {
   }
 }
 
-test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
+test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: w } => world_room_count(w: w) == 2 && volume_of(w: w) == 2 * 9000000 * 2400
@@ -107,7 +107,7 @@ test fn a_world_joins_identity_to_geometry_and_sums_its_rooms() -> Bool {
 // Identity is allocated, never derived from shape: two rooms with byte-identical geometry in
 // different places are different rooms, and the same identity twice is refused even when the two
 // shapes are legal on their own.
-test fn duplicate_room_identity_refuses() -> Bool {
+test fn duplicate_room_identity_refuses() -> Bool  {
   match rooms_of(a: kitchen(), b: placed(name: "kitchen", x0: 3000, y0: 0, x1: 6000, y1: 3000)) {
     Absent => false
     Present { value: rooms } =>
@@ -121,7 +121,7 @@ test fn duplicate_room_identity_refuses() -> Bool {
 
 // The geometry wall is not re-implemented here; it is the complex's, reached through the world
 // mint and reported with the lower layer's own cause.
-test fn overlapping_rooms_refuse_through_the_geometry_layer() -> Bool {
+test fn overlapping_rooms_refuse_through_the_geometry_layer() -> Bool  {
   match rooms_of(a: kitchen(), b: placed(name: "pantry", x0: 1000, y0: 1000, x1: 4000, y1: 2000)) {
     Absent => false
     Present { value: rooms } =>
@@ -147,7 +147,7 @@ fn realized_room_count(v: WorldVariant) -> Int {
   }
 }
 
-test fn an_empty_delta_realizes_to_the_base() -> Bool {
+test fn an_empty_delta_realizes_to_the_base() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -160,7 +160,7 @@ test fn an_empty_delta_realizes_to_the_base() -> Bool {
   }
 }
 
-test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alone() -> Bool {
+test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alone() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -179,7 +179,7 @@ test fn adding_a_room_through_a_delta_extends_the_world_and_leaves_the_base_alon
 // THE WALL SURVIVES THE DELTA. A variant that slides one room into another is refused at
 // realization by the same geometry authority a hand-built world meets, so there is no route to an
 // overlapping world through the variant path.
-test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
+test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -213,7 +213,7 @@ test fn a_delta_that_makes_rooms_overlap_refuses_at_realization() -> Bool {
 // A MODIFIED HUNK IS A COMPARE-AND-SWAP. The `from` is checked against what is actually there, so a
 // delta computed against a different base refuses instead of overwriting. This is the fact an
 // upsert collapse discards, and the reason std.change's modified arm carries `from` at all.
-test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
+test fn a_delta_computed_against_a_stale_base_refuses() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -242,7 +242,7 @@ test fn a_delta_computed_against_a_stale_base_refuses() -> Bool {
 
 // Neither absent-target arm absorbs: removing what is not there is not a no-op and adding what is
 // already there is not a replace. Both would let a delta from another base apply cleanly.
-test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
+test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -274,7 +274,7 @@ test fn absent_and_present_targets_refuse_rather_than_absorbing() -> Bool {
   }
 }
 
-test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
+test fn removing_a_room_shrinks_the_realized_world_only() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -292,7 +292,7 @@ test fn removing_a_room_shrinks_the_realized_world_only() -> Bool {
 
 // Two variants over ONE base are independent because neither owns the base's rooms - the base is
 // shared and unmodified, which is the property a copy-and-edit representation cannot offer.
-test fn two_variants_over_one_base_do_not_see_each_other() -> Bool {
+test fn two_variants_over_one_base_do_not_see_each_other() -> Bool  {
   match two_room_world() {
     Absent => false
     Present { value: base } =>
@@ -329,7 +329,7 @@ fn corner(x: Int, y: Int) -> Point2 { point2(frame: site(), x: x, y: y) }
 // neither a canonical start nor a canonical winding, so a positional comparison called these three
 // different spaces - and because space_eq is the compare-and-swap judgment, a geometrically
 // identical patch was refusable as stale purely for starting at another corner.
-test fn equal_regions_written_from_different_corners_and_windings_are_equal() -> Bool {
+test fn equal_regions_written_from_different_corners_and_windings_are_equal() -> Bool  {
   match rect_from(vs: [corner(x: 0, y: 0), corner(x: 3000, y: 0), corner(x: 3000, y: 3000), corner(x: 0, y: 3000)]) {
     Absent => false
     Present { value: a } =>
@@ -353,7 +353,7 @@ test fn equal_regions_written_from_different_corners_and_windings_are_equal() ->
 
 // A modification must not reorder the world. The delta describes a geometry change; realization
 // performing an additional ordering change is a change with no hunk behind it.
-test fn modifying_a_room_preserves_the_room_order() -> Bool {
+test fn modifying_a_room_preserves_the_room_order() -> Bool  {
   match rooms_of(a: kitchen(), b: hall()) {
     Absent => false
     Present { value: two } =>
@@ -392,7 +392,7 @@ fn room_names(w: World) -> String {
   fold(world_rooms(w: w), init: "", f: (acc, r) => concat(concat(acc, (r.identity as String)), "|"))
 }
 
-test fn space_equality_is_structural_and_frame_aware() -> Bool {
+test fn space_equality_is_structural_and_frame_aware() -> Bool  {
   match rect(x0: 0, y0: 0, x1: 3000, y1: 3000) {
     Absent => false
     Present { value: a } =>

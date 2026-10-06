@@ -71,7 +71,7 @@ data srv6_listing_with_inspect: String = "User gunbc-automation may run the foll
 // host is now missing reboot, both inspect grants and the EEPROM read -- four -- and a test that still
 // said an older number would be asserting the population had not changed while it had. What stays discriminating is the same thing it always was: linger is held,
 // so linger is never in the install set.
-test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
+test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool  {
   let missing = spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_before })
   missing.length() == 5
     && any(missing, m => match m {
@@ -108,7 +108,7 @@ test fn a_listing_naming_only_linger_puts_reboot_in_the_install_set() -> Bool {
 
 // THE DISCRIMINATING PAIR. The same function over the same shape of input answers differently once
 // the grant is present, which is what makes it a reconcile rather than a constant.
-test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
+test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool  {
   spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_with_inspect }).length() == 0
     && spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_with_inspect })
     && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_before })
@@ -118,7 +118,7 @@ test fn the_same_listing_with_reboot_added_installs_nothing() -> Bool {
 // access capability the live serving readers wait on, and the fabric EEPROM read the 100G question
 // waits on. The name says two because it is two; a test named for one grant while asserting over a
 // set of two is the kind of stale sentence a rename leaves behind.
-test fn the_measured_hosts_are_missing_inspect_and_the_eeprom_read() -> Bool {
+test fn the_measured_hosts_are_missing_inspect_and_the_eeprom_read() -> Bool  {
   let missing = spark_managed_grants_to_install_under(
     outcome: GrantEnumerated { listing: srv6_listing_after },
     basis: fixture_accepted_risk(),
@@ -139,7 +139,7 @@ test fn the_measured_hosts_are_missing_inspect_and_the_eeprom_read() -> Bool {
 // only, so the native arm's inspect is withheld on its own obligation; what this row asserts is that
 // a password demand is read as "nothing is held" -- every grant lands installed or withheld, and none
 // lands in the unobserved arm -- not a particular install count, which moves with the population.
-test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
+test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool  {
   let o = GrantAbsent { detail: "exit=1 stderr=sudo: a password is required" }
   spark_managed_grants_to_install_under(outcome: o, basis: fixture_accepted_risk()).length()
       + spark_managed_grants_withheld_under(outcome: o, basis: fixture_accepted_risk()).length()
@@ -151,7 +151,7 @@ test fn a_password_demand_is_an_observation_that_no_grant_is_held() -> Bool {
 // probe that failed for any other reason must not be read as "no grants held" -- installing sudoers
 // entries on a host we could not measure is actuating on ignorance, and it is the exact shape of the
 // absorbing fallback the repo forbids.
-test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool {
+test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool  {
   let o = GrantAbsent { detail: "exit=255 stderr=ssh: connect to host srv6 port 22: No route to host" }
   spark_managed_grants_to_install(outcome: o).length() == 0
     && spark_managed_grants_unobserved(outcome: o).length() == spark_managed_grant_population.length()
@@ -159,7 +159,7 @@ test fn a_probe_that_failed_for_another_reason_installs_nothing() -> Bool {
 }
 
 // A refused leg is unobserved for the same reason, on a different channel.
-test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool {
+test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool  {
   let o = GrantProbeRefused { cause: "non-portable-remote-word" }
   spark_managed_grants_to_install(outcome: o).length() == 0
     && !spark_managed_grants_converged(outcome: o)
@@ -168,7 +168,7 @@ test fn a_refused_probe_leg_is_unobserved_and_never_converged() -> Bool {
 // AN EMPTY INSTALL LIST IS NOT CONVERGENCE. A fully unobserved host produces one, and reading it as
 // "nothing to do" is the empty-observation narrow: the run would report a host needing no work
 // precisely when it learned nothing about it.
-test fn nothing_to_install_does_not_imply_converged() -> Bool {
+test fn nothing_to_install_does_not_imply_converged() -> Bool  {
   let unobserved = GrantProbeRefused { cause: "leg refused" }
   spark_managed_grants_to_install(outcome: unobserved).length() == 0
     && !spark_managed_grants_converged(outcome: unobserved)
@@ -202,7 +202,7 @@ data authored_inspect_command: String = "/usr/bin/docker container inspect gunbc
 //
 // The replacement joins at ARGV GRAIN and against the MEASURED line: every word of the argv after
 // `sudo -n` must appear in the command in order, and the command must equal what the host holds.
-test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
+test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool  {
   spark_managed_grant_sudoers_command(grant: linger_grant()) as String == measured_installed_linger_command
     && spark_managed_grant_sudoers_command(grant: RebootThisHost) as String == measured_installed_reboot_command
     && spark_managed_grant_sudoers_command(grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr }) as String == authored_inspect_command
@@ -210,7 +210,7 @@ test fn the_sudoers_command_equals_the_line_the_hosts_actually_hold() -> Bool {
 
 // THE INSPECT GRANT IS ONE VERB ON ONE OBJECT. The discriminating inputs are the widenings a later
 // edit would reach for: another verb, and a name wildcard. Neither may equal the derived command.
-test fn the_inspect_grant_names_no_other_verb_and_no_wildcard() -> Bool {
+test fn the_inspect_grant_names_no_other_verb_and_no_wildcard() -> Bool  {
   let c = spark_managed_grant_sudoers_command(grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr }) as String
   c != "/usr/bin/docker container inspect *"
     && c != "/usr/bin/docker container exec gunbc-spark-pair"
@@ -222,7 +222,7 @@ test fn the_inspect_grant_names_no_other_verb_and_no_wildcard() -> Bool {
 // than as containment. The argv is `sudo -n <words>`; the command is those same <words> with the
 // binary made absolute. Reconstructing one from the other and comparing is what the old ANY could
 // not do.
-test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool {
+test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool  {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     let words = spark_managed_grant_argv(grant: g).skip(n: 2)
     let command = spark_managed_grant_sudoers_command(grant: g) as String
@@ -244,7 +244,7 @@ test fn the_sudoers_line_authorizes_exactly_the_argv_the_actuator_runs() -> Bool
 // FAIL the assertion above. Without this the new test could be as vacuous as the one it replaces and
 // nothing would say so: a test that greens a correct change is indistinguishable from one that
 // greens the next wrong change unless a known-wrong input is shown to red it.
-test fn the_pre_change_spelling_without_the_subject_is_refused() -> Bool {
+test fn the_pre_change_spelling_without_the_subject_is_refused() -> Bool  {
   let pre_change = "/usr/bin/loginctl enable-linger"
   pre_change != measured_installed_linger_command
     && !string_contains(pre_change, "gunbc-automation")
@@ -254,7 +254,7 @@ test fn the_pre_change_spelling_without_the_subject_is_refused() -> Bool {
 // AND THE MIRROR OF IT ON THE ARGV, because the two halves of the fork failed differently: the
 // command dropped the subject, the argv dropped the subject AND the absolute path. An argv that
 // cannot execute under the installed grant must not be derivable.
-test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool {
+test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool  {
   join(spark_managed_grant_argv(grant: linger_grant()), " ")
     == "sudo -n loginctl enable-linger gunbc-automation"
     && join(spark_managed_grant_argv(grant: RebootThisHost), " ") == "sudo -n systemctl reboot"
@@ -272,7 +272,7 @@ test fn the_derived_argv_carries_the_subject_the_grant_requires() -> Bool {
 // authorizes nothing on a host where the binary is at /usr/sbin -- it installs clean, lists clean,
 // and refuses at the one moment it is needed. This asserts the two directories are not the same and
 // that the derived command takes ethtool's.
-test fn the_eeprom_grant_does_not_borrow_systemd_binary_directory() -> Bool {
+test fn the_eeprom_grant_does_not_borrow_systemd_binary_directory() -> Bool  {
   ethtool_binary_directory as String != systemd_binary_directory as String
     && !string_contains(
          spark_managed_grant_sudoers_command(grant: ReadFabricModuleEeprom { device: spark_fabric_leg_netdev }) as String,
@@ -282,7 +282,7 @@ test fn the_eeprom_grant_does_not_borrow_systemd_binary_directory() -> Bool {
 
 // Narrow on every axis sudoers offers. A wildcard command would make the population decorative,
 // since one entry would then authorize everything the others name.
-test fn no_grant_is_written_as_a_wildcard() -> Bool {
+test fn no_grant_is_written_as_a_wildcard() -> Bool  {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     acc && !string_contains(spark_managed_grant_sudoers_content(grant: g), "ALL\n")
         && !string_contains(spark_managed_grant_sudoers_content(grant: g), "NOPASSWD: ALL")
@@ -291,7 +291,7 @@ test fn no_grant_is_written_as_a_wildcard() -> Bool {
 
 // Distinct files per grant: appending to one file has no idempotent form, so a second reconcile run
 // would differ from the first.
-test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
+test fn each_grant_lands_in_its_own_dropin_file() -> Bool  {
   spark_managed_grant_dropin_path(grant: RebootThisHost) as String
     != spark_managed_grant_dropin_path(grant: linger_grant()) as String
     && string_contains(spark_managed_grant_dropin_path(grant: RebootThisHost) as String, "/etc/sudoers.d/")
@@ -299,7 +299,7 @@ test fn each_grant_lands_in_its_own_dropin_file() -> Bool {
 
 // The whole population, including two grants of one class over different containers: no two rows
 // share a drop-in, so no install can overwrite another grant's file.
-test fn no_two_population_grants_share_a_dropin_file() -> Bool {
+test fn no_two_population_grants_share_a_dropin_file() -> Bool  {
   fold(spark_managed_grant_population, init: true, f: fn(acc, g) {
     acc && filter(spark_managed_grant_population, h =>
       spark_managed_grant_dropin_path(grant: h) as String == spark_managed_grant_dropin_path(grant: g) as String
@@ -309,7 +309,7 @@ test fn no_two_population_grants_share_a_dropin_file() -> Bool {
 
 // The report names the gap and its remedy in the same line, because the failure this replaces said
 // only "a password is required" -- naming neither the grant nor where it goes.
-test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
+test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool  {
   let text = spark_managed_grant_report(host: "srv6", outcome: GrantEnumerated { listing: srv6_listing_before })
   string_contains(text, "converged=false")
     && string_contains(text, "standing=not-held")
@@ -317,7 +317,7 @@ test fn the_report_names_the_missing_grant_and_where_it_goes() -> Bool {
     && string_contains(text, "standing=held")
 }
 
-test fn a_held_grant_reports_held_rather_than_silence() -> Bool {
+test fn a_held_grant_reports_held_rather_than_silence() -> Bool  {
   match spark_managed_grant_standing_from_outcome(
     grant: linger_grant(),
     outcome: GrantEnumerated { listing: srv6_listing_before },
@@ -354,14 +354,14 @@ data srv6_listing_wider_than_desired: String = "User gunbc-automation may run th
 // wrongly held because the desired command is a proper prefix of the installed one. What matters is
 // that the two answers still DIFFER by exactly the grant under test; the absolute numbers are a
 // consequence of how many grants the population carries and carry no meaning of their own.
-test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool {
+test fn an_entry_that_merely_starts_with_the_desired_command_is_not_that_grant() -> Bool  {
   spark_managed_grants_to_install(outcome: GrantEnumerated { listing: srv6_listing_wider_than_desired }).length() == 6
 }
 
 // A BANNER LINE CONTRIBUTES NOTHING RATHER THAN A NEGATIVE VOTE. The listing's prose header names
 // the account and the host and carries no `NOPASSWD:` marker, so it yields no command at all -- the
 // join skips it instead of counting it as an entry that failed to match.
-test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
+test fn the_listing_banner_is_not_read_as_an_entry() -> Bool  {
   spark_managed_grants_converged(outcome: GrantEnumerated { listing: srv6_listing_with_inspect })
     && !spark_managed_grants_converged(outcome: GrantEnumerated { listing: "User gunbc-automation may run the following commands on srv6:\n" })
 }
@@ -386,7 +386,7 @@ test fn the_listing_banner_is_not_read_as_an_entry() -> Bool {
 // rendered command strings, so it compiles identically before and after that PR and measures the
 // one fact the ordering depends on.
 
-test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() -> Bool {
+test fn the_modeled_linger_command_is_byte_equal_to_the_line_the_hosts_hold() -> Bool  {
   any(spark_managed_grant_population, g =>
     spark_managed_grant_sudoers_command(grant: g) as String == measured_installed_linger_command)
 }
@@ -422,7 +422,7 @@ fn spark_grant_line_naming_every_grant_on_one_line() -> String {
     "")
 }
 
-test fn two_commands_on_one_entry_line_are_two_grants() -> Bool {
+test fn two_commands_on_one_entry_line_are_two_grants() -> Bool  {
   spark_managed_grants_to_install(
     outcome: GrantEnumerated { listing: spark_grant_line_naming_every_grant_on_one_line() }
   ).length() == 0
@@ -449,7 +449,7 @@ fn fixture_accepted_risk() -> List<SparkGrantInstallBasis> {
 // reached through the report -- and that arm is the refusal wire any FUTURE data-bearing grant with
 // no acceptance falls to. So the wire is driven here directly under the absent basis, keeping its RED
 // enrolled per DESIGN 4b(4) rather than leaving it specification-without-execution (review 66129).
-test fn without_an_install_basis_inspect_is_withheld_while_the_spec_bounded_read_installs() -> Bool {
+test fn without_an_install_basis_inspect_is_withheld_while_the_spec_bounded_read_installs() -> Bool  {
   let o = GrantEnumerated { listing: srv6_listing_after }
   spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]).length() == 1
     && all(spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]), g => match g {
@@ -486,7 +486,7 @@ test fn without_an_install_basis_inspect_is_withheld_while_the_spec_bounded_read
 // acceptance, the native arm's on the 2026-09-16 acceptance -- each admitted on accepted risk with the
 // disclosure obligation still attached, and nothing is withheld. The actor is the operator's fleet
 // login and each decision names its container, so the rows are attributable and scoped.
-test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool {
+test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool  {
   let o = GrantEnumerated { listing: srv6_listing_after }
   let installing = spark_managed_grants_to_install(outcome: o)
   installing.length() == 4
@@ -525,7 +525,7 @@ test fn the_production_basis_admits_inspect_on_accepted_risk() -> Bool {
 // THE ACCEPTANCE DOES NOT WIDEN. The production basis names one grant; a data-bearing grant it does not
 // name -- the same verb over a different container -- is not accepted by it, so a future grant row
 // cannot ride in on this decision.
-test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool {
+test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool  {
   spark_install_basis_accepts_risk_for(
     basis: spark_managed_grant_install_basis,
     grant: InspectServingContainer { container: "some-other-container" as NonEmptyStr },
@@ -538,7 +538,7 @@ test fn the_production_basis_accepts_no_grant_it_does_not_name() -> Bool {
 
 // THE PRECONDITION IS THE ONLY THING THAT MOVES IT, and it does not move the dataless grants: from the
 // same listing, an operator acceptance admits inspect, while reboot is admitted either way.
-test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool {
+test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional() -> Bool  {
   let o = GrantEnumerated { listing: srv6_listing_before }
   spark_managed_grants_to_install_under(outcome: o, basis: [InstallBasisAbsent]).length() == 2
     && spark_managed_grants_to_install_under(
@@ -550,7 +550,7 @@ test fn an_accepted_risk_admits_inspect_and_leaves_dataless_grants_unconditional
 // THE TWO AXES STAY TWO. Accepting the risk admits the install but does not classify anything: the
 // admission still carries the disclosure obligation, and the report says the grant was admitted with the
 // disclosure unestablished rather than reading as if the knowledge wall came down.
-test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() -> Bool {
+test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() -> Bool  {
   let o = GrantEnumerated { listing: srv6_listing_after }
   any(spark_grant_install_admissions_under(outcome: o, basis: fixture_accepted_risk()), a => match a {
     GrantInstallAdmittedOnAcceptedRisk { grant: _, obligation: ob, basis: _ } =>
@@ -570,7 +570,7 @@ test fn accepted_risk_admits_the_install_and_keeps_the_obligation_outstanding() 
 // no basis turned a true claim red without the property it names having changed. Asserting the
 // identity says what was meant and stays true as the population grows -- completeness is an identity
 // join, not a count equality.
-test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
+test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool  {
   let installing = spark_managed_grants_to_install_under(
     outcome: GrantEnumerated { listing: srv6_listing_after },
     basis: [OperatorAcceptedUnresolvedDisclosureRisk {
@@ -589,7 +589,7 @@ test fn accepted_risk_for_another_container_does_not_admit_inspect() -> Bool {
 
 // HELD AND UNREAD DO NOT SHARE AN ARM. A refused probe leg admits every grant as standing-unobserved,
 // while a listing that names every grant admits none that way: the verdict can tell them apart.
-test fn an_unread_standing_is_its_own_admission_and_not_nothing_needed() -> Bool {
+test fn an_unread_standing_is_its_own_admission_and_not_nothing_needed() -> Bool  {
   spark_managed_grants_install_unobserved(outcome: GrantProbeRefused { cause: "leg refused" }).length()
       == spark_managed_grant_population.length()
     && spark_managed_grants_install_unobserved(outcome: GrantEnumerated { listing: srv6_listing_with_inspect }).length() == 0

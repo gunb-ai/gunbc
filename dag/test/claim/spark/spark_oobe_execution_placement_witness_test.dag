@@ -145,7 +145,7 @@ data disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // It asserts over the WHOLE published cause population rather than a selected representative, so
 // appending a relay cannot quietly change which refusal this reads.
-test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
+test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool  {
   match current_oobe_participant_gaps() {
     ParticipantEvidenceCompleteRouteUnbuilt { renderers: _, relays: _ } => false
     NoRendererHasCompleteEvidence { causes: _ } => false
@@ -163,7 +163,7 @@ test fn w_the_participant_gap_is_the_unratified_relay_identity() -> Bool {
 // admission function that can NEVER be ready, which would make it a permanently-green decoration
 // rather than a wall. The same relay observation with an ALLOCATED machine has complete evidence, so the
 // refusal is attributable to the allocation and to nothing else.
-test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> Bool {
+test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> Bool  {
   match relay_assessment(obs: RadioAssociated {
     machine: FleetAllocatedMachine { host: operator_host_srv7 },
     radio_interface: "wlan0" as RadioInterfaceName,
@@ -180,7 +180,7 @@ test fn w_the_same_relay_with_an_allocated_identity_has_complete_evidence() -> B
 // operator ratification of adopting a support host into the fleet identity authority. A previous
 // head asserted the opposite here, having promoted pi1 to allocated while its own receipt recorded
 // the ratification as outstanding.
-test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Bool {
+test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Bool  {
   match relay_assessment(obs: relay_pi1) {
     RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => false
     RelayAssessmentDeclined { cause: c } => match c {
@@ -194,7 +194,7 @@ test fn w_the_measured_pi1_relay_is_declined_for_identity_not_for_radio() -> Boo
 // UNOBSERVED BEFORE ABSENT. srv1's node runtime was never measured, so its decline must say the
 // axis is unobserved -- NOT that it has no package, even though the package absence is also true.
 // Reporting a measured deficit we did not measure is the failure this ordering exists to prevent.
-test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() -> Bool {
+test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() -> Bool  {
   match renderer_assessment(obs: renderer_srv1_briansrls) {
     RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
     RendererAssessmentDeclined { cause: c } => match c {
@@ -210,7 +210,7 @@ test fn w_an_unmeasured_axis_declines_as_unobserved_not_as_a_measured_absence() 
 
 // THE MEASURED QUALIFIED RENDERER, entered through the admission function rather than read off a
 // row, and carrying the PlaywrightBuild authority rather than a re-coined version string.
-test fn w_srv4_has_complete_evidence_and_carries_the_playwright_build_authority() -> Bool {
+test fn w_srv4_has_complete_evidence_and_carries_the_playwright_build_authority() -> Bool  {
   match renderer_assessment(obs: renderer_srv4_briansrls) {
     RendererAssessmentDeclined { cause: _ } => false
     RendererMeetsRequirements { host: h, account: a, architecture: _, node_runtime: nr, playwright: pw, browser: _ } =>
@@ -220,7 +220,7 @@ test fn w_srv4_has_complete_evidence_and_carries_the_playwright_build_authority(
 
 // A RENDERER WITH NO RUNTIME AT ALL declines for the runtime, which discriminates this arm from
 // the unobserved one above. Both are declines; only one of them is a measured fact.
-test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool {
+test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool  {
   match renderer_assessment(obs: RendererObservation {
     machine: machine_srv4,
     account: "briansrls" as PosixLoginName,
@@ -249,7 +249,7 @@ test fn w_a_measured_absent_runtime_declines_for_the_runtime() -> Bool {
 // THE COMBINATION THE PREDECESSOR COULD NOT EXPRESS: package present, browser absent. Its fused
 // coproduct had a package-missing arm carrying a browser Boolean and no arm for this state at all,
 // despite its own comment claiming the axes were independent. Independent axes cannot omit it.
-test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines() -> Bool {
+test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines() -> Bool  {
   match renderer_assessment(obs: RendererObservation {
     machine: machine_srv4,
     account: "briansrls" as PosixLoginName,
@@ -273,7 +273,7 @@ test fn w_a_present_package_with_an_absent_browser_is_expressible_and_declines()
 // AN UNALLOCATED MACHINE CANNOT QUALIFY AS A RENDERER EITHER, no matter how complete its software
 // is. This is the renderer-side half of the constraint the predecessor dissolved by writing
 // "pi1" as HostIdentity.
-test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool {
+test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool  {
   match renderer_assessment(obs: RendererObservation {
     machine: UnallocatedMachineObservation { observed_label: "some-unnamed-box" as NonEmptyStr },
     account: "briansrls" as PosixLoginName,
@@ -303,7 +303,7 @@ test fn w_a_fully_provisioned_but_unallocated_machine_is_declined() -> Bool {
 // single exclusive coproduct, so recording the secret refusal erased the observation admission and
 // the route's real measured standing survived only in prose. Both are now true simultaneously,
 // and this witness fails if either half is dropped.
-test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool {
+test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool  {
   match use_decision_for(want: ObservationPayload) {
     ForwardingUseDecisionMissing { payload: _ } => false
     ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
@@ -331,13 +331,13 @@ test fn w_observation_was_observed_and_secrets_refused_on_the_same_leg() -> Bool
 //
 // BOTH HALVES ARE ASSERTED. A version checking only the renderer count would stay green if a relay
 // began carrying complete evidence under a fabricated identity -- the exact regression an earlier head shipped.
-test fn w_exactly_one_renderer_and_no_relay_carry_complete_evidence() -> Bool {
+test fn w_exactly_one_renderer_and_no_relay_carry_complete_evidence() -> Bool  {
   renderers_with_complete_evidence() == 1 && relays_with_complete_evidence() == 0
 }
 
 // AND THE ONE RENDERER IS srv4, asserted separately because a count cannot say WHICH. Folding over
 // the published assessments rather than asking a selector keeps list order out of the answer.
-test fn w_the_renderer_with_complete_evidence_is_srv4() -> Bool {
+test fn w_the_renderer_with_complete_evidence_is_srv4() -> Bool  {
   fold(renderer_assessments(), init: false, f: (acc, a) => acc || match a {
     RendererAssessmentDeclined { cause: _ } => false
     RendererMeetsRequirements { host: qh, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } =>
@@ -349,7 +349,7 @@ test fn w_the_renderer_with_complete_evidence_is_srv4() -> Bool {
 // composition of three facts rather than one host, and it is folded from the measured population
 // rather than asserted, so installing Playwright on pi1 -- or a radio in srv4 -- retires it by
 // construction instead of leaving a comment that has quietly become false.
-test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool {
+test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool  {
   !fold(observed_renderers, init: false, f: (acc, obs) => acc || match renderer_assessment(obs: obs) {
     RendererAssessmentDeclined { cause: _ } => false
     RendererMeetsRequirements { host: qh, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } =>
@@ -365,7 +365,7 @@ test fn w_no_single_machine_has_complete_renderer_and_relay_evidence() -> Bool {
 // no third payload class to ask about today, so this asks the question the only way it can be
 // asked -- by confirming the lookup's refusal carries the requested class rather than some
 // decision that happened to be in the list.
-test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool {
+test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> Bool  {
   match use_decision_for(want: SecretBearingPayload) {
     ForwardingUseDecisionMissing { payload: _ } => false
     ForwardingUseDecisionAmbiguous { payload: _, standings: _ } => false
@@ -382,7 +382,7 @@ test fn w_the_use_lookup_returns_a_decision_about_the_class_that_was_asked() -> 
 // THE UNOBSERVED AXIS IS NAMED, NOT MERELY REPORTED AS MISSING. srv1's node runtime was never
 // measured while its Playwright package WAS measured absent, so a cause that said only "an axis was
 // unobserved" would leave the reader unable to tell which measurement to go take.
-test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool {
+test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool  {
   match renderer_assessment(obs: renderer_srv1_briansrls) {
     RendererMeetsRequirements { host: _, account: _, architecture: _, node_runtime: _, playwright: _, browser: _ } => false
     RendererAssessmentDeclined { cause: c } => match c {
@@ -403,7 +403,7 @@ test fn w_an_unobserved_axis_decline_names_which_axis() -> Bool {
 // RESTORED. The rewrite of this file dropped the flag witness, which would have left the one place
 // a direction becomes an argv character unguarded -- and -L versus -R is the difference between
 // listening here and asking the far side to listen.
-test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool {
+test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool  {
   forward_flag(direction: LocalForward) == "-L" && forward_flag(direction: RemoteForward) == "-R"
 }
 
@@ -411,7 +411,7 @@ test fn w_forward_direction_maps_to_the_openssh_flag_that_means_it() -> Bool {
 // check on the §3 repair: replacing "ExitOnForwardFailure=yes" with a variant is only a fix if the
 // shared serializer still emits exactly that. If it did not, the repair would have traded a fork for
 // a behaviour change, which is worse than the fork.
-test fn w_the_typed_forwarding_options_serialize_to_their_wire_spelling() -> Bool {
+test fn w_the_typed_forwarding_options_serialize_to_their_wire_spelling() -> Bool  {
   serialize_ssh_client_option(option: exit_on_forward_failure_option) == ["-o", "ExitOnForwardFailure=yes"]
   && serialize_ssh_client_option(option: batch_mode_option) == ["-o", "BatchMode=yes"]
 }
@@ -427,7 +427,7 @@ test fn w_the_typed_forwarding_options_serialize_to_their_wire_spelling() -> Boo
 // forward without pinning all three would let one measurement license a request nobody measured.
 // This lane already paid once for the neighbouring confound, reporting hosts as refusing keys when
 // the wrong login was in play.
-test fn w_the_measured_admission_pins_the_principal_direction_and_target() -> Bool {
+test fn w_the_measured_admission_pins_the_principal_direction_and_target() -> Bool  {
   match pi1_local_forward_to_unit_admission {
     ForwardingAdministrativelyProhibited { subject: _ } => false
     ForwardingAdmissionUnobserved { subject: _ } => false
@@ -448,7 +448,7 @@ test fn w_the_measured_admission_pins_the_principal_direction_and_target() -> Bo
 // reported its version while it rendered the wizard, so its build is identified; srv1's chromium-1217
 // is a directory listing and identifies no build. Both machines carry a cache entry, so a fold that
 // read provisioning as build identity would be green -- this is the input that makes it red.
-test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool {
+test fn w_a_cache_entry_alone_does_not_identify_a_chromium_build() -> Bool  {
   match renderer_srv1_briansrls.browser {
     PlaywrightBrowserAbsent => false
     PlaywrightBrowserUnobserved => false
@@ -494,7 +494,7 @@ fn leg_spelling(sub: ForwardingAdmissionSubject) -> String {
   + (sub.target.port as String)
 }
 
-test fn w_the_measured_leg_use_names_its_exact_leg_and_run() -> Bool {
+test fn w_the_measured_leg_use_names_its_exact_leg_and_run() -> Bool  {
   leg_spelling(sub: measured_leg_use.forwarding_leg_subject) == "briansrls@pi1 -L 10.92.7.127:80"
     && match measured_leg_use.attested_by.termination {
       WalkHaltedAwaitingOperatorAuthority { at_route: r } => r == "/welcome/account"
@@ -508,7 +508,7 @@ test fn w_the_measured_leg_use_names_its_exact_leg_and_run() -> Bool {
 // so the admitted mutation -- allocated host, Node present, Playwright present, cache entry present,
 // build UNIDENTIFIED -> RendererMeetsRequirements -- was invisible to it. This constructs exactly
 // that observation and requires the refusal.
-test fn w_an_unidentified_browser_build_is_not_complete_renderer_evidence() -> Bool {
+test fn w_an_unidentified_browser_build_is_not_complete_renderer_evidence() -> Bool  {
   match renderer_assessment(obs: RendererObservation {
     machine: machine_srv4,
     account: "briansrls" as PosixLoginName,
@@ -538,7 +538,7 @@ test fn w_an_unidentified_browser_build_is_not_complete_renderer_evidence() -> B
 
 // THE POSITIVE CONTROL: the SAME observation with the build identified is complete. Without it the
 // witness above passes for an assessment that refuses everything.
-test fn w_the_same_renderer_with_an_identified_build_is_complete() -> Bool {
+test fn w_the_same_renderer_with_an_identified_build_is_complete() -> Bool  {
   match renderer_assessment(obs: RendererObservation {
     machine: machine_srv4,
     account: "briansrls" as PosixLoginName,
@@ -563,7 +563,7 @@ test fn w_the_same_renderer_with_an_identified_build_is_complete() -> Bool {
 // reported only relay causes: every renderer problem disappeared and the headline witness stayed
 // green. That is the absorbing fallback one level above the per-row assessments, and it was
 // unauthorable until the gap function took its populations as arguments.
-test fn w_both_incomplete_populations_keep_both_sets_of_causes() -> Bool {
+test fn w_both_incomplete_populations_keep_both_sets_of_causes() -> Bool  {
   match participant_gaps_over(
     renderers: [RendererObservation {
       machine: machine_srv4,
@@ -598,7 +598,7 @@ test fn w_both_incomplete_populations_keep_both_sets_of_causes() -> Bool {
 // THE PUBLISHED RELAY POPULATION HAS A READER. relay_assessments was exported and consumed by
 // nothing, which in this PR is not a style defect: an unread publication is indistinguishable from
 // one that is wrong.
-test fn w_every_observed_relay_is_assessed_and_none_is_complete() -> Bool {
+test fn w_every_observed_relay_is_assessed_and_none_is_complete() -> Bool  {
   length(relay_assessments()) == length(observed_relays)
     && fold(relay_assessments(), init: true, f: (acc, a) => acc && match a {
       RelayMeetsRequirements { host: _, radio_interface: _, associated_ssid: _ } => false

@@ -38,7 +38,7 @@ fn id_of(hex: String) -> NonEmptyStr {
 }
 
 // THE NOOP: a target already holding the subject's digest under the tag moves nothing.
-test fn a_target_holding_the_digest_is_the_noop() -> Bool {
+test fn a_target_holding_the_digest_is_the_noop() -> Bool  {
   match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: subject_hex), size: byte_size(count: 10) }, image: subject()) {
     VllmImageTargetHolds => true
     VllmImageTargetNeeds => false
@@ -46,7 +46,7 @@ test fn a_target_holding_the_digest_is_the_noop() -> Bool {
   }
 }
 
-test fn a_target_holding_nothing_under_the_tag_needs_the_image() -> Bool {
+test fn a_target_holding_nothing_under_the_tag_needs_the_image() -> Bool  {
   match vllm_image_target_state(held: VllmImageNotHeld, image: subject()) {
     VllmImageTargetNeeds => true
     VllmImageTargetHolds => false
@@ -56,7 +56,7 @@ test fn a_target_holding_nothing_under_the_tag_needs_the_image() -> Bool {
 
 // THE RED THE TAG CANNOT CATCH: a different image under the same tag refuses rather than having the
 // tag moved off it by a load -- two images under one tag is exactly why the tag is not the identity.
-test fn a_different_image_under_the_tag_refuses() -> Bool {
+test fn a_different_image_under_the_tag_refuses() -> Bool  {
   match vllm_image_target_state(held: VllmImageHeldAs { id: id_of(hex: other_hex), size: byte_size(count: 10) }, image: subject()) {
     VllmImageTargetRefused { step: _, cause: why } => string_contains(s: why, pattern: other_hex) && string_contains(s: why, pattern: subject_hex)
     VllmImageTargetHolds => false
@@ -65,7 +65,7 @@ test fn a_different_image_under_the_tag_refuses() -> Bool {
 }
 
 // AN UNREAD DAEMON IS NOT AN EMPTY ONE: reading it as "needs" would move 30GB onto a host nobody asked.
-test fn an_unread_target_refuses_rather_than_reading_as_empty() -> Bool {
+test fn an_unread_target_refuses_rather_than_reading_as_empty() -> Bool  {
   match vllm_image_target_state(held: VllmImageHeldUnread { step: "deliver-digest-pre" as NonEmptyStr, cause: "exit=1 stderr=permission denied" }, image: subject()) {
     VllmImageTargetRefused { step: _, cause: why } => string_contains(s: why, pattern: "permission denied")
     VllmImageTargetHolds => false
@@ -73,7 +73,7 @@ test fn an_unread_target_refuses_rather_than_reading_as_empty() -> Bool {
   }
 }
 
-test fn an_inspect_document_reads_as_id_and_size() -> Bool {
+test fn an_inspect_document_reads_as_id_and_size() -> Bool  {
   let doc = join(["[{\"Id\":\"sha256:", subject_hex, "\",\"Size\":31457280000}]"], "")
   match vllm_image_held_of_inspect(step: "s" as NonEmptyStr, stdout: doc) {
     VllmImageHeldAs { id: id, size: n } => (id as String) == join(["sha256:", subject_hex], "") && byte_size_count(b: n) == 31457280000
@@ -89,7 +89,7 @@ test fn an_inspect_document_reads_as_id_and_size() -> Bool {
 
 // THE DISK SHARE REFUSES SHORT OF ITS REQUIREMENT WITH BOTH FIGURES, ADMITS AT IT, AND AN
 // UNOBSERVED FILESYSTEM IS A REFUSAL -- never room assumed.
-test fn a_filesystem_short_of_its_share_refuses_with_the_figures() -> Bool {
+test fn a_filesystem_short_of_its_share_refuses_with_the_figures() -> Bool  {
   match vllm_image_disk_refusal(step: "deliver-disk-staging" as NonEmptyStr, place: "srv5:/tmp", required: byte_size(count: 200), reading: DiskObserved { free_bytes: byte_size(count: 199), observed_on: "srv5" as NonEmptyStr }) {
     Present { value: why } => string_contains(s: why, pattern: "199") && string_contains(s: why, pattern: "200")
     Absent => false
@@ -105,7 +105,7 @@ test fn a_filesystem_short_of_its_share_refuses_with_the_figures() -> Bool {
 }
 
 // DELIVERING TO NOBODY IS NOT A SUCCESS, AND ONE REFUSED HOST FAILS THE WHOLE.
-test fn distribution_succeeds_only_over_a_nonempty_all_delivered_set() -> Bool {
+test fn distribution_succeeds_only_over_a_nonempty_all_delivered_set() -> Bool  {
   let ok = VllmImageHostDelivered { host: "srv5" as HostIdentity, digest: id_of(hex: subject_hex), already_present: false }
   let noop = VllmImageHostDelivered { host: "srv6" as HostIdentity, digest: id_of(hex: subject_hex), already_present: true }
   let bad = VllmImageHostDeliveryRefused { host: "srv7" as HostIdentity, step: "deliver-disk" as NonEmptyStr, cause: "short" }
@@ -119,7 +119,7 @@ test fn distribution_succeeds_only_over_a_nonempty_all_delivered_set() -> Bool {
 // printed tag=gunbc-vllm-dsv41-gb10:d73e307009a5d716 for this source tree; the row carries only the
 // tree, and the tag comes out of the candidate's recipe through the build's own key fold. A row
 // whose tree, or a recipe that has moved since, no longer derives that tag goes red here.
-test fn the_arm_a_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool {
+test fn the_arm_a_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool  {
   let s = v41_produced_image_subject(p: v41_arm_a_produced_image)
   (s.tag as String) == "gunbc-vllm-dsv41-gb10:d73e307009a5d716"
     && render_oci_content_digest_wire(d: s.config) == join(["sha256:", subject_hex], "")
@@ -130,7 +130,7 @@ test fn the_arm_a_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bo
 // tag=gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e for its source tree (the design-B cutover's patch set); the
 // row carries only that tree, and the tag comes out of the build's own key fold. This is the image the
 // distribution mode moves.
-test fn the_production_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool {
+test fn the_production_receipt_derives_its_printed_tag_and_carries_its_digest() -> Bool  {
   let s = v41_produced_image_subject(p: v41_production_produced_image)
   (s.tag as String) == "gunbc-vllm-dsv41-gb10:3cedb66f0ec0869e"
     && render_oci_content_digest_wire(d: s.config) == "sha256:5de3c35577e5c8f3026c143d3d5b2d66cc527119281369f4651d969f581829d3"

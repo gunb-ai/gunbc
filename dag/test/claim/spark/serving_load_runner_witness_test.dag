@@ -94,7 +94,7 @@ fn runner_glm_step_text(subject: ServingLoadSubject) -> String {
 
 // GLM's c=2 smoke step through the shared runner is byte-equal to the pre-runner composition, and
 // the principal and host actually reach the text (the control is not equal by both being empty).
-test fn glm_step_text_through_the_runner_is_byte_equal_to_the_pre_runner_receipt() -> Bool {
+test fn glm_step_text_through_the_runner_is_byte_equal_to_the_pre_runner_receipt() -> Bool  {
   match glm_native_serving_load_subject() {
     Absent => false
     Present { value: g } => {
@@ -108,7 +108,7 @@ test fn glm_step_text_through_the_runner_is_byte_equal_to_the_pre_runner_receipt
 
 // The real GLM rows inhabit the runner's subject/step agreement: the smoke protocol addresses the
 // subject's base URL and served alias.
-test fn glm_smoke_step_addresses_the_glm_subject() -> Bool {
+test fn glm_smoke_step_addresses_the_glm_subject() -> Bool  {
   match glm_native_serving_load_subject() {
     Absent => false
     Present { value: g } =>
@@ -120,7 +120,7 @@ test fn glm_smoke_step_addresses_the_glm_subject() -> Bool {
 }
 
 // A step naming another served alias refuses before any remote run, and says which field.
-test fn a_step_for_another_alias_refuses() -> Bool {
+test fn a_step_for_another_alias_refuses() -> Bool  {
   let p = glm_native_smoke_protocol
   let other = VllmBenchServeRequest {
     backend: p.backend, base_url: p.base_url, model: "deepseek-v4.1-flash" as NonEmptyStr,
@@ -139,7 +139,7 @@ test fn a_step_for_another_alias_refuses() -> Bool {
 
 // Admission is the subject's, never a model's row baked into the shared observation: a subject
 // carrying its own admission cause sees that cause in its receipt and not GLM's.
-test fn the_receipt_carries_the_subjects_admission_not_glms() -> Bool {
+test fn the_receipt_carries_the_subjects_admission_not_glms() -> Bool  {
   match glm_native_serving_load_subject() {
     Absent => false
     Present { value: g } => {

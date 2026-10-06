@@ -40,7 +40,7 @@ fn w_digest_of(text: String) -> RenderedUnitDigestStanding {
 }
 
 // POSITIVE CONTROL: the same rendered bytes hash to the same SHA-256 twice.
-test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
+test fn hashing_the_same_rendered_bytes_is_stable() -> Bool  {
   match w_digest_of(text: w_unit_text) {
     RenderedUnitDigestUnavailable { obligation: _ } => false
     RenderedUnitDigested { unit_name: n1, digest: d1 } =>
@@ -59,7 +59,7 @@ test fn hashing_the_same_rendered_bytes_is_stable() -> Bool {
 
 // RED: one extra byte in the unit text is a different digest. Without this row a mint that returned
 // a constant, or hashed the unit NAME rather than the bytes, would still pass the stability row.
-test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
+test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool  {
   match w_digest_of(text: w_unit_text) {
     RenderedUnitDigestUnavailable { obligation: _ } => false
     RenderedUnitDigested { unit_name: _, digest: d } =>
@@ -83,7 +83,7 @@ test fn unit_text_differing_by_one_byte_gives_a_different_digest() -> Bool {
 // AND IT IS THE SAME BYTES: re-digesting the group's render through the supplied-input mint above
 // must agree with what the group-level producer returned. RED if the group producer ever digested
 // something other than the unit text it renders.
-test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool {
+test fn spark_pair_head_unit_declared_digest_hashes_the_realized_head_unit() -> Bool  {
   match spark_pair_declared_head_digest(group: FabricGroupA) {
     DeclaredUnitDigestUnavailable { obligation: _ } => false
     DeclaredUnitDigested { evidence: e } =>

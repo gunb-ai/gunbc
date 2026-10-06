@@ -94,7 +94,7 @@ fn w_realized(f: fn(SparkPairHostRealization, List<SparkPairHostRealization>) ->
 // combination is removed instead: GLM lives behind gunbc.spark.glm_canary_converge, which admits its
 // exact arm through `serving_arm_admits` -- the wall that refuses an image that cannot load the
 // checkpoint.
-test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool {
+test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool  {
   match w_first() {
     Absent => false
     Present { value: r } =>
@@ -116,7 +116,7 @@ test fn the_live_roster_renders_the_model_its_image_can_actually_load() -> Bool 
 // pin is the only thing missing. A path under `snapshots/<revision>/` needs a revision; composing one
 // out of a branch name would name a directory whose contents change under it, which is why the
 // renderer refuses rather than substituting `main`.
-test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -> Bool {
+test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -> Bool  {
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
@@ -157,7 +157,7 @@ test fn the_head_unit_refuses_while_the_desired_snapshot_carries_no_revision() -
 // layout its Multi-head Latent Attention requires, no GLM identity anywhere in the rendered text, and
 // the batch budget main pinned -- which the previous form explicitly asserted was ABSENT, so it would
 // have gone red against main's change even had the model question been settled.
-test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout() -> Bool {
+test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout() -> Bool  {
   match w_fixture_unit() {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: _, head: h, workers: _ } =>
@@ -184,7 +184,7 @@ test fn the_rendered_serve_line_carries_this_models_identity_parser_and_layout()
 // the host log the pool line is read from; the always-restart is what waits for the worker, and it
 // is also what brings the engine back after it exits 0 on losing ranks (the 2026-09-12 outage), so
 // on-failure is asserted absent rather than merely always present.
-test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_stdout() -> Bool {
+test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_stdout() -> Bool  {
   w_realized(f: fn(h, _ws) {
     let t = w_unit_text(u: h.unit)
     string_contains(s: t, pattern: join([
@@ -203,7 +203,7 @@ test fn the_head_unit_releases_the_ray_session_before_the_engine_and_captures_st
 // EVERY WORKER HOLDS ITS RANK WITH `ray start --block` AND IS ALWAYS RESTARTED, which is the rejoin
 // supervision the polling script did by hand; group A has three workers, each joining the head's rail
 // address from its own.
-test fn every_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
+test fn every_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool  {
   w_realized(f: fn(_h, ws) {
     length(ws) == 3
       && all(ws, w => string_contains(s: w_unit_text(u: w.unit), pattern: "Restart=always"))
@@ -215,7 +215,7 @@ test fn every_worker_unit_blocks_on_its_rank_and_rejoins_by_restart() -> Bool {
 // EVERY INTERFACE NAME THE IMAGE BAKES IS OVERRIDDEN AT CREATE, FROM THE OBSERVED LANE, ON BOTH HOSTS.
 // This is the 2026-09-05 drift made unwritable: an identity join against the image's own roster of
 // baked names, with the head's values equal to its leg netdev, RDMA device and rail address.
-test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric() -> Bool {
+test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric() -> Bool  {
   w_realized(f: fn(h, ws) {
     spark_pair_container_env_covers_every_baked_name(env: h.container.env)
       && all(ws, w => spark_pair_container_env_covers_every_baked_name(env: w.container.env))
@@ -232,7 +232,7 @@ test fn the_container_env_overrides_every_baked_interface_name_from_the_fabric()
 // extdeps.vllm.usage_stats row the route's telemetry reading folds. The declaration admits nothing
 // by itself -- the reading of the answering container's effective environment discharges the route
 // -- but this row is what makes that reading come out disabled after a converge.
-test fn the_container_env_declares_the_usage_stats_reporter_off() -> Bool {
+test fn the_container_env_declares_the_usage_stats_reporter_off() -> Bool  {
   w_realized(f: fn(h, ws) {
     all([h.container.env], env => any(env, e => (e.name as String) == (vllm_usage_stats_no_usage_stats_term.variable as String) && e.value == (vllm_usage_stats_no_usage_stats_term.disabling_value as String)))
       && all(ws, w => any(w.container.env, e => (e.name as String) == (vllm_usage_stats_no_usage_stats_term.variable as String) && e.value == (vllm_usage_stats_no_usage_stats_term.disabling_value as String)))
@@ -241,7 +241,7 @@ test fn the_container_env_declares_the_usage_stats_reporter_off() -> Bool {
 
 // THE CONTAINER IS CREATED FROM THE RUNTIME BUILT ON THE PINNED DIGEST, with the run configuration
 // the pair was observed with, plus the JIT cache bound to a host directory so a recreate keeps it.
-test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_config() -> Bool {
+test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_config() -> Bool  {
   w_realized(f: fn(h, _ws) {
     let a = h.create.arguments
     (h.create.program.invocation as String) == "/usr/bin/docker"
@@ -256,7 +256,7 @@ test fn the_container_is_created_from_the_built_runtime_with_the_observed_run_co
 }
 
 // THE BAKED ROSTER IS NOT EMPTY, so the coverage join above can go red.
-test fn the_image_names_the_interface_variables_it_bakes() -> Bool {
+test fn the_image_names_the_interface_variables_it_bakes() -> Bool  {
   length(sparkrun_vllm_ds4_gb10_baked_interface_env_names) == 6
     && !spark_pair_container_env_covers_every_baked_name(env: [DockerEnvAssignment { name: "TP_SOCKET_IFNAME" as NonEmptyStr, value: "x" }])
 }
@@ -265,7 +265,7 @@ test fn the_image_names_the_interface_variables_it_bakes() -> Bool {
 // sets NCCL_IB_GID_INDEX=3; after the 2026-09-12 flap slot 3 on the leg port is empty on every group A
 // host and ncclCommInitRank fails. Every host's container overrides the index to NCCL's scanning
 // value with the IPv4 RoCE v2 attributes, and no host carries a fixed slot.
-test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> Bool {
+test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> Bool  {
   w_realized(f: fn(h, ws) {
     let hosts = concat([h], ws)
     length(hosts) == 4
@@ -281,7 +281,7 @@ test fn every_container_selects_its_roce_gid_by_address_family_not_by_slot() -> 
 // arm is decided before sha256sum is reached: DigestStdin is only called on SparkPairUnitRendered.
 // RED if the fold ever fabricated a digest for a refused render, or replaced the render's cause
 // with a generic one.
-test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
+test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool  {
   match spark_pair_rendered_unit_digest(render: SparkPairUnitRenderRefused {
     unit_name: spark_pair_head_unit_name,
     cause: "fixture render refusal" as NonEmptyStr,
@@ -298,7 +298,7 @@ test fn a_render_refusal_is_an_unavailable_declared_digest() -> Bool {
 // witness can express them; they are reached only by the wet lane's real execution, which cannot
 // make sha256sum fail on demand. Those two arms are therefore UNEXERCISED, and the fold is written
 // so each is a typed Unavailable rather than a fabricated digest (DESIGN section 5).
-test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool {
+test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool  {
   match spark_pair_rendered_unit_digest(render: SparkPairUnitRendered {
     unit_name: spark_pair_head_unit_name,
     text: "",
@@ -309,7 +309,7 @@ test fn an_empty_render_is_an_unavailable_declared_digest() -> Bool {
 }
 
 // THE RDMA ROSTER CAN GO RED: an env covering every interface name but no GID index is refused.
-test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool {
+test fn an_env_that_leaves_the_gid_index_to_the_image_is_not_covering() -> Bool  {
   length(sparkrun_vllm_ds4_gb10_baked_rdma_endpoint_env_names) == 3
     && !spark_pair_container_env_covers_every_baked_name(env: concat(
       map(sparkrun_vllm_ds4_gb10_baked_interface_env_names, n => DockerEnvAssignment { name: n, value: "x" }),

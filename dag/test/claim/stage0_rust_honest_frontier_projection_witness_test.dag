@@ -24,14 +24,14 @@ import gunbc.stage0_rust_source_lifecycle_scaffold {
 import std.content_hash { Fnv1a64Structural }
 import v2.std.algebra { any, length }
 
-test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool {
+test fn honest_frontier_exact_unclassified_paths_preserve_identity_and_order() -> Bool  {
   exact_unclassified_tracked_paths(
     tracked_paths: ["a.rs", "generated.rs", "disposition.rs", "b.rs"],
     classified_paths: ["generated.rs", "disposition.rs"]
   ) == ["a.rs", "b.rs"]
 }
 
-test fn honest_frontier_projection_returns_exact_unclassified_paths() -> Bool {
+test fn honest_frontier_projection_returns_exact_unclassified_paths() -> Bool  {
   match tracked_rust_unclassified_projection(
     observation: honest_frontier_projection_witness_observation(
       extra_paths: ["synthetic/a.rs", "synthetic/b.rs"]
@@ -43,7 +43,7 @@ test fn honest_frontier_projection_returns_exact_unclassified_paths() -> Bool {
   }
 }
 
-test fn honest_frontier_projection_positive_control_has_no_unclassified_paths() -> Bool {
+test fn honest_frontier_projection_positive_control_has_no_unclassified_paths() -> Bool  {
   match tracked_rust_unclassified_projection(
     observation: honest_frontier_projection_witness_observation(extra_paths: [])
   ) {
@@ -52,7 +52,7 @@ test fn honest_frontier_projection_positive_control_has_no_unclassified_paths() 
   }
 }
 
-test fn honest_frontier_projection_does_not_treat_hand_roster_as_disposition() -> Bool {
+test fn honest_frontier_projection_does_not_treat_hand_roster_as_disposition() -> Bool  {
   let hand_roster_paths = derived_hand_maintained_stage0_repo_paths()
   match tracked_rust_unclassified_projection(
     observation: honest_frontier_projection_witness_observation(extra_paths: hand_roster_paths)
@@ -65,7 +65,7 @@ test fn honest_frontier_projection_does_not_treat_hand_roster_as_disposition() -
   }
 }
 
-test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
+test fn honest_frontier_projection_propagates_observation_refusal() -> Bool  {
   match tracked_rust_unclassified_projection(
     observation: GitObservationRefused { detail: "git unavailable" }
   ) {
@@ -74,7 +74,7 @@ test fn honest_frontier_projection_propagates_observation_refusal() -> Bool {
   }
 }
 
-test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> Bool {
+test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> Bool  {
   match tracked_rust_unclassified_projection(
     observation: RustManifestObserved {
       repository_revision: "",
@@ -93,7 +93,7 @@ test fn honest_frontier_projection_refuses_observed_paths_without_revision() -> 
   }
 }
 
-test fn honest_frontier_projection_declares_deferred_axes() -> Bool {
+test fn honest_frontier_projection_declares_deferred_axes() -> Bool  {
   stage0_rust_honest_frontier_deferred_axes == [
     HandAuthoredLOC,
     HandCapability,

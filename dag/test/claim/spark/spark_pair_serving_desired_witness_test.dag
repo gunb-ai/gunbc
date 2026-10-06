@@ -45,7 +45,7 @@ fn w_serve_line(args: VllmEngineArgs) -> String {
 // `none` would still typecheck, still build a valid launch, and still serve -- on whatever default
 // the runtime's device probe happened to resolve. That is the exact failure this pin exists to
 // prevent, and it is invisible without an assertion on the rendered text.
-test fn the_pinned_prefill_budget_is_rendered_into_the_serve_argv() -> Bool {
+test fn the_pinned_prefill_budget_is_rendered_into_the_serve_argv() -> Bool  {
   string_contains(
     s: w_serve_line(args: spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)),
     pattern: "--max-num-batched-tokens 2048")
@@ -54,7 +54,7 @@ test fn the_pinned_prefill_budget_is_rendered_into_the_serve_argv() -> Bool {
 // THE DISCRIMINATING NEGATIVE. An unrequested policy must emit NO batch flag at all, rather than
 // emitting a default we would then be inheriting twice. Without this arm the row above would still
 // pass if the renderer hard-coded the flag regardless of the field.
-test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
+test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool  {
   !string_contains(
     s: w_serve_line(args: VllmEngineArgs {
       prefill_scheduling: none,
@@ -82,7 +82,7 @@ test fn an_unrequested_prefill_policy_renders_no_batch_flag() -> Bool {
 // models declare 1,048,576, and that coincidence is exactly what lets a hardcoded window survive a
 // model change it was never about: an assertion on the literal stays green through a migration that
 // left the field pointing at the wrong authority.
-test fn the_group_engine_tuple_carries_this_models_layout_and_window() -> Bool {
+test fn the_group_engine_tuple_carries_this_models_layout_and_window() -> Bool  {
   let a = spark_pair_serving_engine_args(tensor_parallel: 4, max_num_seqs: 32)
   a.tensor_parallel_size == 4
     && (vllm_memory_request_key(r: a.memory_request) == "util:0.82/kvbytes:omitted")
@@ -101,14 +101,14 @@ fn w_refused_naming(unit: SparkPairServingUnit, fragment: String) -> Bool {
 // A CAPACITY WITH NO ANSWER AT ALL STILL REFUSES, and this arm stays reachable and tested even
 // though it is not the live state: it is the wall against a group that has neither a measurement nor
 // an operator choice.
-test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool {
+test fn an_unmeasured_pool_refuses_the_unit_for_that_reason_alone() -> Bool  {
   w_refused_naming(unit: spark_pair_serving_unit_with(group: FabricGroupA, capacity: SeqCapacityUnmeasured), fragment: "max-num-seqs")
 }
 
 // THE LIVE COUNT IS A CHOSEN LAUNCH ARGUMENT. Dressing `--max-num-seqs` as SeqCapacityMeasured would
 // make an argv flag look like pool evidence, which is how 32 travelled across models. The arm must
 // stay SeqCapacityByOperatorPolicy, the number 32, and the basis must still bar travel.
-test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
+test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool  {
   match spark_pair_serving_seq_capacity {
     SeqCapacityUnmeasured => false
     SeqCapacityMeasured { max_num_seqs: _, basis: _ } => false
@@ -123,7 +123,7 @@ test fn the_live_sequence_count_is_an_operator_launch_argument() -> Bool {
 // THE GROUPS ARE LAUNCHABLE, which is the property an over-corrected revision of this branch
 // destroyed by answering Unmeasured: the unit refused, the realization refused, the apply plan
 // refused, and no engine could ever start to produce the launch line a measurement needs.
-test fn the_promoted_group_is_launchable() -> Bool {
+test fn the_promoted_group_is_launchable() -> Bool  {
   match spark_pair_serving_unit(group: FabricGroupA) {
     SparkPairServingUnitReady { group: _, engine: _, head: _, workers: _ } => true
     SparkPairServingUnitRefused { group: _, cause: _ } => false
@@ -132,7 +132,7 @@ test fn the_promoted_group_is_launchable() -> Bool {
 
 // GROUP A IS srv6 AT THE HEAD WITH srv5, srv7 AND srv8 AS WORKERS, EVERY RANK AT ITS RAIL ADDRESS,
 // tensor-parallel four, and the engine is vLLM.
-test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
+test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool  {
   match spark_pair_serving_unit(group: FabricGroupA) {
     SparkPairServingUnitRefused { group: _, cause: _ } => false
     SparkPairServingUnitReady { group: _, engine: e, head: h, workers: ws } =>
@@ -156,20 +156,20 @@ test fn group_a_is_four_ranks_headed_by_srv6_at_their_rail_addresses() -> Bool {
 // is NOT in that projection, because it is reserved for the canary. That group B still RESOLVES to a
 // ready unit when asked directly is a separate fact and deliberately left alone -- the unit function
 // is total, and its arm being reachable is not the same as the roster claiming it.
-test fn group_a_is_the_only_promoted_group_and_group_b_is_not_in_the_projection() -> Bool {
+test fn group_a_is_the_only_promoted_group_and_group_b_is_not_in_the_projection() -> Bool  {
   length(spark_pair_serving_groups) == 1
     && length(spark_pair_serving_desired_hosts()) == 4
     && any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv6))
     && !any(spark_pair_serving_desired_hosts(), h => host_identity_eq(a: h, b: operator_host_srv9))
 }
 
-test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool {
+test fn the_group_b_wire_names_srv9_at_its_rail_address() -> Bool  {
   let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupB))
   string_contains(s: w, pattern: "group group-b tp=4 head=srv9@192.168.110.17 workers=")
     && string_contains(s: w, pattern: "srv12@192.168.110.16")
 }
 
-test fn the_wire_names_the_group_its_degree_and_every_rank() -> Bool {
+test fn the_wire_names_the_group_its_degree_and_every_rank() -> Bool  {
   let w = spark_pair_serving_unit_wire(unit: spark_pair_serving_unit(group: FabricGroupA))
   string_contains(s: w, pattern: "group group-a tp=4 head=srv6@192.168.110.14 workers=")
     && string_contains(s: w, pattern: "srv5@192.168.110.11")

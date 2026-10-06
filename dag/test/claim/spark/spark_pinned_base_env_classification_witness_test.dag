@@ -48,13 +48,13 @@ import gunbc.spark.pinned_base_env_classification {
 }
 import extdeps.docker.images.sparkrun_vllm_ds4_gb10 { sparkrun_vllm_ds4_gb10_pinned_reference }
 
-test fn a_credential_shaped_env_entry_classifies_as_secret_bearing() -> Bool {
+test fn a_credential_shaped_env_entry_classifies_as_secret_bearing() -> Bool  {
   env_secret_standing_is_secret_bearing(
     standing: classify_container_image_config_env(config: fixture_secret_shaped_config()),
   )
 }
 
-test fn access_key_passwd_credentials_and_key_suffix_classify_as_secret_bearing() -> Bool {
+test fn access_key_passwd_credentials_and_key_suffix_classify_as_secret_bearing() -> Bool  {
   env_secret_standing_is_secret_bearing(
     standing: classify_container_image_config_env(
       config: container_image_config_from_env(env: ["AWS_ACCESS_KEY_ID=fixture-not-a-live-secret"]),
@@ -82,20 +82,20 @@ test fn access_key_passwd_credentials_and_key_suffix_classify_as_secret_bearing(
        )
 }
 
-test fn interface_style_env_names_are_not_secret_bearing() -> Bool {
+test fn interface_style_env_names_are_not_secret_bearing() -> Bool  {
   match classify_container_image_config_env(config: fixture_non_secret_config()) {
     EnvSecretShapeUnmatched { names: ns } => count(ns) == 3
     EnvContainsSecretShapedEntry { secret_shaped_names: _ } => false
   }
 }
 
-test fn a_pem_value_classifies_as_secret_bearing() -> Bool {
+test fn a_pem_value_classifies_as_secret_bearing() -> Bool  {
   env_secret_standing_is_secret_bearing(
     standing: classify_container_image_config_env(config: fixture_pem_shaped_config()),
   )
 }
 
-test fn a_secret_shaped_value_never_appears_in_the_classification_receipt() -> Bool {
+test fn a_secret_shaped_value_never_appears_in_the_classification_receipt() -> Bool  {
   let named = classify_pinned_base_image_env(
     config: fixture_secret_shaped_config(),
     pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
@@ -110,7 +110,7 @@ test fn a_secret_shaped_value_never_appears_in_the_classification_receipt() -> B
     && !pinned_base_classification_carries_text(row: pem, text: fixture_pem_shaped_value)
 }
 
-test fn digest_mismatch_is_typed_and_located() -> Bool {
+test fn digest_mismatch_is_typed_and_located() -> Bool  {
   match check_sha256_hex(
     subject: "manifest" as NonEmptyStr,
     expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr,
@@ -123,7 +123,7 @@ test fn digest_mismatch_is_typed_and_located() -> Bool {
   }
 }
 
-test fn digest_match_accepts_equal_hex() -> Bool {
+test fn digest_match_accepts_equal_hex() -> Bool  {
   match check_sha256_hex(
     subject: "config" as NonEmptyStr,
     expected: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as NonEmptyStr,
@@ -135,7 +135,7 @@ test fn digest_match_accepts_equal_hex() -> Bool {
   }
 }
 
-test fn inspect_grant_stays_unestablished_for_the_live_object() -> Bool {
+test fn inspect_grant_stays_unestablished_for_the_live_object() -> Bool  {
   match spark_managed_grant_disclosure_standing(
     grant: InspectServingContainer { container: "gunbc-spark-pair" as NonEmptyStr },
   ) {
@@ -146,7 +146,7 @@ test fn inspect_grant_stays_unestablished_for_the_live_object() -> Bool {
   }
 }
 
-test fn linger_and_reboot_still_return_no_host_data() -> Bool {
+test fn linger_and_reboot_still_return_no_host_data() -> Bool  {
   match spark_managed_grant_disclosure_standing(
     grant: EnableLingerForOwnAccount { subject: "gunbc-automation" as NonEmptyStr },
   ) {
@@ -168,7 +168,7 @@ test fn linger_and_reboot_still_return_no_host_data() -> Bool {
 // (the over-prohibition -- withholding a read whose surface a published specification bounds, which
 // is what would keep the 100G question unanswerable). Both are the failures DESIGN §4d names, one
 // per direction.
-test fn fabric_eeprom_grant_is_specification_bounded_not_unestablished() -> Bool {
+test fn fabric_eeprom_grant_is_specification_bounded_not_unestablished() -> Bool  {
   match spark_managed_grant_disclosure_standing(
     grant: ReadFabricModuleEeprom { device: spark_fabric_leg_netdev },
   ) {
@@ -180,7 +180,7 @@ test fn fabric_eeprom_grant_is_specification_bounded_not_unestablished() -> Bool
   }
 }
 
-test fn pinned_base_classification_names_the_pin_and_does_not_replace_inspect() -> Bool {
+test fn pinned_base_classification_names_the_pin_and_does_not_replace_inspect() -> Bool  {
   let row = classify_pinned_base_image_env(
     config: fixture_non_secret_config(),
     pin: sparkrun_vllm_ds4_gb10_pinned_reference(),
@@ -195,28 +195,28 @@ test fn pinned_base_classification_names_the_pin_and_does_not_replace_inspect() 
        }
 }
 
-test fn malformed_config_json_refuses() -> Bool {
+test fn malformed_config_json_refuses() -> Bool  {
   match container_image_config_env_from_json(config_json: "not-json") {
     ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "JSON")
     ContainerImageConfigEnv { env: _ } => false
   }
 }
 
-test fn config_json_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool {
+test fn config_json_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool  {
   match container_image_config_env_from_json(config_json: "[]") {
     ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "not an object")
     ContainerImageConfigEnv { env: _ } => false
   }
 }
 
-test fn config_member_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool {
+test fn config_member_that_is_not_an_object_refuses_rather_than_empty_env() -> Bool  {
   match container_image_config_env_from_json(config_json: "{\"config\":[]}") {
     ContainerImageConfigEnvUnreadable { cause: c } => string_contains(s: c, pattern: "not an object")
     ContainerImageConfigEnv { env: _ } => false
   }
 }
 
-test fn duplicated_config_member_refuses_rather_than_empty_env() -> Bool {
+test fn duplicated_config_member_refuses_rather_than_empty_env() -> Bool  {
   match container_image_config_env_from_json(
     config_json: "{\"config\":{},\"config\":{\"Env\":[\"HF_TOKEN=fixture-not-a-live-secret\"]}}",
   ) {
@@ -225,7 +225,7 @@ test fn duplicated_config_member_refuses_rather_than_empty_env() -> Bool {
   }
 }
 
-test fn config_env_decodes_from_json_without_values_in_the_standing() -> Bool {
+test fn config_env_decodes_from_json_without_values_in_the_standing() -> Bool  {
   match container_image_config_env_from_json(
     config_json: "{\"config\":{\"Env\":[\"FOO=bar\",\"BAZ=quux\"]}}",
   ) {
@@ -236,28 +236,28 @@ test fn config_env_decodes_from_json_without_values_in_the_standing() -> Bool {
   }
 }
 
-test fn manifest_config_digest_refuses_when_missing() -> Bool {
+test fn manifest_config_digest_refuses_when_missing() -> Bool  {
   match manifest_config_digest_wire(manifest_json: "{\"schemaVersion\":2}") {
     ManifestConfigDigestUnreadable { cause: _ } => true
     ManifestConfigDigest { digest_wire: _ } => false
   }
 }
 
-test fn the_hermetic_registry_reader_refuses_rather_than_fabricating_a_config() -> Bool {
+test fn the_hermetic_registry_reader_refuses_rather_than_fabricating_a_config() -> Bool  {
   match sparkrun_pinned_base_env_read() {
     PinnedBaseEnvReadRefused { cause: _ } => true
     PinnedBaseEnvReadClassified { classification: _ } => false
   }
 }
 
-test fn the_hermetic_instrument_fails_closed_when_the_registry_is_unreached() -> Bool {
+test fn the_hermetic_instrument_fails_closed_when_the_registry_is_unreached() -> Bool  {
   match sparkrun_pinned_base_env_classification_wet() {
     ExitFailure { code: _, reason: _ } => true
     ExitSuccess => false
   }
 }
 
-test fn a_classified_read_carries_the_pin_on_pinned_base_env_read() -> Bool {
+test fn a_classified_read_carries_the_pin_on_pinned_base_env_read() -> Bool  {
   let row = classify_pinned_base_image_env(
     config: fixture_non_secret_config(),
     pin: sparkrun_vllm_ds4_gb10_pinned_reference(),

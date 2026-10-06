@@ -18,7 +18,7 @@ data install_media_fetch_fixture_content: String = "gunbc-fetch-fixture\n"
 data install_media_fetch_fixture_sha256: NonEmptyStr = "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
 data install_media_fetch_fixture_wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
 
-test fn install_media_hash_matches_true_by_real_execution() -> Bool {
+test fn install_media_hash_matches_true_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
@@ -27,7 +27,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   dir.success && wrote.success && matched
 }
 
-test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bool {
+test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture") as NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
@@ -36,7 +36,7 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
   dir.success && wrote.success && matched
 }
 
-test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution() -> Bool {
+test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution() -> Bool  {
   let dir = shell.Mktemp.Dir()
   let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
   let present_path = concat(dir.path as String, "/present") as NonEmptyStr

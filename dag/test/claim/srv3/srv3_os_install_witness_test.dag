@@ -8,7 +8,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a Ready plan is now the plan's refusal: with no delivery mechanism selectable
 // on 3.22.00 there is no plan to take an architecture from, and taking one anyway
 // would be reading a field off a plan that does not exist.
-test fn bootloader_artifact_is_arch_grounded() -> Bool {
+test fn bootloader_artifact_is_arch_grounded() -> Bool  {
   match srv3_os_install_plan_standing {
     OsInstallPlanRefused { cause: _ } => true
     OsInstallPlanReady { plan: _ } => false
@@ -23,7 +23,7 @@ test fn bootloader_artifact_is_arch_grounded() -> Bool {
     }
 }
 
-test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool {
+test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool  {
   match srv3_pxe_network_boot_chain.boot_mode {
     UefiHttpBoot => true
     LegacyBiosPxe { tftp_root: _ } => false
@@ -31,7 +31,7 @@ test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool {
   }
 }
 
-test fn srv3_survey_forces_proxy_dhcp() -> Bool {
+test fn srv3_survey_forces_proxy_dhcp() -> Bool  {
   match srv3_pxe_network_boot_chain.dhcp_direction {
     ProxyDhcp => true
     NativeDhcpBootOptions => false
@@ -54,7 +54,7 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
 // solve refuses; because it is derived, both refuse. Asserting the pair is
 // strictly more discriminating than the old version, which could not tell a
 // derived plan from a hardcoded one while the solve happened to agree with it.
-test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool {
+test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool  {
   match srv3_os_install_plan_standing {
     OsInstallPlanRefused { cause: _ } => true
     OsInstallPlanReady { plan: _ } => false
@@ -71,7 +71,7 @@ test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool {
 // reproduce once srv3 has an established delivery path again, at which point this
 // witness reds and is replaced by the real target assertions rather than
 // silently continuing to pass.
-test fn srv3_plan_target_facts_are_unassertable_while_the_plan_refuses() -> Bool {
+test fn srv3_plan_target_facts_are_unassertable_while_the_plan_refuses() -> Bool  {
   match srv3_os_install_plan_standing {
     OsInstallPlanRefused { cause: _ } => true
     OsInstallPlanReady { plan: _ } => false

@@ -89,7 +89,7 @@ data fx_protected_subject: ProtectedSubjectField = protected_subject_field(
 
 // THE INHABITANCE CLAIM: the real GLM subject exists and its launch axes are the launched profile's --
 // the sequence ceiling the restoration renders and the fp8 KV request -- on the runtime the group runs.
-test fn the_glm_live_subject_is_the_launched_profiles() -> Bool {
+test fn the_glm_live_subject_is_the_launched_profiles() -> Bool  {
   match glm_native_live_subject() {
     Absent => false
     Present { value: s } =>
@@ -142,7 +142,7 @@ fn incomplete_failed_summary() -> OperationLedger {
   LedgerIncomplete { because: "failed requests in the aggregate summary" as NonEmptyStr }
 }
 
-test fn a_busy_drain_refuses_the_window() -> Bool {
+test fn a_busy_drain_refuses_the_window() -> Bool  {
   let d = drain_from_queue(q: harness_queue_from_body(body: fx_busy))
   match window_from_drain(drain: d) {
     WindowIsolationNotEstablished { cause: _, drain: DrainNotIdle { running: n } } => n == 3
@@ -154,7 +154,7 @@ test fn a_busy_drain_refuses_the_window() -> Bool {
   }
 }
 
-test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
+test fn a_quiet_drain_is_not_an_isolated_window() -> Bool  {
   let d = drain_from_queue(q: harness_queue_from_body(body: fx_idle))
   let w = window_from_drain(drain: d)
   match w {
@@ -167,7 +167,7 @@ test fn a_quiet_drain_is_not_an_isolated_window() -> Bool {
   }
 }
 
-test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool {
+test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool  {
   let grant = lease_grant(
     reference: protected_subject_key(p: fx_protected_subject),
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
@@ -189,7 +189,7 @@ test fn isolated_window_requires_exclusion_and_idle_drain() -> Bool {
   }
 }
 
-test fn isolated_window_refuses_without_exclusion() -> Bool {
+test fn isolated_window_refuses_without_exclusion() -> Bool  {
   let grant = lease_grant(
     reference: protected_subject_key(p: fx_protected_subject),
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
@@ -206,7 +206,7 @@ test fn isolated_window_refuses_without_exclusion() -> Bool {
   }
 }
 
-test fn isolated_window_refuses_a_generic_lease() -> Bool {
+test fn isolated_window_refuses_a_generic_lease() -> Bool  {
   let grant = lease_grant(
     reference: "probe" as NonEmptyStr,
     fence: lease_fence_of(admitting_event: "e" as EventId, generation: 1),
@@ -229,12 +229,12 @@ test fn isolated_window_refuses_a_generic_lease() -> Bool {
   }
 }
 
-test fn a_request_that_emitted_then_failed_cannot_be_denominated_in_tokens() -> Bool {
+test fn a_request_that_emitted_then_failed_cannot_be_denominated_in_tokens() -> Bool  {
   !ledger_admits_token_denomination(l: incomplete_failed_summary())
     && ledger_admits_token_denomination(l: closed_ok())
 }
 
-test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool {
+test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool  {
   match generation_token_delta(before_body: fx_idle, after_body: fx_after) {
     TokenDeltaRead { tokens: t } =>
       token_count_value(t: t) == 128 &&
@@ -258,7 +258,7 @@ test fn engine_rate_comes_from_generation_tokens_not_iteration_or_itl() -> Bool 
   }
 }
 
-test fn a_generation_counter_reset_is_not_a_rate() -> Bool {
+test fn a_generation_counter_reset_is_not_a_rate() -> Bool  {
   match generation_token_delta(before_body: fx_idle, after_body: fx_reset) {
     TokenDeltaReset { cause: _ } => true
     TokenDeltaRead { tokens: _ } => false
@@ -267,7 +267,7 @@ test fn a_generation_counter_reset_is_not_a_rate() -> Bool {
   }
 }
 
-test fn generation_tokens_are_unread_across_distinct_incarnations() -> Bool {
+test fn generation_tokens_are_unread_across_distinct_incarnations() -> Bool  {
   match generation_token_delta_scoped(
     before_incarnation: fx_incarnation(id: "0f3a9c1d2e4b"),
     after_incarnation: fx_incarnation(id: "7b2e5a90c813"),
@@ -281,7 +281,7 @@ test fn generation_tokens_are_unread_across_distinct_incarnations() -> Bool {
   }
 }
 
-test fn generation_tokens_are_unread_without_an_incarnation() -> Bool {
+test fn generation_tokens_are_unread_without_an_incarnation() -> Bool  {
   match generation_token_delta_scoped(
     before_incarnation: none,
     after_incarnation: fx_same_incarnation(),
@@ -295,7 +295,7 @@ test fn generation_tokens_are_unread_without_an_incarnation() -> Bool {
   }
 }
 
-test fn a_scoped_generation_delta_names_the_incarnation() -> Bool {
+test fn a_scoped_generation_delta_names_the_incarnation() -> Bool  {
   match generation_token_delta_scoped(
     before_incarnation: fx_same_incarnation(),
     after_incarnation: fx_same_incarnation(),
@@ -350,7 +350,7 @@ fn fx_obs_for(subject: ServingPerformanceSubjectStanding) -> ServingLoadObservat
   )
 }
 
-test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
+test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool  {
   match derive_rate_honest(
     ledger: LedgerClosed { offered: 4, completed: 0, failed: 4 },
     scrape_millis: Present { value: millisecond(count: 2000) },
@@ -362,7 +362,7 @@ test fn generation_tokens_without_client_completions_is_foreign_load() -> Bool {
   }
 }
 
-test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
+test fn unread_client_output_tokens_refuse_the_rate() -> Bool  {
   match derive_rate_honest(
     ledger: closed_ok(),
     scrape_millis: Present { value: millisecond(count: 2000) },
@@ -374,7 +374,7 @@ test fn unread_client_output_tokens_refuse_the_rate() -> Bool {
   }
 }
 
-test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Bool {
+test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Bool  {
   match derive_rate_honest(
     ledger: closed_ok(),
     scrape_millis: Present { value: millisecond(count: 2000) },
@@ -392,7 +392,7 @@ test fn extra_engine_tokens_bound_foreign_work_and_keep_the_client_rate() -> Boo
   }
 }
 
-test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
+test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool  {
   match foreign_work_bound(generation: TokenDeltaRead { tokens: token_count(count: 100) }, client_output: ClientOutputTokensObserved { tokens: token_count(count: 512) }) {
     ForeignWorkContradiction { engine_generation: g, client_output: c, because: _ } => token_count_value(t: g) == 100 && token_count_value(t: c) == 512
     ForeignWorkBounded { engine_generation: _, client_output: _, surplus: _ } => false
@@ -400,14 +400,14 @@ test fn client_output_exceeding_engine_generation_is_a_contradiction() -> Bool {
   }
 }
 
-test fn occupancy_reads_prompt_tokens_that_are_not_an_integer_lexeme() -> Bool {
+test fn occupancy_reads_prompt_tokens_that_are_not_an_integer_lexeme() -> Bool  {
   match occupancy_from_body(body: fx_idle) {
     Absent => false
     Present { value: s } => s.running == 0 && token_count_value(t: s.prompt_tokens) == 0
   }
 }
 
-test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() -> Bool {
+test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "10.1234567", itl_count: "100.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "12.1234567", itl_count: "200.0", itok_sum: "1000.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   match itl_latency_delta(before_body: before, after_body: after) {
@@ -417,7 +417,7 @@ test fn an_itl_histogram_sum_with_sub_milli_digits_is_still_a_milli_reading() ->
   }
 }
 
-test fn an_itl_histogram_sum_delta_of_half_a_second_is_500_milliseconds() -> Bool {
+test fn an_itl_histogram_sum_delta_of_half_a_second_is_500_milliseconds() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   match itl_latency_delta(before_body: before, after_body: after) {
@@ -427,7 +427,7 @@ test fn an_itl_histogram_sum_delta_of_half_a_second_is_500_milliseconds() -> Boo
   }
 }
 
-test fn an_iteration_tokens_sum_delta_is_booked_tokens_not_a_duration() -> Bool {
+test fn an_iteration_tokens_sum_delta_is_booked_tokens_not_a_duration() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   match iteration_tokens_booked_delta(before_body: before, after_body: after) {
@@ -437,7 +437,7 @@ test fn an_iteration_tokens_sum_delta_is_booked_tokens_not_a_duration() -> Bool 
   }
 }
 
-test fn a_fractional_iteration_tokens_sum_delta_refuses_rather_than_rounding() -> Bool {
+test fn a_fractional_iteration_tokens_sum_delta_refuses_rather_than_rounding() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.5", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   match iteration_tokens_booked_delta(before_body: before, after_body: after) {
@@ -447,7 +447,7 @@ test fn a_fractional_iteration_tokens_sum_delta_refuses_rather_than_rounding() -
   }
 }
 
-test fn a_sub_milli_token_fraction_refuses_rather_than_truncating() -> Bool {
+test fn a_sub_milli_token_fraction_refuses_rather_than_truncating() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0005", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   match iteration_tokens_booked_delta(before_body: before, after_body: after) {
@@ -457,7 +457,7 @@ test fn a_sub_milli_token_fraction_refuses_rather_than_truncating() -> Bool {
   }
 }
 
-test fn the_observation_keeps_itl_milliseconds_and_booked_tokens_distinct() -> Bool {
+test fn the_observation_keeps_itl_milliseconds_and_booked_tokens_distinct() -> Bool  {
   let obs = fx_obs()
   match obs.itl_latency {
     LatencyHistogramRead { sum: s, observations: n } =>
@@ -472,7 +472,7 @@ test fn the_observation_keeps_itl_milliseconds_and_booked_tokens_distinct() -> B
   }
 }
 
-test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
+test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool  {
   let body = join(["[sudo] password for briansrls:\n", fx_bench_stdout], "")
   match ledger_from_bench_stdout(body: body, offered: 4) {
     LedgerClosed { offered: o, completed: c, failed: f } =>
@@ -485,7 +485,7 @@ test fn a_sudo_password_prompt_line_does_not_spoil_the_bench_ledger() -> Bool {
   }
 }
 
-test fn a_multi_stream_protocol_does_not_corroborate_the_single_stream_bound() -> Bool {
+test fn a_multi_stream_protocol_does_not_corroborate_the_single_stream_bound() -> Bool  {
   match decode_corroboration_for_protocol(req: glm_native_smoke_protocol) {
     CorroborationNotApplicable { because: _ } => true
     CorroborationUnread { because: _ } => false
@@ -513,7 +513,7 @@ data fx_bench_stdout: String = join([
   "P99 ITL (ms):                            165.00\n",
 ], "")
 
-test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
+test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool  {
   let d = client_itl_from_bench_stdout(body: fx_bench_stdout)
   match d {
     ClientItlDistributionObserved { mean_milli: mean_m, median_milli: med, p99_milli: p99, cause: _ } =>
@@ -522,7 +522,7 @@ test fn parsed_itl_distribution_does_not_establish_a_cause() -> Bool {
   }
 }
 
-test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
+test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool  {
   match ledger_from_bench_stdout(body: fx_bench_stdout, offered: 4) {
     LedgerClosed { offered: o, completed: c, failed: f } =>
       o == 4 && c == 4 && f == 0
@@ -539,7 +539,7 @@ test fn ledger_and_rate_come_from_bench_stdout_not_exit_ok() -> Bool {
   }
 }
 
-test fn exporter_restart_breaks_counter_continuity() -> Bool {
+test fn exporter_restart_breaks_counter_continuity() -> Bool  {
   let after: VllmEndpointProcessLaunchObservation = LaunchObserved {
     launch: vllm_endpoint_process_launch(group: FabricGroupB, endpoint: "192.168.1.236:30000" as NonEmptyStr, process_start_field: "1789300999.00" as NonEmptyStr),
     receipt: "fx2" as ObservationReceiptRef,
@@ -558,7 +558,7 @@ fn client_output_is_unread(e: BenchServeExecution) -> Bool {
   }
 }
 
-test fn a_nonzero_bench_exit_does_not_parse_stdout() -> Bool {
+test fn a_nonzero_bench_exit_does_not_parse_stdout() -> Bool  {
   client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteRan { exit_code: 1, stdout: fx_bench_stdout, stderr: "" },
@@ -566,21 +566,21 @@ test fn a_nonzero_bench_exit_does_not_parse_stdout() -> Bool {
     && !client_output_is_unread(e: fx_bench_receipt(stdout: fx_bench_stdout))
 }
 
-test fn an_unreachable_bench_does_not_parse_stdout() -> Bool {
+test fn an_unreachable_bench_does_not_parse_stdout() -> Bool  {
   client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteUnreachable { cause: "ssh refused", reach: LegNotAttempted { cause: "ssh refused" } },
   ))
 }
 
-test fn stderr_carrying_the_summary_is_not_parsed() -> Bool {
+test fn stderr_carrying_the_summary_is_not_parsed() -> Bool  {
   client_output_is_unread(e: bench_serve_from_remote(
     protocol: glm_native_smoke_protocol,
     remote: RemoteRan { exit_code: 0, stdout: "", stderr: fx_bench_stdout },
   ))
 }
 
-test fn the_receipt_persists_raw_evidence_for_replay() -> Bool {
+test fn the_receipt_persists_raw_evidence_for_replay() -> Bool  {
   let text = serving_load_observation_text(o: fx_obs())
   string_contains(s: text, pattern: "--- metrics-before digest=")
     && string_contains(s: text, pattern: "--- bench-stdout digest=")
@@ -588,7 +588,7 @@ test fn the_receipt_persists_raw_evidence_for_replay() -> Bool {
     && string_contains(s: text, pattern: "Total generated tokens")
 }
 
-test fn a_latency_sum_decrease_within_one_millisecond_is_a_reset_not_zero() -> Bool {
+test fn a_latency_sum_decrease_within_one_millisecond_is_a_reset_not_zero() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "100.0009", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "100.0001", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   match itl_latency_delta(before_body: before, after_body: after) {
@@ -615,7 +615,7 @@ fn fx_obs_between(before: String, after: String) -> ServingLoadObservation {
   )
 }
 
-test fn a_fractional_token_delta_reaches_the_receipt_as_unread_not_booked() -> Bool {
+test fn a_fractional_token_delta_reaches_the_receipt_as_unread_not_booked() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0005", itok_count: "12.0", gen: "1000.0", start: "1789300000.12")
   let obs = fx_obs_between(before: before, after: after)
@@ -628,7 +628,7 @@ test fn a_fractional_token_delta_reaches_the_receipt_as_unread_not_booked() -> B
   }
 }
 
-test fn a_negative_cumulative_sum_is_unread_not_a_positive_delta() -> Bool {
+test fn a_negative_cumulative_sum_is_unread_not_a_positive_delta() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "-1.0", itl_count: "10.0", itok_sum: "-1.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "0.0", itl_count: "11.0", itok_sum: "0.0", itok_count: "11.0", gen: "1000.0", start: "1789300000.12")
   match iteration_tokens_booked_delta(before_body: before, after_body: after) {
@@ -643,7 +643,7 @@ test fn a_negative_cumulative_sum_is_unread_not_a_positive_delta() -> Bool {
   }
 }
 
-test fn an_alignment_that_overflows_i64_is_unrepresentable_after_both_samples_parse() -> Bool {
+test fn an_alignment_that_overflows_i64_is_unrepresentable_after_both_samples_parse() -> Bool  {
   match prometheus_sample_value_reading(field: "1e-18") {
     SampleValueExact { value: small } =>
       match prometheus_sample_value_reading(field: "10") {
@@ -669,7 +669,7 @@ test fn an_alignment_that_overflows_i64_is_unrepresentable_after_both_samples_pa
   }
 }
 
-test fn a_computed_negative_operand_scale_is_refused_not_rescaled() -> Bool {
+test fn a_computed_negative_operand_scale_is_refused_not_rescaled() -> Bool  {
   let bad = 0 - 1
   match exact_decimal_sub(a: ExactDecimal { units: 1, fraction_digits: bad }, b: ExactDecimal { units: 0, fraction_digits: 0 }) {
     ExactDifferenceOperandScaleRefused { observed_fraction_digits: d } => d == bad
@@ -678,12 +678,12 @@ test fn a_computed_negative_operand_scale_is_refused_not_rescaled() -> Bool {
   }
 }
 
-test fn the_receipt_itl_line_prints_the_parsed_distribution() -> Bool {
+test fn the_receipt_itl_line_prints_the_parsed_distribution() -> Bool  {
   let t = client_itl_text(d: client_itl_from_bench_stdout(body: fx_bench_stdout))
   string_contains(s: t, pattern: "mean_ms=83 median_ms=82 p99_ms=165") && string_contains(s: t, pattern: "tail_cause=unestablished")
 }
 
-test fn the_receipt_bucket_line_prints_the_parsed_peak_not_a_verdict() -> Bool {
+test fn the_receipt_bucket_line_prints_the_parsed_peak_not_a_verdict() -> Bool  {
   let t = client_bucket_peak_text(p: client_bucket_peak_from_bench_stdout(body: fx_bench_stdout, client_max_concurrency: 2))
   string_contains(s: t, pattern: "client_max_concurrency=2 successful_request_second_bucket_peak=4 ")
     && !string_contains(s: t, pattern: "foreign")
@@ -698,7 +698,7 @@ fn fx_partial_subject(would_settle: String) -> ServingPerformanceSubjectStanding
   )
 }
 
-test fn receipts_differing_only_in_the_settling_obligation_differ() -> Bool {
+test fn receipts_differing_only_in_the_settling_obligation_differ() -> Bool  {
   let a = serving_load_observation_text(o: fx_obs_for(subject: fx_partial_subject(would_settle: "read obligation alpha")))
   let b = serving_load_observation_text(o: fx_obs_for(subject: fx_partial_subject(would_settle: "read obligation beta")))
   a != b
@@ -711,7 +711,7 @@ test fn receipts_differing_only_in_the_settling_obligation_differ() -> Bool {
 // THE REAL GLM STANDING, not the fixture: the live receipt names the one axis the launch cannot
 // supply (its realized transport) and how to settle it. The kv dtype is no longer part of the
 // obligation because the subject now derives it from the launched profile.
-test fn the_live_subject_receipt_carries_the_nccl_announcement_obligation() -> Bool {
+test fn the_live_subject_receipt_carries_the_nccl_announcement_obligation() -> Bool  {
   match glm_native_live_subject_standing() {
     Absent => false
     Present { value: st } => {
@@ -722,7 +722,7 @@ test fn the_live_subject_receipt_carries_the_nccl_announcement_obligation() -> B
   }
 }
 
-test fn arrival_unread_and_observed_render_distinguishably() -> Bool {
+test fn arrival_unread_and_observed_render_distinguishably() -> Bool  {
   let t = serving_load_observation_text(o: fx_obs())
   let observed = arrival_text(a: ArrivalSkewObserved { max_stagger_millis: millisecond(count: 250) })
   string_contains(s: t, pattern: "arrival: unread ")
@@ -754,7 +754,7 @@ fn digest_of(kind: String, body: String) -> String {
   serialize_content_hash(hash: content_hash_of_value(value: join([kind, "\n", body], "") as NonEmptyStr)) as String
 }
 
-test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool {
+test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool  {
   let stderr = "fixture stderr diagnostic"
   let bench = bench_serve_from_remote(protocol: glm_native_smoke_protocol, remote: RemoteRan { exit_code: 0, stdout: fx_bench_stdout, stderr: stderr })
   let obs = serving_load_observation(
@@ -781,13 +781,13 @@ test fn the_retained_evidence_is_the_execution_it_was_captured_from() -> Bool {
     && retained_stdout_replays_the_execution(e: obs.execution, retained: ev.bench_stdout.body)
 }
 
-test fn a_truncated_retained_stdout_does_not_replay_the_execution() -> Bool {
+test fn a_truncated_retained_stdout_does_not_replay_the_execution() -> Bool  {
   let bench = fx_bench_receipt(stdout: fx_bench_stdout)
   retained_stdout_replays_the_execution(e: bench, retained: fx_bench_stdout)
     && !retained_stdout_replays_the_execution(e: bench, retained: "Total generated tokens:                  512\n")
 }
 
-test fn a_counter_with_a_fourth_decimal_digit_is_unread_not_truncated() -> Bool {
+test fn a_counter_with_a_fourth_decimal_digit_is_unread_not_truncated() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1512.0005", start: "1789300000.12")
   match generation_token_delta(before_body: before, after_body: after) {
@@ -798,7 +798,7 @@ test fn a_counter_with_a_fourth_decimal_digit_is_unread_not_truncated() -> Bool 
   }
 }
 
-test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool {
+test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool  {
   let before = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.0", itl_count: "10.0", itok_sum: "100.0", itok_count: "10.0", gen: "1000.0", start: "1789300000.12")
   let after = metrics_body(running: "0.0", waiting: "0.0", capacity: "0.0", preempt: "0.0", itl_sum: "1.5", itl_count: "15.0", itok_sum: "110.0", itok_count: "12.0", gen: "1512.0", start: "1789300000.12")
   match generation_token_delta(before_body: before, after_body: after) {
@@ -811,14 +811,14 @@ test fn a_whole_counter_delta_still_reads_after_the_exactness_change() -> Bool {
 
 data fx_provenance: ProbeProvenance = SamePrincipal { principal: "fixture principal" as NonEmptyStr }
 
-test fn the_receipt_prints_the_provenance_its_caller_supplied() -> Bool {
+test fn the_receipt_prints_the_provenance_its_caller_supplied() -> Bool  {
   let same = serving_load_observation_text(o: fx_obs())
   string_contains(s: same, pattern: "same-principal fixture principal")
     && !string_contains(s: same, pattern: "driver-observer-split")
     && string_contains(s: provenance_text(p: DriverObserverSplit { driver: "d" as NonEmptyStr, observer: "o" as NonEmptyStr }), pattern: "driver-observer-split driver=d observer=o")
 }
 
-test fn a_histogram_delta_on_a_counter_family_is_refused_by_its_type() -> Bool {
+test fn a_histogram_delta_on_a_counter_family_is_refused_by_its_type() -> Bool  {
   match histogram_delta(before_body: fx_idle, after_body: fx_after, metric: GenerationTokensTotal) {
     HistogramDeltaUnread { cause: c } => string_contains(s: c as String, pattern: "counter family")
     HistogramDeltaRead { sum: _, count: _ } => false
