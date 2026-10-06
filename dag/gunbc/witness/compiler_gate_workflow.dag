@@ -2,8 +2,8 @@ module gunbc.compiler_gate_workflow
 
 
 // NO LANE THE REQUIRED CONTEXT READS RUNS ON A HOSTED RUNNER (operator ruling 2026-09-28). The
-// lanes the `witnesses` aggregate reads -- `emit-build`, `floor` and `generated` -- run on the fleet,
-// and so does the aggregate.
+// lanes the `witnesses` aggregate reads -- `rust-unit-tests`, `emit-build`, `floor` and `generated` --
+// run on the fleet, and so does the aggregate.
 //
 // THE HOSTED UNIT-TEST LANE WAS DELETED (operator ruling 2026-09-29). `rust-unit-tests` ran
 // `cargo test --release -p v1-compiler --lib` on every pull request and merge_group as a
