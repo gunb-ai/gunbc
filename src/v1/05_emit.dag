@@ -1327,6 +1327,7 @@ type ShellResultField {
 type ShellEmissionRefusal
   = ShellOutputKeyNotModeled { key: String }
   | ShellChannelNotRealizedByTarget { key: String, target_name: String }
+  | ShellCapturePolicyInputAbsent { key: String }
 
 // The single authority for which declared output keys the shell realization can
 // answer. Read by the binding; there is no second list.
@@ -1382,6 +1383,15 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // refuses. Python and go still realize no capture policy, so they refuse these
 // three at field grain rather than answering false / raw length (that answer
 // would assert the declared policy ran).
+fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
+  match c {
+    ShellChanStderrTruncated => true
+    ShellChanStderrTotalBytes => true
+    ShellChanStderrRetainedBytes => true
+    _ => false
+  }
+}
+
 fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
   match c {
     ShellChanStderrTruncated => target_is_rust(target: target)
@@ -1413,6 +1423,9 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
     ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
       concat("shell output channel '", k, "' is a modeled channel that target ", tn,
         " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+    ShellCapturePolicyInputAbsent { key: k } =>
+      concat("shell output channel '", k,
+        "' is a capture-accounting channel and this operation declares no stderr_capture input -- answering it would apply a policy nobody declared")
   }
 }
 
@@ -2813,7 +2826,24 @@ fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, 
                 },
                 module_name: module_name)] }
             Present { value: c } =>
-              if shell_channel_realized_by_target(c: c, target: target) { [] }
+              if shell_channel_is_capture_accounting(c: c)
+                && target_is_rust(target: target)
+                && !file_operation_has_input(op_node: op_node, name: "stderr_capture", source_indices: si)
+              {
+                [make_error_node(
+                  diagnostic: TransportEmissionNotModeled {
+                    transport_kind: "shell",
+                    service: service_name,
+                    operation: authored_name(env: env, node: op_node),
+                    declaring_module: module_name,
+                    target: render_target_name(target: target),
+                    missing_realization_fact: shell_emission_refusal_fact(refusal: ShellCapturePolicyInputAbsent {
+                      key: shell_result_channel_key(c: c)
+                    }),
+                    span: ch.span
+                  },
+                  module_name: module_name)]
+              } else if shell_channel_realized_by_target(c: c, target: target) { [] }
               else { [make_error_node(
                 diagnostic: TransportEmissionNotModeled {
                   transport_kind: "shell",

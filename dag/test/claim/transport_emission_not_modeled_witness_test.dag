@@ -66,6 +66,8 @@ data shell_stderr_capture_source: String = "module tfx_cap\nimport std.shell_str
 
 data shell_stderr_capture_beside_unmodeled_key_source: String = "module tfx_cap_mix\nimport std.shell_stream_capture \{ WitnessStderrCapturePolicy, BoundedTail \}\nimport std.measure \{ byte_size \}\nservice Bin \{\n  operation Run \{\n    input \{\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail \{ bytes: byte_size(count: 16) \}\n    \}\n    output \{\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n  operation Weird \{\n    input \{ bin_path: String \}\n    output \{ digest: String from \"stderr_digest_hex\" \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n\}\n"
 
+data shell_stderr_capture_without_policy_input_source: String = "module tfx_cap_nop\nservice Bin \{\n  operation Run \{\n    input \{ bin_path: String \}\n    output \{\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    \}\n    transport shell \{ argv: [\"\{bin_path\}\"] \}\n  \}\n\}\n"
+
 fn not_modeled_blocking_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
@@ -123,4 +125,8 @@ test fn w_declared_shell_stderr_capture_module_is_clean_of_all_blocking_diagnost
 
 test fn w_unmodeled_shell_channel_refuses_beside_realized_capture_channels() -> Bool {
   not_modeled_blocking_count(source: shell_stderr_capture_beside_unmodeled_key_source) == 1
+}
+
+test fn w_capture_channel_without_stderr_capture_input_refuses() -> Bool {
+  not_modeled_blocking_count(source: shell_stderr_capture_without_policy_input_source) == 1
 }

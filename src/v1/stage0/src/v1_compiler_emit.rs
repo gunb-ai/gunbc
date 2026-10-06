@@ -2827,6 +2827,7 @@ pub struct ShellResultField {
 pub enum ShellEmissionRefusal {
     ShellOutputKeyNotModeled { key: String },
     ShellChannelNotRealizedByTarget { key: String, target_name: String },
+    ShellCapturePolicyInputAbsent { key: String },
 }
 impl ShellEmissionRefusal {
     pub fn key(&self) -> String {
@@ -2835,6 +2836,7 @@ impl ShellEmissionRefusal {
             ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: __val, .. } => {
                 __val.clone()
             }
+            ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: __val, .. } => __val.clone(),
         }
     }
 }
@@ -2891,6 +2893,15 @@ pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
     }
 }
 
+pub fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> bool {
+    matches!(
+        c,
+        ShellResultChannel::ShellChanStderrTruncated
+            | ShellResultChannel::ShellChanStderrTotalBytes
+            | ShellResultChannel::ShellChanStderrRetainedBytes
+    )
+}
+
 pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
     match c.clone() {
         ShellResultChannel::ShellChanStderrTruncated => target_is_rust(target.clone()),
@@ -2918,6 +2929,7 @@ pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String 
     match (*refusal.clone()).clone() {
     ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
     ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
+    ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: k, .. } => v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a capture-accounting channel and this operation declares no stderr_capture input -- answering it would apply a policy nobody declared".to_string()),
 }
 }
 
@@ -5739,7 +5751,26 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
     span: ch.span.clone(),
 }), module_name.clone())])
             },
-    Some(c) => if shell_channel_realized_by_target(c.clone(), target.clone()) {
+    Some(c) => if shell_channel_is_capture_accounting(c.clone())
+                && target_is_rust(target.clone())
+                && !file_operation_has_input(
+                    op_node.clone(),
+                    "stderr_capture".to_string(),
+                    si.clone(),
+                )
+            {
+                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellCapturePolicyInputAbsent {
+    key: shell_result_channel_key(c.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            } else if shell_channel_realized_by_target(c.clone(), target.clone()) {
                 Rc::new(vec![])
             } else {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {

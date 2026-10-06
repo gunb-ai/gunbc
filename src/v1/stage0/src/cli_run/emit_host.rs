@@ -3441,6 +3441,8 @@ mod fixture_closure_union_tests {
 
     const STDERR_CAPTURE_UNMODELED_SIBLING: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy, BoundedTail }\nimport std.measure { byte_size }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy = BoundedTail { bytes: byte_size(count: 16) }\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n      stderr_total_bytes: Int from \"stderr_total_bytes\"\n      stderr_retained_bytes: Int from \"stderr_retained_bytes\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n  operation Weird {\n    input { bin_path: String }\n    output { digest: String from \"stderr_digest_hex\" }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
 
+    const STDERR_CAPTURE_WITHOUT_POLICY: &str = "module efr_member\nservice Bin {\n  operation Run {\n    input { bin_path: String }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
     const GUNBC_MODULE_REACH_MEMBER: &str =
         "module efr_member\nimport extdeps.gunbc { packages }\nfn ignore() -> Int { 0 }\n";
 
@@ -3462,6 +3464,28 @@ mod fixture_closure_union_tests {
             refusal.contains("cause=FixtureClosureUnionEmitRefused")
                 && refusal.contains("stderr_digest_hex"),
             "{refusal}"
+        );
+    }
+
+    #[test]
+    fn capture_channels_without_stderr_capture_input_refuse_the_union() {
+        let union = fixture_closure_union_control_union(STDERR_CAPTURE_WITHOUT_POLICY)
+            .expect("member without policy input resolves");
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("a capture channel without stderr_capture must refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("stderr_capture"),
+            "{refusal}"
+        );
+    }
+
+    #[test]
+    fn complete_over_budget_is_an_emitted_refusal_not_a_success() {
+        assert!(
+            crate::v1_compiler_emit_rust::shell_capture_drain_body()
+                .contains("WitnessStderrCaptureCompleteBudgetExceeded"),
+            "Complete overflow must refuse in the emitted body"
         );
     }
 
