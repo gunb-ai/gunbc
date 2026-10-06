@@ -285,10 +285,20 @@ fn ihc_template_observation(ctx: HoleWalkContext, template: Node) -> ObservedTem
   }
 }
 
+// A hole's start is the LEFTMOST source offset in its expression, not the hole node's own span
+// start: a field access p.left spans from its field (or its dot), and a call from its argument
+// list, while the lexer sees the hole begin at its first token (p). The leftmost offset over the
+// expression's subtree is that first token, so both sides of the join name one position.
+fn ihc_leftmost_start(n: Node) -> Int {
+  fold(n.children, init: n.span.start, f: (m, c) =>
+    let cm = ihc_leftmost_start(n: c)
+    if cm < m { cm } else { m })
+}
+
 fn ihc_hole_row(ctx: HoleWalkContext, h: Node, fused: Bool) -> HoleRow {
   HoleRow {
       file: h.span.file,
-      start: h.span.start,
+      start: ihc_leftmost_start(n: h),
       line: ihc_line(e: h, si: ctx.si),
       decl: ctx.file_decl,
       ordinal: 0,
