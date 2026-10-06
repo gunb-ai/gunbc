@@ -107,8 +107,9 @@ fn repo_self_test_command() -> String {
   )
 }
 
-// A NAMED SUBSET OF ONE PACKAGE'S UNIT TESTS, for a control that must execute on the merge path
-// while the whole-package run above is off it (gunbc.rung_drop rust_unit_tests_off_the_merge_path).
+// A NAMED SUBSET OF ONE PACKAGE'S UNIT TESTS, for a control in a package the whole-package run above
+// does not cover: the blocking rust-unit-tests lane runs repo_self_test_command, which is
+// v1-compiler only.
 // The filters are libtest's substring filters after `--`; an empty list would run the whole
 // package, which is repo_self_test_command's request and not this one.
 fn repo_self_targeted_test_command(package: String, filters: List<String>) -> String {
