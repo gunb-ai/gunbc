@@ -116,6 +116,15 @@ fn argv_word_construction_census_recount_emit_gunbc() -> ProcessExit {
   argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths_for_roots(roots: ["dag/gunbc"]), out: "target/argv_word_construction_census_recount_gunbc.tsv")
 }
 
+// The fixture root is OUTSIDE the modeled roots by design (the boundary-refusal claim pins that),
+// so the walk above never sees it. This emitter runs the same lens over the fixture's directory
+// alone, so the fixture claims' pinned expectations are checked against the lens's own rendering
+// of the fixture -- one recount path for every population the census route talks about, not a
+// hand-maintained parallel list.
+fn argv_word_construction_census_recount_emit_fixture() -> ProcessExit {
+  argv_word_construction_for_paths(paths: argv_word_construction_census_root_paths_for_roots(roots: ["src/v2/test/fixture_roots/argv_word_construction"]), out: "target/argv_word_construction_census_recount_fixture.tsv")
+}
+
 fn declared_module_path(d: ModuleDeclarationFact) -> String {
   d.path
 }
