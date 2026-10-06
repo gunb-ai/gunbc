@@ -640,18 +640,9 @@ fn curl_trace_transfer_sending(events: List<CurlTraceEvent>, text: NonEmptyStr) 
   }
 }
 
-fn curl_trace_kind_is(kind: CurlTraceEventKind, want: CurlTraceEventKind) -> Bool {
-  match kind {
-    CurlTraceSendHeader => match want { CurlTraceSendHeader => true  CurlTraceSendData => false  CurlTraceRecvHeader => false  CurlTraceOtherEvent => false }
-    CurlTraceSendData => match want { CurlTraceSendData => true  CurlTraceSendHeader => false  CurlTraceRecvHeader => false  CurlTraceOtherEvent => false }
-    CurlTraceRecvHeader => match want { CurlTraceRecvHeader => true  CurlTraceSendHeader => false  CurlTraceSendData => false  CurlTraceOtherEvent => false }
-    CurlTraceOtherEvent => match want { CurlTraceOtherEvent => true  CurlTraceSendHeader => false  CurlTraceSendData => false  CurlTraceRecvHeader => false }
-  }
-}
-
 // The stamps of one transfer's events of one kind, in trace order (the trace is monotone once read).
 fn curl_trace_instants(events: List<CurlTraceEvent>, transfer: NonEmptyStr, kind: CurlTraceEventKind) -> List<Microsecond> {
-  map(filter(events, e => (e.transfer as String) == (transfer as String) && curl_trace_kind_is(kind: e.kind, want: kind)), e => e.at)
+  map(filter(events, e => (e.transfer as String) == (transfer as String) && e.kind == kind), e => e.at)
 }
 
 // ── THE INSTALLED VERSION, READ ─────────────────────────────────────────────────────────────────
