@@ -80,11 +80,10 @@ import gunbc.host_effect_realize {
   run_argv_over_host_effect_transport, run_argv_stdin_over_host_effect_transport,
   run_argv_transport_succeeded, RunArgvTransportOutcome,
 }
-import extdeps.exec.command { ArgvCommand, argv_command, ProgramIdentity }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_elevate_command }
-import extdeps.systemd.systemctl { systemctl_daemon_reload_argv }
-import extdeps.tools.gnu_coreutils { tee_program, rm_program }
-import gunbc.filesystem_model { concat_lists }
+import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
+import extdeps.tools.gnu_coreutils { tee_overwrite_command, rm_force_command }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1272,16 +1271,16 @@ type BrowserReadyLabelsPlan
 // the converge's own fold: each leg runs only if the previous succeeded, and a failed leg is the
 // failed outcome. Elevation keeps the sudo -n posture through sudo_elevate_command, the same
 // carrier the deleted privileged intents rendered.
-fn browser_ready_labels_posture_argv(posture: BrowserReadyLabelsPosture, program: ProgramIdentity, arguments: List<String>) -> ArgvCommand {
+fn browser_ready_labels_posture_argv(posture: BrowserReadyLabelsPosture, command: ArgvCommand) -> ArgvCommand {
   match posture {
-    ReadyLabelsSudoElevated => sudo_elevate_command(command: concat_lists(a: [(program.invocation) as String], b: arguments))
-    ReadyLabelsUnprivileged => argv_command(program: program, arguments: arguments)
+    ReadyLabelsSudoElevated => sudo_elevate_command(command: argv_words(command: command))
+    ReadyLabelsUnprivileged => command
   }
 }
 
 fn browser_ready_labels_reload_leg(posture: BrowserReadyLabelsPosture) -> BrowserReadyLabelsReload {
   match posture {
-    ReadyLabelsSudoElevated => ReadyLabelsReloadRun { command: sudo_elevate_command(command: systemctl_daemon_reload_argv()) }
+    ReadyLabelsSudoElevated => ReadyLabelsReloadRun { command: sudo_elevate_command(command: argv_words(command: systemctl_daemon_reload_command())) }
     ReadyLabelsUnprivileged => ReadyLabelsReloadPostureSkipped { cause: "unprivileged posture: daemon-reload requires root and is skipped, not fabricated" as String }
   }
 }
@@ -1291,7 +1290,7 @@ fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabel
     RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
     RunnerUnitText { text: content } =>
       BrowserReadyLabelsGrantReady {
-        write: browser_ready_labels_posture_argv(posture: target.posture, program: tee_program(), arguments: [target.dropin as String]),
+        write: browser_ready_labels_posture_argv(posture: target.posture, command: tee_overwrite_command(path: target.dropin as String)),
         content: content,
         reload: browser_ready_labels_reload_leg(posture: target.posture),
       }
@@ -1300,7 +1299,7 @@ fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabel
 
 fn browser_ready_labels_revoke_plan(target: BrowserReadyLabelsTarget) -> BrowserReadyLabelsPlan {
   BrowserReadyLabelsRevokeReady {
-    remove: browser_ready_labels_posture_argv(posture: target.posture, program: rm_program(), arguments: ["-f", target.dropin as String]),
+    remove: browser_ready_labels_posture_argv(posture: target.posture, command: rm_force_command(path: target.dropin as String)),
     reload: browser_ready_labels_reload_leg(posture: target.posture),
   }
 }

@@ -65,8 +65,8 @@ fn scratch_removed(scratch: String) -> Bool {
 test fn grant_executes_the_dropin_write_for_real_on_a_scratch_root() -> Bool {
   let scratch = fresh_root()
   let target = scratch_target(scratch: scratch)
-  let first = browser_ready_labels_converge_wet(host: "srv3" as NonEmptyStr, ready: true, transport: LocalShell, target: target)
-  let second = browser_ready_labels_converge_wet(host: "srv3" as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let first = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let second = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
   let bytes = read_dropin_bytes(dropin: target.dropin)
   let removed = scratch_removed(scratch: scratch)
   removed
@@ -81,8 +81,8 @@ test fn grant_executes_the_dropin_write_for_real_on_a_scratch_root() -> Bool {
 test fn revoke_executes_the_dropin_removal_for_real_on_a_scratch_root() -> Bool {
   let scratch = fresh_root()
   let target = scratch_target(scratch: scratch)
-  let granted = browser_ready_labels_converge_wet(host: "srv3" as NonEmptyStr, ready: true, transport: LocalShell, target: target)
-  let revoked = browser_ready_labels_converge_wet(host: "srv3" as NonEmptyStr, ready: false, transport: LocalShell, target: target)
+  let granted = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: true, transport: LocalShell, target: target)
+  let revoked = browser_ready_labels_converge_wet(host: (operator_host_srv3 as String) as NonEmptyStr, ready: false, transport: LocalShell, target: target)
   let bytes = read_dropin_bytes(dropin: target.dropin)
   let removed = scratch_removed(scratch: scratch)
   removed
