@@ -309,8 +309,8 @@ fn observer_self_identity(
 // job running on its own subject would have power-cycled the machine it was standing on and then
 // reported the refusal, which is a refusal that arrives after the damage. Classification and
 // enforcement are different claims and only the second is what a caller driving real hardware
-// depends on; gunbc.machine_intake_mtcollins1_actuate says exactly this about its own denied-admission
-// control, and the reading rule it gives is the one that applies here: a non-zero exit is necessary
+// depends on; the unit's boot actuation said exactly this about its own denied-admission control
+// (since deleted with gunbc#12101), and the reading rule it gave is the one that applies here: a non-zero exit is necessary
 // and not sufficient, and the load-bearing observation is external -- that nothing moved.
 fn observer_identity_issuance_block(identity: ObserverSelfIdentity) -> ResetReturnRefusalCause? {
   match identity {

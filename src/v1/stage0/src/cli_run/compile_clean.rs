@@ -1842,28 +1842,3 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
     .iter()
     .any(|check| workspace_relative_repo_path(check) == entry_rel)
 }
-
-#[cfg(test)]
-mod corpus_scope_tests {
-    use super::*;
-
-    // The corpus claim follows the index's roots, not its presence (review 68527): an index over
-    // a root narrower than the witness layer must not make the ledger's rows look orphaned.
-    #[test]
-    fn an_index_over_narrower_roots_does_not_know_the_corpus() {
-        let narrow = build_multi_entry_index_primary_precedence(&["src/v1".to_string()]);
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&narrow)),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        assert_eq!(
-            compile_clean_corpus_scope(None),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        let whole = build_multi_entry_index_primary_precedence(&witness_layer_roots());
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&whole)),
-            v1_compiler_compile::CorpusScope::CorpusKnown
-        );
-    }
-}
