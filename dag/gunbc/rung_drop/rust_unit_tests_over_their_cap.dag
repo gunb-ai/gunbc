@@ -21,8 +21,9 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // shrinking the suite by deleting tests, and gunbc#13452 did exactly that, so the trigger has NOT
 // fired and this row does not claim it did. What ended it is the owner ruling #13452 carries
 // (2026-10-06: every v1 unit test is under 100ms, the v1 Rust tests are being wound down, and
-// integration tests in the lane are deleted rather than rewritten), confirmed as superseding this
-// row through gentle-dove-36 (#13474). That ruling took the deleted population out of this row's
+// integration tests in the lane are deleted rather than rewritten), taken as superseding this row
+// by escalation msg_a8b84443 -- approved BY DEFAULT (2026-10-06T13:50Z, no operator answer), not by
+// an explicit operator answer. That ruling took the deleted population out of this row's
 // subject; its loss is held by gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane and
 // nowhere else. Over the population that remains, the lane blocks again with a cap re-derived from
 // the post-#13452 walls (gunbc.compiler_gate_workflow compiler_gate_unit_test_timeout).
@@ -34,7 +35,7 @@ data rust_unit_tests_over_their_cap: RungDrop = RungDrop {
   identity: "rust_unit_tests_over_their_cap" as NonEmptyStr,
   subject: "the v1 --lib unit-test lane blocks a merge: a failing v1-compiler unit test turns the required witnesses context red",
   declared: "2026-10-05",
-  standing: Retired { trigger_fired: "NOT BY ITS TRIGGER: superseded by the owner ruling of 2026-10-06 carried by gunbc#13452 (v1 unit tests over 100ms are deleted, not rewritten), which removed the deleted population from this subject; that loss is declared once, as gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane. Over the remaining population the lane blocks again (LaneBlocks, gunbc#13474) with a 15-minute step cap derived from the post-#13452 maximum wall, witnesses run 37459768899 at 457s; re-derive by instrument (gh run list --workflow witnesses.yml for runs after 2026-10-06T01:02Z, then each run rust-unit-tests step times)." as NonEmptyStr },
+  standing: Retired { trigger_fired: "NOT BY ITS TRIGGER: superseded by the owner ruling of 2026-10-06 carried by gunbc#13452 (v1 tests over 100ms are deleted, not rewritten); decision record: escalation msg_a8b84443, APPROVED BY DEFAULT at 2026-10-06T13:50Z after no explicit operator answer, not an explicit operator ruling on this row. That ruling removed the deleted population from this subject; that loss is declared once, as gunbc.rung_drop v1_integration_tests_deleted_from_the_unit_lane. Over the remaining population the lane blocks again (LaneBlocks, gunbc#13474) with a 15-minute step cap derived from the post-#13452 maximum wall, witnesses run 37459768899 at 457s; re-derive by instrument (gh run list --workflow witnesses.yml for runs after 2026-10-06T01:02Z, then each run rust-unit-tests step times)." as NonEmptyStr },
   declaration: TypedDeclaration {
     previous: MechanicallyPreventable,
     temporary: Mitigatable,
