@@ -185,7 +185,7 @@ fn classical_not_int_match_arrow_fixture() -> Node {
   )
 }
 
-test fn complement_body_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+test fn complement_body_real_infer_holds() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_body_fixture)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -240,7 +240,7 @@ test fn classical_not_int_match_non_octet_arm_rejects_holds() -> Bool {
 // complement infer accepts bool-literal arms once they use dag_token_kw_true/false
 // (the same atoms infer_bool_literal_pattern_classify already classifies).
 
-test fn complement_arrow_real_infer_refuses_unsupported_pattern_holds() -> Bool {
+test fn complement_arrow_real_infer_holds() -> Bool {
   match infer(tree: claim_resolved_tree_without_declarations(root: dag_complement_arrow_with_body_fixture)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

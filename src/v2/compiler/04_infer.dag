@@ -1853,9 +1853,9 @@ fn infer_branch_type_is_int(type_node: Node) -> Bool {
 // 0/1 authority as eval allocate_literal), not a post-unification rewrite. dissolve-on: bool
 // keywords carry Int type in Int-valued match bodies at normalize/ingest. scaffold-widen: Int
 // scrutinee on bool-literal match emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic
-// (countable on Accepted path). paired-scaffold: emit half =
-// target_value_expr_int_bool_octet_channel_dissolution_note (target_model.dag) — dissolve both
-// halves together on octet↔bool codec inhabitation.
+// (countable on Accepted path). emit match-seam production was uprooted after the Bool de-fork
+// (target_value_expr_int_bool_octet_channel_dissolution_note). Dissolve this diagnostic on
+// octet↔bool codec inhabitation.
 
 fn infer_match_bool_consumer_diagnostics_with_int_scrutinee_scaffold(
   consumer: Node,
@@ -2289,7 +2289,7 @@ fn infer_match_arm_pattern_is_literal(arm: Node) -> Bool {
 // patterns are neither literals nor constructors -- bare atoms naming nothing, say -- keeps the literal
 // family's refusal (infer_match_pattern_not_bool_literal): routing it here instead would meet an
 // untyped scrutinee and accept it at the frontier, widening a refusal into an admission
-// (v2.test.claim.manual.match_infer_fail_open_audit complement_body_real_infer_refuses_unsupported_pattern_holds).
+// (v2.test.claim.manual.match_infer_fail_open_audit match_infer_fail_open_audit_rejects_holds).
 fn infer_match_arm_pattern_is_constructor(arm: Node) -> Bool {
   match find_core_child(root: arm, marker: MatchArmPatternEdge) {
     Rejected { diagnostics: _ } => false
