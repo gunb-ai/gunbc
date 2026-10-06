@@ -108,9 +108,11 @@ import v2.std.compilers.body_lowering {
   lower_match,
   lower_unary_prefix,
   application_head_read,
-  ApplicationHeadRead,
   ApplicationHeadFound,
-  AtomHead
+  ApplicationHeadRefused,
+  ArrowHead,
+  AtomHead,
+  NotApplicationHead
 }
 import v2.std.list_introduction { lower_list_introduction }
 import v2.std.arrow_signature { anonymous_signature_arrow, declared_signature, signature_order_edge }
