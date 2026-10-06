@@ -269,9 +269,19 @@ fn commit_staged(repository: RepositoryEnvelope, message: String) -> StagedCommi
 
 // THE SAME VERB FOR A CAPTURE: the stage is frozen exactly as commit_staged freezes it, and the commit
 // additionally records the unit of work it captured (gunbc.scm.intake CommitWork), which a corrective
-// supersession is later bound to.
-fn commit_staged_capture(repository: RepositoryEnvelope, message: String, work: CaptureWork) -> StagedCommit {
-  commit_staged_recording(repository: repository, message: message, work: Present { value: work })
+// supersession is later bound to. A capture is a delta against a base, so a repository with no
+// selected base has nothing for one to descend from and the route refuses: a root commit carrying
+// work is a role gunbc.scm.repository_envelope admit_capture refuses, and this makes it unwritable
+// here rather than refused later.
+type StagedCapture
+  = StagedCaptureCommitted(StagedCommit)
+  | StagedCaptureWithoutBase
+
+fn commit_staged_capture(repository: RepositoryEnvelope, message: String, work: CaptureWork) -> StagedCapture {
+  match repository.checked_out {
+    Absent => StagedCaptureWithoutBase
+    Present { value: _ } => StagedCaptureCommitted(commit_staged_recording(repository: repository, message: message, work: Present { value: work }))
+  }
 }
 
 fn commit_staged_recording(repository: RepositoryEnvelope, message: String, work: CaptureWork?) -> StagedCommit {

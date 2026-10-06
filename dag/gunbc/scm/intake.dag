@@ -207,13 +207,20 @@ fn decode_intake_revision_member(value: JsonValue, key: String) -> IntakeRevisio
 // work it recaptures (the NO-LAND ruling on gunbc#13402, blocker 1). Before this, the only record of
 // a candidate's work was its message, so a corrective supersession could name ANY fresh commit as
 // the "recapture" of a stale one and the stale integration would leave standing with its work never
-// reconstructed. The subject is opaque here: the producer that captures work owns its spelling
-// (gunbc.roadmap_belt_actuate belt_capture_work), and this module asserts only that two captures
-// carrying one subject are captures of one unit of work. `WorkUnrecordedByFormat` is what a document
-// older than the member says (v8 and older), never `NoWork`, for the reason `IntakeUnrecordedByFormat`
-// is never `IntakeNone`.
+// reconstructed. `WorkUnrecordedByFormat` is what a document older than the member says (v8 and
+// older), never `NoWork`, for the reason `IntakeUnrecordedByFormat` is never `IntakeNone`.
+//
+// THE IDENTITY IS A RECORD OF TWO MEMBERS, NOT A RENDERED LABEL (the second NO-LAND ruling on
+// gunbc#13402). It was one string the belt spelled as `<node> a<attempt>`, and that spelling is not
+// injective: (n, "x ay") and ("n ax", y) both render "n ax ay", so a capture of one unit of work could
+// pass as the recapture of another. Now the unit of work and the attempt that captured it travel as
+// separate members on the wire and compare field by field, so two identities are equal exactly when
+// both members are. The SCM does not import the roadmap's node and attempt types -- the roadmap
+// imports this module, and the import graph is acyclic -- so the members are the two non-empty
+// strings those types brand, decoded and refused empty here.
 type CaptureWork {
-  subject: NonEmptyStr
+  unit: NonEmptyStr
+  attempt: NonEmptyStr
 }
 
 type CommitWork
@@ -222,7 +229,7 @@ type CommitWork
   | WorkUnrecordedByFormat
 
 fn capture_work_eq(left: CaptureWork, right: CaptureWork) -> Bool {
-  (left.subject as String) == (right.subject as String)
+  (left.unit as String) == (right.unit as String) && (left.attempt as String) == (right.attempt as String)
 }
 
 fn encode_commit_work(work: CommitWork) -> JsonValue {
@@ -232,7 +239,8 @@ fn encode_commit_work(work: CommitWork) -> JsonValue {
     WorkCapture { work: w } =>
       json_object(members: [
         json_kv(key: "kind", value: json_string(s: "capture")),
-        json_kv(key: "subject", value: json_string(s: w.subject as String)),
+        json_kv(key: "unit", value: json_string(s: w.unit as String)),
+        json_kv(key: "attempt", value: json_string(s: w.attempt as String)),
       ])
   }
 }
@@ -256,19 +264,16 @@ fn decode_commit_work(value: JsonValue) -> CommitWorkDecode {
               Absent => CommitWorkDecoded { work: NoWork }
             }
           } else if kind == "capture" {
-            match unexpected_member_key(v: value, allowed: ["kind", "subject"]) {
+            match unexpected_member_key(v: value, allowed: ["kind", "unit", "attempt"]) {
               Present { value: key } => CommitWorkRefused { cause: MemberReadWrongShape { key: join(["work.", key], "") } }
               Absent =>
-                match read_string_member(v: value, key: "subject") {
-                  MemberString { value: subject } =>
-                    if subject == "" {
-                      CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
-                    } else {
-                      CommitWorkDecoded { work: WorkCapture { work: CaptureWork { subject: subject as NonEmptyStr } } }
+                match decode_work_member(value: value, key: "unit") {
+                  Absent => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.unit" } }
+                  Present { value: unit } =>
+                    match decode_work_member(value: value, key: "attempt") {
+                      Absent => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.attempt" } }
+                      Present { value: attempt } => CommitWorkDecoded { work: WorkCapture { work: CaptureWork { unit: unit, attempt: attempt } } }
                     }
-                  MemberFailed { cause } => CommitWorkRefused { cause: cause }
-                  MemberArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
-                  MemberObject { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work.subject" } }
                 }
             }
           } else {
@@ -279,5 +284,15 @@ fn decode_commit_work(value: JsonValue) -> CommitWorkDecode {
     JsonNumber { lexeme: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
     JsonString { value: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
     JsonArray { elements: _ } => CommitWorkRefused { cause: MemberReadWrongShape { key: "work" } }
+  }
+}
+
+// ONE NON-EMPTY STRING MEMBER OF A WORK IDENTITY: absent, wrong-shaped and empty are each "not a member".
+fn decode_work_member(value: JsonValue, key: String) -> NonEmptyStr? {
+  match read_string_member(v: value, key: key) {
+    MemberString { value: text } => if text == "" { none } else { Present { value: text as NonEmptyStr } }
+    MemberFailed { cause: _ } => none
+    MemberArray { elements: _ } => none
+    MemberObject { value: _ } => none
   }
 }

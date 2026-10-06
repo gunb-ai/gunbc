@@ -24,7 +24,7 @@ import gunbc.scm.repository_envelope {
   record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
   RepositoryCommit, commit_at_reference,
   SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
-  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
 }
 import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged, squash_merge_superseding, SupersedingSquashMerged, SupersedingSquashRefused }
 import gunbc.roadmap_belt_actuate {
@@ -169,6 +169,7 @@ fn supersession_refusal(scene: RepositoryEnvelope, source: Int, supersedes: Int)
         SupersessionNotStale { named: _ } => "not_stale"
         SupersessionAlreadySuperseded { named: _, by: _ } => "already_superseded"
         SupersessionSourceNotFresh { source: _ } => "source_not_fresh"
+        SupersessionSourceNotACapture { source: _ } => "not_a_capture"
         SupersessionWorkMismatch { stale: _, source: _ } => "work_mismatch"
         SupersessionMergeBaseRefused { refusal: _ } => "merge_base"
       }
@@ -177,12 +178,15 @@ fn supersession_refusal(scene: RepositoryEnvelope, source: Int, supersedes: Int)
 
 // THE RULING'S SILENT-CLEAN CASE REFUSES: c6 is fresh, on the right line, and leaves src/new.dag present
 // -- an ordinary merge would take it without conflict -- but it is not a capture of the stale work.
+// And a source that is not a capture at all (c4, the intake advance) is refused as one: supersession
+// reads work only through an admitted capture.
 test fn an_unrelated_fresh_source_cannot_supersede_the_stale_integration() -> Bool {
   match legacy_corrective_scene() {
     Absent => false
     Present { value: scene } =>
       supersession_refusal(scene: scene, source: 6, supersedes: 2) == "work_mismatch"
         && supersession_refusal(scene: scene, source: 5, supersedes: 0) == "not_an_integration"
+        && supersession_refusal(scene: scene, source: 4, supersedes: 2) == "not_a_capture"
   }
 }
 

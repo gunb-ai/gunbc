@@ -443,7 +443,7 @@ import gunbc.scm.repository_envelope {
   IntakeAdvanceDoesNotMove, IntakeAdvanceDiscontinuous, IntakeAdvanceRevisionAlreadyPlaced, IntakeAdvanceLineAlreadyAdvanced,
   line_integration_of, LineIntegration,
   SupersessionRefusal, SupersessionNotAnIntegration, SupersessionStaleIntegrationIsARoot, SupersessionNotStale,
-  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
+  SupersessionAlreadySuperseded, SupersessionSourceNotFresh, SupersessionSourceNotACapture, SupersessionWorkMismatch, SupersessionMergeBaseRefused,
   LegacyIntakeRecord, record_legacy_intakes, LegacyIntakesRecorded, LegacyIntakesNothingUnrecorded, LegacyIntakesRefused,
   LegacyIntakeRefusal, LegacyIntakeUnknownCommit, LegacyIntakeAlreadyRecorded, LegacyIntakeDuplicated, LegacyIntakeUncovered,
   LegacyIntakeRootNotBase, LegacyIntakeBaseNotRoot, LegacyIntakeNotRecordable, LegacyIntakeCensusRefused,
@@ -455,7 +455,7 @@ import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
 import gunbc.scm.write_spine {
-  commit_staged, commit_staged_capture,
+  commit_staged, commit_staged_capture, StagedCaptureWithoutBase, StagedCaptureCommitted,
   StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
 }
@@ -6635,13 +6635,18 @@ fn belt_scm_envelope_seeded(
   }
 }
 
-// THE UNIT OF WORK A CANDIDATE CAPTURES, as the SCM's typed capture subject (gunbc.scm.intake
-// CaptureWork): one roadmap node's one attempt. Every capture of that attempt -- the original and a
+// THE UNIT OF WORK A CANDIDATE CAPTURES, as the SCM's typed capture identity (gunbc.scm.intake
+// CaptureWork): one roadmap node's one attempt, carried as two members -- never a rendered label,
+// whose delimiter a node or attempt spelling could contain. Empty spellings name no work. Every capture of that attempt -- the original and a
 // recapture after a base advance -- carries this subject, which is what binds a corrective
 // supersession to the exact stale work it replaces. The one producer; the legacy conversion reads the
 // same pair back from a pre-intake candidate's message and spells it through here.
-fn belt_capture_work(node_id: String, attempt_key: String) -> CaptureWork {
-  CaptureWork { subject: join([node_id, " a", attempt_key], "") as NonEmptyStr }
+fn belt_capture_work(node_id: String, attempt_key: String) -> CaptureWork? {
+  if node_id == "" || attempt_key == "" {
+    none
+  } else {
+    Present { value: CaptureWork { unit: node_id as NonEmptyStr, attempt: attempt_key as NonEmptyStr } }
+  }
 }
 
 // THE ATTEMPT'S BASE AS A TYPED REVISION. The spawn origin records the sha as git printed it
@@ -7010,18 +7015,22 @@ fn belt_scm_capture_candidate_tree(
                       BeltIntakeBaseRefused { detail } => ScmCaptureRefused { detail: detail }
                       BeltIntakeBasePoisoned { detail } => ScmCapturePoisoned { detail: detail }
                       BeltIntakeBaseReady { envelope: based, base_ref } =>
-                        belt_scm_delta_capture(
-                          instance: instance,
-                          worktree: worktree,
-                          work: belt_capture_work(node_id: node_id as String, attempt_key: attempt_key),
-                          seeded: based,
-                          generation: seeded_generation,
-                          base_ref: base_ref,
-                          head_ref: seeded.checked_out,
-                          base_sha: base_sha,
-                          path: path,
-                          message: message,
-                        )
+                        match belt_capture_work(node_id: node_id as String, attempt_key: attempt_key) {
+                          Absent => ScmCapturePoisoned { detail: "the attempt key is empty, so no work identity can name this capture" }
+                          Present { value: work } =>
+                            belt_scm_delta_capture(
+                              instance: instance,
+                              worktree: worktree,
+                              work: work,
+                              seeded: based,
+                              generation: seeded_generation,
+                              base_ref: base_ref,
+                              head_ref: seeded.checked_out,
+                              base_sha: base_sha,
+                              path: path,
+                              message: message,
+                            )
+                        }
                     }
                 }
               }
@@ -7292,6 +7301,10 @@ fn belt_scm_delta_capture_over(
                             message: message,
                             work: work,
                           ) {
+                            StagedCaptureWithoutBase =>
+                              ScmCapturePoisoned { detail: "the capture's base commit is not selected, so the candidate would be a root, which no capture may be: envelope damage" }
+                            StagedCaptureCommitted(staged) =>
+                          match staged {
                             StagedCommitCandidateRefused { cause: _ } =>
                               ScmCapturePoisoned {
                                 detail: "the SCM stage could not be compared against its base, so the capture was not minted",
@@ -7357,6 +7370,7 @@ fn belt_scm_delta_capture_over(
                                   }
                               }
                             }
+                          }
                           }
                       }
                       }
@@ -11399,7 +11413,10 @@ fn belt_legacy_intake_plan(commits: List<RepositoryCommit>, observed: List<BeltL
                                             records: concat([LegacyIntakeRecord {
                                               commit: c.reference,
                                               intake: if intake_revision_eq(left: captured_revision, right: base_revision) { IntakeNone } else { IntakeStaleCapture { captured_against: captured_revision } },
-                                              work: WorkCapture { work: belt_capture_work(node_id: subject.node_id, attempt_key: subject.attempt_key) },
+                                              work: match belt_capture_work(node_id: subject.node_id, attempt_key: subject.attempt_key) {
+                                                Present { value: w } => WorkCapture { work: w }
+                                                Absent => NoWork
+                                              },
                                             }], acc.records),
                                             refused: none,
                                           }
@@ -11583,6 +11600,7 @@ fn belt_supersession_refusal_detail(cause: SupersessionRefusal) -> String {
     SupersessionNotStale { named } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " integrated a capture that is not stale"], "")
     SupersessionAlreadySuperseded { named, by } => join(["commit ", to_string(minted_id_ordinal(id: named.identity)), " is already superseded by commit ", to_string(minted_id_ordinal(id: by.identity))], "")
     SupersessionSourceNotFresh { source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " is not a fresh capture against its own intake"], "")
+    SupersessionSourceNotACapture { source } => join(["commit ", to_string(minted_id_ordinal(id: source.identity)), " is not a capture, so it cannot be a recapture of anything"], "")
     SupersessionWorkMismatch { stale, source } => join(["source ", to_string(minted_id_ordinal(id: source.identity)), " does not capture the work stale capture ", to_string(minted_id_ordinal(id: stale.identity)), " captured, so it is not its recapture"], "")
     SupersessionMergeBaseRefused { refusal: _ } => "the recapture and the line before the stale integration share no derivable merge base"
   }

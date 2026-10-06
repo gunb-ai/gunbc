@@ -1176,6 +1176,7 @@ type IntakeCensusRefusal
   | IntakeCensusStaleCaptureOnItsBase { commit: RepositoryCommitRef }
   | IntakeCensusStaleCaptureOffLine { commit: RepositoryCommitRef }
   | IntakeCensusStaleCaptureWithoutWork { commit: RepositoryCommitRef }
+  | IntakeCensusWorkOnNonCapture { commit: RepositoryCommitRef, cause: CaptureRoleRefusal }
 
 fn commit_records_a_typed_fact(c: RepositoryCommit) -> Bool {
   match c.intake {
@@ -1234,6 +1235,28 @@ fn intake_census_lines(commits: List<RepositoryCommit>, bases: List<RepositoryCo
 }
 
 fn intake_census_commit(commits: List<RepositoryCommit>, c: RepositoryCommit) -> IntakeCensusRefusal? {
+  match work_role_refusal(c: c) {
+    Present { value: refusal } => Present { value: refusal }
+    Absent => intake_census_intake(commits: commits, c: c)
+  }
+}
+
+// THE WORK-ROLE LAW: a row carrying work must be admitted as a capture (admit_capture), so work on an
+// intake base, an advance, an integration or a correction refuses; a stale capture with no work is
+// named by its own arm below.
+fn work_role_refusal(c: RepositoryCommit) -> IntakeCensusRefusal? {
+  match c.work {
+    NoWork => none
+    WorkUnrecordedByFormat => none
+    WorkCapture { work: _ } =>
+      match admit_capture(commit: c) {
+        CaptureAdmitted(_) => none
+        CaptureRoleRefused { commit, cause } => Present { value: IntakeCensusWorkOnNonCapture { commit: commit, cause: cause } }
+      }
+  }
+}
+
+fn intake_census_intake(commits: List<RepositoryCommit>, c: RepositoryCommit) -> IntakeCensusRefusal? {
   match c.intake {
     IntakeNone => none
     IntakeUnrecordedByFormat => none
@@ -1695,6 +1718,7 @@ type SupersessionRefusal
   | SupersessionNotStale { named: RepositoryCommitRef }
   | SupersessionAlreadySuperseded { named: RepositoryCommitRef, by: RepositoryCommitRef }
   | SupersessionSourceNotFresh { source: RepositoryCommitRef }
+  | SupersessionSourceNotACapture { source: RepositoryCommitRef }
   | SupersessionWorkMismatch { stale: RepositoryCommitRef, source: RepositoryCommitRef }
   | SupersessionMergeBaseRefused { refusal: MergeBaseRefusal }
 
@@ -1730,11 +1754,50 @@ fn line_integration_of(commit: RepositoryCommit) -> LineIntegration? {
   }
 }
 
-fn commit_work_of(commit: RepositoryCommit) -> CaptureWork? {
+// A CAPTURE, ADMITTED BY ITS ROLE AND NOT BY ITS LABEL (the second NO-LAND ruling on gunbc#13402).
+// Work identity is carried by a commit member, and a member is only as trustworthy as the role of the
+// row carrying it: a document can attach a matching WorkCapture to an intake base, an advance, an
+// integration or a correction, and a reader asking only "does this commit carry that work" would
+// accept the label on the wrong row. So work is read through this admission, which holds the one
+// statement of what a capture IS -- a non-root commit that integrated nothing, whose intake is none
+// (fresh) or a stale capture, carrying a WorkCapture -- and the census (intake_census) applies the
+// same admission to every row carrying work, so decode, conversion and the mints agree on it.
+type AdmittedCapture sole_constructor {
+  commit: RepositoryCommit
+  work: CaptureWork
+}
+
+type CaptureRoleRefusal
+  = CaptureRoleCarriesNoWork
+  | CaptureRoleIsARoot
+  | CaptureRoleIsAnIntegration
+  | CaptureRoleIsAnIntake
+
+type CaptureAdmission
+  = CaptureAdmitted(AdmittedCapture)
+  | CaptureRoleRefused { commit: RepositoryCommitRef, cause: CaptureRoleRefusal }
+
+fn admit_capture(commit: RepositoryCommit) -> CaptureAdmission {
   match commit.work {
-    WorkCapture { work } => Present { value: work }
-    NoWork => none
-    WorkUnrecordedByFormat => none
+    NoWork => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleCarriesNoWork }
+    WorkUnrecordedByFormat => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleCarriesNoWork }
+    WorkCapture { work } =>
+      match commit.ancestry {
+        RootCommit => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsARoot }
+        DescendsFrom { parent: _ } =>
+          match commit.integration {
+            SquashIntegrated { source: _ } => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsAnIntegration }
+            SquashIntegratedSuperseding { source: _, supersedes: _ } => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsAnIntegration }
+            NoSquashIntegration =>
+              match commit.intake {
+                IntakeNone => CaptureAdmitted(AdmittedCapture { commit: commit, work: work })
+                IntakeStaleCapture { captured_against: _ } => CaptureAdmitted(AdmittedCapture { commit: commit, work: work })
+                IntakeBase { revision: _ } => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsAnIntake }
+                IntakeAdvance { from: _, to: _ } => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsAnIntake }
+                IntakeUnrecordedByFormat => CaptureRoleRefused { commit: commit.reference, cause: CaptureRoleIsAnIntake }
+              }
+          }
+      }
   }
 }
 
@@ -1757,42 +1820,43 @@ fn supersession_relation(commits: List<RepositoryCommit>, supersedes: Repository
               match commit_at_reference(commits: commits, reference: integration.source) {
                 Absent => SupersessionRelationRefused { cause: SupersessionNotStale { named: supersedes } }
                 Present { value: stale_source } =>
-                  if !commit_is_stale_capture(commit: stale_source) {
-                    SupersessionRelationRefused { cause: SupersessionNotStale { named: supersedes } }
-                  } else {
-                    match commit_at_reference(commits: commits, reference: source) {
-                      Absent => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
-                      Present { value: recapture } =>
-                        if commit_is_stale_capture(commit: recapture) {
-                          SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
-                        } else {
-                          match line_intake(commits: commits, head: source) {
-                            LineIntakeAt { commit: _, revision: _ } =>
-                              match commit_work_of(commit: stale_source) {
-                                Absent => SupersessionRelationRefused { cause: SupersessionWorkMismatch { stale: stale_source.reference, source: source } }
-                                Present { value: stale_work } =>
-                                  match commit_work_of(commit: recapture) {
-                                    Absent => SupersessionRelationRefused { cause: SupersessionWorkMismatch { stale: stale_source.reference, source: source } }
-                                    Present { value: recaptured_work } =>
-                                      if capture_work_eq(left: stale_work, right: recaptured_work) {
+                  match admit_capture(commit: stale_source) {
+                    CaptureRoleRefused { commit: _, cause: _ } => SupersessionRelationRefused { cause: SupersessionNotStale { named: supersedes } }
+                    CaptureAdmitted(stale_capture) =>
+                      if !commit_is_stale_capture(commit: stale_capture.commit) {
+                        SupersessionRelationRefused { cause: SupersessionNotStale { named: supersedes } }
+                      } else {
+                        match commit_at_reference(commits: commits, reference: source) {
+                          Absent => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
+                          Present { value: candidate } =>
+                            match admit_capture(commit: candidate) {
+                              CaptureRoleRefused { commit: _, cause: _ } => SupersessionRelationRefused { cause: SupersessionSourceNotACapture { source: source } }
+                              CaptureAdmitted(recapture) =>
+                                if commit_is_stale_capture(commit: recapture.commit) {
+                                  SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
+                                } else {
+                                  match line_intake(commits: commits, head: source) {
+                                    LineIntakeAt { commit: _, revision: _ } =>
+                                      if capture_work_eq(left: stale_capture.work, right: recapture.work) {
                                         SupersessionRelationHolds { stale_parent: stale_parent }
                                       } else {
                                         SupersessionRelationRefused { cause: SupersessionWorkMismatch { stale: stale_source.reference, source: source } }
                                       }
+                                    LineIntakeAbsent => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
+                                    LineIntakeUnrecorded { commit: _ } => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
+                                    LineIntakeUnreadable { at: _ } => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
                                   }
-                              }
-                            LineIntakeAbsent => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
-                            LineIntakeUnrecorded { commit: _ } => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
-                            LineIntakeUnreadable { at: _ } => SupersessionRelationRefused { cause: SupersessionSourceNotFresh { source: source } }
-                          }
+                                }
+                            }
                         }
-                    }
+                      }
                   }
               }
           }
       }
   }
 }
+
 
 fn superseders_of(commits: List<RepositoryCommit>, supersedes: RepositoryCommitRef) -> List<RepositoryCommitRef> {
   commits |> flat_map(c => match c.integration {

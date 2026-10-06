@@ -11,16 +11,21 @@ module test.claim.scm.scm_intake_census_witness_test
 //   * a corrective commit carrying the stale integration's UNCHANGED root;
 //   * a corrective commit naming a fresh but UNRELATED source;
 //   * a second supersession of one integration.
+//   * WORK ON A ROW THAT IS NOT A CAPTURE: the recaptured work's identity attached to an intake base,
+//     an intake advance, an ordinary integration and a correction (the second NO-LAND ruling) -- a
+//     label on the wrong role is not a capture;
+//   * A DELIMITER COLLISION: the stale capture's work rewritten to (n, "x ay") and the recapture's to
+//     ("n ax", y) -- one string under the old rendering, two identities under the record.
 // The unedited documents decode -- the positive control that the reds are the edits and not the
 // scenes. The decode is the whole-store route, so the corrected-root equality is answered outright.
 
-import std.types { Bool, String, List, Int }
+import std.types { Bool, String, List, Int, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, json_int }
 import gunbc.scm.json_member { read_member_value, MemberValue, MemberLookupFailed }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.scm.ancestry { RepositoryCommitRef }
-import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, CaptureWork, capture_work_eq }
 import gunbc.scm.object_store { ObjectStore }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -44,7 +49,7 @@ import gunbc.scm.repository_envelope {
   IntakeCensusHalfConverted,
   IntakeCensusStaleCaptureOnItsBase,
   IntakeCensusStaleCaptureOffLine,
-  IntakeCensusStaleCaptureWithoutWork,
+  IntakeCensusStaleCaptureWithoutWork, IntakeCensusWorkOnNonCapture,
   SupersessionCensusRefusal,
   SupersessionCensusDuplicate,
   SupersessionCensusNotOnStaleIntegration,
@@ -84,7 +89,7 @@ import gunbc.scm.repository_envelope {
   SupersessionMergeBaseRefused,
   SupersessionNotAnIntegration,
   SupersessionNotStale,
-  SupersessionSourceNotFresh,
+  SupersessionSourceNotFresh, SupersessionSourceNotACapture,
   SupersessionStaleIntegrationIsARoot,
   SupersessionWorkMismatch,
 }
@@ -209,6 +214,7 @@ fn intake_law(outcome: CensusDecode) -> String {
             IntakeCensusStaleCaptureOnItsBase { commit: _ } => "stale_on_base"
             IntakeCensusStaleCaptureOffLine { commit: _ } => "stale_off_line"
             IntakeCensusStaleCaptureWithoutWork { commit: _ } => "stale_without_work"
+            IntakeCensusWorkOnNonCapture { commit: _, cause: _ } => "work_on_non_capture"
           }
         RepositorySupersessionCensusRefused { cause: law } =>
           match law {
@@ -221,6 +227,7 @@ fn intake_law(outcome: CensusDecode) -> String {
                 SupersessionNotStale { named: _ } => "supersession_relation"
                 SupersessionAlreadySuperseded { named: _, by: _ } => "supersession_relation"
                 SupersessionSourceNotFresh { source: _ } => "supersession_relation"
+                SupersessionSourceNotACapture { source: _ } => "supersession_relation"
                 SupersessionWorkMismatch { stale: _, source: _ } => "supersession_work_mismatch"
                 SupersessionMergeBaseRefused { refusal: _ } => "supersession_relation"
               }
@@ -418,4 +425,48 @@ test fn a_forged_correction_naming_an_unrelated_source_refuses() -> Bool {
 
 test fn a_forged_second_supersession_of_one_integration_refuses() -> Bool {
   corrected_law(with_later_integration: true, ordinal: 8, key: "integration", value: Present { value: superseding_integration(source: 6, supersedes: 2) }) == "supersession_duplicate"
+}
+
+fn capture_work_json(unit: String, attempt: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "kind", value: json_string(s: "capture")),
+    json_kv(key: "unit", value: json_string(s: unit)),
+    json_kv(key: "attempt", value: json_string(s: attempt)),
+  ])
+}
+
+// THE RECAPTURED WORK'S IDENTITY, (n, 1), ATTACHED TO ROWS WHOSE ROLE IS NOT A CAPTURE: c0 the intake
+// base, c4 the intake advance, c2 the ordinary (stale) integration, c7 the correction.
+test fn work_on_an_intake_base_or_advance_refuses() -> Bool {
+  corrected_law(with_later_integration: false, ordinal: 0, key: "work", value: Present { value: capture_work_json(unit: "n", attempt: "1") }) == "work_on_non_capture"
+    && corrected_law(with_later_integration: false, ordinal: 4, key: "work", value: Present { value: capture_work_json(unit: "n", attempt: "1") }) == "work_on_non_capture"
+}
+
+test fn work_on_an_integration_or_a_correction_refuses() -> Bool {
+  corrected_law(with_later_integration: false, ordinal: 2, key: "work", value: Present { value: capture_work_json(unit: "n", attempt: "1") }) == "work_on_non_capture"
+    && corrected_law(with_later_integration: false, ordinal: 7, key: "work", value: Present { value: capture_work_json(unit: "n", attempt: "1") }) == "work_on_non_capture"
+}
+
+// THE DELIMITER COLLISION: the two identities render to one string under `<node> a<attempt>`; as
+// records they differ, so the forged correction is a work mismatch. Restoring a rendered-string
+// equality makes this claim red.
+test fn a_delimiter_collision_is_two_identities() -> Bool {
+  match corrected_scene(with_later_integration: false) {
+    Absent => false
+    Present { value: scene } =>
+      match edited_commit(doc: encode_repository_v9(repo: scene), ordinal: 1, key: "work", value: capture_work_json(unit: "n", attempt: "x ay")) {
+        Absent => false
+        Present { value: once } =>
+          match edited_commit(doc: once, ordinal: 5, key: "work", value: capture_work_json(unit: "n ax", attempt: "y")) {
+            Absent => false
+            Present { value: forged } =>
+              intake_law(outcome: decode_v9(doc: forged, store: scene.store)) == "supersession_work_mismatch"
+                && join(["n", " a", "x ay"], "") == join(["n ax", " a", "y"], "")
+                && !capture_work_eq(
+                  left: CaptureWork { unit: "n" as NonEmptyStr, attempt: "x ay" as NonEmptyStr },
+                  right: CaptureWork { unit: "n ax" as NonEmptyStr, attempt: "y" as NonEmptyStr },
+                )
+          }
+      }
+  }
 }

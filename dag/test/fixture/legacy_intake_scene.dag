@@ -24,7 +24,7 @@ import std.types { String, List, NonEmptyStr, Int }
 import std.minted_identity { MintedId }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.scm.ancestry { RepositoryCommitRef }
-import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision, CaptureWork }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   encode_repository_v8, decode_repository_v8_index, decode_repository_v7_finish,
@@ -39,7 +39,7 @@ import gunbc.scm.squash_merge {
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message }
 import gunbc.roadmap_belt_actuate {
   belt_legacy_intake_plan, LegacyIntakePlanned, LegacyIntakePlanRefused, BeltLegacyCaptureBase,
-  BaseShaObserved, BeltBaseSha, belt_capture_work,
+  BaseShaObserved, BeltBaseSha,
 }
 import test.fixture.scm_repository_builder {
   MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_at, mb_intake_advance, mb_capture, mb_remove,
@@ -143,7 +143,7 @@ fn legacy_corrective_scene() -> RepositoryEnvelope? {
               let recapture = mb_capture(
                 build: mb_remove(build: mb_stage(build: advanced, path: "src/other.dag", text: "O as worker 1 left it"), path: "src/new.dag"),
                 message: belt_candidate_commit_message(node_id: "n", attempt_key: "1") as String,
-                work: belt_capture_work(node_id: "n", attempt_key: "1"),
+                work: CaptureWork { unit: "n" as NonEmptyStr, attempt: "1" as NonEmptyStr },
               )
               match recapture {
                 MbSetupFailed => none
@@ -151,7 +151,7 @@ fn legacy_corrective_scene() -> RepositoryEnvelope? {
                   match mb_capture(
                     build: mb_stage(build: mb_at(build: MbBuilt { repository: repository, at: none }, target: legacy_ref(ordinal: 4)), path: "src/c.dag", text: "C"),
                     message: belt_candidate_commit_message(node_id: "n", attempt_key: "6") as String,
-                    work: belt_capture_work(node_id: "n", attempt_key: "6"),
+                    work: CaptureWork { unit: "n" as NonEmptyStr, attempt: "6" as NonEmptyStr },
                   ) {
                     MbSetupFailed => none
                     MbBuilt { repository: scene, at: _ } => Present { value: scene }

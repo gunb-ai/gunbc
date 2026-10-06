@@ -52,7 +52,7 @@ import gunbc.scm.write_spine {
   StageIngress, Staged, StageCandidateRefused, StageSourceLocatorCollision,
   StageManifestLocatorCollision,
   stage_source_at_path,
-  commit_staged_capture, StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
+  commit_staged_capture, StagedCapture, StagedCaptureCommitted, StagedCaptureWithoutBase, StagedCommit, StagedCommitMinted, StagedCommitCandidateRefused, StagedCommitNothingToFreeze,
   StagedCommitAllocatorInvalid, StagedCommitSourceUnrecoverable,
   candidate_record, CandidateRecordIs, CandidateRecordRefused,
 }
@@ -219,11 +219,15 @@ fn mb_capture(build: MbBuild, message: String, work: CaptureWork) -> MbBuild {
     MbSetupFailed => MbSetupFailed
     MbBuilt { repository: repository, at: _ } =>
       match commit_staged_capture(repository: repository, message: message, work: work) {
-        StagedCommitMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
-        StagedCommitCandidateRefused { cause: _ } => MbSetupFailed
-        StagedCommitNothingToFreeze => MbSetupFailed
-        StagedCommitAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
-        StagedCommitSourceUnrecoverable { cause: _ } => MbSetupFailed
+        StagedCaptureWithoutBase => MbSetupFailed
+        StagedCaptureCommitted(staged) =>
+          match staged {
+            StagedCommitMinted { repository: minted, reference } => mb_settle(repository: minted, reference: reference)
+            StagedCommitCandidateRefused { cause: _ } => MbSetupFailed
+            StagedCommitNothingToFreeze => MbSetupFailed
+            StagedCommitAllocatorInvalid { next_ordinal: _ } => MbSetupFailed
+            StagedCommitSourceUnrecoverable { cause: _ } => MbSetupFailed
+          }
       }
   }
 }
