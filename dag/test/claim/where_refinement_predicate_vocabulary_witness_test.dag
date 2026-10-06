@@ -276,11 +276,11 @@ fn count_occurrences(xs: List<String>, wanted: String) -> Int {
 // probes and every probe spelling appears EXACTLY ONCE in the roster, which also carries the
 // no-duplicate-spelling requirement in both tables without a separate check to keep in step.
 
-test fn w_every_roster_spelling_has_exactly_one_probe() -> Bool {
+test fn w_every_roster_spelling_has_exactly_one_probe() -> Bool  {
   roster_spellings() |> all(s => count_occurrences(xs: probe_spellings(), wanted: s) == 1)
 }
 
-test fn w_every_probe_spelling_has_exactly_one_roster_row() -> Bool {
+test fn w_every_probe_spelling_has_exactly_one_roster_row() -> Bool  {
   probe_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
 }
 
@@ -300,7 +300,7 @@ test fn w_every_probe_spelling_has_exactly_one_roster_row() -> Bool {
 // each denoting one thing, and 230 brand("...") literals all distinct), and it is held that way by
 // authoring diligence -- rung 1 -- not by this witness.
 
-test fn w_roster_spellings_are_pairwise_distinct() -> Bool {
+test fn w_roster_spellings_are_pairwise_distinct() -> Bool  {
   roster_spellings() |> all(s => count_occurrences(xs: roster_spellings(), wanted: s) == 1)
 }
 
@@ -309,7 +309,7 @@ test fn w_roster_spellings_are_pairwise_distinct() -> Bool {
 // construction, because the two joins above force the probe set and the roster set to be the same
 // set before this runs over all of it.
 
-test fn w_every_rostered_predicate_behaves_as_its_row_declares() -> Bool {
+test fn w_every_rostered_predicate_behaves_as_its_row_declares() -> Bool  {
   where_predicate_probes |> all(p => probe_agrees_with_roster(p: p))
 }
 
@@ -336,7 +336,7 @@ data unenrolled_contrast_probe: WherePredicateProbe = WherePredicateProbe {
   expected_refusal: false
 }
 
-test fn w_one_literal_two_predicates_one_refuses_and_one_does_not() -> Bool {
+test fn w_one_literal_two_predicates_one_refuses_and_one_does_not() -> Bool  {
   probe_blocking_count(p: enrolled_contrast_probe) >= 1
     && probe_blocking_count(p: unenrolled_contrast_probe) == 0
     && probe_where_advisory_count(p: unenrolled_contrast_probe) >= 1
@@ -346,7 +346,7 @@ test fn w_one_literal_two_predicates_one_refuses_and_one_does_not() -> Bool {
 // the three, and each of them admits a violating literal today. Enrolling one without deleting its
 // row reds here; adding a fourth reds the join above. Neither can happen quietly.
 
-test fn w_unenrolled_roster_holds_exactly_three_spellings() -> Bool {
+test fn w_unenrolled_roster_holds_exactly_three_spellings() -> Bool  {
   let unenrolled = where_predicate_rows_of_enforcement(
     rows: where_refinement_predicate_vocabulary,
     wanted: UnenrolledNoTableRow
@@ -358,7 +358,7 @@ test fn w_unenrolled_roster_holds_exactly_three_spellings() -> Bool {
            || r.spelling == "c_translation_unit_basename_safe"))
 }
 
-test fn w_unenrolled_predicates_admit_a_violating_literal() -> Bool {
+test fn w_unenrolled_predicates_admit_a_violating_literal() -> Bool  {
   where_predicate_probes
     |> filter(p =>
          p.spelling == "oci_path_component_syntax"
@@ -439,7 +439,7 @@ fn probes_of_enforcement(wanted: WherePredicateEnforcement) -> List<WherePredica
 // second half is what makes it a distinction rather than a presence check -- a key that emitted one
 // reason for everything would satisfy the first half alone.
 
-test fn w_deliberate_deferrals_are_observable_as_deferrals() -> Bool {
+test fn w_deliberate_deferrals_are_observable_as_deferrals() -> Bool  {
   let deferred = probes_of_enforcement(wanted: DeferredAtCompileTime)
   count(deferred) >= 1
     && (deferred |> all(p =>
@@ -447,7 +447,7 @@ test fn w_deliberate_deferrals_are_observable_as_deferrals() -> Bool {
            && probe_advisory_count_for_reason(p: p, reason: unenrolled_no_table_row_reason) == 0))
 }
 
-test fn w_unenrolled_spellings_are_observable_as_unenrolled() -> Bool {
+test fn w_unenrolled_spellings_are_observable_as_unenrolled() -> Bool  {
   let unenrolled = probes_of_enforcement(wanted: UnenrolledNoTableRow)
   count(unenrolled) >= 1
     && (unenrolled |> all(p =>
@@ -464,7 +464,7 @@ test fn w_unenrolled_spellings_are_observable_as_unenrolled() -> Bool {
 // the table are two representations, and these claims are what reds when a body drifts from the
 // behaviour the compiler enforces: one claim per predicate, so the red names the one that moved.
 
-test fn w_range_declaration_refuses_the_probe_value() -> Bool {
+test fn w_range_declaration_refuses_the_probe_value() -> Bool  {
   !range(value: 9, min: Present { value: 1 }, max: Present { value: 5 })
     && range(value: 1, min: Present { value: 1 }, max: Present { value: 5 })
     && range(value: 5, min: Present { value: 1 }, max: Present { value: 5 })
@@ -472,26 +472,26 @@ test fn w_range_declaration_refuses_the_probe_value() -> Bool {
     && range(value: 7, min: Present { value: 0 }, max: Absent)
 }
 
-test fn w_gt_zero_declaration_refuses_the_probe_value() -> Bool {
+test fn w_gt_zero_declaration_refuses_the_probe_value() -> Bool  {
   !gt_zero(value: 0) && gt_zero(value: 1)
 }
 
-test fn w_string_non_empty_declaration_refuses_the_probe_value() -> Bool {
+test fn w_string_non_empty_declaration_refuses_the_probe_value() -> Bool  {
   !string_non_empty(value: "") && string_non_empty(value: "a")
 }
 
-test fn w_lower_hex_16_declaration_refuses_the_probe_value() -> Bool {
+test fn w_lower_hex_16_declaration_refuses_the_probe_value() -> Bool  {
   !lower_hex_16(value: "zz") && lower_hex_16(value: "0123456789abcdef")
 }
 
-test fn w_lower_hex_40_declaration_refuses_the_probe_value() -> Bool {
+test fn w_lower_hex_40_declaration_refuses_the_probe_value() -> Bool  {
   !lower_hex_40(value: "zz") && lower_hex_40(value: "0123456789abcdef0123456789abcdef01234567")
 }
 
-test fn w_lower_hex_64_declaration_refuses_the_probe_value() -> Bool {
+test fn w_lower_hex_64_declaration_refuses_the_probe_value() -> Bool  {
   !lower_hex_64(value: "zz") && lower_hex_64(value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 }
 
-test fn w_lower_hex_128_declaration_refuses_the_probe_value() -> Bool {
+test fn w_lower_hex_128_declaration_refuses_the_probe_value() -> Bool  {
   !lower_hex_128(value: "zz") && lower_hex_128(value: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 }

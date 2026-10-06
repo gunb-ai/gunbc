@@ -73,34 +73,34 @@ fn blocking_diagnostic_count(source: String) -> Int {
   }
 }
 
-test fn w_fully_declared_file_transport_operations_emit() -> Bool {
+test fn w_fully_declared_file_transport_operations_emit() -> Bool  {
   not_modeled_blocking_count(source: file_transport_source) == 0
 }
 
-test fn w_fully_declared_file_transport_module_is_clean_of_all_blocking_diagnostics() -> Bool {
+test fn w_fully_declared_file_transport_module_is_clean_of_all_blocking_diagnostics() -> Bool  {
   blocking_diagnostic_count(source: file_transport_source) == 0
 }
 
-test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool {
+test fn w_rest_and_shell_transports_emit_without_refusal() -> Bool  {
   not_modeled_blocking_count(source: rest_and_shell_source) == 0
 }
 
-test fn w_rest_and_shell_transports_are_clean_of_all_blocking_diagnostics() -> Bool {
+test fn w_rest_and_shell_transports_are_clean_of_all_blocking_diagnostics() -> Bool  {
   blocking_diagnostic_count(source: rest_and_shell_source) == 0
 }
 
-test fn w_file_operation_emits_beside_its_rest_and_shell_siblings() -> Bool {
+test fn w_file_operation_emits_beside_its_rest_and_shell_siblings() -> Bool  {
   not_modeled_blocking_count(source: mixed_transport_source) == 0
 }
 
-test fn w_unmodeled_verb_refuses_only_its_own_operation() -> Bool {
+test fn w_unmodeled_verb_refuses_only_its_own_operation() -> Bool  {
   not_modeled_blocking_count(source: unmodeled_verb_source) == 1
 }
 
-test fn w_unmodeled_output_channel_refuses_only_its_own_operation() -> Bool {
+test fn w_unmodeled_output_channel_refuses_only_its_own_operation() -> Bool  {
   not_modeled_blocking_count(source: unmodeled_output_key_source) == 1
 }
 
-test fn w_payload_verb_without_content_input_refuses_only_its_own_operation() -> Bool {
+test fn w_payload_verb_without_content_input_refuses_only_its_own_operation() -> Bool  {
   not_modeled_blocking_count(source: payload_verb_without_content_source) == 1
 }

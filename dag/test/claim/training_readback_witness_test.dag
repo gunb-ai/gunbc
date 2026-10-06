@@ -216,7 +216,7 @@ fn subject_differing_only_in_demand() -> TrainingRunSubject<NonEmptyStr>? {
   }
 }
 
-test fn a_subject_differing_only_in_the_demand_identity_is_refused() -> Bool {
+test fn a_subject_differing_only_in_the_demand_identity_is_refused() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {
@@ -242,7 +242,7 @@ test fn a_subject_differing_only_in_the_demand_identity_is_refused() -> Bool {
   }
 }
 
-test fn a_subject_differing_only_in_the_work_identity_is_refused() -> Bool {
+test fn a_subject_differing_only_in_the_work_identity_is_refused() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {
@@ -299,7 +299,7 @@ fn mismatch_axis_for(which: Nat) -> NonEmptyStr {
   }
 }
 
-test fn each_axis_refuses_an_observation_of_another_run_naming_that_axis() -> Bool {
+test fn each_axis_refuses_an_observation_of_another_run_naming_that_axis() -> Bool  {
   mismatch_axis_for(which: 0) == "execution"
     && mismatch_axis_for(which: 1) == "checkpoints"
     && mismatch_axis_for(which: 2) == "terminals"
@@ -309,7 +309,7 @@ test fn each_axis_refuses_an_observation_of_another_run_naming_that_axis() -> Bo
 
 // The positive control. Without it, a binder that refused unconditionally would pass every
 // refusal witness above -- the suite would be measuring nothing but its own pessimism.
-test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
+test fn five_readings_of_the_same_subject_are_admitted() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {
@@ -335,7 +335,7 @@ test fn five_readings_of_the_same_subject_are_admitted() -> Bool {
 // execution AND foreign outputs reported only execution, and the hidden defect would have read as a
 // new regression the moment the visible one was fixed. Per-axis controls and this one fail on
 // different bugs.
-test fn two_foreign_axes_are_both_reported() -> Bool {
+test fn two_foreign_axes_are_both_reported() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {
@@ -385,7 +385,7 @@ fn checkpoint_state(o: TrainingPopulationObservation<TrainingCheckpointObservati
   }
 }
 
-test fn a_complete_read_finding_nothing_is_not_an_unread_population() -> Bool {
+test fn a_complete_read_finding_nothing_is_not_an_unread_population() -> Bool  {
   let read_empty = checkpoint_state(o: empty_observed())
   let unread = checkpoint_state(o: TrainingPopulationNotAttempted { obligation: "observer not dispatched" })
   let refused = checkpoint_state(
@@ -406,7 +406,7 @@ test fn a_complete_read_finding_nothing_is_not_an_unread_population() -> Bool {
 // UNREPRESENTABLE. Each is a state the fabric's execution model produces: retry and capability
 // escalation create new attempts rather than mutating an earlier one, so contradictory terminals
 // and conflicting outputs are ordinary.
-test fn a_failed_attempt_and_a_later_successful_attempt_both_survive() -> Bool {
+test fn a_failed_attempt_and_a_later_successful_attempt_both_survive() -> Bool  {
   let terminals: List<TrainingAttemptTerminalReceipt<NonEmptyStr>> = [
     TrainingAttemptTerminalReceipt {
       attempt: attempt(k: "attempt-1"),
@@ -426,7 +426,7 @@ test fn a_failed_attempt_and_a_later_successful_attempt_both_survive() -> Bool {
   }
 }
 
-test fn two_attempts_producing_different_artifacts_stay_representable() -> Bool {
+test fn two_attempts_producing_different_artifacts_stay_representable() -> Bool  {
   let first = TrainingOutputArtifactReceipt {
     attempt: attempt(k: "attempt-1"),
     artifact: digest(hex: digest_a),
@@ -452,7 +452,7 @@ test fn two_attempts_producing_different_artifacts_stay_representable() -> Bool 
 // that left a resumable checkpoint, are both real with different remedies. A single coproduct over
 // the run's state -- Absent | Running | Checkpointed | Completed -- cannot spell either, which is
 // why the readback keeps five fields rather than one verdict.
-test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
+test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {
@@ -502,7 +502,7 @@ test fn a_terminally_failed_run_may_still_hold_a_checkpoint() -> Bool {
 
 // THE EFFECTIVE MANIFEST IS THE TYPED MANIFEST, so a disagreement can name its coordinate. Goes red
 // if the axis were narrowed back to a bare hash: a hash answers same-or-different, never WHICH.
-test fn an_effective_manifest_disagreement_names_the_coordinate() -> Bool {
+test fn an_effective_manifest_disagreement_names_the_coordinate() -> Bool  {
   match desired_fixture(demand_work_key_override: none) {
     none => false
     Present { value: d } => {

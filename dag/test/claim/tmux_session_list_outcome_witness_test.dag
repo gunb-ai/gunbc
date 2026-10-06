@@ -19,7 +19,7 @@ import extdeps.tmux {
   TmuxHasSessionUnknowable,
 }
 
-test fn witness_no_server_running_classifies_empty() -> Bool {
+test fn witness_no_server_running_classifies_empty() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: false,
     stdout: "",
@@ -32,7 +32,7 @@ test fn witness_no_server_running_classifies_empty() -> Bool {
   }
 }
 
-test fn witness_no_sessions_classifies_empty() -> Bool {
+test fn witness_no_sessions_classifies_empty() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: false,
     stdout: "",
@@ -45,7 +45,7 @@ test fn witness_no_sessions_classifies_empty() -> Bool {
   }
 }
 
-test fn witness_enoent_socket_classifies_empty() -> Bool {
+test fn witness_enoent_socket_classifies_empty() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: false,
     stdout: "",
@@ -59,7 +59,7 @@ test fn witness_enoent_socket_classifies_empty() -> Bool {
   }
 }
 
-test fn witness_connection_refused_is_unknowable() -> Bool {
+test fn witness_connection_refused_is_unknowable() -> Bool  {
   let stderr = "error connecting to /tmp/tmux-1000/srv1-green (Connection refused)"
   match classify_tmux_session_list(exit_ok: false, stdout: "", stderr: stderr) {
     TmuxListUnknowable { stderr: e } => e == stderr
@@ -69,7 +69,7 @@ test fn witness_connection_refused_is_unknowable() -> Bool {
   }
 }
 
-test fn witness_permission_denied_is_unknowable() -> Bool {
+test fn witness_permission_denied_is_unknowable() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: false,
     stdout: "",
@@ -82,7 +82,7 @@ test fn witness_permission_denied_is_unknowable() -> Bool {
   }
 }
 
-test fn witness_exit_ok_parses_sessions() -> Bool {
+test fn witness_exit_ok_parses_sessions() -> Bool  {
   let output = "alpha: 1 windows (created Fri Jul  3 04:14:00 2026)\nbeta: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
   match classify_tmux_session_list(exit_ok: true, stdout: output, stderr: "") {
     TmuxSessionsListed { entries } =>
@@ -97,7 +97,7 @@ test fn witness_exit_ok_parses_sessions() -> Bool {
   }
 }
 
-test fn witness_ls_output_parse_matches_classifier() -> Bool {
+test fn witness_ls_output_parse_matches_classifier() -> Bool  {
   let output = "gunbc-dispatch-node-4: 2 windows (created Fri Jul  3 04:15:00 2026)\n"
   match parse_tmux_ls_output(output: output) {
     TmuxLsParsed { entries } =>
@@ -107,7 +107,7 @@ test fn witness_ls_output_parse_matches_classifier() -> Bool {
   }
 }
 
-test fn witness_malformed_stdout_line_refuses() -> Bool {
+test fn witness_malformed_stdout_line_refuses() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: true,
     stdout: "gunbc-dispatch-a: not-a-window-count\n",
@@ -123,7 +123,7 @@ test fn witness_malformed_stdout_line_refuses() -> Bool {
   }
 }
 
-test fn witness_truncated_stdout_refuses_not_empty_listed() -> Bool {
+test fn witness_truncated_stdout_refuses_not_empty_listed() -> Bool  {
   match classify_tmux_session_list(
     exit_ok: true,
     stdout: "gunbc-dispatch-a: 1 windows (created ...)\npartial-line-without-colon\n",
@@ -139,7 +139,7 @@ test fn witness_truncated_stdout_refuses_not_empty_listed() -> Bool {
   }
 }
 
-test fn witness_corrupted_windows_token_refuses() -> Bool {
+test fn witness_corrupted_windows_token_refuses() -> Bool  {
   match parse_tmux_ls_output(output: "gunbc-dispatch-a: 1 corrupted windows\n") {
     TmuxLsParsed { entries: _ } => false
     TmuxLsParseRefused { line_number, raw, reason } =>
@@ -149,7 +149,7 @@ test fn witness_corrupted_windows_token_refuses() -> Bool {
   }
 }
 
-test fn witness_negative_window_count_refuses() -> Bool {
+test fn witness_negative_window_count_refuses() -> Bool  {
   match parse_tmux_ls_output(output: "gunbc-dispatch-a: -1 windows\n") {
     TmuxLsParsed { entries: _ } => false
     TmuxLsParseRefused { line_number, raw, reason } =>
@@ -159,7 +159,7 @@ test fn witness_negative_window_count_refuses() -> Bool {
   }
 }
 
-test fn witness_attempt_panes_parse_alive_and_exit() -> Bool {
+test fn witness_attempt_panes_parse_alive_and_exit() -> Bool  {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t0\t\tnode\ngunbc-dispatch-b\t1\t7\tnode\n",
   ) {
@@ -172,7 +172,7 @@ test fn witness_attempt_panes_parse_alive_and_exit() -> Bool {
   }
 }
 
-test fn witness_attempt_panes_malformed_row_refuses() -> Bool {
+test fn witness_attempt_panes_malformed_row_refuses() -> Bool  {
   match parse_tmux_attempt_panes_output(
     output: "gunbc-dispatch-a\t1\tbogus\tnode\n",
   ) {
@@ -184,7 +184,7 @@ test fn witness_attempt_panes_malformed_row_refuses() -> Bool {
   }
 }
 
-test fn witness_has_session_present() -> Bool {
+test fn witness_has_session_present() -> Bool  {
   match classify_tmux_has_session(exit_ok: true, stderr: "") {
     TmuxHasSessionPresent => true
     TmuxHasSessionAbsent => false
@@ -192,7 +192,7 @@ test fn witness_has_session_present() -> Bool {
   }
 }
 
-test fn witness_has_session_named_absent() -> Bool {
+test fn witness_has_session_named_absent() -> Bool  {
   match classify_tmux_has_session(
     exit_ok: false,
     stderr: "can't find session: gunbc-dashboard-srv1-lab-codex-feedback-v0",
@@ -203,7 +203,7 @@ test fn witness_has_session_named_absent() -> Bool {
   }
 }
 
-test fn witness_has_session_no_server_is_absent() -> Bool {
+test fn witness_has_session_no_server_is_absent() -> Bool  {
   match classify_tmux_has_session(
     exit_ok: false,
     stderr: "no server running on /tmp/tmux-1000/srv1-lab-codex-feedback-v0",
@@ -214,7 +214,7 @@ test fn witness_has_session_no_server_is_absent() -> Bool {
   }
 }
 
-test fn witness_has_session_permission_denied_is_unknowable() -> Bool {
+test fn witness_has_session_permission_denied_is_unknowable() -> Bool  {
   match classify_tmux_has_session(
     exit_ok: false,
     stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
@@ -226,7 +226,7 @@ test fn witness_has_session_permission_denied_is_unknowable() -> Bool {
   }
 }
 
-test fn witness_has_session_connection_refused_is_unknowable() -> Bool {
+test fn witness_has_session_connection_refused_is_unknowable() -> Bool  {
   match classify_tmux_has_session(
     exit_ok: false,
     stderr: "error connecting to /tmp/tmux-1000/srv1-lab (Connection refused)",

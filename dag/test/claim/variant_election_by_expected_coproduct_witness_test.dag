@@ -45,7 +45,7 @@ fn expected_decides_source() -> String {
 }
 
 // (1) THE EXPECTED COPRODUCT DECIDES: Absent at a VerdictV parameter is VerdictV's arm.
-test fn a_bare_variant_at_a_declared_coproduct_parameter_is_that_coproducts_arm() -> Bool {
+test fn a_bare_variant_at_a_declared_coproduct_parameter_is_that_coproducts_arm() -> Bool  {
   blocking_count(source: expected_decides_source(), class: "DeclaredTypeNotInhabited") == 0
     && compile_dag_rust_emit_check(
       expected_decides_source(),
@@ -61,7 +61,7 @@ fn within_tier_source() -> String {
   "module vex.collide\n\nimport std.types { String }\nimport test.fixture.variant_election_v { VerdictV }\nimport test.fixture.variant_election_w { VerdictW }\n\nfn probe(v: VerdictV) -> String {\n  \"x\"\n}\n"
 }
 
-test fn two_owners_of_one_spelling_in_the_declared_scope_refuse() -> Bool {
+test fn two_owners_of_one_spelling_in_the_declared_scope_refuse() -> Bool  {
   blocking_count(source: within_tier_source(), class: "VariantCollision") >= 1
 }
 
@@ -71,7 +71,7 @@ fn kernel_arm_source() -> String {
   "module vex.kernel\n\nimport std.types { Int }\n\nfn probe() -> Int? {\n  Absent\n}\n"
 }
 
-test fn the_kernel_arm_applies_where_no_declared_owner_exists() -> Bool {
+test fn the_kernel_arm_applies_where_no_declared_owner_exists() -> Bool  {
   compile_dag_rust_emit_check(
     kernel_arm_source(),
     "src/vex_kernel.rs",
@@ -84,6 +84,6 @@ test fn the_kernel_arm_applies_where_no_declared_owner_exists() -> Bool {
 // Absent below is decided by its parameter's coproduct. Elected to the kernel Optional instead, this
 // module refuses to compile (an Optional at a Required parameter); elected to the wrong provider, the
 // interpreter answers the other label.
-test fn each_bare_absent_is_its_parameters_arm_by_execution() -> Bool {
+test fn each_bare_absent_is_its_parameters_arm_by_execution() -> Bool  {
   v_label(v: Absent) == "v-absent" && w_label(v: Absent) == "w-absent"
 }

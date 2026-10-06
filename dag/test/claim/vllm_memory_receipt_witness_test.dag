@@ -145,7 +145,7 @@ fn w_refused_unreadable(observed: String, claimed: String, text: String) -> Bool
 //
 // One launch, a readable line: a receipt exists. Without this the refusals below are satisfied by a
 // function that refuses everything.
-test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool {
+test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool  {
   w_is_admitted(observed: "inv-A", claimed: "inv-A", text: w_captured)
 }
 
@@ -156,7 +156,7 @@ test fn a_readable_line_observed_on_the_claimed_launch_is_admitted() -> Bool {
 // authorise a decision about the engine that replaced it -- which is not hypothetical on this branch,
 // where the canary's container was replaced once already and every memory figure in this program
 // predates or postdates that boundary.
-test fn a_reading_observed_on_another_launch_is_refused() -> Bool {
+test fn a_reading_observed_on_another_launch_is_refused() -> Bool  {
   w_refused_foreign(observed: "inv-A", claimed: "inv-B", text: w_captured)
 }
 
@@ -165,14 +165,14 @@ test fn a_reading_observed_on_another_launch_is_refused() -> Bool {
 // Even on the right launch. There is no constructor taking hand-read fields, so the only route to a
 // receipt is a parse that succeeded against the captured text -- which is what stops a person reading
 // figures off a log and calling the result evidence.
-test fn an_unreadable_line_on_the_right_launch_is_still_refused() -> Bool {
+test fn an_unreadable_line_on_the_right_launch_is_still_refused() -> Bool  {
   w_refused_unreadable(observed: "inv-A", claimed: "inv-A", text: "INFO 09-08 22:43:46 init engine took 110.84 s")
 }
 
 // BOTH FAILURES AT ONCE STILL REFUSE, and the launch check runs first because "this is about another
 // engine" is the more fundamental objection: a reading that survives parsing but describes the wrong
 // incarnation is more dangerous than one that never parsed, because it looks like evidence.
-test fn a_foreign_launch_with_an_unreadable_line_refuses_on_the_launch() -> Bool {
+test fn a_foreign_launch_with_an_unreadable_line_refuses_on_the_launch() -> Bool  {
   w_refused_foreign(observed: "inv-A", claimed: "inv-B", text: "nothing resembling the line")
 }
 
@@ -182,7 +182,7 @@ test fn a_foreign_launch_with_an_unreadable_line_refuses_on_the_launch() -> Bool
 // question "was this launch actually running that profile" had no place to be asked and no way to be
 // answered no. Now an occurrence exists only where the binding evidence does, and without one the
 // receipt has no first argument.
-test fn a_launch_whose_profile_is_unbound_yields_no_occurrence() -> Bool {
+test fn a_launch_whose_profile_is_unbound_yields_no_occurrence() -> Bool  {
   match w_occurrence(
     invocation: "inv-A",
     binding: LaunchProfileUnestablished { cause: "the running line was not read, so nothing says which profile this launch ran" as NonEmptyStr },
@@ -197,11 +197,11 @@ test fn a_launch_whose_profile_is_unbound_yields_no_occurrence() -> Bool {
 // The capture hashes the text it holds. Two captures of the same bytes therefore agree, and a capture
 // of different bytes differs -- properties that were unavailable while the digest was a parameter
 // carrying a fixed 0x44... value beside text it never described.
-test fn a_captures_digest_is_the_digest_of_its_own_text() -> Bool {
+test fn a_captures_digest_is_the_digest_of_its_own_text() -> Bool  {
   (w_capture(invocation: "inv-A", text: w_captured)).capture_digest == content_hash_of_value(value: w_captured as NonEmptyStr)
 }
 
-test fn captures_of_different_text_carry_different_digests() -> Bool {
+test fn captures_of_different_text_carry_different_digests() -> Bool  {
   !((w_capture(invocation: "inv-A", text: w_captured)).capture_digest
     == (w_capture(invocation: "inv-A", text: "a different line entirely")).capture_digest)
 }
@@ -212,7 +212,7 @@ test fn captures_of_different_text_carry_different_digests() -> Bool {
 // against the native GLM artifact and the shared production parameters. The profile now comes from
 // the canary arm, so this asserts the identity is the canary's own -- and it would go red the moment
 // somebody reintroduced a borrowed profile, which is exactly how the defect arrived.
-test fn the_receipt_carries_the_canarys_own_execution_profile() -> Bool {
+test fn the_receipt_carries_the_canarys_own_execution_profile() -> Bool  {
   match w_profile() {
     Absent => false
     Present { value: p } => (p.tensor_parallel_degree == 1) && !(p.parameters_digest == "witness-fixture")

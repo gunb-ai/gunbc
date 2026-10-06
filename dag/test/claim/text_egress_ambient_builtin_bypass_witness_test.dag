@@ -71,7 +71,7 @@ fn module_ambient_reach(files: List<String>) -> AmbientReach {
   )
 }
 
-test fn switched_emit_orchestration_reaches_no_ambient_text_builtin() -> Bool {
+test fn switched_emit_orchestration_reaches_no_ambient_text_builtin() -> Bool  {
   match module_ambient_reach(files: switched_module_files) {
     AmbientNotReached => true
     AmbientReached => false
@@ -79,7 +79,7 @@ test fn switched_emit_orchestration_reaches_no_ambient_text_builtin() -> Bool {
   }
 }
 
-test fn the_route_reader_finds_an_ambient_text_builtin_where_one_remains() -> Bool {
+test fn the_route_reader_finds_an_ambient_text_builtin_where_one_remains() -> Bool  {
   match module_ambient_reach(files: unswitched_module_files) {
     AmbientReached => true
     AmbientNotReached => false

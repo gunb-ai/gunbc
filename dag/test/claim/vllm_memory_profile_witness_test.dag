@@ -60,7 +60,7 @@ fn w_hundredths(text: String, pick: fn(VllmMemoryProfileReading) -> GibibyteRead
 // These two are the only byte counts the line prints and the only terms admission arithmetic may use.
 // Asserting them to the byte is the point: a parser that dropped a digit would still produce a
 // plausible GiB rendering.
-test fn the_two_kv_recommendations_parse_to_exact_bytes() -> Bool {
+test fn the_two_kv_recommendations_parse_to_exact_bytes() -> Bool  {
   match w_reading_or_absent(text: w_captured) {
     Absent => false
     Present { value: r } =>
@@ -75,7 +75,7 @@ test fn the_two_kv_recommendations_parse_to_exact_bytes() -> Bool {
 // place, while every other figure carries two. A parser assuming two places reads it as 0.01 and
 // under-reports by a factor of ten -- on the smallest term, where nothing else would notice. 0.1 GiB
 // is 10 hundredths, not 1.
-test fn a_single_decimal_place_scales_by_its_own_length() -> Bool {
+test fn a_single_decimal_place_scales_by_its_own_length() -> Bool  {
   w_hundredths(text: w_captured, pick: fn(r) { r.cudagraph_allocated }) == 10
 }
 
@@ -83,7 +83,7 @@ test fn a_single_decimal_place_scales_by_its_own_length() -> Bool {
 //
 // Asserted together because the anchors are adjacent in one sentence: a parse that slipped by one
 // clause would fill several fields with a neighbour's number and still return a well-formed receipt.
-test fn each_rounded_term_parses_into_its_own_field() -> Bool {
+test fn each_rounded_term_parses_into_its_own_field() -> Bool  {
   w_hundredths(text: w_captured, pick: fn(r) { r.startup_available }) == 11493
     && w_hundredths(text: w_captured, pick: fn(r) { r.device_total }) == 12169
     && w_hundredths(text: w_captured, pick: fn(r) { r.requested_envelope }) == 11195
@@ -98,7 +98,7 @@ test fn each_rounded_term_parses_into_its_own_field() -> Bool {
 // upstream in bytes and is rounded only for display, so a consumer summing these and refusing would be
 // refusing the ROUNDING. This asserts the discrepancy is real and survives parsing, so nobody later
 // "fixes" the parser to make it balance.
-test fn the_rounded_terms_deliberately_do_not_sum_to_the_envelope() -> Bool {
+test fn the_rounded_terms_deliberately_do_not_sum_to_the_envelope() -> Bool  {
   let consumed = w_hundredths(text: w_captured, pick: fn(r) { r.reported_total_consumed_during_profile })
   let activation = w_hundredths(text: w_captured, pick: fn(r) { r.reported_peak_activation })
   let graph = w_hundredths(text: w_captured, pick: fn(r) { r.cudagraph_allocated })
@@ -112,15 +112,15 @@ test fn the_rounded_terms_deliberately_do_not_sum_to_the_envelope() -> Bool {
 // Without these the parser could return a receipt for anything. Each removes ONE clause from the real
 // line, so what is under test is that clause's own anchor rather than a wholesale rejection of
 // nonsense.
-test fn a_line_without_the_recommendations_is_unreadable() -> Bool {
+test fn a_line_without_the_recommendations_is_unreadable() -> Bool  {
   w_is_unreadable(text: "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Current kv cache memory in use is 22.02 GiB.")
 }
 
-test fn a_line_without_the_current_kv_clause_is_unreadable() -> Bool {
+test fn a_line_without_the_current_kv_clause_is_unreadable() -> Bool  {
   w_is_unreadable(text: "Free memory on device (114.93/121.69 GiB) on startup. Desired GPU memory utilization is (0.92, 111.95 GiB). Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory.")
 }
 
-test fn unrelated_text_is_unreadable() -> Bool {
+test fn unrelated_text_is_unreadable() -> Bool  {
   w_is_unreadable(text: "INFO 09-08 22:43:46 [core.py:363] init engine (profile, create kv cache, warmup model) took 110.84 s")
 }
 
@@ -132,7 +132,7 @@ fn w_is_unreadable(text: String) -> Bool {
 }
 
 // THE CAPTURE IS RETAINED, so a receipt can be re-read when a later revision rewords the line.
-test fn the_parsed_receipt_retains_the_line_it_came_from() -> Bool {
+test fn the_parsed_receipt_retains_the_line_it_came_from() -> Bool  {
   match w_reading_or_absent(text: w_captured) {
     Absent => false
     Present { value: r } => (r.captured_text as String) == w_captured
@@ -145,7 +145,7 @@ test fn the_parsed_receipt_retains_the_line_it_came_from() -> Bool {
 // could distinguish a parser that reads the line from one that echoes its caller -- every test passed
 // the same 9200 the line happens to state. The utilization is now read from the text, so this asserts
 // the figure the sentence carries rather than one this file chose.
-test fn the_utilization_is_read_from_the_line_not_supplied() -> Bool {
+test fn the_utilization_is_read_from_the_line_not_supplied() -> Bool  {
   match w_reading_or_absent(text: w_captured) {
     Absent => false
     Present { value: r } => basis_point_count(bp: r.requested_utilization) == 9200
@@ -153,7 +153,7 @@ test fn the_utilization_is_read_from_the_line_not_supplied() -> Bool {
 }
 
 // FOUR DECIMAL PLACES SURVIVE, which two-place parsing would have silently truncated to 9100.
-test fn a_four_place_fraction_keeps_its_precision() -> Bool {
+test fn a_four_place_fraction_keeps_its_precision() -> Bool  {
   match w_reading_or_absent(text: w_four_place) {
     Absent => false
     Present { value: r } => basis_point_count(bp: r.requested_utilization) == 9112
@@ -164,18 +164,18 @@ data w_four_place: String = "Free memory on device (114.93/121.69 GiB) on startu
 
 // TWO PROFILING EVENTS IN ONE CAPTURE REFUSE RATHER THAN TAKING THE FIRST. Reading either figure
 // would bind the reading to a launch the caller never named, chosen by position in a string.
-test fn a_capture_stating_two_utilizations_is_unreadable() -> Bool {
+test fn a_capture_stating_two_utilizations_is_unreadable() -> Bool  {
   w_is_unreadable(text: join([w_captured, " ", w_captured], ""))
 }
 
-test fn a_capture_stating_no_utilization_is_unreadable() -> Bool {
+test fn a_capture_stating_no_utilization_is_unreadable() -> Bool  {
   w_is_unreadable(text: "Free memory on device (114.93/121.69 GiB) on startup. Actual usage is 82.52 GiB for consumed memory (weights + non-torch), 7.42 GiB for peak activation, and 0.1 GiB for CUDAGraph memory. Replace gpu_memory_utilization config with `--kv-cache-memory=23372437156` (21.77 GiB) to fit into requested memory, or `--kv-cache-memory=26572776960` (24.75 GiB) to fully utilize gpu memory. Current kv cache memory in use is 22.02 GiB.")
 }
 
 // A READING CLASSIFIED AS A DIFFERENT LINE IS REFUSED EVEN WHEN ITS TEXT WOULD PARSE. The classifier
 // is the authority on what the line is; parsing text that arrived under another classification would
 // let a mislabelled capture produce a confident reading.
-test fn the_memory_figures_are_refused_when_the_line_is_classified_as_another() -> Bool {
+test fn the_memory_figures_are_refused_when_the_line_is_classified_as_another() -> Bool  {
   match vllm_parse_memory_profile(reading: vllm_startup_reading(
     line: GpuKvCacheSize,
     captured_text: w_captured as NonEmptyStr,
@@ -187,7 +187,7 @@ test fn the_memory_figures_are_refused_when_the_line_is_classified_as_another() 
 }
 
 // THE REVISION IS INHERITED FROM THE READING, not stamped beside it.
-test fn the_revision_comes_from_the_reading_that_carried_the_text() -> Bool {
+test fn the_revision_comes_from_the_reading_that_carried_the_text() -> Bool  {
   match w_reading_or_absent(text: w_captured) {
     Absent => false
     Present { value: r } => (r.observed_at_revision.full_revision as String) == "487ecf187d3dfe74d2cf6119a92881dba403c219"

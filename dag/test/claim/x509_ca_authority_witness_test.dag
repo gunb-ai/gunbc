@@ -67,7 +67,7 @@ fn cawt_on_intermediate(oid: String, value: List<Int>?, below: Int) -> String {
 }
 
 // POSITIVE CONTROL: Apple's real intermediate, unmodified, is authorized.
-test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool {
+test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool  {
   match sample_ca() {
     Absent => false
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0)) == "authorized"
@@ -75,7 +75,7 @@ test fn apple_intermediate_is_authorized_to_act_as_a_ca() -> Bool {
 }
 
 // RED on real bytes: the credential (end-entity) certificate may not sign certificates.
-test fn apple_credential_certificate_is_not_a_ca() -> Bool {
+test fn apple_credential_certificate_is_not_a_ca() -> Bool  {
   match sample_leaf() {
     Absent => false
     Present { value: leaf } => {
@@ -86,23 +86,23 @@ test fn apple_credential_certificate_is_not_a_ca() -> Bool {
 }
 
 // RED: basicConstraints with cA omitted (DER SEQUENCE {}, i.e. cA DEFAULT FALSE) refuses.
-test fn basic_constraints_without_ca_true_refuses() -> Bool {
+test fn basic_constraints_without_ca_true_refuses() -> Bool  {
   cawt_on_intermediate(oid: oid_basic_constraints, value: Present { value: [48, 0] }, below: 0) == "not-ca"
 }
 
 // RED: basicConstraints absent refuses (§6.1.4 (k) requires it present).
-test fn basic_constraints_absent_refuses() -> Bool {
+test fn basic_constraints_absent_refuses() -> Bool  {
   cawt_on_intermediate_without(oid: oid_basic_constraints) == "bc-absent"
 }
 
 // RED: keyUsage present with cRLSign only (bit 6), no keyCertSign (bit 5), refuses.
-test fn key_usage_without_key_cert_sign_refuses() -> Bool {
+test fn key_usage_without_key_cert_sign_refuses() -> Bool  {
   cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 1, 2] }, below: 0) == "no-key-cert-sign"
 }
 
 // §6.1.4 (n) is conditional: an ABSENT keyUsage does not refuse. keyUsage keyCertSign alone
 // (bit 5, 0x04) is authorized.
-test fn key_usage_absent_or_key_cert_sign_only_is_authorized() -> Bool {
+test fn key_usage_absent_or_key_cert_sign_only_is_authorized() -> Bool  {
   cawt_on_intermediate_without(oid: oid_key_usage) == "authorized"
     && cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 2, 4] }, below: 0) == "authorized"
 }
@@ -110,18 +110,18 @@ test fn key_usage_absent_or_key_cert_sign_only_is_authorized() -> Bool {
 // RED: unused bits = 3 with 0x04 set asserts keyCertSign only from a PADDING bit (bit 5 is at or
 // beyond the 5 meaningful bits). The unused bits are not zero, so the value is malformed -- never
 // authorized.
-test fn key_usage_key_cert_sign_in_a_padding_bit_is_malformed() -> Bool {
+test fn key_usage_key_cert_sign_in_a_padding_bit_is_malformed() -> Bool  {
   cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 2, 3, 4] }, below: 0) == "ku-malformed"
 }
 
 // RED: a trailing zero octet breaks the DER named-bit-list form (X.690 §11.2.2), even though bit
 // 5 is set in the first octet.
-test fn key_usage_with_a_trailing_zero_octet_is_malformed() -> Bool {
+test fn key_usage_with_a_trailing_zero_octet_is_malformed() -> Bool  {
   cawt_on_intermediate(oid: oid_key_usage, value: Present { value: [3, 3, 2, 4, 0] }, below: 0) == "ku-malformed"
 }
 
 // pathLenConstraint 0 admits the end-entity directly below and refuses one intermediate below.
-test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool {
+test fn path_len_constraint_zero_bounds_intermediates_below() -> Bool  {
   let pl0 = Present { value: [48, 6, 1, 1, 255, 2, 1, 0] }
   cawt_on_intermediate(oid: oid_basic_constraints, value: pl0, below: 0) == "authorized"
     && cawt_on_intermediate(oid: oid_basic_constraints, value: pl0, below: 1) == "path-len"
@@ -142,7 +142,7 @@ fn ca_step_reading(d: AttestationDecoded, ca: X509Certificate) -> String {
   }
 }
 
-test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool {
+test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool  {
   match sample_fold_inputs() {
     Absent => false
     Present { value: d } =>
@@ -153,12 +153,12 @@ test fn attestation_chain_refuses_an_intermediate_without_ca_authority() -> Bool
 
 // pathLenConstraint is INTEGER (0..MAX): a 9-octet value (2^64) is above the Int carrier, decodes
 // rather than refusing, and is never exceeded.
-test fn path_len_constraint_above_the_carrier_is_never_exceeded() -> Bool {
+test fn path_len_constraint_above_the_carrier_is_never_exceeded() -> Bool  {
   cawt_on_intermediate(oid: oid_basic_constraints, value: Present { value: [48, 14, 1, 1, 255, 2, 9, 1, 0, 0, 0, 0, 0, 0, 0, 0] }, below: 1000000) == "authorized"
 }
 
 // RED: a negative intermediate count is refused, not compared.
-test fn negative_intermediates_below_refuses() -> Bool {
+test fn negative_intermediates_below_refuses() -> Bool  {
   match sample_ca() {
     Absent => false
     Present { value: ca } => cawt_label(s: x509_ca_authority(cert: ca, intermediates_below: 0 - 1)) == "negative-below"

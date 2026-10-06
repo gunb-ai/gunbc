@@ -99,7 +99,7 @@ import extdeps.github.expressions {
 // flag tokens alone is spelling-independent, and strictly stronger as a negative, since it now
 // catches a retired invocation under ANY quoting. Verified against the emitted file: it contains
 // exactly one of these four tokens.
-test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
+test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "claim_executor")
@@ -115,7 +115,7 @@ test fn w_ci_invokes_one_composed_mode_not_a_step_ladder() -> Bool {
 // which is a different fact: a step cannot run a binary that failed to compile, and that is the
 // job's business rather than the program's. What is gone is `steps.required_regen.outcome`, the
 // data dependency that now lives in the binary as an in-memory digest handoff.
-test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
+test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       !string_contains(s: yml, pattern: "steps.required_regen.outcome")
@@ -143,7 +143,7 @@ test fn w_no_phase_precondition_reads_another_phases_outcome() -> Bool {
 // (`required-ci: parse OK 50 file(s) parse-clean`, run 32371293567). Naming the boundary is
 // the point: a static witness that claimed the phase runs would be asserting something its
 // subject does not contain.
-test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
+test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "--required-ci")
@@ -175,7 +175,7 @@ test fn w_the_required_workflow_does_not_build_the_parse_binary() -> Bool {
 // needs -- the composed step exists and was read -- and still fails loudly if the composed
 // step is removed or renamed out of its family, which is the state the negative arms below
 // exist to detect.
-test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
+test fn w_RED_the_retired_step_names_do_not_return() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       let positive_control = string_contains(s: yml, pattern: "Required CI:")
@@ -193,7 +193,7 @@ test fn w_RED_the_retired_step_names_do_not_return() -> Bool {
 // here is satisfied by a ONE-job workflow, so without this row the split could be reverted to a
 // single serial job and nothing here would notice. The lane words and job ids are read from
 // their own declarations rather than spelled, so a rename moves both sides together.
-test fn w_the_required_workflow_carries_both_lanes() -> Bool {
+test fn w_the_required_workflow_carries_both_lanes() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: concat("--required-lane' '", concat(required_ci_lane_build, "'")))
@@ -209,7 +209,7 @@ test fn w_the_required_workflow_carries_both_lanes() -> Bool {
 // before a separate adjudicator runs, and publication is independent of the instrument build.
 // Removing publication, conditioning it on the build outcome, restoring the old fused step, or
 // moving adjudication ahead of upload makes a distinct conjunct fail.
-test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool {
+test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool  {
   let measure_holds = match witness_floor_run_step() {
     RunStep {
       name: _, id: _, run: run, shell: _, env: _, working_directory: _,
@@ -267,7 +267,7 @@ test fn w_RED_floor_measurement_publishes_before_separate_adjudication() -> Bool
 // fleet-converge's `build` again, and this row goes red where nothing else in this file would
 // notice -- every other clause here reads the job ids from their declarations, so all of them
 // stay green under a rename that reintroduces the collision.
-test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
+test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool  {
   !any(fleet_converge_workflow.jobs, j => j.id == build_lane_job_id)
     && !any(fleet_converge_workflow.jobs, j => j.id == floor_lane_job_id)
     && build_lane_job_id != floor_lane_job_id
@@ -299,7 +299,7 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 //
 // It is a RED that can be authored in both directions: giving any lane job a `needs` row
 // fails the negatives, and dropping the aggregator's fails the positive.
-test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
+test fn w_RED_neither_lane_waits_on_the_other() -> Bool  {
   length(xs: build_lane_needs()) == 0
     && length(xs: witness_floor_lane_needs()) == 0
     && length(xs: non_empty_to_list(xs: required_lanes_roster())) == 2
@@ -362,7 +362,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // cancelled run, nor what branch protection does with a skipped one.
 // `gunbc.floor_attempt_standing` `floor_attempt_standing_acquisition_trigger` carries the half
 // that is still unobserved; a string_contains witness must not be cited as having closed it.
-test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool {
+test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> Bool  {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
       string_contains(s: yml, pattern: "\n    if: always()\n")
@@ -389,7 +389,7 @@ data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // SERIALIZE, and the text must carry both halves of the refusal -- the annotation the operator
 // sees and the nonzero exit that actually stops the line. An empty or exit-0 program here would
 // publish the required context green over lanes it never read.
-test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
+test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool  {
   match bash_fold_serialize_program(stmts: required_lanes_gate_unrenderable_stmts(), set_e: false) {
     Accepted { value: script, diagnostics: _ } =>
       string_contains(s: script, pattern: "::error::")
@@ -437,7 +437,7 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
 // establishes that committed witnesses.yml equals the full projection; fragment plus that gate
 // cover the path end to end. A per-claim `expected_witness_floor_yml()` read is the whole-file
 // serialize this row must not pay (measured 1823ms against the 500ms line).
-test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool {
+test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subject() -> Bool  {
   let yml = emitted_yaml_text(v: workflow_triggers_yaml(triggers: witness_floor_triggers()))
   string_contains(
     s: yml,
@@ -447,14 +447,14 @@ test fn w_RED_the_pull_request_activity_set_is_the_three_that_carry_a_new_subjec
     && !string_contains(s: yml, pattern: pr_activity_string(a: Closed))
 }
 
-test fn w_RED_the_pull_request_activity_set_excludes_ready_for_review() -> Bool {
+test fn w_RED_the_pull_request_activity_set_excludes_ready_for_review() -> Bool  {
   count_where(
     xs: witness_floor_pull_request_activity_types,
     predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: ReadyForReview) }
   ) == 0
 }
 
-test fn w_RED_the_pull_request_activity_set_excludes_closed() -> Bool {
+test fn w_RED_the_pull_request_activity_set_excludes_closed() -> Bool  {
   count_where(
     xs: witness_floor_pull_request_activity_types,
     predicate: fn(a) { pr_activity_string(a: a) == pr_activity_string(a: Closed) }
@@ -479,14 +479,14 @@ fn group_fx(event: String, inputs: List<DispatchInputBinding>) -> WitnessFloorGr
   }
 }
 
-test fn w_concurrency_group_resolves_merge_group_to_mg_sha() -> Bool {
+test fn w_concurrency_group_resolves_merge_group_to_mg_sha() -> Bool  {
   group_resolved_as(
     fx: group_fx(event: github_event_name_merge_group, inputs: []),
     expected: "witness-floor-mg-mgsha"
   )
 }
 
-test fn w_concurrency_group_resolves_heal_dispatch_to_heal_sha() -> Bool {
+test fn w_concurrency_group_resolves_heal_dispatch_to_heal_sha() -> Bool  {
   group_resolved_as(
     fx: group_fx(
       event: github_event_name_workflow_dispatch,
@@ -496,7 +496,7 @@ test fn w_concurrency_group_resolves_heal_dispatch_to_heal_sha() -> Bool {
   )
 }
 
-test fn w_concurrency_group_resolves_empty_heal_input_to_run_id() -> Bool {
+test fn w_concurrency_group_resolves_empty_heal_input_to_run_id() -> Bool  {
   group_resolved_as(
     fx: group_fx(
       event: github_event_name_workflow_dispatch,
@@ -506,14 +506,14 @@ test fn w_concurrency_group_resolves_empty_heal_input_to_run_id() -> Bool {
   )
 }
 
-test fn w_concurrency_group_resolves_bare_dispatch_to_run_id() -> Bool {
+test fn w_concurrency_group_resolves_bare_dispatch_to_run_id() -> Bool  {
   group_resolved_as(
     fx: group_fx(event: github_event_name_workflow_dispatch, inputs: []),
     expected: "witness-floor-run-rid"
   )
 }
 
-test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
+test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool  {
   group_resolved_as(
     fx: group_fx(event: github_event_name_pull_request, inputs: []),
     expected: "witness-floor-pr-7"
@@ -526,21 +526,21 @@ test fn w_concurrency_group_resolves_pull_request_to_pr_number() -> Bool {
 // `RefAfterEvent` branch reddens this row. The fallback is the right destination and not a gap --
 // a push that somehow reaches this workflow shares a group with nothing, which is the same grain the
 // merge_group `mg-<sha>` branch gives every landing.
-test fn w_concurrency_group_no_longer_groups_push_by_ref() -> Bool {
+test fn w_concurrency_group_no_longer_groups_push_by_ref() -> Bool  {
   group_resolved_as(
     fx: group_fx(event: github_event_name_push, inputs: []),
     expected: "witness-floor-run-rid"
   )
 }
 
-test fn w_concurrency_group_push_is_not_grouped_as_a_pr() -> Bool {
+test fn w_concurrency_group_push_is_not_grouped_as_a_pr() -> Bool  {
   !group_resolved_as(
     fx: group_fx(event: github_event_name_push, inputs: []),
     expected: "witness-floor-pr-7"
   )
 }
 
-test fn w_emitted_group_expression_names_each_event_branch() -> Bool {
+test fn w_emitted_group_expression_names_each_event_branch() -> Bool  {
   let s = interpolate(expression: witness_floor_group_expression())
   string_contains(s: s, pattern: concat("github.event_name == '", concat(github_event_name_merge_group, "' && format('mg-{0}', github.sha)")))
     && string_contains(
@@ -563,7 +563,7 @@ test fn w_emitted_group_expression_names_each_event_branch() -> Bool {
     && !string_contains(s: s, pattern: github_event_name_push)
 }
 
-test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool {
+test fn w_RED_unmodeled_format_arity_and_base_ref_refuse() -> Bool  {
   let fx = WitnessFloorGroupFixture {
     event: github_event_name_push,
     sha: "mgsha",

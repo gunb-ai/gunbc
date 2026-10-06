@@ -63,7 +63,7 @@ fn subject_write() -> TypedRemoteFileWrite? {
 
 // Atomic rename requires one directory. The staging path is the destination plus a suffix, so it is
 // a sibling by construction rather than by a convention someone must maintain.
-test fn the_staging_path_is_a_sibling_of_the_destination() -> Bool {
+test fn the_staging_path_is_a_sibling_of_the_destination() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -73,7 +73,7 @@ test fn the_staging_path_is_a_sibling_of_the_destination() -> Bool {
 }
 
 // Nothing is ever written directly to the destination: the write step names the STAGING path.
-test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool {
+test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } => {
@@ -85,7 +85,7 @@ test fn the_stage_step_writes_to_staging_never_the_destination() -> Bool {
 
 // `dd status=none`, not `tee`: tee echoes every written byte back over the channel, putting file
 // content in the log. The absence of tee here is the claim.
-test fn the_stage_step_does_not_echo_content_back() -> Bool {
+test fn the_stage_step_does_not_echo_content_back() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } => {
@@ -98,7 +98,7 @@ test fn the_stage_step_does_not_echo_content_back() -> Bool {
 }
 
 // The mode is applied to the STAGED file, before it is published under the destination name.
-test fn the_mode_is_set_on_staging_before_the_rename() -> Bool {
+test fn the_mode_is_set_on_staging_before_the_rename() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -107,7 +107,7 @@ test fn the_mode_is_set_on_staging_before_the_rename() -> Bool {
   }
 }
 
-test fn the_rename_moves_staging_onto_the_destination() -> Bool {
+test fn the_rename_moves_staging_onto_the_destination() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -118,7 +118,7 @@ test fn the_rename_moves_staging_onto_the_destination() -> Bool {
 
 // The comparison interrogates the DESTINATION, not the staging file. Comparing against what we just
 // staged would prove the rename moved something, not that the destination holds it.
-test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool {
+test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } => {
@@ -131,7 +131,7 @@ test fn the_comparison_reads_the_destination_not_the_staging_file() -> Bool {
 
 // THE DECLARED BYTES NEVER COME BACK. The comparison names stdin as one side, so the payload travels
 // outward only; nothing in this argv would carry file content home through a channel that trims it.
-test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
+test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -144,7 +144,7 @@ test fn the_comparison_takes_the_declared_side_from_stdin() -> Bool {
 
 // The session arm is the identity on argv, so every consumer that wrote as its own principal before
 // the privilege axis existed runs exactly the words it ran then.
-test fn the_session_principal_leaves_every_leg_as_built() -> Bool {
+test fn the_session_principal_leaves_every_leg_as_built() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -157,7 +157,7 @@ test fn the_session_principal_leaves_every_leg_as_built() -> Bool {
 
 // The sudo arm is non-interactive on every leg. A bare `sudo` would prompt on a channel with no
 // terminal and hang to the step timeout instead of refusing at the leg that lacked the grant.
-test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
+test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool  {
   match subject_write() {
     Absent => false
     Present { value: w } =>
@@ -174,7 +174,7 @@ test fn the_sudo_arm_prefixes_every_leg_non_interactively() -> Bool {
   }
 }
 
-test fn the_modes_render_their_octals() -> Bool {
+test fn the_modes_render_their_octals() -> Bool  {
   remote_file_mode_octal(mode: RemoteFileModeOwnerReadWrite) == "600"
     && remote_file_mode_octal(mode: RemoteFileModeOwnerReadWriteGroupRead) == "640"
     && remote_file_mode_octal(mode: RemoteFileModeOwnerReadWriteWorldRead) == "644"
@@ -226,7 +226,7 @@ fn report_reason(r: RemoteFileComparisonReport) -> String {
 // returned the sealed carrier, so this file was itself the proof that the seal did not hold at
 // semantic-construction grain. It now shows the opposite, and it is the discriminating case: if the
 // classifier ever returns authority again, this stops compiling rather than quietly passing.
-test fn a_literal_success_exit_outside_the_effect_runner_yields_only_a_report() -> Bool {
+test fn a_literal_success_exit_outside_the_effect_runner_yields_only_a_report() -> Bool  {
   match classify(exit_code: 0, stderr: "") {
     ComparisonIdentical => true
     ComparisonDiffers { reason: _ } => false
@@ -237,7 +237,7 @@ test fn a_literal_success_exit_outside_the_effect_runner_yields_only_a_report() 
 // THE CLAIM THIS ARM EXISTS FOR: a successful write whose destination holds something else. This is
 // exactly what a zero exit from the writing process cannot distinguish, and why RemoteExecAccepted
 // was never convergence.
-test fn a_destination_cmp_calls_different_refuses() -> Bool {
+test fn a_destination_cmp_calls_different_refuses() -> Bool  {
   match classify(exit_code: 1, stderr: "") {
     ComparisonDiffers { reason: _ } => true
     ComparisonIdentical => false
@@ -248,7 +248,7 @@ test fn a_destination_cmp_calls_different_refuses() -> Bool {
 // A FAILURE TO LOOK IS NOT A DIFFERENCE. cmp exits 2 when it could not read a side at all -- a
 // missing destination, an unreadable one, no cmp on the host. Reporting that as a content difference
 // would blame the bytes for a failure to compare them, and would send a reader to the wrong fix.
-test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -> Bool {
+test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -> Bool  {
   let c = classify(exit_code: 2, stderr: "cmp: No such file or directory")
   match c {
     ComparisonUnavailable { reason: _ } =>
@@ -262,7 +262,7 @@ test fn a_comparison_that_could_not_run_refuses_separately_from_a_difference() -
 // The two refusals are DISTINGUISHABLE, which is the whole point of keeping cmp's vocabulary. A
 // reader who cannot tell "the file is wrong" from "I could not read the file" has one word for two
 // situations whose remedies differ.
-test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
+test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool  {
   let differ = report_reason(r: classify(exit_code: 1, stderr: ""))
   let errored = report_reason(r: classify(exit_code: 2, stderr: "boom"))
   differ != errored
@@ -288,7 +288,7 @@ test fn the_difference_and_the_error_do_not_render_the_same_reason() -> Bool {
 // bytes landed, and two executions against different hosts were previously indistinguishable. Mode is
 // deliberately NOT asserted: the carrier no longer claims it, because nothing reads the destination's
 // mode back.
-test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() -> Bool {
+test fn the_converge_route_yields_a_receipt_naming_the_exact_write_and_target() -> Bool  {
   match subject_write() {
     Present { value: w } =>
       match fleet_ssh_execution_context_hermetic_witness_fixture() {

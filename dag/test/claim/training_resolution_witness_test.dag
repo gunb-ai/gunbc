@@ -166,7 +166,7 @@ fn baseline_obs(d_low: DropoutPermille) -> TrainingResolutionObservations {
 // artifact while the PR claimed the wall covered every semantic coordinate -- the claim was
 // stronger than its evidence, which is the inflation this repository rates as worse than sitting
 // low, because an overclaimed wall never ranks for the work that would make it real.
-test fn every_semantic_coordinate_reaches_the_work_key() -> Bool {
+test fn every_semantic_coordinate_reaches_the_work_key() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d_low } =>
@@ -827,7 +827,7 @@ test fn every_semantic_coordinate_reaches_the_work_key() -> Bool {
 // provenance: it records WHERE a value came from, not WHAT it is. If changing it moved the key the
 // projection would be hashing evidence rather than the resolved computation, and two identical runs
 // resolved through different observations would be incomparable.
-test fn a_different_resolution_receipt_derives_the_same_work_key() -> Bool {
+test fn a_different_resolution_receipt_derives_the_same_work_key() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d } =>
@@ -850,7 +850,7 @@ test fn a_different_resolution_receipt_derives_the_same_work_key() -> Bool {
 // THE BOUND IS A WALL, NOT A CONVENTION. A permille above one thousand is not a probability, and
 // Nat admits it; the mint refuses it. Both boundary admissions are asserted beside the refusal so
 // the wall cannot be satisfied by refusing everything.
-test fn dropout_admits_zero_and_one_thousand_and_refuses_above() -> Bool {
+test fn dropout_admits_zero_and_one_thousand_and_refuses_above() -> Bool  {
   let zero_ok = match dropout_permille(permille: 0) {
     DropoutPermilleAdmitted { value: v } => dropout_permille_value(d: v) == 0
     DropoutPermilleOutOfRange { offered: _ } => false
@@ -867,7 +867,7 @@ test fn dropout_admits_zero_and_one_thousand_and_refuses_above() -> Bool {
 }
 
 // GLOBAL BATCH IS DERIVED, so it cannot disagree with the coordinates it descends from.
-test fn global_batch_is_the_product_of_micro_batch_and_accumulation() -> Bool {
+test fn global_batch_is_the_product_of_micro_batch_and_accumulation() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d } =>
@@ -879,7 +879,7 @@ test fn global_batch_is_the_product_of_micro_batch_and_accumulation() -> Bool {
   }
 }
 
-test fn an_unresolved_coordinate_refuses_naming_its_axis() -> Bool {
+test fn an_unresolved_coordinate_refuses_naming_its_axis() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d } => {
@@ -944,7 +944,7 @@ fn demand_for(requester: NonEmptyStr, scope: NonEmptyStr, work_key: NonEmptyStr)
   }
 }
 
-test fn a_requester_may_ask_for_work_scoped_to_another_principal() -> Bool {
+test fn a_requester_may_ask_for_work_scoped_to_another_principal() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d } =>
@@ -962,7 +962,7 @@ test fn a_requester_may_ask_for_work_scoped_to_another_principal() -> Bool {
   }
 }
 
-test fn a_demand_naming_a_work_this_resolution_does_not_derive_is_refused() -> Bool {
+test fn a_demand_naming_a_work_this_resolution_does_not_derive_is_refused() -> Bool  {
   match dp(n: 50) {
     none => false
     Present { value: d } =>

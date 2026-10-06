@@ -10,7 +10,7 @@ import extdeps.tools.wc {
   verify_file_byte_count,
 }
 
-test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
+test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool  {
   verify_file_byte_count(
     read: FileByteCountObserved { count: 3 },
     expected: byte_size(4)) == FileByteCountDiffers {

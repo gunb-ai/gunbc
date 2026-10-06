@@ -117,7 +117,7 @@ test fn an_operand_infer_did_not_type_is_operand_type_undecided_holds() -> Bool 
 // THE MUTATION CONTROL: the introduction's row rewritten as a projection (operand and target swapped,
 // return evidence supplied) must change the class. A classifier that read the class off anything
 // but the rows' direction would leave it unchanged.
-test fn an_introduction_rewritten_as_a_projection_changes_class_holds() -> Bool {
+test fn an_introduction_rewritten_as_a_projection_changes_class_holds() -> Bool  {
   let mutated = [cast(enclosing: "introduce", target: int_ref, operand: OperandTyped { type_ref: DeclaredRef { path: "fx.Port" } }, parent: ParentReturn { declared: int_ref })]
   fold_list(xs: type_census_receipt(run: fixture_run(casts: mutated, unreached: Empty)).lines, empty: false, cons: fn(acc, l) {
     acc || (starts_with(s: l, prefix: "cast fx introduce@") && string_contains(s: l, pattern: " class=NominalProjection "))
@@ -127,7 +127,7 @@ test fn an_introduction_rewritten_as_a_projection_changes_class_holds() -> Bool 
 
 // THE REFUSAL: a module with no reference index makes the whole run refuse with NO OBSERVATION
 // (exit 2), never a default class -- and the complete run beside it holds.
-test fn an_unindexed_module_refuses_the_run_with_no_observation_holds() -> Bool {
+test fn an_unindexed_module_refuses_the_run_with_no_observation_holds() -> Bool  {
   match type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: [UnreachedModule { module: "fx.broken", stage: "resolve", cause: "resolve_reason_unbound_symbol" }])).terminal {
     NativeClaimNoObservation { reason: _ } => true
     NativeClaimHeld => false
@@ -135,7 +135,7 @@ test fn an_unindexed_module_refuses_the_run_with_no_observation_holds() -> Bool 
   }
 }
 
-test fn the_complete_fixture_run_holds() -> Bool {
+test fn the_complete_fixture_run_holds() -> Bool  {
   match type_census_receipt(run: fixture_run(casts: fixture_casts(), unreached: Empty)).terminal {
     NativeClaimHeld => true
     NativeClaimNoObservation { reason: _ } => false

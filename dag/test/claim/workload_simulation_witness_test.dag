@@ -103,7 +103,7 @@ fn run_for(shape: ArrivalShape) -> AcquisitionVerdict {
 // Ten concurrent jobs, every slot, exactly the owned lane's width. The commitment costs 300
 // per slot for all 600 slots; the same work rented costs 10 jobs at 100 per slot, so rent
 // runs to 600000 against the commitment's 180000.
-test fn flat_demand_at_committed_width_makes_the_commitment_pay() -> Bool {
+test fn flat_demand_at_committed_width_makes_the_commitment_pay() -> Bool  {
   verdict_pays_off(v: run_for(shape: FlatArrival { concurrent: 10 }))
 }
 
@@ -115,7 +115,7 @@ test fn flat_demand_at_committed_width_makes_the_commitment_pay() -> Bool {
 // answer, which is why the model sweeps shapes instead of fitting one curve. If this ever agreed
 // with the flat case, the simulation would have collapsed into a unit price comparison and this
 // test goes red.
-test fn bursty_demand_of_equal_mean_makes_the_same_commitment_lose() -> Bool {
+test fn bursty_demand_of_equal_mean_makes_the_same_commitment_lose() -> Bool  {
   verdict_costs_more(v: run_for(shape: BurstyArrival {
     base: 0, burst: 600, every_slots: 60, burst_width: 1,
   }))
@@ -129,7 +129,7 @@ test fn bursty_demand_of_equal_mean_makes_the_same_commitment_lose() -> Bool {
 // earlier revision asserted the same arm on both sides while its comment claimed a flip, and went
 // red on first execution -- the assertion, not the model, was wrong. If these ever agree again,
 // the simulation has collapsed into a unit-price comparison and this witness says so.
-test fn demand_shape_alone_flips_the_acquisition_verdict() -> Bool {
+test fn demand_shape_alone_flips_the_acquisition_verdict() -> Bool  {
   let flat = run_for(shape: FlatArrival { concurrent: 10 })
   let bursty = run_for(shape: BurstyArrival { base: 0, burst: 600, every_slots: 60, burst_width: 1 })
   verdict_pays_off(v: flat) && verdict_costs_more(v: bursty)
@@ -141,7 +141,7 @@ test fn demand_shape_alone_flips_the_acquisition_verdict() -> Bool {
 // concurrent jobs bill sixty EACH, not sixty between them. An earlier revision billed the slot's
 // concurrency instead of each job's duration -- both Nat, so it typechecked -- and produced 60
 // where 3600 is correct.
-test fn quantum_rounding_bills_a_partial_increment_as_a_whole_one() -> Bool {
+test fn quantum_rounding_bills_a_partial_increment_as_a_whole_one() -> Bool  {
   billed_slots_per_job(quantum_slots: 60) == 60
     && billed_slots_per_job(quantum_slots: 0) == 1
     && (60 * billed_slots_per_job(quantum_slots: 60)) == 3600
@@ -151,7 +151,7 @@ test fn quantum_rounding_bills_a_partial_increment_as_a_whole_one() -> Bool {
 // Same rate, work and shape; one rented lane bills a 60-slot minimum, the other per slot.
 // Sixty-fold on the rented total is the waste that makes short CI jobs favour owned capacity
 // regardless of headline rate -- the arbitrage the product exists to find.
-test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool {
+test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool  {
   let flat = FlatArrival { concurrent: 5 }
   let coarse = simulate(shape: flat, lanes: [rented_lane()], slots: 600)
   let fine = simulate(shape: flat, lanes: [rented_lane_per_slot()], slots: 600)
@@ -161,7 +161,7 @@ test fn a_coarse_billing_increment_multiplies_the_rented_total() -> Bool {
 // UNPLACED WORK REFUSES THE COMPARISON RATHER THAN CHEAPENING IT.
 // Two portfolios that could not serve the same amount of work do not have comparable
 // totals, and the cheaper number would be cheaper because it ran less. The fold refuses.
-test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Bool {
+test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Bool  {
   let tiny = [SupplyLane {
     label: "tiny", capacity: 1, variable_per_slot: money_amount_micro(count: 0),
     committed_per_slot: money_amount_micro(count: 1), billing_quantum_slots: 0,
@@ -174,7 +174,7 @@ test fn unplaced_work_refuses_the_verdict_instead_of_reporting_a_saving() -> Boo
 // Occupancy is the number the acquisition decision actually turns on, so it is reported
 // rather than left for a reader to divide out. Flat demand at exactly the committed width
 // is full occupancy; the bursty case is nearly empty.
-test fn committed_occupancy_separates_a_filled_lane_from_an_idle_one() -> Bool {
+test fn committed_occupancy_separates_a_filled_lane_from_an_idle_one() -> Bool  {
   let filled = simulate(shape: FlatArrival { concurrent: 10 }, lanes: portfolio(), slots: 600)
   let idle = simulate(
     shape: BurstyArrival { base: 0, burst: 600, every_slots: 60, burst_width: 1 },

@@ -18,7 +18,7 @@ import gunbc.uefi_boot_install_decision {
 }
 import gunbc.srv4_uefi_observed { srv4_uefi_observed_environment }
 
-test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
+test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool  {
   let sit = diagnose_boot_install(env: srv4_uefi_observed_environment)
   let is_needs_dhcp = match sit {
     NetworkUpNeedsDhcp { interface: i } => i == "eth2"
@@ -35,7 +35,7 @@ test fn srv4_diagnoses_network_needs_dhcp_and_acts() -> Bool {
   is_needs_dhcp && cmds_have_dhcp && not_refused
 }
 
-test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
+test fn srv4_never_dhcps_the_link_local_nic() -> Bool  {
   let action = decide_boot_install(
     situation: diagnose_boot_install(env: srv4_uefi_observed_environment),
     goal: InstalledFleetNode,
@@ -54,7 +54,7 @@ data no_source_env: UefiShellEnvironment = UefiShellEnvironment {
   ],
 }
 
-test fn no_source_fails_closed() -> Bool {
+test fn no_source_fails_closed() -> Bool  {
   let sit = diagnose_boot_install(env: no_source_env)
   let action = decide_boot_install(situation: sit, goal: InstalledFleetNode)
   let no_commands = match boot_install_commands(action: action) {

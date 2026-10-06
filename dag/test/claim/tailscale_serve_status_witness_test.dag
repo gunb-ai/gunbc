@@ -8,7 +8,7 @@ import extdeps.tailscale.serve {
   tailscale_serve_status_proxy_targets,
 }
 
-test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool {
+test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool  {
   match tailscale_serve_status_proxy_targets(
     status_json: "{\"TCP\":{\"443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:8080\"}}}}}",
     mount: ServeRootMount,
@@ -28,7 +28,7 @@ test fn tailscale_serve_status_root_proxy_is_structurally_projected() -> Bool {
 // It now asserts the distinction instead, and its name changed with its meaning: not "no plausible
 // proxy" -- which was true of the old behaviour and of the new one alike -- but that an unreadable
 // document is REPORTED as unreadable rather than projected as a configuration fact.
-test fn tailscale_serve_status_malformed_json_is_reported_unreadable() -> Bool {
+test fn tailscale_serve_status_malformed_json_is_reported_unreadable() -> Bool  {
   match tailscale_serve_status_proxy_targets(status_json: "not-json", mount: ServeRootMount) {
     ServeStatusUnreadable => true
     ServeStatusProxies { targets: _ } => false
@@ -39,7 +39,7 @@ test fn tailscale_serve_status_malformed_json_is_reported_unreadable() -> Bool {
 // but carries no Web member must still project an empty proxy list, not a refusal. Without this,
 // answering ServeStatusUnreadable for every input would satisfy the malformed witness while
 // destroying the projection's actual job.
-test fn tailscale_serve_status_parsed_document_without_web_is_empty_not_unreadable() -> Bool {
+test fn tailscale_serve_status_parsed_document_without_web_is_empty_not_unreadable() -> Bool  {
   match tailscale_serve_status_proxy_targets(status_json: "{\"TCP\":{}}", mount: ServeRootMount) {
     ServeStatusProxies { targets: t } => count(t) == 0
     ServeStatusUnreadable => false

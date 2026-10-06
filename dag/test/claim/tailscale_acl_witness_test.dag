@@ -48,7 +48,7 @@ fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
     && !string_contains(s: tag_dashboard, pattern: "tag:ci")
 }
 
-test fn tailscale_acl_witnesses() -> Bool {
+test fn tailscale_acl_witnesses() -> Bool  {
   tailscale_grants_external_authority_holds()
     && witness_operator_policy_row_counts()
     && witness_tag_ci_quarantine_spine()

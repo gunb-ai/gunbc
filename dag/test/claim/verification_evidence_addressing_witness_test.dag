@@ -415,7 +415,7 @@ fn live_verify_progress_state(
   })
 }
 
-test fn unreadable_exact_receipt_is_evidence_unreadable_not_refuse() -> Bool {
+test fn unreadable_exact_receipt_is_evidence_unreadable_not_refuse() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptUnreadable {
@@ -429,7 +429,7 @@ test fn unreadable_exact_receipt_is_evidence_unreadable_not_refuse() -> Bool {
   }
 }
 
-test fn absent_exact_receipt_runs_once() -> Bool {
+test fn absent_exact_receipt_runs_once() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptAbsent,
@@ -441,7 +441,7 @@ test fn absent_exact_receipt_runs_once() -> Bool {
   }
 }
 
-test fn two_window_identities_use_distinct_receipt_basenames() -> Bool {
+test fn two_window_identities_use_distinct_receipt_basenames() -> Bool  {
   exact_verification_receipt_basename(
     head_sha: fixture_head as String,
     window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
@@ -451,7 +451,7 @@ test fn two_window_identities_use_distinct_receipt_basenames() -> Bool {
   )
 }
 
-test fn current_selection_points_to_w2_not_w1_basename() -> Bool {
+test fn current_selection_points_to_w2_not_w1_basename() -> Bool  {
   let w1 = exact_verification_receipt_basename(
     head_sha: fixture_head as String,
     window_identity_hex: git_diff_window_identity_hex(identity: fixture_window_w1),
@@ -470,7 +470,7 @@ test fn current_selection_points_to_w2_not_w1_basename() -> Bool {
     )
 }
 
-test fn no_current_selection_projects_verify_pending() -> Bool {
+test fn no_current_selection_projects_verify_pending() -> Bool  {
   verify_segment_state(
     evidence: fixture_evidence(
       selection: SelectionAbsent,
@@ -483,7 +483,7 @@ test fn no_current_selection_projects_verify_pending() -> Bool {
   )
 }
 
-test fn unobservable_worktree_head_projects_verify_refused() -> Bool {
+test fn unobservable_worktree_head_projects_verify_refused() -> Bool  {
   live_verify_progress_state(
     selection: SelectionUnaddressable {
       cause: "the attempt worktree head could not be observed",
@@ -491,7 +491,7 @@ test fn unobservable_worktree_head_projects_verify_refused() -> Bool {
   ) == "refused"
 }
 
-test fn selection_document_for_expected_head_naming_another_head_is_malformed() -> Bool {
+test fn selection_document_for_expected_head_naming_another_head_is_malformed() -> Bool  {
   match current_verification_selection_decode_document(
     selection_path: join(
       [
@@ -517,7 +517,7 @@ test fn selection_document_for_expected_head_naming_another_head_is_malformed() 
   }
 }
 
-test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
+test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool  {
   let selection = current_verification_selection_decode_document(
     selection_path: join(
       [
@@ -558,7 +558,7 @@ test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
   }
 }
 
-test fn unreadable_current_selection_projects_verify_refused() -> Bool {
+test fn unreadable_current_selection_projects_verify_refused() -> Bool  {
   let state = live_verify_progress_state(
     selection: SelectionUnreadable {
       cause: "permission denied",
@@ -567,7 +567,7 @@ test fn unreadable_current_selection_projects_verify_refused() -> Bool {
   state == "refused"
 }
 
-test fn listing_failure_with_not_found_text_is_unreadable_not_absent() -> Bool {
+test fn listing_failure_with_not_found_text_is_unreadable_not_absent() -> Bool  {
   let state = live_verify_progress_state(
     selection: SelectionUnreadable {
       cause: join([
@@ -579,7 +579,7 @@ test fn listing_failure_with_not_found_text_is_unreadable_not_absent() -> Bool {
   state == "refused"
 }
 
-test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -> Bool {
+test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -> Bool  {
   match belt_verification_receipt_source(
     instance: srv1_live_dashboard_instance(),
     node_id: fixture_node_id(),
@@ -594,7 +594,7 @@ test fn live_assembly_unreadable_selection_never_addresses_receipt_as_absent() -
   }
 }
 
-test fn v1_at_exact_path_refuses_v2_subject() -> Bool {
+test fn v1_at_exact_path_refuses_v2_subject() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptPresent {
@@ -612,7 +612,7 @@ test fn v1_at_exact_path_refuses_v2_subject() -> Bool {
   }
 }
 
-test fn selected_v2_receipt_is_read_exactly() -> Bool {
+test fn selected_v2_receipt_is_read_exactly() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
     source: ExactVerificationReceiptPresent {
@@ -634,7 +634,7 @@ test fn selected_v2_receipt_is_read_exactly() -> Bool {
   }
 }
 
-test fn exact_verification_address_coheres_basename_and_path() -> Bool {
+test fn exact_verification_address_coheres_basename_and_path() -> Bool  {
   let address = exact_verification_address_for(
     attempt_dir: "/attempt/recut-a",
     verification_dir: "/attempt/recut-a/verification",
@@ -653,7 +653,7 @@ test fn exact_verification_address_coheres_basename_and_path() -> Bool {
     && address.selection_path == selection_path
 }
 
-test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {
+test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w2),
     source: ExactVerificationReceiptPresent {
@@ -675,7 +675,7 @@ test fn new_window_identity_does_not_match_old_passed_receipt() -> Bool {
   }
 }
 
-test fn final_exact_receipt_defers_without_rerun() -> Bool {
+test fn final_exact_receipt_defers_without_rerun() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptPresent {
@@ -706,7 +706,7 @@ test fn final_exact_receipt_defers_without_rerun() -> Bool {
   }
 }
 
-test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
+test fn wrong_subject_document_at_exact_path_refuses() -> Bool  {
   let wrong_branch = VerificationSubject {
     node_identity: fixture_subject(window: fixture_window_w1).node_identity,
     criteria_digest: fixture_subject(window: fixture_window_w1).criteria_digest,
@@ -741,7 +741,7 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
   }
 }
 
-test fn not_run_migration_receipt_runs() -> Bool {
+test fn not_run_migration_receipt_runs() -> Bool  {
   match belt_verification_decision(
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptPresent {
@@ -760,7 +760,7 @@ test fn not_run_migration_receipt_runs() -> Bool {
   }
 }
 
-test fn v1_decode_preserves_execution_rows() -> Bool {
+test fn v1_decode_preserves_execution_rows() -> Bool  {
   match verification_receipt_v1_decode(receipt: v1_receipt_with_one_execution_text()) {
     LegacyExactHeadDecoded { receipt: legacy } => count(legacy.executions) == 1
     LegacyExactHeadNotReadable { gap: _ } => false
@@ -772,7 +772,7 @@ test fn v1_decode_preserves_execution_rows() -> Bool {
 // its verdict and stops both answered `none`, and the production consumer rendered both as the one
 // sentence "the v1 exact-head body is not readable". A corrupt file and a single drifted member got
 // the same diagnostic.
-test fn RED_unreadable_v1_receipt_bytes_are_located_as_bytes() -> Bool {
+test fn RED_unreadable_v1_receipt_bytes_are_located_as_bytes() -> Bool  {
   match verification_receipt_v1_decode(receipt: "not a document") {
     LegacyExactHeadNotReadable { gap: gap } => gap == LegacyReceiptBytesUnreadable
     LegacyExactHeadDecoded { receipt: _ } => false
@@ -783,14 +783,14 @@ test fn RED_unreadable_v1_receipt_bytes_are_located_as_bytes() -> Bool {
 // identity, and stops at the verdict -- so a decoder that answered BytesUnreadable for every
 // failure would satisfy the witness above and fail here. It is built from the same fixture text as
 // the positive control, with one member removed, so the two differ only in the thing under test.
-test fn RED_v1_receipt_missing_verdict_is_located_at_the_verdict() -> Bool {
+test fn RED_v1_receipt_missing_verdict_is_located_at_the_verdict() -> Bool  {
   match verification_receipt_v1_decode(receipt: v1_receipt_without_verdict_text()) {
     LegacyExactHeadNotReadable { gap: gap } => gap == LegacyReceiptVerdictMemberMissing
     LegacyExactHeadDecoded { receipt: _ } => false
   }
 }
 
-test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool {
+test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool  {
   match belt_verify_pass_outcome_from(outcomes: [
     VerifyRefused {
       node_id: "recut-a",
@@ -804,7 +804,7 @@ test fn belt_verification_refuse_projects_belt_pass_refused() -> Bool {
   }
 }
 
-test fn belt_verification_evidence_unreadable_projects_belt_pass_failed() -> Bool {
+test fn belt_verification_evidence_unreadable_projects_belt_pass_failed() -> Bool  {
   match belt_verify_pass_outcome_from(outcomes: [
     VerifyEvidenceUnreadable {
       node_id: "recut-a",

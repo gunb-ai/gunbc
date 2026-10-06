@@ -50,7 +50,7 @@ fn fixture_refuser_ref() -> DeclarationRef {
   )
 }
 
-test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool {
+test fn behavioral_discriminator_is_stable_purpose_arm() -> Bool  {
   let purpose = BehavioralDiscriminator {
     discriminates: RefusalRequired { refuser: fixture_refuser_ref() },
   }
@@ -102,7 +102,7 @@ fn purpose_requires_a_refusal(purpose: WitnessPurpose) -> Bool {
 // the whole content of the refinement. A test constructing only one arm would pass against a
 // coproduct whose second arm was unreachable, and a test comparing two different decisions would
 // pass on the decision rather than on the requirement.
-test fn refusal_and_acceptance_requirements_do_not_report_alike() -> Bool {
+test fn refusal_and_acceptance_requirements_do_not_report_alike() -> Bool  {
   let wall = BehavioralDiscriminator {
     discriminates: RefusalRequired { refuser: fixture_refuser_ref() },
   }
@@ -116,13 +116,13 @@ test fn refusal_and_acceptance_requirements_do_not_report_alike() -> Bool {
 // A NON-DISCRIMINATOR PURPOSE CARRIES NO WALL BY THIS PREDICATE, so the ranking key cannot be read
 // as "every purpose that mentions a DeclarationRef". Without this arm the predicate could be
 // satisfied by any purpose at all and still look green above.
-test fn a_non_discriminator_purpose_requires_no_refusal() -> Bool {
+test fn a_non_discriminator_purpose_requires_no_refusal() -> Bool  {
   !purpose_requires_a_refusal(
     purpose: PopulationTotality { population: fixture_population_ref() },
   )
 }
 
-test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
+test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool  {
   let purpose = BoundaryCrossing {
     modeled_boundary: fixture_population_ref(),
     chosen_input: fixture_subject_hash(),
@@ -138,7 +138,7 @@ test fn boundary_crossing_carries_modeled_boundary_and_chosen_input() -> Bool {
   }
 }
 
-test fn population_totality_carries_population_ref() -> Bool {
+test fn population_totality_carries_population_ref() -> Bool  {
   let purpose = PopulationTotality { population: fixture_population_ref() }
   match purpose {
     PopulationTotality { population: population } =>
@@ -150,7 +150,7 @@ test fn population_totality_carries_population_ref() -> Bool {
   }
 }
 
-test fn external_fidelity_carries_effect_ref() -> Bool {
+test fn external_fidelity_carries_effect_ref() -> Bool  {
   let purpose = ExternalFidelity { effect: fixture_population_ref() }
   match purpose {
     ExternalFidelity { effect: effect } => effect == fixture_population_ref()
@@ -161,7 +161,7 @@ test fn external_fidelity_carries_effect_ref() -> Bool {
   }
 }
 
-test fn resource_contract_wall_bound_is_millisecond() -> Bool {
+test fn resource_contract_wall_bound_is_millisecond() -> Bool  {
   let purpose = ResourceContract {
     bound: EvalWallTimeBound { bound: millisecond(count: 500) },
   }
@@ -179,7 +179,7 @@ test fn resource_contract_wall_bound_is_millisecond() -> Bool {
   }
 }
 
-test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool {
+test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool  {
   let purpose = ResourceContract {
     bound: PeakMemoryBound { bound: byte_size(count: 1073741824) },
   }
@@ -197,7 +197,7 @@ test fn resource_contract_peak_memory_bound_is_byte_size() -> Bool {
   }
 }
 
-test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> Bool {
+test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> Bool  {
   let frontier = TerminatingOneShotUnavailableDeadlineSubstrateAbsent
   match frontier {
     TerminatingOneShotUnavailableDeadlineSubstrateAbsent => true
@@ -215,7 +215,7 @@ test fn terminating_one_shot_unavailable_records_deadline_substrate_absent() -> 
 // precisely the defect gunbc.recurring_failure_mode
 // non_execution_undifferentiated_by_what_it_silenced records. Holding the witness constant is what
 // makes the purpose the only variable.
-test fn two_bindings_on_one_witness_separate_on_purpose() -> Bool {
+test fn two_bindings_on_one_witness_separate_on_purpose() -> Bool  {
   let wall = WitnessPurposeBinding {
     witness: fixture_population_ref(),
     purpose: BehavioralDiscriminator {
@@ -233,7 +233,7 @@ test fn two_bindings_on_one_witness_separate_on_purpose() -> Bool {
     && !purpose_requires_a_refusal(purpose: control.purpose)
 }
 
-test fn witness_purpose_has_five_stable_arms_only() -> Bool {
+test fn witness_purpose_has_five_stable_arms_only() -> Bool  {
   let purposes = [
     BehavioralDiscriminator {
       discriminates: RefusalRequired { refuser: fixture_refuser_ref() },

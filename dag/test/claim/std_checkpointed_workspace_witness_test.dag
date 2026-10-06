@@ -110,7 +110,7 @@ fn plan_links_its_expectation(d: WorkspaceAdvanceDecision, on: FabricObjectRef) 
 // Required red (warm-badger-442): a fence over R1 with an absent or foreign parent. The plan has no
 // parameter for a parent, so the only fence over R1 it can produce links R1 -- asserted for both the
 // revision and the fence change.
-test fn a_plan_derives_its_parent_and_expectation_from_one_built_on_entry() -> Bool {
+test fn a_plan_derives_its_parent_and_expectation_from_one_built_on_entry() -> Bool  {
   let first = match workspace_advance_plan(writer: epoch(n: 1), change: WorkspaceCommitRevision { entries: one_entry() }, built_on: none) {
     WorkspaceAdvancePlanned { plan: p } =>
       (match workspace_plan_expected(plan: p) { ExpectHeadAbsent => true  ExpectHeadAt { object: _ } => false })
@@ -128,7 +128,7 @@ test fn a_plan_derives_its_parent_and_expectation_from_one_built_on_entry() -> B
 }
 
 // Required red: a stored entry pairing R1's ref with a different entry has no constructor.
-test fn a_stored_entry_must_be_the_entry_its_bytes_encode() -> Bool {
+test fn a_stored_entry_must_be_the_entry_its_bytes_encode() -> Bool  {
   let mismatched = match workspace_stored_entry_of(asked: ref_of(e: rev1()), content: obj(e: rev1()), decoded: fence2()) {
     WorkspaceStoredEntryMismatch { ref: _ } => true
     _ => false
@@ -145,7 +145,7 @@ test fn a_stored_entry_must_be_the_entry_its_bytes_encode() -> Bool {
 }
 
 // Required red: workspace A's writer cannot plan on B's entry, and each plan names its own head.
-test fn a_plan_cannot_cross_workspaces() -> Bool {
+test fn a_plan_cannot_cross_workspaces() -> Bool  {
   let b1 = WorkspaceRevision { writer: epoch_in(ws: "beta", n: 1), parent: none, entries: one_entry() }
   let crossed = match st(e: b1) {
     Absent => false
@@ -166,7 +166,7 @@ test fn a_plan_cannot_cross_workspaces() -> Bool {
 // A WRITER MAY NOT BUILD ON A LATER EPOCH, A FENCE MUST BE LATER THAN WHAT IT FENCES, AND A REVISION
 // MAY NOT PROMOTE ITS WRITER: over an epoch-1 entry, an epoch-2 revision is refused (only a fence moves
 // the epoch).
-test fn a_stale_writer_cannot_plan_on_a_fence_and_a_fence_must_be_later() -> Bool {
+test fn a_stale_writer_cannot_plan_on_a_fence_and_a_fence_must_be_later() -> Bool  {
   match st(e: fence2()) {
     Absent => false
     Present { value: f } =>
@@ -193,7 +193,7 @@ test fn a_stale_writer_cannot_plan_on_a_fence_and_a_fence_must_be_later() -> Boo
 // moved result under another expectation cannot classify. On the plan's own moved result a later epoch
 // is stale, the same epoch is a race, and an entry that is missing, under another ref, or another
 // workspace's is undecoded and never a retryable race.
-test fn a_commit_result_is_classified_against_the_plan_that_produced_it() -> Bool {
+test fn a_commit_result_is_classified_against_the_plan_that_produced_it() -> Bool  {
   match p1() {
     Absent => false
     Present { value: p } => {
@@ -233,7 +233,7 @@ test fn a_commit_result_is_classified_against_the_plan_that_produced_it() -> Boo
 // ONLY A COMMIT CLEARS COVERAGE. Required red: a failed commit cannot clear it (nor can a race or a
 // mismatch); the classifier's committed result advances the age to the first write after the snapshot,
 // or clears it, and returns a failed path to maintaining coverage.
-test fn only_the_classified_commit_moves_coverage() -> Bool {
+test fn only_the_classified_commit_moves_coverage() -> Bool  {
   match p1() {
     Absent => false
     Present { value: p } => {
@@ -251,7 +251,7 @@ test fn only_the_classified_commit_moves_coverage() -> Bool {
   }
 }
 
-test fn restore_skips_fences_to_the_last_committed_revision() -> Bool {
+test fn restore_skips_fences_to_the_last_committed_revision() -> Bool  {
   match st(e: fence2()) {
     Absent => false
     Present { value: f } =>
@@ -267,7 +267,7 @@ test fn restore_skips_fences_to_the_last_committed_revision() -> Bool {
   }
 }
 
-test fn the_age_is_zero_while_clean_and_starts_at_the_first_pending_write() -> Bool {
+test fn the_age_is_zero_while_clean_and_starts_at_the_first_pending_write() -> Bool  {
   let dirty = workspace_coverage_after_write(coverage: workspace_coverage_after_write(coverage: WorkspaceClean, at: at(n: 100)), at: at(n: 105))
   age_is(a: oldest_uncommitted_write_age(coverage: WorkspaceClean, now: at(n: 1000)), n: 0)
     && age_is(a: oldest_uncommitted_write_age(coverage: dirty, now: at(n: 110)), n: 10)
@@ -275,7 +275,7 @@ test fn the_age_is_zero_while_clean_and_starts_at_the_first_pending_write() -> B
 
 // NO AGE ACROSS CLOCKS OR BACKWARDS IN TIME: the standing refuses to decide rather than reading the
 // workspace as writable, and a loss with no computable age is unclassifiable, never "within window".
-test fn an_age_needs_one_clock_and_forward_time() -> Bool {
+test fn an_age_needs_one_clock_and_forward_time() -> Bool  {
   match witness_policy() {
     WorkspacePolicyRefused { refusal: _ } => false
     WorkspacePolicyAdmitted { policy: pol } => {
@@ -295,7 +295,7 @@ test fn an_age_needs_one_clock_and_forward_time() -> Bool {
 }
 
 // THE STANDING RECOMMENDS AN OUTAGE AT THE DEADLINE; ONLY workspace_declare_outage DECLARES ONE.
-test fn an_idle_workspace_stays_writable_and_a_stuck_one_is_recommended_an_outage() -> Bool {
+test fn an_idle_workspace_stays_writable_and_a_stuck_one_is_recommended_an_outage() -> Bool  {
   match witness_policy() {
     WorkspacePolicyRefused { refusal: _ } => false
     WorkspacePolicyAdmitted { policy: pol } => {
@@ -322,7 +322,7 @@ test fn an_idle_workspace_stays_writable_and_a_stuck_one_is_recommended_an_outag
 //   declared outage, loss                              -> compound, during the declared outage
 //   healthy path but undeclared at 70 s                -> a breach of the ordinary guarantee, its own arm
 //   clean workspace, any path                          -> nothing pending lost
-test fn a_loss_is_compound_exactly_when_the_observed_path_could_not_keep_coverage() -> Bool {
+test fn a_loss_is_compound_exactly_when_the_observed_path_could_not_keep_coverage() -> Bool  {
   match witness_policy() {
     WorkspacePolicyRefused { refusal: _ } => false
     WorkspacePolicyAdmitted { policy: pol } => {
@@ -360,7 +360,7 @@ test fn a_loss_is_compound_exactly_when_the_observed_path_could_not_keep_coverag
   }
 }
 
-test fn a_policy_must_order_target_deadline_and_window() -> Bool {
+test fn a_policy_must_order_target_deadline_and_window() -> Bool  {
   let ok = match witness_policy() { WorkspacePolicyAdmitted { policy: _ } => true  WorkspacePolicyRefused { refusal: _ } => false }
   let bad_target = match workspace_durability_policy(checkpoint_target: secs(n: 50), outage_deadline: secs(n: 45), window: secs(n: 60)) {
     WorkspacePolicyRefused { refusal: PolicyTargetNotBeforeDeadline { target: _, deadline: _ } } => true

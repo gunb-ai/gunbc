@@ -50,11 +50,11 @@ data discriminating_inputs: List<String> = [
 ]
 
 // THE CLAIM: the respelled predicate is the same function as the one it replaced.
-test fn the_respelled_predicate_answers_what_the_per_character_one_answered() -> Bool {
+test fn the_respelled_predicate_answers_what_the_per_character_one_answered() -> Bool  {
   all(discriminating_inputs, h => commit_sha_text_holds(head: h) == reference_per_character_spelling(head: h))
 }
 
-test fn forty_lowercase_hex_digits_hold() -> Bool {
+test fn forty_lowercase_hex_digits_hold() -> Bool  {
   commit_sha_text_holds(head: a_real_commit)
     && commit_sha_text_holds(head: "0000000000000000000000000000000000000000")
     && commit_sha_text_holds(head: "ffffffffffffffffffffffffffffffffffffffff")
@@ -62,19 +62,19 @@ test fn forty_lowercase_hex_digits_hold() -> Bool {
 
 // The red controls, one per cause. Each is a string the predicate must refuse, and each refuses for
 // a different reason, so a spelling that lost one of them fails here rather than in a caller.
-test fn red_a_length_either_side_of_forty_refuses() -> Bool {
+test fn red_a_length_either_side_of_forty_refuses() -> Bool  {
   !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64")
     && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c6466")
 }
 
-test fn red_uppercase_hex_refuses() -> Bool {
+test fn red_uppercase_hex_refuses() -> Bool  {
   !commit_sha_text_holds(head: "CB39F95CFDEE2FCE8E78A73DAD8887DA4213C646")
     && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64F")
 }
 
 // `g` is the character immediately after `f`, and `/` `:` backtick sit immediately outside the digit
 // and lowercase-hex ranges, so a spelling with an off-by-one boundary is red here.
-test fn red_a_character_outside_lowercase_hex_refuses() -> Bool {
+test fn red_a_character_outside_lowercase_hex_refuses() -> Bool  {
   !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64g")
     && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64/")
     && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64:")
@@ -82,7 +82,7 @@ test fn red_a_character_outside_lowercase_hex_refuses() -> Bool {
     && !commit_sha_text_holds(head: "cb39f95cfdee2fce8e78a73dad8887da4213c64 ")
 }
 
-test fn red_the_empty_string_and_a_branch_name_refuse() -> Bool {
+test fn red_the_empty_string_and_a_branch_name_refuse() -> Bool  {
   !commit_sha_text_holds(head: "")
     && !commit_sha_text_holds(head: "v4")
     && !commit_sha_text_holds(head: "main")

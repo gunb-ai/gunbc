@@ -31,7 +31,7 @@ fn witness_address() -> FabricBlobAddress? {
   }
 }
 
-test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+test fn reading_carries_the_handlers_digest_and_size() -> Bool  {
   match read_staged_fabric_blob(path: fixture_blob_path) {
     FabricBlobRead { reading: r } =>
       (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
@@ -40,7 +40,7 @@ test fn reading_carries_the_handlers_digest_and_size() -> Bool {
   }
 }
 
-test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool  {
   match read_staged_fabric_blob(path: fixture_blob_path) {
     FabricBlobReadRefused { fault: _ } => false
     FabricBlobRead { reading: r } => {
@@ -58,7 +58,7 @@ test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
   }
 }
 
-test fn the_object_name_is_the_key_hex() -> Bool {
+test fn the_object_name_is_the_key_hex() -> Bool  {
   match witness_address() {
     Present { value: addr } => (fabric_blob_object_name(address: addr) as String) == key_hex
     Absent => false

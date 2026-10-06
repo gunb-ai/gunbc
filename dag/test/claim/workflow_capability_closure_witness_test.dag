@@ -39,7 +39,7 @@ data deploy_yml_shape: List<CapabilityAnnotatedStep> = [
 ]
 
 // THE RED. This shape must refuse.
-test fn a_job_consuming_cargo_with_no_provider_refuses() -> Bool {
+test fn a_job_consuming_cargo_with_no_provider_refuses() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: deploy_yml_shape)) == false
 }
 
@@ -59,7 +59,7 @@ data witnesses_yml_shape: List<CapabilityAnnotatedStep> = [
   CapabilityAnnotatedStep { step_name: "All witnesses (one prepared subject, one fold)", role: capability_neutral },
 ]
 
-test fn a_job_providing_before_consuming_is_admitted() -> Bool {
+test fn a_job_providing_before_consuming_is_admitted() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: witnesses_yml_shape))
 }
 
@@ -79,7 +79,7 @@ data provider_after_consumer_shape: List<CapabilityAnnotatedStep> = [
   },
 ]
 
-test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool {
+test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: provider_after_consumer_shape)) == false
 }
 
@@ -90,7 +90,7 @@ test fn a_provider_ordered_after_its_consumer_does_not_close() -> Bool {
 // If someone reorders the real steps so the build precedes the toolchain, or retags the
 // toolchain step as neutral, this goes red AND emission refuses -- the two halves of the same
 // fact, one observed here and one enforced there.
-test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool {
+test fn the_live_witness_floor_job_closes_its_capabilities() -> Bool  {
   witness_floor_capability_closure_holds()
 }
 
@@ -110,7 +110,7 @@ data self_satisfying_step: List<CapabilityAnnotatedStep> = [
   },
 ]
 
-test fn a_step_cannot_satisfy_its_own_requirement() -> Bool {
+test fn a_step_cannot_satisfy_its_own_requirement() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: self_satisfying_step)) == false
 }
 
@@ -132,7 +132,7 @@ data multi_capability_job: List<CapabilityAnnotatedStep> = [
   },
 ]
 
-test fn one_step_can_provide_several_capabilities() -> Bool {
+test fn one_step_can_provide_several_capabilities() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_job))
 }
 
@@ -149,11 +149,11 @@ data multi_capability_missing_one: List<CapabilityAnnotatedStep> = [
   },
 ]
 
-test fn a_capability_outside_the_provided_list_still_refuses() -> Bool {
+test fn a_capability_outside_the_provided_list_still_refuses() -> Bool  {
   capability_closure_is_closed(v: workflow_job_capability_closure(steps: multi_capability_missing_one)) == false
 }
 
 // THE LIVE FLEET-CONVERGE JOB, the second real consumer.
-test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool {
+test fn the_live_fleet_converge_build_job_closes_its_capabilities() -> Bool  {
   fleet_converge_build_job_capability_closure_holds()
 }

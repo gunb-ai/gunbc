@@ -65,27 +65,27 @@ fn stopped_missing_at(o: StaircaseOutcome<Int, TestStop>, last: Int, level: Int)
 
 // POSITIVE CONTROL: every planned level continues, so the staircase completes at the top of the plan,
 // which is read in PLAN order -- the readings are supplied out of order and the answer does not move.
-test fn a_plan_that_every_level_continues_through_completes_at_its_top() -> Bool {
+test fn a_plan_that_every_level_continues_through_completes_at_its_top() -> Bool  {
   completed_at(o: run(plan: [1, 2, 4], readings: [at(level: 4, ok: true, value: 1), at(level: 1, ok: true, value: 1), at(level: 2, ok: true, value: 1)]), level: 4)
 }
 
 // FIRST STOP WINS: level 2 stops, and level 4 -- which ALSO stops, and would be the answer if the
 // scan kept going -- is never read; the last sustained level is 1.
-test fn the_first_stop_ends_the_staircase_and_nothing_above_it_is_read() -> Bool {
+test fn the_first_stop_ends_the_staircase_and_nothing_above_it_is_read() -> Bool  {
   stopped_by_rule_at(o: run(plan: [1, 2, 4], readings: [at(level: 1, ok: true, value: 1), at(level: 2, ok: false, value: 1), at(level: 4, ok: false, value: 1)]), last: 1, level: 2)
 }
 
 // A HOLE IS A STOP: level 2 has no reading, and level 4's reading would continue. A scan that skipped
 // the hole would complete at 4; this one stops at 2 through the caller's missing arm. A level read
 // twice is a hole of the other kind.
-test fn a_missing_or_duplicated_reading_stops_through_the_missing_arm() -> Bool {
+test fn a_missing_or_duplicated_reading_stops_through_the_missing_arm() -> Bool  {
   stopped_missing_at(o: run(plan: [1, 2, 4], readings: [at(level: 1, ok: true, value: 1), at(level: 4, ok: true, value: 1)]), last: 1, level: 2)
     && stopped_missing_at(o: run(plan: [1, 2, 4], readings: [at(level: 1, ok: true, value: 1), at(level: 2, ok: true, value: 1), at(level: 2, ok: true, value: 1), at(level: 4, ok: true, value: 1)]), last: 1, level: 2)
 }
 
 // THE ACCUMULATOR IS THREADED: values 6 and 6 sum to 12 after level 2, so level 4 stops on the
 // carried sum even though its own reading is fine. An accumulator reset per level would complete.
-test fn the_accumulator_carries_from_one_level_to_the_next() -> Bool {
+test fn the_accumulator_carries_from_one_level_to_the_next() -> Bool  {
   match run(plan: [1, 2, 4], readings: [at(level: 1, ok: true, value: 6), at(level: 2, ok: true, value: 6), at(level: 4, ok: true, value: 1)]) {
     StaircaseStopped { last_sustained: Present { value: l }, stop: StopAccumulatedPast { level: s, sum: sum } } => l == 2 && s == 4 && sum == 12
     _ => false
@@ -93,7 +93,7 @@ test fn the_accumulator_carries_from_one_level_to_the_next() -> Bool {
 }
 
 // AN UNREADABLE PLAN IS REFUSED BY ITS TYPED ARM, not run: empty, or naming a level twice.
-test fn an_empty_or_duplicated_plan_is_refused() -> Bool {
+test fn an_empty_or_duplicated_plan_is_refused() -> Bool  {
   (match run(plan: [], readings: [at(level: 1, ok: true, value: 1)]) { StaircaseRefused { refusal: StaircasePlanEmpty } => true _ => false })
     && (match run(plan: [1, 2, 2], readings: [at(level: 1, ok: true, value: 1), at(level: 2, ok: true, value: 1)]) {
       StaircaseRefused { refusal: StaircasePlanLevelDuplicated { level: d } } => d == 2
@@ -102,7 +102,7 @@ test fn an_empty_or_duplicated_plan_is_refused() -> Bool {
 }
 
 // THE FIRST LEVEL STOPPING LEAVES NO SUSTAINED LEVEL, rather than inventing a zero.
-test fn a_stop_at_the_first_level_sustains_nothing() -> Bool {
+test fn a_stop_at_the_first_level_sustains_nothing() -> Bool  {
   match run(plan: [1, 2], readings: [at(level: 1, ok: false, value: 1), at(level: 2, ok: true, value: 1)]) {
     StaircaseStopped { last_sustained: Absent, stop: StopRuleFailed { level: s } } => s == 1
     _ => false

@@ -29,14 +29,14 @@ fn rows() -> List<KeyedScanRow> {
 
 // The FIRST element of each duplicated key, once, in the order the keys were found to repeat: "a"
 // repeats before "b", and "c" never repeats. The second-occurrence reading would give a2, b2.
-test fn w_duplicated_by_key_returns_the_first_element_of_each_repeated_key() -> Bool {
+test fn w_duplicated_by_key_returns_the_first_element_of_each_repeated_key() -> Bool  {
   payloads(rs: duplicated_by_key(rows(), key_of)) == ["a1", "b1"]
 }
 
-test fn w_distinct_by_key_keeps_the_first_element_in_first_seen_order() -> Bool {
+test fn w_distinct_by_key_keeps_the_first_element_in_first_seen_order() -> Bool  {
   payloads(rs: distinct_by_key(rows(), key_of)) == ["a1", "b1", "c1"]
 }
 
-test fn w_keyed_scans_of_an_empty_list_are_empty() -> Bool {
+test fn w_keyed_scans_of_an_empty_list_are_empty() -> Bool  {
   count(duplicated_by_key([], key_of)) == 0 && count(distinct_by_key([], key_of)) == 0
 }

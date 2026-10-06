@@ -89,22 +89,22 @@ fn derived_totals_are_bounded_by_the_roster() -> Bool {
     && (type_reference_decl_file_classes |> filter(c => class_is_irreducible(c: c)) |> count) <= n
 }
 
-test fn class_exhibits_a_real_specimen() -> Bool {
+test fn class_exhibits_a_real_specimen() -> Bool  {
   every_class_exhibits_a_real_specimen()
 }
 
-test fn no_more_specimens_than_occurrences() -> Bool {
+test fn no_more_specimens_than_occurrences() -> Bool  {
   no_class_cites_more_specimens_than_it_has_occurrences()
 }
 
-test fn conversion_and_irreducibility_agree_with_authority() -> Bool {
+test fn conversion_and_irreducibility_agree_with_authority() -> Bool  {
   conversion_and_irreducibility_agree_with_the_authority_column()
 }
 
-test fn availability_price_within_its_class() -> Bool {
+test fn availability_price_within_its_class() -> Bool  {
   every_availability_price_is_within_its_class()
 }
 
-test fn derived_totals_bounded_by_roster() -> Bool {
+test fn derived_totals_bounded_by_roster() -> Bool  {
   derived_totals_are_bounded_by_the_roster()
 }

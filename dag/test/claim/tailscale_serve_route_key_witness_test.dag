@@ -139,7 +139,7 @@ fn root_endpoint(backend: String) -> TailscaleServeEndpoint {
 // unchanged, so membership_reconcile must emit exactly one MemberChanged carrying both sides — a
 // re-point, not teardown+reinstall.
 
-test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
+test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool  {
   let observed = [tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))]
   let desired = [tailscale_route_subject(endpoint: root_endpoint(backend: "18081"))]
   let plan = membership_plan_admitting_scoped_outcome(
@@ -177,7 +177,7 @@ data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEna
 // zero MemberChanged. This is the discriminating half the step-1 witness must pin; a key-equality
 // test alone cannot catch it.
 
-test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
+test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool  {
   let observed = [tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))]
   let desired = [tailscale_route_subject(endpoint: root_endpoint(backend: "18081"))]
   let plan = membership_plan_admitting_scoped_outcome(
@@ -201,14 +201,14 @@ test fn w_enable_argv_key_backend_repoint_is_remove_add_not_modified() -> Bool {
 // about structured route keys vs keys that embed mutable content (enable argv), not about
 // flags-only flattening alone.
 
-test fn w_retired_flags_key_is_route_stable_across_backend_repoint() -> Bool {
+test fn w_retired_flags_key_is_route_stable_across_backend_repoint() -> Bool  {
   let a = tailscale_route_subject(endpoint: root_endpoint(backend: "8080"))
   let b = tailscale_route_subject(endpoint: root_endpoint(backend: "18081"))
   retired_flattened_serve_flags_key(subject: a) as String
     == retired_flattened_serve_flags_key(subject: b) as String
 }
 
-test fn backend_change_preserves_route_key() -> Bool {
+test fn backend_change_preserves_route_key() -> Bool  {
   let root = root_endpoint(backend: "8080")
   let repointed = root_endpoint(backend: "18081")
   tailscale_serve_route_key_eq(
@@ -217,7 +217,7 @@ test fn backend_change_preserves_route_key() -> Bool {
   )
 }
 
-test fn distinct_mounts_have_distinct_keys() -> Bool {
+test fn distinct_mounts_have_distinct_keys() -> Bool  {
   let root = tailscale_serve_route_key(endpoint: root_endpoint(backend: "8080"))
   let lab = tailscale_serve_route_key(endpoint: TailscaleServeEndpoint {
     https_port: 443,
@@ -227,7 +227,7 @@ test fn distinct_mounts_have_distinct_keys() -> Bool {
   !tailscale_serve_route_key_eq(a: root, b: lab)
 }
 
-test fn membership_label_is_not_rendered_argv() -> Bool {
+test fn membership_label_is_not_rendered_argv() -> Bool  {
   let endpoint = TailscaleServeEndpoint {
     https_port: 443,
     mount: ServeSetPath { path: "/srv1-lab" as NonEmptyStr },
@@ -257,7 +257,7 @@ fn srv2_root_route_subject() -> TailscaleServeRouteSubject {
   )
 }
 
-test fn w_per_device_scope_preserves_distinct_nodes_same_route() -> Bool {
+test fn w_per_device_scope_preserves_distinct_nodes_same_route() -> Bool  {
   let key_a = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv1_root_route_subject())
   let key_b = key_relation_scoped_key(relation: tailscale_serve_route_key_relation, subject: srv2_root_route_subject())
   !key_relation_scoped_key_eq(relation: tailscale_serve_route_key_relation, a: key_a, b: key_b)
@@ -272,7 +272,7 @@ data global_collapse_demonstration_relation: KeyRelation<GlobalCollapseDemonstra
   key_eq: tailscale_serve_route_key_eq,
 )
 
-test fn w_global_scope_collapses_distinct_nodes_same_route() -> Bool {
+test fn w_global_scope_collapses_distinct_nodes_same_route() -> Bool  {
   let key_a = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv1_root_route_subject())
   let key_b = key_relation_scoped_key(relation: global_collapse_demonstration_relation, subject: srv2_root_route_subject())
   key_relation_scoped_key_eq(relation: global_collapse_demonstration_relation, a: key_a, b: key_b)

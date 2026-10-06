@@ -38,12 +38,12 @@ fn stdin_exact_bytes(body: String) -> String {
   shell.Exec.Run(script: script).stdout
 }
 
-test fn transport_script_stdin_delivers_exact_bytes() -> Bool {
+test fn transport_script_stdin_delivers_exact_bytes() -> Bool  {
   let observed = stdin_exact_bytes(body: "printf '%s' 'alpha beta\ttab $dollar \"dq\" end'")
   observed == "alpha beta\ttab $dollar \"dq\" end"
 }
 
-test fn transport_script_stdin_fidelity_is_independent_of_terminal_newline() -> Bool {
+test fn transport_script_stdin_fidelity_is_independent_of_terminal_newline() -> Bool  {
   let without_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'")
   let with_terminal_newline = stdin_exact_bytes(body: "printf '%s' 'newline-probe'\n")
   without_terminal_newline == "newline-probe" && with_terminal_newline == "newline-probe"

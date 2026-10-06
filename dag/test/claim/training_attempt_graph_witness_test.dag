@@ -203,7 +203,7 @@ fn admit(s: TrainingRunSubject<NonEmptyStr>, xs: List<Attempt<NonEmptyStr>>) -> 
 // refused everything would satisfy all of them. This is the ordinary escalation history the
 // programme is measured on -- an initial attempt, an infrastructure retry, then a capability
 // escalation -- and it must admit.
-test fn an_ordinary_escalation_chain_is_admitted() -> Bool {
+test fn an_ordinary_escalation_chain_is_admitted() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -223,7 +223,7 @@ test fn an_ordinary_escalation_chain_is_admitted() -> Bool {
 // attempts are present, both name a predecessor that exists, every local check passes -- and
 // neither chain ever reaches the demand. A recursive walk over this pair does not terminate; the
 // fold does, and reports both as unrooted.
-test fn a_lineage_cycle_is_refused_rather_than_walked_forever() -> Bool {
+test fn a_lineage_cycle_is_refused_rather_than_walked_forever() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -239,7 +239,7 @@ test fn a_lineage_cycle_is_refused_rather_than_walked_forever() -> Bool {
 // absent-predecessor check passes; what fails is that following the chain never arrives at THIS
 // demand. Without the fixpoint this graph would be admitted and its members would then be joined
 // as evidence about a run they belong to only by resemblance.
-test fn a_chain_rooted_in_another_demand_is_refused() -> Bool {
+test fn a_chain_rooted_in_another_demand_is_refused() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -256,7 +256,7 @@ test fn a_chain_rooted_in_another_demand_is_refused() -> Bool {
   }
 }
 
-test fn an_attempt_under_another_work_is_refused() -> Bool {
+test fn an_attempt_under_another_work_is_refused() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -274,7 +274,7 @@ test fn an_attempt_under_another_work_is_refused() -> Bool {
   }
 }
 
-test fn an_attempt_whose_predecessor_is_absent_is_refused() -> Bool {
+test fn an_attempt_whose_predecessor_is_absent_is_refused() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -286,7 +286,7 @@ test fn an_attempt_whose_predecessor_is_absent_is_refused() -> Bool {
 // EVERY OCCURRENCE OF A DUPLICATED IDENTITY IS REPORTED, because which one is "the original" is
 // not a fact the graph has. Nominating one as legitimate would be the fold inventing a precedence
 // it cannot establish from an unordered population.
-test fn a_duplicated_attempt_identity_is_refused_at_every_occurrence() -> Bool {
+test fn a_duplicated_attempt_identity_is_refused_at_every_occurrence() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -299,7 +299,7 @@ test fn a_duplicated_attempt_identity_is_refused_at_every_occurrence() -> Bool {
 // INDEPENDENT DEFECTS ARE ALL REPORTED. An ordered refusal would surface one and hide the rest, so
 // a graph with three problems would take three round trips to admit -- and the hidden defects
 // would look like new regressions each time the visible one was fixed.
-test fn independent_graph_defects_are_all_reported() -> Bool {
+test fn independent_graph_defects_are_all_reported() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -322,7 +322,7 @@ test fn independent_graph_defects_are_all_reported() -> Bool {
 // MEMBERSHIP IS IDENTITY, NOT RESEMBLANCE. Two attempts whose keys read the same under different
 // principals are different attempts, and a membership test keyed on the text alone would admit
 // another tenant's attempt into this run's evidence join.
-test fn an_attempt_key_under_another_principal_is_not_a_member() -> Bool {
+test fn an_attempt_key_under_another_principal_is_not_a_member() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -341,7 +341,7 @@ test fn an_attempt_key_under_another_principal_is_not_a_member() -> Bool {
 // A REQUESTED RE-EXECUTION ROOTS DIRECTLY IN THE DEMAND, like an initial attempt and unlike a
 // retry. It is policy rather than infrastructure, so it has no prior attempt to name, and a
 // rootedness rule that only recognized InitialAttempt would report every rerun as unrooted.
-test fn a_requested_reexecution_roots_directly_in_the_demand() -> Bool {
+test fn a_requested_reexecution_roots_directly_in_the_demand() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>

@@ -327,7 +327,7 @@ data atomic: CheckpointPublicationStanding = AtomicallyPublished { receipt: "gun
 
 // THE POSITIVE CONTROL, and every refusal below is load-bearing only because of it: an admitter
 // that refused everything would satisfy all of them.
-test fn a_complete_atomically_published_checkpoint_on_an_in_graph_attempt_is_admitted() -> Bool {
+test fn a_complete_atomically_published_checkpoint_on_an_in_graph_attempt_is_admitted() -> Bool  {
   match admit_with(attempt_key: "e1", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 8) {
     none => false
     Present { value: a } =>
@@ -343,7 +343,7 @@ test fn a_complete_atomically_published_checkpoint_on_an_in_graph_attempt_is_adm
 // with weights from this step beside an optimizer state from an earlier one and would NOT crash.
 // A check asking "are there components?" passes this input, which is why the roster is closed and
 // the refusal names the component.
-test fn a_checkpoint_holding_only_weights_is_refused_naming_every_absent_component() -> Bool {
+test fn a_checkpoint_holding_only_weights_is_refused_naming_every_absent_component() -> Bool  {
   match admit_with(attempt_key: "e1", components: [component(c: ModelWeights)], standing: atomic, observed_manifest_gradient_accumulation: 8) {
     none => false
     Present { value: a } => {
@@ -361,7 +361,7 @@ test fn a_checkpoint_holding_only_weights_is_refused_naming_every_absent_compone
 // NOT-ATOMIC AND NOT-OBSERVED ARE DIFFERENT REFUSALS. One says the writer left a torn checkpoint;
 // the other says nobody looked. Collapsing them either blocks a healthy resume or authorizes a torn
 // one, and they are distinguished here rather than both landing as a generic publication failure.
-test fn incomplete_and_unobserved_publication_do_not_read_as_each_other() -> Bool {
+test fn incomplete_and_unobserved_publication_do_not_read_as_each_other() -> Bool  {
   match admit_with(
     attempt_key: "e1",
     components: all_components(),
@@ -392,7 +392,7 @@ test fn incomplete_and_unobserved_publication_do_not_read_as_each_other() -> Boo
 // A CHECKPOINT FROM ANOTHER RUN IS REFUSED EVEN THOUGH EVERY COMPONENT IS HONEST. Its components
 // read back, its publication is genuinely atomic, its manifest agrees -- and the state belongs to a
 // different computation. Membership is the only thing that separates it from an admissible one.
-test fn a_checkpoint_whose_attempt_is_outside_the_run_graph_is_refused() -> Bool {
+test fn a_checkpoint_whose_attempt_is_outside_the_run_graph_is_refused() -> Bool  {
   match admit_with(attempt_key: "e-FOREIGN", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 8) {
     none => false
     Present { value: a } => refusal_names(a: a).any(n => n == "attempt-outside-run")
@@ -402,7 +402,7 @@ test fn a_checkpoint_whose_attempt_is_outside_the_run_graph_is_refused() -> Bool
 // A CHECKPOINT WRITTEN UNDER A DIFFERENT EFFECTIVE MANIFEST IS NOT RESUMABLE, and the refusal names
 // the coordinate rather than saying the manifests differ. A hash comparison could have produced the
 // second answer and never the first.
-test fn a_checkpoint_written_under_a_diverged_manifest_is_refused() -> Bool {
+test fn a_checkpoint_written_under_a_diverged_manifest_is_refused() -> Bool  {
   match admit_with(attempt_key: "e1", components: all_components(), standing: atomic, observed_manifest_gradient_accumulation: 16) {
     none => false
     Present { value: a } => {
@@ -415,7 +415,7 @@ test fn a_checkpoint_written_under_a_diverged_manifest_is_refused() -> Bool {
 // INDEPENDENT DEFECTS ARE ALL REPORTED. A checkpoint missing its RNG state AND diverging on
 // gradient accumulation would otherwise take two attempts to learn about, and the second reason
 // would read as a new defect introduced by fixing the first.
-test fn independent_checkpoint_defects_are_all_reported() -> Bool {
+test fn independent_checkpoint_defects_are_all_reported() -> Bool  {
   let without_rng = checkpoint_components().filter(c => checkpoint_component_name(c: c) != "rng_state").map(c => component(c: c))
   match admit_with(attempt_key: "e-FOREIGN", components: without_rng, standing: PublicationIncomplete { detail: "torn" }, observed_manifest_gradient_accumulation: 16) {
     none => false

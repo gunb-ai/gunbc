@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The committed projection carries the public root's whole identity key and its peak, rendered from
 // the row, so the seed's join has every coordinate to join on.
-test fn the_public_projection_carries_the_identity_key_and_peak() -> Bool {
+test fn the_public_projection_carries_the_identity_key_and_peak() -> Bool  {
   let j = expected_whole_corpus_compile_measured_root_demands_json()
   string_contains(s: j, pattern: "\"repository\": \"gunbc\"")
     && string_contains(s: j, pattern: "\"primary_root\": \"dag\"")
@@ -31,7 +31,7 @@ test fn the_public_projection_carries_the_identity_key_and_peak() -> Bool {
 
 // An unmeasured root is the ABSENCE of a row: it projects to no row, so no reader can mistake an
 // authored negative for a measurement. The measured control beside it projects one row.
-test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> Bool {
+test fn an_unmeasured_root_projects_no_row_and_a_measured_one_projects_one() -> Bool  {
   let root = WholeCorpusCompileRootIdentity {
     repository: "gunbc-private" as RepositoryIdentity,
     primary_root: "strategy" as SourceRootIdentity,

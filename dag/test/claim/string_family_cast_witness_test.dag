@@ -18,7 +18,7 @@ fn string_to_secret_value(s: String) -> SecretValue {
   s as SecretValue
 }
 
-test fn string_family_cast_holds() -> Bool {
+test fn string_family_cast_holds() -> Bool  {
   string_to_secret("secret-token") == "secret-token"
     && string_to_nonempty("bmc-host") == "bmc-host"
     && string_to_secret_value("rotated") == "rotated"

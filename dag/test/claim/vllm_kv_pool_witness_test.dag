@@ -35,11 +35,11 @@ import extdeps.vllm.kv_cache {
 // one conjunction, because they fail for DIFFERENT reasons -- block accounting is not KV accounting,
 // while the utilization product bounds a budget the pool is then subtracted out of -- and a single
 // row would let one arm silently flip while the other held it green.
-test fn w_block_arithmetic_is_not_the_pool() -> Bool {
+test fn w_block_arithmetic_is_not_the_pool() -> Bool  {
   !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
 }
 
-test fn w_the_utilization_product_is_a_budget_not_a_pool() -> Bool {
+test fn w_the_utilization_product_is_a_budget_not_a_pool() -> Bool  {
   !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
 }
 
@@ -48,7 +48,7 @@ test fn w_the_utilization_product_is_a_budget_not_a_pool() -> Bool {
 // RED plus its positive control. A carrier that answered `true` for both arms would make
 // "we observed the format" indistinguishable from "we never looked", which is the absent-reads-as-
 // never-looked shape this repository already files.
-test fn w_an_unobserved_format_is_not_an_observation() -> Bool {
+test fn w_an_unobserved_format_is_not_an_observation() -> Bool  {
   !vllm_resolved_kv_format_is_observed(f: ResolvedUnobserved)
     && vllm_resolved_kv_format_is_observed(f: ResolvedFp8DsMla)
 }
@@ -61,7 +61,7 @@ test fn w_an_unobserved_format_is_not_an_observation() -> Bool {
 // (extdeps.vllm.log_lines vllm_startup_lines) and this row kept asserting three, so a suite that
 // should have gone red at the fourth line's landing went red a commit late instead. Every pair
 // below is checked so a fifth line has an obvious place to extend.
-test fn w_the_three_startup_prefixes_are_distinct() -> Bool {
+test fn w_the_three_startup_prefixes_are_distinct() -> Bool  {
   (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: MaximumConcurrency))
     && (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: ResolvedKvCacheFormat))
     && (vllm_startup_line_prefix(line: GpuKvCacheSize) != vllm_startup_line_prefix(line: MemoryProfileSummary))
@@ -98,7 +98,7 @@ fn refused_on_line(a: VllmKvPoolAdmission, wanted: NonEmptyStr) -> Bool {
 // THE KV-CACHE-SIZE READING ADMITS, AND ITS SOURCE TEXT SURVIVES INTO THE POOL. Without the second
 // conjunct this row would be satisfied by a constructor that accepted the reading and then dropped
 // it -- which is what the deleted free constructor effectively did.
-test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool {
+test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool  {
   match admitted_pool(a: vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: 3330000), reading: kv_size_reading())) {
     Absent => false
@@ -112,7 +112,7 @@ test fn w_the_pool_is_read_from_the_kv_cache_size_line() -> Bool {
 // silently acceptable before: it is a real vLLM startup line carrying a real number, so nothing
 // about it looks wrong until you ask which quantity it names. It now refuses, and the refusal names
 // the line it was handed rather than answering with a pool.
-test fn w_the_concurrency_line_refuses_rather_than_becoming_a_pool() -> Bool {
+test fn w_the_concurrency_line_refuses_rather_than_becoming_a_pool() -> Bool  {
   refused_on_line(
     a: vllm_observed_kv_pool_from_reading(
       tokens: token_count(count: 3330000),
@@ -125,7 +125,7 @@ test fn w_the_concurrency_line_refuses_rather_than_becoming_a_pool() -> Bool {
 
 // RED. The format line likewise, so the admission is keyed on being THE kv-cache-size line and not
 // merely on being "not the concurrency line".
-test fn w_the_resolved_format_line_refuses_rather_than_becoming_a_pool() -> Bool {
+test fn w_the_resolved_format_line_refuses_rather_than_becoming_a_pool() -> Bool  {
   refused_on_line(
     a: vllm_observed_kv_pool_from_reading(
       tokens: token_count(count: 3330000),
@@ -141,7 +141,7 @@ test fn w_the_resolved_format_line_refuses_rather_than_becoming_a_pool() -> Bool
 // Two readings at different utilizations are not comparable, and an observation that dropped the
 // utilization would look like a function of the cap alone -- which is exactly the curve this module
 // refuses to fit. This holds the pairing, not a value.
-test fn w_a_cap_pool_pair_carries_its_utilization_and_its_source_line() -> Bool {
+test fn w_a_cap_pool_pair_carries_its_utilization_and_its_source_line() -> Bool  {
   match admitted_pool(a: vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: 3330000), reading: kv_size_reading())) {
     Absent => false

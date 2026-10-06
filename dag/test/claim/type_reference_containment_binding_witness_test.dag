@@ -127,7 +127,7 @@ fn trcb_root_exposure(occurrence: OccurrenceId) -> DeclarationExposureRow {
 }
 
 // Control 1 (binds): cross-module bare ContentHash with RootExposure on the provider type — OccurrenceBound from the single occurrence_binding_from_candidates fold, no import reachability required.
-test fn control_one_containment_bind_holds() -> Bool {
+test fn control_one_containment_bind_holds() -> Bool  {
   let type_decl = OccurrenceId { value: 10 }
   let fn_body = OccurrenceId { value: 20 }
   let type_ref = OccurrenceId { value: 30 }
@@ -179,7 +179,7 @@ test fn control_one_containment_bind_holds() -> Bool {
 }
 
 // Control 2 (must refuse): N1a row 3 analog — no ContentHash declaration in the transport population; candidate lookup returns empty and occurrence_binding_from_candidates yields OccurrenceUnbound.
-test fn control_two_absent_must_refuse_holds() -> Bool {
+test fn control_two_absent_must_refuse_holds() -> Bool  {
   let fn_body = OccurrenceId { value: 20 }
   let type_ref = OccurrenceId { value: 30 }
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
@@ -220,7 +220,7 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
 }
 
 // Control 3 (pool coincidence must not bind): N1a row 4 analog — ContentHash declaration is pool-present (same spelling in transport, symbol_index_lookup would hit on the legacy path) but carries only ModuleExposure for std.content_hash while the reference is in extdeps.consumer with no containment bridge. Kernel must answer OccurrenceUnbound, never treat pool membership as binding authority.
-test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
+test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool  {
   let type_decl = OccurrenceId { value: 10 }
   let fn_body = OccurrenceId { value: 20 }
   let type_ref = OccurrenceId { value: 30 }
@@ -268,7 +268,7 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
 }
 
 // API-boundary control (slice 1 scope note: category inadmissibility): resolve_type_reference_containment_binding refuses a CallableOccurrence reference with ReferenceBindingProjectionWrongCategory before candidate enumeration — not a second binding fold, but the typed entry's category guard must execute.
-test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
+test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool  {
   let call_ref = OccurrenceId { value: 30 }
   let ref_path = trcb_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
   match resolve_type_reference_containment_binding(
@@ -300,7 +300,7 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
   }
 }
 
-test fn authority_note_names_single_kernel_fold() -> Bool {
+test fn authority_note_names_single_kernel_fold() -> Bool  {
   string_contains(s: type_reference_containment_binding_authority_note, pattern: "occurrence_binding_from_candidates")
     && string_contains(s: type_reference_containment_binding_authority_note, pattern: "lookup_type_by_name are NOT binding")
     && string_contains(s: type_reference_containment_binding_slice1_scope_note, pattern: "OUT OF SLICE")

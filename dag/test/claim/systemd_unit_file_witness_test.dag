@@ -87,7 +87,7 @@ fn sample() -> SystemdUnitFile {
 // its sections transposed, a missing trailing newline, or CRLF endings -- all of which are real
 // systemd failures or permanent false diffs. So the claim is equality with a literal written out
 // here independently of the serializer's own composition.
-test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
+test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool  {
   serialize_systemd_unit_file(file: sample()) ==
     "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 }
@@ -95,13 +95,13 @@ test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
 // systemd's parser is line-oriented; a final directive with no newline is the classic silently
 // truncated last line. It is also load-bearing for convergence: the observed-vs-rendered byte
 // comparison would differ forever against every correctly written file on disk.
-test fn the_rendered_unit_file_ends_with_a_newline() -> Bool {
+test fn the_rendered_unit_file_ends_with_a_newline() -> Bool  {
   ends_with(s: serialize_systemd_unit_file(file: sample()), suffix: "default.target\n")
 }
 
 // Section order is systemd's, and it is asserted rather than assumed: the sections are three
 // separate fields, so nothing about the record's shape forces the emission order.
-test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
+test fn sections_are_emitted_in_unit_service_install_order() -> Bool  {
   let out = serialize_systemd_unit_file(file: sample())
   starts_with(s: out, prefix: "[Unit]\n")
     && string_contains(out, "\n[Service]\n")
@@ -111,7 +111,7 @@ test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
 // An empty section still emits its header. A unit file with no [Install] directives is legitimate
 // (a unit started by another unit rather than enabled), and the header's presence is what makes the
 // rendered bytes a function of the record alone rather than of which fields happened to be nonempty.
-test fn an_empty_section_still_emits_its_header() -> Bool {
+test fn an_empty_section_still_emits_its_header() -> Bool  {
   serialize_systemd_unit_file(
     file: ServiceUnitFile {
       unit: [Description { text: "d" as NonEmptyStr }],
@@ -124,7 +124,7 @@ test fn an_empty_section_still_emits_its_header() -> Bool {
 // THE DISCRIMINATING PAIR for the install section, and the reason it is a named type rather than a
 // list that happens to be empty. These two files differ in their bytes, so a model that could not
 // tell them apart could not render both -- and the second is the shape three live fleet units have.
-test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
+test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool  {
   serialize_systemd_unit_file(
     file: ServiceUnitFile {
       unit: [Description { text: "d" as NonEmptyStr }],
@@ -134,7 +134,7 @@ test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
   ) == "[Unit]\nDescription=d\n\n[Service]\nType=oneshot\n"
 }
 
-test fn installable_and_not_installable_render_differently() -> Bool {
+test fn installable_and_not_installable_render_differently() -> Bool  {
   let base_unit = [Description { text: "d" as NonEmptyStr }]
   let base_service = [ServiceType { mode: OneshotMode }]
   serialize_systemd_unit_file(
@@ -153,18 +153,18 @@ test fn installable_and_not_installable_render_differently() -> Bool {
 // `ServiceType` renders as `Type=`, NOT `ServiceType=`. The variant is named for what it is in the
 // model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
 // constructor name leaked into the emitted bytes.
-test fn service_type_renders_as_the_type_directive() -> Bool {
+test fn service_type_renders_as_the_type_directive() -> Bool  {
   systemd_service_directive_line(directive: ServiceType { mode: NotifyMode })
     == "Type=notify"
 }
 
-test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
+test fn each_unit_directive_renders_its_own_systemd_name() -> Bool  {
   systemd_unit_directive_line(directive: Description { text: "a" as NonEmptyStr }) == "Description=a"
     && systemd_unit_directive_line(directive: After { target: "b" as NonEmptyStr }) == "After=b"
     && systemd_unit_directive_line(directive: Wants { target: "c" as NonEmptyStr }) == "Wants=c"
 }
 
-test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
+test fn each_service_directive_renders_its_own_systemd_name() -> Bool  {
   systemd_service_directive_line(directive: ExecStart { command: "a" as NonEmptyStr }) == "ExecStart=a"
     && systemd_service_directive_line(directive: Restart { policy: "b" as NonEmptyStr }) == "Restart=b"
     && systemd_service_directive_line(directive: Environment { assignment: "K=v" as NonEmptyStr })
@@ -173,7 +173,7 @@ test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
       == "WorkingDirectory=/d"
 }
 
-test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
+test fn each_install_directive_renders_its_own_systemd_name() -> Bool  {
   systemd_install_directive_line(directive: WantedBy { target: "a" as NonEmptyStr }) == "WantedBy=a"
     && systemd_install_directive_line(directive: RequiredBy { target: "b" as NonEmptyStr })
       == "RequiredBy=b"
@@ -181,7 +181,7 @@ test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
 
 // An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
 // wrong implementation, and this pins the whole assignment through.
-test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
+test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool  {
   systemd_service_directive_line(
     directive: Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as NonEmptyStr },
   ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
@@ -198,7 +198,7 @@ test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
 //
 // It is also the file that could not be rendered at all before this arm existed: it has a [Timer]
 // section and no [Service], which the previous three-mandatory-section record had no way to express.
-test fn the_live_fleet_converge_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+test fn the_live_fleet_converge_timer_serializes_to_exactly_its_deployed_bytes() -> Bool  {
   serialize_systemd_unit_file(
     file: TimerUnitFile {
       unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
@@ -216,7 +216,7 @@ test fn the_live_fleet_converge_timer_serializes_to_exactly_its_deployed_bytes()
 // The monotonic-timer form, from the live gunbc-srv1-green-belt.timer on the same host. It shares no
 // directive with the calendar form above except Unit=, so the two together exercise every timer
 // variant this module models.
-test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool  {
   serialize_systemd_unit_file(
     file: TimerUnitFile {
       unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
@@ -233,7 +233,7 @@ test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
 
 // `TimerUnit` renders as `Unit=`, not `TimerUnit=` — the same variant-name-versus-wire-name trap
 // `ServiceType` carries, and the one most likely to leak here because [Unit] is also a section name.
-test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
+test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool  {
   systemd_timer_directive_line(directive: TimerUnit { target: "a.service" as NonEmptyStr })
     == "Unit=a.service"
     && !string_contains(
@@ -242,7 +242,7 @@ test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
     )
 }
 
-test fn each_timer_directive_renders_its_own_systemd_name() -> Bool {
+test fn each_timer_directive_renders_its_own_systemd_name() -> Bool  {
   systemd_timer_directive_line(directive: OnCalendar { expression: "*:0/15" as NonEmptyStr })
     == "OnCalendar=*:0/15"
     && systemd_timer_directive_line(directive: OnBootSec { duration: "2min" as NonEmptyStr })
@@ -257,14 +257,14 @@ test fn each_timer_directive_renders_its_own_systemd_name() -> Bool {
 
 // systemd accepts `true`/`false` and this is a modeled Bool, so the spelling is decided here once.
 // The false arm is asserted because it is the one no live unit exercises.
-test fn persistent_renders_systemds_own_boolean_spelling() -> Bool {
+test fn persistent_renders_systemds_own_boolean_spelling() -> Bool  {
   systemd_timer_directive_line(directive: Persistent { enabled: true }) == "Persistent=true"
     && systemd_timer_directive_line(directive: Persistent { enabled: false }) == "Persistent=false"
 }
 
 // The three service directives added for the live fleet units. `User=`/`Group=` are the pair whose
 // variant names had to differ from their wire names, so a leak shows up as `ServiceUser=`.
-test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
+test fn the_added_service_directives_render_their_own_systemd_names() -> Bool  {
   systemd_service_directive_line(directive: ServiceUser { name: "briansrls" as NonEmptyStr })
     == "User=briansrls"
     && systemd_service_directive_line(directive: ServiceGroup { name: "briansrls" as NonEmptyStr })
@@ -276,7 +276,7 @@ test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
 
 // `EnvironmentFile=` is not a spelling of `Environment=`. One names a file, the other carries an
 // assignment, and a renderer that fused them would silently turn a path into a variable named by it.
-test fn environment_and_environment_file_are_distinct_directives() -> Bool {
+test fn environment_and_environment_file_are_distinct_directives() -> Bool  {
   systemd_service_directive_line(directive: EnvironmentFile { path: "/etc/x.env" as NonEmptyStr })
     != systemd_service_directive_line(directive: Environment { assignment: "/etc/x.env" as NonEmptyStr })
 }
@@ -286,7 +286,7 @@ test fn environment_and_environment_file_are_distinct_directives() -> Bool {
 // a renderer that emitted the same line for both would silently make every required file optional,
 // and systemd would then start a unit whose configuration never loaded. Equal renderings are the
 // discriminator, so the inequality is the load-bearing half rather than either literal.
-test fn the_optional_environment_file_renders_systemds_dash_prefix() -> Bool {
+test fn the_optional_environment_file_renders_systemds_dash_prefix() -> Bool  {
   let path = "/etc/x.env" as NonEmptyStr
   let required = systemd_service_directive_line(directive: EnvironmentFile { path: path })
   let optional = systemd_service_directive_line(directive: EnvironmentFileIfPresent { path: path })
@@ -301,14 +301,14 @@ test fn the_optional_environment_file_renders_systemds_dash_prefix() -> Bool {
 // through a rendered file, so a failure names which directive drifted instead of only that some
 // byte moved. `Before=` and `Requires=` are systemd.unit(5); `Slice=` is systemd.resource-control(5)
 // and is why that citation was added to this module's declared scope.
-test fn the_added_unit_directives_render_their_own_systemd_names() -> Bool {
+test fn the_added_unit_directives_render_their_own_systemd_names() -> Bool  {
   systemd_unit_directive_line(directive: Before { target: "slices.target" as NonEmptyStr })
       == "Before=slices.target"
     && systemd_unit_directive_line(directive: Requires { target: "a.service" as NonEmptyStr })
       == "Requires=a.service"
 }
 
-test fn the_slice_directive_renders_in_the_service_section() -> Bool {
+test fn the_slice_directive_renders_in_the_service_section() -> Bool  {
   systemd_service_directive_line(directive: ServiceSlice { name: "p.slice" as NonEmptyStr })
     == "Slice=p.slice"
 }
@@ -320,7 +320,7 @@ test fn the_slice_directive_renders_in_the_service_section() -> Bool {
 // wired to the wrong member of `SystemdUnitProperty` -- `slice_memory_high` reaching MemoryMax, say
 // -- compiles clean, renders a plausible line, and silently writes the wrong ceiling onto a host.
 // Nothing but this comparison against the literal upstream spelling catches that.
-test fn each_slice_knob_renders_its_own_systemd_name() -> Bool {
+test fn each_slice_knob_renders_its_own_systemd_name() -> Bool  {
   let sixteen_gib = byte_size(count: 17179869184)
   systemd_slice_directive_line(directive: slice_memory_max(bytes: sixteen_gib))
       == "MemoryMax=17179869184"
@@ -340,7 +340,7 @@ test fn each_slice_knob_renders_its_own_systemd_name() -> Bool {
 // conjunct -- but a mint set where two knobs collapsed onto ONE property would pass a per-line check
 // written less carefully than the one above. Asserting distinctness states the property directly:
 // five mints, five spellings, no two the same.
-test fn the_five_slice_knobs_render_five_distinct_names() -> Bool {
+test fn the_five_slice_knobs_render_five_distinct_names() -> Bool  {
   let lines = [
     systemd_slice_directive_line(directive: slice_memory_max(bytes: byte_size(count: 1))),
     systemd_slice_directive_line(directive: slice_memory_high(bytes: byte_size(count: 1))),
@@ -356,7 +356,7 @@ test fn the_five_slice_knobs_render_five_distinct_names() -> Bool {
 // CPUWeight. That absence is not testable by constructing the bad value -- it has no constructor --
 // so what is asserted is the observable half, that the four knobs which DO admit the sentinel each
 // render it under their own name.
-test fn the_unlimited_mints_render_systemds_sentinel() -> Bool {
+test fn the_unlimited_mints_render_systemds_sentinel() -> Bool  {
   systemd_slice_directive_line(directive: slice_memory_max_unlimited()) == "MemoryMax=infinity"
     && systemd_slice_directive_line(directive: slice_memory_high_unlimited()) == "MemoryHigh=infinity"
     && systemd_slice_directive_line(directive: slice_memory_swap_max_unlimited())
@@ -368,7 +368,7 @@ test fn the_unlimited_mints_render_systemds_sentinel() -> Bool {
 // value renderer that dropped its `DirectiveUnlimited` arm into the numeric one, or a mint that
 // filled `DirectiveByteCount { bytes: byte_size(count: 0) }` where the sentinel belonged -- both of
 // which write a ZERO ceiling onto a host, which is not "no limit" but the strictest limit there is.
-test fn an_unlimited_ceiling_is_not_a_zero_ceiling() -> Bool {
+test fn an_unlimited_ceiling_is_not_a_zero_ceiling() -> Bool  {
   systemd_slice_directive_line(directive: slice_memory_max_unlimited())
     != systemd_slice_directive_line(directive: slice_memory_max(bytes: byte_size(count: 0)))
 }
@@ -377,7 +377,7 @@ test fn an_unlimited_ceiling_is_not_a_zero_ceiling() -> Bool {
 // that rendered the reset through the unlimited sentinel (`CPUQuota=infinity`, which systemd's
 // parser rejects) or through the thread arm at zero (`CPUQuota=0%`, the strictest ceiling there
 // is). Both are the same defect the memory test above guards, on the one knob whose wire differs.
-test fn the_cpu_quota_unset_renders_the_empty_assignment() -> Bool {
+test fn the_cpu_quota_unset_renders_the_empty_assignment() -> Bool  {
   systemd_slice_directive_line(directive: slice_cpu_quota_unbounded()) == "CPUQuota="
     && systemd_slice_directive_line(directive: slice_cpu_quota_unbounded())
       != systemd_slice_directive_line(directive: slice_cpu_quota(threads: hardware_thread_count(count: 0)))
@@ -401,7 +401,7 @@ fn slice_sample() -> SystemdUnitFile {
 // delivered to a host and compared byte-for-byte, so the claim is equality with a literal rather
 // than a shape check. The [Slice] header, the section order, the blank separator and the terminating
 // newline are all load-bearing and all asserted here at once.
-test fn a_slice_unit_file_serializes_to_exactly_these_bytes() -> Bool {
+test fn a_slice_unit_file_serializes_to_exactly_these_bytes() -> Bool  {
   serialize_systemd_unit_file(file: slice_sample())
     == "[Unit]\nDescription=gunbc managed compile pool\nBefore=slices.target\n\n[Slice]\nMemoryMax=17179869184\nMemoryHigh=17179869184\n"
 }
@@ -414,7 +414,7 @@ test fn a_slice_unit_file_serializes_to_exactly_these_bytes() -> Bool {
 // the observable consequence: the two unit types produce different section headers from the same
 // [Unit] section, and neither emits the other's. A serializer that fell back to one section renderer
 // for both arms would green a shape check and red this.
-test fn a_slice_unit_and_a_service_unit_emit_disjoint_sections() -> Bool {
+test fn a_slice_unit_and_a_service_unit_emit_disjoint_sections() -> Bool  {
   let slice_text = serialize_systemd_unit_file(file: slice_sample())
   let service_text = serialize_systemd_unit_file(file: sample())
   string_contains(s: slice_text, pattern: "[Slice]")
@@ -427,7 +427,7 @@ test fn a_slice_unit_and_a_service_unit_emit_disjoint_sections() -> Bool {
 // stop keeping its own List<String> renderer. Asserted as an identity between the two projections
 // rather than by comparing each against a literal separately -- two literals can be updated together
 // and stay consistent while both drift from the code.
-test fn the_line_view_joins_back_to_exactly_the_serialized_bytes() -> Bool {
+test fn the_line_view_joins_back_to_exactly_the_serialized_bytes() -> Bool  {
   join(systemd_unit_file_lines(file: sample()), "\n") == serialize_systemd_unit_file(file: sample())
     && join(systemd_unit_file_lines(file: slice_sample()), "\n")
       == serialize_systemd_unit_file(file: slice_sample())
@@ -436,7 +436,7 @@ test fn the_line_view_joins_back_to_exactly_the_serialized_bytes() -> Bool {
 // A DROP-IN CARRIES THE SECTIONS IT WAS GIVEN AND NO OTHERS. The subset property is the reason the
 // type exists, so it is asserted directly: a unit-only fragment emits no [Service], a service-only
 // fragment emits no [Unit], and neither acquires an [Install] the way a whole unit file would.
-test fn a_drop_in_emits_only_the_sections_it_carries() -> Bool {
+test fn a_drop_in_emits_only_the_sections_it_carries() -> Bool  {
   let unit_only = serialize_systemd_drop_in(
     drop_in: SystemdDropIn {
       sections: [DropInUnitSection { directives: [Requires { target: "c.service" as NonEmptyStr }] }],
@@ -460,7 +460,7 @@ test fn a_drop_in_emits_only_the_sections_it_carries() -> Bool {
 // being simplified back into a record of optional directive lists. A drop-in carrying an empty
 // [Service] emits the header; one carrying no service section at all emits nothing. Under a record
 // of lists both would be the empty list and these two artifacts would be indistinguishable.
-test fn an_empty_drop_in_section_is_distinct_from_an_absent_one() -> Bool {
+test fn an_empty_drop_in_section_is_distinct_from_an_absent_one() -> Bool  {
   let empty_service = serialize_systemd_drop_in(
     drop_in: SystemdDropIn { sections: [DropInServiceSection { directives: [] }] },
   )

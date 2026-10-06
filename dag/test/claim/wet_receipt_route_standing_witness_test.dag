@@ -37,7 +37,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 // AN EXTERNAL ORACLE, NOT A TREE MEASUREMENT. The expected string is what the 00_compile driver
 // actually prints on its inject-fault path. If the derivation ever produced a different marker, the
 // harness would look for a line no driver emits and report an undetected fault that was detected.
-test fn wet_receipt_fault_marker_matches_the_driver_source() -> Bool {
+test fn wet_receipt_fault_marker_matches_the_driver_source() -> Bool  {
   wet_receipt_expected_fault_marker_for_module(module_path: "src/v2/compiler/00_compile.dag")
     == "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: FAIL"
 }
@@ -45,7 +45,7 @@ test fn wet_receipt_fault_marker_matches_the_driver_source() -> Bool {
 // A MALFORMED PASS MARKER YIELDS NO FAULT MARKER RATHER THAN A FABRICATED ONE. Deriving a marker
 // from a stem that does not exist would produce a string no driver prints, which reads as a fault
 // that was not detected -- a fabricated plausible output at the point the evidence is consumed.
-test fn wet_receipt_fault_marker_refuses_a_malformed_pass_marker() -> Bool {
+test fn wet_receipt_fault_marker_refuses_a_malformed_pass_marker() -> Bool  {
   wet_receipt_fault_marker(pass_marker: "SOMETHING ELSE ENTIRELY") == ""
     && wet_receipt_expected_fault_marker_for_module(module_path: "src/v2/compiler/not_a_module.dag") == ""
 }
@@ -54,7 +54,7 @@ test fn wet_receipt_fault_marker_refuses_a_malformed_pass_marker() -> Bool {
 // is an ExecutionWitnessKind known_red row on gunbc.explicit_witness_admission; 00_compile is not.
 // Both lack a binding, so a single unavailable arm would render them identically -- which is exactly
 // the collapse this type exists to prevent.
-test fn known_red_receipt_derives_revoked_on_measured_red() -> Bool {
+test fn known_red_receipt_derives_revoked_on_measured_red() -> Bool  {
   match wet_receipt_standing_for(
     receipt: WetReceiptIdentity {
       entry: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag",
@@ -66,7 +66,7 @@ test fn known_red_receipt_derives_revoked_on_measured_red() -> Bool {
   }
 }
 
-test fn unmeasured_receipt_derives_never_established_not_red() -> Bool {
+test fn unmeasured_receipt_derives_never_established_not_red() -> Bool  {
   match wet_receipt_standing_for(
     receipt: WetReceiptIdentity {
       entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
@@ -82,7 +82,7 @@ test fn unmeasured_receipt_derives_never_established_not_red() -> Bool {
 
 // THE TEMPLATE ROW NEEDS NO BINDING AND IS NOT RENDERED AS MISSING ONE. Asking the binding roster
 // about a template row would answer Absent and report a fact that is not missing.
-test fn template_row_is_executable_without_a_module_binding() -> Bool {
+test fn template_row_is_executable_without_a_module_binding() -> Bool  {
   match wet_receipt_standing_for(
     receipt: WetReceiptIdentity {
       entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
@@ -104,7 +104,7 @@ fn standing_inhabits_exactly_one_arm(standing: WetReceiptRouteStanding) -> Bool 
   (e && !r && !n) || (!e && r && !n) || (!e && !r && n)
 }
 
-test fn every_row_inhabits_exactly_one_arm() -> Bool {
+test fn every_row_inhabits_exactly_one_arm() -> Bool  {
   fold_list(
     wet_receipt_route_standings,
     empty: true,
@@ -114,7 +114,7 @@ test fn every_row_inhabits_exactly_one_arm() -> Bool {
 
 // NO ROW NAMES A TRANSPORT THAT DOES NOT EXIST. An Obsolete row would mean the roster cites a module
 // the transport authority no longer configures -- the stale-citation class, at row grain.
-test fn no_row_is_obsolete() -> Bool {
+test fn no_row_is_obsolete() -> Bool  {
   fold_list(
     wet_receipt_route_standings,
     empty: true,
@@ -132,7 +132,7 @@ test fn no_row_is_obsolete() -> Bool {
 // EVERY ROW IS REACHABLE BY ITS OWN IDENTITY. A row whose identity does not find itself would make
 // the standing unaskable for the receipt it describes, which is how a row-grain authority silently
 // degenerates into a list nobody can query.
-test fn every_row_is_reachable_by_its_own_identity() -> Bool {
+test fn every_row_is_reachable_by_its_own_identity() -> Bool  {
   fold_list(
     wet_receipt_route_standings,
     empty: true,

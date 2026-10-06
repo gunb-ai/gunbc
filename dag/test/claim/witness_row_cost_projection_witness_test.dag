@@ -666,7 +666,7 @@ fn two_readings_of_one_clock_refuse_rather_than_picking_holds() -> Bool {
   }
 }
 
-test fn witness_row_cost_projection_holds() -> Bool {
+test fn witness_row_cost_projection_holds() -> Bool  {
   two_events_project_one_exact_tsv_row_holds() &&
   missing_parent_resolve_refuses_holds() &&
   multiple_parent_resolve_refuses_holds() &&

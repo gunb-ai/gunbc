@@ -38,46 +38,46 @@ fn string_escape_probe_compiles(body_after_backslash: String) -> Bool {
   )
 }
 
-test fn brace_escape_shell_form_length_test() -> Bool {
+test fn brace_escape_shell_form_length_test() -> Bool  {
   string_length(s: shell_default_form) == 42
 }
 
-test fn brace_escape_produces_single_char_test() -> Bool {
+test fn brace_escape_produces_single_char_test() -> Bool  {
   string_length(s: lone_escaped_brace) == 1
 }
 
-test fn brace_escape_after_backslash_is_two_chars_test() -> Bool {
+test fn brace_escape_after_backslash_is_two_chars_test() -> Bool  {
   string_length(s: backslash_then_brace) == 2
 }
 
-test fn brace_escape_pair_stays_literal_test() -> Bool {
+test fn brace_escape_pair_stays_literal_test() -> Bool  {
   string_length(s: escaped_pair) == 3
 }
 
-test fn unicode_escape_control_compiles_test() -> Bool {
+test fn unicode_escape_control_compiles_test() -> Bool  {
   string_escape_probe_compiles(body_after_backslash: "u\{000d\}")
 }
 
-test fn unicode_escape_empty_body_refuses_test() -> Bool {
+test fn unicode_escape_empty_body_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "u\{\}")
 }
 
-test fn unicode_escape_non_hex_refuses_test() -> Bool {
+test fn unicode_escape_non_hex_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "u\{xyz\}")
 }
 
-test fn unicode_escape_above_scalar_range_refuses_test() -> Bool {
+test fn unicode_escape_above_scalar_range_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "u\{110000\}")
 }
 
-test fn unicode_escape_surrogate_refuses_test() -> Bool {
+test fn unicode_escape_surrogate_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "u\{d800\}")
 }
 
-test fn unicode_escape_unterminated_refuses_test() -> Bool {
+test fn unicode_escape_unterminated_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "u\{000d")
 }
 
-test fn unknown_string_escape_refuses_test() -> Bool {
+test fn unknown_string_escape_refuses_test() -> Bool  {
   !string_escape_probe_compiles(body_after_backslash: "q")
 }

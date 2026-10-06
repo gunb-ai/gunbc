@@ -41,7 +41,7 @@ fn live_disposition() -> Optional<LiveTreeDisposition> {
   Present { value: ReadsLiveTree }
 }
 
-test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool {
+test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool  {
   let effect_wins = classify_witness(disposition: pure_disposition(), effect_obligation: true, interpreter_subject: true, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   let interp_wins = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: true, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   match effect_wins {
@@ -53,7 +53,7 @@ test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool 
   }
 }
 
-test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation() -> Bool {
+test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation() -> Bool  {
   let declared = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   let undeclared = classify_witness(disposition: Absent, effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   match declared {
@@ -65,7 +65,7 @@ test fn witness_classifier_live_and_undeclared_both_classify_as_live_observation
   }
 }
 
-test fn witness_classifier_hermetic_splits_on_emitter_carriage_with_typed_cause() -> Bool {
+test fn witness_classifier_hermetic_splits_on_emitter_carriage_with_typed_cause() -> Bool  {
   let carried = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   let blocked = classify_witness(disposition: pure_disposition(), effect_obligation: false, interpreter_subject: false, carriage: NoEmitterCarriage { cause: HostCapabilityUnavailable { capability: "linux-only procfs read" } })
   match carried {
@@ -90,7 +90,7 @@ fn census_fixture_rows() -> List<WitnessClassRow> {
   ]
 }
 
-test fn witness_census_partitions_the_population_exactly() -> Bool {
+test fn witness_census_partitions_the_population_exactly() -> Bool  {
   let c = census_of(rows: census_fixture_rows())
   census_accounts_for_every_row(rows: census_fixture_rows())
     && c.total == 5
@@ -101,7 +101,7 @@ test fn witness_census_partitions_the_population_exactly() -> Bool {
     && c.native_blocked == 1
 }
 
-test fn witness_census_RED_planted_duplicate_identity_refuses_exactly_once() -> Bool {
+test fn witness_census_RED_planted_duplicate_identity_refuses_exactly_once() -> Bool  {
   let planted = concat(census_fixture_rows(), [WitnessClassRow { entry: "a_test.dag", function: "w_meet", class: EffectObligation }])
   every_identity_classified_exactly_once(rows: census_fixture_rows())
     && !every_identity_classified_exactly_once(rows: planted)
@@ -114,7 +114,7 @@ fn first_declared_axis() -> ClassificationAxis {
   }
 }
 
-test fn witness_declared_precedence_decides_dual_descriptions() -> Bool {
+test fn witness_declared_precedence_decides_dual_descriptions() -> Bool  {
   let effect_and_interp = classify_witness(disposition: live_disposition(), effect_obligation: true, interpreter_subject: true, carriage: NoEmitterCarriage { cause: GeneralWitnessTargetModelUnavailable })
   let interp_and_live = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: true, carriage: NoEmitterCarriage { cause: GeneralWitnessTargetModelUnavailable })
   let live_and_carried = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
@@ -124,7 +124,7 @@ test fn witness_declared_precedence_decides_dual_descriptions() -> Bool {
     && (axis_rank(axis: axis_of_class(class: live_and_carried)) < axis_rank(axis: CarriageAxis))
 }
 
-test fn witness_declared_precedence_RED_reversed_order_would_lose() -> Bool {
+test fn witness_declared_precedence_RED_reversed_order_would_lose() -> Bool  {
   let live_and_carried = classify_witness(disposition: live_disposition(), effect_obligation: false, interpreter_subject: false, carriage: CarriedInEnrolledBundle { bundle_identity: "09d7d2e53554c783", member: "meet" })
   !(axis_of_class(class: live_and_carried) == CarriageAxis)
 }

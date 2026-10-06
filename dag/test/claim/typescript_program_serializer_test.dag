@@ -29,15 +29,15 @@ fn regex_literal_program() -> TsProgram {
   }
 }
 
-test fn typescript_program_serialize_const_holds() -> Bool {
+test fn typescript_program_serialize_const_holds() -> Bool  {
   serialize_typescript_program(p: minimal_add_program()) == "const x = 1 + 2;"
 }
 
-test fn typescript_program_serialize_regex_holds() -> Bool {
+test fn typescript_program_serialize_regex_holds() -> Bool  {
   serialize_typescript_program(p: regex_literal_program()) == "const re = /^\\/$/;"
 }
 
-test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
+test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool  {
   serialize_typescript_program(p: TsProgram {
     ts_nocheck: false,
     header_lines: [],
@@ -64,7 +64,7 @@ test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
   }) == "const ok = routes.some((r) => r.pathRe.test(path));"
 }
 
-test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
+test fn typescript_program_serialize_create_server_fragment_holds() -> Bool  {
   let src = serialize_typescript_program(p: TsProgram {
     ts_nocheck: true,
     header_lines: ["test"],
@@ -118,7 +118,7 @@ fn precedence_stmt_program(expr: TsExpr) -> TsProgram {
   }
 }
 
-test fn typescript_precedence_groups_conditional_under_concat() -> Bool {
+test fn typescript_precedence_groups_conditional_under_concat() -> Bool  {
   let e = ts_binop(
     left: ts_lit_str(value: "a"),
     op: "+",
@@ -129,7 +129,7 @@ test fn typescript_precedence_groups_conditional_under_concat() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (c ? 'y' : 'z');"
 }
 
-test fn typescript_precedence_groups_disjunction_under_concat() -> Bool {
+test fn typescript_precedence_groups_disjunction_under_concat() -> Bool  {
   let e = ts_binop(
     left: ts_lit_str(value: "a"),
     op: "+",
@@ -140,7 +140,7 @@ test fn typescript_precedence_groups_disjunction_under_concat() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = 'a' + (b || 'z');"
 }
 
-test fn typescript_precedence_groups_nonassociative_right_nesting() -> Bool {
+test fn typescript_precedence_groups_nonassociative_right_nesting() -> Bool  {
   let e = ts_binop(
     left: ts_ident(name: "a"),
     op: "-",
@@ -148,7 +148,7 @@ test fn typescript_precedence_groups_nonassociative_right_nesting() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a - (b - c);"
 }
 
-test fn typescript_precedence_leaves_assignment_conditional_bare() -> Bool {
+test fn typescript_precedence_leaves_assignment_conditional_bare() -> Bool  {
   let e = ts_binop(
     left: ts_member(object: ts_ident(name: "el"), property: "title"),
     op: "=",
@@ -159,7 +159,7 @@ test fn typescript_precedence_leaves_assignment_conditional_bare() -> Bool {
   serialize_typescript_program(p: precedence_stmt_program(expr: e)) == "el.title = c ? 'y' : 'z';"
 }
 
-test fn typescript_precedence_leaves_associative_chain_bare() -> Bool {
+test fn typescript_precedence_leaves_associative_chain_bare() -> Bool  {
   let e = ts_binop(
     left: ts_ident(name: "a"),
     op: "&&",
@@ -167,7 +167,7 @@ test fn typescript_precedence_leaves_associative_chain_bare() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a && b && c;"
 }
 
-test fn typescript_precedence_leaves_tighter_child_bare() -> Bool {
+test fn typescript_precedence_leaves_tighter_child_bare() -> Bool  {
   let e = ts_binop(
     left: ts_binop(left: ts_ident(name: "a"), op: "===", right: ts_ident(name: "b")),
     op: "&&",
@@ -183,7 +183,7 @@ test fn typescript_precedence_leaves_tighter_child_bare() -> Bool {
 // direction for an unknown operator, but 'safe direction' is not a licence to group things that
 // cannot be misgrouped.
 
-test fn typescript_precedence_groups_unrecognized_operator_operands() -> Bool {
+test fn typescript_precedence_groups_unrecognized_operator_operands() -> Bool  {
   let e = ts_binop(
     left: ts_ident(name: "a"),
     op: "??",
@@ -191,7 +191,7 @@ test fn typescript_precedence_groups_unrecognized_operator_operands() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = a ?? (b + c);"
 }
 
-test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool {
+test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool  {
   let e = ts_binop(
     left: ts_lit_str(value: "a"),
     op: "+",
@@ -207,7 +207,7 @@ test fn typescript_precedence_groups_unrecognized_operator_as_child() -> Bool {
 // parentheses. The RED is the exact live shape: the ungrouped spelling must not be what the printer
 // emits.
 
-test fn typescript_receiver_binop_groups_under_member() -> Bool {
+test fn typescript_receiver_binop_groups_under_member() -> Bool  {
   let e = ts_call(
     callee: ts_member(
       object: ts_binop(
@@ -219,7 +219,7 @@ test fn typescript_receiver_binop_groups_under_member() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (attempt.segments || []).forEach(cb);"
 }
 
-test fn typescript_receiver_cond_groups_under_index() -> Bool {
+test fn typescript_receiver_cond_groups_under_index() -> Bool  {
   let e = ts_index(
     object: ts_cond(
       test: ts_ident(name: "p"),
@@ -229,7 +229,7 @@ test fn typescript_receiver_cond_groups_under_index() -> Bool {
   serialize_typescript_program(p: precedence_const_program(value: e)) == "const x = (p ? xs : ys)[0];"
 }
 
-test fn typescript_receiver_atom_stays_bare() -> Bool {
+test fn typescript_receiver_atom_stays_bare() -> Bool  {
   let e = ts_call(
     callee: ts_member(
       object: ts_call(
@@ -252,7 +252,7 @@ fn try_program(body: TsStmt, catch_param: String, handler: TsStmt) -> TsProgram 
   }
 }
 
-test fn typescript_try_serializes_to_exact_bytes() -> Bool {
+test fn typescript_try_serializes_to_exact_bytes() -> Bool  {
   serialize_typescript_program(p: try_program(
     body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "risky"), args: []))]),
     catch_param: "err",
@@ -263,7 +263,7 @@ test fn typescript_try_serializes_to_exact_bytes() -> Bool {
   )) == "try {   risky(); } catch (err) {   note(err.name); }"
 }
 
-test fn typescript_try_nested_in_a_handler_serializes() -> Bool {
+test fn typescript_try_nested_in_a_handler_serializes() -> Bool  {
   serialize_typescript_program(p: try_program(
     body: ts_block(stmts: [ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "a"), args: []))]),
     catch_param: "e1",
@@ -275,7 +275,7 @@ test fn typescript_try_nested_in_a_handler_serializes() -> Bool {
   )) == "try {   a(); } catch (e1) {   try {   b(); } catch (e2) {   c(); } }"
 }
 
-test fn typescript_try_with_a_bare_body_still_braces_nothing_it_should_not() -> Bool {
+test fn typescript_try_with_a_bare_body_still_braces_nothing_it_should_not() -> Bool  {
   serialize_typescript_program(p: try_program(
     body: ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "a"), args: [])),
     catch_param: "e",

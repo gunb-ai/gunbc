@@ -106,7 +106,7 @@ fn live_roster_has_no_spelling_collisions() -> Bool {
     && !any_roster_site_has_spelling_collision(rows: v1_interpreter_authored_roster_arms())
 }
 
-test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() -> Bool {
+test fn v1_interpreter_primitive_dispatch_authority_acceptance_contract_holds() -> Bool  {
   roster_rows_are_authored_in_roster_not_transcribed_from_rust()
     && self_reading_bridge_arm_is_deleted()
     && declared_residual_rows_retain_independent_dispositions()

@@ -50,7 +50,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // list query's exit status alone is never treated as authorization. Argv tokens outside the
 // portable allowlist fail closed before ssh spawn.
 
-test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
+test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool  {
   let result = access.PosixEffectivePrincipal.Read(read: EffectivePosixPrincipalRead {})
   result.exit_code == 1
     && !result.success
@@ -58,7 +58,7 @@ test fn witness_posix_effective_principal_read_typed_argv_holds() -> Bool {
     && result.stderr == "hermetic effective-principal observation unavailable"
 }
 
-test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
+test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool  {
   let cmd = deploy_access_apt_get_privileged_command()
   match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: check } => {
@@ -74,7 +74,7 @@ test fn witness_sudo_nopasswd_probe_typed_argv_holds() -> Bool {
   }
 }
 
-test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
+test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool  {
   let probe = "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape
   let result = sudo.NopasswdGrantList.Read()
   let argv = sudo_nopasswd_grant_list_argv()
@@ -86,28 +86,28 @@ test fn witness_sudo_nopasswd_grant_list_probe_typed_argv_holds() -> Bool {
     && argv == ["sudo", "-n", "-l"]
 }
 
-test fn witness_sudo_grant_list_password_only_refuses() -> Bool {
+test fn witness_sudo_grant_list_password_only_refuses() -> Bool  {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "User ghrunner may run the following commands:\n    (ALL) PASSWD: /usr/bin/tailscale",
     probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
   )
 }
 
-test fn witness_sudo_grant_list_other_nopasswd_does_not_admit_target() -> Bool {
+test fn witness_sudo_grant_list_other_nopasswd_does_not_admit_target() -> Bool  {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "User ghrunner may run the following commands:\n    (ALL) NOPASSWD: /usr/bin/apt-get\n    (ALL) PASSWD: /usr/bin/tailscale",
     probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
   )
 }
 
-test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool {
+test fn witness_sudo_grant_list_prefix_collision_refuses() -> Bool  {
   !sudo_nopasswd_grant_list_admits_probe(
     listing: "    (ALL) NOPASSWD: /usr/bin/tailscale-helper",
     probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,
   )
 }
 
-test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
+test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool  {
   match host_effect_apply(
     target: HostOs { node: srv1_host },
     effect: deploy_access_read_principal_effect(),
@@ -120,7 +120,7 @@ test fn witness_read_principal_host_effect_apply_typed_argv_holds() -> Bool {
   }
 }
 
-test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool {
+test fn witness_sudo_probe_host_effect_apply_typed_argv_holds() -> Bool  {
   reconciliation_converged(
     r: host_effect_apply(
       target: HostOs { node: srv1_host },
@@ -147,7 +147,7 @@ fn srv1_tailscale_privileged_command() -> Optional<PrivilegedCommand> {
   ).first()
 }
 
-test fn witness_tailscale_grant_list_host_effect_apply_typed_argv_holds() -> Bool {
+test fn witness_tailscale_grant_list_host_effect_apply_typed_argv_holds() -> Bool  {
   match srv1_tailscale_privileged_command() {
     Absent => false
     Present { value: cmd } =>
@@ -165,7 +165,7 @@ test fn witness_tailscale_grant_list_host_effect_apply_typed_argv_holds() -> Boo
 // A ROSTER WITH NO TAILSCALE GRANT FAILS THIS CLAIM RATHER THAN SKIPPING IT. The Absent arm is
 // `false`, not `true`: the claim exists to establish that the tailscale grant routes to the
 // grant-list probe, and a roster that no longer carries that grant has not satisfied it.
-test fn witness_tailscale_roster_selects_grant_list_not_execute_probe() -> Bool {
+test fn witness_tailscale_roster_selects_grant_list_not_execute_probe() -> Bool  {
   match srv1_tailscale_privileged_command() {
     Absent => false
     Present { value: cmd } =>
@@ -177,7 +177,7 @@ test fn witness_tailscale_roster_selects_grant_list_not_execute_probe() -> Bool 
   }
 }
 
-test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
+test fn witness_ssh_argv_exec_clean_token_holds() -> Bool  {
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
     argv: posix_effective_principal_read_argv(),
@@ -187,56 +187,56 @@ test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
   }
 }
 
-test fn witness_ssh_argv_allowlist_semicolon_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_semicolon_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["whoami;rm"]) {
     Present { value: why } => string_contains(s: why, pattern: "allowlist")
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_pipe_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_pipe_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a|b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_dollar_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_dollar_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["$(whoami)"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_backtick_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_backtick_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["whoami`id`"]) {
     Present { value: why } => string_contains(s: why, pattern: "allowlist")
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_ampersand_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_ampersand_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a&b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_redirect_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_redirect_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["echo", "a>b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_argv_allowlist_whitespace_red_holds() -> Bool {
+test fn witness_ssh_argv_allowlist_whitespace_red_holds() -> Bool  {
   match typed_argv_shell_safe_refusal_argv(argv: ["a b"]) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
+test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool  {
   let cmd = deploy_access_apt_get_privileged_command()
   match cmd.grant.probe {
     NopasswdExecuteCheck { check_argv: check } => {
@@ -256,7 +256,7 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
   }
 }
 
-test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool {
+test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool  {
   match typed_argv_exec_over_ssh(
     host: operator_host_srv1 as NonEmptyStr,
     argv: sudo_nopasswd_grant_list_argv(),
@@ -266,7 +266,7 @@ test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool
   }
 }
 
-test fn witness_sudo_grant_list_exact_nopasswd_row_accepts() -> Bool {
+test fn witness_sudo_grant_list_exact_nopasswd_row_accepts() -> Bool  {
   sudo_nopasswd_grant_list_admits_probe(
     listing: "    (ALL) NOPASSWD: /usr/bin/tailscale",
     probe: "/usr/bin/tailscale" as SudoNopasswdGrantListProbeShape,

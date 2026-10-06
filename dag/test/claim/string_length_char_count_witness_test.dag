@@ -27,34 +27,34 @@ module test.claim.string_length_char_count_witness
 // file and needs its own change. Until one lands, this witness covers exactly
 // the two spellings that are reachable.
 
-test fn ascii_string_length_is_char_count() -> Bool {
+test fn ascii_string_length_is_char_count() -> Bool  {
   "hello".length() == 5
 }
 
 // "\u{ef}" (lowercase i with diaeresis) encodes as 2 bytes in UTF-8.
 // Byte length would be 2; character length must be 1.
-test fn multibyte_two_byte_codepoint_length_is_one() -> Bool {
+test fn multibyte_two_byte_codepoint_length_is_one() -> Bool  {
   "\u{ef}".length() == 1
 }
 
 // "\u{4e2d}" (CJK character) encodes as 3 bytes in UTF-8.
 // Byte length would be 3; character length must be 1.
-test fn multibyte_three_byte_codepoint_length_is_one() -> Bool {
+test fn multibyte_three_byte_codepoint_length_is_one() -> Bool  {
   "\u{4e2d}".length() == 1
 }
 
 // "\u{1f600}" (an emoji) encodes as 4 bytes in UTF-8.
 // Byte length would be 4; character length must be 1.
-test fn multibyte_four_byte_codepoint_length_is_one() -> Bool {
+test fn multibyte_four_byte_codepoint_length_is_one() -> Bool  {
   "\u{1f600}".length() == 1
 }
 
 // "na\u{ef}ve" is 5 characters but 6 UTF-8 bytes (the \u{ef} costs 2 bytes).
 // Byte length would be 6; character length must be 5.
-test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool {
+test fn mixed_ascii_and_multibyte_length_counts_chars_not_bytes() -> Bool  {
   "na\u{ef}ve".length() == 5
 }
 
-test fn multibyte_string_count_matches_length() -> Bool {
+test fn multibyte_string_count_matches_length() -> Bool  {
   "\u{4e2d}\u{6587}".count() == 2
 }

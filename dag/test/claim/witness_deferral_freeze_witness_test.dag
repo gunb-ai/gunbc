@@ -105,7 +105,7 @@ fn standing_is_legacy_frozen(r: WitnessExecutionStanding) -> Bool {
   }
 }
 
-test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
+test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool  {
   standing_is_unclassified_path_deferral(
     r: probe_standing(
       entry: probe_entry(),
@@ -123,7 +123,7 @@ test fn witness_deferral_freeze_unfrozen_offline_row_refuses() -> Bool {
 // executed nowhere. Here the same standing answers NO to coverage and YES to the floor, and a third
 // claim shows the floor's YES is conditional on the baseline axis rather than unconditional.
 
-test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool {
+test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool  {
   !witness_has_executing_consumer(
     standing: probe_standing(
       entry: probe_entry(),
@@ -140,7 +140,7 @@ test fn witness_deferral_freeze_frozen_row_is_not_covered() -> Bool {
     )
 }
 
-test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
+test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool  {
   witness_floor_admission_holds(
     standing: probe_standing(
       entry: probe_entry(),
@@ -151,7 +151,7 @@ test fn witness_deferral_freeze_frozen_row_is_tolerated_by_the_floor() -> Bool {
   )
 }
 
-test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Bool {
+test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Bool  {
   !witness_floor_admission_holds(
     standing: probe_standing(
       entry: probe_entry(),
@@ -162,13 +162,13 @@ test fn witness_deferral_freeze_grown_baseline_withdraws_the_toleration() -> Boo
   )
 }
 
-test fn witness_deferral_freeze_empty_roster_refuses_the_same_row() -> Bool {
+test fn witness_deferral_freeze_empty_roster_refuses_the_same_row() -> Bool  {
   standing_is_unclassified_path_deferral(
     r: probe_standing(entry: probe_entry(), function: "already_frozen_holds", frozen: [])
   )
 }
 
-test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
+test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool  {
   witness_has_executing_consumer(
     standing: probe_standing(
       entry: "dag/test/fixture/floor_skip/synthetic_control_test.dag",
@@ -178,7 +178,7 @@ test fn witness_deferral_freeze_fixture_path_is_unaffected() -> Bool {
   )
 }
 
-test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bool {
+test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bool  {
   standing_is_unexecuted_deferred(
     r: probe_standing(
       entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag",
@@ -188,7 +188,7 @@ test fn witness_deferral_freeze_unclaimed_path_stays_unexecuted_deferred() -> Bo
   )
 }
 
-test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
+test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool  {
   witness_has_executing_consumer(
     standing: witness_path_policy_execution_standing_in(
       entry: probe_entry(),
@@ -201,7 +201,7 @@ test fn witness_deferral_freeze_included_row_is_never_refused() -> Bool {
   )
 }
 
-test fn witness_deferral_freeze_join_is_by_identity_not_by_entry() -> Bool {
+test fn witness_deferral_freeze_join_is_by_identity_not_by_entry() -> Bool  {
   !frozen_path_deferral_covers_in(
     rows: probe_frozen_roster(),
     entry: probe_entry(),
@@ -224,14 +224,14 @@ fn probe_discovered_population() -> List<ScheduleWitnessEntry> {
   ]
 }
 
-test fn witness_deferral_freeze_live_rows_join_the_discovered_population() -> Bool {
+test fn witness_deferral_freeze_live_rows_join_the_discovered_population() -> Bool  {
   frozen_path_deferrals_all_discovered(
     rows: probe_frozen_roster(),
     discovered: probe_discovered_population()
   )
 }
 
-test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
+test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool  {
   !frozen_path_deferrals_all_discovered(
     rows: [
       FrozenPathDeferral {
@@ -243,7 +243,7 @@ test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
   )
 }
 
-test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
+test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool  {
   !frozen_path_deferral_row_well_formed(
     row: FrozenPathDeferral {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
@@ -258,7 +258,7 @@ test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
     )
 }
 
-test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
+test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool  {
   frozen_path_deferrals_well_formed()
 }
 
@@ -271,14 +271,14 @@ test fn witness_deferral_freeze_live_roster_is_well_formed() -> Bool {
 // live authority was unread: the identity below is admitted while being absent from the frozen
 // population, so its admission can only be coming from its enrollment.
 
-test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool {
+test fn witness_deferral_freeze_commit_roster_enrollment_admits() -> Bool  {
   witness_has_executing_consumer_for_row(
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
   )
 }
 
-test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
+test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool  {
   !frozen_path_deferral_covers(
     entry: "src/v2/test/claim/long/parse_table_memo_governed_witness_test.dag",
     function: "witness_content_key_subject_stable"
@@ -293,14 +293,14 @@ test fn witness_deferral_freeze_commit_roster_row_is_not_frozen() -> Bool {
 // registration from becoming a file nobody reads by requiring the disposition to exist and to name
 // a dissolution.
 
-test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool {
+test fn witness_deferral_freeze_rust_realization_is_declared_scaffold() -> Bool  {
   match cli_run_witness_deferral_freeze_scaffold {
     Scaffold { dissolves_to: _, bind: _ } => true
     _ => false
   }
 }
 
-test fn witness_deferral_freeze_rust_realization_names_a_dissolution() -> Bool {
+test fn witness_deferral_freeze_rust_realization_names_a_dissolution() -> Bool  {
   !(dissolution_description(condition: cli_run_witness_deferral_freeze_dissolve_trigger) == "")
     && !(cli_run_witness_deferral_freeze_loc_delta_basis == "")
 }

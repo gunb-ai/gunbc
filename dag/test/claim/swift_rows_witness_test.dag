@@ -31,13 +31,13 @@ fn emit(f: SwiftSourceFile) -> String {
 }
 
 // Adjacent imports share no blank line; any other top-level neighbour is separated by one.
-test fn imports_are_adjacent_and_other_declarations_are_blank_separated() -> Bool {
+test fn imports_are_adjacent_and_other_declarations_are_blank_separated() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_import(n: "Foundation"), sw_import(n: "XCTest"), sw_struct(n: "S", i: [sw_t(n: "Equatable")], m: [sw_field(n: "a", t: sw_t(n: "String"))])] })
     == "import Foundation\nimport XCTest\n\nstruct S: Equatable \{\n    var a: String\n\}\n"
 }
 
 // Stored members are adjacent; a member with a body is set off by a blank line; a body nests one unit.
-test fn a_member_with_a_body_is_blank_separated_and_nested() -> Bool {
+test fn a_member_with_a_body_is_blank_separated_and_nested() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_struct(n: "S", i: [], m: [
     sw_field(n: "a", t: sw_t(n: "Int")),
     sw_func(m: [], n: "f", p: [], th: false, r: none, b: [sw_expr(e: sw_id(n: "a"))])
@@ -46,7 +46,7 @@ test fn a_member_with_a_body_is_blank_separated_and_nested() -> Bool {
 }
 
 // A guard whose else is one simple statement stays on one line.
-test fn a_simple_guard_stays_inline() -> Bool {
+test fn a_simple_guard_stays_inline() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
     sw_guard(c: [sw_cond(e: sw_id(n: "c"))], e: [sw_throw(e: sw_id(n: "e"))])
   ])] })
@@ -54,7 +54,7 @@ test fn a_simple_guard_stays_inline() -> Bool {
 }
 
 // A closure of one expression stays on one line.
-test fn a_one_expression_closure_stays_inline() -> Bool {
+test fn a_one_expression_closure_stays_inline() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "f", p: [], th: false, r: none, b: [
     sw_expr(e: sw_callt(f: sw_id(n: "g"), a: [], c: sw_cloe(e: sw_id(n: "$0"))))
   ])] })
@@ -62,7 +62,7 @@ test fn a_one_expression_closure_stays_inline() -> Bool {
 }
 
 // A switch case of one simple statement follows its label.
-test fn a_simple_switch_case_follows_its_label() -> Bool {
+test fn a_simple_switch_case_follows_its_label() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
     sw_switch(e: sw_id(n: "x"), c: [sw_case(p: [sw_pexpr(e: sw_int(n: 1))], s: [sw_expr(e: sw_id(n: "a"))])])
   ])] })
@@ -70,7 +70,7 @@ test fn a_simple_switch_case_follows_its_label() -> Bool {
 }
 
 // A case of more than one statement nests them below its label.
-test fn a_longer_switch_case_nests_below_its_label() -> Bool {
+test fn a_longer_switch_case_nests_below_its_label() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_func(m: [], n: "g", p: [], th: false, r: none, b: [
     sw_switch(e: sw_id(n: "x"), c: [sw_default(s: [sw_expr(e: sw_id(n: "b")), sw_expr(e: sw_id(n: "c"))])])
   ])] })
@@ -79,7 +79,7 @@ test fn a_longer_switch_case_nests_below_its_label() -> Bool {
 
 // A static literal spells quote, backslash and newline by their short escapes and every other control
 // or non-ASCII scalar as \u\{X\}; an extended literal spells its text verbatim.
-test fn string_literals_escape_statically_and_keep_extended_text_verbatim() -> Bool {
+test fn string_literals_escape_statically_and_keep_extended_text_verbatim() -> Bool  {
   emit(f: SwiftSourceFile { declarations: [sw_let_decl(n: "a", e: sw_str(s: "q\"b\\s\né\u{1F}")), sw_let_decl(n: "r", e: sw_raw(s: "\{\"k\": \"\\n\"\}"))] })
     == "let a = \"q\\\"b\\\\s\\n\\u\{E9\}\\u\{1F\}\"\n\nlet r = #\"\{\"k\": \"\\n\"\}\"#\n"
 }
@@ -104,6 +104,6 @@ fn spelled_names(d: SwiftDecl) -> List<String> {
   }
 }
 
-test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool {
+test fn the_spelled_surface_set_is_the_fixtures_names() -> Bool  {
   spelled_names(d: approve_ios_surface_spelled_decl()) == map(surface_vectors, v => v.name as String)
 }

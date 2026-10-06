@@ -117,7 +117,7 @@ fn boundary_at_exactly_twice_is_not_drift_holds() -> Bool {
   )
 }
 
-test fn witness_row_cost_drift_comparator_holds() -> Bool {
+test fn witness_row_cost_drift_comparator_holds() -> Bool  {
   drift_red_control_exceeds_basis_holds()
     && within_basis_control_does_not_drift_holds()
     && basis_absent_control_holds()

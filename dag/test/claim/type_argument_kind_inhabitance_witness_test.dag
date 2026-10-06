@@ -66,7 +66,7 @@ fn kind_named_non_inhabitant_source() -> String {
 }
 
 // A plain String where the kind admits StaticWidthIndex or PointerWidth.
-test fn a_named_non_inhabitant_at_a_kinded_position_must_refuse() -> Bool {
+test fn a_named_non_inhabitant_at_a_kinded_position_must_refuse() -> Bool  {
   kind_mismatch_blocking_count(source: kind_named_non_inhabitant_source()) >= 1
 }
 
@@ -78,7 +78,7 @@ fn kind_unrelated_type_source() -> String {
 // STRUCTURALLY IDENTICAL to the arms it is being offered against. Only a check consulting the
 // kind's DECLARED arms can refuse it; a check reading variant shape admits it. This is the
 // property five candidate carriers were chasing, and it is the reason the kind is a coproduct.
-test fn a_bodyless_type_of_the_same_shape_as_an_arm_must_still_refuse() -> Bool {
+test fn a_bodyless_type_of_the_same_shape_as_an_arm_must_still_refuse() -> Bool  {
   kind_mismatch_blocking_count(source: kind_unrelated_type_source()) >= 1
 }
 
@@ -112,7 +112,7 @@ fn type_param_in_value_position_source() -> String {
 // ITS POSITIVE CONTROL is a_generic_function_not_misusing_its_parameter_still_compiles below: the
 // same shape of generic function, returning its VALUE parameter, compiles and emits. Without it a
 // wall that refused every generic function would pass this claim.
-test fn a_type_parameter_in_value_position_must_refuse() -> Bool {
+test fn a_type_parameter_in_value_position_must_refuse() -> Bool  {
   type_param_value_position_blocking_count(source: type_param_in_value_position_source()) >= 1
 }
 
@@ -157,7 +157,7 @@ fn kind_declared_inhabitant_source() -> String {
 // THE POSITIVE CONTROL, AND THE DEFECT gunbc#11819 LEFT OPEN. Until this passes, every red above
 // is meaningless: a wall that refuses its own declared inhabitant refuses everything, and refusing
 // everything is not discrimination. This claim is what makes the other three citable.
-test fn the_kinds_own_declared_inhabitant_must_be_admitted() -> Bool {
+test fn the_kinds_own_declared_inhabitant_must_be_admitted() -> Bool  {
   kind_mismatch_blocking_count(source: kind_declared_inhabitant_source()) == 0
     && compile_dag_rust_emit_check(kind_declared_inhabitant_source(), "src/kindprobe_pos_inhabitant.rs", [], [])
 }
@@ -169,7 +169,7 @@ fn kind_second_arm_source() -> String {
 // THE SECOND ARM, because admitting exactly ONE name is indistinguishable from a hardcoded
 // special case for that name. Both declared arms being admitted is what shows the check reads the
 // kind's children rather than matching a spelling.
-test fn the_kinds_other_arm_is_admitted_too_so_the_wall_is_not_pinned_to_one_name() -> Bool {
+test fn the_kinds_other_arm_is_admitted_too_so_the_wall_is_not_pinned_to_one_name() -> Bool  {
   kind_mismatch_blocking_count(source: kind_second_arm_source()) == 0
     && compile_dag_rust_emit_check(kind_second_arm_source(), "src/kindprobe_pos_other_arm.rs", [], [])
 }
@@ -180,7 +180,7 @@ fn generic_fn_positive_source() -> String {
 
 // The value-position wall's own control: a generic function that uses T only as a TYPE is
 // ordinary and must not be caught.
-test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool {
+test fn a_generic_function_not_misusing_its_parameter_still_compiles() -> Bool  {
   type_param_value_position_blocking_count(source: generic_fn_positive_source()) == 0
     && compile_dag_rust_emit_check(generic_fn_positive_source(), "src/kindprobe_pos_generic_fn.rs", [], [])
 }

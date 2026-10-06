@@ -53,19 +53,19 @@ data cross_module_pool_homonym_consumer_source: String = "module equiv_consumer_
 
 data irrelevant_import_control_source: String = "module equiv_irrelevant_import\n\nimport std.types { String }\n\nfn use_type(x: std.content_hash.ContentHash) -> std.content_hash.ContentHash { x }\n"
 
-test fn cross_module_import_reachable_stays_green() -> Bool {
+test fn cross_module_import_reachable_stays_green() -> Bool  {
   unresolved_blocking_count(source: cross_module_consumer_import_reachable_source) == 0
 }
 
-test fn cross_module_pool_homonym_without_import_is_fail_closed_red() -> Bool {
+test fn cross_module_pool_homonym_without_import_is_fail_closed_red() -> Bool  {
   unresolved_blocking_count(source: cross_module_pool_homonym_consumer_source) >= 1
 }
 
-test fn irrelevant_import_does_not_rescue_pool_homonym_red() -> Bool {
+test fn irrelevant_import_does_not_rescue_pool_homonym_red() -> Bool  {
   unresolved_blocking_count(source: irrelevant_import_control_source) >= 1
 }
 
-test fn pr_b_hardening_note_carries_equivalence_and_fail_closed_obligations() -> Bool {
+test fn pr_b_hardening_note_carries_equivalence_and_fail_closed_obligations() -> Bool  {
   type_reference_binding_context_pr_b_hardening_note != "" &&
   type_reference_binding_context_path_scope_note != ""
 }

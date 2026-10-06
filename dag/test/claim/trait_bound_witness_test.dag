@@ -66,7 +66,7 @@ fn w_current_defect_reproduces_bare_generic_no_clone_impl() -> Bool {
   )
 }
 
-test fn current_defect_reproduces_bare_generic_no_clone_impl() -> Bool {
+test fn current_defect_reproduces_bare_generic_no_clone_impl() -> Bool  {
   w_current_defect_reproduces_bare_generic_no_clone_impl()
 }
 
@@ -110,7 +110,7 @@ fn w_call_forwarding_derives_clone_bound_from_callee() -> Bool {
   )
 }
 
-test fn call_forwarding_derives_clone_bound_from_callee() -> Bool {
+test fn call_forwarding_derives_clone_bound_from_callee() -> Bool  {
   w_call_forwarding_derives_clone_bound_from_callee()
 }
 
@@ -123,6 +123,6 @@ fn w_call_forwarding_reaches_match_wrapped_body() -> Bool {
   )
 }
 
-test fn call_forwarding_reaches_match_wrapped_body() -> Bool {
+test fn call_forwarding_reaches_match_wrapped_body() -> Bool  {
   w_call_forwarding_reaches_match_wrapped_body()
 }

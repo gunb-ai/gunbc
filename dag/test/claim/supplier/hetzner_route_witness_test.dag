@@ -201,7 +201,7 @@ fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: Dec
 // its own snapshot rule places a snapshot of that server in a randomly allocated OTHER location of
 // the eu-central zone -- both of which upstream lists as German -- and so a route that would have
 // been admitted on the strength of its region label is refused on a path that answers for itself.
-test fn the_helsinki_route_refuses_on_durable_storage() -> Bool {
+test fn the_helsinki_route_refuses_on_durable_storage() -> Bool  {
   t_denied_with(
     a: t_decide(facts: hetzner_helsinki_route_facts()),
     tag: "facts-incomplete",
@@ -213,7 +213,7 @@ test fn the_helsinki_route_refuses_on_durable_storage() -> Bool {
 // population is unread and admit_provider_use orders the downstream assessment ahead of the path
 // closure. The Helsinki route's population is ENUMERATED from the same table, so this red also
 // establishes that the two arms are being told apart rather than both reading as unassessed.
-test fn the_nuremberg_route_refuses_as_downstream_unassessed() -> Bool {
+test fn the_nuremberg_route_refuses_as_downstream_unassessed() -> Bool  {
   t_denied_with(
     a: t_decide(facts: hetzner_nuremberg_route_facts()),
     tag: "downstream-unassessed",
@@ -253,7 +253,7 @@ fn t_helsinki_facts_with_support(support: ProviderPathStanding) -> ProviderRoute
   }
 }
 
-test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
+test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool  {
   t_denied_with(
     a: t_decide(facts: t_helsinki_facts_with_support(support: ProviderPathUnread {
       obligation: decl_ref(module_path: "product.supplier.hetzner", decl_name: "hetzner_helsinki_support_access_obligation"),
@@ -272,7 +272,7 @@ test fn one_unread_support_path_refuses_with_that_paths_obligation() -> Bool {
 // Helsinki. The production function must be Unread with the obligation that names the discriminator
 // (whether Finnish technical support reaches a German server), consulting the locations page and
 // Appendix 3. Matching Located on the German customer-support sentence alone would green a lie.
-test fn a_support_path_located_on_customer_support_alone_is_not_the_nuremberg_census() -> Bool {
+test fn a_support_path_located_on_customer_support_alone_is_not_the_nuremberg_census() -> Bool  {
   match hetzner_nuremberg_support_path() {
     ProviderPathLocated { operator, jurisdiction, evidence } => false,
     ProviderPathAbsent { evidence } => false,
@@ -311,7 +311,7 @@ fn t_nuremberg_facts_with_support(support: ProviderPathStanding) -> ProviderRout
   }
 }
 
-test fn one_unread_nuremberg_support_path_refuses_with_that_paths_obligation() -> Bool {
+test fn one_unread_nuremberg_support_path_refuses_with_that_paths_obligation() -> Bool  {
   t_denied_with(
     a: t_decide(facts: t_nuremberg_facts_with_support(support: hetzner_nuremberg_support_path())),
     tag: "facts-incomplete",
@@ -324,7 +324,7 @@ test fn one_unread_nuremberg_support_path_refuses_with_that_paths_obligation() -
 // CUSTOMER PROFILE, so the row cannot be satisfied by a permit about another route or another
 // customer. It does NOT check the facts revision: an earlier version of this comment said it did,
 // which review 65087 caught, and the narrow true statement is the one worth keeping.
-test fn the_same_route_admits_once_that_path_is_resolved() -> Bool {
+test fn the_same_route_admits_once_that_path_is_resolved() -> Bool  {
   match t_decide(facts: t_helsinki_facts_with_support(support: t_resolved())) {
     ProviderUseDenied { decision, cause } => false,
     ProviderUseAdmitted { permit } =>
@@ -358,7 +358,7 @@ fn t_helsinki_facts_downstream_unread() -> ProviderRouteFacts {
   }
 }
 
-test fn a_resolved_closure_with_an_unread_downstream_still_refuses() -> Bool {
+test fn a_resolved_closure_with_an_unread_downstream_still_refuses() -> Bool  {
   t_denied_with(
     a: t_decide(facts: t_helsinki_facts_downstream_unread()),
     tag: "downstream-unassessed",
@@ -382,7 +382,7 @@ fn t_refuses(a: ProviderUseAdmission<NonEmptyStr>) -> Bool {
   }
 }
 
-test fn every_hetzner_route_in_the_population_refuses() -> Bool {
+test fn every_hetzner_route_in_the_population_refuses() -> Bool  {
   count(hetzner_route_facts_population()) == 2
     && count(filter(hetzner_route_facts_population(), f => !t_refuses(a: t_decide(facts: f)))) == 0
 }
@@ -438,7 +438,7 @@ fn t_published_finland_matches_cited() -> Bool {
        )) == 1
 }
 
-test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool {
+test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes() -> Bool  {
   t_downstream_cites_only(
     population: hetzner_helsinki_downstream(),
     expected: t_finland_expected_ref(),
@@ -451,7 +451,7 @@ test fn the_finland_subcontractor_the_route_cites_is_the_one_upstream_publishes(
 // every OTHER signal stays green -- the citation resolves, the vendor table is untouched, and the
 // admission outcomes do not move -- because nothing was reading what the route cites. The population
 // is built here rather than by mutating the producer, so the refusal is exercised rather than argued.
-test fn a_resolving_reference_to_the_wrong_subcontractor_refuses() -> Bool {
+test fn a_resolving_reference_to_the_wrong_subcontractor_refuses() -> Bool  {
   !t_downstream_cites_only(
     population: DownstreamProvidersEnumerated {
       first: decl_ref(
