@@ -63,6 +63,10 @@ import gunbc.workflow_capability_closure {
   capability_closure_is_closed,
 }
 import v2.std.algebra { list_map }
+import v2.std.diagnostic { Outcome, Accepted, Rejected }
+import v2.std.node { Node }
+import v2.workflow.bash_emit { bash_emit_stmts }
+import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet_workflow_steps {
   ci_prelude_steps_with_checkout,
   ci_prelude_annotations,
@@ -126,7 +130,6 @@ import gunbc.auth.gcp_iam_converge { iam_observe_service_account, iam_converge_s
 import gunbc.auth.gcp_iam_converge_run { gcp_iam_converge_step_timeout_minutes, iam_converge_token_env, gcp_iam_converge_approved_output }
 import gunbc.auth.approval_broker_placement { approval_broker_host_under, ApprovalBrokerHostResolved, ApprovalBrokerHostRefused }
 import gunbc.roadmap_dashboard_instance { ProdRoleRealization, ProdRoleRealizationRefusal, prod_role_realization, prod_role_realization_refusal_detail }
-import extdeps.exec.command { shell_quote }
 import gunbc.auth.managed_host_boot_federation {
   ManagedHostBootFederationStanding, BootFederationProvisioned, BootFederationUnprovisioned,
   boot_federation_for, boot_federation_provider_resource,
@@ -4775,6 +4778,47 @@ fn fleet_converge_gcp_iam_converge_job_under(realization: ProdRoleRealization) -
   }
 }
 
+// THE REFUSED JOB'S SCRIPT IS EMITTED, NOT SPELLED: an echo of the typed cause to stderr and exit 1,
+// as v2.extdeps.languages.bash_build nodes through v2.workflow.bash_emit bash_emit_stmts. A script
+// bash_emit rejects has no text here; the generation gate fleet_converge_gcp_iam_refusal_script_admitted
+// refuses the whole workflow instead of emitting a step with no script.
+fn gcp_iam_converge_refusal_statements(cause: ProdRoleRealizationRefusal) -> List<Node> {
+  [
+    bash_build_with_redir(
+      inner: bash_build_command_with_words(words: [
+        bash_build_word_lit(text: "echo"),
+        bash_build_word_lit(text: join(["REFUSED gunbc.fleet_converge_workflow gcp-iam-converge: ", prod_role_realization_refusal_detail(cause: cause)], "")),
+      ]),
+      redir: ^bash_production_fold_redir_stdout_to_stderr,
+    ),
+    bash_build_exit(code: "1"),
+  ]
+}
+
+fn gcp_iam_converge_refusal_script(cause: ProdRoleRealizationRefusal) -> Outcome<String> {
+  bash_emit_stmts(statements: gcp_iam_converge_refusal_statements(cause: cause), set_e: true)
+}
+
+fn gcp_iam_converge_refusal_script_text(outcome: Outcome<String>) -> String {
+  match outcome {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+// Admitted when the live realization resolves (no refused job is emitted) or bash_emit accepts the
+// refusal script for its cause.
+fn fleet_converge_gcp_iam_refusal_script_admitted() -> Bool {
+  match approval_broker_host_under(realization: prod_role_actuated_realization()) {
+    ApprovalBrokerHostResolved { host: _ } => true
+    ApprovalBrokerHostRefused { cause } =>
+      match gcp_iam_converge_refusal_script(cause: cause) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
 fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal) -> Job {
   Job {
     id: fleet_converge_mode_job_id(mode: GcpIamConverge) as String,
@@ -4785,7 +4829,7 @@ fn fleet_converge_gcp_iam_converge_refused_job(cause: ProdRoleRealizationRefusal
       RunStep {
         name: Present { value: "REFUSED: the approval broker has no host (prod role unresolved)" },
         id: none,
-        run: join(["echo ", shell_quote(arg: join(["REFUSED gunbc.fleet_converge_workflow gcp-iam-converge: ", prod_role_realization_refusal_detail(cause: cause)], "")), " >&2; exit 1"], ""),
+        run: gcp_iam_converge_refusal_script_text(outcome: gcp_iam_converge_refusal_script(cause: cause)),
         shell: none,
         env: none,
         working_directory: none,
@@ -5104,6 +5148,10 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
         }
       } else if !fleet_converge_boot_federation_admitted() {
         FleetConvergeYamlGenerationRefused { reason: fleet_converge_boot_federation_unprovisioned_refusal }
+      } else if !fleet_converge_gcp_iam_refusal_script_admitted() {
+        FleetConvergeYamlGenerationRefused {
+          reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused the gcp-iam-converge refusal script, so no workflow is emitted rather than a step with no script",
+        }
       } else if !release_bins_scripts_admitted() {
         FleetConvergeYamlGenerationRefused {
           reason: "REFUSED gunbc.fleet_converge_workflow: v2.workflow.bash_emit refused a release-bins runner (gunbc.fleet_release_bins_key), so no workflow is emitted rather than a step with no script",
