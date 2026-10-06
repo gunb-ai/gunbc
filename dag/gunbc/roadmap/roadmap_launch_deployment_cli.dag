@@ -3,6 +3,7 @@ module gunbc.roadmap_launch_deployment_cli
 import std.types { String, Bool, NonEmptyStr, Int, List, FilePath, CommitSha }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import std.measure { second_count }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
@@ -53,18 +54,19 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
+import gunbc.live_deploy.spec { deployment_belt_service_unit_name, deployment_belt_exit_path_unit_name, deployment_belt_answer_path_unit_name, deployment_tailnet_url }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import gunbc.live_deploy.emit {
   live_deploy_serve_unit_file,
   live_deploy_belt_service_unit_file,
-  live_deploy_belt_timer_unit_file,
+  live_deploy_belt_exit_path_unit_file,
+  live_deploy_belt_answer_path_unit_file,
 }
 import gunbc.live_deploy.release_locus {
   RevisionBoundAtEmission,
 }
 import gunbc.live_deploy.unit_standing {
-  LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_timer_standing, observe_belt_oneshot_standing,
+  LaunchUnitStanding, observe_dashboard_service_standing, observe_belt_event_path_standing, observe_belt_oneshot_standing,
 }
 import gunbc.deploy_transition { ActuationStanding, ActuationPermitted, ActuationInhibited, ActuationStandingUnreadable, transition_actuation_standing }
 import gunbc.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
@@ -72,6 +74,7 @@ import gunbc.roadmap_belt_actuate {
   belt_tick_receipt_read_for_instance, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,
   belt_footprint_admission_for_instance, belt_provider_preflight_for_instance,
   BeltProviderPreflight, ProviderPreflightRefused,
+  belt_exit_spool_times, BeltExitSpoolTimesRead, BeltExitSpoolTimesUnreadable,
 }
 import gunbc.roadmap_dispatch_actuator { dispatch_actuator_selection, DispatchActuatorSelectionOk, DispatchActuatorSelectionRefused }
 import gunbc.dispatch_selection { NoDerivedSizingExpectation }
@@ -81,7 +84,7 @@ import gunbc.roadmap_launch_deployment_observe {
   observe_healthz, HealthzServed, HealthzRefused,
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
-  belt_tick_freshness,
+  EventBacklogFact, EventBacklogUnobserved, EventBacklogEntry, event_backlog_judge, iso8601_utc_epoch_seconds,
   observe_healthz_routed,
   observe_instance_document_routed,
   observe_workflow_document_routed,
@@ -360,15 +363,24 @@ fn dispatch_preflight_fact(instance: HostDashboardInstance) -> DispatchPreflight
   }
 }
 
-fn tick_fact(instance: HostDashboardInstance, dashboard: DashboardReceiptFact, now: String) -> TickFact {
+fn tick_fact(instance: HostDashboardInstance) -> TickFact {
   match belt_tick_receipt_read_for_instance(instance: instance) {
     BeltTickReceiptAbsent => TickUnobserved { detail: "no belt tick receipt on the instance" }
     BeltTickReceiptUnreadable { reason: r } => TickUnobserved { detail: join(["belt tick receipt unreadable: ", r], "") }
-    BeltTickReceiptPresent { receipt: t } =>
-      match dashboard {
-        DashboardReceiptUnreadable { reason: r } => TickUnobserved { detail: join(["tick freshness cannot be judged without the dashboard receipt: ", r], "") }
-        DashboardReceiptRead { receipt: d } =>
-          TickObserved { receipt: t, freshness: belt_tick_freshness(observed_at: t.observed_at, deploy_completed_at: d.completed_at, now: now) }
+    BeltTickReceiptPresent { receipt: t } => TickObserved { receipt: t }
+  }
+}
+
+// THE BACKLOG ROW'S WET HALF: the exit spool's unconsumed entries, aged against the receipt run's own
+// now. The judgment is pure (event_backlog_judge); an unreadable spool or now refuses as unobserved.
+fn event_backlog_fact(instance: HostDashboardInstance, now: String) -> EventBacklogFact {
+  match iso8601_utc_epoch_seconds(text: now) {
+    Absent => EventBacklogUnobserved { detail: join(["the receipt run's now did not parse: ", now], "") }
+    Present { value: now_s } =>
+      match belt_exit_spool_times(instance: instance) {
+        BeltExitSpoolTimesUnreadable { reason } => EventBacklogUnobserved { detail: reason }
+        BeltExitSpoolTimesRead { entries } =>
+          event_backlog_judge(entries: entries |> map(e => EventBacklogEntry { stage: e.stage, entry: e.entry, age_seconds: second_count(now_s) - e.mtime_epoch }))
       }
   }
 }
@@ -381,9 +393,13 @@ fn unit_standing_fact(revision: String) -> LaunchUnitStanding
       unit: spec.names.unit_name,
       file: live_deploy_serve_unit_file(spec: spec, revision: RevisionBoundAtEmission { revision: revision as CommitSha }),
     ),
-    timer: observe_belt_timer_standing(
-      unit: deployment_belt_timer_unit_name(names: spec.names),
-      file: live_deploy_belt_timer_unit_file(spec: spec),
+    exit_path: observe_belt_event_path_standing(
+      unit: deployment_belt_exit_path_unit_name(names: spec.names),
+      file: live_deploy_belt_exit_path_unit_file(spec: spec),
+    ),
+    answer_path: observe_belt_event_path_standing(
+      unit: deployment_belt_answer_path_unit_name(names: spec.names),
+      file: live_deploy_belt_answer_path_unit_file(spec: spec),
     ),
     oneshot: observe_belt_oneshot_standing(
       unit: deployment_belt_service_unit_name(names: spec.names),
@@ -633,7 +649,8 @@ fn rlm_launch_deployment_receipt_bound(
     readiness: readiness,
     transition: transition_actuation_standing(instance_root: instance.instance_root as String),
     unit_standing: unit_standing,
-    tick_standing: tick_fact(instance: instance, dashboard: dashboard, now: now),
+    tick_standing: tick_fact(instance: instance),
+    event_backlog: event_backlog_fact(instance: instance, now: now),
     footprint: belt_footprint_admission_for_instance(instance: instance),
     provider_preflight: provider_fact(instance: instance),
     dispatch_preflight: dispatch_preflight_fact(instance: instance),

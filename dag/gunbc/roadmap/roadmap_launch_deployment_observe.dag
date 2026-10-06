@@ -3,7 +3,6 @@ module gunbc.roadmap_launch_deployment_observe
 import extdeps.systemd { systemd_duration_usec }
 import std.measure { Second, second, second_count, microsecond_count }
 import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
-import gunbc.live_deploy.belt_cadence { belt_tick_cadence }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
@@ -41,11 +40,8 @@ import gunbc.roadmap_belt_actuate {
 // disk. HTTP 200 is not sufficient for /workflow.json: a valid document whose belt_tick is absent
 // or unreadable refuses RLM-2 rather than reading as Idle.
 // 
-// TICK FRESHNESS is decided on two clock readings the receipt run does not control -- the tick's
-// own observed_at and the dashboard receipt's completed_at, both rendered by extdeps.clock Now on
-// srv1 as `%Y-%m-%dT%H:%M:%SZ` -- against the receipt run's own now. The bound is derived from the
-// emitted timer cadence (gunbc.live_deploy.belt_cadence belt_tick_cadence, 60s) times a fixed multiplier,
-// never typed as an independent number.
+// BELT LIVENESS is no longer tick freshness: there is no timer cadence to be fresh against. It is the
+// event backlog below (event_backlog_judge) -- events recorded and not consumed within their bound.
 // ---------------------------------------------------------------- HTTP GET
 type HttpBodyRead
   = HttpBodyServed { body: String }
@@ -325,88 +321,65 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
   }
 }
 
-// ---------------------------------------------------------------- tick freshness
-// THE BOUND IS DERIVED FROM THE EMITTED CADENCE: the belt timer fires OnUnitInactiveSec after each
-// tick completes, so a live timer produces a receipt at most one cadence plus one tick duration
-// old. Three cadences is the admission; a receipt older than that came from a timer that is not
-// running now, whatever the unit file says.
-// Derived from the ONE emitted cadence authority (gunbc.live_deploy.belt_cadence belt_tick_cadence),
-// normalized through systemd.time(7); a spelling that stops normalizing refuses freshness rather
-// than silently keeping an out-of-date number here.
-fn belt_tick_cadence_seconds_derived() -> Second? {
-  match systemd_duration_usec(text: belt_tick_cadence) {
-    Absent => none
-    Present { value: usec } =>
-      match checked_int_magnitude(a: microsecond_count(usec) / 1000000) {
-        CheckedNatOverflow { cause: _ } => none
-        CheckedNatReady { value: n } => Present { value: second(count: n) }
-      }
-  }
-}
-data belt_tick_freshness_cadence_multiplier: Int = 3
+// ---------------------------------------------------------------- event backlog
+// FRESHNESS AGAINST EVENTS, NOT A CLOCK (dogfood intervention #4; bold-bee-114 ruling 2026-10-06).
+// The belt used to be live when its tick receipt was younger than three timer cadences. There is no
+// timer: the belt runs when an event arrives, so the age of the last tick says nothing about whether
+// it is alive -- an idle belt is correctly silent. What a dead belt leaves behind is EVENTS NOBODY
+// CONSUMED. So the row reads the exit spool: an exit still in the inbox past the drain bound means the
+// path unit or its drain is not consuming; an exit still queued past the obligation bound means the
+// attempt's obligation unit did not finish. Either refuses, naming the oldest entry. An active .path
+// unit (the unit standing row) proves only that the watcher is armed; this row proves it is consumed.
+//
+// THE BOUNDS ARE POLICY ROWS DERIVED FROM THE THINGS THEY BOUND. The drain is one `gunbc run` that
+// moves entries, so its bound is the corpus load plus slack. The queued bound is the obligation unit's
+// own RuntimeMaxSec (gunbc.roadmap_belt_actuate belt_obligation_run_bound) plus the drain bound: past
+// that the unit has been stopped by its manager, and an entry still queued is one no run settled.
+data event_backlog_drain_bound_seconds: Int = 900
+data event_backlog_queued_bound_seconds: Int = 3600
 
-fn belt_tick_freshness_bound_seconds() -> Second? {
-  match belt_tick_cadence_seconds_derived() {
-    Absent => none
-    Present { value: cadence } =>
-      match checked_int_magnitude(a: second_count(cadence) * belt_tick_freshness_cadence_multiplier) {
-        CheckedNatOverflow { cause: _ } => none
-        CheckedNatReady { value: n } => Present { value: second(count: n) }
-      }
-  }
+type EventBacklogEntry {
+  stage: String
+  entry: String
+  age_seconds: Int
 }
 
-type TickFreshness
-  = TickFresh { age_seconds: Second }
-  | TickStale { age_seconds: Second, bound_seconds: Second }
-  | TickBeforeDeploy { observed_at: String, deploy_completed_at: String }
-  | TickInstantUnparseable { which: String, text: String }
-  | TickCadenceUnnormalizable { text: String }
+type EventBacklogFact
+  = EventBacklogClear { inbox: Int, queued: Int }
+  | StaleBacklog { stage: String, entry: String, age_seconds: Int, bound_seconds: Int }
+  | EventBacklogUnobserved { detail: String }
 
-fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: String) -> TickFreshness {
-  match iso8601_utc_epoch_seconds(text: observed_at) {
-    Absent => TickInstantUnparseable { which: "tick observed_at", text: observed_at }
-    Present { value: tick_s } =>
-      match iso8601_utc_epoch_seconds(text: deploy_completed_at) {
-        Absent => TickInstantUnparseable { which: "dashboard receipt completed_at", text: deploy_completed_at }
-        Present { value: deploy_s } =>
-          match iso8601_utc_epoch_seconds(text: now) {
-            Absent => TickInstantUnparseable { which: "receipt run now", text: now }
-            Present { value: now_s } =>
-              if second_count(tick_s) < second_count(deploy_s) {
-                TickBeforeDeploy { observed_at: observed_at, deploy_completed_at: deploy_completed_at }
-              } else {
-                match belt_tick_freshness_bound_seconds() {
-                  Absent => TickCadenceUnnormalizable { text: belt_tick_cadence }
-                  Present { value: bound } => {
-                    let age = second_count(now_s) - second_count(tick_s)
-                    if age < 0 {
-                      TickInstantUnparseable { which: "receipt run now (earlier than the tick observed_at)", text: now }
-                    } else {
-                      match checked_int_magnitude(a: age) {
-                        CheckedNatOverflow { cause: _ } => TickInstantUnparseable { which: "tick age", text: to_string(age) }
-                        CheckedNatReady { value: age_n } =>
-                          if age > second_count(bound) {
-                            TickStale { age_seconds: second(count: age_n), bound_seconds: bound }
-                          } else {
-                            TickFresh { age_seconds: second(count: age_n) }
-                          }
-                      }
-                    }
-                  }
-                }
-              }
-          }
-      }
+fn event_backlog_bound_seconds(stage: String) -> Int {
+  if stage == "inbox" { event_backlog_drain_bound_seconds } else { event_backlog_queued_bound_seconds }
+}
+
+// PURE OVER THE AGED ENTRIES: the oldest entry past its stage's bound refuses; none past, clear.
+fn event_backlog_judge(entries: List<EventBacklogEntry>) -> EventBacklogFact {
+  let stale = entries |> filter(e => e.age_seconds > event_backlog_bound_seconds(stage: e.stage))
+  match event_backlog_oldest(entries: stale) {
+    Present { value: o } => StaleBacklog { stage: o.stage, entry: o.entry, age_seconds: o.age_seconds, bound_seconds: event_backlog_bound_seconds(stage: o.stage) }
+    Absent => EventBacklogClear {
+      inbox: count(entries |> filter(e => e.stage == "inbox")),
+      queued: count(entries |> filter(e => e.stage == "queued")),
+    }
   }
 }
 
-fn tick_freshness_text(f: TickFreshness) -> String {
+fn event_backlog_oldest(entries: List<EventBacklogEntry>) -> EventBacklogEntry? {
+  fold(entries, init: none, f: (acc, e) => event_backlog_older(acc: acc, e: e))
+}
+
+fn event_backlog_older(acc: EventBacklogEntry?, e: EventBacklogEntry) -> EventBacklogEntry? {
+  match acc {
+    Absent => Present { value: e }
+    Present { value: o } => if e.age_seconds > o.age_seconds { Present { value: e } } else { Present { value: o } }
+  }
+}
+
+fn event_backlog_text(f: EventBacklogFact) -> String {
   match f {
-    TickFresh { age_seconds: a } => join(["fresh (", to_string(second_count(a)), "s old)"], "")
-    TickStale { age_seconds: a, bound_seconds: b } => join(["stale: ", to_string(second_count(a)), "s old, bound ", to_string(second_count(b)), "s"], "")
-    TickBeforeDeploy { observed_at: o, deploy_completed_at: d } => join(["observed at ", o, ", before the dashboard deployment completed at ", d], "")
-    TickInstantUnparseable { which: w, text: t } => join([w, " is not a %Y-%m-%dT%H:%M:%SZ instant: ", t], "")
-    TickCadenceUnnormalizable { text: t } => join(["the emitted timer cadence does not normalize under systemd.time(7): ", t], "")
+    EventBacklogClear { inbox, queued } => join(["clear (", to_string(value: inbox), " in inbox, ", to_string(value: queued), " queued, none past bound)"], "")
+    StaleBacklog { stage, entry, age_seconds, bound_seconds } => join(["StaleBacklog: ", stage, " entry ", entry, " is ", to_string(value: age_seconds), "s old, past the ", to_string(value: bound_seconds), "s bound"], "")
+    EventBacklogUnobserved { detail } => join(["unobserved: ", detail], "")
   }
 }

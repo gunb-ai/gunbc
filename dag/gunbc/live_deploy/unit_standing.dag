@@ -2,49 +2,38 @@ module gunbc.live_deploy.unit_standing
 
 import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
 import std.algebra { trim }
-import std.measure { Microsecond, microsecond_count }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
-  systemd_unit_property_wire, SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
-  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
+  systemd_unit_property_wire, SystemdUnitProperty,
+  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit,
 }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
-  SystemdServiceDirective, SystemdTimerDirective,
-  OnBootSec,
-  OnUnitInactiveSec,
-  AccuracySec,
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile, PathUnitFile,
+  SystemdServiceDirective,
+  SystemdPathDirective, PathUnit, DirectoryNotEmpty, PathChanged, MakeDirectory,
 }
 
-// EXACT SYSTEMD SERVICE AND TIMER STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE.
-// Readiness plus a fresh tick receipt cannot prove the belt timer is enabled now: a service can be
-// invoked by hand, write one fresh receipt, and sit behind a disabled timer. The RLM-2 ruling
-// (section 7) therefore keeps unit standing in scope and rejects the naive 'service and timer both
-// enabled and active', because gunbc.live_deploy.emit deliberately gives the three units different
-// semantics -- the dashboard serve service is Type=simple, the belt service is Type=oneshot with no
-// [Install] section, and the belt timer is what is enabled under timers.target. The positive
-// standing is one row per unit, and the discriminating POSITIVE control is that a correctly
-// completed, currently INACTIVE oneshot stays green.
-// 
+// EXACT SYSTEMD UNIT STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE. Readiness alone
+// cannot prove the belt's units are installed and armed. The RLM-2 ruling (section 7) keeps unit
+// standing in scope and rejects the naive 'every unit enabled and active', because
+// gunbc.live_deploy.emit gives the units different semantics -- the dashboard serve service is
+// Type=simple, the belt service is Type=oneshot with no [Install] section, and the belt's event path
+// units are what is enabled, under paths.target. (There was a belt timer; dogfood intervention #4
+// removed it, and with it this module's timer standing.) The positive standing is one row per unit,
+// and the discriminating POSITIVE control is that a correctly completed, currently INACTIVE oneshot
+// stays green.
+//
 // THE OBSERVER IS `systemctl show --property=X --value` (extdeps.systemd.systemctl ShowProperty),
-// system scope, which this module widened with the properties it needs rather than adding a second
-// show surface. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own
-// note); UnitFileState carries the same fact through the show surface, which is the read that
-// already existed.
-// 
-// WHAT IS COMPARED EXACTLY, member by member, stated so any residue would be visible.
-// ExecStart, User and WorkingDirectory are compared exactly against the directives of R's emitted
-// unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file /
-// live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }`
-// rendering by its `argv[]=` segment. The timer's target unit is compared exactly through the Unit
-// property. The timer's cadence VALUES are compared exactly too: OnBootUSec and OnUnitInactiveUSec
-// from TimersMonotonic and the AccuracyUSec property are each normalized through
-// extdeps.systemd systemd_duration_usec (systemd.time(7), microsecond resolution) and compared
-// against the Microsecond expectations derived from R's emitted timer unit -- '60s' and '1min'
-// are one value, and a spelling that stops normalizing refuses rather than passing structurally.
-// This dissolves the former declared residue (cadence compared by entry presence only), whose
-// trigger -- an extdeps.systemd duration model -- is the mechanism that landed beside this text.
-// 
+// system scope. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own
+// note); UnitFileState carries the same fact through the show surface.
+//
+// WHAT IS COMPARED EXACTLY, member by member, stated so any residue would be visible. ExecStart, User
+// and WorkingDirectory are compared exactly against the directives of R's emitted unit file
+// (gunbc.live_deploy.emit live_deploy_serve_unit_file / live_deploy_belt_service_unit_file), reading
+// systemd's `{ path=... ; argv[]=... ; ... }` rendering by its `argv[]=` segment. A path unit's target
+// is compared exactly through the Unit property; its watched path is NOT read back (see
+// BeltEventPathStanding), which is this module's one declared residue.
+//
 // EVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a
 // refusal, never a pass by vacancy.
 type UnitPropertyRead
@@ -72,23 +61,9 @@ type ServiceUnitObserved {
   working_directory: String
 }
 
-type TimerUnitObserved {
-  load_state: String
-  unit_file_state: String
-  active_state: String
-  sub_state: String
-  unit: String
-  timers_monotonic: String
-  accuracy_usec_value: String
-}
-
 type ServiceUnitObservation
   = ServiceUnitObservedOk { observed: ServiceUnitObserved }
   | ServiceUnitUnobservable { unit: String, property: String }
-
-type TimerUnitObservation
-  = TimerUnitObservedOk { observed: TimerUnitObserved }
-  | TimerUnitUnobservable { unit: String, property: String }
 
 fn observe_service_unit(unit: NonEmptyStr) -> ServiceUnitObservation {
   match read_unit_property(unit: unit, property: LoadState) {
@@ -132,48 +107,6 @@ fn observe_service_unit(unit: NonEmptyStr) -> ServiceUnitObservation {
                                         },
                                       }
                                   }
-                              }
-                          }
-                      }
-                  }
-              }
-          }
-      }
-  }
-}
-
-fn observe_timer_unit(unit: NonEmptyStr) -> TimerUnitObservation {
-  match read_unit_property(unit: unit, property: LoadState) {
-    UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-    UnitPropertyValue { value: load_state } =>
-      match read_unit_property(unit: unit, property: UnitFileState) {
-        UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-        UnitPropertyValue { value: unit_file_state } =>
-          match read_unit_property(unit: unit, property: ActiveState) {
-            UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-            UnitPropertyValue { value: active_state } =>
-              match read_unit_property(unit: unit, property: SubState) {
-                UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-                UnitPropertyValue { value: sub_state } =>
-                  match read_unit_property(unit: unit, property: Unit) {
-                    UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-                    UnitPropertyValue { value: target } =>
-                      match read_unit_property(unit: unit, property: TimersMonotonic) {
-                        UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-                        UnitPropertyValue { value: timers } =>
-                          match read_unit_property(unit: unit, property: AccuracyUSec) {
-                            UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
-                            UnitPropertyValue { value: accuracy } =>
-                              TimerUnitObservedOk {
-                                observed: TimerUnitObserved {
-                                  load_state: load_state,
-                                  unit_file_state: unit_file_state,
-                                  active_state: active_state,
-                                  sub_state: sub_state,
-                                  unit: target,
-                                  timers_monotonic: timers,
-                                  accuracy_usec_value: accuracy,
-                                },
                               }
                           }
                       }
@@ -325,122 +258,6 @@ fn service_unit_expectation_of(file: SystemdUnitFile) -> ServiceUnitExpectationD
   }
 }
 
-type TimerUnitExpectation {
-  target_unit: String
-  on_boot_usec: Microsecond
-  on_unit_inactive_usec: Microsecond
-  accuracy_usec: Microsecond
-}
-
-// The value rendered after `Name=` in a systemctl show composite like
-// `{ OnBootUSec=2min ; next_elapse=... }, { OnUnitInactiveUSec=1min ; ... }`: the token between
-// the prefix and the next ` ;`, `,` or `}` boundary, normalized through systemd.time(7).
-fn show_rendered_duration_usec(rendering: String, prefix: String) -> Microsecond? {
-  let parts = split(s: rendering, delimiter: prefix)
-  if list_length(items: parts) < 2 {
-    none
-  } else {
-    let tail = fold(parts, init: "", f: (a, seg) => seg)
-    let token = fold(split(s: tail, delimiter: " ; "), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
-    systemd_duration_usec(text: trim(s: fold(split(s: token, delimiter: "}"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })))
-  }
-}
-
-fn timer_on_boot_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
-  fold(directives, init: none, f: (acc, d) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => match d {
-        TimerUnit { target: _ } => none
-        OnCalendar { expression: _ } => none
-        OnBootSec { duration: t } => systemd_duration_usec(text: t as String)
-        OnUnitInactiveSec { duration: _ } => none
-        AccuracySec { duration: _ } => none
-        RandomizedDelaySec { duration: _ } => none
-        Persistent { enabled: _ } => none
-      }
-    })
-}
-
-fn timer_on_unit_inactive_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
-  fold(directives, init: none, f: (acc, d) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => match d {
-        TimerUnit { target: _ } => none
-        OnCalendar { expression: _ } => none
-        OnBootSec { duration: _ } => none
-        OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String)
-        AccuracySec { duration: _ } => none
-        RandomizedDelaySec { duration: _ } => none
-        Persistent { enabled: _ } => none
-      }
-    })
-}
-
-fn timer_accuracy_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
-  fold(directives, init: none, f: (acc, d) =>
-    match acc {
-      Present { value: v } => Present { value: v }
-      Absent => match d {
-        TimerUnit { target: _ } => none
-        OnCalendar { expression: _ } => none
-        OnBootSec { duration: _ } => none
-        OnUnitInactiveSec { duration: _ } => none
-        AccuracySec { duration: t } => systemd_duration_usec(text: t as String)
-        RandomizedDelaySec { duration: _ } => none
-        Persistent { enabled: _ } => none
-      }
-    })
-}
-
-type TimerUnitExpectationDerivation
-  = TimerExpectationDerived { expectation: TimerUnitExpectation }
-  | TimerExpectationUnderivable { detail: String }
-
-fn timer_directive_target(directives: List<SystemdTimerDirective>) -> String? {
-  fold(directives, init: none, f: (acc, d) => match acc {
-    Present { value: v } => Present { value: v }
-    Absent => match d {
-      TimerUnit { target: t } => Present { value: t as String }
-      OnCalendar { expression: _ } => none
-      OnBootSec { duration: _ } => none
-      OnUnitInactiveSec { duration: _ } => none
-      AccuracySec { duration: _ } => none
-      RandomizedDelaySec { duration: _ } => none
-      Persistent { enabled: _ } => none
-    }
-  })
-}
-
-fn timer_unit_expectation_of(file: SystemdUnitFile) -> TimerUnitExpectationDerivation {
-  match file {
-    TimerUnitFile { unit: _, timer: directives, install: _ } =>
-      match timer_directive_target(directives: directives) {
-        Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no Unit= target" }
-        Present { value: t } =>
-          match timer_on_boot_duration(directives: directives) {
-            Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnBootSec" }
-            Present { value: boot } =>
-              match timer_on_unit_inactive_duration(directives: directives) {
-                Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnUnitInactiveSec" }
-                Present { value: inactive } =>
-                  match timer_accuracy_duration(directives: directives) {
-                    Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable AccuracySec" }
-                    Present { value: accuracy } =>
-                      TimerExpectationDerived { expectation: TimerUnitExpectation {
-                        target_unit: t, on_boot_usec: boot, on_unit_inactive_usec: inactive, accuracy_usec: accuracy,
-                      } }
-                  }
-              }
-          }
-      }
-    ServiceUnitFile { unit: _, service: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a service" }
-    SliceUnitFile { unit: _, slice: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a slice" }
-    PathUnitFile { unit: _, path: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a path unit" }
-  }
-}
-
 // systemctl show renders ExecStart as `{ path=P ; argv[]=A B C ; ignore_errors=no ; ... }`. The
 // argv[] segment is the command line the unit file declared, which is what the emitted ExecStart
 // directive is, so that segment is the exact comparand.
@@ -463,9 +280,15 @@ type DashboardServiceStanding
   = DashboardServiceConverged { unit: String }
   | DashboardServiceRefused { unit: String, property: String, expected: String, observed: String }
 
-type BeltTimerStanding
-  = BeltTimerConverged { unit: String }
-  | BeltTimerRefused { unit: String, property: String, expected: String, observed: String }
+// THE BELT'S EVENT PATH UNITS (dogfood intervention #4: there is no belt timer). A path unit is
+// converged when it is loaded, enabled, active and armed (`waiting`, or `running` while its unit runs)
+// and activates the unit the emitted file names. Its watched path is not read back here -- systemctl
+// renders Paths= as a composite this row does not parse -- so the path is established by the emitted
+// file the deploy installed and its byte comparison, not by this read; and this row proves only that
+// the watcher is ARMED. Whether events are CONSUMED is the receipt's event backlog row.
+type BeltEventPathStanding
+  = BeltEventPathConverged { unit: String }
+  | BeltEventPathRefused { unit: String, property: String, expected: String, observed: String }
 
 type BeltOneshotStanding
   = BeltOneshotConverged { unit: String, active_state: String }
@@ -501,45 +324,6 @@ fn judge_dashboard_service(unit: String, expect: ServiceUnitExpectation, o: Serv
   }
 }
 
-fn judge_belt_timer(unit: String, expect: TimerUnitExpectation, o: TimerUnitObserved) -> BeltTimerStanding {
-  if o.load_state != "loaded" {
-    BeltTimerRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
-  } else if o.unit_file_state != "enabled" {
-    BeltTimerRefused { unit: unit, property: "UnitFileState", expected: "enabled", observed: o.unit_file_state }
-  } else if o.active_state != "active" {
-    BeltTimerRefused { unit: unit, property: "ActiveState", expected: "active", observed: o.active_state }
-  } else if o.sub_state != "waiting" && o.sub_state != "running" {
-    BeltTimerRefused { unit: unit, property: "SubState", expected: "waiting|running", observed: o.sub_state }
-  } else if o.unit != expect.target_unit {
-    BeltTimerRefused { unit: unit, property: "Unit", expected: expect.target_unit, observed: o.unit }
-  } else {
-    match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnBootUSec=") {
-      Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnBootUSec entry", observed: o.timers_monotonic }
-      Present { value: boot } =>
-        if microsecond_count(boot) != microsecond_count(expect.on_boot_usec) {
-          BeltTimerRefused { unit: unit, property: "OnBootUSec", expected: to_string(microsecond_count(expect.on_boot_usec)), observed: to_string(microsecond_count(boot)) }
-        } else {
-          match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnUnitInactiveUSec=") {
-            Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnUnitInactiveUSec entry", observed: o.timers_monotonic }
-            Present { value: inactive } =>
-              if microsecond_count(inactive) != microsecond_count(expect.on_unit_inactive_usec) {
-                BeltTimerRefused { unit: unit, property: "OnUnitInactiveUSec", expected: to_string(microsecond_count(expect.on_unit_inactive_usec)), observed: to_string(microsecond_count(inactive)) }
-              } else {
-                match systemd_duration_usec(text: trim(s: o.accuracy_usec_value)) {
-                  Absent => BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: "a normalizable duration", observed: o.accuracy_usec_value }
-                  Present { value: accuracy } =>
-                    if microsecond_count(accuracy) != microsecond_count(expect.accuracy_usec) {
-                      BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: to_string(microsecond_count(expect.accuracy_usec)), observed: to_string(microsecond_count(accuracy)) }
-                    } else {
-                      BeltTimerConverged { unit: unit }
-                    }
-                }
-              }
-          }
-        }
-    }
-  }
-}
 
 // THE ONESHOT IS NOT SEPARATELY ENABLED (it has no [Install] section, so its UnitFileState is
 // `static`), and it is normally INACTIVE between ticks. Both are the correct state and both are
@@ -576,7 +360,8 @@ fn judge_belt_oneshot(unit: String, expect: ServiceUnitExpectation, o: ServiceUn
 
 type LaunchUnitStanding {
   dashboard: DashboardServiceStanding
-  timer: BeltTimerStanding
+  exit_path: BeltEventPathStanding
+  answer_path: BeltEventPathStanding
   oneshot: BeltOneshotStanding
 }
 
@@ -588,11 +373,11 @@ fn dashboard_service_standing_text(s: DashboardServiceStanding) -> String {
   }
 }
 
-fn belt_timer_standing_text(s: BeltTimerStanding) -> String {
+fn belt_event_path_standing_text(s: BeltEventPathStanding) -> String {
   match s {
-    BeltTimerConverged { unit: u } => join(["belt timer ", u, " converged"], "")
-    BeltTimerRefused { unit: u, property: p, expected: e, observed: o } =>
-      join(["belt timer ", u, " ", p, " expected ", e, " observed ", o], "")
+    BeltEventPathConverged { unit: u } => join(["belt event path ", u, " converged"], "")
+    BeltEventPathRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["belt event path ", u, " ", p, " expected ", e, " observed ", o], "")
   }
 }
 
@@ -607,7 +392,8 @@ fn belt_oneshot_standing_text(s: BeltOneshotStanding) -> String {
 fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
   join([
     dashboard_service_standing_text(s: s.dashboard), "; ",
-    belt_timer_standing_text(s: s.timer), "; ",
+    belt_event_path_standing_text(s: s.exit_path), "; ",
+    belt_event_path_standing_text(s: s.answer_path), "; ",
     belt_oneshot_standing_text(s: s.oneshot),
   ], "")
 }
@@ -626,15 +412,56 @@ fn observe_dashboard_service_standing(unit: NonEmptyStr, file: SystemdUnitFile) 
   }
 }
 
-fn observe_belt_timer_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltTimerStanding {
-  match timer_unit_expectation_of(file: file) {
-    TimerExpectationUnderivable { detail: d } =>
-      BeltTimerRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
-    TimerExpectationDerived { expectation: e } =>
-      match observe_timer_unit(unit: unit) {
-        TimerUnitUnobservable { unit: u, property: p } =>
-          BeltTimerRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
-        TimerUnitObservedOk { observed: o } => judge_belt_timer(unit: unit as String, expect: e, o: o)
+fn path_unit_target_of(file: SystemdUnitFile) -> String? {
+  match file {
+    PathUnitFile { unit: _, path: directives, install: _ } =>
+      fold(directives, init: none, f: (acc, d) => match acc {
+        Present { value: v } => Present { value: v }
+        Absent => match d {
+          PathUnit { target: t } => Present { value: t as String }
+          DirectoryNotEmpty { path: _ } => none
+          PathChanged { path: _ } => none
+          MakeDirectory { enabled: _ } => none
+        }
+      })
+    ServiceUnitFile { unit: _, service: _, install: _ } => none
+    TimerUnitFile { unit: _, timer: _, install: _ } => none
+    SliceUnitFile { unit: _, slice: _, install: _ } => none
+  }
+}
+
+fn observe_belt_event_path_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltEventPathStanding {
+  match path_unit_target_of(file: file) {
+    Absent => BeltEventPathRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: "the emitted unit is not a path unit naming a Unit= target" }
+    Present { value: target } =>
+      match read_unit_property(unit: unit, property: LoadState) {
+        UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        UnitPropertyValue { value: load } =>
+          if load != "loaded" { BeltEventPathRefused { unit: unit as String, property: "LoadState", expected: "loaded", observed: load } } else {
+            match read_unit_property(unit: unit, property: UnitFileState) {
+              UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+              UnitPropertyValue { value: file_state } =>
+                if file_state != "enabled" { BeltEventPathRefused { unit: unit as String, property: "UnitFileState", expected: "enabled", observed: file_state } } else {
+                  match read_unit_property(unit: unit, property: ActiveState) {
+                    UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                    UnitPropertyValue { value: active } =>
+                      if active != "active" { BeltEventPathRefused { unit: unit as String, property: "ActiveState", expected: "active", observed: active } } else {
+                        match read_unit_property(unit: unit, property: SubState) {
+                          UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                          UnitPropertyValue { value: sub } =>
+                            if sub != "waiting" && sub != "running" { BeltEventPathRefused { unit: unit as String, property: "SubState", expected: "waiting|running", observed: sub } } else {
+                              match read_unit_property(unit: unit, property: Unit) {
+                                UnitPropertyUnreadable { unit: u, property: p } => BeltEventPathRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+                                UnitPropertyValue { value: observed_target } =>
+                                  if observed_target != target { BeltEventPathRefused { unit: unit as String, property: "Unit", expected: target, observed: observed_target } } else { BeltEventPathConverged { unit: unit as String } }
+                              }
+                            }
+                        }
+                      }
+                  }
+                }
+            }
+          }
       }
   }
 }

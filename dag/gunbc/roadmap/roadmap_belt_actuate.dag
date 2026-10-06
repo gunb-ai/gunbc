@@ -545,6 +545,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   attempt_exit_spool_stage_dir, attempt_exit_stage_list, AttemptExitStageNames, AttemptExitStageUnreadable,
 }
 import extdeps.tools.gnu_coreutils { mv_exact_destination_command }
+import extdeps.tools.stat { stat_mtime_epoch_command }
 import gunbc.roadmap_dispatch_actuator {
   AttemptUnitStartStanding, AttemptUnitStartRecorded, AttemptUnitNeverStarted, AttemptUnitStartUnread,
   attempt_worker_unit_observation_of,
@@ -12921,5 +12922,54 @@ fn belt_exit_entries_settle(instance: HostDashboardInstance, node_id: String, at
           Absent => [] as List<String>
           Present { value: why } => [join([n, ": ", why], "")]
         })
+  }
+}
+
+// THE EXIT SPOOL'S UNCONSUMED ENTRIES WITH THEIR MODIFICATION TIMES, for the launch receipt's event
+// backlog row (gunbc.roadmap_launch_deployment_observe event_backlog_judge). An entry's directory is
+// created by the stop hook and never written after, so its mtime is the instant the exit was recorded.
+// Inbox and queued only: done and refused are not a backlog -- one is consumed, the other is a refusal
+// the drain already reported. Any unreadable listing or unparseable time refuses the read whole.
+type BeltExitSpoolEntryTime {
+  stage: String
+  entry: String
+  mtime_epoch: Int
+}
+
+type BeltExitSpoolTimes
+  = BeltExitSpoolTimesRead { entries: List<BeltExitSpoolEntryTime> }
+  | BeltExitSpoolTimesUnreadable { reason: String }
+
+fn belt_exit_spool_stage_times(instance: HostDashboardInstance, stage: AttemptExitSpoolStage, label: String) -> BeltExitSpoolTimes {
+  let root = instance.instance_root as String
+  match attempt_exit_stage_list(instance_root: root, stage: stage) {
+    AttemptExitStageUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+    AttemptExitStageNames { names } =>
+      fold(names, init: BeltExitSpoolTimesRead { entries: [] }, f: (acc, n) => match acc {
+        BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+        BeltExitSpoolTimesRead { entries } => {
+          let cmd = stat_mtime_epoch_command(path: join([attempt_exit_spool_stage_dir(instance_root: root, stage: stage), "/", n], ""))
+          match belt_exec(cmd: host_exec_argv(program: cmd.program.invocation as String, args: cmd.arguments), workdir: belt_observe_workdir as String) {
+            ExecOk { stdout } =>
+              match parse_int(text: trim(stdout)) {
+                Present { value: t } => BeltExitSpoolTimesRead { entries: concat(entries, [BeltExitSpoolEntryTime { stage: label, entry: n, mtime_epoch: t }]) }
+                Absent => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " did not parse: ", stdout], "") }
+              }
+            ExecFailed { program: _, exit_code: _, stderr } => BeltExitSpoolTimesUnreadable { reason: join(["the modification time of ", label, " entry ", n, " could not be read: ", stderr], "") }
+            ExecRefused { program: _, reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+          }
+        }
+      })
+  }
+}
+
+fn belt_exit_spool_times(instance: HostDashboardInstance) -> BeltExitSpoolTimes {
+  match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitInbox, label: "inbox") {
+    BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+    BeltExitSpoolTimesRead { entries: inbox } =>
+      match belt_exit_spool_stage_times(instance: instance, stage: AttemptExitQueued, label: "queued") {
+        BeltExitSpoolTimesUnreadable { reason } => BeltExitSpoolTimesUnreadable { reason: reason }
+        BeltExitSpoolTimesRead { entries: queued } => BeltExitSpoolTimesRead { entries: concat(inbox, queued) }
+      }
   }
 }
