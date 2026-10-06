@@ -5642,6 +5642,47 @@ mod compiler_tests {
         assert!(!receipt.contains("LeafAmbiguous:Optional"), "{receipt}");
     }
 
+    // A COPRODUCT NAMED Optional EMITS AS ITS OWN ENUM. still-raven-321's fixture,
+    // fixtures/native_emission_controls_optional_collision.dag, is a non-kernel declaration that shares
+    // the kernel mint's leaf. Host-Option is decided by declaration (v1.compiler.emit_rust
+    // declaration_owns_host_option over gunbc.structural_realization_bindings kernel_mint_declaration_rows),
+    // so its positions name its own enum. THE RED is the leaf rule this replaced: every position rendered
+    // as Option<..> and the variants were never emitted (E0425 cannot find CollisionWrapped). The fixture
+    // lives outside the source roots, because a second Optional in the accepted corpus is a leaf-name fork,
+    // so it is compiled here, from its file, beside a kernel v2.std.optional. Its one import line names a
+    // kernel type and is dropped so the pair compiles standalone.
+    #[test]
+    fn a_coproduct_named_optional_emits_as_its_own_enum() {
+        use crate::v1_compiler_compile::SourceFile;
+        let collision = read_dag("fixtures/native_emission_controls_optional_collision.dag")
+            .replace("import std.types { Int }\n", "");
+        let sources = vec![
+            std::rc::Rc::new(SourceFile { path: "fixtures/kernel_shadow/optional.dag".to_string(), content: "module v2.std.optional\n\ntype Optional<T>\n  = Present { value: T }\n  | Absent\n".to_string() }),
+            std::rc::Rc::new(SourceFile { path: "fixtures/native_emission_controls_optional_collision.dag".to_string(), content: collision }),
+        ];
+        let result = crate::v1_compiler_compile::compile_sources(
+            std::rc::Rc::new(sources.into()),
+            crate::v1_compiler_artifact::RenderTarget::Rust,
+        );
+        let emitted = result
+            .files
+            .iter()
+            .find(|f| {
+                f.path
+                    .contains("native_emission_controls_optional_collision")
+            })
+            .map(|f| f.content.clone())
+            .unwrap_or_default();
+        assert!(
+            emitted.contains("pub enum Optional") && emitted.contains("CollisionWrapped"),
+            "the collision coproduct must emit as its own enum:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("Option<") && !emitted.contains("compile_error!"),
+            "no position of the collision coproduct may realize as the host Option:\n{emitted}"
+        );
+    }
+
     // A REPEATED TYPE PARAMETER IN ONE HEADER REFUSES, LOCATED, AND SAYS WHICH NAME. The refusal
     // predates this row. Its message once blamed a value parameter and called a type a fn, so the
     // row asserts the NAME and the OWNER, not merely that some diagnostic fired. The control header
