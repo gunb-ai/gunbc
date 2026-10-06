@@ -1,0 +1,12 @@
+module gunbc.machine_intake_arrival_run
+
+import std.process { ProcessExit }
+import gunbc.machine_intake_arrival_admission { arrival_admit_executor }
+
+// THE ARRIVAL JOB'S WET DOOR. Re-runs the credential-free admit so WIF cannot outrun a refused
+// subject. O1c-2/O1c-3 writes stay behind this door; this inhabitance is the federated job itself
+// (census RealizedFederatedGrant). Names signed off msg_f03558d1.
+
+fn arrival_converge_wet() -> ProcessExit {
+  arrival_admit_executor()
+}

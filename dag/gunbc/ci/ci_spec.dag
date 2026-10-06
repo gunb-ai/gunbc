@@ -920,6 +920,16 @@ data gunbc_ci_namecheap_observe_target: GunbcRunStepTarget = GunbcRunStepTarget 
   function: "namecheap_observe_ci_wet",
 }
 
+data gunbc_ci_arrival_admit_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_admission.dag",
+  function: "arrival_admit_executor",
+}
+
+data gunbc_ci_arrival_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/machine_intake/arrival_run.dag",
+  function: "arrival_converge_wet",
+}
+
 data gunbc_ci_host_credential_custody_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/host_credential_custody_converge.dag",
   function: "host_credential_custody_converge_ci_wet",
@@ -1428,7 +1438,9 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_pair_serving_d0_target,
     gunbc_ci_pair_serving_d0_admit_target,
     gunbc_ci_gcp_iam_converge_request_target,
-    gunbc_ci_gcp_iam_converge_apply_target
+    gunbc_ci_gcp_iam_converge_apply_target,
+    gunbc_ci_arrival_admit_target,
+    gunbc_ci_arrival_converge_target
   ]
 }
 
@@ -4002,5 +4014,25 @@ fn gunbc_ci_namecheap_observe_invoke() -> String {
     function: gunbc_ci_namecheap_observe_target.function,
     claim_run: false,
     receipt_rel: namecheap_observation_receipt_path
+  )
+}
+
+fn gunbc_ci_arrival_admit_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_admit_target.entry,
+    function: gunbc_ci_arrival_admit_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_arrival_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_arrival_converge_target.entry,
+    function: gunbc_ci_arrival_converge_target.function,
+    claim_run: false,
+    receipt_rel: none
   )
 }

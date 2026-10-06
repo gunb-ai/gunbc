@@ -121,7 +121,8 @@ data group_a_dev_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
 // login/credential change), boots, and firmware qualification on Mt. Jade, with no per-run approval
 // needed. Scope is mtjade1 only; mtcollins1 wet steps still need their own go-ahead." Quote unchanged.
 // Grant-level interlock stays absent: each arrival arm has its own hold in standing_grant_arm_interlock
-// (archive: slot only; BmcSecure and qualification: slot plus grounded route). J6's UnitHoldProof is
+// (archive: slot only; BmcSecure and qualification: slot plus grounded route). Mode, pool, SA and
+// secret names: operator sign-off msg_f03558d1. J6's UnitHoldProof is
 // not an arm until the boot pair lands.
 data mtjade1_live_standing_grant: StandingOperatorGrant = StandingOperatorGrant {
   identity: "mtjade1-live-standing-grant-2026-10-06" as NonEmptyStr,
