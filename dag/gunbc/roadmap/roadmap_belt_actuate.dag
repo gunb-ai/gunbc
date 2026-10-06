@@ -8482,7 +8482,8 @@ fn belt_run_validation_operations(
 // it from being served from the store; what is shared is the build it executes.
 //
 // The receipt cites the computation: the derived request key, the outcome's identity, the exact
-// tree the work ran on, and whether it attached or computed. A host-record loss is not a verdict
+// tree the work ran on, and whether it attached or computed. A run whose citation cannot be built
+// REFUSES -- it is never recorded as a compute execution without one, and never passes. A host-record loss is not a verdict
 // about the work, but it is not a clean verification either, so it refuses rather than passing.
 fn belt_run_claim_through_compute(
   instance: HostDashboardInstance,
@@ -8550,7 +8551,17 @@ fn belt_run_claim_through_compute(
       stderr: if host_record_was_written(h: record) { "" } else { host_record_wire(h: record) },
       computation: citation,
     }
-    if !host_record_was_written(h: record) {
+    if match citation { Present { value: _ } => false  Absent => true } {
+      BeltValidationRun {
+        executions: acc.executions,
+        verdict: ValidationRefused {
+          cause: ValidationCommandRefused {
+            program: "gunbc-compute",
+            reason: join(["the claim ran as compute work but its shared computation could not be cited (no subject tree or identity in the outcome), so it neither passes nor fails: ", document], ""),
+          },
+        },
+      }
+    } else if !host_record_was_written(h: record) {
       BeltValidationRun {
         executions: acc.executions |> append(execution),
         verdict: ValidationRefused {

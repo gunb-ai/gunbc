@@ -24,6 +24,7 @@ import std.materialization_store_grant { DurableHostVolumeRoot, WitnessScratchRo
 import extdeps.realization.materialization_store_local { LocalStoreFamilyBudget }
 import std.cache_identity { compute_work_artifact_kind }
 import std.measure { byte_size }
+import std.fabric_blob { fabric_blob_reading_path }
 import gunbc.compute.work_class_grant { work_class_grant, work_class_grant_rows, work_class_of }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import gunbc.compute.work_request {
@@ -479,7 +480,7 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
     && (match served { ComputeStoreServed { ending, identity, document: _ } => ending == "succeeded" && identity == "fixture-identity"  _ => false })
     && (match resolved {
       ComputeDependencyResolved { dependency } => match dependency {
-        VerifiedBuildBinaries { binaries } => count(binaries) == 2 && all(binaries, b => starts_with(s: b.path as String, prefix: root_path))
+        VerifiedBuildBinaries { gunbc, claim_batch } => starts_with(s: fabric_blob_reading_path(reading: gunbc) as String, prefix: root_path) && starts_with(s: fabric_blob_reading_path(reading: claim_batch) as String, prefix: root_path) && fabric_blob_reading_path(reading: gunbc) != fabric_blob_reading_path(reading: claim_batch)
         _ => false
       }
       ComputeDependencyRefused { detail: _ } => false

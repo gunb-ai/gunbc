@@ -78,7 +78,7 @@ import std.materialization_ladder {
 import std.realization { Materialization, Memoize, Recompute, Share }
 import std.materialization_store_grant { MaterializationStoreRoot, DurableHostVolumeRoot, materialization_store_frame, materialization_store_root_path }
 import std.materialization_object {
-  ArtifactPayload, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
+  ArtifactPayload, ArtifactBlobPart, StoreLookup, StoreLookupHit, StoreLookupMiss, StoreLookupRefused, StoreLookupRefusal,
   StoreLookupObjectUnavailable, StoreLookupObjectMalformed, StoreLookupManifestUninterpretable, StoreLookupPayloadMissing,
   StoreLookupPayloadUndeclared, StoreLookupPayloadRepeated, StoreLookupContractRefused, StoreLookupEvaluationPreimageMismatch,
   StoreLookupStoreFamilyRefused, StoreCommitSettled, StoreCommitRefused, StoreCommitRefusal,
@@ -102,7 +102,7 @@ import gunbc.compute.work_request {
   work_refusal_detail,
   WorkSubject, ExactTree, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
-  gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
+  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -359,12 +359,12 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
         concat(["-p", "v1-compiler"], flat_map(bins, b => ["--bin", gunbc_binary_name(b: b) as String])),
       )
     CompileEntry { entry } =>
-      [compute_dependency_program(dependency: dependency, bin: "gunbc"), "compile",
+      [compute_dependency_program(dependency: dependency, bin: GunbcDriver), "compile",
        "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
        "--entry", join([layout.checkout, "/", entry as String], ""), "--output-dir", layout.out_dir, "--target", "dag"]
     RunClaims { entry, functions, hermetic, window: _ } =>
       concat(
-        [compute_dependency_program(dependency: dependency, bin: "claim_batch"),
+        [compute_dependency_program(dependency: dependency, bin: ClaimBatchRunner),
          "--source-root", join([layout.checkout, "/dag"], ""), "--source-root", join([layout.checkout, "/src/v2"], ""),
          "--entry", join([layout.checkout, "/", entry as String], ""), "--functions", functions as String],
         if hermetic { ["--hermetic"] } else { ["--wet"] },
@@ -376,23 +376,20 @@ fn compute_command_argv(instance: HostDashboardInstance, layout: ComputeLayout, 
 // compute_dependency_read constructs the populated arm, from a store lookup whose parts verified.
 type ComputeDependency
   = NoComputeDependency
-  | VerifiedBuildBinaries { binaries: List<ComputeDependencyBinary> }
+  | VerifiedBuildBinaries { gunbc: FabricBlobReading, claim_batch: FabricBlobReading }
 
-type ComputeDependencyBinary {
-  bin: String
-  path: NonEmptyStr
-}
-
-// A dependent reaches this only through compute_provide_dependent, which refuses unless every default
-// binary was read and verified, so the absent arm names the refusal it would have been rather than a
-// path: exec of it fails loudly instead of running something else.
-fn compute_dependency_program(dependency: ComputeDependency, bin: String) -> String {
+// THE PROGRAM FOR ONE BINARY IS A TOTAL MATCH OVER THE CLOSED SET: the resolved dependency carries one
+// verified reading per GunbcBinary, so selecting one is never a lookup that can miss. A dependent
+// reaches this only through compute_provide_dependent, which refuses unless both readings verified,
+// so the NoComputeDependency arm names the refusal it would have been rather than a path: exec of it
+// fails loudly instead of running something else.
+fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -> String {
   match dependency {
-    NoComputeDependency => join(["compute: no verified build binary for ", bin], "")
-    VerifiedBuildBinaries { binaries } =>
-      match binaries |> filter(b => b.bin == bin) |> first() {
-        Present { value: b } => b.path as String
-        Absent => join(["compute: no verified build binary for ", bin], "")
+    NoComputeDependency => join(["compute: no verified build binary for ", gunbc_binary_name(b: bin) as String], "")
+    VerifiedBuildBinaries { gunbc, claim_batch } =>
+      match bin {
+        GunbcDriver => fabric_blob_reading_path(reading: gunbc) as String
+        ClaimBatchRunner => fabric_blob_reading_path(reading: claim_batch) as String
       }
   }
 }
@@ -1873,29 +1870,24 @@ fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRe
   match read.lookup {
     StoreLookupMiss { key: _ } => ComputeDependencyRefused { detail: "the build this request depends on succeeded but its record is not in the store (evicted between the build and this read)" }
     StoreLookupRefused { key: _, refusal } => ComputeDependencyRefused { detail: join(["the build this request depends on did not verify: ", compute_store_lookup_refusal_detail(r: refusal)], "") }
-    StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } => {
-      let found = work_default_bins |> map(b => ComputeDependencyBinaryFound {
-        bin: gunbc_binary_name(b: b) as String,
-        reading: match blobs |> filter(p => p.id == compute_work_binary_output(b: b)) |> first() {
-          Absent => none
-          Present { value: part } =>
-            read.parts |> filter(r => (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)) |> first()
-        },
-      })
-      match found |> filter(f => match f.reading { Present { value: _ } => false  Absent => true }) |> first() {
-        Present { value: missing } => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", missing.bin], "") }
-        Absent => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { binaries: found |> flat_map(f => match f.reading {
-          Present { value: r } => [ComputeDependencyBinary { bin: f.bin, path: fabric_blob_reading_path(reading: r) }]
-          Absent => []
-        }) } }
+    StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } =>
+      match compute_verified_binary(blobs: blobs, parts: read.parts, b: GunbcDriver) {
+        Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: GunbcDriver) as String], "") }
+        Present { value: g } =>
+          match compute_verified_binary(blobs: blobs, parts: read.parts, b: ClaimBatchRunner) {
+            Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: ClaimBatchRunner) as String], "") }
+            Present { value: c } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g, claim_batch: c } }
+          }
       }
-    }
   }
 }
 
-type ComputeDependencyBinaryFound {
-  bin: String
-  reading: FabricBlobReading?
+// One binary's verified reading: its part found by declared output id, its reading by that part's digest.
+fn compute_verified_binary(blobs: List<ArtifactBlobPart>, parts: List<FabricBlobReading>, b: GunbcBinary) -> FabricBlobReading? {
+  match blobs |> filter(p => p.id == compute_work_binary_output(b: b)) |> first() {
+    Absent => none
+    Present { value: part } => parts |> filter(r => (fabric_blob_reading_digest(reading: r).hex as String) == (part.digest.hex as String)) |> first()
+  }
 }
 
 // PRESENTATION ONLY: the store's typed refusals rendered for the outcome document, which carries a
