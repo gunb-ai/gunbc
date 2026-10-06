@@ -209,7 +209,7 @@ data alias_amb_b_source: String = "module v2.test.parse.alias_amb_b\n\ntype X {}
 data alias_amb_subject_source: String = "module v2.test.parse.alias_amb_s\n\nimport v2.test.parse.alias_amb_a { X }\nimport v2.test.parse.alias_amb_b { X }\n\nalias AX = v2.test.parse.alias_amb_a.X\n"
 
 // THE LEGACY LONG-LANE ENTRY (gunbc.witness_deferral_freeze names its wrapper), kept as the
-// conjunction of the per-PR route claims in v2.test.parse.alias_decl_carry, which are what execute.
+// conjunction of the per-PR route claims in test.claim.parse_test_alias_decl_carry, which are what execute.
 fn alias_decl_fill_lexical_lookup_holds() -> Bool {
   match alias_decl_normalized(text: alias_decl_fill_parse_source, file: ^alias_decl_fill_probe) {
     Rejected { diagnostics: _ } => false
