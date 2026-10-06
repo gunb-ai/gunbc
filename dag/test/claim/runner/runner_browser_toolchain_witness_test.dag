@@ -3,7 +3,7 @@ module test.claim.runner.runner_browser_toolchain_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.github.actions { SelfHosted }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec }
 import gunbc.runner_registration_labels { runner_registration_labels, RegistrationLabelsResolved, RegistrationLabelsRefused }

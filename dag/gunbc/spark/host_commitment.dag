@@ -2,7 +2,7 @@ module gunbc.spark.host_commitment
 
 import std.types { Bool, List, String, NonEmptyStr, EpochSecs }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { declaration_ref_display_key }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {

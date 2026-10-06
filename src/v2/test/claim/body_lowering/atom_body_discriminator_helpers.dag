@@ -32,7 +32,7 @@ import v2.std.node_query {
   node_positional_child_targets
 }
 import v2.std.collection { list_at_optional }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 
 data atom_body_discriminator_module_source: String = "module atom_body_discriminator\n\nfn id(x: Int) -> Int { x }\nfn zero() -> Int { 0 }\nfn add(x: Int, y: Int) -> Int { x + y }\nfn zero_binary() -> Int { 1 + 1 }\n"
 

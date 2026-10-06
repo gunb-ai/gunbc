@@ -2,7 +2,7 @@ module extdeps.bmc.ipmitool_hpm_check
 
 import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

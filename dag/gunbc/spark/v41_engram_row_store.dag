@@ -9,7 +9,7 @@ import std.decl_ref { DeclarationRef, declaration_ref_display_key }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, Sha256DigestHex, sha256_hex_digest, serialize_content_hash }
 import std.artifact_store { ArtifactRealizationInput, artifact_realization_digest }
 import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.safetensors.format {
   SafetensorsEntry, SafetensorsDtype,
   safetensors_dtype_byte_width, safetensors_dtype_token,

@@ -1,7 +1,7 @@
 module v2.lens.complexity_accumulator_copy.analyze
 
 import std.types { List }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.integer { Int }
 import v2.std.node { Node, Symbol }
 import v2.extdeps.languages.dag { ParseSubtreeAbsent }

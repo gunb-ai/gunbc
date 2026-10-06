@@ -2,7 +2,7 @@ module v2.std.resource_declaration
 
 import std.resource_contract { ResourceKind, Capability, Observation, ResourceMode, Read, ReadWrite }
 import v2.std.node { Symbol, symbol_intern_lexeme }
-import v2.std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present }
 
 // THE VALUES A `resource` DECLARATION'S kind: AND mode: ENTRIES MAY TAKE, read against their home
 // (std.resource_contract) by v2.compiler.body_lowering_fold body_lower_resource_decl, which refuses an

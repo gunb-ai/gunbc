@@ -1,5 +1,5 @@
 module test.claim.approval_capability_witness_test
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 import gunbc.auth.approval_capability {
