@@ -67,6 +67,9 @@ import gunbc.dispatch_selection {
   ClaudeApiKeySecretRef,
   DispatchSelectionResolved,
   DispatchSelectionRefused,
+  ResolvedClaude,
+  ResolvedCodex,
+  ResolvedCursor,
   NoDerivedSizingExpectation,
   claude_dispatch_credential,
   inventory_with_observed_standing,
@@ -526,6 +529,30 @@ test fn witness_production_claude_row_admits_no_automatic_draw() -> Bool {
 test fn an_observed_eligible_trip_makes_claude_selectable_and_an_exhausted_one_does_not() -> Bool {
   select_claude_over(inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])))
     && !select_claude_over(inventory: observed(stdout: trip(lines: [planted_rate_limit_five_hour_rejected, receipt_result_success])))
+}
+
+// THE RECEIPT NAMES THE CREDENTIAL THE PROCESS RECEIVES (review 76871): an observed-eligible explicit
+// Claude draw over the production srv1 inventory resolves with the setup-token secret, the same
+// credential claude_inner_argv_for_credential binds -- never the ambient profile tree.
+test fn the_receipt_names_the_setup_token_secret_the_spawn_binds() -> Bool {
+  match resolve_dispatch_selection(
+    inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          match s.credential {
+            ClaudeOAuthTokenSecretRef { secret_ref } => secret_ref.secret == claude_code_oauth_harness_secret_ref.secret
+            ClaudeStateRootRef { root: _ } => false
+            ClaudeApiKeySecretRef { secret_ref: _ } => false
+          }
+        ResolvedCodex { selection: _, instance: _, account_binding: _ } => false
+        ResolvedCursor { selection: _, instance: _ } => false
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+  }
 }
 
 // ── Recorded attempt fingerprint (observation and stop) ────────────────────────────────────────
