@@ -3,7 +3,6 @@ module gunbc.rung_drop.identity_cast_closure_inhabitance_off_the_required_gate
 import std.types { String, List, NonEmptyStr }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
-import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows }
 
 // DECLARED 4b(3) DROP (adhoc-0dc33013-502, gunbc#13489, 2026-10-06). The required-floor identity
 // `an_admitted_identity_cast_emits_through_the_closure_route_holds` drove
@@ -13,8 +12,8 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_identit
 // Int/Bool atoms. The real door cannot run inside those claims without removing the last execution
 // of the path OR overflowing the budget (DESIGN section 3 pairing; DESIGN section 5, no absorbing
 // fallback). It lives in v2.test.execution.emit_host_identity_cast_native, outside the required
-// gate because the same producer is several times the new-witness envelope (cpu_ms=1835 on that
-// receipt) and the native partner also spawns the host build tool.
+// gate because emit_closure_from_ingest_located is several times the new-witness envelope and the
+// native partner also spawns the host build tool.
 //
 // WHAT IS LOST IS MERGE-TIME EXECUTION OF THE CLOSURE DOOR. A regression that admits Int-as-Bool
 // on emit_closure_from_ingest_located, or stops emitting `fn f(x: i32) -> i32`, while the gated
@@ -22,7 +21,16 @@ import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_identit
 // at every merge. When those native claims are planned, they execute, a semantic red or a
 // wall-clock crossing still blocks, and only an eval-step overrun is reported as
 // EvalStepsOverBudgetUnderDeclaredDrop.
-data identity_cast_closure_inhabitance_off_the_required_gate_population: List<String> = floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows; measured by "), m.measured_by))
+//
+// THE SAFETY POPULATION IS THE PAIRING OBLIGATIONS, NOT THE EVAL-STEP EXEMPTION ROSTER. Restoration
+// is unavailable while the door's own billed work exceeds the new-witness budget; that cost
+// evidence lives on v2.workflow.floor_eval_step_cost_drop
+// floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows and does not name this
+// population.
+data identity_cast_closure_inhabitance_off_the_required_gate_population: List<String> = [
+  "v2.test.execution.emit_host_identity_cast_native: admitted-route pairing — identity_cast_route_admitted_holds on identity_cast_route_verdict via identity_cast_native_emitted, required by the three host-run controls",
+  "v2.test.execution.emit_host_identity_cast_native.a_cast_with_no_witness_is_refused_on_the_closure_route_holds: refused-route pairing — identity_cast_route_refused_holds on refused_cast_route_verdict",
+]
 
 data identity_cast_closure_inhabitance_off_the_required_gate: RungDrop = RungDrop {
   identity: "identity_cast_closure_inhabitance_off_the_required_gate" as NonEmptyStr,

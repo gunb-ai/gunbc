@@ -24,8 +24,11 @@ import std.types { NonEmptyStr, List }
 //     (`sha256_span_program_serialize_new_witness_eval_step_cost`);
 //   - `floor_eval_step_cost_drop_python_to_typescript_inhabitance_rows`: the python->typescript
 //     compile inhabitance claim (`python_to_typescript_compile_inhabitance_off_the_required_gate`);
-//   - `floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows`: the identity-cast
-//     closure-door inhabitance (`identity_cast_closure_inhabitance_off_the_required_gate`);
+//   - `floor_eval_step_cost_drop_identity_cast_closure_inhabitance_rows`: identities of the
+//     identity-cast closure door whose own floor eval_steps exceed the new-witness budget
+//     (`identity_cast_closure_inhabitance_off_the_required_gate` authors its safety population
+//     separately — the pairing obligations — and cites this list only as why restoration is
+//     unavailable);
 //   - `floor_eval_step_cost_drop_boot_matrix_rows`: the mtcollins1 boot acceptance matrix
 //     (`mtcollins1_boot_matrix_new_witness_eval_step_cost`).
 //   - `floor_eval_step_cost_drop_dark_install_render_rows`: the first reader of the broker dark-install
@@ -45,8 +48,9 @@ import std.types { NonEmptyStr, List }
 // The loss is a WORKFLOW fact -- which
 // identities the eval-step ceiling does not refuse -- so it lives beside the other two rosters the
 // ceiling consults (`v2.workflow.floor_grandfathered_roster`, `v2.workflow.floor_cost_debt`) and
-// `v2.workflow.required_floor` decides with it. Each rung-drop row DERIVES its population from
-// ITS list; the seed runner MIRRORS the union via `floor_eval_step_cost_drop_members`.
+// `v2.workflow.required_floor` decides with it. A drop may derive its safety population from ITS
+// list; `identity_cast_closure_inhabitance_off_the_required_gate` does not — its population is the
+// pairing obligations. The seed runner MIRRORS the union via `floor_eval_step_cost_drop_members`.
 // Growing a drop's own list is a new drop, never a row on the other drop's list.
 //
 // IT IS NOT A THIRD TIER AND IT IS NOT COST-DEBT. Members are planned, executed and measured on
