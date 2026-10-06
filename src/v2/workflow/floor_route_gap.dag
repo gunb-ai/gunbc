@@ -2021,8 +2021,8 @@ fn floor_route_gap_expectation_chunk_40() -> List<FloorRouteGapExpectation> {
 // shell.Mktemp.DirWithTemplate (no mock_response). Triple enrollment as for chunk_30: these
 // expectations, WetScheduledClaim rows in local_repo_wet_schedule, and the gunbc.ci_layer_roots
 // LocalRepoWetLane row for browser_ready_label_real_path_witness_test.dag. The production fleet
-// route's own stall is declared in gunbc.runner_browser_toolchain
-// (browser_ready_labels_fleet_route_stall), not here.
+// route's own stall is rostered as gunbc.rung_drop.browser_ready_labels_fleet_route_stall,
+// not here.
 fn floor_route_gap_expectation_chunk_41() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.runner.browser_ready_label_real_path_witness.grant_executes_the_dropin_write_for_real_on_a_scratch_root", operation: "DirWithTemplate", ground: NoMockResponse {} },

@@ -23,9 +23,9 @@ import extdeps.tools.gnu_coreutils { cat_command }
 // against a mktemp scratch root: the same plan functions, the same write-then-proceed and
 // remove-then-proceed folds, the bytes read back from the scratch drop-in. The reload leg is the
 // typed posture skip -- daemon-reload requires root and is skipped, not fabricated. The production
-// fleet route itself stays the declared STALL (browser_ready_labels_fleet_route_stall in
-// gunbc.runner_browser_toolchain): no CI lane, and no bootstrap, executes the converge over
-// FleetSsh until the shared host-effect transport admits that arm.
+// fleet route itself stays the rostered STALL (gunbc.rung_drop.browser_ready_labels_fleet_route_stall):
+// no CI lane, and no bootstrap, executes the converge over FleetSsh until the shared host-effect
+// transport admits that arm.
 fn fresh_root() -> String {
   shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_ready_label.XXXXXX").path
 }
