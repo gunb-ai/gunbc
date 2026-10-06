@@ -6888,8 +6888,8 @@ fn infer_caller_admission_judged_diags(
         application: application,
         declarations: declarations
       ) {
-        Absent => None
-        Ambiguous =>
+        RosterLookupAbsent => None
+        RosterLookupAmbiguous =>
           infer_admission_diags_of([
             Diagnostic {
               reason: ^infer_reason_admit_callers_edge_ambiguous,
@@ -6897,7 +6897,7 @@ fn infer_caller_admission_judged_diags(
               correction: Unavailable { reason: UserInputBoundary }
             }
           ])
-        Found { target: roster } => infer_admission_from_roster(
+        RosterLookupFound { target: roster } => infer_admission_from_roster(
           application: application,
           caller: caller,
           module_symbol: module_symbol,
@@ -6920,30 +6920,30 @@ fn infer_caller_admission_judged_diags(
 // Absent when the application's operator child is not a declared reference or the resolved arrow
 // carries no roster either (a fn without the clause -- the legitimate admit).
 type InferAdmitRosterLookup
-  = Absent
-  | Ambiguous
-  | Found { target: Node }
+  = RosterLookupAbsent
+  | RosterLookupAmbiguous
+  | RosterLookupFound { target: Node }
 
 fn infer_caller_admission_roster_from_declarations(
   application: Node,
   declarations: SymbolIndex
 ) -> InferAdmitRosterLookup {
   match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
-    Absent => Absent
+    Absent => RosterLookupAbsent
     Present { value: child0 } =>
       match resolved_reference_body_kind(target: child0) {
-        NotMarkedReference => Absent
+        NotMarkedReference => RosterLookupAbsent
         MarkedReference { kind: DeclarationReferenceKind } =>
           match infer_callee_arrow_from_declarations(declarations: declarations, callee_ref: child0) {
-            Absent => Absent
+            Absent => RosterLookupAbsent
             Present { value: resolved_arrow } =>
               match core_edge_target_lookup(children: resolved_arrow.children, marker: AdmitCallersEdge) {
-                Absent => Absent
-                Ambiguous => Ambiguous
-                Found { target: roster } => Found { target: roster }
+                Absent => RosterLookupAbsent
+                Ambiguous => RosterLookupAmbiguous
+                Found { target: roster } => RosterLookupFound { target: roster }
               }
           }
-        MarkedReference { kind: _ } => Absent
+        MarkedReference { kind: _ } => RosterLookupAbsent
       }
   }
 }
