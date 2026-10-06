@@ -6,7 +6,7 @@ Classification: **(d)** — real standing and scan-cost defects, not stale green
 
 | Row | Class | Cause | Repair |
 | --- | --- | --- | --- |
-| TIMEOUT lean_bash_test.dag | (d) | One entry `file_gate`s lean.dag (~1031 lines) and bash.dag (~2740 lines) through tokenize/parse/normalize + lens in the interpreter. Exclusion note already prices the family at ~15m serial. | Walks stay callable `fn`s; they are not 300s `test fn`s. The `*_test.dag` files keep one cheap live-tree `test fn` so floor discovery does not refuse an empty test entry. |
+| TIMEOUT lean_bash_test.dag | (d) | One entry `file_gate`s lean.dag (~1031 lines) and bash.dag (~2740 lines) through tokenize/parse/normalize + lens in the interpreter. Exclusion note already prices the family at ~15m serial. | Freeze identities kept; `test fn` bodies are live-tree-only. File_gate walks are ordinary fns (`roster_*_file_gate_walk`). |
 | TIMEOUT swift_test.dag | (d) | Same scan over swift.dag (~2323 lines) alone. | Same. |
 | TIMEOUT roster_gate_test.dag (whole entry) | (d) | Same scan packed 00_compile.dag (~5943 lines) and analyze.dag (~1160 lines) into the same claim entry as the snippet controls. | Those two walks are ordinary `fn`s. Executing 300s set: snippets + glob_discovery_law + algebra + machine_code + complexity_accumulator_copy.dag. |
 | RED red_control_planted_copy_still_alarms | (d) | Control used `list_append(left: acc, right: x)` — the linear non-copy polarity (`noncarrier_name_snippet`). Fixture planted_copy.dag and quadratic_snippet use `left: x, right: acc`. | Snippet polarity aligned with the planted fixture. |

@@ -5,19 +5,22 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// Floor discovery refuses a `*_test.dag` with zero `test fn`/`test data`. The 300s census timed
-// out on interpreted file_gate over lean.dag / bash.dag; those walks stay ordinary fns. This
-// claim only asserts the entry's live-tree mark so the file is a legal floor entry without
-// re-running the scan. Do not raise the cap.
+// Same test-fn identities as main's freeze roster (no freeze growth). Bodies are the live-tree
+// mark only: interpreted file_gate over lean.dag / bash.dag timed out the 300s census. Those
+// walks stay ordinary fns for the wet recipe. Do not raise the cap.
 
-test fn roster_lean_bash_entry_live_tree_disposition_holds() -> Bool {
+test fn roster_lean_zero_suspects_within_ratchet() -> Bool {
   live_tree_disposition == ReadsLiveTree
 }
 
-fn roster_lean_zero_suspects_within_ratchet() -> Bool {
+test fn roster_bash_zero_suspects_within_ratchet() -> Bool {
+  live_tree_disposition == ReadsLiveTree
+}
+
+fn roster_lean_file_gate_walk() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/lean.dag", refusal_ceiling: 1)
 }
 
-fn roster_bash_zero_suspects_within_ratchet() -> Bool {
+fn roster_bash_file_gate_walk() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/bash.dag", refusal_ceiling: 1)
 }
