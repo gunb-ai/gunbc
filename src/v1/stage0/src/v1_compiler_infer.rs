@@ -2427,7 +2427,7 @@ pub fn declared_type_conformance_diags_core(
                                             scope.module_name.clone(),
                                         )])
                                     } else {
-                                        if (conformance_ground_type(declared.clone(), si.clone())
+                                        if (conformance_ground_kernel_scalar(declared.clone(), si.clone())
                                             && produced_is_unsolved_generic_at_conformance(
                                                 produced.clone(),
                                                 si.clone(),
@@ -23710,15 +23710,7 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    if unify_binding_is_uninformative(actual.clone()) {
-                        break acc.clone();
-                    } else {
-                        break v1_rt::rc_map_insert(
-                            acc.clone(),
-                            bind_name.clone(),
-                            actual.clone(),
-                        );
-                    }
+                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
                 Some(prev) => {
                     if (unify_binding_is_uninformative(prev.clone())
@@ -23894,7 +23886,13 @@ pub fn unify_lambda_solves(
                         std::option::Option::None => {
                             v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
                         }
-                        Some(_) => st.clone(),
+                        Some(prev) => {
+                            if unify_binding_is_uninformative(prev.clone()) {
+                                v1_rt::rc_map_insert(st.clone(), g.clone(), candidate.clone())
+                            } else {
+                                st.clone()
+                            }
+                        }
                     }
                 }
             }

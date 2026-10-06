@@ -1700,7 +1700,7 @@ fn declared_type_conformance_diags_core(position: DeclaredTypePosition, subject:
       module_name: scope.module_name
     )]
   }
-  else if conformance_ground_type(n: declared, source_indices: si)
+  else if conformance_ground_kernel_scalar(n: declared, source_indices: si)
       && produced_is_unsolved_generic_at_conformance(n: produced, source_indices: si) {
     [type_mismatch_error(
       expected: node_type_shape(n: declared, source_indices: si),
@@ -13731,8 +13731,7 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
     && (generic_names |> any(g => g == bind_name)) {
 
     match map_get(acc, bind_name) {
-      Absent =>
-        if unify_binding_is_uninformative(n: actual) { acc } else { map_insert(acc, bind_name, actual) }
+      Absent => map_insert(acc, bind_name, actual)
       Present { value: prev } =>
         if unify_binding_is_uninformative(n: prev) && !unify_binding_is_uninformative(n: actual) {
           map_insert(acc, bind_name, actual)
@@ -13752,12 +13751,9 @@ fn unify_generics(formal: Node, actual: Node, generic_names: List<String>, sourc
   } else { acc }
 }
 
-// AN UNINFORMATIVE ACTUAL MUST NOT BIND IN THE INFORMATIVE PASS: fold(init: [], f: concat)
-// would type the lambda against List<empty_list_element> and never override A to List<String>
-// (generated-artifact: stage0_crate_layout, gitignore_emit). After that pass, a generic still
-// Absent is a leftover: identity-cons fold_list leaves A unbound so the return is still A.
-// Binding the skipped [] here makes the produced type List<empty_list_element>, which the
-// ground-declared-return wall TypeMismatches against String, without poisoning informing cons.
+// LEFTOVER FILL if the informative pass left a generic Absent. Early bind of [] as
+// List<empty_list_element> plus unify_lambda_solves override is the informing-cons path
+// (concat / if acc else concat). This pass is a backstop when no lambda ran.
 fn bind_uninformative_generic_leftovers(
   results: List<ArgInferResult>,
   call_args: List<Node>,
@@ -13874,7 +13870,8 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
         } else {
           match map_get(st, g) {
             Absent => map_insert(st, g, candidate)
-            Present { value: _ } => st
+            Present { value: prev } =>
+              if unify_binding_is_uninformative(n: prev) { map_insert(st, g, candidate) } else { st }
           }
         }
       Absent => st
