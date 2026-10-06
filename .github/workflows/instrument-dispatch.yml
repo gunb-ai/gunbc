@@ -124,9 +124,9 @@ jobs:
         run: |
           set -e
           status='0'
-          'target/release/gunbc' 'test' "$INSTRUMENT_LABEL" > "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt' 2> "$RUNNER_TEMP"'/instrument-dispatch/stderr.txt' || status="$?"
+          'set' '-o' 'pipefail'
+          ('target/release/gunbc' 'test' "$INSTRUMENT_LABEL" > "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt') 2>&1 | 'tee' "$RUNNER_TEMP"'/instrument-dispatch/stderr.txt' >&2 || status="$?"
           'cat' "$RUNNER_TEMP"'/instrument-dispatch/stdout.txt'
-          'cat' "$RUNNER_TEMP"'/instrument-dispatch/stderr.txt' >&2
           'echo' 'exit='"$status" > "$RUNNER_TEMP"'/instrument-dispatch/exit.txt'
           '[' "$status" '=' '0' ']'
         shell: bash

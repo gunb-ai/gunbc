@@ -825,13 +825,8 @@ fn state_durability_boundary_evidence_verdict<Target, ReadbackSubject>(
                   },
                 }
             }
-          _ =>
-            StateDurabilityEvidenceRefused {
-              cause: DurabilityEvidenceMissing {
-                admission: admission,
-                boundary: boundary,
-              },
-            }
+          NoMatchingDurabilityEvidence => StateDurabilityEvidenceRefused { cause: DurabilityEvidenceMissing { admission: admission, boundary: boundary } }
+          MultipleMatchingDurabilityEvidence { count: _ } => StateDurabilityEvidenceRefused { cause: DurabilityEvidenceMissing { admission: admission, boundary: boundary } }
         }
       MultipleMatchingDurabilityEvidence { count: count } =>
         StateDurabilityEvidenceRefused {

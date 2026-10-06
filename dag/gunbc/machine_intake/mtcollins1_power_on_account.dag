@@ -125,7 +125,7 @@ type FirmwareReadbackRow {
 }
 
 type FirmwareReadbacks
-  = FirmwareReadBeforeActuation { rows: List<FirmwareReadbackRow> }
+  = FirmwareReadBeforeActuation { attempt: NonEmptyStr, source: NonEmptyStr, rows: List<FirmwareReadbackRow> }
   | FirmwareReadbacksNotRecorded { reason: NonEmptyStr }
 
 // THE EXPECTED TOPOLOGY THIS ATTEMPT IS JUDGED AGAINST, recorded for the attempt or not at all: a
@@ -987,7 +987,7 @@ fn configuration_questions(c: AttemptConfigurationReceipt) -> List<OpenQuestion>
   concat(match c.applied { StimulusAppliedByReceipt { receipt: _, attested_by: _ } => [] StimulusApplicationNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredStimulus } }] },
   concat(population_question(r: c.cpus, field: ConfiguredCpuPopulation),
   concat(population_question(r: c.dimms, field: ConfiguredDimmPopulation),
-    match c.firmware { FirmwareReadBeforeActuation { rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
+    match c.firmware { FirmwareReadBeforeActuation { attempt: _, source: _, rows: _ } => [] FirmwareReadbacksNotRecorded { reason: _ } => [OpenQuestion { subject: PlatformBmc, question: ConfigurationNotRecorded { field: ConfiguredFirmware } }] }))))
 }
 
 fn population_question<T>(r: PopulationReading<T>, field: ConfigurationField) -> List<OpenQuestion> {

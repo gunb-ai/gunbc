@@ -7,7 +7,6 @@ import v2.std.algebra { skip }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.transports.rest { RestOutcome }
 import extdeps.cloudflare.client_v4 { cloudflare_client_v4_base, CloudflareApiError }
 import extdeps.languages.json.emit {
   JsonValue, JsonBool, JsonString, JsonNumber, JsonArray, JsonObject, JsonNull,
@@ -17,7 +16,7 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed, JsonDocumentUnreadable, parse_json_document, json_document_gap_text,
   json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 
 // THE R2 BUCKET LIFECYCLE RESOURCE OF THE client/v4 API, one module per API resource as
 // extdeps.cloudflare.r2_buckets is (and for its reason: a `service cloudflare.*` binds the name
@@ -74,6 +73,11 @@ type R2LifecycleRule {
   delete_after_age_seconds: Int
 }
 
+// GetRaw READS ITS BODY AS TEXT, WHOLE, and r2_lifecycle_read_body parses it. Without response_format:
+// Text the transport JSON-decodes the answer and projects a top-level `body` field the client/v4
+// envelope { result, success, errors, messages } never has, so every read refused "null at body"
+// (fleet-converge r2_bucket_ensure run 37294324885, 2026-10-05) -- the class
+// extdeps.cloudflare.account_api_tokens names beside ListPermissionGroupsRaw.
 service cloudflare.R2BucketLifecycle {
   config {
     endpoint: cloudflare_client_v4_base
@@ -90,12 +94,12 @@ service cloudflare.R2BucketLifecycle {
     }
     output {
       body: String from "body"
-      outcome: RestOutcome
     }
     readonly
     transport rest {
       method: GET,
-      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle"
+      path: "/accounts/\{account_id\}/r2/buckets/\{bucket_name\}/lifecycle",
+      response_format: Text
     }
     response {
       200 => String
@@ -113,9 +117,6 @@ service cloudflare.R2BucketLifecycle {
       account_id: String
       bucket_name: String
       rules: Json
-    }
-    output {
-      outcome: RestOutcome
     }
     transport rest {
       method: PUT,
@@ -321,13 +322,15 @@ fn r2_lifecycle_read_body(body: String) -> R2LifecycleRead {
   }
 }
 
-fn r2_lifecycle_read(outcome: RestOutcome, body: String) -> R2LifecycleRead {
+fn r2_lifecycle_read(outcome: RestResult<String>) -> R2LifecycleRead {
   match outcome {
-    RestOk => r2_lifecycle_read_body(body: body)
-    RestStatusRefused { status: status, body: b } =>
-      R2LifecycleReadRefused { cause: join(["the lifecycle read was refused with status ", to_string(status), ": ", b], "") as NonEmptyStr }
-    RestTransportRefused { cause: cause } => R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
-    RestBodyUndecodable { status: status, cause: cause } =>
-      R2LifecycleReadRefused { cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr }
+    RestAnswered { answer } => r2_lifecycle_read_body(body: answer)
+    RestRefused { refusal } => match refusal {
+      RestStatusRefused { status: status, body: b } =>
+        R2LifecycleReadRefused { cause: join(["the lifecycle read was refused with status ", to_string(status), ": ", b], "") as NonEmptyStr }
+      RestTransportRefused { cause: cause } => R2LifecycleReadRefused { cause: concat("no response: ", cause as String) as NonEmptyStr }
+      RestBodyUndecodable { status: status, cause: cause } =>
+        R2LifecycleReadRefused { cause: join(["status ", to_string(status), " body did not decode: ", cause as String], "") as NonEmptyStr }
+    }
   }
 }

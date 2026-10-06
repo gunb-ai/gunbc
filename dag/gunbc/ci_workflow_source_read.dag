@@ -5,8 +5,8 @@ import std.dissolution { unbound_dissolution }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.decl_ref { decl_ref }
 import extdeps.transports.rest {
-  classify_rest_outcome,
-  RestExchangeSucceeded, RestExchangePerformance,
+  RestResult, RestAnswered, RestRefused,
+  classify_rest_refusal, RestExchangeRefusal,
   RestReadExchange,
 }
 import extdeps.github.code_search {
@@ -61,7 +61,7 @@ data ci_workflow_scan_producer_frontier_rows: List<FrontierRow> = [
 type CodeSearchPageRead
   = CodeSearchPageComplete { page: CodeSearchPage, hits_read: Int }
   | CodeSearchPageTruncated { page: CodeSearchPage, hits_read: Int, cause: NonEmptyStr }
-  | CodeSearchPageRefused { performance: RestExchangePerformance }
+  | CodeSearchPageRefused { performance: RestExchangeRefusal }
 
 data code_search_truncation_cause: NonEmptyStr = "GitHub returned incomplete_results: true for this page, meaning its own search timed out and returned what it had. The number of hits NOT returned is not reported and cannot be derived, so any population counted from this page is a lower bound of unknown tightness and may not be described as a census."
 
@@ -90,10 +90,11 @@ fn perform_code_search_page(
   per_page: Int,
   page: Int,
 ) -> CodeSearchPageRead {
-  let got = github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page)
-  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
-    RestExchangeSucceeded => classify_code_search_page(page: got.page)
-    other => CodeSearchPageRefused { performance: other }
+  match github.CodeSearch.SearchCode(auth_token: auth_token, q: q, per_page: per_page, page: page) {
+    RestAnswered { answer } => classify_code_search_page(page: answer.page)
+    RestRefused { refusal } => CodeSearchPageRefused {
+      performance: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }),
+    }
   }
 }
 
@@ -133,7 +134,7 @@ type WorkflowSourceRead
   = WorkflowSourceObserved { request: WorkflowSourceRequest, file: RepositoryFileContent }
   | WorkflowSourceTooLargeForContentsApi { file: RepositoryFileContent, cause: NonEmptyStr }
   | WorkflowSourceEncodingUnrecognized { file: RepositoryFileContent, cause: NonEmptyStr }
-  | WorkflowSourceRefused { performance: RestExchangePerformance }
+  | WorkflowSourceRefused { performance: RestExchangeRefusal }
 
 fn workflow_source_too_large_cause() -> NonEmptyStr {
   join(["the contents endpoint answered 200 with encoding 'none' and an empty content string, which is what it does for a file above the ",
@@ -167,11 +168,12 @@ fn perform_workflow_source_read(
   ref: CommitSha,
 ) -> WorkflowSourceRead {
   let request = WorkflowSourceRequest { owner: owner, repo: repo, path: path, ref: ref }
-  let got = github.RepositoryContents.GetContent(
-    auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref)
-  match classify_rest_outcome(standing: RestReadExchange { rest: got.outcome }) {
-    RestExchangeSucceeded => classify_workflow_source(request: request, file: got.file)
-    other => WorkflowSourceRefused { performance: other }
+  match github.RepositoryContents.GetContent(
+    auth_token: auth_token, owner: owner, repo: repo, path: path, ref: ref) {
+    RestAnswered { answer } => classify_workflow_source(request: request, file: answer.file)
+    RestRefused { refusal } => WorkflowSourceRefused {
+      performance: classify_rest_refusal(standing: RestReadExchange { refusal: refusal }),
+    }
   }
 }
 
@@ -193,7 +195,7 @@ type WorkflowSourceIdentity {
 }
 
 // THE REFUSAL ARM CARRIES THE REFUSAL, and an earlier revision of this function did not - it bound
-// the RestExchangePerformance and threw it away, so a 404 on a deleted path, a 403 rate limit and a
+// the RestExchangeRefusal and threw it away, so a 404 on a deleted path, a 403 rate limit and a
 // 500 all left here as the same constant sentence. That is the collapse this module's own opening
 // note says it exists to prevent, reintroduced at its own boundary one screen further down: a scan
 // that cannot tell a rate limit from a repository with no matching workflow folds both into "no
@@ -231,7 +233,7 @@ type HitCanonicalization
   | HitFileUnreadable { repository_full_name: String, path: String, cause: NonEmptyStr }
   | HitSubjectsDisagree { repository_full_name: String, path: String, disagreement: SubjectDisagreement, cause: NonEmptyStr }
   | HitRefNotExact { repository_full_name: String, path: String, ref: CommitSha, cause: NonEmptyStr }
-  | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangePerformance }
+  | HitReadRefused { repository_full_name: String, path: String, performance: RestExchangeRefusal }
 
 // THE JOIN, AND IT REFUSES. The hit says which repository and path the index pointed at; the read
 // says which repository and path were actually fetched. An identity may only be minted when those

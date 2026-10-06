@@ -21,6 +21,7 @@ import gunbc.repository { gunbc_repository }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_host_identity { operator_host_srv2 }
 import gunbc.runner_slot_allocation { runner_label_sets_equal }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner_microvm_attempt {
   MicroVmCellBinding, VmUnboundCellNotOwned,
   MicroVmAttemptResult, MicroVmAttemptAccepted, MicroVmAttemptRefused,
@@ -39,7 +40,7 @@ import gunbc.runner_jit_mint {
   plan_jit_mint,
 }
 import gunbc.fleet.org_actions_inspection { runner_groups_of_rest_read }
-import extdeps.transports.rest { RestOk }
+import extdeps.transports.rest { RestResult, RestAnswered }
 import extdeps.github.org_actions { OrgRunnerGroupWire, OrgRunnerGroupListWire }
 import gunbc.runner_group_restriction_observation {
   MicrovmRunnerGroupStanding, RunnerGroupRestrictionNotYetObserved,
@@ -1034,7 +1035,7 @@ fn jit_binding(owned: Bool) -> JitSlotBinding {
 fn restricted_group_1() -> MicrovmRunnerGroupStanding {
   observe_shakedown_runner_group_restriction(
     name: microvm_shakedown_runner_group_name,
-    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+    listed: runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire {
       total_count: 1,
       runner_groups: [OrgRunnerGroupWire {
         id: 1,
@@ -1045,7 +1046,7 @@ fn restricted_group_1() -> MicrovmRunnerGroupStanding {
         selected_workflows: [microvm_shakedown_selected_workflow() as String],
         workflow_restrictions_read_only: false,
       }],
-    }),
+    } }),
   )
 }
 
@@ -1333,7 +1334,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
   observe_runner_group_restriction(
     name: "runner-qualification",
     selected_workflow: workflow,
-    listed: runner_groups_of_rest_read(outcome: RestOk, body: OrgRunnerGroupListWire {
+    listed: runner_groups_of_rest_read(outcome: RestAnswered { answer: OrgRunnerGroupListWire {
       total_count: 1,
       runner_groups: [OrgRunnerGroupWire {
         id: 3,
@@ -1344,7 +1345,7 @@ fn group_restricted_to(workflow: NonEmptyStr) -> MicrovmRunnerGroupStanding {
         selected_workflows: [workflow as String],
         workflow_restrictions_read_only: false,
       }],
-    }),
+    } }),
   )
 }
 

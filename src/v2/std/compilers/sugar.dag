@@ -296,20 +296,28 @@ fn sugar_carries_separator(node: Node) -> Bool {
 fn sugar_separated_rhs_as_coproduct(rhs: Node, shell: Node) -> Outcome<Node> {
   match rhs.kind {
     TypeNode { connective: Disj } => Accepted { value: rhs, diagnostics: None }
-    _ =>
-      match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
-        Present { value: captured } =>
-          match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
-            Accepted { value: edges, diagnostics: d } =>
-              if edges_conform(children: edges, d: LabeledEdges) {
-                Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
-              } else {
-                Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
-              }
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    TypeNode { connective: Atom { identity: _ } } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Conj } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Arrow } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Cardinality } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    TypeNode { connective: Instantiation } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+    ComputationNode { behavior: _ } => sugar_separated_rhs_as_coproduct_otherwise(rhs: rhs, shell: shell)
+  }
+}
+
+fn sugar_separated_rhs_as_coproduct_otherwise(rhs: Node, shell: Node) -> Outcome<Node> {
+  match sugar_named_child_optional(root: rhs, name: ^grammar_production_captured_node_projection) {
+    Present { value: captured } =>
+      match sugar_variants_to_disj_edges(variants: sugar_all_coproduct_variants(captured: captured)) {
+        Accepted { value: edges, diagnostics: d } =>
+          if edges_conform(children: edges, d: LabeledEdges) {
+            Accepted { value: sugar_type_node(connective: Disj, children: edges, n: shell), diagnostics: d }
+          } else {
+            Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
           }
-        Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
+    Absent => Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: shell)) }
   }
 }
 
@@ -324,7 +332,17 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
               match result.kind {
                 TypeNode { connective: Disj } =>
                   Accepted { value: result, diagnostics: d }
-                _ =>
+                TypeNode { connective: Atom { identity: _ } } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Conj } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Arrow } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Cardinality } =>
+                  Accepted { value: folded, diagnostics: None }
+                TypeNode { connective: Instantiation } =>
+                  Accepted { value: folded, diagnostics: None }
+                ComputationNode { behavior: _ } =>
                   Accepted { value: folded, diagnostics: None }
               }
           }

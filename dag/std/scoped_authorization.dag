@@ -703,7 +703,7 @@ fn parse_intent_scopes(text: String) -> IntentScopes? {
         ScopeLineRefused => acc
         ScanningScopes { scopes: xs } =>
           if starts_with(s: l, prefix: intent_scope_line_prefix) {
-            match parse_authorization_scope_wire(wire: substring(s: l, start: length(intent_scope_line_prefix), end: length(l))) {
+            match parse_authorization_scope_wire(wire: substring(s: l, start: string_length(s: intent_scope_line_prefix), end: string_length(s: l))) {
               Present { value: sc } => ScanningScopes { scopes: concat(xs, [sc]) }
               Absent => ScopeLineRefused
             }

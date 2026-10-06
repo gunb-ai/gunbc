@@ -689,10 +689,22 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       },
     },
     GuaranteeProbeRow {
+      probe: floor_record_completeness_bare_name_control_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
       probe: floor_record_completeness_green_probe,
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectZeroDiagnostics,
+    },
+    GuaranteeProbeRow {
+      probe: floor_record_completeness_red_probe,
+      class: floor_record_field_completeness_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_zero_field_product_control_probe,
@@ -702,18 +714,6 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
     },
     GuaranteeProbeRow {
       probe: floor_record_completeness_zero_field_variant_control_probe,
-      class: floor_record_field_completeness_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: floor_record_completeness_bare_name_control_probe,
-      class: floor_record_field_completeness_class,
-      path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
-    },
-    GuaranteeProbeRow {
-      probe: floor_record_completeness_red_probe,
       class: floor_record_field_completeness_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "MissingField" as NonEmptyStr },
