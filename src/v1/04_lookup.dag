@@ -1039,6 +1039,25 @@ fn lookup_field_in_product(product: Node, method_name: String, source_indices: M
 }
 
 fn lookup_structural_method(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> StructuralMethodLookup {
+  let recv_opt = node_is_optional_layer(n: receiver_type)
+  if recv_opt {
+    let inner = extract_optional_inner_node(n: receiver_type)
+    let inner_lookup = lookup_structural_method(receiver_type: inner, method_name: method_name, source_indices: source_indices)
+    match inner_lookup.resolution {
+      Present { value: mfr } =>
+        StructuralMethodLookup {
+          resolution: Present { value: MethodFieldResult {
+            field_node: mfr.field_node,
+            result_type: with_optional_cardinality(n: mfr.result_type),
+            size_effect: mfr.size_effect,
+            cost_shape: mfr.cost_shape,
+            algebra_template: mfr.algebra_template
+          } },
+          kernel_diagnostics: inner_lookup.kernel_diagnostics
+        }
+      Absent => inner_lookup
+    }
+  } else {
   let is_product = receiver_type.connective == Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
@@ -1075,6 +1094,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
     } else {
       StructuralMethodLookup { resolution: none, kernel_diagnostics: method_diagnostics }
     }
+  }
   }
 }
 

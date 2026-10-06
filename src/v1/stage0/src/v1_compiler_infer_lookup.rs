@@ -93,7 +93,7 @@ pub use crate::v1_std_core::{
     authored_name_at, error_type, find_child_named, has_child_named,
     is_interpreter_blocking_diagnostic, node_is_optional_layer, param_node_name_at,
     param_node_type_expr, preserve_outer_optional_cardinality, qualified_last_segment,
-    with_optional_cardinality, with_required_cardinality, wrap_optional_layer,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallTargetIdentity, Cardinality, Connective, DeclaredCallableIdentity, ErrorNode,
@@ -1489,7 +1489,32 @@ pub fn lookup_structural_method(
     method_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<StructuralMethodLookup> {
-    {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let recv_opt = crate::v1_std_core::node_is_optional_layer(receiver_type.clone());
+        if recv_opt.clone() {
+            {
+                let inner =
+                    crate::v1_compiler_infer_types::extract_optional_inner_node(receiver_type.clone());
+                let inner_lookup = lookup_structural_method(
+                    inner.clone(),
+                    method_name.clone(),
+                    source_indices.clone(),
+                );
+                match inner_lookup.resolution.clone() {
+                    Some(mfr) => Rc::new(StructuralMethodLookup {
+                        resolution: Some(Rc::new(MethodFieldResult {
+                            field_node: mfr.field_node.clone(),
+                            result_type: with_optional_cardinality(mfr.result_type.clone()),
+                            size_effect: mfr.size_effect.clone(),
+                            cost_shape: mfr.cost_shape.clone(),
+                            algebra_template: mfr.algebra_template.clone(),
+                        })),
+                        kernel_diagnostics: inner_lookup.kernel_diagnostics.clone(),
+                    }),
+                    std::option::Option::None => inner_lookup.clone(),
+                }
+            }
+        } else {
         let is_product = (receiver_type.connective.clone() == Connective::Conj);
         if is_product.clone() {
             {
@@ -1597,7 +1622,8 @@ pub fn lookup_structural_method(
                 }
             }
         }
-    }
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
