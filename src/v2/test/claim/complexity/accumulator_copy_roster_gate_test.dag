@@ -1,10 +1,5 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate
 
-import extdeps.filesystem.filesystem_io {
-  FilesystemReadRefused,
-  FilesystemReadSucceeded,
-  filesystem_read_outcome
-}
 import v2.lens.complexity_accumulator_copy.roster_gate {
   file_gate,
   source_finding_standing,
@@ -25,32 +20,23 @@ fn accumulator_copy_roster_gate_entry_live_tree_disposition() -> LiveTreeDisposi
 // Executing ratchet under a 300s census cap: snippet controls plus small live file_gate subjects
 // that finish inside the required floor's 8s changed-witness wall (algebra, machine_code,
 // complexity_accumulator_copy.dag). Interpreted file_gate over 00_compile, analyze, and
-// glob_discovery_law still exceeds that wall when this entry is a changed file (exclusion does
-// not skip changed-witness). Those walks remain callable `fn`s. Freeze identity for glob is a
-// typed Filesystem.Read of the post-#9637 path. Do not raise the cap.
+// glob_discovery_law exceeds that wall when this entry is a changed file. Those walks are
+// ordinary fns consumed by gunbc.offline_local_recipe RecipeFunctions on this entry. Do not raise the cap.
 
 test fn roster_machine_code_zero_suspects_within_ratchet() -> Bool {
   accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
     && file_gate(path: "src/v2/extdeps/languages/machine_code.dag", refusal_ceiling: 0)
 }
 
-fn roster_compile_stage_zero_suspects_within_ratchet() -> Bool {
+fn roster_compile_stage_file_gate_walk() -> Bool {
   file_gate(path: "src/v2/compiler/00_compile.dag", refusal_ceiling: 1)
-}
-
-test fn roster_glob_discovery_zero_suspects_within_ratchet() -> Bool {
-  let read = Filesystem.Read(path: "src/v2/test/workflow/glob_discovery_law.dag")
-  match filesystem_read_outcome(content: read.content, success: read.success, error: read.error) {
-    FilesystemReadSucceeded { content: _ } => true
-    FilesystemReadRefused { error: _ } => false
-  }
 }
 
 fn roster_glob_discovery_file_gate_walk() -> Bool {
   file_gate(path: "src/v2/test/workflow/glob_discovery_law.dag", refusal_ceiling: 0)
 }
 
-fn roster_lens_traversal_zero_suspects_within_ratchet() -> Bool {
+fn roster_lens_traversal_file_gate_walk() -> Bool {
   file_gate(path: "src/v2/lens/complexity_accumulator_copy/analyze.dag", refusal_ceiling: 4)
 }
 

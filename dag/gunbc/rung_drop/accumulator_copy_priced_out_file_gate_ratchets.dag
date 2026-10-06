@@ -29,8 +29,8 @@ data accumulator_copy_priced_out_file_gate_ratchets: RungDrop = RungDrop {
       "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash roster_lean_file_gate_walk",
       "v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash roster_bash_file_gate_walk",
       "v2.test.claim.complexity.accumulator_copy_roster_gate_swift roster_swift_file_gate_walk",
-      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_compile_stage_zero_suspects_within_ratchet",
-      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_lens_traversal_zero_suspects_within_ratchet",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_compile_stage_file_gate_walk",
+      "v2.test.claim.complexity.accumulator_copy_roster_gate roster_lens_traversal_file_gate_walk",
       "v2.test.claim.complexity.accumulator_copy_roster_gate roster_glob_discovery_file_gate_walk",
     ],
     restoration_trigger: "an executing census or lane with a declared ceiling can ingest those six live subjects as claims (native ingest, or interpreted ingest whose per-file cost fits the 300s census and whose glob walk fits the 8s changed-witness wall) so the six identities are test fns that call file_gate and reach PASS or a discriminating RED on that run. Passing under claim_batch is the declared state, not the trigger."

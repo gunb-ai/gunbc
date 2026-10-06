@@ -31,11 +31,8 @@ import v2.lens.complexity_accumulator_copy { Finding }
 // diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag
 // --source-root src/v2 --entry
 // src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function
-// roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Prior roster carriers:
-// accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag,
-// accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-fn
-// entry/function). Large-file walks (00_compile, analyze, lean, bash, swift) are ordinary fns;
-// lean/bash/swift keep their freeze test-fn identities with live-tree-only bodies. The cap is not raised.
+// roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet. Large-file walks are
+// ordinary fns named by gunbc.offline_local_recipe RecipeFunctions. The cap is not raised.
 
 type FindingStanding
   = NoSuspect
