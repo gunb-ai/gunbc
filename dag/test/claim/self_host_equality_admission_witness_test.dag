@@ -166,6 +166,14 @@ test fn required_arm_at_optional_return_refuses_blocking() -> Bool {
   eq_blocking_count(source: return_lift_match_arm_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
+// Arm ORDER must not decide the verdict (review 76904): the join keeps the first arm's type, so with
+// `none` listed first the bare arm was never judged against the declared return.
+data return_lift_match_arm_swapped_red_source: String = "module ret_probe_arm_swapped\nfn g(s: String) -> String? {\n  match s {\n    \"b\" => none\n    _ => s\n  }\n}\n"
+
+test fn required_arm_after_none_arm_refuses_blocking() -> Bool {
+  eq_blocking_count(source: return_lift_match_arm_swapped_red_source, wanted: "InternalError") >= 1
+}
+
 // THE SAME CLASS AT A DATA INITIALIZER (ruling A on gunbc#13202). A `data r: T? = <bare T>` row was
 // emitted bare against Option<..> and refused only downstream by rustc; the checker now refuses it.
 // The red's T is a coproduct with a nested-record variant, the specimen that exposed the class; the
