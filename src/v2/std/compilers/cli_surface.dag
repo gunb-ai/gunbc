@@ -2,9 +2,9 @@ module v2.std.compilers.cli_surface
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import std.algebra { Empty, list_snoc_item }
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, Map }
+import v2.std.collection { Map }
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -134,7 +134,13 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 // path, a hostname -- the gunbc.command_runner runner entry points and, added 2026-10-02
 // (session/witty-wren-554), gunbc.codex_app_server_press.codex_press_account_trip_invocation,
 // which holds the bundled Codex executable's projected path and the CODEX_HOME binding as argv
-// words riding shell.Exec.RunArgvStdin. It is enumerable on the fingers of one hand today, which
+// words riding shell.Exec.RunArgvStdin; and the same date's gunbc.host_effect_realize
+// run_argv_parameters_of, the pure decomposition both host-effect transport runners delegate to --
+// it carries the host-effect staging fold's extdeps-built commands over shell.Exec.RunArgv and
+// RunArgvStdin, and it is the ONLY host_effect_realize caller (the two runner fns themselves
+// stopped calling this fold directly when the split was factored, so their entries left the list
+// with the move: the roster names real callers, no more, no fewer). It
+// is enumerable on the fingers of one hand today, which
 // is what makes the restriction honest rather than aspirational. Adding another is an edit to
 // this list in the
 // declaring module: a conspicuous, counted review event rather than an import written elsewhere.
@@ -144,11 +150,16 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_stdin_local"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
     decl_ref(
       module_path: "gunbc.codex_app_server_press",
       decl_name: "codex_press_account_trip_invocation",
+    ),
+    decl_ref(
+      module_path: "gunbc.host_effect_realize",
+      decl_name: "run_argv_parameters_of",
     ),
   ]
   = CliSurface {

@@ -11,7 +11,8 @@ import extdeps.vllm.bench_serve {
 import extdeps.vllm.server { vllm_route_path }
 import extdeps.vllm.engine_args { SpeculativeDecodingOff }
 import extdeps.vllm.kv_layout { AdmissionCost, AdmissionCostUnestablished }
-import gunbc.fleet_intent_network { operator_host_srv9, srv9_host_lan_endpoint }
+import gunbc.fleet_intent_network { srv9_host_lan_endpoint }
+import gunbc.fleet_host_identity { operator_host_srv9 }
 import gunbc.spark.serving_arm {
   glm53_native_fp8_row, runtime_artifact_wire, serving_runtime_row,
 }
@@ -118,7 +119,6 @@ fn glm_native_live_subject() -> ServingPerformanceSubject? {
       match serving_runtime_row(r: a.runtime) {
         Absent => none
         Present { value: rrow } => Present { value: serving_subject_for_launch(
-          checkpoint: a.checkpoint,
           checkpoint_revision: Present { value: glm53_native_fp8_row.revision },
           runtime: a.runtime,
           runtime_image_reference: runtime_artifact_wire(a: rrow.artifact),

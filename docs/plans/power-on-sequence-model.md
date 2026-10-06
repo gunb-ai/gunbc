@@ -23,7 +23,7 @@ The product is one **power-on account** per attempt: `gunbc.machine_intake_mtcol
 |---|---|
 | Firmware boot stages 0–9 | `extdeps.ampere.scp_diagnostic` `AmpereBootStage`, `AmpereBootStatus` |
 | SMpro register pair and its refusal rule | `extdeps.ampere.smpro_register` `smpro_boot_progress_of` → `SmproBootProgress` (`SmproBootProgressRead` / `SmproBootProgressRefused`) |
-| Per-socket SMpro reading | `gunbc.machine_intake_mtcollins1_smpro_observation` `SmproSocketStage`, `SmproProbeOutcome` |
+| Per-socket SMpro reading | `gunbc.machine_intake_ampere_smpro_observation` `SmproSocketStage`, `SmproProbeOutcome`, read through `SmproPassObservation` |
 | Second socket's join | `gunbc.machine_intake_mtcollins1_socket1_investigation_observation` `MtCollins1SecondaryJoinReading`, `secondary_join_outcome` → `MtCollins1SecondaryJoinOutcome` |
 | SMpro/PMpro error records and GPI gate (#13058) | `extdeps.ampere.smpro_internal_error` `SmproInternalRecord`, `SmproRecordGate` |
 | DRAM console block and roster | `gunbc.machine_intake_ampere_dram_console_observation` `AmpereDramConsoleObservation` |
@@ -204,7 +204,7 @@ Laws, each with a discriminating RED in slice A:
 | `processor_findings`, `memory_findings`, `socket_absent_finding` | bundle findings | `coverage` plus `Degradation` against the `AttemptConfigurationReceipt` (BMC's inventory view vs the expected topology) |
 | `sel_findings` | bundle findings | Per-cycle SEL events: memory/processor events go to `DramFirmware` / `Socket` anomalies, and restart records go to cycle segmentation |
 | `sensor_findings` → `…bmc_sensor_observation` `mtcollins1_sensor_findings` | bundle; sensor witness | `mtcollins1_sensor_anomalies` (typed, in the sensor module) on `Platform{ChassisPower}` |
-| `smpro_findings` → `…smpro_observation` `mtcollins1_smpro_findings` | bundle (3 passes); SMpro witness | `Socket{k}` standings via `smpro_boot_progress_of`, and `SecondaryJoin` via `secondary_join_outcome`. The "sockets differ" string is retired: the difference is now the two typed standings |
+| `smpro_findings` → `gunbc.machine_intake_ampere_smpro_observation` `smpro_pass_findings` | bundle (3 passes); SMpro witness | `Socket{k}` standings via `smpro_boot_progress_of`, and `SecondaryJoin` via `secondary_join_outcome`. The "sockets differ" string is retired: the difference is now the two typed standings |
 | `console_findings`: `…dram_console_observation` `ampere_dram_findings` | bundle; DRAM witness | `ampere_dram_untrained_sockets` (closed-roster rule, in the DRAM module) feeds `DegradationDimmNotTrained` / `DramFirmware` anomalies; malformed rows become `DramFirmware` anomalies |
 | `console_findings`: `socket_summary_findings` | bundle | `SecondaryJoin` via `secondary_join_outcome`, and `ActiveSocketsBelowExpected` against the receipt's expected configuration |
 | `console_findings`: `…kernel_module_decompression_observation` `kernel_module_decompression_findings` | bundle; kernel-module witness | `Kernel` `StatedFailure { KernelModuleRefused }` |
@@ -212,7 +212,7 @@ Laws, each with a discriminating RED in slice A:
 | credential-shred string | bundle findings | `CollectionOutcome.credential` |
 | `HostBootObservation` and its datum (#13041) | `mtcollins_firmware_converge` `boot_verdict`; its witness | `FirmwareSetBootReadback` (above) |
 
-**Consumers outside the required gate.** The production consumers are all in this closure: `mtcollins1_boot_run` (its fleet-converge entry) and the bundle. The test consumers are the witnesses of `mtcollins1_boot_diagnostic_bundle`, `mtcollins1_smpro_observation`, `ampere_dram_console_observation`, `mtcollins1_bmc_sensor_observation`, `kernel_module_decompression_observation`, `megarac_media_convergence` and `mtcollins_firmware_converge`. Each one is migrated in slice A to the typed destination above, with each of its discriminating REDs kept. None is deleted without its claim moving.
+**Consumers outside the required gate.** The production consumers are all in this closure: `mtcollins1_boot_run` (its fleet-converge entry) and the bundle. The test consumers are the witnesses of `mtcollins1_boot_diagnostic_bundle`, `ampere_smpro_observation`, `ampere_dram_console_observation`, `mtcollins1_bmc_sensor_observation`, `kernel_module_decompression_observation`, `megarac_media_convergence` and `mtcollins_firmware_converge`. Each one is migrated in slice A to the typed destination above, with each of its discriminating REDs kept. None is deleted without its claim moving.
 
 ## 7. Reset cause, retry state and the summary's status lines
 
@@ -243,7 +243,7 @@ The differences found when Mt. Jade lands become the onboarding checklist.
 
 ## 10. Implementation slices
 
-1. **A: the power-on account, replacing every string finding and `HostBootObservation`, after #13041 lands.** It includes:
+1. **A (#13117): the power-on account, replacing every string finding and `HostBootObservation`, after #13041 lands.** Former slice B (#13058's error records) is folded in, and §10a records the decisions. It includes:
    - the public readers: opaque `CP:` (`gunbc.machine_intake_ampere_checkpoint_console_observation`), and the EFI stub and kernel lines (`extdeps.linux.efi_stub`, `extdeps.linux.boot_console`, read by `gunbc.machine_intake_linux_boot_console_observation`);
    - the `AttemptConfigurationReceipt` (frozen before power-on, including the human completion/inspection receipt for manual changes), and coverage;
    - the account;
@@ -252,11 +252,165 @@ The differences found when Mt. Jade lands become the onboarding checklist.
    - every census row in §6, plus the REDs of §5.
 
    Fixtures are committed excerpts from the `mtcollins1-captures-2026-10-03` evidence branch, including step 3 as the new-firmware positive control, and the run 37062170720 / 37069907299 artifacts. A pre-review draft of the readers and a fold exists on `session/calm-lynx-884-slice-a-wip`. It predates these rulings (it uses a scalar ending, stage attribution from the DRAM banner, and its own SMpro pair rule) and will be reworked, not landed as-is.
-2. **B: SMpro/PMpro error records** into `Socket{k}` and degradations, gated on #13058.
+2. **B: the attempt-configuration receipt's live inputs**: the applied stimulus, current population and pre-power-on firmware readback (decided Q4). The error records originally planned as B landed in A.
 3. **C: NVPARAM** as UEFI-subject context, gated on #13059.
 4. **D: `ManagedHost`**, gated on #13055. If #13055 lands before A, it is folded into A.
 5. **P: the gunbc-private refinement slice** (§8).
 
+## 10a. Decisions taken while implementing slice A (#13117)
+
+These were settled while building slice A and through its side-chat reviews. Each one is enforced by a witness in #13117 and recorded here so this plan stays the authority.
+
+- **Cycles open only on typed boundary evidence.** Each SEL boot record gets a `SelBootBoundaryStanding` from an ordered fold with no look-ahead:
+  - the first record corroborates the confirmed power-on when it is a power-up;
+  - the first record is `BoundaryAmbiguous` when it is a restart after a confirmed power-on. It opens no cycle and becomes an open question, because this MegaRAC can log the power-on's own first boot as "System Restart" (step 1);
+  - every later record, including a second power-up, is a distinct boundary.
+
+  Console banners only bind spans to cycles, and only when the counts agree; otherwise the binding is `ConsoleSpansUnbound`. The BMC clock is never joined to ours.
+- **Stated failures are counted per occurrence.**
+  - Panics and initrd failures are read per printed line.
+  - Firmware statements, GRUB reports and module refusals are read by their owning readers over each console span's own lines.
+  - Each error carries its cycle. Only a failure in the last cycle can choose the ending, and the furthest one there wins. Earlier and unbound errors stay as history.
+- **A loop is distinguished from progress after a restart.** `RestartedRepeatedly` applies only when the last cycle got no further than an earlier one. Otherwise the ending is `StoppedWithoutRestart { restarts_before }`.
+- **Topology, population and absence are judged only against the receipt.**
+  - The expected topology is `ExpectedSockets`, or `ExpectedTopologyNotRecorded` (production today).
+  - Processors are checked once per expected socket: missing, duplicated, or unreadable socket ID.
+  - Memory is checked per socket, over the union of expected-populated and observed sockets, against `SlotRow { label, socket, populated }`.
+  - Sensor absence counts only for an expected socket.
+  - Health states reported by the BMC stay unconditional.
+- **SMpro.**
+  - Passes are reported per pass, not placed into cycles.
+  - #13058's records are placed by their gate (pending → stated error plus degradation; ungated → anomaly plus open question).
+  - Pending warnings are kept.
+  - The error-record registers have their own coverage carrier, separate from the boot-stage pair.
+- **Each milestone carries provenance.** It has its capture digest and a `DeclarationRef` to its reader. A one-variant nullary sum does not resolve in the substrate, so a declaration citation is used instead.
+- **Convergence refuses UEFI followed by a loop.** It reads the whole-account readback. A UEFI milestone followed by a `RestartedRepeatedly` ending refuses as `BootReachedUefiThenRestartedRepeatedly`.
+- **#13025's `secondary_checkpoints` is deleted (Q3).** The per-socket CP classification belongs to the private refinement slice.
+- **The receipt's live inputs are slice B (Q4).** Slice B adds the boot-workflow input for the applied stimulus (with a human inspection receipt through the operator-attested route), the current population, and the pre-power-on firmware readback. Until it lands, those fields are `NotRecorded` and every question needing them is open.
+
 ## 11. Questions
 
-None open. Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5.
+Q1 and Q2 were decided by the side chat on `75f0bd113c` and are encoded in §1, §3 and §5. Q3 (delete `secondary_checkpoints`) and Q4 (add the receipt inputs, as slice B) were decided during slice A (§10a). Q5 and Q6 are decided; none is open:
+- **Q5 (decided by eager-gull-22, 2026-10-03):** the plan and the inspection receipt are committed JSON under `artifacts/receipts/`, read from the checkout by a fail-closed typed reader that records the file's digest. One dispatch input names the file. Inline JSON in a dispatch input is refused.
+- **Q6 (decided, 2026-10-04):** add the `attempt_receipt` input to the fleet-converge `mtcollins1_boot` mode. It was operator escalation msg_1b57e749, approved by default after 15 minutes with no answer, and relayed by eager-gull-22.
+
+## 12. Slice B: the attempt receipt's live inputs (plan, for review before code)
+
+Slice B fills the `AttemptConfigurationReceipt` fields that slice A records as `NotRecorded` (decided Q4). The boot run takes its host as a `ManagedHost` / `ManagedHostBinding` (`gunbc.managed_host`), not as mtcollins1 constants; cut 4d of the managed-host untangle will re-root the rest of the run.
+
+**Two records, each minted only by its checks.**
+
+```
+AttemptConfigurationPlan (sole constructor) {
+  subject: ManagedHost, attempt: AttemptPlanId,
+  expected: ExpectedTopology, requested: StimulusRequest,   // expected and requested are stated ONCE, here
+  fixed_at: OperatorAttestedTime,
+}
+AttemptInspectionReceipt (sole constructor) {
+  plan: AttemptConfigurationPlan,
+  applied: StimulusApplication, cpus: PopulationReading<SocketCpuRow>, dimms: PopulationReading<SlotRow>,
+  completed_at: OperatorAttestedTime, evidence: ReceiptEvidence, witnessed_by: NonEmptyStr,
+}
+OperatorAttestedTime { rendering: NonEmptyStr, attested_by: NonEmptyStr }   // a time a person wrote, never an observer clock reading
+ReceiptEvidence { path, digest: Sha256FileDigest, commit }   // the committed file the run read
+```
+
+**The attempt identity comes from the dispatch, not from the artifact.** The current run's attempt identity is minted outside the receipt: it is the fleet-converge dispatch's existing `transaction_nonce`, which the operator mints and which the run name echoes. Admission runs before any pre-power read or actuation and joins `receipt.plan.attempt` to that identity. It then consumes the identity in a **create-once slot**:
+- The slot is keyed by (managed subject, `transaction_nonce`), in its own attempt-admission namespace, separate from the unit hold.
+- `Absent -> Consumed` is the only successful transition, done by compare-and-set against `Absent` (`std.durable_compare_and_set`).
+- No hold release or hold cleanup deletes or rewrites a slot.
+
+So a used identity stays used: it is not blocked by a later one, and it does not block one. A valid receipt authored for attempt A cannot be selected by attempt B, and A cannot be replayed after B.
+
+Controls, each an implementation RED:
+- the first A succeeds;
+- a concurrent or repeated A refuses;
+- B then succeeds;
+- A still refuses after B;
+- releasing the unit hold does not erase A's consumed standing.
+
+Implementation cut obligations:
+- The workflow's `transaction_nonce` description changes from "not consumed by any step" to its admission role.
+- A named receipt with an empty or absent `transaction_nonce` refuses.
+
+The run mints an `AttemptInspectionReceipt` only after every check passes, and each failed check refuses as its own typed cause:
+- the file's digest matches what was read;
+- the subject is the host this run's `ManagedHostBinding` bound;
+- the plan's attempt equals this dispatch's attempt identity;
+- the attempt identity was not already consumed;
+- the plan's identity is the one the receipt carries;
+- the attested ordering holds: `fixed_at` is at or before `completed_at`, as attested.
+
+**Times.** The plan's and receipt's times are what a person wrote, so they are `OperatorAttestedTime`, never `ObserverTimestamp`. They are ordered only among themselves. "Before the power write" is established STRUCTURALLY: admission is a step this run completes before it actuates. It is never established by comparing an attested time with an observer clock.
+
+**The absent-receipt rule (decided by eager-gull-22).**
+- **No receipt named:** the dispatch input is empty. The boot proceeds with the configuration `NotRecorded` and no topology judgement, as in slice A.
+- **A receipt named but refused:** a missing file, a digest or parse failure, an empty `transaction_nonce`, a subject, host, attempt or plan mismatch, a consumed identity, or an attested ordering violation. The boot REFUSES before any pre-power read or actuation, with that typed cause.
+- REDs, one per arm:
+  - an empty input reaches actuation with the configuration `NotRecorded`;
+  - a valid receipt for attempt A dispatched as attempt B refuses before actuation;
+  - a replayed identity refuses;
+  - a malformed file refuses.
+
+The pre-power-on firmware readback is bound to the same plan (`FirmwareReadBeforeActuation { plan, rows }`), so a readback from another attempt cannot fill this one. A receipt that is absent or refused leaves the fields `NotRecorded` or refused with their cause. The boot never proceeds on a guessed configuration.
+
+**The operator-attested route** follows `std.human_intervention`:
+- The inspection is a `HumanIntervention` step with `HumanSurfaceOnly`, because a physical change has no API.
+- Its `DischargedAt { evidence }` cites the evidence PRODUCER: the fail-closed reader that mints `AttemptInspectionReceipt` from the committed file, a `DeclarationRef` to that function. It does not cite a flag or a boolean standing.
+
+**The pre-power-on Redfish population read is not live by default.** A controller reading taken before power-on may be the BMC's cache from the last POST, so it is `PopulationControllerReading { freshness: FreshnessEstablished | CachePossible, rows }`:
+- It can corroborate the inspection or conflict with it. A conflict is `PopulationConflicted`, an open question, never resolved by preference.
+- Only `FreshnessEstablished` counts as a live reading. Nothing on main establishes that freshness today, so today's reading is `CachePossible`.
+
+**Field routes.**
+
+| Field | Route |
+|---|---|
+| expected topology and requested stimulus | the plan, stated once |
+| applied stimulus and population | the inspection receipt; the controller reading only corroborates or conflicts |
+| firmware | a new pre-power-on `hpm check` read through `extdeps.bmc.ipmi` (none exists on main; `gunbc.fleet.mtcollins_firmware_converge` only renders a dry argv), plus the SMpro version word where it answers, both bound to the plan |
+
+**Delivery (Q5, decided by eager-gull-22 on 2026-10-03).** The plan and the inspection receipt are committed JSON under `artifacts/receipts/`, reviewed and versioned like any change. eager-gull-22 authors them from what the operator reports about the physical change. One fleet-converge dispatch input names the receipt file, and the boot run reads it from the checkout with the fail-closed typed reader above. Inline JSON in a dispatch input is refused because it is not reviewable. Adding that input is Q6, decided.
+
+### 12a. Slice B1 as built
+
+Slice B1 is `gunbc.host_boot_attempt_admission`. It holds the plan and inspection records, the reader, the create-once attempt slot, and the projection into `AttemptConfigurationReceipt`. It is host-generic: mtcollins1 appears only as its route row (the receipt variables and the slot roster), in the `gunbc.host_maintenance_hold_reason` pattern. It returns one sealed `BootAttemptClearance`.
+
+**Placement** (agreed with warm-crane-577): the module sits beside the boot authorization. `mtcollins1_boot_under_live_unit_hold` calls `admit_boot_attempt(proof, revision)` right after `UnitHeld`, so admission runs under the hold and **before any controller read**.
+- **Baseline:** the SDR cache and SEL baseline (`mtcollins1_boot_baseline`) are taken only after clearance.
+- **Refused receipt:** the boot reads nothing from the controller, releases the hold, writes nothing, and fails with the typed cause. The matrix control is `a_refused_named_receipt_reads_no_baseline_and_writes_nothing`.
+- **Configuration record:** the frozen configuration travels on the attempt record into the bundle. Slice A's always-`NotRecorded` placeholder is deleted.
+- **Untangle cuts:** cuts 4a and 4d move the call site, and O2 carries its refusals.
+
+**The receipt is a tracked blob, digested.**
+- **Revision binding:** admission reads the receipt at the boot's bound revision, not from the worktree. `extdeps.git.inspect` `ListTreeEntryAtPath` finds the entry, decoded by the existing `gunbc.namespace_step0_subject_collector` ls-tree reader. `git show <rev>:<path>` reads the content.
+- **Refusals:** no entry is `ReceiptNotTracked`. A symlink, gitlink or directory is `ReceiptNotRegularFile`.
+- **Evidence:** `ReceiptEvidence { path, digest: Sha256FileDigest, commit }` carries the SHA-256 of exactly those bytes, from `extdeps.tools.sha256sum`.
+- **Follow-up:** the step0 decoder belongs in `extdeps.git`. Extracting it is left to the namespace lane rather than forked here.
+
+**Times** are admitted only as canonical UTC instants, using `gunbc.auth.approval_capability` `utc_instant_is_canonical`, which checks calendar-valid fields. They are ordered with `utc_instant_before`, and equal instants are admitted.
+
+**Populations join exactly, or the receipt refuses.**
+- **CPUs:** the CPU rows name exactly the plan's expected sockets.
+- **DIMMs:** the DIMM rows name exactly the host's slot roster. For Mt. Collins that is the Getting Started Guide's 32 connectors (`dimm_figure_banks`), labelled as the guide labels them (its `J` prefix and the connector number) and placed on their bank's socket. Every label must be known and on its roster socket, and every slot must appear, populated or not.
+- **Refusal causes:** a missing socket, an unknown label, a label on another socket, and an omitted slot each refuse with their own cause.
+
+**The slot store** is `/var/lib/gunbc/boot-attempts`, provisioned by `gunbc.runner_host_grants` `unit_hold_store_operations` beside the unit-hold store: same hosts, owner and mode. It is a separate directory, so a hold's release or recovery cannot reach it. Its executed control on the real store host is the first grant convergence followed by a receipt-carrying boot on srv1.
+
+Where the build differs from the plan above, with reasons:
+- **Slot key.** The key is `attempt-<len(host)>-<host>-<nonce>`, with the host and nonce admitted only over `[A-Za-z0-9_-]`. It is injective by construction and is not a hash: the corpus's `content_hash_of_value` is a 64-bit structural hash, which does not meet "collision-safe" against a chosen nonce.
+- **The plan's identity.** The inspection names its plan by `plan_subject` and `plan_attempt`. Because an attempt identity admits one boot, that pair identifies the plan.
+
+### 12b. Slice B2 as built (firmware), and B3 (controller population)
+
+Slice B2 adds one pre-power read, `mtcollins1_boot_pre_power`. It is taken after admission and before `mtcollins1_boot_actuate_held`, and `gunbc.host_boot_attempt_admission` `attempt_configuration_with_pre_power` joins it to the frozen configuration.
+- **The read.** `ipmitool hpm check` is a new `extdeps.bmc.ipmi` `HpmCheck` operation. It is parsed by `extdeps.bmc.ipmitool_hpm_check`, which landed with the CPLD route fix (#13254).
+- **The rows.** Each component's active cell is kept as rendered, because the auxiliary bytes have no public decode.
+- **Binding.** The readback is `FirmwareReadBeforeActuation { attempt, source, rows }`, where `attempt` is the attempt admission bound. An unread or refused table leaves firmware `NotRecorded` with its cause.
+- **The acceptance matrix.** The dry BMC (`gunbc.bmc_dry_realization`) answers `HpmCheck` with the retained BMC 0.32 capture, as a layout fixture.
+
+**B3: `PopulationControllerReading` (declared frontier).** B3 is the pre-power Redfish population read. It is labelled `CachePossible`, and is joined to the inspection as corroborated or conflicted per socket.
+- **Why it is not in B2:** its route dispatches `shell.Mktemp.Dir` and `shell.Remove.FileForce` (for the netrc) and `redfish.Http.GetResourceByPath`. The boot dry world does not model these, and no mtcollins1 Redfish response is retained to model them from.
+- **Trigger:** a retained mtcollins1 Redfish capture of the service root, Systems, the system, Processors and Memory. eager-gull-22's read-only probe takes it when the BMC is reachable.
+- **Caveat:** after the 2026-10-02 reflash, gunbc gets 401 on Redfish because its role is missing. If the capture is 401 bodies, the trigger also needs the login convergence to restore that role.
+- **Already written:** the join and folds are in WIP commit `16a67dfb99d` on `session/calm-lynx-884-slice-b2`.

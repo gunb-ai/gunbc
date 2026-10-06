@@ -1,0 +1,252 @@
+module gunbc.refusal_reason_ownership_join
+
+import v2.std.node { Symbol }
+import v2.std.algebra { any, fold_list, length }
+import std.algebra { Empty, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node_reflection { coproduct_nullary_inhabitants }
+import v2.workflow.compile_door_cause_ownership {
+  CauseOwnership,
+  known_frontier_causes
+}
+import v2.compiler.resolve { ResolveRefusalReason, resolve_refusal_reason_symbol }
+
+// EVERY PRODUCIBLE FATAL REASON HAS AN OWNER, JOINED ON THE MERGE PATH.
+//
+// gunbc.recurring_failure_mode refusal_producer_lands_without_its_ownership_row: a stage gained a
+// fatal refusal reason while v2.workflow.compile_door_cause_ownership known_frontier_causes carried
+// no ownership row for it, and the only join between the two facts was the native route's
+// admission, which no merge waits on. This module is that join moved onto the landing path.
+//
+// THE PRODUCIBLE SET IS DERIVED FROM THE STAGES' OWN CLOSED VOCABULARIES, never a hand list and
+// never a text walk (operator ruling on this lane, 2026-09-30: a closed coproduct per stage, in the
+// stage's own module, and 'producible' is the union over those types). Each stage contributes one
+// reflection below: the variants of its declared type, carried through its own symbol function, so
+// the reason a variant names is the reason the stage's diagnostics refuse under. A stage whose
+// vocabulary has not been modelled contributes nothing -- that population is declared as the rung
+// drop gunbc.rung_drop fatal_reasons_outside_a_closed_stage_vocabulary, not assumed empty.
+//
+// THE JOIN IS PURE AND TAKES ITS INPUTS AS VALUES (DESIGN section 3, a witness discriminates at one
+// interface): refusal_reason_ownership_findings reads a vocabulary list, an ownership roster and a
+// debt roster, so the controls supply planted vocabularies and rosters while exactly one claim runs
+// the real reflections against the real rosters.
+
+type StageRefusalVocabulary {
+  stage: String
+  reasons: List<Symbol>
+}
+
+// A stage's reflected vocabulary, or the refusal to reflect it -- never an empty list standing for
+// a type the reflection could not read (DESIGN section 5, a failure arm refuses, never widens).
+type StageVocabularyObservation
+  = StageVocabularyReflected(StageRefusalVocabulary)
+  | StageVocabularyUnreflectable { stage: String, type_name: Symbol }
+
+// THE DEBT CONTRACT (DESIGN section 5: a monotone debt contract over a closed subject universe). The
+// reasons already producible without a ownership row when this join landed are named here one by
+// one; the join is set membership at identity grain, never a count. A row is never deleted: when its
+// debt ends it takes the disposition that ended it, so a removal always carries its cause, and the
+// row count is pinned to the universe size below so that a deleted or an added row both refuse.
+type ReasonDebtStanding
+  = DebtOpen
+  | DischargedByOwnershipRow
+  | DischargedByProducerDeletion
+
+type ReasonOwnershipDebt {
+  reason: Symbol
+  standing: ReasonDebtStanding
+}
+
+type ReasonOwnershipFinding
+  = UnownedProducibleReason { stage: String, reason: Symbol }
+  | ReasonDeclaredByTwoStages { reason: Symbol }
+  | VocabularyUnreflectable { stage: String, type_name: Symbol }
+  | DebtOpenButOwned { reason: Symbol }
+  | DebtOpenButNotProducible { reason: Symbol }
+  | DebtDischargedByRowWithoutRow { reason: Symbol }
+  | DebtDischargedByDeletionStillProducible { reason: Symbol }
+  | DebtRowDuplicated { reason: Symbol }
+  | DebtUniverseResized { pinned: Int, observed: Int }
+
+fn reason_is_fatal_owned(reason: Symbol, owners: List<CauseOwnership>) -> Bool {
+  any(xs: owners, predicate: fn(row) {
+    row.cause == reason
+  })
+}
+
+fn debt_rows_for(reason: Symbol, debt: List<ReasonOwnershipDebt>) -> List<ReasonOwnershipDebt> {
+  fold_list(xs: debt, empty: Empty, cons: fn(acc, row) {
+    if row.reason == reason { list_snoc_item(xs: acc, item: row) } else { acc }
+  })
+}
+
+fn reason_has_open_debt(reason: Symbol, debt: List<ReasonOwnershipDebt>) -> Bool {
+  any(xs: debt, predicate: fn(row) {
+    row.reason == reason && discriminant(v: row.standing) == discriminant(v: DebtOpen)
+  })
+}
+
+fn stages_declaring(reason: Symbol, vocabularies: List<StageRefusalVocabulary>) -> Int {
+  fold_list(xs: vocabularies, empty: 0, cons: fn(acc, v) {
+    if any(xs: v.reasons, predicate: fn(r) { r == reason }) { acc + 1 } else { acc }
+  })
+}
+
+fn reason_is_producible(reason: Symbol, vocabularies: List<StageRefusalVocabulary>) -> Bool {
+  stages_declaring(reason: reason, vocabularies: vocabularies) > 0
+}
+
+// PRODUCER SIDE: every declared reason is owned by an ownership row or carries open debt.
+fn producible_reason_findings(
+  vocabularies: List<StageRefusalVocabulary>,
+  owners: List<CauseOwnership>,
+  debt: List<ReasonOwnershipDebt>
+) -> List<ReasonOwnershipFinding> {
+  fold_list(xs: vocabularies, empty: Empty, cons: fn(acc, v) {
+    fold_list(xs: v.reasons, empty: acc, cons: fn(acc2, reason) {
+      let with_owner =
+        if reason_is_fatal_owned(reason: reason, owners: owners)
+            || reason_has_open_debt(reason: reason, debt: debt) {
+          acc2
+        } else {
+          list_snoc_item(xs: acc2, item: UnownedProducibleReason { stage: v.stage, reason: reason })
+        }
+      if stages_declaring(reason: reason, vocabularies: vocabularies) > 1 {
+        list_snoc_item(xs: with_owner, item: ReasonDeclaredByTwoStages { reason: reason })
+      } else {
+        with_owner
+      }
+    })
+  })
+}
+
+fn debt_row_findings(
+  row: ReasonOwnershipDebt,
+  vocabularies: List<StageRefusalVocabulary>,
+  owners: List<CauseOwnership>,
+  debt: List<ReasonOwnershipDebt>
+) -> List<ReasonOwnershipFinding> {
+  let owned = reason_is_fatal_owned(reason: row.reason, owners: owners)
+  let producible = reason_is_producible(reason: row.reason, vocabularies: vocabularies)
+  let standing_findings = match row.standing {
+    DebtOpen =>
+      if owned {
+        [DebtOpenButOwned { reason: row.reason }]
+      } else if !producible {
+        [DebtOpenButNotProducible { reason: row.reason }]
+      } else {
+        []
+      }
+    DischargedByOwnershipRow =>
+      if owned { [] } else { [DebtDischargedByRowWithoutRow { reason: row.reason }] }
+    DischargedByProducerDeletion =>
+      if producible { [DebtDischargedByDeletionStillProducible { reason: row.reason }] } else { [] }
+  }
+  if length(xs: debt_rows_for(reason: row.reason, debt: debt)) > 1 {
+    list_snoc_item(xs: standing_findings, item: DebtRowDuplicated { reason: row.reason })
+  } else {
+    standing_findings
+  }
+}
+
+fn refusal_reason_ownership_findings(
+  vocabularies: List<StageRefusalVocabulary>,
+  owners: List<CauseOwnership>,
+  debt: List<ReasonOwnershipDebt>,
+  universe_size: Int
+) -> List<ReasonOwnershipFinding> {
+  let producer_side = producible_reason_findings(vocabularies: vocabularies, owners: owners, debt: debt)
+  let debt_side = fold_list(xs: debt, empty: producer_side, cons: fn(acc, row) {
+    concat(acc, debt_row_findings(row: row, vocabularies: vocabularies, owners: owners, debt: debt))
+  })
+  let observed = length(xs: debt)
+  if observed == universe_size {
+    debt_side
+  } else {
+    list_snoc_item(xs: debt_side, item: DebtUniverseResized { pinned: universe_size, observed: observed })
+  }
+}
+
+// An unreflectable vocabulary is a finding of its own; the vocabularies that did reflect are joined.
+fn observations_findings(
+  observations: List<StageVocabularyObservation>,
+  owners: List<CauseOwnership>,
+  debt: List<ReasonOwnershipDebt>,
+  universe_size: Int
+) -> List<ReasonOwnershipFinding> {
+  let reflected = fold_list(xs: observations, empty: Empty, cons: fn(acc, o) {
+    match o {
+      StageVocabularyReflected(v) => list_snoc_item(xs: acc, item: v)
+      StageVocabularyUnreflectable { stage: _, type_name: _ } => acc
+    }
+  })
+  let unreflectable = fold_list(xs: observations, empty: Empty, cons: fn(acc, o) {
+    match o {
+      StageVocabularyReflected(_) => acc
+      StageVocabularyUnreflectable { stage: s, type_name: t } =>
+        list_snoc_item(xs: acc, item: VocabularyUnreflectable { stage: s, type_name: t })
+    }
+  })
+  concat(
+    unreflectable,
+    refusal_reason_ownership_findings(vocabularies: reflected, owners: owners, debt: debt, universe_size: universe_size)
+  )
+}
+
+// ---- THE STAGE VOCABULARIES, ONE REFLECTION PER STAGE ----
+
+fn resolve_refusal_reason_discriminant(value: ResolveRefusalReason) -> Symbol {
+  discriminant(v: value)
+}
+
+fn resolve_vocabulary_observation() -> StageVocabularyObservation {
+  match coproduct_nullary_inhabitants(
+    type_name: ^ResolveRefusalReason,
+    discriminant_of: resolve_refusal_reason_discriminant
+  ) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      StageVocabularyReflected(StageRefusalVocabulary {
+        stage: "v2.compiler.resolve",
+        reasons: fold_list(xs: inhabitants, empty: Empty, cons: fn(acc, r) {
+          list_snoc_item(xs: acc, item: resolve_refusal_reason_symbol(reason: r))
+        })
+      })
+    Rejected { diagnostics: _ } =>
+      StageVocabularyUnreflectable { stage: "v2.compiler.resolve", type_name: ^ResolveRefusalReason }
+  }
+}
+
+fn stage_vocabulary_observations() -> List<StageVocabularyObservation> {
+  [resolve_vocabulary_observation()]
+}
+
+// ---- THE DEBT ROSTER ----
+
+// The size of the closed universe the debt roster was minted over. It changes only with the roster's
+// own rows, and only when a stage vocabulary is first modelled and brings its existing unowned
+// reasons in with it -- never to admit a new producer, which must carry a ownership row instead.
+data refusal_reason_ownership_debt_universe_size: Int = 8
+
+data refusal_reason_ownership_debt: List<ReasonOwnershipDebt> = [
+  ReasonOwnershipDebt { reason: ^resolve_reason_malformed_tree, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_anonymous_parameter_referenced, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_type_parameter_in_value_position, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^float_literal_not_lowered, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_test_code_referenced, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_kernel_type_spelling_names_a_foreign_declaration, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_observation_incomplete, standing: DebtOpen },
+  ReasonOwnershipDebt { reason: ^resolve_reason_type_parameter_shadows_visible_name, standing: DebtOpen }
+]
+
+fn refusal_reason_ownership_live_findings() -> List<ReasonOwnershipFinding> {
+  observations_findings(
+    observations: stage_vocabulary_observations(),
+    owners: known_frontier_causes,
+    debt: refusal_reason_ownership_debt,
+    universe_size: refusal_reason_ownership_debt_universe_size
+  )
+}

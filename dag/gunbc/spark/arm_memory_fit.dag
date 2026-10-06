@@ -8,6 +8,7 @@ import std.measure {
   ByteSize, byte_size, byte_size_count, measure_add, measure_le,
   Gibibyte, gibibyte, gibibyte_count, gibibyte_to_byte_size,
   BasisPoint, basis_point_count,
+  Second, second, second_count,
   TokenCount, token_count, token_count_value,
   Mebibyte,
   AllocatorBlockCount, allocator_block_count, allocator_block_count_value,
@@ -20,6 +21,8 @@ import std.interval {
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.vllm.runtime_defaults { vllm_requested_envelope_bytes }
 import extdeps.vllm.engine_args { vllm_kv_cache_dtype_wire }
+import extdeps.vllm.environment { vllm_environment_variable_name, VllmEngineReadyTimeoutSeconds, vllm_engine_ready_timeout_default }
+import extdeps.docker.cli { DockerEnvAssignment }
 import extdeps.vllm.server { VllmSourceRevision, vllm_source_revision_read }
 import extdeps.vllm.sparse_prefill_transient {
   sparse_indexer_k_gather_workspace_bytes, sparse_indexer_prefill_logits_cap_bytes,
@@ -37,7 +40,6 @@ import extdeps.vllm.kv_layout {
 }
 import extdeps.zhipu.glm_5_3_flash {
   Glm53FlashHybridShape, glm_5_3_flash_hybrid_shape, glm_5_3_flash_hybrid_shape_consistent,
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds,
 }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology, ServingLaunchProfile,
@@ -643,7 +645,6 @@ fn gb10_pool_bound() -> ArmPoolBound {
 // rounded pool, both deductions open. Absent means unmodelled (no checkpoint row or no
 // derivable intent), unreachable behind serving_arm_admits.
 fn arm_memory_fit_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   runtime: ServingRuntime,
   topology: ServingTopology,
   profile: ServingLaunchProfile,
@@ -652,7 +653,7 @@ fn arm_memory_fit_subject_for_launch(
     ServingCapacityIntentRefused { cause: c } => ArmMemorySubjectRefused { cause: c }
     ServingCapacityIntentAdmitted { intent: intent } =>
       arm_memory_fit_subject(
-        checkpoint: checkpoint,
+        checkpoint: profile.checkpoint,
         runtime: runtime,
         topology: topology,
         intent: intent,
@@ -1385,21 +1386,85 @@ type ArmMemoryExperimentAdmission
 // profiling/readback + the admitted seat cohort + the churn window + the sampler's tail
 // backstop + settlement, or a client/unit deadline mid-sequence masquerades as an engine
 // failure — the q closing run's 14:42:37 RuntimeMaxSec expiry under the churn phase is the
-// named incident). The derivation: the engine's own ready timeout (startup, profiling,
-// readback) + 400s per full-window seat at the LARGEST admitted subject (8; the observed cold
-// price is ~323s per seat at the shared ~800 tok/s aggregate, so 400 covers it with margin)
-// + the churn window + the sampler's tail backstop (churn window + the churn request timeout
-// + one cadence) + settlement margin. The churn window derives from this figure (twelfths), so
-// the bound is the consistent figure of 12476 seconds: 3600 startup + 3200 seat cohort + the
-// derived 848s churn window + the 4453s sampler tail (window + the LARGEST variant's declared
-// churn timeout 3600 + cadence — q's churn requests are honest full-band work under the cohort,
-// and the closing run's two rc=28 expiries at the old 600s churn timeout with the endpoint alive
-// are the named counterexample) + settlement slack. Uniform across
-// variants — a larger bound for a smaller variant costs nothing because the stall watchdog, not
-// the lifetime, is the hang detector; the stop contract's timeout disposition stays the failure
-// that outlived its window.
-fn arm_memory_experiment_runtime_seconds() -> Nat {
-  glm_5_3_flash_vllm_engine_ready_timeout_seconds + 8 * 400 + 1200 + 4405 + 375
+// named incident).
+//
+// EVERY TERM IS A NAMED ROW AND THE TAIL IS DERIVED (review 74098, 2026-10-02). The bound used to be
+// the literal sum ready + seats*400 + 1200 + 4405 + 375, beside a paragraph deriving a different total
+// (12476, from a churn window of 848 = 10180/12 left over from the previous bound); and 4405 was below
+// what its own definition requires at the current total. Now:
+//   startup        the LAUNCH's engine ready timeout (its environment, or upstream's default)
+//   seat cohort    the profile's sequence ceiling x the per-seat cold price (~323s observed, 400 bound)
+//   churn window   the window the churn driver opens is a twelfth of the admitted runtime
+//                  (gunbc.spark.native_experiment_apply spark_churn_window_seconds), and the runtime
+//                  contains the window twice (once as the window, once inside the tail), so the
+//                  allowance W must satisfy W >= T/12 with T = R + 2W + K; solving, W = ceil((R + K)/10),
+//                  where R is startup + seat cohort and K is the churn request timeout + cadence +
+//                  settlement. A FIXED allowance held at eight seats and failed at sixteen, which the
+//                  witness caught -- so it is derived, at every ceiling.
+//   sampler tail   the allowance + the largest churn request timeout + one sampler cadence, so a churn
+//                  request admitted at the window's last instant can finish and be sampled
+//   settlement     a fixed margin
+// Uniform across variants -- a larger bound for a smaller variant costs nothing because the stall
+// watchdog, not the lifetime, is the hang detector.
+data arm_experiment_seat_cold_price: Second = second(count: 400)
+data arm_experiment_churn_request_timeout: Second = second(count: 3600)
+data arm_experiment_sampler_cadence: Second = second(count: 5)
+data arm_experiment_settlement_margin: Second = second(count: 375)
+
+fn arm_experiment_startup_and_cohort(ready_timeout: Second, max_num_seqs: Nat) -> Nat {
+  second_count(s: ready_timeout) + max_num_seqs * second_count(s: arm_experiment_seat_cold_price)
+}
+
+fn arm_experiment_fixed_tail_terms() -> Nat {
+  second_count(s: arm_experiment_churn_request_timeout) + second_count(s: arm_experiment_sampler_cadence) + second_count(s: arm_experiment_settlement_margin)
+}
+
+fn arm_experiment_churn_window_allowance(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  let need = arm_experiment_startup_and_cohort(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs) + arm_experiment_fixed_tail_terms()
+  second(count: (need + 9) / 10)
+}
+
+fn arm_experiment_sampler_tail(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  second(count: second_count(s: arm_experiment_churn_window_allowance(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_churn_request_timeout)
+    + second_count(s: arm_experiment_sampler_cadence))
+}
+
+// THE READY TERM IS THE LAUNCH'S OWN and the seat term its sequence ceiling, so the same derivation
+// bounds a GLM and a DeepSeek V4.1 experiment.
+fn arm_memory_experiment_runtime(ready_timeout: Second, max_num_seqs: Nat) -> Second {
+  second(count: arm_experiment_startup_and_cohort(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs)
+    + second_count(s: arm_experiment_churn_window_allowance(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_sampler_tail(ready_timeout: ready_timeout, max_num_seqs: max_num_seqs))
+    + second_count(s: arm_experiment_settlement_margin))
+}
+
+type EngineReadyTimeout
+  = EngineReadyTimeoutResolved { timeout: Second }
+  | EngineReadyTimeoutUnreadable { cause: NonEmptyStr }
+
+// THE ENGINE WAITS WHAT ITS ENVIRONMENT SAYS. Set once with an integer: that value; unset: upstream's
+// default; set twice or to a non-integer: unreadable, because the engine's own parse would fail or pick
+// one, and a runtime bound built on a guess is the fabricated default this wall exists to refuse.
+fn engine_ready_timeout_for(env: List<DockerEnvAssignment>) -> EngineReadyTimeout {
+  let name = vllm_environment_variable_name(v: VllmEngineReadyTimeoutSeconds) as String
+  let set = filter(env, e => (e.name as String) == name)
+  if count(set) == 0 {
+    EngineReadyTimeoutResolved { timeout: vllm_engine_ready_timeout_default }
+  } else if count(set) > 1 {
+    EngineReadyTimeoutUnreadable { cause: join([name, " is set ", to_string(count(set)), " times in the deployment environment"], "") as NonEmptyStr }
+  } else {
+    match set.first() {
+      Absent => EngineReadyTimeoutUnreadable { cause: "the single assignment could not be read back" as NonEmptyStr }
+      Present { value: e } =>
+        match parse_int(s: e.value) {
+          Absent => EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is not an integer"], "") as NonEmptyStr }
+          Present { value: n } =>
+            if n < 0 { EngineReadyTimeoutUnreadable { cause: join([name, "=", e.value, " is negative"], "") as NonEmptyStr } }
+            else { EngineReadyTimeoutResolved { timeout: second(count: n) } }
+        }
+    }
+  }
 }
 
 fn experiment_receipt_kind(component: ArmMemoryComponent) -> NonEmptyStr {
@@ -1426,15 +1491,37 @@ fn arm_memory_fit_experiment_plan(
   workload: ServingCapacityIntent,
   policy_profile: ServingLaunchProfile,
   targets: List<ArmMemoryComponent>,
+  deployment_env: List<DockerEnvAssignment>,
 ) -> ArmMemoryExperimentAdmission {
-  if !profile_joins_intent(intent: workload, p: policy_profile) {
+  match engine_ready_timeout_for(env: deployment_env) {
+    EngineReadyTimeoutUnreadable { cause: c } => ArmMemoryExperimentRefused { cause: join([
+      "the experiment's runtime bound cannot be derived: ", c as String,
+    ], "") as NonEmptyStr }
+    EngineReadyTimeoutResolved { timeout: ready } => arm_memory_fit_experiment_plan_at(
+      checkpoint: checkpoint, runtime: runtime, topology: topology, workload: workload,
+      policy_profile: policy_profile, targets: targets, ready_timeout: ready)
+  }
+}
+
+fn arm_memory_fit_experiment_plan_at(
+  checkpoint: ServingCheckpoint,
+  runtime: ServingRuntime,
+  topology: ServingTopology,
+  workload: ServingCapacityIntent,
+  policy_profile: ServingLaunchProfile,
+  targets: List<ArmMemoryComponent>,
+  ready_timeout: Second,
+) -> ArmMemoryExperimentAdmission {
+  if !(policy_profile.checkpoint == checkpoint) {
+    ArmMemoryExperimentRefused { cause: "the experiment's policy profile was derived from another checkpoint's launch policy than the experiment names: the profile carries its policy row's checkpoint, and the plan must be that checkpoint" as NonEmptyStr }
+  } else if !profile_joins_intent(intent: workload, p: policy_profile) {
     ArmMemoryExperimentRefused {
       cause: "the experiment's workload and its policy profile do not join: the experiment would run an engine config other than the one its plan prices" as NonEmptyStr,
     }
   } else if length(targets) == 0 {
     ArmMemoryExperimentRefused { cause: "the experiment names no open obligations as targets: an experiment exists to measure the unknown, and a plan with nothing to measure is a service wearing an experiment's name" as NonEmptyStr }
   } else {
-    match arm_memory_fit_subject_for_launch(checkpoint: checkpoint, runtime: runtime, topology: topology, profile: policy_profile) {
+    match arm_memory_fit_subject_for_launch(runtime: runtime, topology: topology, profile: policy_profile) {
       ArmMemorySubjectRefused { cause: c } => ArmMemoryExperimentRefused { cause: c }
       ArmMemorySubjectReady { subject: subject } => {
         let open_components = arm_memory_subject_open_components(subject: subject)
@@ -1456,7 +1543,7 @@ fn arm_memory_fit_experiment_plan(
               profile: policy_profile,
               targets: targets,
               envelope_basis_points: policy_profile.decided_gpu_memory_basis_points,
-              max_runtime_seconds: arm_memory_experiment_runtime_seconds(),
+              max_runtime_seconds: second_count(s: arm_memory_experiment_runtime(ready_timeout: ready_timeout, max_num_seqs: policy_profile.max_num_seqs)),
               expected_receipts: map(targets, t => experiment_receipt_kind(t)),
               stop: ArmExperimentStopContract {
                 timeout_preserves: "on runtime expiry the engine container is stopped and the observer preserves the per-rank logs and records an unminted-receipt disposition against every expected receipt: a measurement that outlived its window establishes nothing" as NonEmptyStr,
@@ -1708,7 +1795,6 @@ type MemoryProofSubjectMint
 // intent_for_launch_profile derivation the fit subject mint uses): a subject whose workload axis
 // is a workload the executable cannot be asked for is a subject about another arm.
 fn memory_proof_subject_for_launch(
-  checkpoint: ServingCheckpoint,
   runtime: ServingRuntime,
   topology: ServingTopology,
   profile: ServingLaunchProfile,
@@ -1719,7 +1805,7 @@ fn memory_proof_subject_for_launch(
       MemoryProofSubjectRefused { cause: join(["the proof subject's workload axis does not derive from the executable profile: ", c as String], "") as NonEmptyStr }
     ServingCapacityIntentAdmitted { intent: intent } =>
       MemoryProofSubjectReady { subject: MemoryProofSubject {
-        checkpoint: checkpoint,
+        checkpoint: profile.checkpoint,
         runtime: runtime,
         topology: topology,
         profile: profile,
@@ -2186,65 +2272,139 @@ type ArmRankCacheSupply {
 // sparse-indexer tail as a per-sequence state distinct from the KDA group. A roster missing any of
 // them prices a different cache than the engine allocates, and the fold says which rather than
 // charging the omission as zero.
-fn cache_roster_obligations(layout: ResolvedKvLayout, shape: Glm53FlashHybridShape) -> List<NonEmptyStr> {
+// ── THE EXPECTED KV ROSTER IS THE CHECKPOINT'S, NOT GLM'S (deforking cut 4b) ─────────────────────
+//
+// The roster checks below bound the engine's resolved layout and allocation plan to the model's own
+// shape. They took Glm53FlashHybridShape directly, so no other checkpoint could be checked at all. Now
+// a checkpoint's expected roster is a value: which layout groups (by kind and layer count, KPool
+// interval, minimum group count) and which plan-entry populations (recurrent entries, full-attention
+// identities by suffix, sliding-window entries) the engine must allocate, each with the message that
+// names it. The folds take the roster from their caller; GLM-5.3-Flash's is derived from its hybrid
+// shape (glm_5_3_flash_expected_kv_roster: the same counts as before; the full-attention census message now names the suffixes it counts). DeepSeek V4.1 has
+// no derived roster yet: its allocation plan has never been read (gunbc.spark.vllm_allocation_plan_observe
+// captures GLM's), so there is nothing for a V4.1 roster to be checked against until one is -- that
+// capture is the trigger for writing its roster from its own shape (extdeps.deepseek).
+type ExpectedGroupKind = ExpectMambaKind | ExpectFullAttentionKind | ExpectSlidingWindowKind { window: TokenCount }
+
+type ExpectedLayoutGroup
+  = ExpectGroupLayers { kind: ExpectedGroupKind, layers: Nat, missing: NonEmptyStr }
+  | ExpectKPoolInterval { tokens: TokenCount, missing: NonEmptyStr, other_interval: NonEmptyStr }
+  | ExpectAtLeastGroups { kind: ExpectedGroupKind, groups: Nat, missing: NonEmptyStr }
+
+type ExpectedPlanCensus
+  = ExpectPlanMambaEntries { entries: Nat, noun: NonEmptyStr, model_noun: NonEmptyStr, consequence: NonEmptyStr }
+  | ExpectPlanFullAttentionSuffixes { suffixes: List<String>, entries: Nat, model_noun: NonEmptyStr, consequence: NonEmptyStr }
+  | ExpectPlanWindowedEntries { entries: Nat, noun: NonEmptyStr, model_noun: NonEmptyStr, consequence: NonEmptyStr }
+
+type ExpectedKvRoster sole_constructor {
+  model: NonEmptyStr
+  runtime: VllmSourceRevision
+  layout: List<ExpectedLayoutGroup>
+  plan: List<ExpectedPlanCensus>
+}
+
+// AN INCONSISTENT SHAPE DERIVES NO ROSTER (review 74218): the constructor refuses, so no ExpectedKvRoster exists
+// that a consumer would have to remember to test, and no roster author can assert consistency by writing a flag.
+type ExpectedKvRosterStanding
+  = ExpectedKvRosterDerived { roster: ExpectedKvRoster }
+  | ExpectedKvRosterUnderivable { model: NonEmptyStr, cause: NonEmptyStr }
+
+fn expected_kv_roster_underivable_obligation(model: NonEmptyStr, cause: NonEmptyStr) -> NonEmptyStr {
+  join(["the ", model as String, " shape is inconsistent (", cause as String, "): the roster requirement it prices cannot be derived from it"], "") as NonEmptyStr
+}
+
+fn glm_5_3_flash_expected_kv_roster(shape: Glm53FlashHybridShape) -> ExpectedKvRosterStanding {
   if !glm_5_3_flash_hybrid_shape_consistent(shape) {
-    ["the model's hybrid shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it" as NonEmptyStr]
-  } else if (layout.established_at_revision.repository as String) != (vllm_source_revision_read.repository as String)
-    || (layout.established_at_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+    ExpectedKvRosterUnderivable { model: "GLM-5.3-Flash" as NonEmptyStr, cause: "the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero" as NonEmptyStr }
+  } else {
+  ExpectedKvRosterDerived { roster: ExpectedKvRoster {
+    model: "GLM-5.3-Flash" as NonEmptyStr,
+    runtime: vllm_source_revision_read,
+    layout: [
+      ExpectGroupLayers { kind: ExpectMambaKind, layers: shape.kda_linear_attention_layers,
+        missing: join(["missing KDA state group: the model's ", to_string(shape.kda_linear_attention_layers), " recurrent layers require a mamba-shaped group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr },
+      ExpectGroupLayers { kind: ExpectFullAttentionKind, layers: shape.sparse_attention_layers,
+        missing: join(["missing sparse-MLA group: the model's ", to_string(shape.sparse_attention_layers), " sparse-attention layers require a full-growth group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr },
+      ExpectKPoolInterval { tokens: token_count(count: shape.index_kpool),
+        missing: join(["missing KPool index group: the sparse layers keep a compressed index growing once per index_kpool ", to_string(shape.index_kpool), " tokens, and the roster carries no KPool group at that interval"], "") as NonEmptyStr,
+        other_interval: join(["the roster's KPool group is priced at a pool interval other than the model's index_kpool ", to_string(shape.index_kpool), ": a different pool interval is a different capacity, and this proof binds the exact roster"], "") as NonEmptyStr },
+      ExpectAtLeastGroups { kind: ExpectMambaKind, groups: 2,
+        missing: "missing sparse-indexer tail group: the sparse-attention layers carry a small per-request tail state, fixed per sequence, distinct from the KDA recurrent state -- a roster with only the KDA state group prices a different cache than the engine allocates" as NonEmptyStr },
+    ],
+    plan: [
+      ExpectPlanMambaEntries { entries: shape.kda_linear_attention_layers, noun: "recurrent-layer entries" as NonEmptyStr, model_noun: "KDA layers" as NonEmptyStr,
+        consequence: "a different recurrent population is a different capacity, and this proof binds the exact roster" as NonEmptyStr },
+      ExpectPlanFullAttentionSuffixes { suffixes: [".indexer.k_cache", ".self_attn.attn"], entries: shape.sparse_attention_layers, model_noun: "sparse layers" as NonEmptyStr,
+        consequence: "the sparse coverage does not match the model, and a proof at one roster says nothing at another" as NonEmptyStr },
+      ExpectPlanWindowedEntries { entries: shape.sparse_attention_layers, noun: "tail_cache entries" as NonEmptyStr, model_noun: "sparse layers" as NonEmptyStr,
+        consequence: "the sparse-indexer tail is one state per sparse layer, and a roster missing or multiplying it prices a different cache than the engine allocates" as NonEmptyStr },
+    ],
+  } }
+  }
+}
+
+fn expected_group_kind_matches(kind: ExpectedGroupKind, g: KvGroupKind) -> Bool {
+  match g {
+    FullAttention => match kind {
+      ExpectFullAttentionKind => true
+      ExpectMambaKind => false
+      ExpectSlidingWindowKind { window: _ } => false
+    }
+    SlidingWindowAttention { window: gw } => match kind {
+      ExpectSlidingWindowKind { window: w } => token_count_value(t: gw) == token_count_value(t: w)
+      ExpectFullAttentionKind => false
+      ExpectMambaKind => false
+    }
+    MambaState => match kind {
+      ExpectMambaKind => true
+      ExpectFullAttentionKind => false
+      ExpectSlidingWindowKind { window: _ } => false
+    }
+    KPoolIndex { pool_every: _ } => false
+  }
+}
+
+// THE KPOOL INTERVAL OF A GROUP, IF IT IS ONE: spelled over every kind so a new kind is a compile-time
+// decision here rather than a silent non-match.
+fn kv_group_kpool_interval(k: KvGroupKind) -> TokenCount? {
+  match k {
+    KPoolIndex { pool_every: p } => Present { value: p }
+    FullAttention => none
+    SlidingWindowAttention { window: _ } => none
+    MambaState => none
+  }
+}
+
+fn layout_group_obligation(layout: ResolvedKvLayout, e: ExpectedLayoutGroup) -> List<NonEmptyStr> {
+  match e {
+    ExpectGroupLayers { kind: k, layers: n, missing: m } =>
+      if any(layout.groups, g => expected_group_kind_matches(kind: k, g: g.kind) && attention_layer_count_value(c: g.layer_count) == n) { [] } else { [m] }
+    ExpectKPoolInterval { tokens: t, missing: m, other_interval: o } =>
+      if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: p } => token_count_value(t: p) == token_count_value(t: t)  Absent => false }) { [] }
+      else if any(layout.groups, g => match kv_group_kpool_interval(k: g.kind) { Present { value: _ } => true  Absent => false }) { [o] }
+      else { [m] }
+    ExpectAtLeastGroups { kind: k, groups: n, missing: m } =>
+      if count(filter(layout.groups, g => expected_group_kind_matches(kind: k, g: g.kind))) >= n { [] } else { [m] }
+  }
+}
+
+fn cache_roster_obligations(layout: ResolvedKvLayout, standing: ExpectedKvRosterStanding) -> List<NonEmptyStr> {
+  match standing {
+    ExpectedKvRosterUnderivable { model: m, cause: c } => [expected_kv_roster_underivable_obligation(model: m, cause: c)]
+    ExpectedKvRosterDerived { roster: roster } => cache_roster_obligations_derived(layout: layout, roster: roster)
+  }
+}
+
+fn cache_roster_obligations_derived(layout: ResolvedKvLayout, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
+  if (layout.established_at_revision.repository as String) != (roster.runtime.repository as String)
+    || (layout.established_at_revision.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the roster was established at ", layout.established_at_revision.repository as String, "@", layout.established_at_revision.full_revision as String,
-      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      " but the capacity arithmetic is modelled against ", roster.runtime.repository as String, "@", roster.runtime.full_revision as String,
       ": a roster from another revision is a different engine's shape and this proof binds the exact roster",
     ], "") as NonEmptyStr]
   } else {
-    let kda_ok = any(layout.groups, g => match g.kind {
-      MambaState => attention_layer_count_value(c: g.layer_count) == shape.kda_linear_attention_layers
-      FullAttention => false
-      SlidingWindowAttention { window: _ } => false
-      KPoolIndex { pool_every: _ } => false
-    })
-    let sparse_ok = any(layout.groups, g => match g.kind {
-      FullAttention => attention_layer_count_value(c: g.layer_count) == shape.sparse_attention_layers
-      SlidingWindowAttention { window: _ } => false
-      MambaState => false
-      KPoolIndex { pool_every: _ } => false
-    })
-    let kpool_ok = any(layout.groups, g => match g.kind {
-      KPoolIndex { pool_every: p } => token_count_value(t: p) == shape.index_kpool
-      FullAttention => false
-      SlidingWindowAttention { window: _ } => false
-      MambaState => false
-    })
-    let kpool_other = first(filter(layout.groups, g => match g.kind {
-      KPoolIndex { pool_every: p } => token_count_value(t: p) != shape.index_kpool
-      FullAttention => false
-      SlidingWindowAttention { window: _ } => false
-      MambaState => false
-    }))
-    let mamba_count = count(filter(layout.groups, g => match g.kind { MambaState => true  FullAttention => false  SlidingWindowAttention { window: _ } => false  KPoolIndex { pool_every: _ } => false }))
-    concat(
-      match kda_ok {
-        true => [] as List<NonEmptyStr>
-        false => [join(["missing KDA state group: the model's ", to_string(shape.kda_linear_attention_layers), " recurrent layers require a mamba-shaped group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr]
-      },
-      concat(
-        match sparse_ok {
-          true => [] as List<NonEmptyStr>
-          false => [join(["missing sparse-MLA group: the model's ", to_string(shape.sparse_attention_layers), " sparse-attention layers require a full-growth group of exactly that layer count, and the roster carries none"], "") as NonEmptyStr]
-        },
-        concat(
-          match kpool_ok {
-            true => [] as List<NonEmptyStr>
-            false =>
-              match kpool_other {
-                Present { value: _ } => [join(["the roster's KPool group is priced at a pool interval other than the model's index_kpool ", to_string(shape.index_kpool), ": a different pool interval is a different capacity, and this proof binds the exact roster"], "") as NonEmptyStr]
-                Absent => [join(["missing KPool index group: the sparse layers keep a compressed index growing once per index_kpool ", to_string(shape.index_kpool), " tokens, and the roster carries no KPool group at that interval"], "") as NonEmptyStr]
-              }
-          },
-          match mamba_count >= 2 {
-            true => [] as List<NonEmptyStr>
-            false => ["missing sparse-indexer tail group: the sparse-attention layers carry a small per-request tail state, fixed per sequence, distinct from the KDA recurrent state -- a roster with only the KDA state group prices a different cache than the engine allocates" as NonEmptyStr]
-          })))
+    fold(roster.layout, init: [] as List<NonEmptyStr>, f: (acc, e) => concat(acc, layout_group_obligation(layout: layout, e: e)))
   }
 }
 
@@ -2270,13 +2430,13 @@ fn cache_supply_obligations(supplies: List<ArmRankCacheSupply>, rank_count: Nat)
 // by construction, because the obligations above already refused.
 fn cache_fit_verdict(
   layout: ResolvedKvLayout,
-  shape: Glm53FlashHybridShape,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   at: TokenCount,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
 ) -> CacheFitVerdict {
-  let roster_obligations = cache_roster_obligations(layout: layout, shape: shape)
+  let roster_obligations = cache_roster_obligations(layout: layout, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let obligations = concat(roster_obligations, supply_obligations)
   match length(obligations) > 0 {
@@ -2433,47 +2593,46 @@ fn cache_plan_full_attention_identities_with(plan: ResolvedKvAllocationPlan, suf
   })
 }
 
-fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, shape: Glm53FlashHybridShape) -> List<NonEmptyStr> {
-  if !glm_5_3_flash_hybrid_shape_consistent(shape) {
-    ["the model's hybrid shape is inconsistent (the recurrent and sparse layer counts do not sum to the layer count, or a growth divisor is zero): the roster requirement it prices cannot be derived from it" as NonEmptyStr]
-  } else if (plan.runtime.repository as String) != (vllm_source_revision_read.repository as String)
-    || (plan.runtime.full_revision as String) != (vllm_source_revision_read.full_revision as String) {
+fn plan_census_obligation(plan: ResolvedKvAllocationPlan, e: ExpectedPlanCensus) -> List<NonEmptyStr> {
+  match e {
+    ExpectPlanMambaEntries { entries: n, noun: noun, model_noun: mn, consequence: c } => {
+      let got = cache_plan_mamba_entries(plan: plan)
+      if got == n { [] } else {
+        [join(["the roster's mamba groups roster ", to_string(got), " ", noun as String, " against the model's ", to_string(n), " ", mn as String, ": ", c as String], "") as NonEmptyStr]
+      }
+    }
+    ExpectPlanFullAttentionSuffixes { suffixes: xs, entries: n, model_noun: mn, consequence: c } => {
+      let counts = map(xs, x => cache_plan_full_attention_identities_with(plan: plan, suffix: x))
+      if all(counts, k => k == n) { [] } else {
+        [join(["the roster's full-attention group rosters ", join(map(xs, x => join([to_string(cache_plan_full_attention_identities_with(plan: plan, suffix: x)), " ", x], "")), " and "), " entries against the model's ", to_string(n), " ", mn as String, ": ", c as String], "") as NonEmptyStr]
+      }
+    }
+    ExpectPlanWindowedEntries { entries: n, noun: noun, model_noun: mn, consequence: c } => {
+      let got = cache_plan_windowed_entries(plan: plan)
+      if got == n { [] } else {
+        [join(["the roster's sliding-window tail group rosters ", to_string(got), " ", noun as String, " against the model's ", to_string(n), " ", mn as String, ": ", c as String], "") as NonEmptyStr]
+      }
+    }
+  }
+}
+
+fn cache_plan_roster_obligations(plan: ResolvedKvAllocationPlan, standing: ExpectedKvRosterStanding) -> List<NonEmptyStr> {
+  match standing {
+    ExpectedKvRosterUnderivable { model: m, cause: c } => [expected_kv_roster_underivable_obligation(model: m, cause: c)]
+    ExpectedKvRosterDerived { roster: roster } => cache_plan_roster_obligations_derived(plan: plan, roster: roster)
+  }
+}
+
+fn cache_plan_roster_obligations_derived(plan: ResolvedKvAllocationPlan, roster: ExpectedKvRoster) -> List<NonEmptyStr> {
+  if (plan.runtime.repository as String) != (roster.runtime.repository as String)
+    || (plan.runtime.full_revision as String) != (roster.runtime.full_revision as String) {
     [join([
       "the allocation plan was read at ", plan.runtime.repository as String, "@", plan.runtime.full_revision as String,
-      " but the capacity arithmetic is modelled against ", vllm_source_revision_read.repository as String, "@", vllm_source_revision_read.full_revision as String,
+      " but the capacity arithmetic is modelled against ", roster.runtime.repository as String, "@", roster.runtime.full_revision as String,
       ": a plan from another revision is a different engine's roster and this proof binds the exact one",
     ], "") as NonEmptyStr]
   } else {
-    let kda_entries = cache_plan_mamba_entries(plan: plan)
-    let kcache_entries = cache_plan_full_attention_identities_with(plan: plan, suffix: ".indexer.k_cache")
-    let attn_entries = cache_plan_full_attention_identities_with(plan: plan, suffix: ".self_attn.attn")
-    let tail_entries = cache_plan_windowed_entries(plan: plan)
-    concat(
-      match kda_entries == shape.kda_linear_attention_layers {
-        true => [] as List<NonEmptyStr>
-        false => [join([
-          "the roster's mamba groups roster ", to_string(kda_entries),
-          " recurrent-layer entries against the model's ", to_string(shape.kda_linear_attention_layers),
-          " KDA layers: a different recurrent population is a different capacity, and this proof binds the exact roster",
-        ], "") as NonEmptyStr]
-      },
-      concat(
-        match kcache_entries == shape.sparse_attention_layers && attn_entries == shape.sparse_attention_layers {
-          true => [] as List<NonEmptyStr>
-          false => [join([
-            "the roster's mla_attention group rosters ", to_string(kcache_entries), " indexer.k_cache and ", to_string(attn_entries),
-            " attn entries against the model's ", to_string(shape.sparse_attention_layers),
-            " sparse layers: the sparse coverage does not match the model, and a proof at one roster says nothing at another",
-          ], "") as NonEmptyStr]
-        },
-        match tail_entries == shape.sparse_attention_layers {
-          true => [] as List<NonEmptyStr>
-          false => [join([
-            "the roster's sliding-window tail group rosters ", to_string(tail_entries),
-            " tail_cache entries against the model's ", to_string(shape.sparse_attention_layers),
-            " sparse layers: the sparse-indexer tail is one state per sparse layer, and a roster missing or multiplying it prices a different cache than the engine allocates",
-          ], "") as NonEmptyStr]
-        }))
+    fold(roster.plan, init: [] as List<NonEmptyStr>, f: (acc, e) => concat(acc, plan_census_obligation(plan: plan, e: e)))
   }
 }
 
@@ -2514,14 +2673,14 @@ fn cache_reserve_blocks(policy: CacheReservePolicy, blocks_per_seat: AllocatorBl
 // requested length, the only length the plan vouches.
 fn cache_fit_verdict_from_plan(
   plan: ResolvedKvAllocationPlan,
-  shape: Glm53FlashHybridShape,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
   limiting_rank: Nat,
   reserve_policy: CacheReservePolicy,
 ) -> CacheFitVerdict {
-  let roster_obligations = cache_plan_roster_obligations(plan: plan, shape: shape)
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let rank_obligations = match limiting_rank < rank_count {
     true => [] as List<NonEmptyStr>
@@ -2835,7 +2994,7 @@ type CacheFitWithPoolConstruction {
 
 fn cache_fit_with_pool_construction(
   plan: ResolvedKvAllocationPlan,
-  shape: Glm53FlashHybridShape,
+  roster: ExpectedKvRosterStanding,
   seats: Nat,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
@@ -2848,7 +3007,7 @@ fn cache_fit_with_pool_construction(
 ) -> CacheFitWithPoolConstruction {
   CacheFitWithPoolConstruction {
     cache_verdict: cache_fit_verdict_from_plan(
-      plan: plan, shape: shape, seats: seats, supplies: supplies,
+      plan: plan, roster: roster, seats: seats, supplies: supplies,
       rank_count: rank_count, limiting_rank: limiting_rank, reserve_policy: reserve_policy),
     pool_construction: pool_construction_slack_standing(
       carve: carve, supplies: supplies, allowance_bytes: allowance_bytes,
@@ -3318,13 +3477,13 @@ fn cache_frontier_rung_seats(hard_ceiling: Nat) -> List<Nat> {
 
 fn cache_frontier_from_plan(
   plan: ResolvedKvAllocationPlan,
-  shape: Glm53FlashHybridShape,
+  roster: ExpectedKvRosterStanding,
   supplies: List<ArmRankCacheSupply>,
   rank_count: Nat,
   limiting_rank: Nat,
   reserve_policy: CacheReservePolicy,
 ) -> CacheFrontierVerdict {
-  let roster_obligations = cache_plan_roster_obligations(plan: plan, shape: shape)
+  let roster_obligations = cache_plan_roster_obligations(plan: plan, standing: roster)
   let supply_obligations = cache_supply_obligations(supplies: supplies, rank_count: rank_count)
   let rank_obligations = match limiting_rank < rank_count {
     true => [] as List<NonEmptyStr>

@@ -1,10 +1,15 @@
 module gunbc.fabric_control_plane
 
+import gunbc.workspace_slot_mutation {
+  workspace_slot_mutation_acquire, workspace_slot_mutation_release,
+  WorkspaceSlotMutationAdmitted, WorkspaceSlotMutationRefused,
+}
+
 import std.types { Int, List, NonEmptyStr, String, Bool, Timestamp }
 import std.content_hash { Fnv1a64StructuralDigestHex, serialize_content_hash }
 import std.decl_ref { decl_ref }
 import std.measure { MoneyAmountMicro, MoneyPerSecond }
-import extdeps.currency.currency { CurrencyCode }
+import extdeps.currency.currency { CurrencyCode, Usd }
 import std.durable_compare_and_set {
   CasStoreFailure, CasSlotObservationRefused, CasGenerationPublicationRefused, CasGenerationSpaceExhausted, cas_generation_count,
   CasUnreadableSlot, CasUnreadableMalformed, CasUnreadableContentMissing, CasUnreadableReadRefused,
@@ -18,14 +23,14 @@ import std.durable_exclusive_hold {
 }
 import product.fabric.identity { FabricIdentity, OfferKey, DemandKey, WorkKey, fabric_identity_eq }
 import product.fabric.demand { Demand }
-import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency, PlacementAffinityKey }
+import product.fabric.supply { SupplierOffer, OfferQuote, offer_quote_currency, PlacementAffinityKey, GrantDuration, StableRosterOrder }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.provider_admission {
   permit_standing, PermitStanding, PermitAuthorizesUse, PermitNamesAnotherOfferThan,
   PermitNamesAnotherRouteThan, PermitNamesAnotherWorkThan, PermitNamesAnotherDemandThan,
 }
 import product.fabric.selection {
-  CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
+  ResourceBudgetPolicy, ResourceBudgetSelection, select_resource_budget_supply, select_supply, CandidateOffer, SupplySelection, OfferSelected, NoAdmissibleOffer, EqualCostTieUnresolved, SelectionCost, OfferCandidacy, selection_liability,
   OfferPriced, OfferNotFungible, OfferUnavailableForGrant, OfferCannotHoldAnUnboundedGrant, OfferNotPriceable,
   OfferWrongCurrency, OfferUnaffordable, OfferLiabilityOverBuyOrder,
 }
@@ -232,6 +237,28 @@ fn reserve_selected_cell(
   offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
   account: MoneyAccount,
 ) -> CellReservation {
+  let owner = fabric_hold_owner(reservation: fabric_money_reservation_ref(demand: demand_id, offer: offer_id))
+  match workspace_slot_mutation_acquire(slot_key: slot_key, owner: owner) {
+    WorkspaceSlotMutationRefused { reason } => AttemptRefused { slot_key: slot_key, detail: reason }
+    WorkspaceSlotMutationAdmitted { lease } => {
+      let result = reserve_selected_cell_under_exclusion(root: root, slot_key: slot_key,
+        demand_id: demand_id, offer_id: offer_id, account: account)
+      if workspace_slot_mutation_release(lease: lease) { result }
+      else { AttemptRefused { slot_key: slot_key,
+        detail: "reservation operation returned but mutation exclusion is unsettled; observe the existing hold before recovery" } }
+    }
+  }
+}
+
+fn reserve_selected_cell_under_exclusion(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  demand_id: FabricIdentity<NonEmptyStr, DemandKey>,
+  offer_id: FabricIdentity<NonEmptyStr, OfferKey>,
+  account: MoneyAccount,
+) -> CellReservation
+  admit_callers: [decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "reserve_selected_cell")]
+{
   match file_hold_acquire(
     root: root,
     slot_key: slot_key,
@@ -457,21 +484,66 @@ fn broker_reserve_for_demand(
   maximum_buy_order: MoneyAmountMicro,
   delay_valuation: MoneyPerSecond,
 ) -> CellReservation {
+  broker_reserve_for_requirements(
+    root: root, demand: demand, requirements: floor_execution_requirements(),
+    duration: floor_grant_duration(), currency: Usd,
+    roster: roster, sanctions: sanctions, account: account,
+    maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation,
+  )
+}
+
+// The shared broker consumes the submitted Work rather than the compile floor.
+fn broker_reserve_for_requirements(
+  root: NonEmptyStr,
+  demand: Demand<NonEmptyStr>,
+  requirements: ExecutionRequirements,
+  duration: GrantDuration,
+  currency: CurrencyCode,
+  roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
+  account: MoneyAccount,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+) -> CellReservation {
+  match broker_select_for_requirements(demand: demand, requirements: requirements, duration: duration,
+    currency: currency, roster: roster, sanctions: sanctions, maximum_buy_order: maximum_buy_order, delay_valuation: delay_valuation) {
+    CellSelectedForDemand { offer, cost } => reserve_priced_cell(root: root, demand_id: demand.id, offer: offer, cost: cost, account: account)
+    CellSelectionRefused { refusal } => refusal
+  }
+}
+
+// Selection remains one authority; convergence may persist its decision before acquisition.
+type CellSelectionForDemand
+  = CellSelectedForDemand { offer: SupplierOffer<NonEmptyStr>, cost: SelectionCost }
+  | CellSelectionRefused { refusal: CellReservation }
+
+fn broker_select_for_requirements(
+  demand: Demand<NonEmptyStr>,
+  requirements: ExecutionRequirements,
+  duration: GrantDuration,
+  currency: CurrencyCode,
+  roster: List<FabricCellCandidate>,
+  sanctions: List<ExecutorSanction>,
+  maximum_buy_order: MoneyAmountMicro,
+  delay_valuation: MoneyPerSecond,
+) -> CellSelectionForDemand {
   let partition = partition_cell_roster(
-    requirements: floor_execution_requirements(),
+    requirements: requirements,
     sanctions: sanctions,
     roster: roster,
   )
-  match floor_supply_selection(
+  match select_supply(
+    requirements: requirements, duration: duration, budget_currency: currency,
+    tie: StableRosterOrder,
     candidates: fabric_cell_roster_candidates(roster: partition.admitted),
     maximum_buy_order: maximum_buy_order,
     delay_valuation: delay_valuation,
     affinity: (demand.id.key as String) as PlacementAffinityKey,
   ) {
     NoAdmissibleOffer { considered: c } =>
-      NoCellAdmissible { considered: c, refused: partition.refused }
+      CellSelectionRefused { refusal: NoCellAdmissible { considered: c, refused: partition.refused } }
     EqualCostTieUnresolved { digest: d, cause: _, considered: c } =>
-      CellSelectionTieUnresolved { digest: d, considered: c }
+      CellSelectionRefused { refusal: CellSelectionTieUnresolved { digest: d, considered: c } }
     OfferSelected { candidate: selected, cost: k, basis: _, horizon: _, considered: _, tie_policy: _ } => {
       let winner = selected.candidate
       match permit_standing(
@@ -482,23 +554,17 @@ fn broker_reserve_for_demand(
         work: demand.work,
       ) {
       PermitNamesAnotherOfferThan { permit_names: n } =>
-        PermitNamesAnotherUseForCell { standing: PermitNamesAnotherOfferThan { permit_names: n } }
+        CellSelectionRefused { refusal: PermitNamesAnotherUseForCell { standing: PermitNamesAnotherOfferThan { permit_names: n } } }
       PermitNamesAnotherRouteThan =>
-        PermitNamesAnotherUseForCell { standing: PermitNamesAnotherRouteThan }
+        CellSelectionRefused { refusal: PermitNamesAnotherUseForCell { standing: PermitNamesAnotherRouteThan } }
       PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } =>
-        PermitNamesAnotherUseForCell {
-          standing: PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } }
+        CellSelectionRefused { refusal: PermitNamesAnotherUseForCell {
+          standing: PermitNamesAnotherWorkThan { permit_work: pw, subject_work: sw } } }
       PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } =>
-        PermitNamesAnotherUseForCell {
-          standing: PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } }
+        CellSelectionRefused { refusal: PermitNamesAnotherUseForCell {
+          standing: PermitNamesAnotherDemandThan { permit_demand: pd, subject_demand: sd } } }
       PermitAuthorizesUse =>
-        reserve_priced_cell(
-          root: root,
-          demand_id: demand.id,
-          offer: winner.offer,
-          cost: k,
-          account: account,
-        )
+        CellSelectedForDemand { offer: winner.offer, cost: k }
       }
     }
   }
@@ -630,7 +696,7 @@ fn end_cell_hold(
   reason: NonEmptyStr,
 ) -> CellHoldEnd
   admit_callers: [
-    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "release_reserved_cell_at"),
+    decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "release_reserved_cell_money_generation"),
     decl_ref(module_path: "gunbc.fabric_control_plane", decl_name: "settle_reserved_cell_at"),
   ]
   = match file_hold_release_assess(
@@ -761,6 +827,21 @@ fn release_reserved_cell_at(
   released_at: Timestamp,
   account: MoneyAccount,
 ) -> CellHoldEnd {
+  release_reserved_cell_money_generation(root: root, slot_key: slot_key, acquired_generation: acquired_generation,
+    money_generation: lease.generation, reservation: reservation, reason: reason, released_at: released_at, account: account)
+}
+
+// Money fencing uses its own generation; a workspace need not fabricate a lease fingerprint.
+fn release_reserved_cell_money_generation(
+  root: NonEmptyStr,
+  slot_key: NonEmptyStr,
+  acquired_generation: Int,
+  money_generation: Int,
+  reservation: ReservationRef,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+  account: MoneyAccount,
+) -> CellHoldEnd {
   end_cell_hold(
     root: root,
     slot_key: slot_key,
@@ -769,7 +850,7 @@ fn release_reserved_cell_at(
     money: release_money(
       a: account,
       reference: reservation,
-      generation: lease.generation,
+      generation: money_generation,
       reason: reason,
       released_at: released_at,
     ),
@@ -937,6 +1018,18 @@ fn settle_reserved_cell_at<P>(
         ),
       }
   }
+}
+
+// Resource-budget admission uses the same class/sanction partition as priced selection.
+fn broker_select_resource_budget(
+  demand: Demand<NonEmptyStr>, requirements: ExecutionRequirements, duration: GrantDuration,
+  roster: List<FabricCellCandidate>, sanctions: List<ExecutorSanction>,
+  policy: ResourceBudgetPolicy<NonEmptyStr>,
+) -> ResourceBudgetSelection<NonEmptyStr> {
+  let partition = partition_cell_roster(requirements: requirements, sanctions: sanctions, roster: roster)
+  select_resource_budget_supply(policy: policy, demand: demand.id, work: demand.work,
+    requirements: requirements, duration: duration,
+    candidates: fabric_cell_roster_candidates(roster: partition.admitted))
 }
 
 // ── RECEIPT WIRES FOR THE ROUTE'S OUTCOMES ──────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 module gunbc.spark.managed_grant_reconcile
 
-import std.types { String, NonEmptyStr, List, Bool }
+import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
-import product.placement_supply { HostIdentity }
+import v2.std.algebra { filter, length, any }
+import product.host_identity { HostIdentity }
 import gunbc.spark.managed_access_bootstrap {
   SparkManagedGrant,
   EnableLingerForOwnAccount,
@@ -313,12 +314,15 @@ fn spark_managed_grants_converged(outcome: SparkGrantOutcome) -> Bool {
 
 // One drop-in file per grant, named for the grant. Per-grant files rather than one appended file
 // because appending has no idempotent form: re-running would duplicate the line, and a reconcile
-// whose second run differs from its first is not a reconcile.
+// whose second run differs from its first is not a reconcile. A parameterized grant names its
+// parameter in the file: one name for every InspectServingContainer made each install overwrite the
+// previous container's grant (Group A srv5, run 37166203531: the pair, native and staircase inspect
+// grants all wrote /etc/sudoers.d/gunbc-docker-inspect, each readback confirmed only its own).
 fn spark_managed_grant_dropin_name(grant: SparkManagedGrant) -> NonEmptyStr {
   match grant {
     EnableLingerForOwnAccount { subject: _ } => "gunbc-enable-linger" as NonEmptyStr
     RebootThisHost => "gunbc-reboot" as NonEmptyStr
-    InspectServingContainer { container: _ } => "gunbc-docker-inspect" as NonEmptyStr
+    InspectServingContainer { container: c } => join(["gunbc-docker-inspect-", c as String], "") as NonEmptyStr
     ReadFabricModuleEeprom { device: _ } => "gunbc-ethtool-module-info" as NonEmptyStr
   }
 }
@@ -367,4 +371,74 @@ fn spark_managed_grant_report(host: HostIdentity, outcome: SparkGrantOutcome) ->
         spark_grant_install_admission_wire(a: a)),
     ),
   ), "")
+}
+
+// ── The retired shared drop-in, observed rather than assumed gone ────────────────────────────────
+//
+// Before gunbc#13040 every InspectServingContainer grant was written to ONE file,
+// /etc/sudoers.d/gunbc-docker-inspect, so each install overwrote the previous container's grant
+// (Group A srv5, run 37166203531). spark_managed_grant_dropin_name now names the container, but the
+// installer never removes the old file: on any host granted before the change it can still be there,
+// holding whichever container's line was written last. sudo's listing cannot tell which file an entry
+// came from, so the drop-in DIRECTORY is read by name. An unread directory is not an absent file.
+data spark_retired_shared_inspect_dropin_name: NonEmptyStr = "gunbc-docker-inspect" as NonEmptyStr
+data spark_sudoers_dropin_directory: NonEmptyStr = "/etc/sudoers.d" as NonEmptyStr
+
+// ls(1): `-1` lists one entry per line. /etc/sudoers.d read mode=755 root:root on all four Group B
+// hosts 2026-10-04 22:53Z (valiant-crab-775, unprivileged), so the listing needs no grant there; a host
+// where it is not listable lands in Unobserved, never in an absent file.
+fn spark_sudoers_dropin_listing_argv() -> List<String> {
+  ["ls", "-1", spark_sudoers_dropin_directory as String]
+}
+
+// WHICH SHAPE A HOST'S INSPECT GRANTS ARE IN, read from the drop-in names. Two shapes and an unread:
+//   SharedInspectDropinShape    -- the retired shared file is present. If no per-container file sits
+//                                  beside it, it is the host's ONLY inspect grant: one container is
+//                                  granted, the others are not, and which one is whichever install ran
+//                                  last. Group B (srv9..srv12) read in exactly this shape
+//                                  on 2026-10-04 22:53Z, before it joined the probe roster.
+//   PerContainerInspectDropinShape -- no shared file; the per-container files are the grants.
+// The per-container names found are carried either way, so "shared file beside new files" (residue)
+// and "shared file alone" (the old shape) stay distinguishable.
+type SparkInspectDropinShape
+  = SharedInspectDropinShape { per_container: List<String> }
+  | PerContainerInspectDropinShape { per_container: List<String> }
+  | InspectDropinShapeUnobserved { cause: NonEmptyStr }
+
+fn spark_per_container_inspect_dropins(names: List<String>) -> List<String> {
+  let prefix = join([spark_retired_shared_inspect_dropin_name as String, "-"], "")
+  filter(names, n => starts_with(s: n, prefix: prefix))
+}
+
+fn spark_inspect_dropin_shape_of_names(names: List<String>) -> SparkInspectDropinShape {
+  let per_container = spark_per_container_inspect_dropins(names: names)
+  if any(names, n => n == spark_retired_shared_inspect_dropin_name as String) {
+    SharedInspectDropinShape { per_container: per_container }
+  } else {
+    PerContainerInspectDropinShape { per_container: per_container }
+  }
+}
+
+fn spark_inspect_dropin_shape_of_listing(exit_code: Int, stdout: String, stderr: String) -> SparkInspectDropinShape {
+  if exit_code != 0 {
+    InspectDropinShapeUnobserved { cause: join(["ls ", spark_sudoers_dropin_directory as String, " exit=", to_string(exit_code), " stderr=", trim(s: stderr)], "") as NonEmptyStr }
+  } else {
+    spark_inspect_dropin_shape_of_names(names: filter(map(stdout.split(delimiter: "\n"), l => trim(s: l)), l => l != ""))
+  }
+}
+
+fn spark_inspect_dropin_shape_wire(host: String, shape: SparkInspectDropinShape) -> String {
+  match shape {
+    SharedInspectDropinShape { per_container: pc } =>
+      join([
+        "inspect-dropins host=", host, " SHARED-SHAPE ", spark_sudoers_dropin_directory as String, "/", spark_retired_shared_inspect_dropin_name as String,
+        " present per_container=[", join(pc, ","), "]",
+        if length(pc) == 0 { " (the shared file is the only inspect grant: one container granted, which one is unread)" } else { " (retired file beside per-container files: residue)" },
+        "; converging it is an operator-approved grant install and removal\n",
+      ], "")
+    PerContainerInspectDropinShape { per_container: pc } =>
+      join(["inspect-dropins host=", host, " per-container [", join(pc, ","), "]\n"], "")
+    InspectDropinShapeUnobserved { cause: c } =>
+      join(["inspect-dropins host=", host, " UNOBSERVED cause=", c as String, "\n"], "")
+  }
 }

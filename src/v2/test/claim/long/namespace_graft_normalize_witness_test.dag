@@ -1,7 +1,6 @@
 module v2.test.long.namespace_graft_normalize_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
 import v2.test.claim.namespace_graft.normalize_graft_witness_helpers {
   ng_norm_graft_after_normalize_body_holds,
   ng_norm_manual_graft_on_parsed_module_holds,

@@ -253,6 +253,27 @@ fn whoami_command() -> ArgvCommand {
   argv_command(program: whoami_program(), arguments: [])
 }
 
+fn pwd_program() -> ProgramIdentity = uncataloged_program(invocation: "pwd")
+
+// pwd PRINTS the working directory and nothing else (coreutils pwd(1)). The deleted fleet
+// ssh-config pin script embedded the same fact with $(pwd) inside a shell substitution; the
+// typed runner captures the same stdout without a shell, so the path that lands in the ssh
+// config is still absolute and still names the fragment beside the run that wrote it.
+fn pwd_command() -> ArgvCommand {
+  argv_command(program: pwd_program(), arguments: [])
+}
+
+// tee WITHOUT -a OVERWRITES the named file; WITH -a it opens it for APPEND, so bytes written by
+// anyone else before tee opens the file are preserved and a concurrent append cannot be erased by
+// a whole-file rewrite (tee(1), GNU coreutils). The payload arrives on STDIN -- never argv -- so
+// a key line carrying spaces or quotes cannot change the command's meaning. `--` ends the option
+// list, so a path beginning with a dash is a filename.
+fn tee_program() -> ProgramIdentity = uncataloged_program(invocation: "tee")
+
+fn tee_append_command(path: String) -> ArgvCommand {
+  argv_command(program: tee_program(), arguments: ["-a", "--", path])
+}
+
 // readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
 // makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
 // executing", and a non-symlink there is a broken assumption, not empty output.
@@ -320,6 +341,39 @@ fn coreutils_install_directory_owned_argv(
     group as String,
     path,
   ]
+}
+
+// install(1) WITHOUT OWNER OR GROUP FLAGS: copy SOURCE to DEST setting the mode at creation,
+// ownership following the invoking principal. Its one caller reaches it through
+// sudo_elevate_command, so the invoking principal IS root and -o/-g would be restatements of the
+// elevation itself; the owned variants above exist for callers that create as one principal and
+// hand the file over. install does NOT create missing parents -- that is upstream behaviour,
+// stated at the section comment above so a caller does not assume otherwise.
+fn coreutils_install_file_argv(mode: NonEmptyStr, source: String, dest: String) -> List<String> {
+  [
+    coreutils_install_binary_name as String,
+    coreutils_install_mode_flag as String,
+    mode as String,
+    source,
+    dest,
+  ]
+}
+
+// dd(1) -- GNU coreutils, "dd: convert and copy a file". This repository's one use is the
+// BYTE-EXACT STAGED WRITE: `dd of=PATH status=none` truncates and overwrites PATH from stdin, and
+// status=none suppresses the statistics line dd otherwise prints to stderr, so the command's log
+// carries only what the caller chose to log. dd rather than tee because tee ECHOES the bytes into
+// its own stdout -- the command log would carry the unit file's contents twice, once as payload
+// and once as log; the reasoning is recorded at gunbc.typed_remote_file_write, whose convergence
+// law this builder serves on the LocalShell and SshShell transports. `of=PATH` is ONE word -- dd's
+// own operand grammar, not a flag and a separate path -- and the PAYLOAD is never an argv element:
+// it crosses as stdin, so no byte of it can change the command's meaning.
+data coreutils_dd_binary_name: NonEmptyStr = "dd"
+
+fn dd_program() -> ProgramIdentity = uncataloged_program(invocation: coreutils_dd_binary_name)
+
+fn dd_overwrite_path_command(path: String) -> ArgvCommand {
+  argv_command(program: dd_program(), arguments: [concat("of=", path), "status=none"])
 }
 
 // rm(1) — GNU coreutils, "Removing files or directories". Three shapes are used in this
@@ -409,6 +463,15 @@ fn df_available_bytes_argv(path: String) -> List<String> {
   [df_program as String, "-B1", "--output=avail", path]
 }
 
+
+// Copy a file with ownership established before an unprivileged consumer can open it.
+fn install_file_owned_command(source: String, destination: String, mode: NonEmptyStr, uid: Int, gid: Int) -> ArgvCommand {
+  argv_command(program: install_program(), arguments: [
+    coreutils_install_mode_flag as String, mode as String,
+    coreutils_install_owner_flag as String, to_string(uid),
+    coreutils_install_group_flag as String, to_string(gid), source, destination,
+  ])
+}
 
 // mv -T: rename SOURCE to exactly DESTINATION, treating the destination as a file name and never as
 // a directory to move into -- so publishing a staged tree over an absent path renames it, and a

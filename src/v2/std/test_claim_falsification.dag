@@ -1,6 +1,6 @@
 module v2.std.test_claim_falsification
 
-import v2.std.collection { List }
+import std.types { List }
 import v2.std.diagnostic { Diagnostic }
 import v2.std.host_run { EmitHostRunReceipt, ValueDiff }
 import v2.std.node { Symbol }

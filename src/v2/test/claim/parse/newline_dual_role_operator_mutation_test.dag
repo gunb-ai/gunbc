@@ -32,12 +32,12 @@ import v2.std.parse_refusal_reason {
   DataValueMissingAfterEq,
   FnExpressionBodyMissingAfterEq,
   KeywordAsPathSegment,
+  KeywordAsValueName,
   LayoutUnknownWithoutSource,
   NewlineBeforeDualRoleOperator,
   ParseRefusalReason
 }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 import v2.test.parse.newline_dual_role_operator_parse {
@@ -95,7 +95,10 @@ fn is_newline_refusal(reason: ParseRefusalReason) -> Bool {
     DataValueMissingAfterEq => false
     LayoutUnknownWithoutSource => false
     KeywordAsPathSegment => false
+    LetInExpressionDropped => false
     DeclarationMarkerNotTest => false
+    KeywordAsValueName => false
+    TokenStartsNotIncreasing => false
   }
 }
 

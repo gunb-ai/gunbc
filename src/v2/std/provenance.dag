@@ -1,8 +1,9 @@
 module v2.std.provenance
 
+import std.types { List }
 import v2.std.artifact { Artifact, GeneratorId, NodeArtifactProvenance }
 import v2.std.algebra { fold_list }
-import v2.std.collection { List, Map, empty_map, map_insert }
+import v2.std.collection { Map, empty_map, map_insert }
 import v2.std.diagnostic {
   ByteRange,
   Diagnostic,
@@ -119,7 +120,10 @@ fn span_index_resolve_textual_locus(index: SpanIndex, id: OccurrenceId) -> Witne
         FromSource { locus } =>
           match locus {
             Textual { file: _, extent: _ } => Holds { value: locus }
-            _ => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            NodeLocus { anchor: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            SourcePortLocus { anchor: _, file: _, extent: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            InvariantPortLocus { anchor: _, invariant: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
+            DeclarationLocus { declaration: _ } => Violates { diagnostic: span_index_origin_chain_exhausted_diagnostic() }
           }
         DerivedBy { producer: _, from: from } =>
           span_index_resolve_textual_locus_from_ids(index: index, ids: from)

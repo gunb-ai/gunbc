@@ -1,5 +1,6 @@
 module v2.program
 
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.ingested_fixture_arrows { ingested_pick_if_arrow_with_body }
 import v2.compiler.eval {
@@ -22,7 +23,6 @@ import v2.extdeps.runtimes.v2_effect_io_pure {
 }
 import v2.std.cardinality { RankingComponent, TerminationProof }
 import v2.std.collection {
-  List,
   Map,
   list_at_optional
 }
@@ -47,7 +47,6 @@ import v2.std.diagnostic {
 import std.algebra { Empty }
 import v2.std.algebra { length }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.logic { Bool }
 import v2.std.machine { Byte }
 import v2.std.node {
   Atom,
@@ -265,7 +264,10 @@ fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
@@ -273,7 +275,10 @@ fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
-    _ => false
+    RuntimeAggregate { value: _ } => false
+    RuntimeReference { value: _ } => false
+    RuntimeClosure { value: _ } => false
+    RuntimeUnit { value: _ } => false
   }
 }
 
@@ -402,7 +407,8 @@ fn program_branch_effect_io_holds() -> Witness<Bool> {
         RuntimeValueEqualityUnavailable { reason: r } =>
           Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
       }
-    _ => Holds { value: false }
+    Accepted { value: _, diagnostics: _ } => Holds { value: false }
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }
 
@@ -445,7 +451,8 @@ fn program_pick_if_arrow_holds() -> Witness<Bool> {
             RuntimeValueEqualityUnavailable { reason: r } =>
               Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
           }
-        _ => Holds { value: false }
+        Accepted { value: _, diagnostics: _ } => Holds { value: false }
+        Rejected { diagnostics: _ } => Holds { value: false }
       }
     }
     Rejected { diagnostics: _ } => Holds { value: false }

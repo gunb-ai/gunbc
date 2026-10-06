@@ -1,13 +1,12 @@
 module v2.compiler.body_producer_forward
 
+import std.types { List }
 import v2.extdeps.languages.dag { dag_translation_rules_node, parse_production_emitted_identity_optional }
 import v2.std.algebra { fold_list, length }
 import std.algebra { list_append }
-import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Diagnostic, ExternalContractUnknown, Outcome, Rejected, Unavailable, node_locus }
 import v2.std.grammar { grammar_relation_row_forward_production_selection }
 import v2.std.integer { Int }
-import v2.std.logic { Bool }
 import v2.std.node { Arrow, Atom, ComputationNode, Node, Symbol, TypeNode, node_synthetic }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -102,7 +101,11 @@ fn body_producer_forward_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: Arrow } => true
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Conj } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
   }
 }
 

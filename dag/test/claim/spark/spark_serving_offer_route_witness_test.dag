@@ -7,7 +7,7 @@ import product.fabric.identity { FabricIdentity }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef }
 import product.fabric.demand { ObservationReceiptRef }
-import product.placement_supply { HostIdentity, host_identity_eq }
+import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.first_party_serving {
   SparkServingRealization, spark_realization_identity, SparkRealizationIdentity,
   RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
@@ -23,7 +23,7 @@ import gunbc.spark.pair_serving_realization {
   spark_pair_declared_head_digest,
 }
 import std.measure { token_count }
-import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
+import gunbc.fleet_host_identity { operator_host_srv5, operator_host_srv6, operator_host_srv1 }
 import gunbc.spark.fabric_switch_observed { FabricGroup, FabricGroupA }
 import gunbc.serving.serving_enrollment { ServingRouteEndpoint }
 import gunbc.serving.serving_availability { ServingFrontDoorAvailabilityVerdict, FrontDoorAnswered, serving_availability_bracketing_read }

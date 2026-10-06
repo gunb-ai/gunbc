@@ -7,11 +7,38 @@ import v2.std.optional { Present, Absent }
 import std.algebra { trim }
 import v2.std.algebra { filter }
 import std.resources { Network }
+import extdeps.external_authority { ExternalModelScope, ExternalSubjectRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+// THE SUBJECT IS THE IPMITOOL TRANSPORT, NOT THE IPMI WIRE SPEC. diagnostic.ipmi.Tool is the
+// module's bound realization of ipmitool(1)'s command surface (argv, -I/-H/-U/-f flags, output
+// parsing), so the primary citation is the tool's own man page (doc/ipmitool.1.in; latest release
+// 1.8.19). The Intel IPMI v2.0 rev1.1 spec stays as a further citation for the wire semantics the
+// tool drives -- the live PDF this repository already cites in extdeps.bmc.ipmi_sel; the earlier
+// HTML locator redirected to Intel's 404 and was dropped.
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
+    locator: "github.com/ipmitool/ipmitool/blob/master/doc/ipmitool.1.in"
   }
+}
+
+data extdeps_intel_ipmi_spec_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.intel.com/content/dam/www/public/us/en/documents/product-briefs/ipmi-second-gen-interface-spec-v2-rev1-1.pdf"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.ipmi",
+      decl_name: "diagnostic.ipmi.Tool",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: [extdeps.bmc.ipmi.extdeps_intel_ipmi_spec_citation]
 }
 
 // THE WRITE HALF OF THE IPMI CHASSIS INTERFACE was added 2026-09-05 beside the three readonly
@@ -386,6 +413,23 @@ service diagnostic.ipmi.Tool {
     exit {
       0 => Unit
       nonzero => String "ipmitool fru print failed"
+    }
+  }
+
+  operation HpmCheck {
+    requires Network
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password_file: NonEmptyStr, deadline: NonEmptyStr, kill_after: NonEmptyStr }
+    output {
+      stdout: String from "stdout",
+      transport_stderr: String from "stderr",
+      exit_code: Int from "exit_code",
+      success: Bool from "exit_success",
+    }
+    readonly
+    transport shell { argv: ["timeout", "--kill-after", "{kill_after}", "{deadline}", "ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "-U", "{username}", "-f", "{password_file}", "hpm", "check"] }
+    exit {
+      0 => Unit
+      nonzero => String "ipmitool hpm check failed"
     }
   }
 

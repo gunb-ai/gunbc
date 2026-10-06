@@ -192,24 +192,6 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     disposition: ForkOpen { reason: "next PR of the de-fork wave (the v2 side has ~40 consumer sites across `v2.extdeps.formatters.*`)" }
   },
   SharedTypeNameRow {
-    names: ["List"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`= FreeMonoid<element>` → `std.algebra` `FreeMonoid`",
-      v2_side: "`= std.algebra.FreeMonoid<T>` → same",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
-    names: ["Bool"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`std.types` `= True \\| False`",
-      v2_side: "`v2.std.logic` `= True \\| False` (arms are two more same-name declarations)",
-      class: "one concept, two declarations (duplicate)"
-    },
-    disposition: ForkAwaitingRuling { question: "seed kernel name — out of scope for the wave" }
-  },
-  SharedTypeNameRow {
     names: ["Int", "UInt"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.nat` `Nat` (via `std.algebra` `GroupCompletion`)",
@@ -222,8 +204,8 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     names: ["Int8", "Int16", "Int32", "Int64", "Int128", "UInt8", "UInt16", "UInt32", "UInt64", "UInt128"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.machine_constraints` `Compose` / `MachineWidth<N>` + `std.integer` `Int`/`UInt`",
-      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth<WordN>` + `v2.std.integer` `Int`/`UInt`",
-      class: "same concept, every referent divergent"
+      v2_side: "→ `std.machine_constraints` `Compose` / `MachineWidth<N>` + `v2.std.integer` `Int`/`UInt`",
+      class: "same concept, Int/UInt referent divergent"
     },
     disposition: ForkNeedsDecisionRecord { family: "integer family" }
   },
@@ -231,17 +213,8 @@ data defork_census_rows: List<SharedTypeNameRow> = [
     names: ["IntPlatform", "UIntPlatform"],
     reading: AuthoredResolutionReading {
       dag_side: "→ `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth`",
-      v2_side: "→ `v2.std.integer` `Compose`, `v2.std.machine` `MachineWidth`/`PointerWidth`",
-      class: "text near-identical, every referent divergent"
-    },
-    disposition: ForkNeedsDecisionRecord { family: "integer family" }
-  },
-  SharedTypeNameRow {
-    names: ["Compose", "MachineWidth"],
-    reading: AuthoredResolutionReading {
-      dag_side: "`std.machine_constraints` — phantom composition / width over `WidthResolution`",
-      v2_side: "`v2.std.integer` / `v2.std.machine` — opaque, unconstrained parameter",
-      class: "same concept, divergent constraint"
+      v2_side: "→ `std.machine_constraints` `Compose`/`MachineWidth`/`PointerWidth`",
+      class: "text near-identical, Int/UInt referent divergent"
     },
     disposition: ForkNeedsDecisionRecord { family: "integer family" }
   },
@@ -267,6 +240,11 @@ data defork_census_rows: List<SharedTypeNameRow> = [
 
 data defork_census_resolved: List<ResolvedSharedTypeName> = [
   ResolvedSharedTypeName {
+    names: ["Compose", "MachineWidth"],
+    resolution: ResolvedByDeletingV2 { reason: "N7-2 root B: v2 gained kinded type parameters (`v2.std.type_binder` `type_application_conformance`), so the kinded `std.machine_constraints` `MachineWidth<bits: WidthResolution>` normalizes on the native route; `v2.std.machine` `MachineWidth`/`PointerWidth` and `v2.std.integer` `Compose` are deleted and `v2.std.integer` imports them from `std.machine_constraints` (its `MachineWidth<WordN>` rows were kind-wrong and now read `MachineWidth<N>`)" },
+    change: 13038
+  },
+  ResolvedSharedTypeName {
     names: ["String"],
     resolution: ResolvedByDeletingDag { reason: "operator-ruled retirement of `std.string_type` `String` (`= FreeMonoid<Char>`), the duplicate of `v2.std.text` `String`. It had zero importers after gunbc#12512 deleted the 81 that used it as host text (XL-0T ruling B), verified by the #12760 literal-site census. `v2.std.text` `String` stays the one structural declaration, and `v2.std.node` `String` is the distinct host-text concept (gunbc.recurring_failure_mode carrier_by_spelling)" },
     change: 13089
@@ -280,6 +258,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     names: ["Float"],
     resolution: ResolvedByRehomingBothToExtdeps { authority: "extdeps.standards.ieee_754_2019 binary64", citation: "IEEE 754-2019 §3.6 (operator ruling relayed 2026-09-28): `std.float` (Float = Float64, uncited) and `v2.std.float` (Float = Binary64) both deleted; kernel Float's meaning is the `std.kernel_type_denotation` row, not a std alias" },
     change: 12547
+  },
+  ResolvedSharedTypeName {
+    names: ["Bool"],
+    resolution: ResolvedByDeletingV2 { reason: "per-name de-fork ruling A (neat-boar-16, 2026-09-28): `std.types` `Bool` survives because `v2.std.logic` already reaches `std.types` through its imports, so only that direction is acyclic; the coproduct and the host bool are a bijection, so the structural route it carried (BooleanUnfold literal row, declared-connective rows) was a second representation of one fact and was deleted with it" },
+    change: 12583
   },
   ResolvedSharedTypeName {
     names: ["ProjectionKind"],
@@ -310,6 +293,11 @@ data defork_census_resolved: List<ResolvedSharedTypeName> = [
     names: ["RankingDimension"],
     resolution: ResolvedByRenamingV2 { renamed_to: "RankingComponent", citation: "Ben-Amram & Genaim, *Ranking Functions for Linear-Constraint Loops* (JACM 2014): a lexicographic ranking function's components" },
     change: 12252
+  },
+  ResolvedSharedTypeName {
+    names: ["List"],
+    resolution: ResolvedByDeletingV2 { reason: "one concept, two declarations of `= FreeMonoid`; `std.types` keeps it because `v2.std.collection` already imports `std.types`, so the reverse import would be a cycle. Its importers re-point to `std.types` and the name stays bare, since the container-arity authority is bare-keyed" },
+    change: 12526
   },
   ResolvedSharedTypeName {
     names: ["TestClaim"],

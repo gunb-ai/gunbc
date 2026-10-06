@@ -555,28 +555,6 @@ fn decls_parse_only_from_inventory(
     Ok((out, module_count))
 }
 
-/// Measurement harness (`floor_prepared_toll_receipt` bin): wall time for pool-root parse-only
-/// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
-pub fn pool_decl_parse_wall_ms(
-    pool_roots: &[String],
-    want_kinds: &[ItemKind],
-    inventory: Option<&[crate::cli_run::PreparedSourceView]>,
-) -> Result<(u128, usize), String> {
-    let started = std::time::Instant::now();
-    let (_, module_count) = if let Some(inv) = inventory {
-        decls_parse_only_from_inventory(
-            inv,
-            pool_roots,
-            &[],
-            want_kinds,
-            "pool_decl_parse_wall_ms",
-        )?
-    } else {
-        decls_parse_only_from_disk(pool_roots, &[], want_kinds, "pool_decl_parse_wall_ms")?
-    };
-    Ok((started.elapsed().as_millis(), module_count))
-}
-
 fn decls_parse_only_from_disk(
     roots: &[String],
     files: &[String],
@@ -2381,79 +2359,6 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
                 fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason.to_string()))]),
             }]),
         )]),
-    }
-}
-
-#[cfg(test)]
-mod decl_facts_shared_memo_tests {
-    use super::*;
-
-    fn names(facts: &[DeclFactRaw]) -> Vec<(String, String, String)> {
-        facts
-            .iter()
-            .map(|f| {
-                (
-                    f.qualified_name.clone(),
-                    format!("{:?}", f.kind),
-                    f.rel_path.clone(),
-                )
-            })
-            .collect()
-    }
-
-    /// The memo is an ownership change, not a population change: with the floor memo registered,
-    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
-    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
-    /// walk, and clearing the authority drops the artifact.
-    #[test]
-    fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
-        let roots = vec![
-            "dag/std".to_string(),
-            "dag/gunbc/machine_intake".to_string(),
-        ];
-        let reordered = vec![
-            "dag/gunbc/machine_intake".to_string(),
-            "dag/std".to_string(),
-        ];
-        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
-        let singleton = vec!["dag/std".to_string()];
-        let cold = decl_facts_for_roots(&roots);
-        let cold_duplicated = decl_facts_for_roots(&duplicated);
-        let cold_singleton = decl_facts_for_roots(&singleton);
-        assert!(
-            !cold.is_empty(),
-            "the roots must yield declarations or this decides nothing"
-        );
-        assert_ne!(
-            names(&cold_singleton),
-            names(&cold_duplicated),
-            "the walk visits every supplied root, so [r, r] is a different population from [r]"
-        );
-        clear_decl_census_memo();
-        let unregistered = decl_facts_for_roots_shared(&roots);
-        assert_eq!(names(&cold), names(&unregistered));
-        register_decl_census_memo();
-        let first = decl_facts_for_roots_shared(&roots);
-        let second = decl_facts_for_roots_shared(&reordered);
-        let shared_singleton = decl_facts_for_roots_shared(&singleton);
-        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
-        clear_decl_census_memo();
-        assert!(
-            Rc::ptr_eq(&first, &second),
-            "a reordering of the same root multiset must read the same walk"
-        );
-        assert_eq!(names(&cold), names(&first));
-        assert!(
-            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
-            "[r] and [r, r] must not alias"
-        );
-        assert_eq!(names(&cold_singleton), names(&shared_singleton));
-        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
-        let after_clear = decl_facts_for_roots_shared(&roots);
-        assert!(
-            !Rc::ptr_eq(&first, &after_clear),
-            "clearing the prepared authority must drop the memo"
-        );
     }
 }
 

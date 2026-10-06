@@ -44,7 +44,7 @@ import gunbc.hostname_read { HostnameShortCaptured, HostnameShortCaptureRefused,
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
 }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import gunbc.runner_host_deploy {
   RunnerHostSpec, RunnerHostSpecFound, RunnerHostSpecAbsent, runner_host_spec_for,
 }
@@ -258,7 +258,7 @@ fn kvm_reachable(standing: FirecrackerHostStanding, expected_login: NonEmptyStr)
 }
 
 fn firecracker_binary_installed(standing: FirecrackerHostStanding) -> Bool {
-  match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  _ => false }
+  match standing.binary { FirecrackerInstalled { binary: _, version_line: _ } => true  FirecrackerVersionMismatch { binary: _, observed: _ } => false  FirecrackerBinaryAbsent { binary: _ } => false }
 }
 
 // THE CONVERGE'S QUESTION: has this host been brought to the state where its executor can run a
@@ -274,7 +274,7 @@ fn firecracker_host_ready(standing: FirecrackerHostStanding, expected_login: Non
 // process did not inherit answers the first question and not the second, so a probe gated on
 // readiness would attempt a boot it cannot perform and report a VMM error as an IMAGE verdict.
 fn firecracker_host_ready_in_this_process(standing: FirecrackerHostStanding) -> Bool {
-  (match standing.kvm { KvmDeviceWritable => true  _ => false })
+  (match standing.kvm { KvmDeviceWritable => true  KvmDevicePresentNotWritable => false  KvmDeviceAbsent => false })
     && firecracker_binary_installed(standing: standing)
 }
 
@@ -499,19 +499,22 @@ fn executor_home_wet() -> String? {
 // let "we could not ask" and "the host cannot measure" render identically to whoever reads the
 // receipt and decides what can measure the reserve.
 
-fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding
+fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> FirecrackerHostStanding {
+  observe_firecracker_host_standing_at_binary_wet(binary: firecracker_installed_binary(root: root, rel: firecracker_release_aarch64), login: login)
+}
+
+fn observe_firecracker_host_standing_at_binary_wet(binary: String, login: NonEmptyStr) -> FirecrackerHostStanding
 {
   let rel = firecracker_release_aarch64
   let kvm_path = firecracker_requires_kvm_device as String
   let exists = process_outcome_admitted(outcome: run_shell_command_capture(command: test_exists_command(path: kvm_path), transport: LocalExec))
   let writable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_writable_command(path: kvm_path), transport: LocalExec))
-  let binary = firecracker_installed_binary(root: root, rel: rel)
   let executable = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: binary), transport: LocalExec))
   let version_output = if executable {
     match run_shell_command_capture(command: firecracker_version_command(binary: binary), transport: LocalExec) {
       ProcessOutputPresent { text: t } => t
       ProcessOutputAbsent => ""
-      _ => ""
+      ProcessRefused { exit_code: _, stderr: _ } => ""
     }
   } else { "" }
   let gnu_time = process_outcome_admitted(outcome: run_shell_command_capture(command: test_executable_command(path: gnu_time_program().invocation), transport: LocalExec))
@@ -520,7 +523,7 @@ fn observe_firecracker_host_standing_wet(root: String, login: NonEmptyStr) -> Fi
     ProcessOutputPresent { text: t } =>
       match first(split(trim(s: t), "\n")) { Present { value: l } => trim(s: l)  Absent => "" }
     ProcessOutputAbsent => ""
-    _ => ""
+    ProcessRefused { exit_code: _, stderr: _ } => ""
   }
   FirecrackerHostStanding {
     kvm: kvm_standing_of(exists: exists, writable: writable),
@@ -591,6 +594,23 @@ fn runner_microvm_host_observe_wet() -> ProcessExit
   }
 }
 
+fn install_firecracker_release(root: String) -> ProcessExit
+{
+  let scratch = join([root, "/scratch"], "")
+  match verified_archive_install(
+    fetch: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
+    archive: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr,
+    pin: ArchiveSha256 { hex: firecracker_release_aarch64_tarball_sha256 },
+    install: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
+  ) {
+    ArchiveInstalled => ExitSuccess
+    ArchiveDigestMismatched { archive: _ } => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
+    ArchiveDigestUnverified { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r, "); installing NOTHING"], ""))
+    ArchiveFetchRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
+    ArchiveInstallRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
+  }
+}
+
 // Converge = resolve the subject, observe, install the binary if absent, observe again, report.
 // THE KVM GRANT IS APPLIED BY THE FLEET CONVERGE SPINE AND NOT HERE, AND THAT PLACEMENT IS A
 // RULING RATHER THAN A PREFERENCE. gunbc.recurring_failure_mode
@@ -616,21 +636,8 @@ fn runner_microvm_host_converge_wet() -> ProcessExit
           let before = observe_firecracker_host_standing_wet(root: root, login: spec.job_user)
           let install = match before.binary {
             FirecrackerInstalled { binary: _, version_line: _ } => ExitSuccess
-            _ => {
-              let scratch = join([root, "/scratch"], "")
-              match verified_archive_install(
-                fetch: firecracker_fetch_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
-                archive: firecracker_tarball_path(scratch: scratch, rel: firecracker_release_aarch64) as NonEmptyStr,
-                pin: ArchiveSha256 { hex: firecracker_release_aarch64_tarball_sha256 },
-                install: firecracker_install_commands(root: root, rel: firecracker_release_aarch64, scratch: scratch),
-              ) {
-                ArchiveInstalled => ExitSuccess
-                ArchiveDigestMismatched { archive: _ } => exit_failure(reason: join(["runner_microvm_host_converge: FirecrackerTarballDigestMismatch -- the fetched ", firecracker_release_tarball_filename(rel: firecracker_release_aarch64), " does not hash to the published digest; installing NOTHING"], ""))
-                ArchiveDigestUnverified { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: digest verification could not run (", r, "); installing NOTHING"], ""))
-                ArchiveFetchRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
-                ArchiveInstallRefused { archive: _, reason: r } => exit_failure(reason: join(["runner_microvm_host_converge: ", r], ""))
-              }
-            }
+            FirecrackerVersionMismatch { binary: _, observed: _ } => install_firecracker_release(root: root)
+            FirecrackerBinaryAbsent { binary: _ } => install_firecracker_release(root: root)
           }
           match install {
             ExitSuccess =>

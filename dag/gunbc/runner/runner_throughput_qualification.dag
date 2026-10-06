@@ -10,7 +10,7 @@ import std.measure {
   Millisecond, millisecond, millisecond_count,
 }
 import std.decl_ref { DeclarationRef }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.supply { SupplierOffer }
@@ -620,7 +620,9 @@ fn phase_roster_standing(walls: List<PhaseWall>) -> PhaseRosterStanding {
         let n = phase_count(walls: walls, phase: p)
         if n == 0 { PhaseMissing { phase: p } } else if n > 1 { PhaseDuplicated { phase: p } } else { acc }
       }
-      _ => acc
+      PhaseMissing { phase: _ } => acc
+      PhaseDuplicated { phase: _ } => acc
+      PhaseRosterNotAssessed { because: _ } => acc
     }
   )
 }
@@ -629,7 +631,9 @@ fn first_incomplete_roster(runs: List<ObservedRunnerQualificationRun>) -> PhaseR
   fold(runs, init: PhaseRosterComplete, f: (acc, r) =>
     match acc {
       PhaseRosterComplete => phase_roster_standing(walls: r.phase_wall)
-      _ => acc
+      PhaseMissing { phase: _ } => acc
+      PhaseDuplicated { phase: _ } => acc
+      PhaseRosterNotAssessed { because: _ } => acc
     }
   )
 }
@@ -657,7 +661,8 @@ fn phase_wall_standing(ceilings: PhaseCeilings, runs: List<ObservedRunnerQualifi
               acc
             }
           }
-          _ => acc
+          PhaseWallsNotAssessed => acc
+          PhaseWallExceedsCeiling { phase: _, wall: _, ceiling: _ } => acc
         }
       )
   }
@@ -928,14 +933,30 @@ fn assessment_holds<P>(a: RunnerThroughputAssessment<P>) -> Bool {
 // route's collect stage parsing a real run's rows into `observed_run` -- is a frontier carried as
 // one (DESIGN section 3c). A DeclarationRef to its landing would stop the parse phase today, so the
 // leg names the capability the landing must be SUFFICIENT FOR (section 4b(3)).
+//
+// AN AUTHORITY EXISTING IS NOT A LEG BEING WIRED. A leg whose authority is implemented but has no
+// production caller on the route performs nothing when the route runs, so it is its own arm:
+// LegAuthorityImplemented names the authority AND the wiring still owed, at capability grain. Only
+// LegWired counts toward route_is_executable; reading an implemented authority as a wired leg is
+// the specification-without-execution DESIGN §5 forbids, one layer up.
 type RouteLegStanding
-  = LegBoundToAuthority { authority: DeclarationRef }
+  = LegWired { authority: DeclarationRef }
+  | LegAuthorityImplemented { authority: DeclarationRef, wiring_owed: NonEmptyStr }
   | LegAwaitingAuthority { lands_with: NonEmptyStr, sufficient_for: NonEmptyStr }
 
-fn leg_is_bound(leg: RouteLegStanding) -> Bool {
+fn leg_is_wired(leg: RouteLegStanding) -> Bool {
   match leg {
-    LegBoundToAuthority { authority: _ } => true
+    LegWired { authority: _ } => true
+    LegAuthorityImplemented { authority: _, wiring_owed: _ } => false
     LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => false
+  }
+}
+
+fn leg_authority(leg: RouteLegStanding) -> DeclarationRef? {
+  match leg {
+    LegWired { authority: a } => Present { value: a }
+    LegAuthorityImplemented { authority: a, wiring_owed: _ } => Present { value: a }
+    LegAwaitingAuthority { lands_with: _, sufficient_for: _ } => none
   }
 }
 

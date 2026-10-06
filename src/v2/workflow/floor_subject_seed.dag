@@ -1,8 +1,8 @@
 module v2.workflow.floor_subject_seed
 
+import std.types { List }
 import v2.std.algebra { any, filter, length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
+import extdeps.github.actions { github_event_name_merge_group }
 
 // WHY A MODULE IS IN THE REQUIRED FLOOR'S PREPARED SUBJECT, one ground per seed.
 //
@@ -490,4 +490,24 @@ fn checker_subject_application_when_applied(
     refusal_reason: refusal_reason,
     changed_paths: changed_paths
   )
+}
+
+// WHICH CI EVENTS PLAN THE REACH DIFFERENTIAL (operator ruling, 2026-10-01). Reach consumers, the
+// claims a change's body edits can move, are planned and executed on the MERGE GROUP only: PR runs
+// pay nothing, and the queue's run of the composed revision judges them, head against base. On any
+// other event the floor plans none and prints that the differential is deferred to the merge group,
+// so its absence is announced and never silent. This is the phase scoping DESIGN puts in the
+// binary rather than in the workflow YAML: the runner reads the event through the same authority
+// that chose its diff window (v2.workflow.floor_diff_observe), and this function decides.
+type ReachEventScope
+  = ReachOnEveryRequiredRun
+  | ReachOnMergeGroupOnly
+
+data reach_event_scope: ReachEventScope = ReachOnMergeGroupOnly
+
+fn reach_planned_for_event(event_name: String) -> Bool {
+  match reach_event_scope {
+    ReachOnEveryRequiredRun => true
+    ReachOnMergeGroupOnly => event_name == github_event_name_merge_group
+  }
 }

@@ -1,0 +1,50 @@
+module gunbc.auth.managed_host_boot_federation_provision
+
+import std.types { list_length }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
+import gunbc.auth.heal_publisher_provision { DedicatedFederation, dedicated_federation_provision_with_supplied_token }
+import gunbc.auth.managed_host_boot_federation {
+  ManagedHostBootFederation, provisioned_boot_federations, boot_federation_wif_attribute_mapping,
+  boot_federation_attribute_condition, boot_federation_principal_set, boot_federation_service_account_member,
+}
+
+// THE PROVISIONER IS ITS OWN MODULE, NOT PART OF THE FEDERATION'S FACTS. The workflow emission
+// (gunbc.fleet_converge_workflow) reads the admitted federation's provider resource, service account
+// and environment; it has no business depending on the out-of-band provisioning protocol, whose
+// closure (gunbc.auth.heal_publisher_provision) would otherwise sit inside the workflow's closure.
+// It takes only an admitted gunbc.auth.managed_host_boot_federation ManagedHostBootFederation, so an
+// unprovisioned host has no record to provision.
+fn boot_dedicated_federation(f: ManagedHostBootFederation) -> DedicatedFederation {
+  DedicatedFederation {
+    label: join([f.host as String, " boot federation provision"], ""),
+    pool_id: f.names.pool_id,
+    pool_display_name: f.names.pool_display_name,
+    provider_id: f.names.provider_id,
+    attribute_mapping: boot_federation_wif_attribute_mapping,
+    attribute_condition: boot_federation_attribute_condition(f: f),
+    principal_set: boot_federation_principal_set(f: f),
+    service_account: f.names.service_account,
+    service_account_id: f.names.service_account_id,
+    service_account_display_name: f.names.service_account_display_name,
+    service_account_member: boot_federation_service_account_member(f: f),
+    secret_grants: f.secret_grants,
+  }
+}
+
+// Out-of-band: run by the grant administrator in their own session with a control-plane token
+// (gunbc.auth.access_token_source secret_access_token_path_env), the census's interim realization for
+// setIamPolicy (gunbc.auth.privileged_effect_census interim_gcp_iam_adapter_unlanded). No workflow run
+// and no session relay performs it. Every provisioned pair, stopping at the first refusal.
+// An empty population refuses: a provisioner that provisioned nothing must not report success.
+fn managed_host_boot_federation_provision_with_supplied_token() -> ProcessExit {
+  let feds = provisioned_boot_federations()
+  if list_length(feds) == 0 {
+    exit_failure(reason: "REFUSED gunbc.auth.managed_host_boot_federation_provision: no managed host has a provisioned boot federation (gunbc.auth.managed_host_boot_federation admit_boot_federation), so there is nothing to provision")
+  } else {
+    fold(feds, init: ExitSuccess, f: (acc, fed) =>
+      match acc {
+        ExitFailure { code: _, reason: _ } => acc
+        ExitSuccess => dedicated_federation_provision_with_supplied_token(f: boot_dedicated_federation(f: fed))
+      })
+  }
+}

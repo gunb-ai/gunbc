@@ -1,5 +1,6 @@
 module v2.std.change
 
+import std.types { List }
 import std.keyed_row { KeyedRow }
 import std.change {
   KeyedPatch,
@@ -28,7 +29,6 @@ import std.change {
   keyed_patches_equal,
   keyed_rows_snapshot_equal,
 }
-import v2.std.collection { List }
 import v2.std.dependency { DependencyKind, DependencyView, ReadinessLayer }
 import v2.std.diagnostic { NonEmptyDiagnostics, Outcome }
 import v2.std.node { Node, Path, Symbol }

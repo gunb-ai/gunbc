@@ -7,15 +7,15 @@ import std.upsert_decision {
   Noop, Apply, Refuse,
   UpsertClassification,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused }
-import extdeps.cloudflare.r2 { R2JurisdictionDefault, R2JurisdictionEu }
+import extdeps.transports.rest { RestRefused, RestStatusRefused, RestTransportRefused }
+import extdeps.cloudflare.r2 { R2JurisdictionDefault, R2JurisdictionEu, R2BucketLocation, r2_bucket_location_wire }
 import extdeps.cloudflare.r2_buckets {
   R2BucketResponse,
   R2BucketRead, R2BucketPresent, R2BucketAbsent, R2AccountNotEntitled, R2BucketReadRefused,
   classify_r2_bucket_get,
 }
 import gunbc.cloudflare.r2_origin {
-  FabricDurableOrigin, FabricBootOrigin,
+  FabricDurableOrigin, FabricBootOrigin, FabricWorkspace, FabricCacheBlobs,
   R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
   R2OriginBucket,
   OriginCredentialMintEntryUnbuilt,
@@ -48,6 +48,7 @@ fn witness_standing(jurisdiction_is_eu: Bool) -> R2OriginStanding {
     bucket: R2OriginBucket {
       bucket_name: "witness-bucket",
       jurisdiction: if jurisdiction_is_eu { R2JurisdictionEu } else { R2JurisdictionDefault },
+      location_hint: none,
       purpose: FabricDurableOrigin {},
       read_credential: OriginCredentialMintEntryUnbuilt { secret_id: "witness-read" },
       write_credential: OriginCredentialMintEntryUnbuilt { secret_id: "witness-write" },
@@ -57,10 +58,6 @@ fn witness_standing(jurisdiction_is_eu: Bool) -> R2OriginStanding {
 
 fn present(name: String, jurisdiction: String) -> R2BucketRead {
   R2BucketPresent { bucket: R2BucketResponse { name: name, jurisdiction: Present { value: jurisdiction }, location: none } }
-}
-
-fn empty_bucket() -> R2BucketResponse {
-  R2BucketResponse { name: "", jurisdiction: none, location: none }
 }
 
 fn is_noop(c: UpsertClassification<R2BucketCreatePlan>) -> Bool {
@@ -154,15 +151,13 @@ fn read_is_refused(r: R2BucketRead) -> Bool {
 
 test fn a_403_carrying_not_entitled_reads_as_unentitled() -> Bool {
   read_is_not_entitled(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10042,\"message\":\"Please enable R2 through the Cloudflare Dashboard.\"}],\"messages\":[],\"result\":null}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10042,\"message\":\"Please enable R2 through the Cloudflare Dashboard.\"}],\"messages\":[],\"result\":null}" } },
   ))
 }
 
 test fn a_404_carrying_no_such_bucket_reads_as_absent() -> Bool {
   read_is_absent(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 404, body: "{\"success\":false,\"errors\":[{\"code\":10006,\"message\":\"The specified bucket does not exist.\"}],\"messages\":[],\"result\":null}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "{\"success\":false,\"errors\":[{\"code\":10006,\"message\":\"The specified bucket does not exist.\"}],\"messages\":[],\"result\":null}" } },
   ))
 }
 
@@ -170,17 +165,16 @@ test fn a_404_carrying_no_such_bucket_reads_as_absent() -> Bool {
 // mentions the entitlement code, and a bare 404 is NOT an established absence.
 test fn a_403_with_another_code_is_an_unclassified_refusal() -> Bool {
   read_is_refused(r: classify_r2_bucket_get(
-    outcome: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Authentication error (not 10042)\"}]}" },
-    bucket: empty_bucket(),
+    outcome: RestRefused { refusal: RestStatusRefused { status: 403, body: "{\"success\":false,\"errors\":[{\"code\":10000,\"message\":\"Authentication error (not 10042)\"}]}" } },
   ))
 }
 
 test fn a_404_with_an_unreadable_body_is_not_an_absence() -> Bool {
-  read_is_refused(r: classify_r2_bucket_get(outcome: RestStatusRefused { status: 404, body: "not found" }, bucket: empty_bucket()))
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestRefused { refusal: RestStatusRefused { status: 404, body: "not found" } }))
 }
 
 test fn a_transport_failure_is_not_an_absence() -> Bool {
-  read_is_refused(r: classify_r2_bucket_get(outcome: RestTransportRefused { cause: "tls handshake alert" }, bucket: empty_bucket()))
+  read_is_refused(r: classify_r2_bucket_get(outcome: RestRefused { refusal: RestTransportRefused { cause: "tls handshake alert" } }))
 }
 
 // ── THE REAL ROSTER REACHES THE CLASSIFIER ──────────────────────────────────────────────────────
@@ -198,12 +192,47 @@ test fn every_allocated_purpose_converges_against_its_own_bucket() -> Bool {
   held.length() > 0 && filter(held, h => !h).length() == 0
 }
 
+// ── THE LOCATION HINT: CARRIED TO CREATE, NEVER CLASSIFIED ─────────────────────────────────────
+fn applied_hint(c: UpsertClassification<R2BucketCreatePlan>) -> String {
+  match c.decision {
+    Apply { plan: p } =>
+      match p.location_hint {
+        Present { value: l } => r2_bucket_location_wire(location: l)
+        Absent => "none"
+      }
+    Noop => ""
+    Refuse { reason: _ } => ""
+  }
+}
+
+// The workspace's absent bucket applies a Create whose plan requests enam; the cache's carries no
+// hint, because its allocation requests none. Red if the hint were dropped between the allocation
+// and the plan, or if every purpose were handed the workspace's.
+test fn an_absent_workspace_bucket_creates_with_the_enam_hint() -> Bool {
+  let workspace = classify_r2_bucket_ensure(desired: bucket_purpose_origin_standing(purpose: FabricWorkspace {}), read: R2BucketAbsent)
+  let cache = classify_r2_bucket_ensure(desired: bucket_purpose_origin_standing(purpose: FabricCacheBlobs {}), read: R2BucketAbsent)
+  applied_bucket(c: workspace) == "gunbai-fabric-workspace"
+    && applied_hint(c: workspace) == "enam"
+    && applied_hint(c: cache) == "none"
+}
+
+// A present workspace bucket that REPORTS another location still converges: the hint was a request,
+// and a reported location is an observation the converge does not hold the request against.
+test fn a_reported_location_other_than_the_hint_is_not_a_conflict() -> Bool {
+  let c = classify_r2_bucket_ensure(
+    desired: bucket_purpose_origin_standing(purpose: FabricWorkspace {}),
+    read: R2BucketPresent { bucket: R2BucketResponse { name: "gunbai-fabric-workspace", jurisdiction: Present { value: "default" }, location: Present { value: "weur" } } },
+  )
+  is_noop(c: c)
+}
+
 // ── THE SIGNING CREDENTIAL: THE BUCKET-ADMIN TOKEN, NEVER THE BOOTSTRAP ────────────────────────
 
 // An unminted credential refuses naming its mint entry and calls nothing.
 test fn an_unminted_bucket_admin_credential_refuses_naming_its_mint_entry() -> Bool {
   let unminted = OriginCredentialUnminted {
     mint_entry: decl_ref(module_path: "gunbc.cloudflare.r2_token_mint_run", decl_name: "run_bucket_admin"),
+    secret_id: "witness-bucket-admin",
   }
   match r2_ensure_signing_locus(credential: unminted) {
     R2EnsureSigningRefused { cause: cause } => string_contains(s: cause as String, pattern: "run_bucket_admin")

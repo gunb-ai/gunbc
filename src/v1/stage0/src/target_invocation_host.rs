@@ -243,6 +243,13 @@ pub fn parse_target_pattern(text: &str) -> Result<TargetPattern, TargetPatternRe
         .map_err(TargetPatternRefusal::PatternLabelRefused)
 }
 
+/// `gunbc.target_binding` `V2NativeCensusReading`: which census verb and reader a native-census row takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum V2NativeCensusReading {
+    ResolveRefusal,
+    TypeDeclarationUse,
+}
+
 /// `gunbc.target_binding` `TargetProducer`, narrowed to the members this seam realizes today.
 /// Adding one is a row in `instrument_registry` and an arm here; it is not a new route.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -250,7 +257,9 @@ pub enum TargetProducer {
     SelfHost,
     V2NativeCli,
     V2NativeFrontier,
-    V2NativeCensus,
+    V2NativeCensus {
+        reading: V2NativeCensusReading,
+    },
     EmittedCrateWorkspace,
     HeadsReadingDifferential,
     BehavioralReceiptPlan,
@@ -269,9 +278,14 @@ pub enum TargetProducer {
     BareReferenceChannelOutcome,
     SelfHostBehavioralEquivalence,
     DependencyDemandCensus,
+    GenericIdentityCensus,
     /// `NativeClaimProgramProducer { entry }`: the entry is carried, so a second program of the same
     /// shape is a registry row naming its entry, never another variant.
     NativeClaimProgram {
+        entry: &'static str,
+    },
+    /// `NativeServeProgramProducer { entry }`: generic over its entry on the same rule.
+    NativeServeProgram {
         entry: &'static str,
     },
 }
@@ -339,7 +353,15 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         ),
         (
             instrument_label("v2-native-census"),
-            TargetProducer::V2NativeCensus,
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::ResolveRefusal,
+            },
+        ),
+        (
+            instrument_label("type-declaration-use-census"),
+            TargetProducer::V2NativeCensus {
+                reading: V2NativeCensusReading::TypeDeclarationUse,
+            },
         ),
         (
             instrument_label("emitted-crate-workspace"),
@@ -361,6 +383,24 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
             instrument_label("dag-emit-real-grammar-round-trips"),
             TargetProducer::NativeClaimProgram {
                 entry: "dag/gunbc/instruments/dag_emit_real_grammar_round_trips.dag",
+            },
+        ),
+        (
+            instrument_label("native-materialization-store-closure"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_materialization_store_closure.dag",
+            },
+        ),
+        (
+            instrument_label("native-emission-controls"),
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/native_emission_controls.dag",
+            },
+        ),
+        (
+            instrument_label("native-serve"),
+            TargetProducer::NativeServeProgram {
+                entry: "dag/gunbc/instruments/native_serve_fixture.dag",
             },
         ),
         (
@@ -410,6 +450,10 @@ fn instrument_registry() -> Vec<(Label, TargetProducer)> {
         (
             instrument_label("dependency-demand-census"),
             TargetProducer::DependencyDemandCensus,
+        ),
+        (
+            instrument_label("generic-identity-census"),
+            TargetProducer::GenericIdentityCensus,
         ),
     ]
 }
@@ -790,8 +834,14 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::SelfHost => run_self_host(&self_host_source_roots()),
         TargetProducer::V2NativeCli => run_v2_native_cli(&v2_native_cli_source_roots()),
         TargetProducer::V2NativeFrontier => run_v2_native_frontier(&self_host_source_roots()),
-        TargetProducer::V2NativeCensus => run_v2_native_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::ResolveRefusal,
+        } => run_v2_native_census(&self_host_source_roots()),
+        TargetProducer::V2NativeCensus {
+            reading: V2NativeCensusReading::TypeDeclarationUse,
+        } => run_type_declaration_use_census(&self_host_source_roots()),
         TargetProducer::NativeClaimProgram { entry } => run_native_claim_program(entry),
+        TargetProducer::NativeServeProgram { entry } => run_native_serve_program(entry),
         TargetProducer::EmittedCrateWorkspace => {
             run_emitted_crate_workspace(&emitted_crate_workspace_source_roots())
         }
@@ -821,6 +871,9 @@ fn run_producer(producer: TargetProducer) -> InvocationOutcome {
         TargetProducer::BareReferenceChannelOutcome => run_bare_reference_channel_outcome(),
         TargetProducer::DependencyDemandCensus => {
             run_dependency_demand_census(&self_host_source_roots())
+        }
+        TargetProducer::GenericIdentityCensus => {
+            run_generic_identity_census(&self_host_source_roots())
         }
         TargetProducer::SelfHostBehavioralEquivalence => run_cli_wire_census(
             "self-host-behavioral-equivalence",
@@ -1160,14 +1213,186 @@ fn run_v2_native_census(source_roots: &[String]) -> InvocationOutcome {
         Ok(run) => InvocationOutcome {
             termination: Termination::ObservationHeld,
             message: format!(
-                "v2-native-census: modules={} file_refusals={} residual_rows={} cause_groups={}; \
-                 the rows grouped by fatal reason are the cause_group lines above",
-                run.modules, run.file_refusals, run.residual_rows, run.cause_groups
+                "v2-native-census: modules={} file_refusals={} advised_files={} residual_rows={} \
+                 cause_groups={}; the rows grouped by fatal reason are the cause_group lines above",
+                run.modules,
+                run.file_refusals,
+                run.advised_files,
+                run.residual_rows,
+                run.cause_groups
             ),
         },
         Err(cause) => InvocationOutcome {
             termination: Termination::SubjectUnreached,
             message: cause,
+        },
+    }
+}
+
+/// `gunbc.instruments.type_declaration_use_census_reading` `TypeCensusFixtureFile` rows, read off the
+/// reader's own list: a value of any other shape refuses rather than writing a partial root.
+fn fixture_file_rows(
+    ctx: &crate::v1_interpreter::InterpContext,
+    files: &crate::v1_interpreter::Value,
+) -> Result<Vec<(String, String)>, String> {
+    use crate::v1_interpreter::Value;
+    let Value::List(rows) = files else {
+        return Err("type-declaration-use-census: the fixture rows are not a list".to_string());
+    };
+    rows.iter()
+        .map(|row| {
+            let Value::Record { fields, .. } = row else {
+                return Err(
+                    "type-declaration-use-census: a fixture row is not a record".to_string()
+                );
+            };
+            match (ctx.field(fields, "path"), ctx.field(fields, "content")) {
+                (Some(Value::Str(path)), Some(Value::Str(content))) => {
+                    Ok((path.to_string(), content.to_string()))
+                }
+                _ => Err(
+                    "type-declaration-use-census: a fixture row lacks a string path or content"
+                        .to_string(),
+                ),
+            }
+        })
+        .collect()
+}
+
+/// THE TYPE-DECLARATION-USE CENSUS PRODUCER (the nominal-type plan's M0). The host writes the two
+/// control roots from the reader's own rows (`type_census_fixture_files`,
+/// `type_census_unindexed_files`), runs the emitted compiler's `census-infer` over them and over the
+/// whole tree, and hands all three to `type_declaration_use_census_standing`, which decides the
+/// standing and filters the affected modules by the required gate. The host decides nothing.
+fn run_type_declaration_use_census(source_roots: &[String]) -> InvocationOutcome {
+    let label_name = "type-declaration-use-census";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/instruments/type_declaration_use_census_reading.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let scratch = std::path::Path::new("target").join("type-declaration-use-census");
+    let mut write_root = |name: &str, function: &str| -> Result<String, String> {
+        let root = scratch.join(name);
+        let _ = std::fs::remove_dir_all(&root);
+        let files = crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{label_name}: {function} failed: {cause}"))?;
+        for (path, content) in fixture_file_rows(&ctx, &files)? {
+            let target = root.join(&path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("{label_name}: {e}"))?;
+            }
+            std::fs::write(&target, content).map_err(|e| format!("{label_name}: {e}"))?;
+        }
+        Ok(root.to_string_lossy().into_owned())
+    };
+    let roots_written = write_root("fixture", "type_census_fixture_files")
+        .and_then(|f| write_root("unindexed", "type_census_unindexed_files").map(|u| (f, u)));
+    let (fixture_root, unindexed_root) = match roots_written {
+        Ok(pair) => pair,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let runs = match cli_run::run_type_declaration_use_census_runs(
+        source_roots,
+        &fixture_root,
+        &unindexed_root,
+    ) {
+        Ok(runs) => runs,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let status = |s: Option<i32>| crate::v1_interpreter::Value::Int(i64::from(s.unwrap_or(-1)));
+    let args = [
+        (
+            Some("fixture_stdout".to_string()),
+            crate::v1_interpreter::Value::Str(runs.fixture.stdout.clone().into()),
+        ),
+        (
+            Some("fixture_status".to_string()),
+            status(runs.fixture.status),
+        ),
+        (
+            Some("unindexed_status".to_string()),
+            status(runs.unindexed.status),
+        ),
+        (
+            Some("tree_stdout".to_string()),
+            crate::v1_interpreter::Value::Str(runs.tree.stdout.clone().into()),
+        ),
+        (Some("tree_status".to_string()), status(runs.tree.status)),
+    ];
+    let value = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "type_declaration_use_census_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => value,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the reader failed: {cause}"),
+            }
+        }
+    };
+    match cli_run::classify_cli_wire(&value, &ctx) {
+        cli_run::CliWireClass::Printable { bytes, exit } => {
+            let (termination, verdict) = match exit {
+                cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+                cli_run::ExitClass::Failure { code: 1, reason } => (
+                    Termination::ObservationDidNotHold,
+                    reason.unwrap_or_else(|| "not held".to_string()),
+                ),
+                cli_run::ExitClass::Failure { reason, .. } => (
+                    Termination::SubjectUnreached,
+                    reason.unwrap_or_else(|| "no observation".to_string()),
+                ),
+                cli_run::ExitClass::NotProcessExit { type_name } => (
+                    Termination::Refused,
+                    format!("the reader returned `{type_name}`, not a ProcessExit"),
+                ),
+            };
+            InvocationOutcome { termination, message: format!("{bytes}{label_name}: {verdict}") }
+        }
+        cli_run::CliWireClass::Unprintable { cause } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: renderer refused: {cause}"),
+        },
+        cli_run::CliWireClass::NotCliWire { type_name } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!(
+                "{label_name}: type_declaration_use_census_standing returned `{type_name}`, not a CliWireResponse"
+            ),
+        },
+        cli_run::CliWireClass::MalformedCliWire { detail } => InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: malformed CliWireResponse: {detail}"),
         },
     }
 }
@@ -1361,6 +1586,152 @@ fn run_native_claim_program(entry: &'static str) -> InvocationOutcome {
             run.binary_identity,
             run.seed_identity,
             run.warning_count,
+            run.stderr.trim_end(),
+        ),
+    }
+}
+
+/// THE NATIVE SERVE PROGRAM PRODUCER: emit, build and start a `NativeServeDriver` entry, exchange
+/// the requests `gunbc.native_serve_probe` names over real TCP, then let that module decide what the
+/// run established. The host decides nothing about a case: the requests and both launch revisions
+/// are read from the reader module, the bytes go back to `native_serve_probe_standing` unjudged, and
+/// its `ProcessExit` maps through the one classifier exactly as the claim producer's does.
+fn run_native_serve_program(entry: &'static str) -> InvocationOutcome {
+    let label_name = "native-serve";
+    if let Err(e) = std::env::set_current_dir(cli_run::workspace_root()) {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: format!("{label_name}: refused: could not anchor at the workspace root: {e}"),
+        };
+    }
+    const READER: &str = "dag/gunbc/native_serve_probe.dag";
+    let roots = cli_run::default_source_roots();
+    let (graph, source_indices) = match cli_run::resolve_entry_graph(&roots, READER) {
+        Ok(resolved) => resolved,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: resolve failed for {READER}: {cause}"),
+            };
+        }
+    };
+    let ctx = cli_run::make_eval_context(
+        graph.as_ref(),
+        source_indices,
+        crate::v1_interpreter::ExecutionMode::Wet,
+    );
+    let read = |function: &str| -> Result<crate::v1_interpreter::Value, String> {
+        crate::v1_interpreter::run_in_context_with_args(&ctx, function, &[], true)
+            .map_err(|cause| format!("{label_name}: {READER} {function} failed: {cause}"))
+    };
+    let text = |value: &crate::v1_interpreter::Value| -> Option<String> {
+        match value {
+            crate::v1_interpreter::Value::Str(s) => Some(s.to_string()),
+            _ => None,
+        }
+    };
+    let plan = (|| -> Result<(Vec<String>, String, String), String> {
+        let requests = match &read("native_serve_probe_requests")? {
+            crate::v1_interpreter::Value::List(items) => items
+                .iter()
+                .map(|item| text(item).ok_or("a request is not a String".to_string()))
+                .collect::<Result<Vec<String>, String>>()?,
+            _ => return Err("native_serve_probe_requests is not a List".to_string()),
+        };
+        let release = text(&read("native_serve_probe_release_revision")?)
+            .ok_or("the release revision is not a String")?;
+        let refused = text(&read("native_serve_probe_refused_revision")?)
+            .ok_or("the refused revision is not a String")?;
+        Ok((requests, release, refused))
+    })();
+    let (requests, release, refused) = match plan {
+        Ok(plan) => plan,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe plan is unreadable: {cause}"),
+            }
+        }
+    };
+    let run = match cli_run::run_native_serve_program(
+        &v2_native_cli_source_roots(),
+        entry,
+        &release,
+        &refused,
+        &requests,
+    ) {
+        Ok(run) => run,
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: cause,
+            }
+        }
+    };
+    let refused_status = i64::from(run.refused_status.unwrap_or(-1));
+    let args = [
+        (
+            Some("announcement".to_string()),
+            crate::v1_interpreter::Value::Str(run.announcement.clone().into()),
+        ),
+        (
+            Some("responses".to_string()),
+            crate::v1_interpreter::Value::List(std::rc::Rc::new(
+                run.responses
+                    .iter()
+                    .map(|r| crate::v1_interpreter::Value::Str(r.clone().into()))
+                    .collect::<Vec<_>>()
+                    .into(),
+            )),
+        ),
+        (
+            Some("refused_status".to_string()),
+            crate::v1_interpreter::Value::Int(refused_status),
+        ),
+        (
+            Some("refused_stderr".to_string()),
+            crate::v1_interpreter::Value::Str(run.refused_stderr.clone().into()),
+        ),
+    ];
+    let standing = match crate::v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "native_serve_probe_standing",
+        &args,
+        true,
+    ) {
+        Ok(value) => cli_run::classify_exit(&value, &ctx),
+        Err(cause) => {
+            return InvocationOutcome {
+                termination: Termination::SubjectUnreached,
+                message: format!("{label_name}: the probe reader failed: {cause}"),
+            }
+        }
+    };
+    let (termination, verdict) = match standing {
+        cli_run::ExitClass::Success => (Termination::ObservationHeld, "held".to_string()),
+        cli_run::ExitClass::Failure { code: 1, reason } => (
+            Termination::ObservationDidNotHold,
+            reason.unwrap_or_else(|| "not held".to_string()),
+        ),
+        cli_run::ExitClass::Failure { reason, .. } => (
+            Termination::SubjectUnreached,
+            reason.unwrap_or_else(|| "no observation".to_string()),
+        ),
+        cli_run::ExitClass::NotProcessExit { type_name } => (
+            Termination::Refused,
+            format!("the probe reader returned `{type_name}`, not a ProcessExit"),
+        ),
+    };
+    InvocationOutcome {
+        termination,
+        message: format!(
+            "{label_name}: entry={entry} closure={} binary={} seed={} warning_count={} requests={} refused_status={refused_status} -- {verdict}\n{}\n{}",
+            run.closure_identity,
+            run.binary_identity,
+            run.seed_identity,
+            run.warning_count,
+            run.responses.len(),
+            run.announcement,
             run.stderr.trim_end(),
         ),
     }
@@ -1989,16 +2360,29 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
 }
 
 fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+    match stale_binary_refusal(freshness) {
+        Some(refused) => refused,
+        None => test_verb(operand),
+    }
+}
+
+/// THE FRESHNESS DECISION, ALONE: `Some` is the refusal a stale or undecided binary earns before any
+/// producer runs, `None` admits the run (after logging the fresh inputs). Split from
+/// `test_verb_after` so its witness exercises the decision without reaching `test_verb`'s producers,
+/// several of which set the process cwd (`process_cwd_mutation_reachability_gate`).
+fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome> {
     let line = binary_freshness_rendered(freshness);
     match freshness {
         BinaryFreshness::Fresh { inputs, .. } => {
             eprintln!("{line} inputs={inputs}");
-            test_verb(operand)
+            None
         }
-        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => InvocationOutcome {
-            termination: Termination::Refused,
-            message: line,
-        },
+        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => {
+            Some(InvocationOutcome {
+                termination: Termination::Refused,
+                message: line,
+            })
+        }
     }
 }
 
@@ -3045,7 +3429,7 @@ mod binary_freshness_tests {
             input: "a.rs".into(),
             why: "changed after the binary was built".into(),
         };
-        let outcome = test_verb_after("//gunbc/instruments:self-host", &stale);
+        let outcome = stale_binary_refusal(&stale).expect("a stale binary is refused");
         assert_eq!(outcome.termination, Termination::Refused);
         assert!(
             outcome.message.contains("cause=StaleBinary"),
@@ -3062,6 +3446,65 @@ mod binary_freshness_tests {
 /// the exit are decided by `v2.compiler.compile` `native_demand_census_output`, so the host adds no
 /// verdict: exit 0 is the census holding (its rows account for every uses fn), 1 is a census finding,
 /// and 2 or a refused preparation is no observation.
+/// `gunbc.instrument_targets` `generic_identity_census_label`. TRANSPORT ONLY: the fixture and the
+/// `v2.compiler.compile` closure are read from disk and handed to
+/// `v1.tests.claim.generic_identity_census` as `SourceFile` data. The standing line, each control,
+/// the report's counts and the unobserved populations are that module's; this function maps the
+/// first line of the returned standing to a termination and decides nothing else. A fixture or
+/// closure that cannot be read is `SubjectUnreached`, never a standing.
+fn run_generic_identity_census(source_roots: &[String]) -> InvocationOutcome {
+    use crate::v1_compiler_compile::SourceFile;
+    use crate::v1_tests_claim_generic_identity_census as census;
+    use std::rc::Rc;
+    const FIXTURE: &str = "fixtures/generic_identity_census/a.dag";
+    const REPORT_ENTRY: &str = "src/v2/compiler/00_compile.dag";
+    let unreached = |detail: String| InvocationOutcome {
+        termination: Termination::SubjectUnreached,
+        message: format!("generic-identity-census: subject unreached: {detail}"),
+    };
+    let fixture = match std::fs::read_to_string(FIXTURE) {
+        Ok(content) => vec![Rc::new(SourceFile {
+            path: FIXTURE.to_string(),
+            content,
+        })],
+        Err(err) => return unreached(format!("fixture {FIXTURE}: {err}")),
+    };
+    let standing = census::generic_identity_fixture_standing(Rc::new(fixture.into()));
+    if standing.starts_with("REFUSED") {
+        return unreached(format!("fixture did not compile: {standing}"));
+    }
+    for line in standing.lines() {
+        println!("generic-identity-census: {line}");
+    }
+    let closure =
+        match cli_run::load_sources_for_entry_with_pool_index(source_roots, REPORT_ENTRY, false) {
+            Ok(sources) => sources,
+            Err(detail) => return unreached(format!("closure of {REPORT_ENTRY}: {detail}")),
+        };
+    let subjects = closure.len();
+    let report = census::generic_identity_census_summary_from_sources(Rc::new(closure.into()));
+    if report.starts_with("REFUSED") {
+        return unreached(format!(
+            "closure of {REPORT_ENTRY} did not compile: {report}"
+        ));
+    }
+    for line in report.lines() {
+        println!("generic-identity-census: report {line}");
+    }
+    let held = standing.lines().next() == Some("STANDING held");
+    InvocationOutcome {
+        termination: if held {
+            Termination::ObservationHeld
+        } else {
+            Termination::ObservationDidNotHold
+        },
+        message: format!(
+            "generic-identity-census: {} (controls over {FIXTURE}; report over the closure of {REPORT_ENTRY}, {subjects} sources)",
+            standing.lines().next().unwrap_or("STANDING absent")
+        ),
+    }
+}
+
 fn run_dependency_demand_census(source_roots: &[String]) -> InvocationOutcome {
     match cli_run::run_v2_demand_census(source_roots) {
         Ok(code) => InvocationOutcome {

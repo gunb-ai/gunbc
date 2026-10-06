@@ -19,8 +19,9 @@ case "$merged_path" in
     echo "  This path requires author regeneration before the merge can finish:" >&2
     echo "1. regenerate the derived projections: gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/instruments/generated_artifact_gate.dag --function main_wet" >&2
     echo "2. rebuild and run the seed emitter: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 (it writes the candidate tree under target/stage0-regen-candidate/src BEFORE it judges it; install every generated file it names into src/v1/stage0/src)" >&2
-    echo "3. rebuild from the installed seed and verify AGAIN: cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2 && target/release/claim_executor --required-regen-fixed-point --source-root dag --source-root src/v2" >&2
-    echo "   (the first pass runs a binary that predates the change it emits, so one pass can self-verify at divergence 0 for the wrong reason)" >&2
+    echo "   OUTSIDE A MERGE, once the edit is COMMITTED, step 2 may add --regen-affected-scope to re-emit only the mirrors the edit reaches (a scoped round refuses an uncommitted .dag edit, so it cannot run here, mid-merge); an edit under v1.compiler. or extdeps.languages. always answers the WHOLE population, because the emitter can change every mirror" >&2
+    echo "3. ONLY IF step 2 installed a mirror of the emitter's own pipeline (v1.compiler infer, emit_rust, compile and the stages they call): rebuild from the installed seed and re-run step 2's command, installing what it names, until it installs nothing -- cargo build --release --bin claim_executor && target/release/claim_executor --required-regen --source-root dag --source-root src/v2" >&2
+    echo "   (the step-2 binary predates that change, and CI builds its seed from the installed mirrors; this is convergence, not a determinism re-check -- that was removed by operator ruling 2026-10-04 -- and any other change is done after step 2)" >&2
     echo "4. git add -- $merged_path" >&2
     ;;
 esac

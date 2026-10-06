@@ -51,6 +51,7 @@ pub enum CompilerEntryDriver {
     SourceRootEvalDriver,
     NativeCliDriver,
     NativeClaimDriver,
+    NativeServeDriver,
 }
 
 #[derive(
@@ -267,6 +268,8 @@ pub struct SourceRootEvalDriver;
 pub struct NativeCliDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct NativeClaimDriver;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NativeServeDriver;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExclusiveLoad;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

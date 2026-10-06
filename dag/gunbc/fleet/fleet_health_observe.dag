@@ -7,7 +7,7 @@ import std.nat { Nat, nat_range_inclusive }
 import std.checked_arithmetic { CheckedNatOverflow, CheckedNatReady, checked_int_magnitude }
 import std.measure { celsius, rpm }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import product.placement_supply { HostIdentity }
+import product.host_identity { HostIdentity }
 import product.fan_tach {
   FanTachEndpointIdentity,
   FanTachSample,
@@ -56,6 +56,7 @@ import extdeps.bmc.redfish_telemetry {
   RedfishHealthWarning,
   RedfishLogEntry,
   RedfishOtherReading,
+  RedfishReading,
   RedfishReadingMissing,
   RedfishReadingNull,
   RedfishReadingValue,
@@ -171,7 +172,9 @@ fn manager_firmware(body: String) -> ObservationAttempt<BmcFirmwareVersion, NonE
         BmcFirmwareVersionParsed { version } => ObservationEstablished { observed: BmcFirmwareVersion { family: OpenBmc, version: version } }
         BmcFirmwareVersionRefused { wire } => ObservationRefused { cause: concat("the BMC FirmwareVersion is not major.minor.patch: ", wire) as NonEmptyStr }
       }
-      _ => ObservationRefused { cause: "the Redfish Manager carries no single string FirmwareVersion" }
+      MemberArray { elements: _ } => ObservationRefused { cause: "the Redfish Manager carries no single string FirmwareVersion" }
+      MemberObject { value: _ } => ObservationRefused { cause: "the Redfish Manager carries no single string FirmwareVersion" }
+      MemberFailed { cause: _ } => ObservationRefused { cause: "the Redfish Manager carries no single string FirmwareVersion" }
     }
   }
 }
@@ -247,14 +250,21 @@ fn fan_sample_of(p: RedfishTelemetryPoint) -> FanTachSample {
   }
 }
 
+fn temperature_reading_sample(reading: RedfishReading) -> TemperatureSample {
+  match reading {
+    RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
+    RedfishReadingNull => TemperatureReadingUnavailable
+    RedfishReadingMissing => TemperatureReadingUnavailable
+  }
+}
+
 fn temperature_sample_of(p: RedfishTelemetryPoint) -> TemperatureSample {
   match p.state {
     RedfishStateDisabled => TemperatureSensorDisabled
-    _ => match p.reading {
-      RedfishReadingValue { whole } => TemperatureReadingPresent { celsius: celsius(whole) }
-      RedfishReadingNull => TemperatureReadingUnavailable
-      RedfishReadingMissing => TemperatureReadingUnavailable
-    }
+    RedfishStateEnabled => temperature_reading_sample(reading: p.reading)
+    RedfishStateAbsent => temperature_reading_sample(reading: p.reading)
+    RedfishStateOther { state: _ } => temperature_reading_sample(reading: p.reading)
+    RedfishStateUnreported => temperature_reading_sample(reading: p.reading)
   }
 }
 
@@ -278,8 +288,8 @@ fn standing_rank(s: BmcThresholdStanding) -> Int {
   }
 }
 
-fn is_fan(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishRotationalRpm => true _ => false } }
-fn is_temperature(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishTemperatureCelsius => true _ => false } }
+fn is_fan(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishRotationalRpm => true RedfishTemperatureCelsius => false RedfishOtherReading { reading_type: _ } => false } }
+fn is_temperature(p: RedfishTelemetryPoint) -> Bool { match p.kind { RedfishTemperatureCelsius => true RedfishRotationalRpm => false RedfishOtherReading { reading_type: _ } => false } }
 
 // Names are taken from the FIRST sample, and every later sample must carry the same named set: a
 // sensor that appears or vanishes mid-window is a population change, which refuses rather than

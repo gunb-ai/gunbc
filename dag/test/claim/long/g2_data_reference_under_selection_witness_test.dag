@@ -1,5 +1,6 @@
 module test.claim.long.g2_data_reference_under_selection_witness_test
 
+import std.types { List }
 // Expected-red control for G2 under-selection through data declarations
 // (work item adhoc-8026d859-7e4).
 //
@@ -33,7 +34,6 @@ import v2.std.algebra {
   HeadFound,
   HeadAbsent
 }
-import v2.std.collection { List }
 import v2.std.live_read {
   LiveReadSelectionProjection,
   LiveReadSelectionClassified,
@@ -42,7 +42,6 @@ import v2.std.live_read {
   LocalRead,
   RuntimeRead
 }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import test.claim.scaffold_disposition_census_fixture_witness_test {
   scaffold_disposition_census_pool_facts

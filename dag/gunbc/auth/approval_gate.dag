@@ -8,14 +8,20 @@ import std.scoped_authorization {
   AuthorizationRequest, ScopedAuthorization, authorize, AuthorizationPermitted, AuthorizationRefused, authorization_refusal_reason,
 }
 import extdeps.clock { Clock }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemReadOutcome,
+  FilesystemReadRefused,
+  FilesystemReadSucceeded,
+  filesystem_read_outcome,
+}
 import extdeps.http.client
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import extdeps.github.actions_environment { github_runner_temp_variable_name }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
-import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, request_revision_of, StoredApprovalRequest }
+import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, GrantStillPending, GrantEscalationNotFiled, GrantStoreUnreadable, request_revision_of, StoredApprovalRequest }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.auth.approval_request_client {
   sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
@@ -86,7 +92,9 @@ fn approval_derive<Subject>(reading: ApprovalReading, request: AuthorizationRequ
       match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
         GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotDerived { cause: ApprovalIntentMismatch { requested_revision: a, decided_revision: b } }
         GrantDerived { authorization: auth } => ApprovalDerived { authorization: auth }
-        _ => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStillPending { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantEscalationNotFiled { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStoreUnreadable { detail: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
       }
   }
 }
@@ -252,10 +260,11 @@ fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: S
     ApprovalFilingRefused { reason: join([approval_submission_mac_key_path_env as String, " is unset; the request cannot be filed"], "") }
   } else {
     let key_read = Filesystem.Read(path: sub_path)
-    if !key_read.success {
-      ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", key_read.error], "") }
-    } else {
-      match sign_stored_request(key_material: trim(s: key_read.content), request: stored) {
+    match filesystem_read_outcome(content: key_read.content, success: key_read.success, error: key_read.error) {
+      FilesystemReadRefused { error } =>
+        ApprovalFilingRefused { reason: join(["submission MAC key unreadable: ", error], "") }
+      FilesystemReadSucceeded { content } =>
+      match sign_stored_request(key_material: trim(s: content), request: stored) {
         SubmissionMacKeyNotHex { key_id: k } => ApprovalFilingRefused { reason: join(["submission MAC key is not hex: ", k as String], "") }
         SubmissionMacReady { tag_hex: tag } => {
           let tmp = actions_variable_trimmed(name: github_runner_temp_variable_name as NonEmptyStr)
@@ -274,6 +283,6 @@ fn approval_file_stored_request(stored: StoredApprovalRequest, body_file_name: S
           }
         }
       }
+      }
     }
   }
-}

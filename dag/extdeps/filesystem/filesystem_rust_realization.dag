@@ -165,5 +165,15 @@ fn rust_file_create_new_canonical_block() -> String {
     "\n",
     "pub ",
     rust_file_write_create_new_fn_def,
+    "\n",
+    "pub ",
+    rust_file_link_create_new_fn_def,
   )
 }
+
+// THE CREATE-ONLY LINK (extdeps.filesystem.filesystem_io LinkCreateNew): the same link(2) that
+// gunbc_file_write_create_new publishes its staged file with, applied to a file the caller already
+// staged. An occupied target answers AlreadyExists and a source on another filesystem answers
+// CrossesDevices, both from the host; there is no copy fallback, because a link across filesystems
+// is not a copy. The source is left in place for its owner to remove.
+data rust_file_link_create_new_fn_def: String = "fn gunbc_file_link_create_new(source_path: &str, file_path: &str) -> std::io::Result<()> {\n    std::fs::hard_link(source_path, file_path)\n}\n"

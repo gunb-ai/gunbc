@@ -1,0 +1,1269 @@
+module gunbc.machine_intake_megarac_kvm_still
+
+import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit }
+import std.algebra { trim }
+import std.measure { Second, second, second_count, Millisecond, millisecond, millisecond_count, second_to_millisecond }
+import std.checked_arithmetic { checked_int_to_nat }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
+import extdeps.crypto.hash { Digest }
+import extdeps.exec.command { argv_words }
+import gunbc.runner_browser_toolchain {
+  RunnerBrowserToolchainResolution, BrowserToolchainReady, BrowserToolchainNotReady, BrowserToolchainUnresolved,
+  RunnerBrowserToolchainLocation, runner_browser_toolchain_node_command, runner_browser_toolchain_standing_text,
+}
+import gunbc.machine_intake_megarac_ui_features { megarac_ui_features }
+import extdeps.bmc.megarac {
+  megarac_ui_features_json,
+  ScreenCaptureFactKnown, ScreenCaptureFirmwareUncatalogued,
+  ScreenCaptureClientSideOnly, KvmClientCanvasJpeg, megarac_screen_capture_standing,
+}
+import gunbc.megarac_managed_host { AdmittedMegaRacHost }
+import gunbc.megarac_operation_standing { MegaRacKvmCanvasStill, MegaRacVirtualMediaAttach, MegaRacSdrSocketNaming }
+import gunbc.clock_read { clock_now_probed_at_or_unknown }
+import gunbc.owned_process { OwnedRelease, OwnedProcessStanding, OwnedRunning, owned_process_release, owned_release_text, owned_process_standing, owned_process_standing_text }
+import v2.std.optional { Present, Absent }
+import v2.std.algebra { filter }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
+
+// THE BMC KVM SCREEN AS BOOT EVIDENCE (operator ruling 2026-09-27; route A, eager-owl-205 the same
+// day). On run 36335369059 the SOL collector died about 12 s into Linux and the watch went blind,
+// while the KVM screen showed casper's "Unable to find a medium containing a live file system"
+// prompt. The screen was the only witness, so this module RETAINS it: JPEG stills from one held viewer,
+// bound to the attempt, the phase that asked for it, its instants and an independently taken
+// sha256. It does not READ the image: turning a still into text or a diagnosis is the frontier
+// named at the bottom of this file.
+//
+// WHY A BROWSER. extdeps.bmc.megarac megarac_screen_capture_standing records that firmware 0.32
+// serves no on-demand still: the UI's "Capture Screen" is the H5 viewer painting the AST2100 stream
+// from wss://<bmc>/kvm onto canvas#kvm and calling toDataURL("image/jpeg"). A still therefore exists
+// only where a KVM client runs, and this module runs the vendor's own client headless and takes the
+// same toDataURL the button takes -- never a decoder of our own for a proprietary stream.
+//
+// A CAPTURE IS AN OBSERVATION, NEVER A GATE. Every arm below, including a refusal, is a value the
+// boot records beside its own verdict; nothing here can change an attempt's outcome, and the boot
+// run binds no decision to a still.
+
+// THE CONTROLLER IS AN ADMITTED MEGARAC HOST (gunbc.megarac_managed_host AdmittedMegaRacHost, operation
+// MegaRacKvmCanvasStill): its endpoint, account and firmware come off one managed host's binding, and
+// the admission refuses a controller that is not MegaRAC, is unobserved, or reports a build the
+// screen-capture route and the viewer feature list were never read on. The firmware the capture is
+// keyed to is that observed firmware, never a unit constant.
+
+// THE TOOLCHAIN IS RESOLVED, NEVER ASSUMED. gunbc.runner_browser_toolchain places the pinned node,
+// Playwright and Chromium on the fleet runners through its own converge, and hands a consumer a
+// location only over a standing that read back ready. The observer is launched through
+// runner_browser_toolchain_node_command -- the pinned node and PLAYWRIGHT_BROWSERS_PATH from that
+// location, run in the observer's own directory -- and never through a node on PATH. Playwright is
+// required by the location's absolute playwright_module path, so no workspace node_modules can shadow it. A runner the converge has not placed
+// answers NotReady or Unresolved, which the observer records as NotStarted with that text; the boot
+// does not read it.
+
+// DRIVING THE VENDOR'S VIEWER IS REALIZATION, NOT THE MEGARAC INTERFACE. The steps are the UI's own,
+// recovered from the served bundles cited on extdeps.bmc.megarac MegaRacScreenCaptureRoute: POST
+// /api/session and the sessionStorage keys its login handler sets; GET /api/settings/services and
+// the `kvm` row's viewer_count, which the UI's own launch() requires to be 0 before it opens
+// viewer.html (else "only one KVM session is allowed"); then viewer.html, and captureScreen()'s
+// canvas#kvm.toDataURL("image/jpeg").
+//
+// ONLY THE VIEWER IS A DOCUMENT (fleet-converge run 36721915217, 2026-09-30). The session POST, the
+// services read and the session DELETE are HTTP exchanges that need a cookie jar, not a page, so they
+// go through the browser context's own request client (it shares the jar the viewer's /kvm WebSocket
+// uses); the sessionStorage keys are seeded by a context init script, which runs in every document of
+// the controller's origin before that document's own scripts. The observer therefore never loads the
+// UI's root page. It used to: it loaded "/" to borrow an origin and ran the login inside it, and on
+// that run the journal read "page.evaluate: Execution context was destroyed, most likely because of a
+// navigation" with session-release login-unobserved -- the root document was replaced under the login.
+// That the vendor SPA reloads itself to #login is read from its bundle (see the navigation note below);
+// the repair does not depend on it, because no step now runs in a document the observer did not
+// navigate to itself. The only in-page evaluations left are on viewer.html: the
+// canvas wait and the toDataURL.
+//
+// ONE OBSERVER, HELD FOR THE WHOLE BOOT (side-chat acceptance (a), 2026-09-28). The observer is a
+// background process, started under the unit hold after the SOL acquire and BEFORE the handoff, that
+// logs in once, takes the seat once, opens the viewer once and keeps it. It writes a journal: one
+// line per event, each carrying the epoch-millisecond and ISO instant it was written --
+// established (bound to host, BMC web session id and attempt), connection-open, connection-lost,
+// still, acquisition-failed, refused, stop-requested, stopped. Stills are taken on a cadence (bounded
+// by count) and IMMEDIATELY on a trigger file the boot drops (power on verified, SOL channel lost,
+// terminal verdict).
+//
+// THE BOUNDARY IS OBSERVED, NEVER INFERRED FROM PIXELS (acceptance (b)). Connection is the viewer's
+// own /kvm WebSocket as the browser reports it: open, then close or error. After a close no still is
+// claimed; each asked-for still is journalled as acquisition-failed cause=not-connected. A canvas
+// that exists but cannot be read (toDataURL throws) is acquisition-failed cause=canvas-unreadable. An
+// unchanged picture is never read as a stale one: the observer does not compare pixels at all.
+//
+// EVERY MAIN-FRAME NAVIGATION IS JOURNALLED (operator, 2026-09-30: the navigation is MODELED, not
+// avoided). What the SPA does is now read from its own bundle, not inferred: the UI fetched by
+// fleet-converge run 36778446928 (gunbc.machine_intake_mtcollins1_ui_bundle_observe, firmware 0.32,
+// digest matching the 2026-09-27 read) routes by Backbone hash routing, and on session expiry, on an
+// unauthorized answer and on its logout paths sets location.href "#login" and then calls
+// location.reload() -- a FULL document reload, which is what destroys an evaluate in flight. The only
+// document the observer loads is viewer.html; every commit of its main frame is a `navigated` line (seq,
+// the observer's phase -- viewer while it opens the viewer, held after establishment -- and the URL the
+// frame committed to), so a reload to #login under the held viewer is on the journal with the instant it
+// happened, before the connection-lost or failed line it causes. A navigation is recorded, never retried
+// into a different answer. The viewer's own console errors and warnings, and any uncaught page error,
+// are journalled too (page-console / page-error, with the phase): fleet-converge run 36779479938 loaded
+// viewer.html and never requested /kvm, and what the viewer said about why is the first thing to read.
+//
+// THE SEAT. A held seat (viewer_count > 0) refuses with its count -- an operator's session is never
+// evicted -- and every exit the process reaches (stop file, SIGTERM, refusal, failure) DELETEs its web
+// session and closes the browser, journalling stopped session=<released|http-N|release-failed>. The
+// one exit it cannot reach is SIGKILL: the boot then records that no stopped line was written, so the
+// release was NOT observed, and the BMC's own session timeout frees the seat.
+//
+// It is JavaScript handed to node as a string because process-hold of a browser is not a Node in the
+// grammar -- the same standing as gunbc.machine_intake_sol_hold's bash hold, marked the same way.
+// ADMISSION OF THIS SCAFFOLD (DESIGN §5, external to this diff): operator escalation msg_d5eebfff,
+// default-approved on recommendation A, 2026-09-28 -- not an explicit operator ruling.
+data megarac_kvm_observer_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.machine_intake_megarac_kvm_still",
+    decl_name: "megarac_kvm_observer_script_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data megarac_kvm_observer_script_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc.machine_intake.kvm_observer LaunchObserver -- the held MegaRAC H5 viewer is a node -e script string launched as a bash background hold. RETIRED BY THE CAPABILITY: a .dag browser-automation realization SUFFICIENT TO DRIVE THE MegaRAC H5 VIEWER AND READ ITS CANVAS -- navigate and evaluate in page, observe the /kvm WebSocket open and close, read canvas#kvm as image/jpeg on cadence and on trigger, and release the web session on every reachable exit -- held by a typed process-hold realization. An artifact that covers only part of that (navigation without WebSocket lifecycle, or a canvas read without the guaranteed release) does not retire it. Admission: operator escalation msg_d5eebfff, default-approved on recommendation A, 2026-09-28")
+
+// THE OBSERVER'S JOURNAL VOCABULARY IS DECLARED HERE ONCE. The observer script receives it as the
+// EV (event) and CA (cause) constants megarac_kvm_observer_vocabulary_js renders from these rows,
+// and kvm_journal_event / kvm_refusal_of / kvm_acquisition_cause_of read the journal against the same
+// rows -- so the words the observer writes and the words the boot parses cannot drift apart.
+type KvmJournalWord {
+  id: String
+  word: String
+}
+
+data kvm_event_established: KvmJournalWord = KvmJournalWord { id: "established", word: "established" }
+data kvm_event_connection_requested: KvmJournalWord = KvmJournalWord { id: "connectionRequested", word: "connection-requested" }
+data kvm_event_connection_refused: KvmJournalWord = KvmJournalWord { id: "connectionRefused", word: "connection-refused" }
+data kvm_event_connection_open: KvmJournalWord = KvmJournalWord { id: "connectionOpen", word: "connection-open" }
+data kvm_event_connection_lost: KvmJournalWord = KvmJournalWord { id: "connectionLost", word: "connection-lost" }
+data kvm_event_connection_error: KvmJournalWord = KvmJournalWord { id: "connectionError", word: "connection-error" }
+data kvm_event_still: KvmJournalWord = KvmJournalWord { id: "still", word: "still" }
+data kvm_event_acquisition_failed: KvmJournalWord = KvmJournalWord { id: "acquisitionFailed", word: "acquisition-failed" }
+data kvm_event_session_release: KvmJournalWord = KvmJournalWord { id: "sessionRelease", word: "session-release" }
+data kvm_event_browser_close: KvmJournalWord = KvmJournalWord { id: "browserClose", word: "browser-close" }
+data kvm_event_refused: KvmJournalWord = KvmJournalWord { id: "refused", word: "refused" }
+data kvm_event_failed: KvmJournalWord = KvmJournalWord { id: "failed", word: "failed" }
+data kvm_event_stop_requested: KvmJournalWord = KvmJournalWord { id: "stopRequested", word: "stop-requested" }
+data kvm_event_stopped: KvmJournalWord = KvmJournalWord { id: "stopped", word: "stopped" }
+data kvm_event_trigger_scan_failed: KvmJournalWord = KvmJournalWord { id: "triggerScanFailed", word: "trigger-scan-failed" }
+data kvm_event_navigated: KvmJournalWord = KvmJournalWord { id: "navigated", word: "navigated" }
+data kvm_event_page_console: KvmJournalWord = KvmJournalWord { id: "pageConsole", word: "page-console" }
+data kvm_event_page_error: KvmJournalWord = KvmJournalWord { id: "pageError", word: "page-error" }
+
+data kvm_cause_seat_busy: KvmJournalWord = KvmJournalWord { id: "seatBusy", word: "seat-busy" }
+data kvm_cause_login: KvmJournalWord = KvmJournalWord { id: "login", word: "login" }
+data kvm_cause_no_kvm_service: KvmJournalWord = KvmJournalWord { id: "noKvmService", word: "no-kvm-service" }
+data kvm_cause_no_frame: KvmJournalWord = KvmJournalWord { id: "noFrame", word: "no-frame" }
+data kvm_cause_no_kvm_frame: KvmJournalWord = KvmJournalWord { id: "noKvmFrame", word: "no-kvm-frame" }
+data kvm_cause_no_kvm_websocket: KvmJournalWord = KvmJournalWord { id: "noKvmWebsocket", word: "no-kvm-websocket" }
+data kvm_cause_toolchain: KvmJournalWord = KvmJournalWord { id: "toolchain", word: "toolchain" }
+data kvm_cause_credential_unreadable: KvmJournalWord = KvmJournalWord { id: "credentialUnreadable", word: "credential-unreadable" }
+data kvm_cause_not_connected: KvmJournalWord = KvmJournalWord { id: "notConnected", word: "not-connected" }
+data kvm_cause_connection_changed_during_acquisition: KvmJournalWord = KvmJournalWord { id: "connectionChangedDuringAcquisition", word: "connection-changed-during-acquisition" }
+data kvm_cause_canvas_unreadable: KvmJournalWord = KvmJournalWord { id: "canvasUnreadable", word: "canvas-unreadable" }
+data kvm_cause_features_unreadable: KvmJournalWord = KvmJournalWord { id: "featuresUnreadable", word: "features-unreadable" }
+
+// THE TEARDOWN'S RESULT WORDS: the leading token of a session-release or browser-close result. The
+// observer script spells them only through the RS vocabulary below, and kvm_session_release_of /
+// kvm_browser_close_of read them back through the same rows, so a teardown is judged by its word and
+// never by a substring of its detail.
+data kvm_result_released: KvmJournalWord = KvmJournalWord { id: "released", word: "released" }
+data kvm_result_http_prefix: KvmJournalWord = KvmJournalWord { id: "httpPrefix", word: "http-" }
+data kvm_result_release_failed: KvmJournalWord = KvmJournalWord { id: "releaseFailed", word: "release-failed" }
+data kvm_result_login_unobserved: KvmJournalWord = KvmJournalWord { id: "loginUnobserved", word: "login-unobserved" }
+data kvm_result_no_session: KvmJournalWord = KvmJournalWord { id: "noSession", word: "no-session" }
+data kvm_result_closed: KvmJournalWord = KvmJournalWord { id: "closed", word: "closed" }
+data kvm_result_no_browser: KvmJournalWord = KvmJournalWord { id: "noBrowser", word: "no-browser" }
+data kvm_result_close_failed: KvmJournalWord = KvmJournalWord { id: "closeFailed", word: "close-failed" }
+
+data kvm_journal_result_words: List<KvmJournalWord> = [kvm_result_released, kvm_result_http_prefix, kvm_result_release_failed, kvm_result_login_unobserved, kvm_result_no_session, kvm_result_closed, kvm_result_no_browser, kvm_result_close_failed]
+
+data kvm_journal_event_words: List<KvmJournalWord> = [kvm_event_established, kvm_event_connection_requested, kvm_event_connection_refused, kvm_event_connection_open, kvm_event_connection_lost, kvm_event_connection_error, kvm_event_still, kvm_event_acquisition_failed, kvm_event_session_release, kvm_event_browser_close, kvm_event_refused, kvm_event_failed, kvm_event_stop_requested, kvm_event_stopped, kvm_event_trigger_scan_failed, kvm_event_navigated, kvm_event_page_console, kvm_event_page_error]
+data kvm_journal_cause_words: List<KvmJournalWord> = [kvm_cause_seat_busy, kvm_cause_login, kvm_cause_no_kvm_service, kvm_cause_no_frame, kvm_cause_no_kvm_frame, kvm_cause_no_kvm_websocket, kvm_cause_toolchain, kvm_cause_credential_unreadable, kvm_cause_not_connected, kvm_cause_connection_changed_during_acquisition, kvm_cause_canvas_unreadable, kvm_cause_features_unreadable]
+
+// THE LINE LAYOUT, DECLARED ONCE PER EVENT: the key=value fields an event word carries, in the order
+// the observer script writes them. kvm_journal_event reads its fields through these rows and
+// kvm_journal_line writes them through the same rows, so a key name or order lives here and nowhere
+// else. The refusal line's keys depend on its cause and are the cause rows below.
+type KvmJournalLayout {
+  event: KvmJournalWord
+  keys: List<String>
+}
+
+data kvm_layout_established: KvmJournalLayout = KvmJournalLayout { event: kvm_event_established, keys: ["host", "session", "attempt", "gen"] }
+data kvm_layout_connection_requested: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_requested, keys: [] }
+data kvm_layout_connection_refused: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_refused, keys: [] }
+data kvm_layout_connection_open: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_open, keys: ["gen"] }
+data kvm_layout_connection_lost: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_lost, keys: ["gen"] }
+data kvm_layout_connection_error: KvmJournalLayout = KvmJournalLayout { event: kvm_event_connection_error, keys: ["gen", "detail"] }
+data kvm_layout_still: KvmJournalLayout = KvmJournalLayout { event: kvm_event_still, keys: ["seq", "reason", "gen", "file"] }
+data kvm_layout_acquisition_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_acquisition_failed, keys: ["seq", "reason", "gen", "cause", "detail"] }
+data kvm_layout_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_failed, keys: ["detail"] }
+data kvm_layout_stop_requested: KvmJournalLayout = KvmJournalLayout { event: kvm_event_stop_requested, keys: ["by"] }
+data kvm_layout_session_release: KvmJournalLayout = KvmJournalLayout { event: kvm_event_session_release, keys: ["result"] }
+data kvm_layout_browser_close: KvmJournalLayout = KvmJournalLayout { event: kvm_event_browser_close, keys: ["result"] }
+data kvm_layout_stopped: KvmJournalLayout = KvmJournalLayout { event: kvm_event_stopped, keys: ["session", "browser"] }
+data kvm_layout_trigger_scan_failed: KvmJournalLayout = KvmJournalLayout { event: kvm_event_trigger_scan_failed, keys: ["detail"] }
+data kvm_layout_navigated: KvmJournalLayout = KvmJournalLayout { event: kvm_event_navigated, keys: ["seq", "phase", "url"] }
+data kvm_layout_page_console: KvmJournalLayout = KvmJournalLayout { event: kvm_event_page_console, keys: ["phase", "level", "detail"] }
+data kvm_layout_page_error: KvmJournalLayout = KvmJournalLayout { event: kvm_event_page_error, keys: ["phase", "detail"] }
+
+// THE REFUSED LINE'S KEYS, PER CAUSE: `cause` first, then the cause's own field.
+type KvmRefusalLayout {
+  cause: KvmJournalWord
+  keys: List<String>
+}
+
+data kvm_refusal_layout_seat_busy: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_seat_busy, keys: ["cause", "viewer_count"] }
+data kvm_refusal_layout_login: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_login, keys: ["cause", "http"] }
+data kvm_refusal_layout_no_kvm_service: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_no_kvm_service, keys: ["cause"] }
+data kvm_refusal_layout_no_frame: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_no_frame, keys: ["cause", "detail"] }
+data kvm_refusal_layout_toolchain: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_toolchain, keys: ["cause", "detail"] }
+data kvm_refusal_layout_credential_unreadable: KvmRefusalLayout = KvmRefusalLayout { cause: kvm_cause_credential_unreadable, keys: ["cause", "detail"] }
+data kvm_refusal_other_keys: List<String> = ["cause", "detail"]
+
+fn kvm_key(keys: List<String>, i: Int) -> String {
+  match keys.skip(n: i).first() { Present { value: k } => k  Absent => "" }
+}
+
+fn kvm_journal_words_js(name: String, words: List<KvmJournalWord>) -> String {
+  concat(concat(concat("const ", name), "=\{"), concat(join(map(words, w => concat(concat(w.id, ":'"), concat(w.word, "'"))), ","), "};"))
+}
+
+fn megarac_kvm_observer_vocabulary_js() -> String {
+  concat(concat(kvm_journal_words_js(name: "EV", words: kvm_journal_event_words), kvm_journal_words_js(name: "CA", words: kvm_journal_cause_words)), kvm_journal_words_js(name: "RS", words: kvm_journal_result_words))
+}
+
+data megarac_kvm_observer_script_body: String = "const fs=require('fs');const path=require('path');const [base,user,pwFile,dir,attempt,cadenceMs,frameMs,maxPeriodic,pwModule,featuresFile]=process.argv.slice(1);const J=path.join(dir,'journal');function j(ev,kv)\{const t=Date.now();try\{fs.appendFileSync(J,t+' '+new Date(t).toISOString()+' '+ev+(kv?' '+kv:'')+'\\n')}catch(e)\{try\{process.stderr.write('journal write failed: '+ev+' '+String(e&&e.message)+'\\n')}catch(e2)\{}}}function one(e)\{return String(e&&e.message||e).replace(/[^ -~]+/g,' ').replace(/ +/g,' ').slice(0,300)}let browser=null,page=null,api=null,stopping=false,login='not-attempted',token=null,seq=0,periodic=0;let gen=0,live=null;let nav=0,phase='launch';async function teardown(why,code)\{if(stopping)return;stopping=true; j(EV.stopRequested,'by='+why); let rel; if(login==='accepted'&&api&&token)\{try\{const r=await api.delete(base+'/api/session',\{headers:\{'X-CSRFTOKEN':token}});rel=r.ok()?RS.released:RS.httpPrefix+r.status()}catch(e)\{rel=RS.releaseFailed+' detail='+JSON.stringify(one(e))}} else if(login==='unobserved')\{rel=RS.loginUnobserved} else\{rel=RS.noSession} j(EV.sessionRelease,'result='+rel); let closed=RS.closed;try\{if(browser)await browser.close();else closed=RS.noBrowser}catch(e)\{closed=RS.closeFailed+' detail='+JSON.stringify(one(e))} j(EV.browserClose,'result='+closed); j(EV.stopped,'session='+rel.split(' ')[0]+' browser='+closed.split(' ')[0]); process.exit(code)}process.on('SIGTERM',()=>teardown('sigterm',0));process.on('SIGINT',()=>teardown('sigint',0));async function still(reason)\{seq+=1;const n=seq;const g=gen;const startedMs=Date.now(); if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' cause='+CA.notConnected+'');return} try\{const url=await page.evaluate(()=>\{const c=document.getElementById('kvm');if(!c)throw new Error('no canvas#kvm');return c.toDataURL('image/jpeg')});  if(!live||live.gen!==g)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.connectionChangedDuringAcquisition+'');return}  if(!url.startsWith('data:image/jpeg;base64,'))throw new Error('toDataURL answered '+url.slice(0,40));  const b=Buffer.from(url.slice(url.indexOf(',')+1),'base64');const f='still-'+n+'.jpg';fs.writeFileSync(path.join(dir,f),b);  j(EV.still,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' file='+f+' bytes='+b.length)} catch(e)\{j(EV.acquisitionFailed,'seq='+n+' reason='+reason+' gen='+g+' started_ms='+startedMs+' cause='+CA.canvasUnreadable+' detail='+JSON.stringify(one(e)))}}(async()=>\{ let pw;try\{pw=fs.readFileSync(pwFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.credentialUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)} let chromium;try\{chromium=require(pwModule).chromium}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{browser=await chromium.launch(\{headless:true})}catch(e)\{j(EV.refused,'cause='+CA.toolchain+' detail='+JSON.stringify(one(e)));return teardown('refused',13)} try\{const ctx=await browser.newContext(\{ignoreHTTPSErrors:true,viewport:\{width:1280,height:1024}});api=ctx.request;page=await ctx.newPage();  page.on('framenavigated',f=>\{if(f===page.mainFrame())\{nav+=1;j(EV.navigated,'seq='+nav+' phase='+phase+' url='+JSON.stringify(f.url()))}});  page.on('console',m=>\{const l=m.type();if(l==='error'||l==='warning')j(EV.pageConsole,'phase='+phase+' level='+l+' detail='+JSON.stringify(one(m.text())))});  page.on('pageerror',e=>\{j(EV.pageError,'phase='+phase+' detail='+JSON.stringify(one(e)))});  const expectedHost=new URL(base).host;  login='unobserved';  const lr=await api.post(base+'/api/session',\{form:\{username:user,password:pw}});let lb=null;try\{lb=await lr.json()}catch(e)\{}const reply=\{status:lr.status(),b:lb};  if(reply.status!==200||!reply.b||reply.b.ok!==0)\{login='refused';j(EV.refused,'cause='+CA.login+' http='+reply.status);return teardown('refused',11)}  login='accepted';token=reply.b.CSRFToken;  let feats='';if(featuresFile)\{try\{feats=fs.readFileSync(featuresFile,'utf8')}catch(e)\{j(EV.refused,'cause='+CA.featuresUnreadable+' detail='+JSON.stringify(one(e)));return teardown('refused',14)}} await ctx.addInitScript(([h,b,u,f])=>\{if(location.host!==h)return;if(f)sessionStorage.setItem('features',f);sessionStorage.setItem('garc',b.CSRFToken);sessionStorage.setItem('privilege_id',String(b.privilege));sessionStorage.setItem('extended_privilege',String(b.extendedpriv));sessionStorage.setItem('session_id',String(b.racsession_id));sessionStorage.setItem('username',u);sessionStorage.setItem('kvm_access','1');sessionStorage.setItem('vmedia_access','1')},[expectedHost,reply.b,user,feats]);  const sa=await(await api.get(base+'/api/settings/services',\{headers:\{'X-CSRFTOKEN':token}})).json();const kr=Array.isArray(sa)?sa.find(s=>s.service_name==='kvm'):null;const seat=kr?kr.viewer_count:null;  if(seat===null||seat===undefined)\{j(EV.refused,'cause='+CA.noKvmService+'');return teardown('refused',15)}  if(seat!==0)\{j(EV.refused,'cause='+CA.seatBusy+' viewer_count='+seat);return teardown('refused',10)}  page.on('websocket',ws=>\{let u;try\{u=new URL(ws.url())}catch(e)\{return}   if(u.host!==expectedHost||u.pathname!=='/kvm')return;   j(EV.connectionRequested,'url='+JSON.stringify(ws.url()));let mine=null;   ws.on('framereceived',()=>\{if(!mine)\{gen+=1;mine=\{gen:gen};live=mine;j(EV.connectionOpen,'gen='+mine.gen+' url='+JSON.stringify(ws.url()))}});   ws.on('socketerror',e=>\{j(EV.connectionError,'gen='+(mine?mine.gen:0)+' detail='+JSON.stringify(one(e)));if(mine&&live===mine)live=null});   ws.on('close',()=>\{if(mine&&live===mine)\{live=null;j(EV.connectionLost,'gen='+mine.gen)}else if(!mine)\{j(EV.connectionRefused,'url='+JSON.stringify(ws.url()))}})});  phase='viewer';await page.goto(base+'/viewer.html',\{waitUntil:'domcontentloaded'});  try\{await page.waitForFunction(()=>\{const c=document.getElementById('kvm');return !!c&&c.width>1&&c.height>1},null,\{timeout:Number(frameMs)})}  catch(e)\{j(EV.refused,'cause='+CA.noFrame+' detail='+JSON.stringify(one(e)));return teardown('refused',12)}  const deadline=Date.now()+Number(frameMs);while(!live&&Date.now()<deadline)\{await new Promise(r=>setTimeout(r,100))}  if(!live)\{j(EV.refused,'cause='+CA.noKvmFrame+'');return teardown('refused',12)}  j(EV.established,'host='+JSON.stringify(expectedHost)+' session='+String(reply.b.racsession_id)+' attempt='+attempt+' gen='+live.gen);  phase='held';let next=Date.now()+Number(cadenceMs);  while(!stopping)\{   if(fs.existsSync(path.join(dir,'stop')))\{return teardown('stop-file',0)}   let tf=[];try\{tf=fs.readdirSync(dir).filter(n=>n.startsWith('trigger-')).sort()}catch(e)\{j(EV.triggerScanFailed,'detail='+JSON.stringify(one(e)))}   for(const n of tf)\{const p=path.join(dir,n);try\{fs.unlinkSync(p)}catch(e)\{continue}await still('trigger:'+n.slice(8))}   if(Date.now()>=next&&periodic<Number(maxPeriodic))\{next=Date.now()+Number(cadenceMs);periodic+=1;await still('periodic')}   await new Promise(r=>setTimeout(r,250))} }catch(e)\{j(EV.failed,'detail='+JSON.stringify(one(e)));return teardown('failed',1)}})();"
+
+data megarac_kvm_observer_script: String = concat(megarac_kvm_observer_vocabulary_js(), megarac_kvm_observer_script_body)
+
+// THE LAUNCH is gunbc.owned_process's: the toolchain's node command in the background, its output in
+// observer.log beside the journal, its holder recorded as "<pid> <starttime>" in observer.pid, and its
+// release OBSERVED after the signal rather than assumed.
+
+// THE BOUNDS. A periodic still every cadence, at most periodic_limit of them; the boot waits at most
+// establish_wait for the observer to say established or refused, at most trigger_wait for a
+// triggered still to be journalled, and at most stop_wait for the stopped line before the release.
+data megarac_kvm_observer_cadence: Second = second(count: 60)
+data megarac_kvm_observer_periodic_limit: Int = 30
+data megarac_kvm_observer_frame_wait: Second = second(count: 30)
+data megarac_kvm_observer_establish_wait: Second = second(count: 45)
+data megarac_kvm_observer_trigger_wait: Second = second(count: 15)
+data megarac_kvm_observer_stop_wait: Second = second(count: 10)
+
+// The journal is polled once a second, so a wait is spent as that many polls.
+fn kvm_polls_within(wait: Second) -> Int {
+  second_count(s: wait) as Int
+}
+
+// The owned release that follows a stop wait with no stopped line: TERM, a two-second grace, KILL and
+// the confirming reads (gunbc.machine_intake_sol_hold mtcollins1_sol_hold_release_script), rounded up.
+data megarac_kvm_observer_release_allowance: Second = second(count: 5)
+
+// What the boot step's timeout must carry for the observer: the establishment wait, the terminal
+// trigger wait, the stop wait and the owned release, all paid in the actuation.
+fn megarac_kvm_still_allowance() -> Second {
+  second(count: second_count(s: megarac_kvm_observer_establish_wait) + second_count(s: megarac_kvm_observer_trigger_wait) + second_count(s: megarac_kvm_observer_stop_wait) + second_count(s: megarac_kvm_observer_release_allowance))
+}
+
+// ── THE JOURNAL, READ ────────────────────────────────────────────────────────────────────────────
+
+type KvmObserverRefusal
+  = KvmSeatBusy { viewer_count: String }
+  | KvmLoginRefused { detail: String }
+  | KvmNoKvmService
+  | KvmNoFrame { detail: String }
+  | KvmToolchainUnavailable { detail: String }
+  | KvmCredentialUnreadable { detail: String }
+  | KvmRefusedOther { cause: String, detail: String }
+
+type KvmAcquisitionCause
+  = KvmNotConnected
+  | KvmConnectionChangedDuringAcquisition
+  | KvmCanvasUnreadable { detail: String }
+  | KvmAcquisitionOther { cause: String, detail: String }
+
+// An instant as the observer wrote it: the elapsed time since the Unix epoch, as the std.measure
+// carrier (for arithmetic), and ISO 8601 (for readers).
+type KvmInstant {
+  since_epoch: Millisecond
+  iso: String
+}
+
+// THE JOURNAL'S EVENTS, as the observer writes them. A connection is OPEN only once a frame has been
+// received on the /kvm WebSocket for the expected host -- a request alone is connection-requested,
+// and a socket that closed before any frame is connection-refused. Every connection carries a
+// generation; a still names the generation it began under and completed under, and one whose
+// connection changed in between is a failed acquisition, never a still. The teardown's steps are
+// separate lines: the session release, the browser close, and the stopped line that summarises both.
+type KvmJournalEvent
+  = KvmJournalEstablished { at: KvmInstant, host: String, session: String, attempt: String, gen: String }
+  | KvmJournalConnectionRequested { at: KvmInstant }
+  | KvmJournalConnectionRefused { at: KvmInstant }
+  | KvmJournalConnectionOpen { at: KvmInstant, gen: String }
+  | KvmJournalConnectionLost { at: KvmInstant, gen: String }
+  | KvmJournalConnectionError { at: KvmInstant, gen: String, detail: String }
+  | KvmJournalStill { at: KvmInstant, seq: String, reason: String, file: String, gen: String }
+  | KvmJournalAcquisitionFailed { at: KvmInstant, seq: String, reason: String, cause: KvmAcquisitionCause, gen: String }
+  | KvmJournalRefused { at: KvmInstant, refusal: KvmObserverRefusal }
+  | KvmJournalFailed { at: KvmInstant, detail: String }
+  | KvmJournalStopRequested { at: KvmInstant, by: String }
+  | KvmJournalSessionRelease { at: KvmInstant, result: String }
+  | KvmJournalBrowserClose { at: KvmInstant, result: String }
+  | KvmJournalStopped { at: KvmInstant, session: String, browser: String }
+  | KvmJournalTriggerScanFailed { at: KvmInstant, detail: String }
+  | KvmJournalNavigated { at: KvmInstant, seq: String, phase: String, url: String }
+  | KvmJournalPageConsole { at: KvmInstant, phase: String, level: String, detail: String }
+  | KvmJournalPageError { at: KvmInstant, phase: String, detail: String }
+  | KvmJournalUnparsed { line: String }
+
+// A field's value: the word after " key=", or for the free-text keys (detail, url), the rest of the
+// line, which the observer always writes last.
+fn kvm_field(rest: String, key: String) -> String {
+  match split(s: concat(" ", rest), delimiter: concat(" ", concat(key, "="))).skip(n: 1).first() {
+    Absent => ""
+    Present { value: v } =>
+      if key == "detail" || key == "url" { trim(s: v) }
+      else { match split(s: v, delimiter: " ").first() { Present { value: w } => w  Absent => "" } }
+  }
+}
+
+fn kvm_refusal_of(rest: String) -> KvmObserverRefusal {
+  let cause = kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_other_keys, i: 0))
+  let detail = kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_other_keys, i: 1))
+  if cause == kvm_cause_seat_busy.word { KvmSeatBusy { viewer_count: kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_layout_seat_busy.keys, i: 1)) } }
+  else if cause == kvm_cause_login.word { KvmLoginRefused { detail: concat("http ", kvm_field(rest: rest, key: kvm_key(keys: kvm_refusal_layout_login.keys, i: 1))) } }
+  else if cause == kvm_cause_no_kvm_service.word { KvmNoKvmService }
+  else if cause == kvm_cause_no_frame.word || cause == kvm_cause_no_kvm_frame.word || cause == kvm_cause_no_kvm_websocket.word { KvmNoFrame { detail: if detail == "" { cause } else { detail } } }
+  else if cause == kvm_cause_toolchain.word { KvmToolchainUnavailable { detail: detail } }
+  else if cause == kvm_cause_credential_unreadable.word { KvmCredentialUnreadable { detail: detail } }
+  else { KvmRefusedOther { cause: cause, detail: detail } }
+}
+
+fn kvm_acquisition_cause_of(rest: String) -> KvmAcquisitionCause {
+  let cause = kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 3))
+  let detail = kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 4))
+  if cause == kvm_cause_not_connected.word { KvmNotConnected }
+  else if cause == kvm_cause_connection_changed_during_acquisition.word { KvmConnectionChangedDuringAcquisition }
+  else if cause == kvm_cause_canvas_unreadable.word { KvmCanvasUnreadable { detail: detail } }
+  else { KvmAcquisitionOther { cause: cause, detail: detail } }
+}
+
+fn kvm_journal_event(line: String) -> KvmJournalEvent {
+  let words = split(s: line, delimiter: " ")
+  let ms_word = match words.first() { Present { value: w } => w  Absent => "" }
+  let iso = match words.skip(n: 1).first() { Present { value: w } => w  Absent => "" }
+  let event = match words.skip(n: 2).first() { Present { value: w } => w  Absent => "" }
+  let rest = join(words.skip(n: 3), " ")
+  let epoch_ms = match parse_int(s: ms_word) { Present { value: n } => checked_int_to_nat(n: n)  Absent => none }
+  match epoch_ms {
+    Absent => KvmJournalUnparsed { line: line }
+    Present { value: ms } => {
+      let at = KvmInstant { since_epoch: millisecond(count: ms), iso: iso }
+      if event == kvm_event_established.word { KvmJournalEstablished { at: at, host: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 0)), session: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 1)), attempt: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 2)), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_established.keys, i: 3)) } }
+      else if event == kvm_event_connection_requested.word { KvmJournalConnectionRequested { at: at } }
+      else if event == kvm_event_connection_refused.word { KvmJournalConnectionRefused { at: at } }
+      else if event == kvm_event_connection_open.word { KvmJournalConnectionOpen { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_open.keys, i: 0)) } }
+      else if event == kvm_event_connection_lost.word { KvmJournalConnectionLost { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_lost.keys, i: 0)) } }
+      else if event == kvm_event_connection_error.word { KvmJournalConnectionError { at: at, gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_error.keys, i: 0)), detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_connection_error.keys, i: 1)) } }
+      else if event == kvm_event_still.word { KvmJournalStill { at: at, seq: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 0)), reason: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 1)), file: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 3)), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_still.keys, i: 2)) } }
+      else if event == kvm_event_acquisition_failed.word { KvmJournalAcquisitionFailed { at: at, seq: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 0)), reason: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 1)), cause: kvm_acquisition_cause_of(rest: rest), gen: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_acquisition_failed.keys, i: 2)) } }
+      else if event == kvm_event_session_release.word { KvmJournalSessionRelease { at: at, result: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_session_release.keys, i: 0)) } }
+      else if event == kvm_event_browser_close.word { KvmJournalBrowserClose { at: at, result: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_browser_close.keys, i: 0)) } }
+      else if event == kvm_event_refused.word { KvmJournalRefused { at: at, refusal: kvm_refusal_of(rest: rest) } }
+      else if event == kvm_event_failed.word { KvmJournalFailed { at: at, detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_failed.keys, i: 0)) } }
+      else if event == kvm_event_stop_requested.word { KvmJournalStopRequested { at: at, by: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stop_requested.keys, i: 0)) } }
+      else if event == kvm_event_stopped.word { KvmJournalStopped { at: at, session: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stopped.keys, i: 0)), browser: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_stopped.keys, i: 1)) } }
+      else if event == kvm_event_trigger_scan_failed.word { KvmJournalTriggerScanFailed { at: at, detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_trigger_scan_failed.keys, i: 0)) } }
+      else if event == kvm_event_navigated.word { KvmJournalNavigated { at: at, seq: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_navigated.keys, i: 0)), phase: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_navigated.keys, i: 1)), url: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_navigated.keys, i: 2)) } }
+      else if event == kvm_event_page_console.word { KvmJournalPageConsole { at: at, phase: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_page_console.keys, i: 0)), level: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_page_console.keys, i: 1)), detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_page_console.keys, i: 2)) } }
+      else if event == kvm_event_page_error.word { KvmJournalPageError { at: at, phase: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_page_error.keys, i: 0)), detail: kvm_field(rest: rest, key: kvm_key(keys: kvm_layout_page_error.keys, i: 1)) } }
+      else { KvmJournalUnparsed { line: line } }
+    }
+  }
+}
+
+fn kvm_journal_events(text: String) -> List<KvmJournalEvent> {
+  map(filter(map(split(s: text, delimiter: "\n"), l => trim(s: l)), l => l != ""), l => kvm_journal_event(line: l))
+}
+
+// ── THE JOURNAL, WRITTEN ─────────────────────────────────────────────────────────────────────────
+// THE LAYOUT ROWS ABOVE, READ IN THE OTHER DIRECTION. kvm_journal_line writes "<epoch-ms> <iso> <event
+// word>" and then the event's values under the SAME kvm_layout_* / kvm_refusal_layout_* keys the parser
+// reads, in the observer script's order; no key name or order is spelled here. Keys the parser does not
+// read (url on the connection lines, started_ms on a still and an acquisition failure, bytes on a still)
+// are not written.
+//
+// IT REFUSES RATHER THAN WRITE A LINE THAT READS AS ANOTHER EVENT. The event fields are free Strings,
+// so some events have no line that parses back to them -- a word field holding a space, a login detail
+// that is not "http <status>", a no-frame refusal with an empty detail (the parser substitutes the cause
+// word), an "other" cause spelled like a declared one, a newline anywhere. The renderer parses its own
+// line and answers Rendered only when that is structurally the event it was given; otherwise it is
+// Refused with the line it would have written, so no plausible wrong line is ever produced (DESIGN s5).
+//
+// CONSUMER, A DECLARED FRONTIER (DESIGN s3c): the boot acceptance matrix's dry KVM observer in
+// gunbc#12533, which writes the journal the boot gates its handoff on; it lands in that change.
+type KvmJournalRender
+  = KvmJournalRendered { line: String }
+  | KvmJournalRenderRefused { event_word: String, would_write: String }
+
+fn kvm_journal_head(at: KvmInstant, word: KvmJournalWord) -> String {
+  concat(concat(to_string(millisecond_count(m: at.since_epoch)), concat(" ", at.iso)), concat(" ", word.word))
+}
+
+fn kvm_journal_fields(head: String, keys: List<String>, values: List<String>) -> String {
+  let pairs = fold(keys, init: [], f: fn(acc, k) {
+    match values.skip(n: count(acc)).first() {
+      Present { value: v } => list_append(acc, concat(concat(k, "="), v))
+      Absent => list_append(acc, concat(k, "="))
+    }
+  })
+  if count(pairs) == 0 { head } else { concat(head, concat(" ", join(pairs, " "))) }
+}
+
+fn kvm_layout_line(at: KvmInstant, layout: KvmJournalLayout, values: List<String>) -> String {
+  kvm_journal_fields(head: kvm_journal_head(at: at, word: layout.event), keys: layout.keys, values: values)
+}
+
+fn kvm_refusal_line(at: KvmInstant, refusal: KvmObserverRefusal) -> String {
+  let head = kvm_journal_head(at: at, word: kvm_event_refused)
+  match refusal {
+    KvmSeatBusy { viewer_count: v } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_seat_busy.keys, values: [kvm_cause_seat_busy.word, v])
+    KvmLoginRefused { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_login.keys, values: [kvm_cause_login.word, if starts_with(s: d, prefix: "http ") { join(split(s: d, delimiter: " ").skip(n: 1), " ") } else { d }])
+    KvmNoKvmService => kvm_journal_fields(head: head, keys: kvm_refusal_layout_no_kvm_service.keys, values: [kvm_cause_no_kvm_service.word])
+    KvmNoFrame { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_no_frame.keys, values: [kvm_cause_no_frame.word, d])
+    KvmToolchainUnavailable { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_toolchain.keys, values: [kvm_cause_toolchain.word, d])
+    KvmCredentialUnreadable { detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_layout_credential_unreadable.keys, values: [kvm_cause_credential_unreadable.word, d])
+    KvmRefusedOther { cause: c, detail: d } => kvm_journal_fields(head: head, keys: kvm_refusal_other_keys, values: [c, d])
+  }
+}
+
+fn kvm_acquisition_values(seq: String, reason: String, gen: String, cause: KvmAcquisitionCause) -> List<String> {
+  match cause {
+    KvmNotConnected => [seq, reason, gen, kvm_cause_not_connected.word]
+    KvmConnectionChangedDuringAcquisition => [seq, reason, gen, kvm_cause_connection_changed_during_acquisition.word]
+    KvmCanvasUnreadable { detail: d } => [seq, reason, gen, kvm_cause_canvas_unreadable.word, d]
+    KvmAcquisitionOther { cause: c, detail: d } => [seq, reason, gen, c, d]
+  }
+}
+
+fn kvm_acquisition_keys(cause: KvmAcquisitionCause) -> List<String> {
+  match cause {
+    KvmNotConnected => kvm_layout_acquisition_failed.keys.take(n: 4)
+    KvmConnectionChangedDuringAcquisition => kvm_layout_acquisition_failed.keys.take(n: 4)
+    KvmCanvasUnreadable { detail: _ } => kvm_layout_acquisition_failed.keys
+    KvmAcquisitionOther { cause: _, detail: _ } => kvm_layout_acquisition_failed.keys
+  }
+}
+
+fn kvm_journal_candidate_line(event: KvmJournalEvent) -> String {
+  match event {
+    KvmJournalEstablished { at: a, host: h, session: se, attempt: t, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_established, values: [h, se, t, g])
+    KvmJournalConnectionRequested { at: a } => kvm_layout_line(at: a, layout: kvm_layout_connection_requested, values: [])
+    KvmJournalConnectionRefused { at: a } => kvm_layout_line(at: a, layout: kvm_layout_connection_refused, values: [])
+    KvmJournalConnectionOpen { at: a, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_connection_open, values: [g])
+    KvmJournalConnectionLost { at: a, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_connection_lost, values: [g])
+    KvmJournalConnectionError { at: a, gen: g, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_connection_error, values: [g, d])
+    KvmJournalStill { at: a, seq: n, reason: r, file: f, gen: g } => kvm_layout_line(at: a, layout: kvm_layout_still, values: [n, r, g, f])
+    KvmJournalAcquisitionFailed { at: a, seq: n, reason: r, cause: c, gen: g } => kvm_journal_fields(head: kvm_journal_head(at: a, word: kvm_event_acquisition_failed), keys: kvm_acquisition_keys(cause: c), values: kvm_acquisition_values(seq: n, reason: r, gen: g, cause: c))
+    KvmJournalRefused { at: a, refusal: r } => kvm_refusal_line(at: a, refusal: r)
+    KvmJournalFailed { at: a, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_failed, values: [d])
+    KvmJournalStopRequested { at: a, by: b } => kvm_layout_line(at: a, layout: kvm_layout_stop_requested, values: [b])
+    KvmJournalSessionRelease { at: a, result: r } => kvm_layout_line(at: a, layout: kvm_layout_session_release, values: [r])
+    KvmJournalBrowserClose { at: a, result: r } => kvm_layout_line(at: a, layout: kvm_layout_browser_close, values: [r])
+    KvmJournalStopped { at: a, session: se, browser: b } => kvm_layout_line(at: a, layout: kvm_layout_stopped, values: [se, b])
+    KvmJournalTriggerScanFailed { at: a, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_trigger_scan_failed, values: [d])
+    KvmJournalNavigated { at: a, seq: n, phase: p, url: u } => kvm_layout_line(at: a, layout: kvm_layout_navigated, values: [n, p, u])
+    KvmJournalPageConsole { at: a, phase: p, level: l, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_page_console, values: [p, l, d])
+    KvmJournalPageError { at: a, phase: p, detail: d } => kvm_layout_line(at: a, layout: kvm_layout_page_error, values: [p, d])
+    KvmJournalUnparsed { line: l } => l
+  }
+}
+
+fn kvm_journal_event_word(event: KvmJournalEvent) -> String {
+  match split(s: kvm_journal_candidate_line(event: event), delimiter: " ").skip(n: 2).first() { Present { value: w } => w  Absent => "" }
+}
+
+fn kvm_journal_line(event: KvmJournalEvent) -> KvmJournalRender {
+  let line = kvm_journal_candidate_line(event: event)
+  if !string_contains(s: line, pattern: "\n") && kvm_journal_event(line: line) == event {
+    KvmJournalRendered { line: line }
+  } else {
+    KvmJournalRenderRefused { event_word: kvm_journal_event_word(event: event), would_write: line }
+  }
+}
+
+// WHERE THE OBSERVER STANDS after its journal so far, AGAINST THE SUBJECT IT WAS STARTED FOR.
+// Established only on an established line whose host and attempt are the expected ones and whose
+// session is named; a refusal or failure line is the answer; an established line for another subject,
+// or one missing a field, is a mismatch, never established. The standing FOLLOWS the connection:
+// after establishment a connection-lost or connection-error makes it Lost, and it stays Lost: a later
+// reconnect is recorded in the journal but does not re-prove the binding the handoff relied on.
+type KvmObserverStanding
+  = KvmObserverEstablished { at: KvmInstant, host: String, session: String, attempt: String }
+  | KvmObserverLost { at: KvmInstant, established_at: KvmInstant }
+  | KvmObserverMismatch { at: KvmInstant, detail: String }
+  | KvmObserverStopped { at: KvmInstant }
+  | KvmObserverProcessNotRunning { process: OwnedProcessStanding }
+  | KvmObserverJournalUnread { cause: String }
+  | KvmObserverRefused { at: KvmInstant, refusal: KvmObserverRefusal }
+  | KvmObserverFailed { at: KvmInstant, detail: String }
+  | KvmObserverPending
+
+type KvmObserverSubject {
+  host: String
+  attempt: String
+}
+
+fn kvm_established_against(subject: KvmObserverSubject, at: KvmInstant, host: String, session: String, attempt: String) -> KvmObserverStanding {
+  let unquoted = if starts_with(s: host, prefix: "\"") { join(split(s: host, delimiter: "\""), "") } else { host }
+  if unquoted == "" || session == "" || attempt == "" { KvmObserverMismatch { at: at, detail: "the established line is missing its host, session or attempt" } }
+  else if unquoted != subject.host { KvmObserverMismatch { at: at, detail: concat("established for host ", concat(unquoted, concat(", expected ", subject.host))) } }
+  else if attempt != subject.attempt { KvmObserverMismatch { at: at, detail: concat("established for attempt ", concat(attempt, concat(", expected ", subject.attempt))) } }
+  else { KvmObserverEstablished { at: at, host: unquoted, session: session, attempt: attempt } }
+}
+
+// A pending observer settles on the first establishment, refusal or failure; any other event leaves it pending.
+fn kvm_pending_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmObserverSubject) -> KvmObserverStanding {
+  match e {
+    KvmJournalEstablished { at: a, host: h, session: se, attempt: t, gen: _ } => kvm_established_against(subject: subject, at: a, host: h, session: se, attempt: t)
+    KvmJournalRefused { at: a, refusal: r } => KvmObserverRefused { at: a, refusal: r }
+    KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
+    KvmJournalConnectionRequested { at: _ } => acc
+    KvmJournalConnectionRefused { at: _ } => acc
+    KvmJournalConnectionOpen { at: _, gen: _ } => acc
+    KvmJournalConnectionLost { at: _, gen: _ } => acc
+    KvmJournalConnectionError { at: _, gen: _, detail: _ } => acc
+    KvmJournalStill { at: _, seq: _, reason: _, file: _, gen: _ } => acc
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: _, gen: _ } => acc
+    KvmJournalStopRequested { at: _, by: _ } => acc
+    KvmJournalSessionRelease { at: _, result: _ } => acc
+    KvmJournalBrowserClose { at: _, result: _ } => acc
+    KvmJournalStopped { at: _, session: _, browser: _ } => acc
+    KvmJournalTriggerScanFailed { at: _, detail: _ } => acc
+    KvmJournalUnparsed { line: _ } => acc
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => acc
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => acc
+    KvmJournalPageError { at: _, phase: _, detail: _ } => acc
+  }
+}
+
+// An established observer is lost, stopped or failed by the events that end its connection; any other event leaves it established.
+fn kvm_established_step(acc: KvmObserverStanding, e: KvmJournalEvent, established_at: KvmInstant) -> KvmObserverStanding {
+  match e {
+    KvmJournalConnectionLost { at: a, gen: _ } => KvmObserverLost { at: a, established_at: established_at }
+    KvmJournalConnectionError { at: a, gen: _, detail: _ } => KvmObserverLost { at: a, established_at: established_at }
+    KvmJournalStopRequested { at: a, by: _ } => KvmObserverStopped { at: a }
+    KvmJournalStopped { at: a, session: _, browser: _ } => KvmObserverStopped { at: a }
+    KvmJournalFailed { at: a, detail: d } => KvmObserverFailed { at: a, detail: d }
+    KvmJournalEstablished { at: _, host: _, session: _, attempt: _, gen: _ } => acc
+    KvmJournalConnectionRequested { at: _ } => acc
+    KvmJournalConnectionRefused { at: _ } => acc
+    KvmJournalConnectionOpen { at: _, gen: _ } => acc
+    KvmJournalStill { at: _, seq: _, reason: _, file: _, gen: _ } => acc
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: _, gen: _ } => acc
+    KvmJournalRefused { at: _, refusal: _ } => acc
+    KvmJournalSessionRelease { at: _, result: _ } => acc
+    KvmJournalBrowserClose { at: _, result: _ } => acc
+    KvmJournalTriggerScanFailed { at: _, detail: _ } => acc
+    KvmJournalUnparsed { line: _ } => acc
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => acc
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => acc
+    KvmJournalPageError { at: _, phase: _, detail: _ } => acc
+  }
+}
+
+fn kvm_standing_step(acc: KvmObserverStanding, e: KvmJournalEvent, subject: KvmObserverSubject) -> KvmObserverStanding {
+  match acc {
+    KvmObserverPending => kvm_pending_step(acc: acc, e: e, subject: subject)
+    KvmObserverEstablished { at: ea, host: _, session: _, attempt: _ } => kvm_established_step(acc: acc, e: e, established_at: ea)
+    KvmObserverLost { at: _, established_at: _ } => acc
+    KvmObserverMismatch { at: _, detail: _ } => acc
+    KvmObserverStopped { at: _ } => acc
+    KvmObserverProcessNotRunning { process: _ } => acc
+    KvmObserverJournalUnread { cause: _ } => acc
+    KvmObserverRefused { at: _, refusal: _ } => acc
+    KvmObserverFailed { at: _, detail: _ } => acc
+  }
+}
+
+fn kvm_observer_standing(events: List<KvmJournalEvent>, subject: KvmObserverSubject) -> KvmObserverStanding {
+  let start: KvmObserverStanding = KvmObserverPending
+  fold(events, start, (acc, e) => kvm_standing_step(acc: acc, e: e, subject: subject))
+}
+
+// THE BOUNDARY EVENTS: what the watch must report before any optional read. Connection lost or
+// errored, and every acquisition that failed.
+fn kvm_boundary_events(events: List<KvmJournalEvent>) -> List<KvmJournalEvent> {
+  filter(events, e => match e {
+    KvmJournalConnectionLost { at: _, gen: _ } => true
+    KvmJournalConnectionError { at: _, gen: _, detail: _ } => true
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: _, gen: _ } => true
+    KvmJournalFailed { at: _, detail: _ } => true
+    _ => false
+  })
+}
+
+// GAPS ARE RETAINED, NOT SMOOTHED (acceptance (b)). The marks are establishment, every still and the
+// stop request. Between consecutive marks an interval longer than two cadences is a gap, kept with its
+// two instants whatever caused it; a mark EARLIER than the one before it is a clock step-back, kept as
+// such rather than dropped; and when the observer's last mark is not its stop request -- it died, or
+// never answered the stop -- the interval from that mark to the boot's own finish is an UNCLOSED final
+// gap, never an invisible one.
+type KvmStillGap
+  = KvmGapOverCadence { from: KvmInstant, to: KvmInstant, length: Millisecond }
+  | KvmClockStepBack { from: KvmInstant, to: KvmInstant }
+  | KvmFinalGapUnclosed { from: KvmInstant, observed_until: String }
+
+type KvmGapFold {
+  last: KvmInstant?
+  gaps: List<KvmStillGap>
+}
+
+fn kvm_gap_mark(e: KvmJournalEvent) -> List<KvmInstant> {
+  match e {
+    KvmJournalEstablished { at: a, host: _, session: _, attempt: _, gen: _ } => [a]
+    KvmJournalStill { at: a, seq: _, reason: _, file: _, gen: _ } => [a]
+    KvmJournalStopRequested { at: a, by: _ } => [a]
+    KvmJournalConnectionRequested { at: _ } => []
+    KvmJournalConnectionRefused { at: _ } => []
+    KvmJournalConnectionOpen { at: _, gen: _ } => []
+    KvmJournalConnectionLost { at: _, gen: _ } => []
+    KvmJournalConnectionError { at: _, gen: _, detail: _ } => []
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: _, cause: _, gen: _ } => []
+    KvmJournalRefused { at: _, refusal: _ } => []
+    KvmJournalFailed { at: _, detail: _ } => []
+    KvmJournalSessionRelease { at: _, result: _ } => []
+    KvmJournalBrowserClose { at: _, result: _ } => []
+    KvmJournalStopped { at: _, session: _, browser: _ } => []
+    KvmJournalTriggerScanFailed { at: _, detail: _ } => []
+    KvmJournalUnparsed { line: _ } => []
+    KvmJournalNavigated { at: _, seq: _, phase: _, url: _ } => []
+    KvmJournalPageConsole { at: _, phase: _, level: _, detail: _ } => []
+    KvmJournalPageError { at: _, phase: _, detail: _ } => []
+  }
+}
+
+fn kvm_gap_step(acc: KvmGapFold, at: KvmInstant, bound: Millisecond) -> KvmGapFold {
+  match acc.last {
+    Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+    Present { value: prev } =>
+      match checked_int_to_nat(n: (millisecond_count(m: at.since_epoch) as Int) - (millisecond_count(m: prev.since_epoch) as Int)) {
+        Present { value: d } =>
+          if (d as Int) > (millisecond_count(m: bound) as Int) {
+            KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmGapOverCadence { from: prev, to: at, length: millisecond(count: d) }]) }
+          } else {
+            KvmGapFold { last: Present { value: at }, gaps: acc.gaps }
+          }
+        Absent => KvmGapFold { last: Present { value: at }, gaps: acc.gaps.concat([KvmClockStepBack { from: prev, to: at }]) }
+      }
+  }
+}
+
+fn kvm_last_mark_is_stop(events: List<KvmJournalEvent>) -> Bool {
+  let marks: List<KvmJournalEvent> = filter(events, e => count(kvm_gap_mark(e: e)) > 0)
+  match marks.last() {
+    Present { value: e } => match e { KvmJournalStopRequested { at: _, by: _ } => true  _ => false }
+    Absent => false
+  }
+}
+
+fn kvm_still_gaps(events: List<KvmJournalEvent>, cadence: Second, observed_until: String) -> List<KvmStillGap> {
+  let bound = second_to_millisecond(s: second(count: 2 * second_count(s: cadence)))
+  let marks: List<KvmInstant> = fold(events, [], (acc, e) => acc.concat(kvm_gap_mark(e: e)))
+  let start: KvmGapFold = KvmGapFold { last: none, gaps: [] }
+  let folded: KvmGapFold = fold(marks, start, (acc, m) => kvm_gap_step(acc: acc, at: m, bound: bound))
+  match folded.last {
+    Present { value: last } =>
+      if kvm_last_mark_is_stop(events: events) { folded.gaps } else { folded.gaps.concat([KvmFinalGapUnclosed { from: last, observed_until: observed_until }]) }
+    Absent => folded.gaps
+  }
+}
+
+// A STILL IS RETAINED ONLY HASH-BOUND. The digest is sha256sum over the file, taken by the boot after
+// the observer stopped -- never a number the observer reported about itself. A file that cannot be
+// digested is kept in the record as Unhashed and is not claimed as evidence.
+type KvmRetainedStill
+  = KvmStillHashed { at: KvmInstant, seq: String, reason: String, path: NonEmptyStr, digest: Digest }
+  | KvmStillUnhashed { at: KvmInstant, seq: String, reason: String, path: String, why: String }
+
+fn kvm_retained_still(dir: String, at: KvmInstant, seq: String, reason: String, file: String, digest: Sha256FileDigest) -> KvmRetainedStill {
+  let path = concat(dir, concat("/", file))
+  match digest {
+    Sha256FileDigest { digest: d } => KvmStillHashed { at: at, seq: seq, reason: reason, path: path as NonEmptyStr, digest: d }
+    Sha256FileDigestUnavailable { path: _, reason: r } => KvmStillUnhashed { at: at, seq: seq, reason: reason, path: path, why: r }
+  }
+}
+
+// ── THE OBSERVER'S LIFE IN THE BOOT ──────────────────────────────────────────────────────────────
+
+// THE JOURNAL, READ AS A TYPED OUTCOME. Absent is "no line has been written yet"; Unread carries the
+// read's own cause. Neither is ever turned into an empty event list that reads like a quiet observer.
+type KvmJournalRead
+  = KvmJournalText { text: String }
+  | KvmJournalAbsent
+  | KvmJournalUnread { cause: String }
+
+fn kvm_journal_read_at(dir: String) -> KvmJournalRead {
+  let r = Filesystem.Read(path: concat(dir, "/journal"))
+  if r.success { KvmJournalText { text: r.content } }
+  else if r.error_kind == "not_found" { KvmJournalAbsent }
+  else { KvmJournalUnread { cause: r.error } }
+}
+
+fn kvm_journal_events_of(read: KvmJournalRead) -> List<KvmJournalEvent> {
+  match read {
+    KvmJournalText { text: t } => kvm_journal_events(text: t)
+    KvmJournalAbsent => []
+    KvmJournalUnread { cause: _ } => []
+  }
+}
+
+fn kvm_journal_events_at(dir: String) -> List<KvmJournalEvent> {
+  kvm_journal_events_of(read: kvm_journal_read_at(dir: dir))
+}
+
+// How the observer came to be (or not), taken before the handoff, with the subject it was started for.
+type KvmObserverStart
+  = KvmObserverStarted { dir: NonEmptyStr, subject: KvmObserverSubject, standing: KvmObserverStanding, checked_at: NonEmptyStr }
+  | KvmObserverNotStarted { reason: NonEmptyStr }
+
+// A read journal's standing, held to Established only while the owned observer process still runs.
+fn kvm_live_standing_of_read(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
+  match kvm_observer_standing(events: kvm_journal_events_of(read: journal), subject: subject) {
+    KvmObserverEstablished { at: a, host: h, session: s, attempt: t } =>
+      match process {
+        OwnedRunning { pid: _, start_time: _ } => KvmObserverEstablished { at: a, host: h, session: s, attempt: t }
+        other => KvmObserverProcessNotRunning { process: other }
+      }
+    other => other
+  }
+}
+
+// THE STANDING NOW, LIVE (hold on gunbc#12492). A journal is history; an observer is only established
+// while the process that wrote it is still the one running. So the live standing joins three
+// observations: the journal read (an unread journal is its own standing, never an empty history), the
+// subject check over its events, and the owned process read from observer.pid (gunbc.owned_process).
+// An Established history over a process that is gone, foreign, unreadable or unrecorded is
+// ProcessNotRunning with that observation -- an observer that died without writing a line is not
+// established. A quiet journal over a running process stays established: no pixel or line heartbeat
+// is asked for.
+fn kvm_live_standing(journal: KvmJournalRead, subject: KvmObserverSubject, process: OwnedProcessStanding) -> KvmObserverStanding {
+  match journal {
+    KvmJournalUnread { cause: c } => KvmObserverJournalUnread { cause: c }
+    KvmJournalText { text: _ } => kvm_live_standing_of_read(journal: journal, subject: subject, process: process)
+    KvmJournalAbsent => kvm_live_standing_of_read(journal: journal, subject: subject, process: process)
+  }
+}
+
+fn kvm_observer_standing_now(start: KvmObserverStart) -> KvmObserverStanding {
+  match start {
+    KvmObserverStarted { dir: d, subject: sub, standing: _, checked_at: _ } =>
+      kvm_live_standing(journal: kvm_journal_read_at(dir: d as String), subject: sub, process: owned_process_standing(pid_path: concat(d as String, "/observer.pid")))
+    KvmObserverNotStarted { reason: _ } => KvmObserverPending
+  }
+}
+
+// THE DIAGNOSTIC PROFILE'S REQUIREMENT (hold on gunbc#12492): the boot's handoff is admitted only
+// while the observer it started is established for the expected host and attempt, re-read at the
+// handoff. Anything else -- not started, pending, refused (a busy seat), failed, a mismatched subject,
+// or lost after establishment -- refuses the handoff with that standing as its cause. It decides
+// nothing about the host's health: it decides only whether this attempt's required witness exists.
+type KvmHandoffAdmission
+  = KvmHandoffAdmitted { session: String }
+  | KvmHandoffRefused { cause: String }
+
+fn kvm_handoff_admission_of(start: KvmObserverStart, standing: KvmObserverStanding) -> KvmHandoffAdmission {
+  match start {
+    KvmObserverNotStarted { reason: r } => KvmHandoffRefused { cause: concat("the KVM observer was not started: ", r as String) }
+    KvmObserverStarted { dir: _, subject: _, standing: _, checked_at: _ } =>
+      match standing {
+        KvmObserverEstablished { at: _, host: _, session: s, attempt: _ } => KvmHandoffAdmitted { session: s }
+        other => KvmHandoffRefused { cause: concat("the KVM observer is not established: ", kvm_standing_text(s: other)) }
+      }
+  }
+}
+
+fn kvm_handoff_admission(start: KvmObserverStart) -> KvmHandoffAdmission {
+  kvm_handoff_admission_of(start: start, standing: kvm_observer_standing_now(start: start))
+}
+
+// THE TERMINAL STILL: asked, answered (with the answering line), unanswered within its wait, or not
+// asked because the observer was not established.
+type KvmTerminalStill
+  = KvmTerminalStillAnswered { line: String }
+  | KvmTerminalStillUnanswered { waited: Second }
+  | KvmTerminalStillNotAsked { reason: String }
+
+// THE TEARDOWN, EACH STEP ITS OWN OUTCOME (acceptance (c)). The pre-teardown snapshot (written only
+// from a journal that was actually read), the boot's own stop-request instant, whether the observer's
+// stopped line came, the observer's session release and browser close as it journalled them, and the
+// owned-process release the boot performed and observed afterwards.
+type KvmSnapshot
+  = KvmSnapshotKept { path: String }
+  | KvmSnapshotNotKept { cause: String }
+
+type KvmObserverTeardown
+  = KvmTeardownRecorded { terminal: KvmTerminalStill, snapshot: KvmSnapshot, requested_at: NonEmptyStr, stopped_seen: Bool, session_release: String, browser_close: String, process: OwnedRelease }
+  | KvmTeardownNotNeeded { reason: NonEmptyStr }
+
+// DECLARED FRONTIER: READING THE STILL. Interpretation -- a model on the fabric reading a retained
+// still into text and diagnostics, and a watch or bugfix guided by that reading -- is deliberately
+// NOT here (operator ruling 2026-09-27: log now, interpret later). TRIGGER: an inference seat on the
+// fabric admits an image-input request (gunbc.serving) and a typed reading of a still exists whose
+// result names the still's sha256; its first consumer is this bundle's screen section. Until then a
+// still is evidence for a human reader of the artifact and nothing in the boot consumes its pixels.
+//
+// EVERYTHING THE ATTEMPT KEPT OF ITS SCREEN. `journal` is the final read's outcome, so an unread
+// journal is carried as unread rather than as an empty history.
+type KvmObserverRecord {
+  attempt: String
+  start: KvmObserverStart
+  journal: KvmJournalRead
+  events: List<KvmJournalEvent>
+  stills: List<KvmRetainedStill>
+  gaps: List<KvmStillGap>
+  teardown: KvmObserverTeardown
+}
+
+fn kvm_observer_record_not_started(attempt: String, reason: NonEmptyStr) -> KvmObserverRecord {
+  KvmObserverRecord { attempt: attempt, start: KvmObserverNotStarted { reason: reason }, journal: KvmJournalAbsent, events: [], stills: [], gaps: [], teardown: KvmTeardownNotNeeded { reason: reason } }
+}
+
+// Poll the journal once a second until the standing leaves Pending or the bound is spent.
+fn kvm_await_standing(dir: String, subject: KvmObserverSubject, remaining: Int) -> KvmObserverStanding {
+  let standing = kvm_observer_standing(events: kvm_journal_events_at(dir: dir), subject: subject)
+  match standing {
+    KvmObserverPending =>
+      if remaining <= 0 { standing } else {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+        kvm_await_standing(dir: dir, subject: subject, remaining: remaining - 1)
+      }
+    _ => standing
+  }
+}
+
+// START, BEFORE THE HANDOFF. The carrier must have been admitted for this operation: a MegaRAC host
+// admitted for virtual media is not thereby admitted for the viewer. The observer's directory is the
+// caller's -- it is where the caller retains the journal and stills -- and is passed in.
+fn megarac_kvm_observer_start(
+  host: AdmittedMegaRacHost,
+  dir: String,
+  password_file: String,
+  toolchain: RunnerBrowserToolchainResolution,
+  attempt: String,
+) -> KvmObserverStart {
+  match host.operation {
+    MegaRacKvmCanvasStill => {}
+    MegaRacVirtualMediaAttach => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+    MegaRacSdrSocketNaming => return KvmObserverNotStarted { reason: "the MegaRAC host was admitted for another operation, not the KVM canvas still; no viewer was driven" }
+  }
+  let firmware = host.firmware
+  let bmc_host = host.binding.observation.endpoint.host
+  match megarac_screen_capture_standing(firmware: firmware, route: KvmClientCanvasJpeg) {
+    ScreenCaptureFirmwareUncatalogued { firmware: _ } => KvmObserverNotStarted { reason: "the BMC firmware is not catalogued for screen capture; no viewer was driven" }
+    ScreenCaptureFactKnown { firmware: _, standing: s } =>
+      match s {
+        ScreenCaptureClientSideOnly =>
+          if password_file == "" { KvmObserverNotStarted { reason: "no BMC credential path is bound, so no viewer login was attempted" } }
+          else if attempt == "" { KvmObserverNotStarted { reason: "no attempt identity is bound, so the observer could not be named for it" } }
+          else if dir == "" { KvmObserverNotStarted { reason: "no observer directory is bound, so the journal would have nowhere to be retained" } }
+          else {
+            match toolchain {
+              BrowserToolchainReady { location: loc, standing: _ } =>
+                match megarac_ui_features(firmware: firmware) {
+                  Absent => KvmObserverNotStarted { reason: "no viewer feature list is observed for this firmware (gunbc.machine_intake_megarac_ui_features megarac_ui_features), and the viewer's KVM view reads it unguarded; no viewer was driven" }
+                  Present { value: names } => kvm_observer_launch(dir: dir, base_url: concat("https://", bmc_host as String), host: bmc_host as String, username: host.binding.account, password_file: password_file, toolchain: loc, attempt: attempt, features_json: megarac_ui_features_json(names: names))
+                }
+              BrowserToolchainNotReady { standing: st } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is not ready: ", runner_browser_toolchain_standing_text(s: st)) as NonEmptyStr }
+              BrowserToolchainUnresolved { cause: c } => KvmObserverNotStarted { reason: concat("the runner browser toolchain is unresolved: ", c) as NonEmptyStr }
+            }
+          }
+        _ => KvmObserverNotStarted { reason: "the catalogued viewer route is not client-side; nothing was driven" }
+      }
+  }
+}
+
+// THE LAUNCH OVER A BASE URL. The boot passes https://<bmc>; the protocol controls pass a local
+// transport. `host` is the host:port the established line must name.
+fn kvm_observer_launch(dir: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "megarac_kvm_observer_start"),
+  ]
+{
+  let made = shell.Mkdir.Parents(path: dir as FilePath)
+  if !made.success {
+    return KvmObserverNotStarted { reason: concat("the observer directory could not be made: ", dir) as NonEmptyStr }
+  }
+  kvm_observer_launch_in(dir_given: dir, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt, features_json: features_json)
+}
+
+// ONE ABSOLUTE LOCATION (hold on gunbc#12492): the directory is canonicalised once, here, and that
+// absolute path is the launch's working directory, the observer's own `dir` operand, and what the boot
+// reads the journal, stills and triggers from and writes the stop request to. A relative directory
+// passed as both working directory and operand would be resolved twice -- <dir>/<dir>/journal -- and the
+// boot and the observer would address different files.
+fn kvm_observer_launch_in(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_launch"),
+    decl_ref(module_path: "gunbc.machine_intake_megarac_kvm_still", decl_name: "kvm_observer_protocol_launch"),
+  ]
+{
+  let resolved = shell.Path.Canonical(path: dir_given as FilePath)
+  if !resolved.success {
+    return KvmObserverNotStarted { reason: concat("the observer directory could not be resolved: ", concat(dir_given, concat(": ", trim(s: resolved.stderr)))) as NonEmptyStr }
+  }
+  let dir = trim(s: resolved.stdout)
+  let features_path = concat(dir, "/features.json")
+  if features_json != "" && !Filesystem.Write(path: features_path, content: features_json).success {
+    return KvmObserverNotStarted { reason: concat("the viewer feature list could not be written: ", features_path) as NonEmptyStr }
+  }
+  let node = runner_browser_toolchain_node_command(
+    location: toolchain,
+    directory: dir,
+    script: megarac_kvm_observer_script,
+    operands: [
+      base_url, username as String, password_file, dir, attempt,
+      to_string(millisecond_count(m: second_to_millisecond(s: megarac_kvm_observer_cadence)) as Int),
+      to_string(millisecond_count(m: second_to_millisecond(s: megarac_kvm_observer_frame_wait)) as Int),
+      to_string(megarac_kvm_observer_periodic_limit),
+      toolchain.playwright_module as String,
+      if features_json == "" { "" } else { features_path },
+    ],
+  )
+  let launched = gunbc.owned_process.launch.LaunchOwned(pid_path: concat(dir, "/observer.pid") as NonEmptyStr, log_path: concat(dir, "/observer.log") as NonEmptyStr, command: argv_words(command: node))
+  if !launched.success {
+    return KvmObserverNotStarted { reason: concat("the observer launch failed: ", trim(s: launched.transport_stderr)) as NonEmptyStr }
+  }
+  let subject = KvmObserverSubject { host: host, attempt: attempt }
+  let standing = kvm_await_standing(dir: dir, subject: subject, remaining: kvm_polls_within(wait: megarac_kvm_observer_establish_wait))
+  KvmObserverStarted { dir: dir as NonEmptyStr, subject: subject, standing: standing, checked_at: clock_now_probed_at_or_unknown() }
+}
+
+// THE PROTOCOL TESTS' LAUNCH, AND ONLY THEIRS. The production launch takes its endpoint and account
+// from an admitted MegaRAC carrier (megarac_kvm_observer_start) and is sealed to it; the protocol
+// witnesses drive the same observer against a local transport they stand up themselves, which has no
+// managed host behind it. This facade is the one door for that, admitted to those witness functions by
+// name, so no production caller reaches the launcher with a raw host and account.
+fn kvm_observer_protocol_launch(dir_given: String, base_url: String, host: String, username: NonEmptyStr, password_file: String, toolchain: RunnerBrowserToolchainLocation, attempt: String, features_json: String) -> KvmObserverStart
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "rig_with"),
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins1_kvm_observer_protocol_wet_witness", decl_name: "a_relative_observer_directory_is_resolved_once"),
+  ]
+{
+  kvm_observer_launch_in(dir_given: dir_given, base_url: base_url, host: host, username: username, password_file: password_file, toolchain: toolchain, attempt: attempt, features_json: features_json)
+}
+
+// A TRIGGER: one file the observer consumes and answers with one still or one acquisition failure,
+// written only while the observer is established NOW. Names sort in request order.
+fn kvm_observer_trigger(start: KvmObserverStart, order: Int, reason: String) -> Bool {
+  match start {
+    KvmObserverStarted { dir: d, subject: _, standing: _, checked_at: _ } =>
+      match kvm_observer_standing_now(start: start) {
+        KvmObserverEstablished { at: _, host: _, session: _, attempt: _ } =>
+          Filesystem.Write(path: concat(d as String, concat("/trigger-", concat(to_string(1000 + order), concat("-", reason)))), content: "").success
+        _ => false
+      }
+    KvmObserverNotStarted { reason: _ } => false
+  }
+}
+
+fn kvm_answer_line(events: List<KvmJournalEvent>, reason: String) -> String? {
+  let answers: List<KvmJournalEvent> = filter(events, e => match e {
+    KvmJournalStill { at: _, seq: _, reason: r, file: _, gen: _ } => string_contains(s: r, pattern: reason)
+    KvmJournalAcquisitionFailed { at: _, seq: _, reason: r, cause: _, gen: _ } => string_contains(s: r, pattern: reason)
+    _ => false
+  })
+  match answers.first() {
+    Present { value: e } => Present { value: kvm_event_text(e: e) }
+    Absent => none
+  }
+}
+
+fn kvm_await_answer(dir: String, reason: String, remaining: Int) -> String? {
+  match kvm_answer_line(events: kvm_journal_events_at(dir: dir), reason: reason) {
+    Present { value: l } => Present { value: l }
+    Absent =>
+      if remaining <= 0 { none } else {
+        let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+        kvm_await_answer(dir: dir, reason: reason, remaining: remaining - 1)
+      }
+  }
+}
+
+fn kvm_stopped_seen(events: List<KvmJournalEvent>) -> Bool {
+  count(filter(events, e => match e { KvmJournalStopped { at: _, session: _, browser: _ } => true  _ => false })) > 0
+}
+
+fn kvm_await_stopped(dir: String, remaining: Int) -> Bool {
+  if kvm_stopped_seen(events: kvm_journal_events_at(dir: dir)) { true }
+  else if remaining <= 0 { false }
+  else {
+    let _paced = sleep_delay_seconds_second_carrier_projection(duration: second(count: 1))
+    kvm_await_stopped(dir: dir, remaining: remaining - 1)
+  }
+}
+
+fn kvm_last_result(events: List<KvmJournalEvent>, session: Bool) -> String {
+  let found: List<String> = fold(events, [], (acc, e) => match e {
+    KvmJournalSessionRelease { at: a, result: r } => if session { [concat(r, concat(" at ", a.iso))] } else { acc }
+    KvmJournalBrowserClose { at: a, result: r } => if session { acc } else { [concat(r, concat(" at ", a.iso))] }
+    _ => acc
+  })
+  match found.first() {
+    Present { value: t } => t
+    Absent => "NOT JOURNALLED"
+  }
+}
+
+// THE TEARDOWN RESULTS, TYPED: the leading token of a result, read against the RS rows. Anything
+// after it -- a detail, an " at <instant>" suffix -- is carried, never matched, so a failure whose detail
+// happens to contain "released" or "closed" is a failure.
+type KvmSessionRelease
+  = KvmSessionReleased
+  | KvmSessionReleaseHttp { status: String }
+  | KvmSessionReleaseFailed { detail: String }
+  | KvmSessionLoginUnobserved
+  | KvmSessionNoSession
+  | KvmSessionReleaseUnrecognized { raw: String }
+
+type KvmBrowserClose
+  = KvmBrowserClosed
+  | KvmBrowserNotLaunched
+  | KvmBrowserCloseFailed { detail: String }
+  | KvmBrowserCloseUnrecognized { raw: String }
+
+fn kvm_result_leading(result: String) -> String {
+  match split(s: trim(s: result), delimiter: " ").first() { Present { value: w } => w  Absent => "" }
+}
+
+fn kvm_result_rest(result: String) -> String {
+  join(split(s: trim(s: result), delimiter: " ").skip(n: 1), " ")
+}
+
+fn kvm_session_release_of(result: String) -> KvmSessionRelease {
+  let w = kvm_result_leading(result: result)
+  if w == kvm_result_released.word { KvmSessionReleased }
+  else if w == kvm_result_release_failed.word { KvmSessionReleaseFailed { detail: kvm_result_rest(result: result) } }
+  else if w == kvm_result_login_unobserved.word { KvmSessionLoginUnobserved }
+  else if w == kvm_result_no_session.word { KvmSessionNoSession }
+  else if starts_with(s: w, prefix: kvm_result_http_prefix.word) && string_length(w) > string_length(kvm_result_http_prefix.word) {
+    KvmSessionReleaseHttp { status: substring(s: w, start: string_length(kvm_result_http_prefix.word), end: string_length(w)) }
+  }
+  else { KvmSessionReleaseUnrecognized { raw: result } }
+}
+
+fn kvm_browser_close_of(result: String) -> KvmBrowserClose {
+  let w = kvm_result_leading(result: result)
+  if w == kvm_result_closed.word { KvmBrowserClosed }
+  else if w == kvm_result_no_browser.word { KvmBrowserNotLaunched }
+  else if w == kvm_result_close_failed.word { KvmBrowserCloseFailed { detail: kvm_result_rest(result: result) } }
+  else { KvmBrowserCloseUnrecognized { raw: result } }
+}
+
+// THE END: the terminal still, the pre-teardown snapshot from a journal actually read, the boot's
+// timestamped stop request, the bounded wait for the observer's stopped line, then the owned-process
+// release -- always attempted and observed, so an observer that journalled "stopped" but is still
+// running is still released -- and the final reading.
+fn megarac_kvm_observer_finish(start: KvmObserverStart, attempt: String, terminal_order: Int) -> KvmObserverRecord {
+  match start {
+    KvmObserverNotStarted { reason: r } => kvm_observer_record_not_started(attempt: attempt, reason: r)
+    KvmObserverStarted { dir: d_, subject: _, standing: _, checked_at: _ } => {
+      let d = d_ as String
+      let asked = kvm_observer_trigger(start: start, order: terminal_order, reason: "terminal-verdict")
+      let terminal = if asked {
+        match kvm_await_answer(dir: d, reason: "terminal-verdict", remaining: kvm_polls_within(wait: megarac_kvm_observer_trigger_wait)) {
+          Present { value: l } => KvmTerminalStillAnswered { line: l }
+          Absent => KvmTerminalStillUnanswered { waited: megarac_kvm_observer_trigger_wait }
+        }
+      } else {
+        KvmTerminalStillNotAsked { reason: kvm_standing_text(s: kvm_observer_standing_now(start: start)) }
+      }
+      let snapshot_path = concat(d, "/journal.pre-teardown")
+      let snapshot = match kvm_journal_read_at(dir: d) {
+        KvmJournalText { text: t } => if Filesystem.Write(path: snapshot_path, content: t).success { KvmSnapshotKept { path: snapshot_path } } else { KvmSnapshotNotKept { cause: "the snapshot could not be written" } }
+        KvmJournalAbsent => KvmSnapshotNotKept { cause: "the observer wrote no journal" }
+        KvmJournalUnread { cause: c } => KvmSnapshotNotKept { cause: concat("the journal could not be read: ", c) }
+      }
+      let requested_at = clock_now_probed_at_or_unknown()
+      let _teardown_event = Filesystem.Write(path: concat(d, "/workflow"), content: concat("gunbc-workflow: observer stop requested at=", concat(requested_at as String, "\n")))
+      let _stop = Filesystem.Write(path: concat(d, "/stop"), content: "")
+      let stopped = kvm_await_stopped(dir: d, remaining: kvm_polls_within(wait: megarac_kvm_observer_stop_wait))
+      let process = owned_process_release(pid_path: concat(d, "/observer.pid"))
+      let journal = kvm_journal_read_at(dir: d)
+      let events = kvm_journal_events_of(read: journal)
+      KvmObserverRecord {
+        attempt: attempt,
+        start: start,
+        journal: journal,
+        events: events,
+        stills: kvm_hash_stills(dir: d, events: events),
+        gaps: kvm_still_gaps(events: events, cadence: megarac_kvm_observer_cadence, observed_until: clock_now_probed_at_or_unknown() as String),
+        teardown: KvmTeardownRecorded {
+          terminal: terminal,
+          snapshot: snapshot,
+          requested_at: requested_at,
+          stopped_seen: stopped,
+          session_release: kvm_last_result(events: events, session: true),
+          browser_close: kvm_last_result(events: events, session: false),
+          process: process,
+        },
+      }
+    }
+  }
+}
+
+fn kvm_hash_stills(dir: String, events: List<KvmJournalEvent>) -> List<KvmRetainedStill> {
+  fold(events, [], (acc, e) => match e {
+    KvmJournalStill { at: a, seq: s, reason: r, file: f, gen: _ } =>
+      acc.concat([kvm_retained_still(dir: dir, at: a, seq: s, reason: r, file: f, digest: if f == "" { Sha256FileDigestUnavailable { path: dir as NonEmptyStr, reason: "the journal named no file" } } else { sha256sum_file_digest_via_shell(path: concat(dir, concat("/", f)) as NonEmptyStr) })])
+    _ => acc
+  })
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────────────────────────────
+
+fn kvm_refusal_text(r: KvmObserverRefusal) -> String {
+  match r {
+    KvmSeatBusy { viewer_count: n } => concat("KVM viewer seat already held (viewer_count=", n, "); not evicted")
+    KvmLoginRefused { detail: d } => concat("web login refused: ", d)
+    KvmNoKvmService => "the services list names no kvm service"
+    KvmNoFrame { detail: d } => concat("the viewer received no /kvm frame: ", d)
+    KvmToolchainUnavailable { detail: d } => concat("capture toolchain unavailable on the runner: ", d)
+    KvmCredentialUnreadable { detail: d } => concat("credential unreadable: ", d)
+    KvmRefusedOther { cause: c, detail: d } => concat(c, ": ", d)
+  }
+}
+
+fn kvm_event_text(e: KvmJournalEvent) -> String {
+  match e {
+    KvmJournalEstablished { at: a, host: h, session: s, attempt: t, gen: g } => concat(a.iso, " established host=", h, " session=", s, " attempt=", t, " gen=", g)
+    KvmJournalConnectionRequested { at: a } => concat(a.iso, " connection requested (no frame yet)")
+    KvmJournalConnectionRefused { at: a } => concat(a.iso, " CONNECTION REFUSED (closed before any frame)")
+    KvmJournalConnectionOpen { at: a, gen: g } => concat(a.iso, " connection open gen ", g, " (first /kvm frame received)")
+    KvmJournalConnectionLost { at: a, gen: g } => concat(a.iso, " CONNECTION LOST gen ", g, " (viewer /kvm WebSocket closed)")
+    KvmJournalConnectionError { at: a, gen: g, detail: d } => concat(a.iso, " CONNECTION ERROR gen ", g, ": ", d)
+    KvmJournalStill { at: a, seq: s, reason: r, file: f, gen: g } => concat(a.iso, " still #", s, " (", r, ", gen ", g, ") ", f)
+    KvmJournalAcquisitionFailed { at: a, seq: s, reason: r, cause: c, gen: g } => concat(a.iso, " ACQUISITION FAILED #", s, " (", r, ", gen ", g, "): ", match c {
+      KvmNotConnected => "not connected"
+      KvmConnectionChangedDuringAcquisition => "the connection changed while the canvas was read"
+      KvmCanvasUnreadable { detail: d } => concat("canvas unreadable: ", d)
+      KvmAcquisitionOther { cause: x, detail: d } => concat(x, ": ", d)
+    })
+    KvmJournalRefused { at: a, refusal: r } => concat(a.iso, " REFUSED: ", kvm_refusal_text(r: r))
+    KvmJournalFailed { at: a, detail: d } => concat(a.iso, " FAILED: ", d)
+    KvmJournalStopRequested { at: a, by: b } => concat(a.iso, " stop requested by ", b)
+    KvmJournalSessionRelease { at: a, result: r } => concat(a.iso, " session release: ", r)
+    KvmJournalBrowserClose { at: a, result: r } => concat(a.iso, " browser close: ", r)
+    KvmJournalStopped { at: a, session: s, browser: b } => concat(a.iso, " stopped; session ", s, "; browser ", b)
+    KvmJournalTriggerScanFailed { at: a, detail: d } => concat(a.iso, concat(" trigger scan failed: ", d))
+    KvmJournalNavigated { at: a, seq: n, phase: p, url: u } => concat(a.iso, " main frame navigated #", n, " during ", p, " to ", u)
+    KvmJournalPageConsole { at: a, phase: p, level: l, detail: d } => concat(a.iso, " viewer console ", l, " during ", p, ": ", d)
+    KvmJournalPageError { at: a, phase: p, detail: d } => concat(a.iso, " VIEWER PAGE ERROR during ", p, ": ", d)
+    KvmJournalUnparsed { line: l } => concat("unparsed journal line: ", l)
+  }
+}
+
+fn kvm_standing_text(s: KvmObserverStanding) -> String {
+  match s {
+    KvmObserverEstablished { at: a, host: h, session: se, attempt: t } => concat("established at ", a.iso, " (host ", h, ", session ", se, ", attempt ", t, ")")
+    KvmObserverLost { at: a, established_at: e } => concat("LOST at ", a.iso, " after establishment at ", e.iso)
+    KvmObserverMismatch { at: a, detail: d } => concat("MISMATCHED at ", a.iso, ": ", d)
+    KvmObserverStopped { at: a } => concat("STOPPED at ", a.iso)
+    KvmObserverProcessNotRunning { process: p } => concat("the observer process is NOT RUNNING: ", owned_process_standing_text(s: p))
+    KvmObserverJournalUnread { cause: c } => concat("the observer journal is UNREAD: ", c)
+    KvmObserverRefused { at: a, refusal: r } => concat("REFUSED at ", a.iso, ": ", kvm_refusal_text(r: r))
+    KvmObserverFailed { at: a, detail: d } => concat("FAILED at ", a.iso, ": ", d)
+    KvmObserverPending => "NOT ESTABLISHED within the establishment wait (no established or refused line)"
+  }
+}
+
+fn kvm_retained_still_text(s: KvmRetainedStill) -> String {
+  match s {
+    KvmStillHashed { at: a, seq: q, reason: r, path: p, digest: d } => concat("#", q, " ", a.iso, " (", r, ") ", p as String, " sha256=", d.hex as String)
+    KvmStillUnhashed { at: a, seq: q, reason: r, path: p, why: w } => concat("#", q, " ", a.iso, " (", r, ") ", p, " NOT HASHED, not retained as evidence: ", w)
+  }
+}
+
+fn kvm_gap_text(g: KvmStillGap) -> String {
+  match g {
+    KvmGapOverCadence { from: f, to: t, length: l } => concat(f.iso, " -> ", t.iso, " (", to_string((millisecond_count(m: l) as Int) / 1000), " s)")
+    KvmClockStepBack { from: f, to: t } => concat("CLOCK STEPPED BACK ", f.iso, " -> ", t.iso)
+    KvmFinalGapUnclosed { from: f, observed_until: u } => concat("UNCLOSED final gap from ", f.iso, " (no stop mark; the boot finished at ", u, ")")
+  }
+}
+
+fn kvm_journal_read_text(r: KvmJournalRead) -> String {
+  match r {
+    KvmJournalText { text: _ } => "read"
+    KvmJournalAbsent => "ABSENT (the observer wrote no journal)"
+    KvmJournalUnread { cause: c } => concat("UNREAD: ", c)
+  }
+}
+
+fn kvm_terminal_text(t: KvmTerminalStill) -> String {
+  match t {
+    KvmTerminalStillAnswered { line: l } => concat("answered: ", l)
+    KvmTerminalStillUnanswered { waited: w } => concat("UNANSWERED within ", to_string(second_count(s: w) as Int), " s")
+    KvmTerminalStillNotAsked { reason: r } => concat("not asked: ", r)
+  }
+}
+
+fn kvm_observer_record_text(rec: KvmObserverRecord) -> String {
+  match rec.start {
+    KvmObserverNotStarted { reason: r } => concat("observer NOT STARTED: ", r as String)
+    KvmObserverStarted { dir: d, subject: sub, standing: s, checked_at: c } =>
+      join([
+        concat("observer ", d as String, " for host ", sub.host, ", attempt ", sub.attempt, ": ", kvm_standing_text(s: s), "; checked at ", c as String),
+        concat("journal: ", kvm_journal_read_text(r: rec.journal)),
+        concat("stills: ", to_string(count(kvm_hashed_stills(stills: rec.stills))), " hash-bound of ", to_string(count(rec.stills)), " written"),
+        join(map(rec.stills, x => concat("  ", kvm_retained_still_text(s: x))), "\n"),
+        concat("gaps, step-backs and unclosed ends: ", to_string(count(rec.gaps))),
+        join(map(rec.gaps, g => concat("  ", kvm_gap_text(g: g))), "\n"),
+        "boundary and lifecycle events:",
+        join(map(rec.events, e => concat("  ", kvm_event_text(e: e))), "\n"),
+        match rec.teardown {
+          KvmTeardownRecorded { terminal: t, snapshot: sn, requested_at: q, stopped_seen: st, session_release: sr, browser_close: bc, process: p } =>
+            join([
+              concat("terminal still: ", kvm_terminal_text(t: t)),
+              concat("pre-teardown snapshot: ", match sn { KvmSnapshotKept { path: x } => concat("kept at ", x)  KvmSnapshotNotKept { cause: x } => concat("NOT kept: ", x) }),
+              concat("stop requested by the boot at ", q as String, if st { "; the observer journalled stopped" } else { "; NO stopped line within the wait" }),
+              concat("observer session release: ", sr),
+              concat("observer browser close: ", bc),
+              concat("owned process: ", owned_release_text(r: p)),
+            ], "\n")
+          KvmTeardownNotNeeded { reason: r } => concat("teardown: not needed: ", r as String)
+        },
+      ], "\n")
+  }
+}
+
+fn kvm_hashed_stills(stills: List<KvmRetainedStill>) -> List<KvmRetainedStill> {
+  filter(stills, x => match x { KvmStillHashed { at: _, seq: _, reason: _, path: _, digest: _ } => true  _ => false })
+}
+
+// THE RECEIPT LINE: the executed real route (eager-owl-205, 2026-09-28). The boot runs the observer
+// against the real controller under the job's workload-identity credential, and its receipt carries
+// the established line and the first hash-bound still -- or, verbatim, why there is none.
+fn kvm_observer_receipt_line(rec: KvmObserverRecord) -> String {
+  concat("screen=", match rec.start {
+    KvmObserverNotStarted { reason: r } => concat("observer not started: ", r as String)
+    KvmObserverStarted { dir: _, subject: _, standing: s, checked_at: _ } =>
+      concat(kvm_standing_text(s: s), "; ", match kvm_hashed_stills(stills: rec.stills).first() {
+        Present { value: x } => concat("first hash-bound still ", kvm_retained_still_text(s: x))
+        Absent => "no hash-bound still"
+      })
+  })
+}

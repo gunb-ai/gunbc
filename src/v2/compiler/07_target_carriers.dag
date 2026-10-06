@@ -19,7 +19,8 @@ import v2.std.diagnostic {
   bind_outcome,
   node_locus,
   outcome_accepted,
-  outcome_rejected
+  outcome_rejected,
+  None
 }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode }
 import v2.std.node_query {
@@ -46,19 +47,23 @@ fn fidelity_disposition_node_has_named_kind(root: Node, name: Symbol) -> Bool {
   }
 }
 
+fn fidelity_disposition_malformed(node: Node) -> Outcome<DecodeFidelity> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^target_carriers_fidelity_disposition_malformed,
+      at: node_locus(node: node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
+}
+
 fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFidelity> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_fidelity_disposition_kind_modeled {
         outcome_accepted(Lossless)
       } else {
-        outcome_rejected(
-          Diagnostic {
-            reason: ^target_carriers_fidelity_disposition_malformed,
-            at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
+        fidelity_disposition_malformed(node: node)
       }
     TypeNode { connective: Conj } =>
       if fidelity_disposition_node_has_named_kind(
@@ -70,23 +75,24 @@ fn fidelity_disposition_node_decode_fidelity(node: Node) -> Outcome<DecodeFideli
       ) {
         outcome_accepted(Lossy)
       } else {
-        outcome_rejected(
-          Diagnostic {
-            reason: ^target_carriers_fidelity_disposition_malformed,
-            at: node_locus(node: node),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          }
-        )
+        fidelity_disposition_malformed(node: node)
       }
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^target_carriers_fidelity_disposition_malformed,
-          at: node_locus(node: node),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Disj } => fidelity_disposition_malformed(node: node)
+    TypeNode { connective: Arrow } => fidelity_disposition_malformed(node: node)
+    TypeNode { connective: Cardinality } => fidelity_disposition_malformed(node: node)
+    TypeNode { connective: Instantiation } => fidelity_disposition_malformed(node: node)
+    ComputationNode { behavior: _ } => fidelity_disposition_malformed(node: node)
   }
+}
+
+fn fidelity_quotient_malformed(quotient: Node) -> Outcome<DecodeFidelity> {
+  outcome_rejected(
+    Diagnostic {
+      reason: ^target_carriers_fidelity_quotient_malformed,
+      at: node_locus(node: quotient),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  )
 }
 
 fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> {
@@ -114,14 +120,12 @@ fn fidelity_quotient_decode_fidelity(quotient: Node) -> Outcome<DecodeFidelity> 
           }
         }
       )
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^target_carriers_fidelity_quotient_malformed,
-          at: node_locus(node: quotient),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } => fidelity_quotient_malformed(quotient: quotient)
+    TypeNode { connective: Disj } => fidelity_quotient_malformed(quotient: quotient)
+    TypeNode { connective: Arrow } => fidelity_quotient_malformed(quotient: quotient)
+    TypeNode { connective: Cardinality } => fidelity_quotient_malformed(quotient: quotient)
+    TypeNode { connective: Instantiation } => fidelity_quotient_malformed(quotient: quotient)
+    ComputationNode { behavior: _ } => fidelity_quotient_malformed(quotient: quotient)
   }
 }
 

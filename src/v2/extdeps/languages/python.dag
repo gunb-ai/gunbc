@@ -1,4 +1,5 @@
 module v2.extdeps.languages.python
+import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.arrow_signature { anonymous_signature_arrow }
 import v2.std.language_model { LanguageModel }
@@ -57,7 +58,7 @@ import v2.std.compilers.lexing {
 import v2.std.compilers.target_model {
   ProducedDeclUnwired, ConcreteSyntaxToken, FixedToken, BoundToken, concrete_syntax_token_class, concrete_syntax_token_to_node }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.collection { List, Map, PointwisePower, empty_map, map_insert }
+import v2.std.collection { Map, PointwisePower, empty_map, map_insert }
 import v2.std.host_transport {
   HostBuildEnvironment,
   host_process_location_names,
@@ -102,7 +103,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.logic { Bool, bool_boolean_algebra }
+import v2.std.logic { bool_boolean_algebra }
 import v2.std.algebra_structure_signature { approximate_field_node, boolean_algebra_node, ordered_ring_node }
 import v2.std.text { String }
 
@@ -239,7 +240,7 @@ data python_singleton_facts_catalog: List<PythonSingletonPrimitiveFacts> = [
   python_facts_ellipsis
 ]
 
-data py_bool_grounding: BooleanAlgebra<v2.std.logic.Bool> = bool_boolean_algebra
+data py_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn python_inhabitant_atom(id: Symbol) -> Node {
   Node {

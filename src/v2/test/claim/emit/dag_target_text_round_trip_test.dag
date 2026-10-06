@@ -1,0 +1,276 @@
+module v2.test.emit.dag_target_text_round_trip
+
+import v2.compiler.parse { PreparedModeled, PreparedVoidGrammar, parse_production_prepared }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.compiler.target_serialize { serialize_concrete_syntax_tokens_to_source_string }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_lex,
+  dag_target_model,
+  dag_token_class_emit_transforms,
+  dag_value_expression_projection,
+  parse_production_emitted_identity_optional
+}
+import v2.std.compilers.lexing { Token }
+import v2.std.compilers.target_model {
+  BoundToken,
+  FixedToken,
+  ConcreteSyntaxToken,
+  TokenClassEmitTransform,
+  bind_let_value_producing_tokens,
+  bound_tokens_source_text_with_transforms,
+  render_target_text,
+  target_model_emit_transforms_empty
+}
+import std.algebra { list_append }
+import v2.std.algebra { list_map }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.optional { Absent, Optional, Present }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE TEXT THE dag TARGET WRITES IS TEXT THE dag GRAMMAR READS BACK AS THE SAME TREE. The dag target
+// declared no separation between tokens, so a Bind rendered as "{letx=(a){x}}" and a conditional as
+// "iftruethen1elsex": the first reads back with no binding in it and the second as one identifier,
+// both ACCEPTED. Each claim here renders an emitted token sequence to text, lexes that text with the
+// dag lex rules and (where a tree is owed) parses it once, entering the grammar at the production
+// under test: `fn_body` (the brace block a Bind renders as; `block_expr` is that production) for a
+// Bind, `if_expr` for the conditional. The inputs are
+// supplied at the rendering interface (the lex rules, the spellings, the transform rows); the last
+// claim is the inhabitance one, on the real route with the dag target model.
+fn trt_ident(binding: Symbol) -> List<ConcreteSyntaxToken> {
+  [BoundToken { token_class: ^dag_token_ident, binding: binding }]
+}
+
+fn trt_spellings() -> Map<Symbol, String> {
+  map_insert(
+    m: map_insert(m: map_insert(m: empty_map(), key: ^dag_binding_bind_x, value: "x"), key: ^dag_binding_pick_lit_one, value: "a"),
+    key: ^trt_binding_one,
+    value: "1"
+  )
+}
+
+fn trt_bind(value: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  bind_let_value_producing_tokens(
+    projection: dag_value_expression_projection(),
+    key_tokens: trt_ident(binding: ^dag_binding_bind_x),
+    value_tokens: value,
+    body_tokens: trt_ident(binding: ^dag_binding_bind_x)
+  )
+}
+
+// A Bind as the VALUE of a Bind, from the real emitter.
+fn trt_nested_bind() -> List<ConcreteSyntaxToken> {
+  trt_bind(value: trt_bind(value: trt_ident(binding: ^dag_binding_pick_lit_one)))
+}
+
+// `if true then 1 else x`: keywords, a literal and an identifier, every one adjacent to another word.
+fn trt_mixed() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^dag_token_kw_if },
+    FixedToken { token_class: ^dag_token_kw_true },
+    FixedToken { token_class: ^dag_token_kw_then },
+    BoundToken { token_class: ^dag_token_int_literal, binding: ^trt_binding_one },
+    FixedToken { token_class: ^dag_token_kw_else },
+    BoundToken { token_class: ^dag_token_ident, binding: ^dag_binding_bind_x }
+  ]
+}
+
+fn trt_text(tokens: List<ConcreteSyntaxToken>, transforms: Map<Symbol, TokenClassEmitTransform>) -> String {
+  match bound_tokens_source_text_with_transforms(
+    tokens: tokens,
+    lex: dag_lex(),
+    binding_spellings: trt_spellings(),
+    transforms: transforms
+  ) {
+    Accepted { value: t, diagnostics: _ } => render_target_text(t: t)
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn trt_lex(text: String) -> List<Token> {
+  match tokenize(text: text, file: ^trt_probe, rules: dag_lex()) {
+    Accepted { value: stream, diagnostics: _ } => stream.all
+    Rejected { diagnostics: _ } => []
+  }
+}
+
+fn trt_emitted_classes(tokens: List<ConcreteSyntaxToken>) -> List<Symbol> {
+  list_map(xs: tokens, f: fn(t) {
+    match t {
+      FixedToken { token_class: c } => c
+      BoundToken { token_class: c, binding: _ } => c
+    }
+  })
+}
+
+// The token classes the text lexes to, in order: the emitted sequence, or it was not round-tripped.
+fn trt_read_classes(text: String) -> List<Symbol> {
+  trt_token_classes(tokens: trt_lex(text: text))
+}
+
+fn trt_token_classes(tokens: List<Token>) -> List<Symbol> {
+  list_map(xs: tokens, f: fn(t) { t.class })
+}
+
+fn trt_parse(tokens: List<Token>, production: Symbol) -> Optional<Node> {
+  match dag_prepared_grammar() {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedVoidGrammar => Absent
+        PreparedModeled { modeled: modeled, materialization: m } =>
+          match parse_production_prepared(
+            tokens: tokens,
+            validated: modeled.validated,
+            analysis: modeled.analysis,
+            production_name: production,
+            materialization: m
+          ) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: artifact, diagnostics: _ } => trt_present(node: artifact.tree)
+          }
+      }
+  }
+}
+
+fn trt_present(node: Node) -> Optional<Node> { Present { value: node } }
+
+fn trt_is(node: Node, production: Symbol) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == production
+    Absent => false
+  }
+}
+
+fn trt_count(root: Node, production: Symbol) -> Int {
+  let here = if trt_is(node: root, production: production) { 1 } else { 0 }
+  fold(root.children, init: here, f: fn(acc, e) { acc + trt_count(root: e.target, production: production) })
+}
+
+fn trt_count_below(root: Node, production: Symbol) -> Int {
+  fold(root.children, init: 0, f: fn(acc, e) { acc + trt_count(root: e.target, production: production) })
+}
+
+// A let with exactly one let under it.
+fn trt_has_nested_let(root: Node) -> Bool {
+  if trt_is(node: root, production: ^dag_surface_let_expr) && trt_count_below(root: root, production: ^dag_surface_let_expr) == 1 {
+    true
+  } else {
+    fold(root.children, init: false, f: fn(found, e) { found || trt_has_nested_let(root: e.target) })
+  }
+}
+
+fn trt_fixed(classes: List<Symbol>) -> List<ConcreteSyntaxToken> {
+  list_map(xs: classes, f: fn(c) { trt_fixed_one(token_class: c) })
+}
+
+fn trt_fixed_one(token_class: Symbol) -> ConcreteSyntaxToken { FixedToken { token_class: token_class } }
+
+// One Bind `{ let x = (a) { body } }` from the real emitter, with the given body.
+fn trt_bind_with_body(body: List<ConcreteSyntaxToken>) -> List<ConcreteSyntaxToken> {
+  bind_let_value_producing_tokens(
+    projection: dag_value_expression_projection(),
+    key_tokens: trt_ident(binding: ^dag_binding_bind_x),
+    value_tokens: trt_ident(binding: ^dag_binding_pick_lit_one),
+    body_tokens: body
+  )
+}
+
+// THE TEXT-GRAIN ROUND TRIP OF ONE EMITTED TOKEN SEQUENCE: rendered with the dag target's rows, the
+// text lexes back to the emitted token classes in order (the join: any merge or split of tokens
+// fails here), and those lexed tokens parse at `fn_body` (the block) to ONE tree holding exactly `lets` bindings.
+// `let_under_let` is the tree's shape: a Bind in the VALUE group sits under the outer let node, a
+// Bind in the BODY block does not (the block follows the let as its own statement). The let count is
+// asked only AFTER the join, never instead of it: the unseparated text has the same count.
+fn trt_bind_text_round_trips(tokens: List<ConcreteSyntaxToken>, lets: Int, let_under_let: Bool) -> Bool {
+  let read = trt_lex(text: trt_text(tokens: tokens, transforms: dag_token_class_emit_transforms()))
+  trt_token_classes(tokens: read) == trt_emitted_classes(tokens: tokens)
+    && match trt_parse(tokens: read, production: ^dag_production_fn_body) {
+      Present { value: tree } =>
+        trt_count(root: tree, production: ^dag_surface_let_expr) == lets && trt_has_nested_let(root: tree) == let_under_let
+      Absent => false
+    }
+}
+
+fn trt_mixed_text_round_trips() -> Bool {
+  let read = trt_lex(text: trt_text(tokens: trt_mixed(), transforms: dag_token_class_emit_transforms()))
+  trt_token_classes(tokens: read) == trt_emitted_classes(tokens: trt_mixed())
+    && match trt_parse(tokens: read, production: ^dag_production_if_expr) {
+      Present { value: tree } => trt_count(root: tree, production: ^dag_surface_if_expr) == 1
+      Absent => false
+    }
+}
+
+// THE BLOCK-SCOPED BIND `{ let k = (v) { b } }`, AT TEXT GRAIN, for each body the emitter may be
+// handed: a bare name, an empty brace literal, a `-`-led expression, and a Bind. Each claim pays its
+// own render, lex and parse (only the prepared grammar is shared, by declared demand).
+test fn a_bind_with_a_bare_name_body_round_trips_as_text() -> Bool {
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_ident(binding: ^dag_binding_bind_x)), lets: 1, let_under_let: false)
+}
+
+test fn a_bind_with_an_empty_brace_literal_body_round_trips_as_text() -> Bool {
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_fixed(classes: [^dag_token_lbrace, ^dag_token_rbrace])), lets: 1, let_under_let: false)
+}
+
+test fn a_bind_with_a_minus_led_body_round_trips_as_text() -> Bool {
+  trt_bind_text_round_trips(
+    tokens: trt_bind_with_body(body: list_append(left: trt_fixed(classes: [^dag_token_minus]), right: trt_ident(binding: ^dag_binding_bind_x))),
+    lets: 1,
+    let_under_let: false
+  )
+}
+
+test fn a_bind_with_a_bind_body_round_trips_as_text() -> Bool {
+  trt_bind_text_round_trips(tokens: trt_bind_with_body(body: trt_bind(value: trt_ident(binding: ^dag_binding_pick_lit_one))), lets: 2, let_under_let: false)
+}
+
+test fn a_bind_with_a_bind_value_round_trips_as_text() -> Bool {
+  trt_bind_text_round_trips(tokens: trt_nested_bind(), lets: 2, let_under_let: true)
+}
+
+// THE RED, KEPT: the same tokens with no transform rows are the rendering the dag target had, and
+// they do not read back as the tokens emitted (`let` `x` is the one identifier `letx`). That text
+// still PARSES, and to two nested lets (`letx = (..)` reads as a bare-assignment binding), so a
+// claim that counted lets passed on it; the token join is what refuses it.
+test fn nested_bind_text_without_separation_reads_back_as_other_tokens() -> Bool {
+  trt_read_classes(text: trt_text(tokens: trt_nested_bind(), transforms: target_model_emit_transforms_empty))
+    != trt_emitted_classes(tokens: trt_nested_bind())
+}
+
+test fn mixed_expression_text_round_trips() -> Bool {
+  trt_mixed_text_round_trips()
+}
+
+// THE CLASS, at its cheapest specimen: unseparated, the six tokens are ONE identifier, which is a
+// valid expression. A claim that only asked "does the emitted text parse" passes on it.
+test fn mixed_expression_text_without_separation_is_one_identifier() -> Bool {
+  trt_read_classes(text: trt_text(tokens: trt_mixed(), transforms: target_model_emit_transforms_empty)) == [^dag_token_ident]
+}
+
+// Punctuation is not exempt: `>` then `=` unseparated is the one token `>=`.
+test fn adjacent_punctuation_reads_back_as_two_tokens() -> Bool {
+  let pair = [FixedToken { token_class: ^dag_token_gt }, FixedToken { token_class: ^dag_token_eq }]
+  trt_read_classes(text: trt_text(tokens: pair, transforms: dag_token_class_emit_transforms())) == [^dag_token_gt, ^dag_token_eq]
+    && trt_read_classes(text: trt_text(tokens: pair, transforms: target_model_emit_transforms_empty)) == [^dag_token_gte]
+}
+
+// INHABITANCE, ON THE REAL ROUTE: the dag target model carries the rows, and the serializer the
+// emitter calls (v2.compiler.target_serialize) reads them. Dropping the rows from dag_target_model,
+// or the map from that serializer, runs the tokens together and fails this. The value is the name
+// `x`: the model spells its other bindings as digits, which lex as literals, not as the identifier
+// class these tokens carry.
+fn trt_model_bind() -> List<ConcreteSyntaxToken> {
+  trt_bind(value: trt_ident(binding: ^dag_binding_bind_x))
+}
+
+test fn the_dag_target_model_serializes_a_bind_with_its_tokens_separated() -> Bool {
+  match serialize_concrete_syntax_tokens_to_source_string(target: dag_target_model(), tokens: trt_model_bind()) {
+    Accepted { value: t, diagnostics: _ } =>
+      trt_read_classes(text: render_target_text(t: t)) == trt_emitted_classes(tokens: trt_model_bind())
+    Rejected { diagnostics: _ } => false
+  }
+}

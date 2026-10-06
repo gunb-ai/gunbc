@@ -9,7 +9,7 @@ import std.effect_grant {
 }
 import extdeps.uri { Uri, Https }
 import extdeps.transports.rest {
-  RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
   RestUnauthenticated,
   RestBodyRead, RestBodyReadRefused,
   RestResponseObserved, RestExchangeRefused,
@@ -86,19 +86,21 @@ fn denied_observation() -> RestExchangeObservation {
 test fn rest_status_and_body_are_persistable() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(operation: "Observe", observation: denied_observation())]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestRefused { refusal: RestStatusRefused { status, body } } => status == 401 && body == "{\"message\":\"denied\"}"
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestStatusRefused { status, body } => status == 401 && body == "{\"message\":\"denied\"}"
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
 
-test fn rest_success_projects_rest_ok() -> Bool {
+test fn rest_success_reaches_the_answered_arm() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -107,26 +109,16 @@ test fn rest_success_projects_rest_ok() -> Bool {
         body: RestBodyRead { body: "{\"message\":\"accepted\"}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
-  )
-  match result {
-    WitnessReturned { value } => value.message == "accepted" && match value.observed {
-      RestOk => true
-      _ => false
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestAnswered { answer } => answer.message == "accepted"
+        RestRefused { refusal: _ } => false
+      }
     }
-    WitnessRefused { diagnostic } => false
-    WitnessInterrupted { at: _, route: _, state: _ } => false
-  }
-}
-
-test fn rest_operation_without_outcome_still_refuses() -> Bool {
-  let result = evaluate_in_witness_frame(
-    frame: replay_frame(fixtures: [fixture_for(operation: "Legacy", observation: denied_observation())]),
-    subject: fn(_scope) { test.RestReplay.Legacy() }
   )
   match result {
-    WitnessReturned { value } => false
-    WitnessRefused { diagnostic } => witness_diagnostic_rendered_reason(diagnostic: diagnostic) == "type error: HTTP 401: {\"message\":\"denied\"}"
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
@@ -137,13 +129,15 @@ test fn rest_transport_failure_is_persistable() -> Bool {
       operation: "Observe",
       observation: RestExchangeRefused { cause: "connection refused by fixture" }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestRefused { refusal: RestTransportRefused { cause } } => cause == "connection refused by fixture"
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestTransportRefused { cause } => cause == "connection refused by fixture"
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
@@ -158,14 +152,16 @@ test fn rest_unreadable_body_is_not_fabricated_empty() -> Bool {
         body: RestBodyReadRefused { cause: "truncated response body" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 401 && cause == "truncated response body"
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
-        status == 401 && cause == "truncated response body"
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
@@ -226,13 +222,15 @@ test fn rest_root_array_200_inhabits_list_payload() -> Bool {
         body: RestBodyRead { body: "[1,2,3]" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.RootArray() }
+    subject: fn(_scope) {
+      match test.RestReplay.RootArray() {
+        RestAnswered { answer } => answer.pulls == [1, 2, 3]
+        RestRefused { refusal: _ } => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => value.pulls == [1, 2, 3] && match value.observed {
-      RestOk => true
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
@@ -247,13 +245,15 @@ test fn rest_root_file_200_inhabits_object_payload() -> Bool {
         body: RestBodyRead { body: "{\"encoding\":\"base64\",\"content\":\"aGVsbG8=\"}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.RootFile() }
+    subject: fn(_scope) {
+      match test.RestReplay.RootFile() {
+        RestAnswered { answer: _ } => true
+        RestRefused { refusal: _ } => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestOk => true
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
@@ -268,19 +268,21 @@ test fn rest_root_page_200_inhabits_object_payload() -> Bool {
         body: RestBodyRead { body: "{\"incomplete_results\":false,\"items\":[]}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.RootPage() }
+    subject: fn(_scope) {
+      match test.RestReplay.RootPage() {
+        RestAnswered { answer: _ } => true
+        RestRefused { refusal: _ } => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestOk => true
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
 
-test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bool {
+test fn rest_200_uninhabiting_root_refuses_instead_of_answering_with_null() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "RootArray",
@@ -289,21 +291,23 @@ test fn rest_200_uninhabiting_root_refuses_instead_of_null_under_rest_ok() -> Bo
         body: RestBodyRead { body: "{\"pulls\":null}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.RootArray() }
+    subject: fn(_scope) {
+      match test.RestReplay.RootArray() {
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+        RestAnswered { answer: _ } => false
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
-        status == 200 && string_contains(s: cause, pattern: "did not inhabit")
-      RestOk => false
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
 
-test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> Bool {
+test fn rest_200_missing_keyed_field_refuses_instead_of_answering_with_null() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "Observe",
@@ -312,21 +316,23 @@ test fn rest_200_missing_keyed_field_refuses_instead_of_null_under_rest_ok() -> 
         body: RestBodyRead { body: "{\"other\":\"accepted\"}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.Observe() }
+    subject: fn(_scope) {
+      match test.RestReplay.Observe() {
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200 && string_contains(s: cause, pattern: "did not inhabit")
+        RestAnswered { answer: _ } => false
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
-        status == 200 && string_contains(s: cause, pattern: "did not inhabit")
-      RestOk => false
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
 
-test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
+test fn rest_200_absent_optional_from_path_still_answers() -> Bool {
   let result = evaluate_in_witness_frame(
     frame: replay_frame(fixtures: [fixture_for(
       operation: "OptionalObserve",
@@ -335,13 +341,15 @@ test fn rest_200_absent_optional_from_path_stays_rest_ok() -> Bool {
         body: RestBodyRead { body: "{\"message\":\"accepted\"}" }
       }
     )]),
-    subject: fn(_scope) { test.RestReplay.OptionalObserve() }
+    subject: fn(_scope) {
+      match test.RestReplay.OptionalObserve() {
+        RestAnswered { answer } => answer.message == "accepted"
+        RestRefused { refusal: _ } => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => value.message == "accepted" && match value.observed {
-      RestOk => true
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
@@ -384,41 +392,34 @@ fn first_run_completed_successfully(runs: WorkflowRunList) -> Bool {
 fn run_list_frame(body: String) -> WitnessEvaluationFrame<Unit> {
   replay_frame(fixtures: [
     fixture_for(operation: "WorkflowRunsPage", observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }),
-    fixture_for(operation: "WorkflowRunsPageLegacy", observation: RestResponseObserved { status: 200, body: RestBodyRead { body: body } }),
   ])
 }
 
 test fn a_contracted_coproduct_field_decodes_to_its_arm() -> Bool {
-  match evaluate_in_witness_frame(frame: run_list_frame(body: decoded_run_list_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
-    WitnessReturned { value } => match value.observed {
-      RestOk => first_run_completed_successfully(runs: value.runs)
-      _ => false
+  match evaluate_in_witness_frame(frame: run_list_frame(body: decoded_run_list_body), subject: fn(_scope) {
+    match test.RestReplay.WorkflowRunsPage() {
+      RestAnswered { answer } => first_run_completed_successfully(runs: answer.runs)
+      RestRefused { refusal: _ } => false
     }
+  }) {
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => false
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
 
 test fn an_unknown_spelling_refuses_at_the_located_field() -> Bool {
-  match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPage() }) {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
+  match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) {
+    match test.RestReplay.WorkflowRunsPage() {
+      RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
         status == 200
           && string_contains(s: cause, pattern: "workflow_runs[0].conclusion")
           && string_contains(s: cause, pattern: "\"succeeded\" names no arm")
       _ => false
     }
+  }) {
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => false
-    WitnessInterrupted { at: _, route: _, state: _ } => false
-  }
-}
-
-// Without an outcome field the same refusal is a loud evaluation failure, never a returned value.
-test fn an_unknown_spelling_without_an_outcome_field_refuses_the_evaluation() -> Bool {
-  match evaluate_in_witness_frame(frame: run_list_frame(body: misspelled_conclusion_body), subject: fn(_scope) { test.RestReplay.WorkflowRunsPageLegacy() }) {
-    WitnessReturned { value: _ } => false
-    WitnessRefused { diagnostic } =>
-      string_contains(s: witness_diagnostic_rendered_reason(diagnostic: diagnostic), pattern: "names no arm under the declared wire contract")
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }
@@ -432,15 +433,59 @@ test fn a_coproduct_with_no_declared_wire_spelling_refuses_even_an_authored_matc
       operation: "RootUncontracted",
       observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "{\"arm\":\"Alpha\"}" } }
     )]),
-    subject: fn(_scope) { test.RestReplay.RootUncontracted() }
+    subject: fn(_scope) {
+      match test.RestReplay.RootUncontracted() {
+        RestRefused { refusal: RestBodyUndecodable { status, cause } } =>
+          status == 200 && string_contains(s: cause, pattern: "shape.arm (UncontractedArm)") && string_contains(s: cause, pattern: "wire spelling is undeclared")
+        _ => false
+      }
+    }
   )
   match result {
-    WitnessReturned { value } => match value.observed {
-      RestBodyUndecodable { status, cause } =>
-        status == 200 && string_contains(s: cause, pattern: "shape.arm (UncontractedArm)") && string_contains(s: cause, pattern: "wire spelling is undeclared")
-      _ => false
-    }
+    WitnessReturned { value } => value
     WitnessRefused { diagnostic: _ } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// THE TYPED RESPONSE FORMAT IS HONOURED (gunbc.recurring_failure_mode
+// response_format_variant_silently_read_as_json). RED before the fix: the interpreter read
+// response_format only as a string literal, so `response_format: Text` fell back to Json and this
+// plain-text body answered RestBodyUndecodable at status 200.
+test fn a_text_response_format_reads_a_plain_body_as_text() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "TextBody",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "diff --git a/x b/x\n+plain text, not JSON" } }
+    )]),
+    subject: fn(_scope) {
+      match test.RestReplay.TextBody() {
+        RestAnswered { answer } => answer.text == "diff --git a/x b/x\n+plain text, not JSON"
+        RestRefused { refusal: _ } => false
+      }
+    }
+  )
+  match result {
+    WitnessReturned { value } => value
+    WitnessRefused { diagnostic } => false
+    WitnessInterrupted { at: _, route: _, state: _ } => false
+  }
+}
+
+// ANY OTHER SPELLING REFUSES. The quoted string is the one that used to be the only working
+// spelling in the interpreter and was read as Json by emitted code; now neither realization
+// can take it, and the interpreter says so instead of guessing.
+test fn an_unrecognized_response_format_refuses_rather_than_defaulting_to_json() -> Bool {
+  let result = evaluate_in_witness_frame(
+    frame: replay_frame(fixtures: [fixture_for(
+      operation: "FormatUnrecognized",
+      observation: RestResponseObserved { status: 200, body: RestBodyRead { body: "plain" } }
+    )]),
+    subject: fn(_scope) { test.RestReplay.FormatUnrecognized() }
+  )
+  match result {
+    WitnessReturned { value } => false
+    WitnessRefused { diagnostic } => contains(witness_diagnostic_rendered_reason(diagnostic: diagnostic), "response_format must be a std.serialization WireFormat variant")
     WitnessInterrupted { at: _, route: _, state: _ } => false
   }
 }

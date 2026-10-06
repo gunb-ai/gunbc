@@ -1,14 +1,12 @@
 module v2.workflow.floor_grandfathered_roster
 
 import v2.std.algebra { Cons, Empty, list_flat_map, length, contains, filter }
-import v2.std.collection { List }
 import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
-import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.integer { Int }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { EvalStepCount }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
@@ -126,6 +124,38 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
+  WitnessDeleted {
+    identity: "v2.test.v2_native_route.an_unattributed_head_advisory_is_refused" as NonEmptyStr,
+    deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (gunbc.witness_v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
+  },
+  WitnessDeleted {
+    identity: "v2.test.emit.trait_derive_seed_emit_binding_test.bool_supplemental_impl_present" as NonEmptyStr,
+    deleted_in: "the Bool de-fork: std.types Bool realizes only as the host `bool` (v1.compiler.emit_rust rust_declaration_realizes_as_native_alias over its gunbc.rust_source_type_bindings row), so no enum Bool is emitted and the From<Bool> for bool bridge this asserted has nothing to convert from; the bridge (extdeps.languages.rust.emit rust_supplemental_impls_bool_coproduct), its target predicate and scaffold row are deleted with it" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "test.claim.self_host_peano_literal_operator_realization_witness_test.w_kernel_bool_at_structural_bool_spelling_boundary_stays_the_keyword" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): it pinned v2.std.logic Bool winning over the kernel Bool by ancestry leak; that declaration is deleted, so the leak has nothing to leak from and the red is unwritable (DESIGN 4b(4) dissolution). Not re-subjected to a user-declared structural Bool, which is the separately tracked local_bool_coproduct_probe class; the host control w_kernel_bool_at_native_bool_boundary_stays_the_keyword stays enrolled" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_a_named_calls_bool_formal_is_counted_not_judged_holds" as NonEmptyStr,
+    deleted_in: "gunbc#12506 typed a call's callee reference by its declaration, so the counted-not-judged state this pin held no longer exists (it went red on main, as its comment said it would); its successor asserting the refusal is v2.test.claim.compiler.kernel_value_type_roster_witness_test.kvr_a_named_calls_bool_formal_holding_an_int_refuses_holds" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.bool_row_is_found_by_exact_destination" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so the row this asserted no longer exists by ruling; its RED successor is v2.test.claim.self_host.peano_nat_structural_realization_test.no_bool_literal_row_exists" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.removing_the_bool_row_returns_the_literal_to_direct" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its destination declaration (v2.std.logic Bool) no longer exists; the Direct answer at the one Bool stays asserted by v2.test.claim.self_host.peano_nat_structural_realization_test.prelude_bool_destination_is_direct" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.logical_connective_on_a_structural_operand_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so a structural operand under a connective now refuses with no admission list; the RED is v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_an_undeclared_structural_operand_refuses" as NonEmptyStr
+  },
+  WitnessDeleted {
+    identity: "v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_the_declared_bool_carrier_stays_host" as NonEmptyStr,
+    deleted_in: "the Bool de-fork (gunbc.defork_type_name_census ResolvedByDeletingV2): v2.std.logic's structural `Bool = True | False` was retired with its BooleanUnfold literal row and its declared-connective row family, so its carrier no longer exists; the positive control is re-pointed at the native Bool operand as v2.test.claim.self_host.peano_nat_structural_realization_test.w_connective_over_a_native_bool_operand_stays_host" as NonEmptyStr
+  },
   WitnessDeleted {
     identity: "v2.test.execution.bind_round_trip.bind_grammar_inverse_holds" as NonEmptyStr,
     deleted_in: "gunbc#12576 (the target model's serialize-source edge deleted; the rules row is the sole authority) removed this claim from src/v2/test/claim/execution/bind_round_trip_test.dag; its gunbc.witness_deferral_freeze row is deleted in the same change as this removal" as NonEmptyStr,
@@ -343,6 +373,116 @@ data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
   WitnessDeleted {
     identity: "v2.test.claim.realize_advisory_soundness_test.witness_window_reds_on_one_unsound" as NonEmptyStr,
     deleted_in: "Advisories 5.4: v2.workflow.realize_advisory_soundness judged pairs from the GUNBC_REALIZE_ADVISORY logger, which no run sets and whose feeding runs were cut; the law, its test module and the logger are deleted together" as NonEmptyStr
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_binding_fidelity.witness_ambiguous_export_fail_closed_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_binding_fidelity.witness_ambiguous_export_fail_closed_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_binding_fidelity.witness_cross_file_import_binding_resolves_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_binding_fidelity.witness_cross_file_import_binding_resolves_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_binding_fidelity.witness_unbound_symbol_fail_closed_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_binding_fidelity.witness_unbound_symbol_fail_closed_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_grammar_expr_projection_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_grammar_expr_projection_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_left_corner_morphism_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_left_corner_morphism_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_nullable_morphism_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_nullable_morphism_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_parse_expr_combinator_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_parse_expr_combinator_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_token_position_indices_no_extra_append_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_token_position_indices_no_extra_append_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_claims.parse_table_undefined_nonterminal_morphism_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_claims.parse_table_undefined_nonterminal_morphism_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_content_key.witness_subject_deterministic" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_content_key.witness_subject_deterministic" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_content_key.witness_subject_grammar_scope_sensitive" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_content_key.witness_subject_grammar_scope_sensitive" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_content_key.witness_subject_position_sensitive" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_content_key.witness_subject_position_sensitive" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_content_key.witness_subject_production_sensitive" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_content_key.witness_subject_production_sensitive" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_table_content_key.witness_subject_token_stream_scope_sensitive" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_table_content_key.witness_subject_token_stream_scope_sensitive" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_token_first_empty_semantics.parse_token_first_agrees_with_list_at_optional_on_empty_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_token_first_empty_semantics.parse_token_first_agrees_with_list_at_optional_on_empty_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.parse_token_first_empty_semantics.parse_token_first_agrees_with_list_at_optional_on_present_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_parse_token_first_empty_semantics.parse_token_first_agrees_with_list_at_optional_on_present_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_advance_bumps_pos_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_advance_bumps_pos_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_empty_first_absent_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_empty_first_absent_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_first_after_advance_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_first_after_advance_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_get_offset_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_get_offset_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_new_at_zero_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_new_at_zero_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
+  },
+  WitnessRenamed {
+    previous_identity: "v2.test.parse.token_stream_cursor.token_stream_cursor_remaining_matches_skip_holds" as NonEmptyStr,
+    new_identity: "test.claim.parse_test_token_stream_cursor.token_stream_cursor_remaining_matches_skip_holds" as NonEmptyStr,
+    renamed_in: "the v2.test.parse ungated census (gunbc#13372) phase 1: v2.test.parse.* modules sat outside required_gate_prefixes and ran only as changed witnesses; the module moved into the gated test.claim.parse_test family with a byte-identical claim body, so the identity changed and the claim is judged against the new-witness tier" as NonEmptyStr,
   },
 ]
 
