@@ -239,12 +239,12 @@ fn vfp_matches_of_at(n: Node, depth: Int) -> List<Node> {
   match depth <= 0 {
     true => Empty
     false =>
-      fold(n.children, init: Empty, f: fn(acc, e) {
-        match e.label {
-          StructuralLabel { label: CoreMarker { marker: Match } } => list_append(left: acc, right: Cons { head: e.target, tail: vfp_matches_of_at(n: e.target, depth: depth - 1) })
-          _ => list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1))
-        }
-      })
+      match n.kind {
+        ComputationNode { behavior: Match } =>
+          Cons { head: n, tail: fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) }) }
+        _ =>
+          fold(n.children, init: Empty, f: fn(acc, e) { list_append(left: acc, right: vfp_matches_of_at(n: e.target, depth: depth - 1)) })
+      }
   }
 }
 
@@ -565,7 +565,7 @@ fn vfp_decode_finder() -> CliWireResponse {
       match vfp_find_match(n: resolved.root) {
         Absent => CliWirePrintable { bytes: "finder:no_match_node", exit: ExitSuccess }
         Present { value: m } =>
-          match vfp_arm_bodies_of(n: m) {
+          match vfp_arm_bodies_of(m: m) {
             Empty => CliWirePrintable { bytes: "finder:match_but_no_arm_bodies", exit: ExitSuccess }
             Cons { head: _, tail: _ } => CliWirePrintable { bytes: "finder:match_and_arm_body", exit: ExitSuccess }
           }
