@@ -65,7 +65,7 @@ test fn w_imported_generic_contains_keeps_declared_identity() -> Bool {
 // what the author called.
 test fn w_divergent_map_get_checked_keeps_declared_outcome_identity() -> Bool {
   compile_dag_rust_emit_check(
-    "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { map_get_checked(m: m, key: \"key\") }\n",
+    "module test.claim.declared_map_get_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { map_get_checked(m: m, key: \"key\") }\n",
     "src/test_claim_declared_map_get_probe.rs",
     ["crate::v2_std_collection::map_get_checked("],
     ["v1_rt::map_get("]
