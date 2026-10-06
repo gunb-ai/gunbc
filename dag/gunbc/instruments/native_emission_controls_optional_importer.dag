@@ -3,17 +3,17 @@ module gunbc.instruments.native_emission_controls_optional_importer
 import std.types { Int }
 import gunbc.instruments.native_emission_controls_optional_collision { Optional, CollisionWrapped, CollisionEmpty, collision_row_value }
 
-// THE CROSS-MODULE COLLISION: a module that IMPORTS the non-kernel Optional of
-// gunbc.instruments.native_emission_controls_optional_collision BY NAME and names it bare in a variant
-// payload. The typechecker binds that field type to the IMPORTED coproduct (v1.compiler.infer_env
-// lookup_binding answers from the module's own bindings, its named imports included, before the
-// overlay where the kernel layer sits above imports). The payload reference is a declaration-body
-// member, so gunbc.instruments.native_emission_controls, which imports HeldChoice, receives it from
-// the type environment's copy with no carried declaration, and the emitter must reach the same
-// declaration through v1.compiler.infer_env bare_occurrence_binding. An emitter order that put the
-// kernel before the named import rebinds it to v2.std.optional, and this module is then refused or
-// realized as the host Option. That the resolver's overlay order disagrees is
-// gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name.
+// THE CROSS-MODULE COLLISION, the resolver repair's red-to-green specimen
+// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name). This module imports the
+// non-kernel Optional of gunbc.instruments.native_emission_controls_optional_collision BY NAME and
+// names it bare in a variant payload, and the v1 resolver types that payload two ways: the field
+// binding (v1.compiler.infer_env lookup_binding) takes the import, while the type environment's copy
+// of HeldChoice, resolved by name through the overlay where the kernel layer sits above imports,
+// takes the kernel Optional mint. Emitted, the module renders HeldChoice<present_value>, the mint's
+// type variable, and does not build (measured on gunbc#13454). It is therefore outside the
+// gunbc.instruments.native_emission_controls closure until the resolver refuses or unifies the
+// collision at the import; the emitter's own order is pinned meanwhile by the unit control
+// unstamped_bare_optional_follows_the_lookup_binding_order.
 type HeldChoice
   = HeldOptional { held: Optional }
   | HeldNothing
