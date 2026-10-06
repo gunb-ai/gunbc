@@ -3623,3 +3623,15 @@ error: could not compile `probe` (lib) due to 1 previous error
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+/// The toolchain axis of a native product's key, asked BEFORE any crate exists: the bound
+/// compiler's keyed `--version --verbose` identity, resolved by the same `resolve_probe_compiler`
+/// the build is bound to, so the key and the build cannot name different compilers. The crate
+/// directory the build probes from is not yet written at key time, so the probe runs from the
+/// current directory; a toolchain pinned per directory by the crate itself would not be seen here,
+/// and the emitted crate carries no such pin (`write_probe_crate` writes none).
+pub(crate) fn probe_toolchain_identity_for_key() -> Result<String, String> {
+    let compiler = resolve_probe_compiler()?;
+    let cwd = std::env::current_dir().map_err(|e| format!("RustcIdentityUnreadable: cwd: {e}"))?;
+    probe_compiler_identity(&compiler, &cwd)
+}

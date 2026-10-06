@@ -349,6 +349,76 @@ fn prepare_emitted_compiler_for_entry(
         "v2-native-route: private probe root {} for emit+build+fault+restore+spawn",
         probe_root.display()
     );
+    // PRODUCT REUSE (`native_product_cache`): the key is derived from the effective inputs before
+    // anything is emitted. A verified hit stands in for reconcile + emit + build + the red that
+    // admitted the entry; the caller's door and refusal controls then run against the reused
+    // executable exactly as they would against a fresh one.
+    let store = super::native_product_cache::store_root();
+    let product_key = match &store {
+        Some(_) => Some(
+            super::native_product_cache::derive_key(source_roots, entry, &workspace)
+                .map_err(|cause| format!("V2-NATIVE REFUSAL cause={cause}"))?,
+        ),
+        None => None,
+    };
+    if let (Some(root), Some(key)) = (&store, &product_key) {
+        match super::native_product_cache::lookup(root, key) {
+            super::native_product_cache::Lookup::Hit {
+                executable,
+                manifest,
+            } => {
+                let binary_path = probe_root.target_dir().join("release").join(
+                    super::emitted_closure_compile_host::probe_package_name(entry),
+                );
+                std::fs::create_dir_all(binary_path.parent().unwrap_or(Path::new(".")))
+                    .and_then(|_| std::fs::copy(&executable, &binary_path).map(|_| ()))
+                    .map_err(|e| {
+                        format!("V2-NATIVE REFUSAL cause=NativeProductNotRestored — {e}")
+                    })?;
+                let binary_identity = sha256_file(&binary_path)?;
+                if binary_identity != manifest.binary_sha256 {
+                    return Err(format!(
+                        "V2-NATIVE REFUSAL cause=NativeProductRestoredDifferently — restored \
+                         {binary_identity}, manifest records {}",
+                        manifest.binary_sha256
+                    ));
+                }
+                let seed_identity = sha256_file(&std::env::current_exe().map_err(|e| {
+                    format!("V2-NATIVE REFUSAL cause=SeedIdentityUnreadable — current_exe: {e}")
+                })?)?;
+                eprintln!(
+                    "v2-native-route: native product HIT entry={entry} key={} axes={:?} \
+                     binary_sha256={binary_identity} — reconcile, emit, build and red skipped",
+                    key.digest, key.axes
+                );
+                return Ok(EmittedPreparation {
+                    binary_path,
+                    binary_identity,
+                    closure_identity: manifest.closure_identity,
+                    seed_identity,
+                    build: EmittedBuildObserved {
+                        cargo_argv: manifest.cargo_argv,
+                        rustflags: manifest.rustflags,
+                        compiler_path: manifest.compiler_path,
+                        rustc_identity: manifest.rustc_identity,
+                        exit_status: manifest.exit_status,
+                        warning_count: manifest.warning_count,
+                        warning_headers: manifest.warning_headers,
+                    },
+                    _probe_root: probe_root,
+                });
+            }
+            super::native_product_cache::Lookup::Refused { cause } => eprintln!(
+                "v2-native-route: native product REFUSED entry={entry} key={} cause={cause} — \
+                 entry removed, rebuilding",
+                key.digest
+            ),
+            super::native_product_cache::Lookup::Miss => eprintln!(
+                "v2-native-route: native product MISS entry={entry} key={} axes={:?}",
+                key.digest, key.axes
+            ),
+        }
+    }
     eprintln!("v2-native-route: emitting {entry} (seed, in-process)");
     let run = super::compile_entry_emission(
         source_roots,
@@ -541,6 +611,33 @@ fn prepare_emitted_compiler_for_entry(
              injected and removed; the executable handed on is not the one the green build produced",
             binary_path.display()
         ));
+    }
+
+    if let (Some(root), Some(key)) = (&store, &product_key) {
+        let manifest = super::native_product_cache::Manifest {
+            key: key.digest.clone(),
+            binary_sha256: binary_identity.clone(),
+            closure_identity: closure_identity.clone(),
+            cargo_argv: build.cargo_argv.clone(),
+            rustflags: build.rustflags.clone(),
+            compiler_path: build.compiler_path.clone(),
+            rustc_identity: build.rustc_identity.clone(),
+            exit_status: build.exit_status,
+            warning_count: build.warning_count,
+            warning_headers: build.warning_headers.clone(),
+            discriminating_red_held: true,
+        };
+        match super::native_product_cache::commit(root, key, &binary_path, &manifest) {
+            Ok(()) => eprintln!(
+                "v2-native-route: native product committed entry={entry} key={}",
+                key.digest
+            ),
+            // A store that cannot be written costs the next run its hit, never this run its result.
+            Err(cause) => eprintln!(
+                "v2-native-route: native product NOT committed entry={entry} key={} — {cause}",
+                key.digest
+            ),
+        }
     }
 
     Ok(EmittedPreparation {
