@@ -1,9 +1,12 @@
 module test.claim.rung_drop_superseded_standing_witness_test
 
-import std.types { String, Bool, NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr, List }
 import std.markdown { MarkdownDocument }
 import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.rung_drop { Standing, Retired, Superseded }
+import gunbc.rung_drop { RungDrop, RungDropStanding, Standing, Retired, Superseded, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.rung_drop.roster { rung_drop_roster }
+import gunbc.rung_drop.standing { superseded_loss_holders_stand }
 import gunbc.design_ledgers { rung_drop_standing_suffix, rung_drop_standing_blocks }
 import gunbc.rung_drop_amendment { standing_sentence }
 import gunbc.rung_drop.rust_unit_tests_over_their_cap { rust_unit_tests_over_their_cap }
@@ -77,4 +80,62 @@ test fn the_live_over_cap_row_is_superseded_and_names_its_loss_holder() -> Bool 
     Standing => false
     Retired { trigger_fired: _ } => false
   }
+}
+
+// THE LOSS HOLDER JOINS TO THE ROSTER, AND IT MUST STAND. Superseded.loss_holder is a string, so the
+// join in gunbc.rung_drop.standing superseded_loss_holders_stand is what keeps a typo or a rename
+// from silently dropping the loss. Two reds over supplied rosters -- a holder no row names, and a
+// holder whose row is itself retired -- and the live roster as the positive control.
+fn holder_fixture(id: String, standing: RungDropStanding) -> RungDrop {
+  RungDrop {
+    identity: id as NonEmptyStr,
+    subject: id,
+    declared: "2026-01-01",
+    standing: standing,
+    declaration: TypedDeclaration {
+      previous: MechanicallyPreventable,
+      temporary: Mitigatable,
+      reason: DeletedWithoutReplacement,
+      population: ["fixture.population"],
+      restoration_trigger: "fixture trigger"
+    }
+  }
+}
+
+fn superseded_fixture_naming(holder: String) -> RungDrop {
+  holder_fixture(id: "fixture.superseded", standing: Superseded {
+    ruling: "fixture ruling" as NonEmptyStr,
+    decision_record: "fixture decision record" as NonEmptyStr,
+    loss_holder: holder as NonEmptyStr
+  })
+}
+
+test fn w_RED_a_superseded_row_naming_a_missing_holder_is_refused() -> Bool {
+  let roster = [superseded_fixture_naming(holder: "fixture.holdr"), holder_fixture(id: "fixture.holder", standing: Standing)]
+  let control = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Standing)]
+  (superseded_loss_holders_stand(drops: roster, roster: roster) == false)
+    && superseded_loss_holders_stand(drops: control, roster: control)
+}
+
+test fn w_RED_a_superseded_row_whose_holder_does_not_stand_is_refused() -> Bool {
+  let retired_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Retired { trigger_fired: "fixture fired" as NonEmptyStr })]
+  let superseded_holder = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Superseded { ruling: "r" as NonEmptyStr, decision_record: "d" as NonEmptyStr, loss_holder: "fixture.superseded" as NonEmptyStr })]
+  (superseded_loss_holders_stand(drops: retired_holder, roster: retired_holder) == false)
+    && (superseded_loss_holders_stand(drops: superseded_holder, roster: superseded_holder) == false)
+}
+
+test fn w_RED_a_holder_named_twice_is_refused() -> Bool {
+  let doubled = [superseded_fixture_naming(holder: "fixture.holder"), holder_fixture(id: "fixture.holder", standing: Standing), holder_fixture(id: "fixture.holder", standing: Standing)]
+  superseded_loss_holders_stand(drops: doubled, roster: doubled) == false
+}
+
+// POSITIVE CONTROL OVER THE LIVE ROSTER: every live supersession's holder resolves to exactly one
+// standing drop, and the roster carries at least one supersession, so the join is not vacuous.
+test fn the_live_roster_loss_holders_resolve_and_stand() -> Bool {
+  superseded_loss_holders_stand(drops: rung_drop_roster, roster: rung_drop_roster)
+    && any(rung_drop_roster, d => match d.standing {
+      Superseded { ruling: _, decision_record: _, loss_holder: _ } => true
+      Standing => false
+      Retired { trigger_fired: _ } => false
+    })
 }

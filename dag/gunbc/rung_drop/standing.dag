@@ -10,7 +10,7 @@ module gunbc.rung_drop.standing
 // spelling of the variant the row already carries, and every later caller reaches for the Bool
 // instead of the arm it came from.
 
-import std.types { List }
+import std.types { List, Bool }
 import gunbc.rung_drop { RungDrop, Standing, Retired, Superseded }
 import gunbc.rung_drop.roster { rung_drop_roster }
 
@@ -20,4 +20,30 @@ fn standing_rung_drops() -> List<RungDrop> {
     Retired { trigger_fired: _ } => false
     Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
   })
+}
+
+// EVERY SUPERSEDED ROW'S LOSS HOLDER IS A ROSTERED DROP THAT STILL STANDS. Superseded.loss_holder
+// names the drop that now carries the superseded row's loss; it is a string, so a typo or a rename
+// would silently drop that loss. This join is the wall: each holder must match EXACTLY ONE row of
+// the supplied roster by identity, and that row must be Standing -- a holder that is itself retired
+// or superseded carries nothing. Parameterized on both populations so the witness can hand it a
+// missing holder and a non-standing holder, as gunbc.rung_drop_amendment
+// every_amendment_names_a_rostered_drop does for amendments. A typed reference to the holder's
+// declaration would be construction rather than this validation; it would make RungDropStanding
+// recursive through RungDrop, which this carrier does not take on here.
+fn superseded_loss_holders_stand(drops: List<RungDrop>, roster: List<RungDrop>) -> Bool {
+  all(drops, d => match d.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => true
+    Superseded { ruling: _, decision_record: _, loss_holder: h } => loss_holder_stands(holder: h as String, roster: roster)
+  })
+}
+
+fn loss_holder_stands(holder: String, roster: List<RungDrop>) -> Bool {
+  let holders = filter(roster, r => (r.identity as String) == holder)
+  length(xs: holders) == 1 && length(xs: filter(holders, r => match r.standing {
+    Standing => true
+    Retired { trigger_fired: _ } => false
+    Superseded { ruling: _, decision_record: _, loss_holder: _ } => false
+  })) == 1
 }
