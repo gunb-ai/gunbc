@@ -2891,29 +2891,6 @@ pub(crate) fn compile_xl1_primary_root_tap(
     }
 }
 
-#[cfg(test)]
-mod fixture_render_selection_probe {
-    use super::*;
-
-    // Runs the floor receipt by hand (`--ignored`) with its cost. Not enrolled here: the CI lane
-    // runs no unit tests; the floor runs the receipt itself.
-    #[test]
-    #[ignore]
-    #[allow(clippy::disallowed_macros)]
-    fn render_selection_agreement_receipt_by_hand() {
-        // The floor warms this index before the receipt; warm it here too so the cost is the
-        // receipt's own.
-        let _ = build_module_path_index_from_witness_roots();
-        let t = std::time::Instant::now();
-        let r = render_selection_agreement_receipt();
-        eprintln!(
-            "[c1-probe] receipt={r:?} wall_ms={}",
-            t.elapsed().as_millis()
-        );
-        assert!(r.is_ok());
-    }
-}
-
 /// THE FIXTURE-CLOSURE UNION (retires `gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger`).
 ///
 /// Floor C1 (gunbc#13037) stopped rendering every closure module per fixture compile, so a corpus
@@ -3302,37 +3279,6 @@ mod fixture_closure_union_tests {
 
     /// The recorder and the union are process-wide; tests that touch them run one at a time.
     static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    /// THE DISCRIMINATING RED: a union member whose own emission the rust emitter refuses
-    /// refuses the receipt, typed and located at that member's module.
-    #[test]
-    fn a_union_member_with_an_emit_refusal_refuses_the_floor() {
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_RED_MEMBER);
-        let refusal = fixture_closure_union_emit_receipt(&union)
-            .expect_err("an emit refusal in a union member must refuse the floor");
-        assert!(
-            refusal.contains("cause=FixtureClosureUnionEmitRefused")
-                && refusal.contains("module=efr_member"),
-            "refusal must be typed and located at the member: {refusal}"
-        );
-    }
-
-    /// THE POSITIVE CONTROL: the tail form renders clean and every member owes a file.
-    #[test]
-    fn a_clean_union_renders_and_holds() {
-        let union = fixture_closure_union_control_union(FIXTURE_CLOSURE_UNION_CLEAN_MEMBER);
-        let members = union.members.len();
-        let observed = fixture_closure_union_emit_receipt(&union)
-            .unwrap_or_else(|refusal| panic!("a clean union must hold: {refusal}"));
-        assert_eq!(observed.members, members);
-        assert!(observed.files >= members, "{observed:?}");
-    }
-
-    /// The enrolled pair the required floor runs holds at this revision.
-    #[test]
-    fn the_enrolled_controls_hold() {
-        fixture_closure_union_controls().unwrap_or_else(|refusal| panic!("{refusal}"));
-    }
 
     /// An empty union is a bypassed recording seam and refuses (review 76399).
     #[test]
