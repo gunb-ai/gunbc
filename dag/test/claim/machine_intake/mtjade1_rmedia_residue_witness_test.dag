@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import gunbc.machine_intake_mtjade1_access_observation {
   FactoryEmpty,
-  MediaGeneralSnapshot,
+  MegaRacObservedShare,
   PutAcknowledgedNotApplied,
   PutApplyUnread,
   RecordedManagerDecoded,
@@ -39,11 +39,11 @@ test fn w_mtjade1_rmedia_residue_is_sticky_after_empty_before() -> Bool {
     RmediaGeneralResidueRefused { gap: _ } => false
     RmediaGeneralResidueObserved { residue: r } =>
       (r.subject as String) == "mtjade1"
-        && r.snapshot.server_address == "192.168.1.188"
-        && r.snapshot.source_path == "/srv/bmc"
-        && r.snapshot.share_type == "nfs"
-        && r.snapshot.mount_cd == 0
-        && r.snapshot.remote_media_support == 0
+        && r.share.server_address == "192.168.1.188"
+        && r.share.source_path == "/srv/bmc"
+        && r.share.share_type == "nfs"
+        && r.share.mount_cd == "0"
+        && r.share.remote_media_support == "0"
         && match r.origin {
           FactoryEmpty { before_path: _, before_sha256: _ } => false
           StickyAfterEmptyBefore { before_path: bp, before_sha256: bh, incident_receipt_path: ip, incident_receipt_sha256: ih } =>
@@ -152,12 +152,12 @@ test fn w_media_general_put_echoed_and_did_not_persist() -> Bool {
 }
 
 test fn w_put_standing_refuses_when_get_matches_request() -> Bool {
-  let empty = MediaGeneralSnapshot {
+  let empty = MegaRacObservedShare {
     server_address: "",
     source_path: "",
     share_type: "",
-    mount_cd: 0,
-    remote_media_support: 0,
+    mount_cd: "0",
+    remote_media_support: "0",
   }
   match put_apply_standing_of(
     firmware_wire: "x" as NonEmptyStr,
