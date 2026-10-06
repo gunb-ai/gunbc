@@ -1614,6 +1614,8 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
+/// The one host-budget precedence. `read_host_budget_bytes` and
+/// `memory_governor::resolve_host_budget` both call `resolve_host_budget_join`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostBudgetJoinSource {
     CgroupMemoryHigh { cgroup_dir: String },
