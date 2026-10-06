@@ -121,6 +121,20 @@ fn candidate_run_status_filter(wait: CandidateWait) -> String {
   }
 }
 
+fn candidate_run_absent_reason(wait: CandidateWait) -> String {
+  match wait {
+    NoCandidateWait => "no successful merge_group run of the required workflow on this revision"
+    PollForCandidate { polls: _, interval_seconds: _ } => "no merge_group run of the required workflow on this revision: it landed without the queue"
+  }
+}
+
+fn candidate_artifact_absent_reason(wait: CandidateWait) -> String {
+  match wait {
+    NoCandidateWait => "the newest successful merge_group run of this revision holds no unexpired candidate artifact"
+    PollForCandidate { polls: _, interval_seconds: _ } => "the newest merge_group run of this revision holds no unexpired candidate artifact"
+  }
+}
+
 fn append_env(line: Node) -> Node {
   bash_build_with_redir_to_file(
     inner: bash_build_pipe(left: cmd(ws: [lit(t: "echo"), line]), right: cmd(ws: [lit(t: "tee"), lit(t: "-a"), var(n: "GITHUB_ENV")])),
@@ -240,9 +254,9 @@ fn compiler_pair_candidate_fetch_statements(revision: Node, wait: CandidateWait,
       ], "")),
       dir(file: "runs.json"),
     ])),
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_or_stop(reason: "no successful merge_group run of the required workflow on this revision", export: export)),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "RUN_ID")]), body: absent_or_stop(reason: candidate_run_absent_reason(wait: wait), export: export)),
   ], concat(artifact_query_statements(), concat(wait_statements(wait: wait, export: export), [
-    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_or_stop(reason: "the newest successful merge_group run of this revision holds no unexpired candidate artifact", export: export)),
+    bash_build_if(cond: test_words(ws: [lit(t: "-z"), var(n: "ARTIFACT_ID")]), body: absent_or_stop(reason: candidate_artifact_absent_reason(wait: wait), export: export)),
     or_refuse(
       check: api_get(
         url: words(ws: [var(n: "GITHUB_API_URL"), lit(t: "/repos/"), var(n: "GITHUB_REPOSITORY"), lit(t: "/actions/artifacts/"), var(n: "ARTIFACT_ID"), lit(t: "/zip")]),

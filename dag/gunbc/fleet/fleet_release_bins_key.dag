@@ -815,7 +815,7 @@ fn release_bins_promote_all_to(dir: Node, product: ReleaseBinsProduct, destinati
   [
     cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), destination]),
     in_dir(dir: destination, command: cmd(ws: concat([lit(t: "rm"), lit(t: "-f")], release_bins_roster_words(product: product)))),
-    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [destination]))),
+    in_dir(dir: dir, command: cmd(ws: concat(concat([lit(t: "cp"), lit(t: "-p")], release_bins_roster_words(product: product)), [words(ws: [destination, lit(t: "/")])]))),
   ]
 }
 
