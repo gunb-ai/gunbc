@@ -35,7 +35,7 @@ import gunbc.spark.managed_grant_reconcile {
   SparkManagedGrantStanding, GrantHeld, GrantNotHeld, GrantStandingUnobserved,
   spark_managed_grant_standing_from_outcome,
 }
-import gunbc.spark.managed_grant_install { spark_grant_probe_outcome }
+import gunbc.spark.grant_privileged_operation { spark_grant_probe_outcome }
 import gunbc.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.spark.grant_privileged_operation { read_bootstrap_credential, BootstrapCredentialReady, BootstrapCredentialNotMaterialized }
 import gunbc.spark.pair_serving_apply {

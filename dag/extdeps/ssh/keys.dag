@@ -1,8 +1,11 @@
 module extdeps.ssh
 
-import std.types { NonEmptyStr, String }
+import std.types { NonEmptyStr, String, List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.encoding { base64_decode_canonical, Standard }
+import v2.std.collection { list_at_optional }
+import v2.std.optional { Absent, Present }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -76,4 +79,32 @@ fn ssh_public_key_line(k: SshPublicKey) -> String {
     concat(ssh_key_algorithm_token(a: k.algorithm) as String, " "),
     concat(k.material as String, concat(" ", k.comment)),
   )
+}
+
+// RFC 8709 section 4 (with RFC 4251 section 5 string encoding): an ssh-ed25519 public key blob is
+// uint32 11, the 11 octets "ssh-ed25519", uint32 32, then the 32 key octets, and nothing after. The
+// identity is parsed exactly -- every header octet, both declared lengths, the total -- so a blob
+// declaring any other key length, or carrying trailing octets, has no identity. Canonical base64
+// admits one spelling per blob, so the parsed key octets and the canonical material are the same
+// identity; a comment never participates in it.
+type SshEd25519KeyIdentity sole_constructor { key_octets: List<Int>, canonical_material: NonEmptyStr }
+
+data ssh_ed25519_blob_header: List<Int> = [0, 0, 0, 11, 115, 115, 104, 45, 101, 100, 50, 53, 53, 49, 57, 0, 0, 0, 32]
+
+type SshBlobScan { index: Int, header_matches: Bool, key_reversed: List<Int> }
+
+fn ssh_ed25519_key_identity(material: NonEmptyStr) -> SshEd25519KeyIdentity? {
+  match base64_decode_canonical(s: material as String, variant: Standard) {
+    Absent => none
+    Present { value: octets } => if count(octets) != count(ssh_ed25519_blob_header) + 32 { none } else {
+      let scan = fold(octets, init: SshBlobScan { index: 0, header_matches: true, key_reversed: [] }, f: fn(acc, octet) {
+        match list_at_optional(xs: ssh_ed25519_blob_header, index: acc.index) {
+          Present { value: expected } => SshBlobScan { index: acc.index + 1, header_matches: acc.header_matches && expected == octet, key_reversed: acc.key_reversed }
+          Absent => SshBlobScan { index: acc.index + 1, header_matches: acc.header_matches, key_reversed: concat([octet], acc.key_reversed) }
+        }
+      })
+      if !scan.header_matches || count(scan.key_reversed) != 32 { none }
+      else { Present { value: SshEd25519KeyIdentity { key_octets: reverse(scan.key_reversed), canonical_material: material } } }
+    }
+  }
 }
