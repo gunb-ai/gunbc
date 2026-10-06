@@ -998,8 +998,11 @@ fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
   ]
 }
 
-// A CARDINALITY IS A NATURAL, AND IT NAMES ITS DECLARER. count and length (here and in the
-// free-monoid and function profiles below) return std.nat.Nat, qualified rather than spelled
+// A CARDINALITY IS A NATURAL, AND IT NAMES ITS DECLARER. count and length (here, in the function
+// profile, and length in the free-monoid profile below) return std.nat.Nat -- EXCEPT the free monoid's
+// count, collection_count_shape, which states Int: a declared departure whose authority is
+// gunbc.rung_drop collection_count_result_stated_int_until_declared_results_are_judged. Nat is
+// qualified rather than spelled
 // "Nat": a bare template name resolves at the CALL SITE, and a src/v2 module resolves it to
 // v2.std.nat.Nat, a Peano Zero | Succ coproduct whose Rust carrier is Rc<Nat>, not the i64 that
 // len() produces. The spelling then decided the emission -- `count(xs) >= 1` lowered to
