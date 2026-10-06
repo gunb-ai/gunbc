@@ -260,7 +260,7 @@ fn emit_call_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeVa
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
+test fn rust_emit_host_call_eval_subgraph_holds() -> Bool  {
   match eval(
     tree: emit_call_eval_producer_tree(),
     interpretation: emit_call_eval_interpretation(
@@ -275,7 +275,7 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
   }
 }
 
-test fn rust_emit_host_call_equals_eval_holds() -> Bool {
+test fn rust_emit_host_call_equals_eval_holds() -> Bool  {
   emit_call_eval_verdict_is_pass(
     run: emit_call_eval_run(
       call_primitive: emit_call_eval_call_primitive_seven,
@@ -284,7 +284,7 @@ test fn rust_emit_host_call_equals_eval_holds() -> Bool {
   )
 }
 
-test fn rust_emit_host_call_wrong_oracle_refuses_holds() -> Bool {
+test fn rust_emit_host_call_wrong_oracle_refuses_holds() -> Bool  {
   emit_call_eval_verdict_is_semantic_mismatch(
     run: emit_call_eval_run(
       call_primitive: emit_call_eval_call_primitive_eight,

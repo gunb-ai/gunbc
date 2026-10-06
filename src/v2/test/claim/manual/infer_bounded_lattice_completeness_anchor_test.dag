@@ -190,7 +190,7 @@ fn anchor_infer_consumer_tree_is_rejected() -> Bool {
 
 data anchor_infer_consumer_tree_rejects: Bool = anchor_infer_consumer_tree_is_rejected()
 
-test fn sg6_missing_meet_consumer_infer_rejects() -> Bool {
+test fn sg6_missing_meet_consumer_infer_rejects() -> Bool  {
   anchor_infer_consumer_tree_rejects
     && anchor_partial_bounded_lattice_missing_meet
     && anchor_bounded_lattice_completeness_classifies_instances

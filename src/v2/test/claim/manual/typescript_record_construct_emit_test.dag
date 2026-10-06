@@ -88,11 +88,11 @@ fn ts_record_construct_emit_source_prepend() -> String {
   ts_record_construct_emit_with_naming(record_literal_names_type: Prepend)
 }
 
-test fn ts_record_construct_emit_source_holds() -> Bool {
+test fn ts_record_construct_emit_source_holds() -> Bool  {
   ts_record_construct_emit_source() == " { x: a, y: b }"
 }
 
-test fn ts_record_construct_row_perturbation_flips_type_name_holds() -> Bool {
+test fn ts_record_construct_row_perturbation_flips_type_name_holds() -> Bool  {
   (ts_record_construct_emit_source() == " { x: a, y: b }")
     && (ts_record_construct_emit_source_prepend() == "Point { x: a, y: b }")
     && (ts_record_construct_emit_source() != ts_record_construct_emit_source_prepend())

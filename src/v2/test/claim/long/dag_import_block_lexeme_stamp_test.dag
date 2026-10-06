@@ -58,7 +58,7 @@ fn dag_lex_stamp_block_idents() -> Outcome<List<Symbol>> {
   )
 }
 
-test fn dag_import_block_lexeme_stamp_holds() -> Bool {
+test fn dag_import_block_lexeme_stamp_holds() -> Bool  {
   match dag_lex_stamp_block_idents() {
     Rejected { diagnostics: _ } => false
     Accepted { value: idents, diagnostics: _ } =>

@@ -48,21 +48,21 @@ fn gi_live_slice() -> List<DependencyView> {
   ]
 }
 
-test fn graph_reaches_live_slice() -> Bool {
+test fn graph_reaches_live_slice() -> Bool  {
   graph_reaches(dependence: gi_live_slice(), from: gi_out(), to: gi_input())
 }
 
-test fn graph_reaches_dead_target() -> Bool {
+test fn graph_reaches_dead_target() -> Bool  {
   graph_reaches(dependence: gi_live_slice(), from: gi_out(), to: gi_dangling()) == false
 }
 
-test fn graph_invariant_universe_nonempty_flips_on_empty() -> Bool {
+test fn graph_invariant_universe_nonempty_flips_on_empty() -> Bool  {
   let inv = GraphReachProjection { edges: gi_live_slice(), roots: [gi_out()] }
   graph_invariant_reaches(projection: inv, target: gi_input())
     && (graph_invariant_reaches(projection: inv, target: gi_dangling()) == false)
 }
 
-test fn graph_reach_add_edge_repair_wires_dead_input() -> Bool {
+test fn graph_reach_add_edge_repair_wires_dead_input() -> Bool  {
   let repaired = graph_reach_add_edge_repair(root: gi_out(), edge_target: gi_dangling())
   graph_invariant_reaches(
     projection: GraphReachProjection {

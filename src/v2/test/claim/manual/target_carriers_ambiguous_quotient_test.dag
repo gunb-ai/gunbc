@@ -15,7 +15,7 @@ fn fidelity_quotient_edge() -> Edge {
 
 // A target bundle carrying two fidelity-quotient edges contradicts itself: it refuses, where it
 // used to read as carrying none and decode Lossless. One edge is Present and none is Absent.
-test fn target_carriers_ambiguous_fidelity_quotient_refuses() -> Bool {
+test fn target_carriers_ambiguous_fidelity_quotient_refuses() -> Bool  {
   let none_absent = match bundle_fidelity_quotient_optional(bundle: fidelity_quotient_bundle(edges: [])) {
     Accepted { value: Absent, diagnostics: _ } => true
     _ => false

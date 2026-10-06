@@ -20,55 +20,55 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // dag/gunbc/instruments/*_transport.dag + src/v2/workflow/*_transport.dag emit carve-outs stay in
 // the sibling migrated_transports_clean witness.
 
-test fn residue_host_effect_realize_clean() -> Bool {
+test fn residue_host_effect_realize_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/host/host_effect_realize.dag"
   ) == 0
 }
 
-test fn residue_host_converge_slice1_clean() -> Bool {
+test fn residue_host_converge_slice1_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/host/host_converge_slice1.dag"
   ) == 0
 }
 
-test fn residue_host_identity_adopt_clean() -> Bool {
+test fn residue_host_identity_adopt_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/host/host_identity_adopt.dag"
   ) == 0
 }
 
-test fn residue_host_identity_assimilation_clean() -> Bool {
+test fn residue_host_identity_assimilation_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/host/host_identity_assimilation.dag"
   ) == 0
 }
 
-test fn residue_host_runner_memory_cap_verify_clean() -> Bool {
+test fn residue_host_runner_memory_cap_verify_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/host/host_runner_memory_cap_verify.dag"
   ) == 0
 }
 
-test fn residue_command_runner_clean() -> Bool {
+test fn residue_command_runner_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/command_runner.dag"
   ) == 0
 }
 
-test fn residue_tools_review_clean() -> Bool {
+test fn residue_tools_review_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/tools/review.dag"
   ) == 0
 }
 
-test fn residue_emit_host_gate_clean() -> Bool {
+test fn residue_emit_host_gate_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/instruments/emit_host_gate.dag"
   ) == 0
 }
 
-test fn residue_host_prelude_clean() -> Bool {
+test fn residue_host_prelude_clean() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "dag/gunbc/instruments/host_prelude.dag"
   ) == 0
@@ -76,7 +76,7 @@ test fn residue_host_prelude_clean() -> Bool {
 
 data red_control_note: String = "RED control: the planted bare-literal fixture MUST flag > 0 so a green residue roster is never vacuously green — it proves the live scan actually detects a raw literal at an Exec.Run position. If this goes to 0 the scanner has gone blind and every clean-holds above is meaningless."
 
-test fn red_control_planted_bare_literal_flags() -> Bool {
+test fn red_control_planted_bare_literal_flags() -> Bool  {
   transport_script_live_literal_violation_count_for_path(
     path: "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"
   ) > 0

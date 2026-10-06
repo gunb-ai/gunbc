@@ -111,12 +111,12 @@ fn rr_wrong_correction() -> Node {
   rr_atom(identity: ^rr_wrong_correction_leaf)
 }
 
-test fn witness_dead_wire_produces_suggested_not_unavailable() -> Bool {
+test fn witness_dead_wire_produces_suggested_not_unavailable() -> Bool  {
   let d = rr_dead_wire_diagnostic()
   rr_correction_is_suggested(c: d.correction)
 }
 
-test fn witness_apply_correction_reruns_satisfied() -> Bool {
+test fn witness_apply_correction_reruns_satisfied() -> Bool  {
   let d = rr_dead_wire_diagnostic()
   match graph_reach_apply_diagnostic_correction(root: rr_out(), d: d) {
     Accepted { value: patched, diagnostics: _ } =>
@@ -131,7 +131,7 @@ test fn witness_apply_correction_reruns_satisfied() -> Bool {
   }
 }
 
-test fn witness_wrong_correction_stays_violated() -> Bool {
+test fn witness_wrong_correction_stays_violated() -> Bool  {
   match apply_diff(
     root: rr_out(),
     d: Diff {
@@ -154,7 +154,7 @@ fn rr_repaired_root() -> Node {
   graph_reach_add_edge_repair(root: rr_out(), edge_target: rr_dangling())
 }
 
-test fn witness_apply_edit_emits_corrected_source() -> Bool {
+test fn witness_apply_edit_emits_corrected_source() -> Bool  {
   match serialize_diff_as_source_patch(
     root: dag_loop_arrow_with_body_wrong_value_fixture,
     diff: reach_repair_surgical_body_diff,
@@ -173,7 +173,7 @@ test fn witness_apply_edit_emits_corrected_source() -> Bool {
   }
 }
 
-test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
+test fn witness_suggested_correction_matches_add_edge_repair() -> Bool  {
   let d = rr_dead_wire_diagnostic()
   correction_eq(
     a: d.correction,
@@ -181,7 +181,7 @@ test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
   )
 }
 
-test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool {
+test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool  {
   match graph_invariant_reach_verdict(
     reason: ^graph_invariant_reach_repair_witness,
     root: rr_out(),
@@ -193,7 +193,7 @@ test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool {
   }
 }
 
-test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> Bool {
+test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> Bool  {
   match graph_invariant_reach_verdict(
     reason: ^graph_invariant_reach_repair_witness,
     root: rr_out(),

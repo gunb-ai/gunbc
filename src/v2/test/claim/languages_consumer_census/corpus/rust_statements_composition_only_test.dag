@@ -5,6 +5,6 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_statements_decl: String = "rust_statements"
 
-test fn corpus_rust_statements_is_composition_only() -> Bool {
+test fn corpus_rust_statements_is_composition_only() -> Bool  {
   languages_consumer_census_live_is_composition_only(decl_name: rust_statements_decl)
 }

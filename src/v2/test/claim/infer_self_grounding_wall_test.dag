@@ -222,7 +222,7 @@ fn wall_infer_counts_frontier(root: Node) -> Bool {
   }
 }
 
-test fn wall_construction_authority_refuses_self_evidence() -> Bool {
+test fn wall_construction_authority_refuses_self_evidence() -> Bool  {
   match canonical_grounding_from_derived_type(
     node: wall_conj_node(),
     derived_type: wall_conj_node()
@@ -232,7 +232,7 @@ test fn wall_construction_authority_refuses_self_evidence() -> Bool {
   }
 }
 
-test fn wall_construction_authority_accepts_derived_type() -> Bool {
+test fn wall_construction_authority_accepts_derived_type() -> Bool  {
   match canonical_grounding_from_derived_type(
     node: wall_conj_node(),
     derived_type: wall_derived_type_node()
@@ -251,36 +251,36 @@ test fn wall_construction_authority_accepts_derived_type() -> Bool {
 // fixture, which uses one atom as both evaluand and primitive_type). Closing this residue needs
 // CanonicalGrounding to stop being structurally constructible, not a wider predicate.
 
-test fn wall_hand_built_self_grounding_is_the_stated_residue() -> Bool {
+test fn wall_hand_built_self_grounding_is_the_stated_residue() -> Bool  {
   canonical_grounding_admits_infer_facts(grounding: wall_self_grounding(node: wall_conj_node()))
 }
 
-test fn wall_admission_admits_hand_built_derived_grounding() -> Bool {
+test fn wall_admission_admits_hand_built_derived_grounding() -> Bool  {
   canonical_grounding_admits_infer_facts(grounding: wall_derived_grounding(node: wall_conj_node()))
 }
 
-test fn wall_conj_grounding_no_longer_returns_source_as_its_own_type() -> Bool {
+test fn wall_conj_grounding_no_longer_returns_source_as_its_own_type() -> Bool  {
   wall_grounding_for_node_refused(root: wall_conj_node())
 }
 
-test fn wall_disj_grounding_no_longer_returns_source_as_its_own_type() -> Bool {
+test fn wall_disj_grounding_no_longer_returns_source_as_its_own_type() -> Bool  {
   wall_grounding_for_node_refused(root: wall_disj_node())
 }
 
-test fn wall_frontier_node_has_no_resolved_type() -> Bool {
+test fn wall_frontier_node_has_no_resolved_type() -> Bool  {
   wall_resolved_type_refused(root: wall_value_node())
 }
 
-test fn wall_frontier_is_counted_on_the_accepted_path() -> Bool {
+test fn wall_frontier_is_counted_on_the_accepted_path() -> Bool  {
   wall_infer_counts_frontier(root: wall_value_node())
 }
 
-test fn wall_malformed_bool_payload_is_not_grounded_or_discharged() -> Bool {
+test fn wall_malformed_bool_payload_is_not_grounded_or_discharged() -> Bool  {
   wall_grounding_for_node_refused(root: wall_malformed_bool_with_payload())
     && wall_infer_counts_frontier(root: wall_malformed_bool_with_payload())
 }
 
-test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
+test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool  {
   wall_grounding_for_node_refused(root: wall_malformed_int_with_extra_payload())
     && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
 }
@@ -301,7 +301,7 @@ fn wall_frontier_observation_matches_infer(nes: NonEmptyDiagnostics, o: ProbeObs
   )
 }
 
-test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
+test fn wall_frontier_receipt_joins_corpus_identity() -> Bool  {
   let root = wall_value_node()
   match infer(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false
@@ -346,7 +346,7 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
   }
 }
 
-test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
+test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool  {
   let root = dag_pick_if_body_fixture
   match infer(tree: claim_resolved_tree_without_declarations(root: root)) {
     Rejected { diagnostics: _ } => false

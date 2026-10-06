@@ -436,7 +436,7 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: TargetModel) -> Outcome<M
   )
 }
 
-test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
+test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool  {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == ts_source_text) && (d == None)
@@ -444,7 +444,7 @@ test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
+test fn add_body_ts_emit_operand_swap_discriminates() -> Bool  {
   match add_body_ts_emit_from_producer_swapped_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
@@ -454,7 +454,7 @@ test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
   }
 }
 
-test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
+test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool  {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
@@ -464,7 +464,7 @@ test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
   }
 }
 
-test fn add_body_ts_emit_missing_catalog_rejects() -> Bool {
+test fn add_body_ts_emit_missing_catalog_rejects() -> Bool  {
   match add_body_ts_emit_from_producer_tree(
     target: add_body_ts_target_model_missing_operator_catalog()
   ) {

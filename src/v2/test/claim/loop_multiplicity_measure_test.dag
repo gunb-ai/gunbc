@@ -88,7 +88,7 @@ fn lmm_proven_non_increasing_count(m: Multiplicity) -> Int {
   }
 }
 
-test fn loop_strict_measure_infers_proven_termination() -> Bool {
+test fn loop_strict_measure_infers_proven_termination() -> Bool  {
   let m = loop_multiplicity_with(
     registry: lmm_registry,
     n: lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_strict_dim))
@@ -96,7 +96,7 @@ test fn loop_strict_measure_infers_proven_termination() -> Bool {
   lmm_is_proven(m: m) && (lmm_proven_strict_dimension(m: m) == ^lmm_strict_dim)
 }
 
-test fn loop_perturbed_measure_is_refused() -> Bool {
+test fn loop_perturbed_measure_is_refused() -> Bool  {
   lmm_is_refused(
     m: loop_multiplicity_with(
       registry: lmm_registry,
@@ -105,7 +105,7 @@ test fn loop_perturbed_measure_is_refused() -> Bool {
   )
 }
 
-test fn loop_lone_non_increasing_measure_is_refused() -> Bool {
+test fn loop_lone_non_increasing_measure_is_refused() -> Bool  {
   lmm_is_refused(
     m: loop_multiplicity_with(
       registry: lmm_registry,
@@ -114,7 +114,7 @@ test fn loop_lone_non_increasing_measure_is_refused() -> Bool {
   )
 }
 
-test fn loop_lexicographic_measure_proves_with_strict_dimension() -> Bool {
+test fn loop_lexicographic_measure_proves_with_strict_dimension() -> Bool  {
   let m = loop_multiplicity_with(
     registry: lmm_registry,
     n: lmm_loop_with_measure(
@@ -127,7 +127,7 @@ test fn loop_lexicographic_measure_proves_with_strict_dimension() -> Bool {
   lmm_is_proven(m: m) && (lmm_proven_non_increasing_count(m: m) == 1)
 }
 
-test fn loop_unknown_dimension_poisons_lexicographic_measure() -> Bool {
+test fn loop_unknown_dimension_poisons_lexicographic_measure() -> Bool  {
   lmm_is_refused(
     m: loop_multiplicity_with(
       registry: lmm_registry,
@@ -141,7 +141,7 @@ test fn loop_unknown_dimension_poisons_lexicographic_measure() -> Bool {
   )
 }
 
-test fn loop_missing_measure_is_refused() -> Bool {
+test fn loop_missing_measure_is_refused() -> Bool  {
   lmm_is_refused(
     m: loop_multiplicity_with(registry: lmm_registry, n: lmm_loop_without_measure())
   )
@@ -161,7 +161,7 @@ fn lmm_loop_bound_termination_holds(w: Witness<LoopBound>) -> Bool {
   }
 }
 
-test fn live_registry_proves_loop_measure() -> Bool {
+test fn live_registry_proves_loop_measure() -> Bool  {
   let n = lmm_loop_with_measure(measure: lmm_atom(s: ^dag_loop_measure_sym))
   lmm_is_proven(m: loop_multiplicity(n: n))
     && lmm_is_proven(m: node_multiplicity(n: n))
@@ -169,7 +169,7 @@ test fn live_registry_proves_loop_measure() -> Bool {
     && lmm_loop_bound_termination_holds(w: loop_bound_witness_for_node(n: n))
 }
 
-test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
+test fn nested_unproven_loop_still_poisons_the_fold() -> Bool  {
   let inner = lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_unregistered_dim))
   let outer = Node {
     kind: ComputationNode { behavior: Loop },

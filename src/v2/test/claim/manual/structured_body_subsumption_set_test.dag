@@ -45,15 +45,15 @@ fn subsumes(structured_body: Node, table_target: Node) -> Bool {
   }
 }
 
-test fn subsumption_pick() -> Bool {
+test fn subsumption_pick() -> Bool  {
   subsumes(structured_body: dag_pick_if_body_node(), table_target: dag_pick_arrow_with_body_node())
 }
 
-test fn subsumption_loop() -> Bool {
+test fn subsumption_loop() -> Bool  {
   subsumes(structured_body: dag_loop_body_node(), table_target: dag_loop_arrow_with_body_node())
 }
 
-test fn subsumption_bind() -> Bool {
+test fn subsumption_bind() -> Bool  {
   subsumes(structured_body: dag_bind_let_body_node(), table_target: dag_bind_arrow_with_body_node())
 }
 

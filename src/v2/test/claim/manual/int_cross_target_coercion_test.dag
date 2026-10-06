@@ -190,7 +190,7 @@ fn quality_is_widened(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool {
+test fn witness_cross_target_rust_i32_to_python_int_accepts() -> Bool  {
   let outcome = cross_target_rust_i32_to_python_int_coercion_fold()
   match outcome {
     Accepted { value: r, diagnostics: _ } =>

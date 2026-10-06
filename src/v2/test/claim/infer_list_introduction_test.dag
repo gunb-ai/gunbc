@@ -141,24 +141,24 @@ fn ilt_freemonoid_of(element: Node) -> Node {
 
 // THE ARGUMENT IS ASSERTED, NOT ONLY THE HEAD: FreeMonoid<Bool> or FreeMonoid<anything else> reds it,
 // and the Bool control below is the wrong-type twin that must NOT satisfy the Int claim.
-test fn a_list_of_ints_infers_to_freemonoid_of_int() -> Bool {
+test fn a_list_of_ints_infers_to_freemonoid_of_int() -> Bool  {
   ilt_is_freemonoid_of(tree: ilt_ints, expected: integer_int_type_node())
 }
 
-test fn a_list_of_bools_infers_to_freemonoid_of_bool_and_not_of_int() -> Bool {
+test fn a_list_of_bools_infers_to_freemonoid_of_bool_and_not_of_int() -> Bool  {
   ilt_is_freemonoid_of(tree: ilt_bools, expected: bool_node())
     && !ilt_is_freemonoid_of(tree: ilt_bools, expected: integer_int_type_node())
 }
 
 // STRUCTURAL ELEMENT TYPES: two FreeMonoid<Int> elements minted at different occurrences are one T,
 // so the list of lists is FreeMonoid<FreeMonoid<Int>>; an atom-only comparison would refuse it.
-test fn a_list_of_equal_lists_infers_to_a_nested_freemonoid() -> Bool {
+test fn a_list_of_equal_lists_infers_to_a_nested_freemonoid() -> Bool  {
   ilt_is_freemonoid_of(tree: ilt_nested_ints, expected: ilt_freemonoid_of(element: integer_int_type_node()))
 }
 
 // A STRUCTURAL MISMATCH refuses located AT the differing element: the second inner list (a
 // FreeMonoid<Bool> beside a FreeMonoid<Int>), not the outer literal or the first element.
-test fn a_list_of_differently_typed_lists_refuses_at_the_differing_list() -> Bool {
+test fn a_list_of_differently_typed_lists_refuses_at_the_differing_list() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: ilt_nested_mixed)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } =>
@@ -184,7 +184,7 @@ fn ilt_is_mismatch_at_true(d: Diagnostic) -> Bool {
   })
 }
 
-test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
+test fn a_mixed_list_refuses_at_the_differing_element() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: ilt_mixed)) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => ilt_is_mismatch_at_true(d: diagnostics_fatal(d: r))
@@ -195,7 +195,7 @@ test fn a_mixed_list_refuses_at_the_differing_element() -> Bool {
 // counted GroundingNotDerived frontier rather than receiving a guessed T.
 // It must still be ACCEPTED: a refusal would also "derive no type", so accepting Rejected here would
 // let one failure common to every list pass this claim while the other two went red.
-test fn an_empty_list_derives_no_type_here() -> Bool {
+test fn an_empty_list_derives_no_type_here() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: ilt_empty)) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

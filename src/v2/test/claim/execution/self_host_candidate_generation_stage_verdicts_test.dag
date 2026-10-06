@@ -98,11 +98,11 @@ fn add_slice_stage_verdicts_entry() -> ProcessExit {
   }
 }
 
-test fn add_slice_infer_accepts_holds() -> Bool {
+test fn add_slice_infer_accepts_holds() -> Bool  {
   add_slice_stage_verdicts().infer_verdict == ^infer_accepted
 }
 
-test fn add_slice_composition_accepts_holds() -> Bool {
+test fn add_slice_composition_accepts_holds() -> Bool  {
   let verdicts = add_slice_stage_verdicts()
   (verdicts.infer_verdict == ^infer_accepted)
     && is_empty(xs: verdicts.infer_carried_reasons)

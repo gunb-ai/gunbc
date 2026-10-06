@@ -150,22 +150,22 @@ fn native_only_matches_expected(source: String, expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_classical_not_holds() -> Bool {
+test fn emit_host_native_only_classical_not_holds() -> Bool  {
   native_only_matches_expected(source: ingested_classical_not_source, expected_octet: 0)
 }
 
-test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_classical_not_swapped_mismatch_detected_holds() -> Bool  {
   native_only_matches_expected(source: ingested_classical_not_swapped_source, expected_octet: 0) == false
 }
 
-test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool {
+test fn emit_host_native_only_verdict_stdout_match_mock_holds() -> Bool  {
   native_only_stdout_matches(
     stdout: HostRunStdout { bytes: emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0]) },
     expected_octet: 0
   )
 }
 
-test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool {
+test fn emit_host_native_only_verdict_stdout_mismatch_mock_holds() -> Bool  {
   native_only_stdout_matches(
     stdout: HostRunStdout { bytes: emit_host_octets_byte_string(octets: [0, 1, 0, 0, 0]) },
     expected_octet: 0
@@ -212,11 +212,11 @@ fn add_native_only_matches_expected(tree: InferredTree, expected_octet: Int) -> 
   }
 }
 
-test fn emit_host_native_only_add_holds() -> Bool {
+test fn emit_host_native_only_add_holds() -> Bool  {
   add_native_only_matches_expected(tree: emit_eval_subject_tree(), expected_octet: 5)
 }
 
-test fn emit_host_native_only_add_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_add_wrong_octet_mismatch_detected_holds() -> Bool  {
   add_native_only_matches_expected(tree: emit_eval_subject_tree(), expected_octet: 6) == false
 }
 
@@ -271,11 +271,11 @@ fn complement_native_only_matches_expected(expected_octet: Int) -> Bool {
   logic_family_native_only_matches_expected(member_id: "complement", expected_octet: expected_octet)
 }
 
-test fn emit_host_native_only_complement_holds() -> Bool {
+test fn emit_host_native_only_complement_holds() -> Bool  {
   complement_native_only_matches_expected(expected_octet: 0)
 }
 
-test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -> Bool  {
   complement_native_only_matches_expected(expected_octet: 1) == false
 }
 
@@ -300,19 +300,19 @@ test fn emit_host_native_only_complement_wrong_octet_mismatch_detected_holds() -
 // emit_host_join_equals_eval_holds). Each claim now pays one native run; the family crate build
 // stays shared through the same one-build cache key either way, and the crate's pure pipeline is
 // served from the warm share per the complement arm's note above.
-test fn emit_host_native_only_meet_holds() -> Bool {
+test fn emit_host_native_only_meet_holds() -> Bool  {
   logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 1)
 }
 
-test fn emit_host_native_only_join_holds() -> Bool {
+test fn emit_host_native_only_join_holds() -> Bool  {
   logic_family_native_only_matches_expected(member_id: "join", expected_octet: 1)
 }
 
-test fn emit_host_native_only_meet_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_meet_wrong_octet_mismatch_detected_holds() -> Bool  {
   logic_family_native_only_matches_expected(member_id: "meet", expected_octet: 0) == false
 }
 
-test fn emit_host_native_only_join_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_join_wrong_octet_mismatch_detected_holds() -> Bool  {
   logic_family_native_only_matches_expected(member_id: "join", expected_octet: 0) == false
 }
 
@@ -359,11 +359,11 @@ fn field_access_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_field_access_holds() -> Bool {
+test fn emit_host_native_only_field_access_holds() -> Bool  {
   field_access_native_only_matches_expected(expected_octet: 9)
 }
 
-test fn emit_host_native_only_field_access_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_field_access_wrong_octet_mismatch_detected_holds() -> Bool  {
   field_access_native_only_matches_expected(expected_octet: 1) == false
 }
 
@@ -410,27 +410,27 @@ fn mlf_native_only_member_matches_expected(member_id: String, expected_octets: L
   }
 }
 
-test fn emit_host_native_only_match_holds() -> Bool {
+test fn emit_host_native_only_match_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "match", expected_octets: match_expected_octets)
 }
 
-test fn emit_host_native_only_match_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_match_wrong_octet_mismatch_detected_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "match", expected_octets: match_alt_expected_octets) == false
 }
 
-test fn emit_host_native_only_loop_holds() -> Bool {
+test fn emit_host_native_only_loop_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "loop", expected_octets: loop_expected_octets)
 }
 
-test fn emit_host_native_only_loop_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_loop_wrong_octet_mismatch_detected_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "loop", expected_octets: loop_alt_expected_octets) == false
 }
 
-test fn emit_host_native_only_fold_closure_holds() -> Bool {
+test fn emit_host_native_only_fold_closure_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "fold", expected_octets: fold_expected_octets)
 }
 
-test fn emit_host_native_only_fold_closure_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_fold_closure_wrong_octet_mismatch_detected_holds() -> Bool  {
   mlf_native_only_member_matches_expected(member_id: "fold", expected_octets: fold_alt_expected_octets) == false
 }
 
@@ -474,11 +474,11 @@ fn variant_construct_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_variant_construct_holds() -> Bool {
+test fn emit_host_native_only_variant_construct_holds() -> Bool  {
   variant_construct_native_only_matches_expected(expected_octet: 9)
 }
 
-test fn emit_host_native_only_variant_construct_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_variant_construct_wrong_octet_mismatch_detected_holds() -> Bool  {
   variant_construct_native_only_matches_expected(expected_octet: 1) == false
 }
 
@@ -497,11 +497,11 @@ test fn emit_host_native_only_variant_construct_wrong_octet_mismatch_detected_ho
 // run_host_process_admitted: changed content colds, never serves stale). The broken control breaks
 // the EXPECTATION side: octet 0 is the byte the family's wrong-oracle control already proves the
 // native run never produces, and the comparator mocks above pin the comparator itself.
-test fn emit_host_native_only_filesystem_read_holds() -> Bool {
+test fn emit_host_native_only_filesystem_read_holds() -> Bool  {
   filesystem_read_native_run(expected_octet: 1)
 }
 
-test fn emit_host_native_only_filesystem_read_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_filesystem_read_wrong_octet_mismatch_detected_holds() -> Bool  {
   filesystem_read_native_run(expected_octet: 0) == false
 }
 
@@ -537,11 +537,11 @@ fn module_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_module_holds() -> Bool {
+test fn emit_host_native_only_module_holds() -> Bool  {
   module_native_only_matches_expected(expected_octet: 5)
 }
 
-test fn emit_host_native_only_module_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_module_wrong_octet_mismatch_detected_holds() -> Bool  {
   module_native_only_matches_expected(expected_octet: 6) == false
 }
 
@@ -577,11 +577,11 @@ fn produced_module_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_produced_module_holds() -> Bool {
+test fn emit_host_native_only_produced_module_holds() -> Bool  {
   produced_module_native_only_matches_expected(expected_octet: 5)
 }
 
-test fn emit_host_native_only_produced_module_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_produced_module_wrong_octet_mismatch_detected_holds() -> Bool  {
   produced_module_native_only_matches_expected(expected_octet: 6) == false
 }
 
@@ -598,11 +598,11 @@ test fn emit_host_native_only_produced_module_wrong_octet_mismatch_detected_hold
 // workspace with realization-digest content-safety. The broken control breaks the EXPECTATION
 // side: octet 0 is the byte the family's wrong-oracle control already proves the native run never
 // produces, and the comparator mocks above pin the comparator itself.
-test fn emit_host_native_only_shell_exec_run_holds() -> Bool {
+test fn emit_host_native_only_shell_exec_run_holds() -> Bool  {
   shell_exec_run_native_run(expected_octet: 1)
 }
 
-test fn emit_host_native_only_shell_exec_run_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_shell_exec_run_wrong_octet_mismatch_detected_holds() -> Bool  {
   shell_exec_run_native_run(expected_octet: 0) == false
 }
 
@@ -637,11 +637,11 @@ fn call_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_call_holds() -> Bool {
+test fn emit_host_native_only_call_holds() -> Bool  {
   call_native_only_matches_expected(expected_octet: 7)
 }
 
-test fn emit_host_native_only_call_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_call_wrong_octet_mismatch_detected_holds() -> Bool  {
   call_native_only_matches_expected(expected_octet: 8) == false
 }
 
@@ -677,11 +677,11 @@ fn record_construct_native_only_matches_expected(expected_octet: Int) -> Bool {
   }
 }
 
-test fn emit_host_native_only_record_construct_holds() -> Bool {
+test fn emit_host_native_only_record_construct_holds() -> Bool  {
   record_construct_native_only_matches_expected(expected_octet: 9)
 }
 
-test fn emit_host_native_only_record_construct_wrong_octet_mismatch_detected_holds() -> Bool {
+test fn emit_host_native_only_record_construct_wrong_octet_mismatch_detected_holds() -> Bool  {
   record_construct_native_only_matches_expected(expected_octet: 0) == false
 }
 

@@ -113,7 +113,7 @@ fn quad_admission() -> Admission {
   }
 }
 
-test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
+test fn quad_namespace_only_resolve_accepts_holds() -> Bool  {
   match quad_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
@@ -131,7 +131,7 @@ test fn quad_namespace_only_resolve_accepts_holds() -> Bool {
   }
 }
 
-test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool {
+test fn quad_import_scoped_admission_reds_ambiguous_export_holds() -> Bool  {
   match quad_roots() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>

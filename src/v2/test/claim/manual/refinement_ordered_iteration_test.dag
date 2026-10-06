@@ -30,7 +30,7 @@ fn test_locus() -> Locus {
   Textual { file: ^refinement_ordered_iteration_test_file, extent: WholeFile }
 }
 
-test fn witness_ordered_classifier_accepts() -> Bool {
+test fn witness_ordered_classifier_accepts() -> Bool  {
   match refine_ordered_iteration(
     base: Empty,
     by: ordered_classifier_for_list_int(),
@@ -41,7 +41,7 @@ test fn witness_ordered_classifier_accepts() -> Bool {
   }
 }
 
-test fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
+test fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool  {
   match refine_ordered_iteration(
     base: Empty,
     by: unordered_classifier_for_list_int(),

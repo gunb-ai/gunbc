@@ -9,14 +9,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // --source-root dag --source-root src/v2 --entry
 // src/v2/test/claim/long/pipeline_stage_add_pick_relationship_witness_test.dag --function <name>.
 
-test fn pipeline_parse_add_relationship_green() -> Bool {
+test fn pipeline_parse_add_relationship_green() -> Bool  {
   pipeline_parse_add_relationship_holds()
 }
 
-test fn pipeline_normalize_add_transform_relationship_green() -> Bool {
+test fn pipeline_normalize_add_transform_relationship_green() -> Bool  {
   pipeline_normalize_add_relationship_holds()
 }
 
-test fn pipeline_normalize_pick_then_arm_magnitude_relationship_green() -> Bool {
+test fn pipeline_normalize_pick_then_arm_magnitude_relationship_green() -> Bool  {
   pipeline_normalize_pick_then_arm_magnitude_relationship_holds()
 }

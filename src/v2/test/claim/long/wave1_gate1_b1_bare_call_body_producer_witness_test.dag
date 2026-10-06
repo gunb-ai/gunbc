@@ -10,22 +10,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // --source-root dag --source-root src/v2 --entry
 // src/v2/test/claim/long/wave1_gate1_b1_bare_call_body_producer_witness_test.dag --function <name>.
 
-test fn wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds() -> Bool {
+test fn wave1_gate1_b1_bare_call_lowers_to_transform_witness_holds() -> Bool  {
   wave1_gate1_b1_bare_call_lowers_to_transform_holds()
 }
 
-test fn wave1_gate1_b1_bare_call_resolves_end_to_end_witness_holds() -> Bool {
+test fn wave1_gate1_b1_bare_call_resolves_end_to_end_witness_holds() -> Bool  {
   wave1_gate1_b1_bare_call_resolves_end_to_end_holds()
 }
 
-test fn wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds() -> Bool {
+test fn wave1_gate1_b1_builtin_call_resolves_end_to_end_witness_holds() -> Bool  {
   wave1_gate1_b1_builtin_call_resolves_end_to_end_holds()
 }
 
-test fn wave1_gate1_b1_unbound_call_resolve_rejects_witness_holds() -> Bool {
+test fn wave1_gate1_b1_unbound_call_resolve_rejects_witness_holds() -> Bool  {
   wave1_gate1_b1_unbound_call_resolve_rejects_holds()
 }
 
-test fn wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds() -> Bool {
+test fn wave1_gate1_b1_symbol_index_frontend_parity_no_regression_witness_holds() -> Bool  {
   wave1_gate1_a1_symbol_index_frontend_parity_holds()
 }

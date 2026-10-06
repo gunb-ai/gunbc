@@ -121,7 +121,7 @@ fn ts_import_pipeline_emit(
   )
 }
 
-test fn ts_import_pipeline_exact_holds() -> Bool {
+test fn ts_import_pipeline_exact_holds() -> Bool  {
   match ts_import_pipeline_emit(
     source: ts_import_pipeline_source,
     third_seg: ^algebra,
@@ -132,7 +132,7 @@ test fn ts_import_pipeline_exact_holds() -> Bool {
   }
 }
 
-test fn ts_import_pipeline_discriminating_red_holds() -> Bool {
+test fn ts_import_pipeline_discriminating_red_holds() -> Bool  {
   match ts_import_pipeline_emit(
     source: ts_import_pipeline_source,
     third_seg: ^algebra,

@@ -22,7 +22,7 @@ import v2.std.node {
 }
 import v2.std.node_query { find_arrow_body_child }
 
-test fn add_body_table_fixture_arrow_accepts() -> Bool {
+test fn add_body_table_fixture_arrow_accepts() -> Bool  {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       well_formed(n: arrow)
@@ -67,7 +67,7 @@ fn add_arrow_swapped_operand_body() -> Node {
   )
 }
 
-test fn add_body_operand_order_differs() -> Bool {
+test fn add_body_operand_order_differs() -> Bool  {
   let canonical = dag_add_binary_body_fixture
   let swapped = add_arrow_swapped_operand_body()
   canonical != swapped
@@ -111,7 +111,7 @@ fn add_body_arrow_with_atom_body_rejects() -> Bool {
   !well_formed(n: arrow)
 }
 
-test fn add_body_edge_targets_binary_transform() -> Bool {
+test fn add_body_edge_targets_binary_transform() -> Bool  {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match find_arrow_body_child(root: arrow) {

@@ -143,23 +143,23 @@ fn ts_closure_emit_swapped_params_text() -> String {
   }
 }
 
-test fn ts_closure_emit_by_execution_exact_holds() -> Bool {
+test fn ts_closure_emit_by_execution_exact_holds() -> Bool  {
   ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text
 }
 
-test fn ts_closure_emit_swapped_operands_discriminates_holds() -> Bool {
+test fn ts_closure_emit_swapped_operands_discriminates_holds() -> Bool  {
   (ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text)
     && (ts_closure_emit_swapped_operands_text() != ts_closure_emit_canonical_text())
     && (ts_closure_emit_swapped_operands_text() != "TS_CLOSURE_EMIT_REJECTED")
 }
 
-test fn ts_closure_emit_swapped_params_discriminates_holds() -> Bool {
+test fn ts_closure_emit_swapped_params_discriminates_holds() -> Bool  {
   (ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text)
     && (ts_closure_emit_swapped_params_text() != ts_closure_emit_canonical_text())
     && (ts_closure_emit_swapped_params_text() != "TS_CLOSURE_EMIT_REJECTED")
 }
 
-test fn ts_closure_emit_prefix_row_perturbation_fails_closed_holds() -> Bool {
+test fn ts_closure_emit_prefix_row_perturbation_fails_closed_holds() -> Bool  {
   match ts_closure_emit_value_producing(
     expr: ts_closure_canonical_expr(),
     catalog: ts_closure_prefix_catalog()
@@ -169,7 +169,7 @@ test fn ts_closure_emit_prefix_row_perturbation_fails_closed_holds() -> Bool {
   }
 }
 
-test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
+test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool  {
   match target_value_expression_to_concrete_tokens(
     expr: ts_closure_canonical_expr(),
     projection: ts_value_expression_projection(),

@@ -17,7 +17,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // live in typescript_descriptor_node_run.dag (not *_test.dag). Dissolve-on: emit-host MVP smokes
 // subsume these, or measured under fast-lane and re-enroll per-PR.
 
-test fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
+test fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool  {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: None } =>
       match typescript_descriptor_node_host_run_i32(target: ts_target_model(), source: source) {
@@ -28,7 +28,7 @@ test fn typescript_descriptor_node_ts_node_run_add_holds() -> Bool {
   }
 }
 
-test fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool {
+test fn typescript_descriptor_node_ts_node_run_catalog_minus_discriminates() -> Bool  {
   match add_body_ts_emit_from_producer_tree(target: add_body_ts_target_model_minus_catalog()) {
     Accepted { value: source, diagnostics: None } =>
       match typescript_descriptor_node_host_run_i32(

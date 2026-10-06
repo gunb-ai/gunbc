@@ -112,13 +112,13 @@ fn bmc_credentials_rotated_perturb_flips_iso_section_red() -> Bool {
   }
 }
 
-test fn path_y_bmc_quotient_teeth_perturb_credentials_rotated_flips_lossy() -> Bool {
+test fn path_y_bmc_quotient_teeth_perturb_credentials_rotated_flips_lossy() -> Bool  {
   bmc_credentials_rotated_perturb_decodes_lossless()
     && !bmc_credentials_rotated_perturb_red_control_still_lossy()
     && bmc_credentials_rotated_perturb_flips_iso_section_red()
 }
 
-test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {
+test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool  {
   bmc_target_quotient_decodes_lossy()
     && gha_target_quotient_decodes_lossless()
     && bmc_roundtrip_fidelity_matches_target_quotient()

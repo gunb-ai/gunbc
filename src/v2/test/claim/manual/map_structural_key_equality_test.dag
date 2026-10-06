@@ -12,19 +12,19 @@ fn one_entry(a: Int, b: Int, v: Int) -> SKeyMap {
   map_insert(m: empty_map(), key: SKey { a: a, b: b }, value: v)
 }
 
-test fn struct_key_equal_eq() -> Bool {
+test fn struct_key_equal_eq() -> Bool  {
   one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 2, v: 7)
 }
 
-test fn struct_key_distinct_neq() -> Bool {
+test fn struct_key_distinct_neq() -> Bool  {
   (one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 9, v: 7)) == false
 }
 
-test fn struct_key_value_neq() -> Bool {
+test fn struct_key_value_neq() -> Bool  {
   (one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 2, v: 8)) == false
 }
 
-test fn struct_key_shadow_latest_eq() -> Bool {
+test fn struct_key_shadow_latest_eq() -> Bool  {
   let shadowed = map_insert(m: one_entry(a: 1, b: 2, v: 7), key: SKey { a: 1, b: 2 }, value: 9)
   shadowed == one_entry(a: 1, b: 2, v: 9)
 }

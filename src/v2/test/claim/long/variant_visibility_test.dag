@@ -48,10 +48,10 @@ data src_unique_variants: String = "module variant_vis_pilot\n\ntype Classical =
 
 data src_ambiguous_variant: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\ntype Mood = Yes | Meh\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
 
-test fn variant_visibility_unique_resolves_holds() -> Bool {
+test fn variant_visibility_unique_resolves_holds() -> Bool  {
   variant_vis_accepts(src: src_unique_variants)
 }
 
-test fn variant_visibility_ambiguous_refuses_holds() -> Bool {
+test fn variant_visibility_ambiguous_refuses_holds() -> Bool  {
   !variant_vis_accepts(src: src_ambiguous_variant)
 }

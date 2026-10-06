@@ -175,7 +175,7 @@ data parallel_executor_missing_prerequisite_blocks: Bool = parallel_executor_blo
 
 data parallel_executor_layer_projection_reuses_frontiers: Bool = parallel_executor_layers_reuse_readiness_frontiers()
 
-test fn parallel_executor_claims_hold() -> Bool {
+test fn parallel_executor_claims_hold() -> Bool  {
   parallel_executor_batches_independent_jobs
     && parallel_executor_scheduled_nodes_match_scheduler
     && parallel_executor_dependent_waits_for_prior_batch

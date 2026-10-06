@@ -15,14 +15,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // --source-root dag --source-root src/v2 --entry
 // src/v2/test/claim/long/alias_decl_parse_witness_test.dag --functions <csv>.
 
-test fn witness_alias_decl_parse_and_binding_row_holds() -> Bool {
+test fn witness_alias_decl_parse_and_binding_row_holds() -> Bool  {
   alias_decl_parse_and_binding_row_holds()
 }
 
-test fn witness_alias_decl_keyword_reserved_red_control_holds() -> Bool {
+test fn witness_alias_decl_keyword_reserved_red_control_holds() -> Bool  {
   alias_decl_keyword_reserved_in_binding_position_red_control_holds()
 }
 
-test fn witness_alias_decl_fill_lexical_lookup_holds() -> Bool {
+test fn witness_alias_decl_fill_lexical_lookup_holds() -> Bool  {
   alias_decl_fill_lexical_lookup_holds()
 }

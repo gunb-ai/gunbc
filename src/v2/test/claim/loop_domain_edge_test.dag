@@ -65,16 +65,16 @@ fn lde_domain_last() -> Node { lde_loop(children: [lde_body_edge(), lde_bound_ed
 fn lde_domain_first() -> Node { lde_loop(children: [lde_domain_edge(), lde_body_edge(), lde_bound_edge()]) }
 fn lde_fold_shape() -> Node { lde_loop(children: [lde_body_edge(), lde_domain_edge(), lde_carrier_edge(), lde_bound_edge()]) }
 
-test fn loop_with_one_domain_edge_conforms() -> Bool {
+test fn loop_with_one_domain_edge_conforms() -> Bool  {
   loop_behavior_edges_conform(children: lde_domain_last().children)
   && loop_behavior_edges_conform(children: lde_fold_shape().children)
 }
 
-test fn loop_with_two_domain_edges_refuses() -> Bool {
+test fn loop_with_two_domain_edges_refuses() -> Bool  {
   !loop_behavior_edges_conform(children: [lde_body_edge(), lde_bound_edge(), lde_domain_edge(), lde_domain_edge()])
 }
 
-test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool {
+test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool  {
   loop_behavior_edges_conform(children: lde_unary().children)
   && !loop_behavior_edges_conform(children: [
     lde_body_edge(),
@@ -83,12 +83,12 @@ test fn unary_loop_still_conforms_and_unknown_named_edge_still_refuses() -> Bool
   ])
 }
 
-test fn domain_loop_hash_is_stable_and_distinct_from_unary() -> Bool {
+test fn domain_loop_hash_is_stable_and_distinct_from_unary() -> Bool  {
   (content_hash(n: lde_domain_last()) == content_hash(n: lde_domain_first()))
   && (content_hash(n: lde_domain_last()) != content_hash(n: lde_unary()))
 }
 
-test fn domain_edge_is_not_part_of_the_iteration_fold() -> Bool {
+test fn domain_edge_is_not_part_of_the_iteration_fold() -> Bool  {
   let parent = lde_fold_shape()
   loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_body_edge())
   && !loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_domain_edge())
@@ -96,7 +96,7 @@ test fn domain_edge_is_not_part_of_the_iteration_fold() -> Bool {
   && !loop_edge_contributes_to_iteration_fold(parent: parent, e: lde_carrier_edge())
 }
 
-test fn unary_target_realization_refuses_domain_and_carrier_loops() -> Bool {
+test fn unary_target_realization_refuses_domain_and_carrier_loops() -> Bool  {
   target_value_expr_loop_gate(node: lde_unary())
   && !target_value_expr_loop_gate(node: lde_domain_last())
   && !target_value_expr_loop_gate(node: lde_loop(children: [lde_body_edge(), lde_bound_edge(), lde_carrier_edge()]))

@@ -39,14 +39,14 @@ fn is_zero_bare(value: Nat) -> Bool {
   }
 }
 
-test fn qualified_pattern_reconciles_grounded_zero() -> Bool {
+test fn qualified_pattern_reconciles_grounded_zero() -> Bool  {
   is_zero_qualified(value: nat_mul(a: Zero, b: three()))
 }
 
-test fn qualified_pattern_reconciles_grounded_succ() -> Bool {
+test fn qualified_pattern_reconciles_grounded_succ() -> Bool  {
   is_succ_qualified(value: three())
 }
 
-test fn bare_pattern_control_holds() -> Bool {
+test fn bare_pattern_control_holds() -> Bool  {
   is_zero_bare(value: nat_mul(a: Zero, b: three()))
 }

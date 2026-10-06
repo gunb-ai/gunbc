@@ -11,7 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolve cleanly and the entry's unqualified reference binds its OWN row (SubstrateInputsOnly
 // here, while the peer declares ReadsLiveTree).
 
-test fn live_tree_same_named_rows_resolve_cleanly_holds() -> Bool {
+test fn live_tree_same_named_rows_resolve_cleanly_holds() -> Bool  {
   live_tree_peer_truth()
     && match live_tree_disposition {
       SubstrateInputsOnly => true

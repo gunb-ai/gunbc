@@ -25,7 +25,7 @@ fn branch_infer_fail_open_audit_body() -> Node {
   )
 }
 
-test fn branch_infer_fail_open_audit_rejects_holds() -> Bool {
+test fn branch_infer_fail_open_audit_rejects_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: branch_infer_fail_open_audit_body())) {
     Accepted { value: _, diagnostics: d } => false
     Rejected { diagnostics: _ } => true
@@ -40,7 +40,7 @@ fn branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
   }
 }
 
-test fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+test fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool  {
   match infer(tree: claim_resolved_tree_without_declarations(root: dag_pick_if_body_fixture)) {
     Accepted { value: _, diagnostics: d } => d == None
     Rejected { diagnostics: _ } => false

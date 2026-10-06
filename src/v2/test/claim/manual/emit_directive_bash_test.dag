@@ -71,7 +71,7 @@ fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   )
 }
 
-test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
+test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool  {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == emit_directive_error_expected) && (dg == None)
@@ -79,7 +79,7 @@ test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
   }
 }
 
-test fn emit_directive_bash_severity_invariant_holds() -> Bool {
+test fn emit_directive_bash_severity_invariant_holds() -> Bool  {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: se, diagnostics: _ } =>
       match emit_directive_bash_emit(d: emit_directive_warning_example) {
@@ -90,7 +90,7 @@ test fn emit_directive_bash_severity_invariant_holds() -> Bool {
   }
 }
 
-test fn emit_directive_bash_message_flows_holds() -> Bool {
+test fn emit_directive_bash_message_flows_holds() -> Bool  {
   match emit_directive_bash_emit(d: emit_directive_error_example) {
     Accepted { value: s1, diagnostics: _ } =>
       match emit_directive_bash_emit(d: emit_directive_other_example) {
@@ -112,7 +112,7 @@ fn emit_directive_bash_emit_to_stdout_wrong(d: EmitDirective) -> Outcome<Medium<
   )
 }
 
-test fn emit_directive_bash_to_stdout_wrong_ne_correct_holds() -> Bool {
+test fn emit_directive_bash_to_stdout_wrong_ne_correct_holds() -> Bool  {
   match emit_directive_bash_emit_to_stdout_wrong(d: emit_directive_error_example) {
     Accepted { value: w, diagnostics: _ } =>
       (w.carried == emit_directive_error_to_stdout_wrong_expected)

@@ -84,7 +84,7 @@ fn body_lowering_parsed_tree(source: String) -> Optional<Node> {
   }
 }
 
-test fn body_lowering_match_lowers_to_match() -> Bool {
+test fn body_lowering_match_lowers_to_match() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -111,7 +111,7 @@ test fn body_lowering_match_lowers_to_match() -> Bool {
   }
 }
 
-test fn body_lowering_normalize_accepts_match_module() -> Bool {
+test fn body_lowering_normalize_accepts_match_module() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -122,7 +122,7 @@ test fn body_lowering_normalize_accepts_match_module() -> Bool {
   }
 }
 
-test fn body_lowering_normalized_module_has_match() -> Bool {
+test fn body_lowering_normalized_module_has_match() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -134,7 +134,7 @@ test fn body_lowering_normalized_module_has_match() -> Bool {
   }
 }
 
-test fn body_lowering_match_swapped_arms_normalize_accepts() -> Bool {
+test fn body_lowering_match_swapped_arms_normalize_accepts() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_swapped_source) {
     Absent => false
     Present { value: tree } =>
@@ -145,7 +145,7 @@ test fn body_lowering_match_swapped_arms_normalize_accepts() -> Bool {
   }
 }
 
-test fn body_lowering_match_arms_found() -> Bool {
+test fn body_lowering_match_arms_found() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -168,7 +168,7 @@ test fn body_lowering_match_arms_found() -> Bool {
   }
 }
 
-test fn body_lowering_match_first_arm_wires() -> Bool {
+test fn body_lowering_match_first_arm_wires() -> Bool  {
   match body_lowering_parsed_tree(source: body_lowering_match_source) {
     Absent => false
     Present { value: tree } =>
@@ -195,7 +195,7 @@ test fn body_lowering_match_first_arm_wires() -> Bool {
 }
 
 // Synthetic empty Conj arm capture has no navigable match_arm production spine — body_lower_wire_match_arm_capture must refuse with ^body_lowering_reason_match_arm_navigation_refused (structural termination; no fuel budget).
-test fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
+test fn body_lowering_match_unnavigable_arm_refuses() -> Bool  {
   let unnavigable_arm = node_synthetic(
     kind: TypeNode { connective: Conj },
     children: Empty

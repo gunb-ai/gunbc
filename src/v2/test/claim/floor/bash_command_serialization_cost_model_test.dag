@@ -110,18 +110,18 @@ fn serialization_is_total_over_distinct_commands(k: Int) -> Bool {
   cost_model_every_command_survives(remaining: k, text: cost_model_serialized(k: k))
 }
 
-test fn bash_serialization_is_total_at_1_distinct_command() -> Bool {
+test fn bash_serialization_is_total_at_1_distinct_command() -> Bool  {
   serialization_is_total_over_distinct_commands(k: 1)
 }
 
-test fn bash_serialization_is_total_at_2_distinct_commands() -> Bool {
+test fn bash_serialization_is_total_at_2_distinct_commands() -> Bool  {
   serialization_is_total_over_distinct_commands(k: 2)
 }
 
-test fn bash_serialization_is_total_at_4_distinct_commands() -> Bool {
+test fn bash_serialization_is_total_at_4_distinct_commands() -> Bool  {
   serialization_is_total_over_distinct_commands(k: 4)
 }
 
-test fn bash_serialization_is_total_at_8_distinct_commands() -> Bool {
+test fn bash_serialization_is_total_at_8_distinct_commands() -> Bool  {
   serialization_is_total_over_distinct_commands(k: 8)
 }

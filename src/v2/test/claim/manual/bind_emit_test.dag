@@ -102,7 +102,7 @@ fn bind_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<St
   )
 }
 
-test fn bind_emit_holds() -> Bool {
+test fn bind_emit_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: dag_bind_target_model(),
     emitted: dag_fixture_emitted_bind_fn
@@ -117,7 +117,7 @@ test fn bind_emit_holds() -> Bool {
   }
 }
 
-test fn bind_emit_wrong_value_discriminates() -> Bool {
+test fn bind_emit_wrong_value_discriminates() -> Bool  {
   match bind_emit_from_producer(target: dag_bind_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match bind_emit_wrong_value_from_producer(target: dag_bind_target_model()) {

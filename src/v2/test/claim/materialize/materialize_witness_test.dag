@@ -40,28 +40,28 @@ fn dup_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^x)) }
 
 fn distinct_fixture() -> Node { conj2(a: atom(sym: ^x), b: atom(sym: ^y)) }
 
-test fn duplicate_subtree_is_one_redundant_computation() -> Bool {
+test fn duplicate_subtree_is_one_redundant_computation() -> Bool  {
   materialize_redundant_computation_count(root: dup_fixture()) == 1
 }
 
-test fn duplicate_subtree_flagged() -> Bool {
+test fn duplicate_subtree_flagged() -> Bool  {
   materialize_has_duplicate_computation(root: dup_fixture())
 }
 
-test fn distinct_subtrees_have_no_redundancy() -> Bool {
+test fn distinct_subtrees_have_no_redundancy() -> Bool  {
   materialize_redundant_computation_count(root: distinct_fixture()) == 0
 }
 
-test fn distinct_subtrees_not_flagged() -> Bool {
+test fn distinct_subtrees_not_flagged() -> Bool  {
   !materialize_has_duplicate_computation(root: distinct_fixture())
 }
 
-test fn dup_fixture_node_and_distinct_counts() -> Bool {
+test fn dup_fixture_node_and_distinct_counts() -> Bool  {
   (materialize_node_count(root: dup_fixture()) == 3)
     && (materialize_distinct_computation_count(root: dup_fixture()) == 2)
 }
 
-test fn distinct_fixture_all_distinct() -> Bool {
+test fn distinct_fixture_all_distinct() -> Bool  {
   materialize_distinct_computation_count(root: distinct_fixture()) == 3
 }
 
@@ -75,7 +75,7 @@ fn witness_plan_schedule() -> List<List<Runnable>> {
   ]
 }
 
-test fn node_content_hash_is_realization_plan_target() -> Bool {
+test fn node_content_hash_is_realization_plan_target() -> Bool  {
   let root = dup_fixture()
   let other = distinct_fixture()
   let plan = RealizationPlan {

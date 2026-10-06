@@ -23,7 +23,7 @@ fn sg_rc_ctor_binding_spelling(binding: Symbol, expected: String) -> Bool {
   }
 }
 
-test fn sg_rc_ctor_spellings_in_binding_map() -> Bool {
+test fn sg_rc_ctor_spellings_in_binding_map() -> Bool  {
   sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_rc_new, expected: "Rc::new")
   && sg_rc_ctor_binding_spelling(binding: ^rust_sg_rc_ctor_box_new, expected: "Box::new")
 }
@@ -117,7 +117,7 @@ fn sg_rc_outcome_node_return_shell() -> Node {
   }
 }
 
-test fn sg_rc_outcome_inner_sg2_args_preserved() -> Bool {
+test fn sg_rc_outcome_inner_sg2_args_preserved() -> Bool  {
   sg_rc_serialized_type_text(emitted: sg_rc_outcome_node_return_shell()) ==
     sg_rc_expected_rc_outcome_node
 }
@@ -141,7 +141,7 @@ fn sg_rc_value_expr_ctor_identity(expr: TargetValueExpression) -> Symbol {
   }
 }
 
-test fn sg_rc_f1_value_dual_boundary_holds() -> Bool {
+test fn sg_rc_f1_value_dual_boundary_holds() -> Bool  {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()
   let rc = target_reference_layer_apply_value_expression(
@@ -164,12 +164,12 @@ test fn sg_rc_f1_value_dual_boundary_holds() -> Bool {
   }
 }
 
-test fn sg_rc_f1_dual_boundary_holds() -> Bool {
+test fn sg_rc_f1_dual_boundary_holds() -> Bool  {
   sg_rc_f1_rc_type_text() == sg_rc_expected_rc_diagnostics
     && sg_rc_f1_owned_type_text() == sg_rc_expected_owned_diagnostics
 }
 
-test fn sg_rc_f2_return_value_holds() -> Bool {
+test fn sg_rc_f2_return_value_holds() -> Bool  {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: sg_rc_diagnostics_identity_value(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -185,7 +185,7 @@ test fn sg_rc_f2_return_value_holds() -> Bool {
   }
 }
 
-test fn sg_rc_f2_param_value_holds() -> Bool {
+test fn sg_rc_f2_param_value_holds() -> Bool  {
   match translate_apply_use_site_ownership_to_value_expression(
     expr: sg_rc_diagnostics_identity_value(),
     source_carrier: target_carrier_diagnostics_node(),
@@ -201,7 +201,7 @@ test fn sg_rc_f2_param_value_holds() -> Bool {
   }
 }
 
-test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
+test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool  {
   match translate_coerced_shell_at_use_site(
     coerced: target_carrier_probe_heap_node(),
     target: sg_rc_layering_gate_target(),
@@ -212,7 +212,7 @@ test fn sg_rc_probe_heap_param_without_row_rejects() -> Bool {
   }
 }
 
-test fn sg_rc_f6_round_trip_owned() -> Bool {
+test fn sg_rc_f6_round_trip_owned() -> Bool  {
   match target_reference_layer_probe_from_emitted_type(
     emitted: sg_rc_apply_layer_to_diagnostics(layer: ReferenceLayerOwned),
     projection: rust_type_expression_projection(),
@@ -223,7 +223,7 @@ test fn sg_rc_f6_round_trip_owned() -> Bool {
   }
 }
 
-test fn sg_rc_value_rc_wrap_tagged() -> Bool {
+test fn sg_rc_value_rc_wrap_tagged() -> Bool  {
   let inner = sg_rc_diagnostics_identity_value()
   let tokens = rust_reference_layer_tokens()
   let expected = target_reference_layer_apply_value_expression(

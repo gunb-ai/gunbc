@@ -12,21 +12,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // resolve_edit_locus_from_loci answers by how many loci the edit reached: none is no-match, exactly
 // one is that locus, two or more is ambiguous. One claim per case, each discriminating: the single
 // case checks WHICH node comes back, and the two refusals are told apart by reason.
-test fn no_locus_refuses_as_no_match() -> Bool {
+test fn no_locus_refuses_as_no_match() -> Bool  {
   match resolve_edit_locus_from_loci(loci: []) {
     Violates { diagnostic: d } => d.reason == ^edit_locus_reason_no_match
     Holds { value: _ } => false
   }
 }
 
-test fn one_locus_resolves_to_that_locus() -> Bool {
+test fn one_locus_resolves_to_that_locus() -> Bool  {
   match resolve_edit_locus_from_loci(loci: [bool_node()]) {
     Holds { value: n } => n == bool_node()
     Violates { diagnostic: _ } => false
   }
 }
 
-test fn two_loci_refuse_as_ambiguous() -> Bool {
+test fn two_loci_refuse_as_ambiguous() -> Bool  {
   match resolve_edit_locus_from_loci(loci: [bool_node(), integer_int_type_node()]) {
     Violates { diagnostic: d } => d.reason == ^edit_locus_reason_ambiguous
     Holds { value: _ } => false

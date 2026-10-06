@@ -25,18 +25,18 @@ fn publication_import_population() -> ParsedGitImportPopulation {
   }] }
 }
 
-test fn policy_refuses_unrostered_production_import() -> Bool {
+test fn policy_refuses_unrostered_production_import() -> Bool  {
   !git_policy_is_clean(v: git_import_authority_verdict(rows: git_use_rows(), population: ParsedGitImportsAvailable {
     expected_source_paths: ["dag/gunbc/planted.dag"], modules: [ParsedGitModuleImports { source_path: "dag/gunbc/planted.dag", module_name: "gunbc.planted", imports: ["extdeps.git"] }]
   }))
 }
 
-test fn policy_accepts_rostered_publication_and_refuses_withdrawal() -> Bool {
+test fn policy_accepts_rostered_publication_and_refuses_withdrawal() -> Bool  {
   git_policy_is_clean(v: git_import_authority_verdict(rows: git_use_rows(), population: publication_import_population()))
     && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: publication_import_population()))
 }
 
-test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool {
+test fn policy_refuses_unavailable_incomplete_and_empty_populations() -> Bool  {
   !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsUnavailable { reason: "index unavailable" as NonEmptyStr }))
     && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsIncomplete { missing_modules: ["gunbc.missing"] }))
     && !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsAvailable { expected_source_paths: [], modules: [] }))
@@ -62,7 +62,7 @@ fn bootstrap_control_row(classification: GitUseClassification) -> GitUseRow {
   }
 }
 
-test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool {
+test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool  {
   let population = ParsedGitImportsAvailable { expected_source_paths: ["src/v2/test/claim/git_import_authority_test.dag"], modules: [ParsedGitModuleImports {
     source_path: "src/v2/test/claim/git_import_authority_test.dag", module_name: "v2.test.git_import_authority", imports: ["extdeps.git"]
   }] }
@@ -74,14 +74,14 @@ test fn policy_accepts_adapter_and_refuses_misclassification() -> Bool {
     })], population: population))
 }
 
-test fn policy_refuses_unclassified_use() -> Bool {
+test fn policy_refuses_unclassified_use() -> Bool  {
   !git_policy_is_clean(v: git_import_authority_verdict(rows: [bootstrap_control_row(classification: UnclassifiedGitUse {
     reason: "No evidenced role for this use" as NonEmptyStr
   })], population: publication_import_population()))
 }
 
 // Equal cardinality cannot hide a missing identity behind an unrelated replacement source.
-test fn policy_refuses_equal_count_source_substitution() -> Bool {
+test fn policy_refuses_equal_count_source_substitution() -> Bool  {
   !git_policy_is_clean(v: git_import_authority_verdict(rows: [], population: ParsedGitImportsAvailable {
     expected_source_paths: ["dag/gunbc/expected.dag"],
     modules: [ParsedGitModuleImports { source_path: "dag/gunbc/substitute.dag", module_name: "gunbc.substitute", imports: [] }]

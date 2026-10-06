@@ -77,7 +77,7 @@ fn sg2_project_instantiation_emitted() -> Node {
   }
 }
 
-test fn sg2_projection_matches_golden() -> Bool {
+test fn sg2_projection_matches_golden() -> Bool  {
   content_hash(n: sg2_project_instantiation_emitted()) ==
     content_hash(n: rust_sg2_rc_foobar_xy_emitted())
 }
@@ -104,7 +104,7 @@ fn sg2_project_conj_emitted() -> Node {
   }
 }
 
-test fn sg2_binary_fn_projection_accepts() -> Bool {
+test fn sg2_binary_fn_projection_accepts() -> Bool  {
   match translate_type_expression_project(
     node: rust_sg2_binary_fn_source_type_node(),
     target: sg2_type_expr_target,
@@ -115,7 +115,7 @@ test fn sg2_binary_fn_projection_accepts() -> Bool {
   }
 }
 
-test fn sg2_arrow_malformed_projection_rejects() -> Bool {
+test fn sg2_arrow_malformed_projection_rejects() -> Bool  {
   match translate_type_expression_project(
     node: rust_sg2_arrow_malformed_source_type_node(),
     target: sg2_type_expr_target,
@@ -146,11 +146,11 @@ fn sg2_serialized_text(emitted: Node) -> String {
   }
 }
 
-test fn sg2_serialize_matches_expected() -> Bool {
+test fn sg2_serialize_matches_expected() -> Bool  {
   sg2_serialized_text(emitted: rust_sg2_rc_foobar_xy_emitted()) == sg2_expected_type_text
 }
 
-test fn sg2_arrow_serialize_matches_expected() -> Bool {
+test fn sg2_arrow_serialize_matches_expected() -> Bool  {
   sg2_serialized_text(emitted: rust_sg2_arrow_xy_emitted()) == sg2_expected_arrow_text
 }
 
@@ -158,15 +158,15 @@ fn sg2_arrow_projected_serialized_text() -> String {
   sg2_serialized_text(emitted: sg2_project_arrow_emitted())
 }
 
-test fn sg2_arrow_projected_serialize_matches_expected() -> Bool {
+test fn sg2_arrow_projected_serialize_matches_expected() -> Bool  {
   sg2_arrow_projected_serialized_text() == sg2_expected_arrow_text
 }
 
-test fn sg2_conj_projected_serialize_matches_expected() -> Bool {
+test fn sg2_conj_projected_serialize_matches_expected() -> Bool  {
   sg2_serialized_text(emitted: sg2_project_conj_emitted()) == sg2_expected_conj_text
 }
 
-test fn sg2_instantiation_projected_serialize_matches_expected() -> Bool {
+test fn sg2_instantiation_projected_serialize_matches_expected() -> Bool  {
   sg2_serialized_text(emitted: sg2_project_instantiation_emitted()) == sg2_expected_type_text
 }
 
@@ -188,15 +188,15 @@ fn sg2_arrow_swapped_split_emitted() -> Node {
   )
 }
 
-test fn sg2_arrow_swapped_split_serialize_mismatches_expected() -> Bool {
+test fn sg2_arrow_swapped_split_serialize_mismatches_expected() -> Bool  {
   sg2_serialized_text(emitted: sg2_arrow_swapped_split_emitted()) != sg2_expected_arrow_text
 }
 
-test fn sg2_arrow_projected_serialize_accepts() -> Bool {
+test fn sg2_arrow_projected_serialize_accepts() -> Bool  {
   sg2_serialize_accepts(emitted: sg2_project_arrow_emitted())
 }
 
-test fn sg2_conj_serialize_matches_expected() -> Bool {
+test fn sg2_conj_serialize_matches_expected() -> Bool  {
   sg2_serialized_text(emitted: rust_sg2_conj_xy_emitted()) == sg2_expected_conj_text
 }
 
@@ -217,21 +217,21 @@ fn sg2_rust_add_projection_absent() -> Bool {
   }
 }
 
-test fn sg2_rust_add_translate_fallback_accepts() -> Bool {
+test fn sg2_rust_add_translate_fallback_accepts() -> Bool  {
   match translate(tree: rust_add_inferred_tree, target: rust_add_target_model) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn sg2_instantiation_delimiters_bidirectional() -> Bool {
+test fn sg2_instantiation_delimiters_bidirectional() -> Bool  {
   let row = rust_type_expression_projection()
   row.instantiation_form.open == ^rust_token_lt &&
     row.instantiation_form.separator == ^rust_token_comma &&
     row.instantiation_form.close == ^rust_token_gt
 }
 
-test fn witness_sg2_projection_falsification_holds() -> Bool {
+test fn witness_sg2_projection_falsification_holds() -> Bool  {
   !sg2_serialize_accepts(emitted: sg2_fail_node())
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_atom_zero_positional_emitted())
     && !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_arrow_one_positional_emitted())
@@ -260,7 +260,7 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
   }
 }
 
-test fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
+test fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool  {
   match type_expr_projection_bundle_shape_for_connective(
     bundle: rust_type_expression_projection_bundle_node(),
     connective: Arrow
@@ -278,30 +278,30 @@ test fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
-test fn sg2_conj_projection_matches_golden() -> Bool {
+test fn sg2_conj_projection_matches_golden() -> Bool  {
   content_hash(n: sg2_project_conj_emitted()) == content_hash(n: rust_sg2_conj_xy_emitted())
 }
 
-test fn sg2_serialize_rejects_record_extra_positional() -> Bool {
+test fn sg2_serialize_rejects_record_extra_positional() -> Bool  {
   !sg2_serialize_accepts(emitted: rust_sg2_malformed_record_extra_positional_emitted())
 }
 
-test fn sg2_serialize_rejects_sum_extra_positional() -> Bool {
+test fn sg2_serialize_rejects_sum_extra_positional() -> Bool  {
   !sg2_serialize_accepts(emitted: rust_sg2_malformed_sum_extra_positional_emitted())
 }
 
-test fn sg2_serialize_rejects_atom_duplicate_surface() -> Bool {
+test fn sg2_serialize_rejects_atom_duplicate_surface() -> Bool  {
   !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_duplicate_surface_emitted())
 }
 
-test fn sg2_serialize_rejects_atom_wrong_surface() -> Bool {
+test fn sg2_serialize_rejects_atom_wrong_surface() -> Bool  {
   !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_wrong_surface_emitted())
 }
 
-test fn sg2_serialize_rejects_atom_extra_named() -> Bool {
+test fn sg2_serialize_rejects_atom_extra_named() -> Bool  {
   !sg2_serialize_accepts(emitted: rust_sg2_malformed_atom_extra_named_emitted())
 }
 
-test fn sg2_wire_decode_rejects_instantiation_zero_positional() -> Bool {
+test fn sg2_wire_decode_rejects_instantiation_zero_positional() -> Bool  {
   !sg2_wire_decode_accepts(emitted: rust_sg2_malformed_instantiation_zero_positional_emitted())
 }

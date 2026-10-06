@@ -19,7 +19,7 @@ import v2.std.model_core {
 }
 import v2.std.witness { Holds, Violates }
 
-test fn model_core_bool_width_fact_holds() -> Bool {
+test fn model_core_bool_width_fact_holds() -> Bool  {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisWidth {})
@@ -29,7 +29,7 @@ test fn model_core_bool_width_fact_holds() -> Bool {
   }
 }
 
-test fn model_core_bool_encoding_fact_holds() -> Bool {
+test fn model_core_bool_encoding_fact_holds() -> Bool  {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisEncoding {})
@@ -39,7 +39,7 @@ test fn model_core_bool_encoding_fact_holds() -> Bool {
   }
 }
 
-test fn model_core_bool_unbound_axes_fail_closed() -> Bool {
+test fn model_core_bool_unbound_axes_fail_closed() -> Bool  {
   match model_core_bool_fact_lookup(
     facts: bool_primitive_facts,
     axis: discriminant(v: ModelCoreFactAxisSignedness {})
@@ -49,7 +49,7 @@ test fn model_core_bool_unbound_axes_fail_closed() -> Bool {
   }
 }
 
-test fn model_core_primitives_contract() -> Bool {
+test fn model_core_primitives_contract() -> Bool  {
   (length(xs: bool_model_core().primitives) == 1) &&
   model_core_first_primitive_substrate(core: bool_model_core()) ==
     bool_primitive_facts_node(facts: bool_primitive_facts) &&
@@ -57,11 +57,11 @@ test fn model_core_primitives_contract() -> Bool {
     bool_primitive_facts_node(facts: bool_primitive_facts)
 }
 
-test fn model_core_inhabitance_contract() -> Bool {
+test fn model_core_inhabitance_contract() -> Bool  {
   bool_model_core().inhabitance == [model_core_bool_inhabitance()]
 }
 
-test fn model_core_laws_contract() -> Bool {
+test fn model_core_laws_contract() -> Bool  {
   bool_model_core().laws == [
     model_core_bool_law_obligation(key: ModelCoreBoolBoundedLatticeIdentities),
     model_core_bool_law_obligation(key: ModelCoreBoolDistributivity),
@@ -70,7 +70,7 @@ test fn model_core_laws_contract() -> Bool {
   ]
 }
 
-test fn model_core_payload_contract_holds() -> Bool {
+test fn model_core_payload_contract_holds() -> Bool  {
   let core = bool_model_core()
   (bool_model_core().inhabitance == core.inhabitance) &&
   (bool_model_core().laws == core.laws) &&

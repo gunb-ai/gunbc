@@ -142,7 +142,7 @@ data field_access_inferred_tree: InferredTree = InferredTree {
   facts: PartialFunction { lookup: field_access_facts_lookup }
 }
 
-test fn field_access_emit_holds() -> Bool {
+test fn field_access_emit_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: field_access_target_model,
     emitted: field_access_emitted_root
@@ -165,7 +165,7 @@ fn field_access_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn field_access_ingest_via_coerce_matches_canonical() -> Bool {
+test fn field_access_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: field_access_emitted_root,
     tree: field_access_inferred_tree,

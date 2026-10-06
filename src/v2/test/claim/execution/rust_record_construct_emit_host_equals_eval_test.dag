@@ -365,7 +365,7 @@ fn rust_rec_nine_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, Runti
   verdict_establishes_divergence(v: run.verdict)
 }
 
-test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool {
+test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool  {
   rust_rec_nine_eval_verdict_is_pass(
     run: rust_rec_nine_eval_run(
       tree: rust_rec_nine_eval_inferred_tree(),
@@ -374,7 +374,7 @@ test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool {
   )
 }
 
-test fn rust_record_construct_emit_host_wrong_field_refuses_holds() -> Bool {
+test fn rust_record_construct_emit_host_wrong_field_refuses_holds() -> Bool  {
   rust_rec_nine_eval_verdict_is_semantic_mismatch(
     run: rust_rec_nine_eval_run(
       tree: rust_rec_nine_eval_inferred_tree(),

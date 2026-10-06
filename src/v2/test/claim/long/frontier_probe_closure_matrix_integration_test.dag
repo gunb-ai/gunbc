@@ -86,7 +86,7 @@ fn fp_matrix_population_gates_not_refused(detail: FrontierProbeDetail) -> Bool {
   }
 }
 
-test fn frontier_probe_below_cap_complete_population_gates_pass_holds() -> Bool {
+test fn frontier_probe_below_cap_complete_population_gates_pass_holds() -> Bool  {
   fp_matrix_population_gates_not_refused(
     detail: frontier_probe_receipt_for_subject(
       subject: fp_matrix_below_cap_complete_subject(),
@@ -95,7 +95,7 @@ test fn frontier_probe_below_cap_complete_population_gates_pass_holds() -> Bool 
   )
 }
 
-test fn frontier_probe_second_source_root_population_gates_pass_holds() -> Bool {
+test fn frontier_probe_second_source_root_population_gates_pass_holds() -> Bool  {
   fp_matrix_population_gates_not_refused(
     detail: frontier_probe_receipt_for_subject(
       subject: fp_matrix_second_root_subject(),

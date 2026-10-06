@@ -157,7 +157,7 @@ fn c_add_serialize_rejects_missing_translation_rules() -> Outcome<Medium<String>
 
 data c_add_serialize_reject_receipt: Outcome<Medium<String>> = c_add_serialize_rejects_missing_translation_rules()
 
-test fn c_add_emit_add_fn_accepts_holds() -> Bool {
+test fn c_add_emit_add_fn_accepts_holds() -> Bool  {
   match c_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == c_source_text) && (d == None)
@@ -165,7 +165,7 @@ test fn c_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-test fn c_add_serialize_source_matches_authority_holds() -> Bool {
+test fn c_add_serialize_source_matches_authority_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: c_add_target_model,
     emitted: c_add_emitted_root
@@ -176,14 +176,14 @@ test fn c_add_serialize_source_matches_authority_holds() -> Bool {
   }
 }
 
-test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
+test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool  {
   match c_add_serialize_reject_receipt {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
+test fn c_add_emit_wrong_node_refuses_holds() -> Bool  {
   let wrong_tree = InferredTree {
     root: c_add_wrong_emitted_root,
     facts: PartialFunction { lookup: c_add_facts_lookup }

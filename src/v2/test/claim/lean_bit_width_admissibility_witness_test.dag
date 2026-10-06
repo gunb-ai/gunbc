@@ -18,7 +18,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // — not structural impossibility. RED: width 128 refuses at admission and catalog construction
 // yields LeanWidthAdmissionRefused, not LeanIntegerScalar.
 
-test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
+test fn lean_admit_accepts_catalog_fixed_widths() -> Bool  {
   match lean_admit_bit_width(width: bit_width(count: 8)) {
     LeanBitWidthAccepted { width: w8 } =>
       match lean_admit_bit_width(width: bit_width(count: 16)) {
@@ -41,7 +41,7 @@ test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
   }
 }
 
-test fn lean_admit_refuses_bits128() -> Bool {
+test fn lean_admit_refuses_bits128() -> Bool  {
   let w128: BitWidth = bit_width(count: 128)
   match lean_admit_bit_width(width: w128) {
     LeanBitWidthRefused { width: refused } => bit_width_count(refused) == 128
@@ -49,7 +49,7 @@ test fn lean_admit_refuses_bits128() -> Bool {
   }
 }
 
-test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> Bool {
+test fn lean_catalog_width_admission_refuses_bits128_not_integer_scalar() -> Bool  {
   match lean_primitive_facts_for_catalog_width(
     surface_spelling: ^lean_surface_spelling_int32,
     signedness: Signed,

@@ -134,7 +134,7 @@ fn bash_lhs_exact_arrow_emitted_rejects() -> Bool {
   }
 }
 
-test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
+test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool  {
   bash_lhs_exact_arrow_emitted_rejects()
 }
 
@@ -151,7 +151,7 @@ fn anchor_bash_emit_accepts() -> Outcome<Medium<String>> {
 
 data bash_emit_receipt: Outcome<Medium<String>> = anchor_bash_emit_accepts()
 
-test fn bash_emit_command_accepts_holds() -> Bool {
+test fn bash_emit_command_accepts_holds() -> Bool  {
   match bash_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_text) && (d == None)
@@ -184,7 +184,7 @@ fn anchor_bash_serialize_rejects_missing_rules() -> Outcome<Medium<String>> {
 
 data bash_serialize_reject_receipt: Outcome<Medium<String>> = anchor_bash_serialize_rejects_missing_rules()
 
-test fn bash_emit_missing_rules_rejects_holds() -> Bool {
+test fn bash_emit_missing_rules_rejects_holds() -> Bool  {
   match bash_serialize_reject_receipt {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
@@ -204,7 +204,7 @@ fn anchor_bash_bound_words_emit() -> Outcome<Medium<String>> {
 
 data bash_bound_words_emit_receipt: Outcome<Medium<String>> = anchor_bash_bound_words_emit()
 
-test fn bash_emit_bound_words_holds() -> Bool {
+test fn bash_emit_bound_words_holds() -> Bool  {
   match bash_bound_words_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_bound_words_source_text) && (d == None)
@@ -225,7 +225,7 @@ fn anchor_bash_embedded_quote_emit() -> Outcome<Medium<String>> {
 
 data bash_embedded_quote_emit_receipt: Outcome<Medium<String>> = anchor_bash_embedded_quote_emit()
 
-test fn bash_emit_embedded_quote_holds() -> Bool {
+test fn bash_emit_embedded_quote_holds() -> Bool  {
   match bash_embedded_quote_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_embedded_quote_source_text) && (d == None)
@@ -249,7 +249,7 @@ fn anchor_bash_source_root_ingest_gate_emit() -> Outcome<Medium<String>> {
 
 data bash_source_root_ingest_gate_emit_receipt: Outcome<Medium<String>> = anchor_bash_source_root_ingest_gate_emit()
 
-test fn bash_emit_source_root_ingest_gate_holds() -> Bool {
+test fn bash_emit_source_root_ingest_gate_holds() -> Bool  {
   match bash_source_root_ingest_gate_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == bash_source_root_ingest_gate_source_text) && (d == None)
@@ -272,7 +272,7 @@ fn bash_emit_slice4_holds(
   }
 }
 
-test fn bash_emit_and_then_holds() -> Bool {
+test fn bash_emit_and_then_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_and_then_emitted,
     source_text: bash_and_then_source_text,
@@ -280,7 +280,7 @@ test fn bash_emit_and_then_holds() -> Bool {
   )
 }
 
-test fn bash_emit_or_else_holds() -> Bool {
+test fn bash_emit_or_else_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_or_else_emitted,
     source_text: bash_or_else_source_text,
@@ -288,7 +288,7 @@ test fn bash_emit_or_else_holds() -> Bool {
   )
 }
 
-test fn bash_emit_with_redir_stderr_null_holds() -> Bool {
+test fn bash_emit_with_redir_stderr_null_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_with_redir_stderr_null_emitted,
     source_text: bash_with_redir_stderr_null_source_text,
@@ -296,7 +296,7 @@ test fn bash_emit_with_redir_stderr_null_holds() -> Bool {
   )
 }
 
-test fn bash_emit_pipe_holds() -> Bool {
+test fn bash_emit_pipe_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_pipe_emitted,
     source_text: bash_pipe_source_text,
@@ -304,7 +304,7 @@ test fn bash_emit_pipe_holds() -> Bool {
   )
 }
 
-test fn bash_emit_or_else_with_redir_holds() -> Bool {
+test fn bash_emit_or_else_with_redir_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_or_else_with_redir_emitted,
     source_text: bash_or_else_with_redir_source_text,
@@ -312,7 +312,7 @@ test fn bash_emit_or_else_with_redir_holds() -> Bool {
   )
 }
 
-test fn bash_emit_subshell_true_holds() -> Bool {
+test fn bash_emit_subshell_true_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_subshell_true_emitted,
     source_text: bash_subshell_true_source_text,
@@ -320,7 +320,7 @@ test fn bash_emit_subshell_true_holds() -> Bool {
   )
 }
 
-test fn bash_emit_if_true_then_false_holds() -> Bool {
+test fn bash_emit_if_true_then_false_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_if_true_then_false_emitted,
     source_text: bash_if_true_then_false_source_text,
@@ -328,7 +328,7 @@ test fn bash_emit_if_true_then_false_holds() -> Bool {
   )
 }
 
-test fn bash_emit_heredoc_simple_holds() -> Bool {
+test fn bash_emit_heredoc_simple_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_heredoc_simple_emitted,
     source_text: bash_heredoc_simple_source_text,
@@ -336,7 +336,7 @@ test fn bash_emit_heredoc_simple_holds() -> Bool {
   )
 }
 
-test fn bash_emit_subshell_and_or_nested_holds() -> Bool {
+test fn bash_emit_subshell_and_or_nested_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_subshell_and_or_nested_emitted,
     source_text: bash_subshell_and_or_nested_source_text,
@@ -344,7 +344,7 @@ test fn bash_emit_subshell_and_or_nested_holds() -> Bool {
   )
 }
 
-test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool {
+test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_pipe_and_or_brace_grouped_emitted,
     source_text: bash_pipe_and_or_brace_grouped_source_text,
@@ -352,11 +352,11 @@ test fn bash_emit_pipe_and_or_brace_grouped_holds() -> Bool {
   )
 }
 
-test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool {
+test fn bash_emit_pipe_and_or_flat_ne_brace_grouped_holds() -> Bool  {
   bash_pipe_and_or_flat_wrong_source_text != bash_pipe_and_or_brace_grouped_source_text
 }
 
-test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
+test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool  {
   bash_emit_slice4_holds(
     emitted: bash_pipe_and_or_flat_wrong_emitted,
     source_text: bash_pipe_and_or_flat_wrong_source_text,
@@ -376,6 +376,6 @@ fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
   }
 }
 
-test fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects_holds() -> Bool {
+test fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects_holds() -> Bool  {
   bash_emit_pipe_brace_grouped_wrong_flat_model_rejects()
 }

@@ -37,10 +37,10 @@ fn use_chained() -> Int {
   chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
 }
 
-test fn generic_instantiation_fold_list_runtime_holds() -> Bool {
+test fn generic_instantiation_fold_list_runtime_holds() -> Bool  {
   fold_list_generic_instantiation_holds()
 }
 
-test fn generic_instantiation_chained_field_runtime_holds() -> Bool {
+test fn generic_instantiation_chained_field_runtime_holds() -> Bool  {
   use_chained() == 9
 }

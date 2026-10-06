@@ -127,13 +127,13 @@ fn call_channel_effect_classification(entry_output: Node) -> EffectReachClassifi
   )
 }
 
-test fn effect_reach_follows_a_structural_call_to_the_sink_helper() -> Bool {
+test fn effect_reach_follows_a_structural_call_to_the_sink_helper() -> Bool  {
   derived_host_reading(classification: call_channel_effect_classification(
     entry_output: call_channel_call(callee: "helper_fn")
   ))
 }
 
-test fn effect_reach_does_not_follow_a_non_call_atom_collision() -> Bool {
+test fn effect_reach_does_not_follow_a_non_call_atom_collision() -> Bool  {
   classification_is_local(classification: call_channel_effect_classification(
     entry_output: Node {
       kind: TypeNode { connective: Conj },
@@ -188,11 +188,11 @@ fn transport_classification() -> EffectReachClassification {
   )
 }
 
-test fn effect_reach_path_data_init_derived_host_reading_holds() -> Bool {
+test fn effect_reach_path_data_init_derived_host_reading_holds() -> Bool  {
   derived_host_reading(classification: transport_classification())
 }
 
-test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
+test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool  {
   let c = effect_reach_classification_from_facts(
     entry_module: "fix.witness",
     facts: fixture_severed_facts,
@@ -202,14 +202,14 @@ test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
   classification_is_local(classification: c)
 }
 
-test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
+test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool  {
   effect_reach_touched_by_paths(
     classification: transport_classification(),
     touched_paths: [sn_source_rel_path]
   )
 }
 
-test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
+test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool  {
   derived_host_reading(classification: transport_classification())
     && !effect_reach_touched_by_paths(
     classification: transport_classification(),
@@ -217,7 +217,7 @@ test fn effect_reach_unrelated_path_does_not_select_holds() -> Bool {
   )
 }
 
-test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
+test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool  {
   let c = effect_reach_classification_from_facts(
     entry_module: "fix.hermetic_witness",
     facts: fixture_hermetic_facts,
@@ -228,7 +228,7 @@ test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
     && effect_reach_flow_count(classification: c) == 0
 }
 
-test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
+test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool  {
   let c = effect_reach_classification_from_facts(
     entry_module: "fix.prose_witness",
     facts: fixture_prose_facts,
@@ -252,6 +252,6 @@ fn witness_frontier_concat_built_path_not_classified() -> Bool {
     && effect_reach_flow_count(classification: c) == 0
 }
 
-test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
+test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool  {
   witness_frontier_concat_built_path_not_classified()
 }

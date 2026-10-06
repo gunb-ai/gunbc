@@ -91,7 +91,7 @@ fn validate_grammar_fixture_rhs_symbol_not_in_alphabet() -> FormalGrammar {
   }
 }
 
-test fn witness_validate_grammar_well_formed_accepts_holds() -> Bool {
+test fn witness_validate_grammar_well_formed_accepts_holds() -> Bool  {
   match validate_grammar(g: validate_grammar_fixture_well_formed()) {
     Holds { value: w } =>
       (w.alphabet_enumeration == grammar_alphabet_enumeration_deferred_4766())
@@ -100,21 +100,21 @@ test fn witness_validate_grammar_well_formed_accepts_holds() -> Bool {
   }
 }
 
-test fn witness_validate_grammar_start_not_in_nonterminals_rejects_holds() -> Bool {
+test fn witness_validate_grammar_start_not_in_nonterminals_rejects_holds() -> Bool  {
   match validate_grammar(g: validate_grammar_fixture_start_not_in_nonterminals()) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
 }
 
-test fn witness_validate_grammar_lhs_not_in_nonterminals_rejects_holds() -> Bool {
+test fn witness_validate_grammar_lhs_not_in_nonterminals_rejects_holds() -> Bool  {
   match validate_grammar(g: validate_grammar_fixture_lhs_not_in_nonterminals()) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true
   }
 }
 
-test fn witness_validate_grammar_rhs_symbol_not_in_alphabet_rejects_holds() -> Bool {
+test fn witness_validate_grammar_rhs_symbol_not_in_alphabet_rejects_holds() -> Bool  {
   match validate_grammar(g: validate_grammar_fixture_rhs_symbol_not_in_alphabet()) {
     Holds { value: _ } => false
     Violates { diagnostic: _ } => true

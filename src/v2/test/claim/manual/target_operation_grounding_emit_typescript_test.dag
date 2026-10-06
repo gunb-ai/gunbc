@@ -153,35 +153,35 @@ fn op_grounding_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<St
   )
 }
 
-test fn op_grounding_emits_subtraction() -> Bool {
+test fn op_grounding_emits_subtraction() -> Bool  {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x - y"
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_emits_less_than() -> Bool {
+test fn op_grounding_emits_less_than() -> Bool  {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x < y"
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_emits_equality() -> Bool {
+test fn op_grounding_emits_equality() -> Bool  {
   match op_grounding_emit(operation: canonical_operation_op_eq(), catalog: op_grounding_catalog()) {
     Accepted { value: s, diagnostics: _ } => s == "x == y"
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_wrong_token_discriminates() -> Bool {
+test fn op_grounding_wrong_token_discriminates() -> Bool  {
   match op_grounding_emit(operation: canonical_operation_op_sub(), catalog: op_grounding_catalog_sub_mistoken()) {
     Accepted { value: s, diagnostics: _ } => (s == "x + y") && (s != "x - y")
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn op_grounding_catalog_miss_rejects() -> Bool {
+test fn op_grounding_catalog_miss_rejects() -> Bool  {
   match op_grounding_emit(operation: canonical_operation_op_lt(), catalog: op_grounding_catalog_sub_only()) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false
@@ -195,7 +195,7 @@ fn op_grounding_wire_roundtrips(operation: CanonicalOperation) -> Bool {
   )
 }
 
-test fn op_grounding_wire_roundtrips_all() -> Bool {
+test fn op_grounding_wire_roundtrips_all() -> Bool  {
   op_grounding_wire_roundtrips(operation: canonical_operation_op_add()) &&
     op_grounding_wire_roundtrips(operation: canonical_operation_op_sub()) &&
     op_grounding_wire_roundtrips(operation: canonical_operation_op_mul()) &&
@@ -219,7 +219,7 @@ fn op_grounding_wire_rejects(produced: CanonicalOperation, probed: CanonicalOper
   )
 }
 
-test fn op_grounding_wire_discriminates() -> Bool {
+test fn op_grounding_wire_discriminates() -> Bool  {
   !op_grounding_wire_rejects(produced: canonical_operation_op_sub(), probed: canonical_operation_op_add()) &&
     !op_grounding_wire_rejects(produced: canonical_operation_op_lt(), probed: canonical_operation_op_gt()) &&
     !op_grounding_wire_rejects(produced: canonical_operation_op_le(), probed: canonical_operation_op_ge()) &&
@@ -234,14 +234,14 @@ fn op_grounding_ordering_list_eq(left: List<Ordering>, right: List<Ordering>) ->
   zip_eq(a: left, b: right, eq: fn(x, y) { op_grounding_ordering_eq(a: x, b: y) })
 }
 
-test fn op_grounding_ordering_predicate_accepts_units() -> Bool {
+test fn op_grounding_ordering_predicate_accepts_units() -> Bool  {
   op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLess), right: [Less]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsLessOrEqual), right: [Less, Equal]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreater), right: [Greater]) &&
     op_grounding_ordering_list_eq(left: ordering_predicate_accepts(predicate: IsGreaterOrEqual), right: [Equal, Greater])
 }
 
-test fn op_grounding_equality_predicate_accepts_units() -> Bool {
+test fn op_grounding_equality_predicate_accepts_units() -> Bool  {
   (equality_predicate_accepts(predicate: IsEqual) == true) &&
     (equality_predicate_accepts(predicate: IsNotEqual) == false)
 }

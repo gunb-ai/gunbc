@@ -37,6 +37,6 @@ import v2.std.text { String }
 // src/v2/test/claim/long/direct_rust_door_production_group_test.dag --functions
 // direct_rust_door_production_group_closing_expectation_holds
 
-test fn direct_rust_door_production_group_closing_expectation_holds() -> Bool {
+test fn direct_rust_door_production_group_closing_expectation_holds() -> Bool  {
   direct_rust_door_production_group_holds(group: direct_rust_door_production_group())
 }

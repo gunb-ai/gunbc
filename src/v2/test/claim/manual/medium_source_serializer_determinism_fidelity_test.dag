@@ -12,7 +12,7 @@ fn serializer_determinism_lossy_probe() -> Medium<String> {
   Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
 }
 
-test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
+test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool  {
   match deterministic_dag_source_serializer_witness(
     first: serializer_determinism_lossless_probe(),
     second: serializer_determinism_lossy_probe()
@@ -24,7 +24,7 @@ test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
   }
 }
 
-test fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
+test fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool  {
   medium_section_equal(
     left: serializer_determinism_lossless_probe(),
     right: serializer_determinism_lossy_probe()

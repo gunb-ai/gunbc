@@ -61,7 +61,7 @@ fn row_is_well_formed(names: List<String>) -> Bool {
     && names_have_no_duplicates(names: names)
 }
 
-test fn rust_row_admits_toolchain_locations() -> Bool {
+test fn rust_row_admits_toolchain_locations() -> Bool  {
   let names = row_names(d: rust_host_transport_descriptor())
   names_admit(names: names, name: "PATH")
     && names_admit(names: names, name: "HOME")
@@ -69,14 +69,14 @@ test fn rust_row_admits_toolchain_locations() -> Bool {
     && names_admit(names: names, name: "RUSTUP_HOME")
 }
 
-test fn no_shipped_row_carries_a_flag_or_a_constructed_name() -> Bool {
+test fn no_shipped_row_carries_a_flag_or_a_constructed_name() -> Bool  {
   row_is_well_formed(names: row_names(d: rust_host_transport_descriptor()))
     && row_is_well_formed(names: row_names(d: python_host_transport_descriptor()))
     && row_is_well_formed(names: row_names(d: go_host_transport_descriptor()))
     && row_is_well_formed(names: row_names(d: ts_host_transport_descriptor()))
 }
 
-test fn rust_row_is_disjoint_from_other_targets_state() -> Bool {
+test fn rust_row_is_disjoint_from_other_targets_state() -> Bool  {
   let rust = row_names(d: rust_host_transport_descriptor())
   !names_admit(names: rust, name: "PYTHONPATH")
     && !names_admit(names: rust, name: "GOROOT")
@@ -85,10 +85,10 @@ test fn rust_row_is_disjoint_from_other_targets_state() -> Bool {
     && !names_admit(names: row_names(d: go_host_transport_descriptor()), name: "CARGO_HOME")
 }
 
-test fn rust_fixture_descriptors_consume_the_rust_row() -> Bool {
+test fn rust_fixture_descriptors_consume_the_rust_row() -> Bool  {
   row_names(d: rust_host_transport_descriptor()) == rust_host_build_environment().ambient_names
 }
 
-test fn a_flag_bearing_row_is_refused_by_the_control() -> Bool {
+test fn a_flag_bearing_row_is_refused_by_the_control() -> Bool  {
   !row_is_well_formed(names: ["PATH", "RUSTFLAGS"])
 }

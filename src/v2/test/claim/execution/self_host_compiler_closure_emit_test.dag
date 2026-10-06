@@ -8,6 +8,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn scoped_closure_excludes_lens_module_holds() -> Bool {
+test fn scoped_closure_excludes_lens_module_holds() -> Bool  {
   scoped_closure_excluded_module_path_holds() && compiler_closure_scope_receipt_frontier_row_holds()
 }

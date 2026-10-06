@@ -62,7 +62,7 @@ fn fdsa_view(result: FloorDiscoveryProducerResult) -> FloorDiscoveryProducerResu
 }
 
 // RED: the refusal the floor never reached before this change.
-test fn misplaced_test_decl_refuses_with_the_producer_reason() -> Bool {
+test fn misplaced_test_decl_refuses_with_the_producer_reason() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_one_test_fn_content) {
     RefusedReason { reason: reason } =>
       string_contains(s: reason, pattern: "`test`-marked decls must live in `*_test.dag` files")
@@ -73,7 +73,7 @@ test fn misplaced_test_decl_refuses_with_the_producer_reason() -> Bool {
 
 // POSITIVE CONTROL: the same bytes at the sidecar place enroll exactly one row, so the red above
 // discriminates on placement and not on content.
-test fn sidecar_test_fn_enrolls_one_row() -> Bool {
+test fn sidecar_test_fn_enrolls_one_row() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_one_test_fn_content) {
     AcceptedRows { rows: rows } =>
       (length(xs: rows) == 1) && fdsa_rows_contain(rows: rows, entry: fdsa_sidecar_entry, function: "probe")
@@ -81,7 +81,7 @@ test fn sidecar_test_fn_enrolls_one_row() -> Bool {
   }
 }
 
-test fn sidecar_test_data_enrolls_one_row() -> Bool {
+test fn sidecar_test_data_enrolls_one_row() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_one_test_data_content) {
     AcceptedRows { rows: rows } =>
       (length(xs: rows) == 1) && fdsa_rows_contain(rows: rows, entry: fdsa_sidecar_entry, function: "flag")
@@ -90,7 +90,7 @@ test fn sidecar_test_data_enrolls_one_row() -> Bool {
 }
 
 // RED, the other half of the sidecar rule: a file claiming the place and declaring nothing.
-test fn barren_sidecar_refuses() -> Bool {
+test fn barren_sidecar_refuses() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_sidecar_entry, content: fdsa_no_test_decl_content) {
     RefusedReason { reason: reason } =>
       string_contains(s: reason, pattern: "at least one")
@@ -100,7 +100,7 @@ test fn barren_sidecar_refuses() -> Bool {
 }
 
 // An ordinary module is neither enrolled nor refused: the floor's non-witness inventory.
-test fn ordinary_module_enrolls_nothing_and_refuses_nothing() -> Bool {
+test fn ordinary_module_enrolls_nothing_and_refuses_nothing() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_no_test_decl_content) {
     AcceptedRows { rows: rows } => length(xs: rows) == 0
     RefusedReason { reason: _ } => false
@@ -109,7 +109,7 @@ test fn ordinary_module_enrolls_nothing_and_refuses_nothing() -> Bool {
 
 // THE MERGE LAW the floor relies on: outcomes judged one source at a time finalize to the union of
 // their rows, identity-joined, and one violation anywhere stops the whole line.
-test fn finalize_unions_per_source_outcomes() -> Bool {
+test fn finalize_unions_per_source_outcomes() -> Bool  {
   match fdsa_view(
     result: floor_discovery_finalize_source_outcomes(
       outcomes: [
@@ -127,7 +127,7 @@ test fn finalize_unions_per_source_outcomes() -> Bool {
   }
 }
 
-test fn one_violation_among_many_sources_stops_the_line() -> Bool {
+test fn one_violation_among_many_sources_stops_the_line() -> Bool  {
   match fdsa_view(
     result: floor_discovery_finalize_source_outcomes(
       outcomes: [
@@ -148,14 +148,14 @@ test fn one_violation_among_many_sources_stops_the_line() -> Bool {
 data fdsa_quoted_wire_contract_content: String = "module m\n\ndata src: String = \"data x: CoproductWireContract = { coproduct: \\\"X\\\" }\"\n"
 data fdsa_real_wire_contract_content: String = "module m\n\ndata x: CoproductWireContract = { coproduct: \"X\", encoding: UntaggedVariant }\n"
 
-test fn quoted_wire_contract_in_a_string_row_is_not_a_wire_contract_decl() -> Bool {
+test fn quoted_wire_contract_in_a_string_row_is_not_a_wire_contract_decl() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_quoted_wire_contract_content) {
     AcceptedRows { rows: rows } => length(xs: rows) == 0
     RefusedReason { reason: _ } => false
   }
 }
 
-test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool {
+test fn real_wire_contract_row_outside_contracts_sidecar_refuses() -> Bool  {
   match fdsa_finalize_one(entry: fdsa_misplaced_entry, content: fdsa_real_wire_contract_content) {
     RefusedReason { reason: reason } =>
       string_contains(s: reason, pattern: "_contracts.dag")

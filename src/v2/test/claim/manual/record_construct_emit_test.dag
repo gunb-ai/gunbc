@@ -140,7 +140,7 @@ data record_construct_inferred_tree: InferredTree = InferredTree {
   facts: PartialFunction { lookup: record_construct_facts_lookup }
 }
 
-test fn record_construct_emit_holds() -> Bool {
+test fn record_construct_emit_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: record_construct_target_model,
     emitted: record_construct_emitted_root
@@ -163,7 +163,7 @@ fn record_construct_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
   }
 }
 
-test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool {
+test fn record_construct_ingest_via_coerce_matches_canonical() -> Bool  {
   match coerce_grounded_node(
     source: record_construct_emitted_root,
     tree: record_construct_inferred_tree,

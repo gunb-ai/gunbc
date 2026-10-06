@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // (combiner_unregistered_carrier_reaches on fold_list/cons threading) — carried independently by
 // the analysis standing rather than collapsed into the finding axis.
 
-test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool {
+test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool  {
   match file_standing(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6).finding {
     NoSuspect => true
     SuspectObserved { suspects: _ } => false
@@ -46,7 +46,7 @@ test fn symbol_index_fill_zero_poly2_suspects_holds() -> Bool {
   }
 }
 
-test fn name_resolve_fill_path_zero_poly2_suspects_holds() -> Bool {
+test fn name_resolve_fill_path_zero_poly2_suspects_holds() -> Bool  {
   match file_standing(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8).finding {
     NoSuspect => true
     SuspectObserved { suspects: _ } => false
@@ -54,10 +54,10 @@ test fn name_resolve_fill_path_zero_poly2_suspects_holds() -> Bool {
   }
 }
 
-test fn symbol_index_fill_refusal_count_within_ratchet_holds() -> Bool {
+test fn symbol_index_fill_refusal_count_within_ratchet_holds() -> Bool  {
   file_gate(path: "src/v2/compiler/symbol_index_fill.dag", refusal_ceiling: 6)
 }
 
-test fn name_resolve_fill_path_refusal_count_within_ratchet_holds() -> Bool {
+test fn name_resolve_fill_path_refusal_count_within_ratchet_holds() -> Bool  {
   file_gate(path: "src/v2/compiler/03_name_resolve.dag", refusal_ceiling: 8)
 }

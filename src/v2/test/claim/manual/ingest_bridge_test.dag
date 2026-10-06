@@ -193,7 +193,7 @@ fn check_ingest_recovers_emitted() -> Bool {
   }
 }
 
-test fn ingest_recovers_emitted_holds() -> Bool {
+test fn ingest_recovers_emitted_holds() -> Bool  {
   check_ingest_recovers_emitted()
 }
 
@@ -212,7 +212,7 @@ fn check_ingest_bridge_to_canonical() -> Bool {
   }
 }
 
-test fn ingest_bridge_to_canonical_holds() -> Bool {
+test fn ingest_bridge_to_canonical_holds() -> Bool  {
   check_ingest_bridge_to_canonical()
 }
 
@@ -227,7 +227,7 @@ test fn ingest_bridge_to_canonical_holds() -> Bool {
 // grounding-independence isolation now lives in the companion refusal witness below (a
 // roster-ABSENT source still refuses), not here.
 
-test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool {
+test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> Bool  {
   let source = dag_fixture_emitted_add_fn
   match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
@@ -251,7 +251,7 @@ test fn ingest_identity_coercion_accepts_source_present_in_authored_roster() -> 
   }
 }
 
-test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool {
+test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() -> Bool  {
   let source = ingest_unstamped_node()
   match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: source)) {
     Rejected { diagnostics: _ } => false
@@ -273,12 +273,12 @@ test fn ingest_identity_coercion_refuses_source_absent_from_authored_roster() ->
 
 // A KIND IS GROUNDED BY ITS DECLARED AUTHORITY (std.kind), so a roster member's derived type -- its
 // kind since gunbc#12290 -- passes v2.compiler.infer algebra_ref_is_grounded; any other bare atom does not.
-test fn a_kind_atom_algebra_is_grounded_holds() -> Bool {
+test fn a_kind_atom_algebra_is_grounded_holds() -> Bool  {
   algebra_ref_is_grounded(algebra: kind_node(kind: TypeDenotationKind))
     && algebra_ref_is_grounded(algebra: kind_node(kind: TypeFactKind))
 }
 
-test fn a_non_kind_bare_atom_algebra_is_still_ungrounded_holds() -> Bool {
+test fn a_non_kind_bare_atom_algebra_is_still_ungrounded_holds() -> Bool  {
   algebra_ref_is_grounded(algebra: Node {
     kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
     children: [],
@@ -290,7 +290,7 @@ test fn a_non_kind_bare_atom_algebra_is_still_ungrounded_holds() -> Bool {
 // an atom no authority declares -- derives no grounding, so identity coercion still refuses at the
 // demand for one. Admitting a kind as grounded (v2.compiler.infer algebra_ref_is_grounded, after
 // gunbc#12290) must not admit this.
-test fn ingest_identity_coercion_refuses_an_unrostered_atom_source() -> Bool {
+test fn ingest_identity_coercion_refuses_an_unrostered_atom_source() -> Bool  {
   let source = Node {
     kind: TypeNode { connective: Atom { identity: ^no_authority_declares_this_symbol } },
     children: [],
@@ -325,7 +325,7 @@ fn check_ingest_fails_closed_off_frontier() -> Bool {
   }
 }
 
-test fn ingest_fails_closed_off_frontier_holds() -> Bool {
+test fn ingest_fails_closed_off_frontier_holds() -> Bool  {
   check_ingest_fails_closed_off_frontier()
 }
 
@@ -343,7 +343,7 @@ fn check_ingest_fails_closed_ambiguous() -> Bool {
   }
 }
 
-test fn ingest_fails_closed_ambiguous_holds() -> Bool {
+test fn ingest_fails_closed_ambiguous_holds() -> Bool  {
   check_ingest_fails_closed_ambiguous()
 }
 
@@ -365,7 +365,7 @@ fn check_ingest_fails_closed_on_unstamped() -> Bool {
   }
 }
 
-test fn ingest_fails_closed_on_unstamped_holds() -> Bool {
+test fn ingest_fails_closed_on_unstamped_holds() -> Bool  {
   check_ingest_fails_closed_on_unstamped()
 }
 
@@ -402,7 +402,7 @@ fn check_ingest_cross_language_compile_accepts() -> Bool {
   }
 }
 
-test fn ingest_cross_language_compile_accepts_holds() -> Bool {
+test fn ingest_cross_language_compile_accepts_holds() -> Bool  {
   check_ingest_cross_language_compile_accepts()
 }
 

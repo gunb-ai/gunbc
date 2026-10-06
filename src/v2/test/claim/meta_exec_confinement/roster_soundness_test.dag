@@ -46,11 +46,11 @@ data empty_live_leak_paths: List<String> = []
 // test/claim/long/'s dark lane) and this emptiness wall relaxes to that receipt — never the reverse
 // order.
 
-test fn meta_exec_roster_shrunk_to_empty_holds() -> Bool {
+test fn meta_exec_roster_shrunk_to_empty_holds() -> Bool  {
   is_empty(xs: meta_exec_confinement_exception_paths())
 }
 
-test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> Bool {
+test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> Bool  {
   is_empty(
     xs: list_append(
       left: meta_exec_confinement_exception_paths(),
@@ -59,7 +59,7 @@ test fn meta_exec_roster_emptiness_wall_planted_row_red_holds() -> Bool {
   ) == false
 }
 
-test fn meta_exec_roster_soundness_planted_stale_red_holds() -> Bool {
+test fn meta_exec_roster_soundness_planted_stale_red_holds() -> Bool  {
   meta_exec_roster_sound(
     roster: list_append(
       left: meta_exec_confinement_exception_paths(),

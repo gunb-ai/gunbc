@@ -94,7 +94,7 @@ fn perturbed_quotient_fidelity_red_if_still_lossy() -> Bool {
   }
 }
 
-test fn target_carriers_declared_loss_fidelity_holds() -> Bool {
+test fn target_carriers_declared_loss_fidelity_holds() -> Bool  {
   dag_target_advertises_declared_loss()
     && rust_target_advertises_lossless()
     && dag_emit_medium_matches_compose_up()

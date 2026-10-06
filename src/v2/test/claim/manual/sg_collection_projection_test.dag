@@ -13,7 +13,7 @@ fn sg_collection_free_monoid_node_source_type() -> Node {
 }
 }
 
-test fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool {
+test fn sg_collection_free_monoid_vec_rc_projection_holds() -> Bool  {
   match translate_type_expression_project(
     node: sg_collection_free_monoid_node_source_type(),
     target: rust_sg2_type_expr_target_model(),

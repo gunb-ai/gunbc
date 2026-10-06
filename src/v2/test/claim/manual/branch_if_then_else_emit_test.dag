@@ -105,7 +105,7 @@ fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcom
   )
 }
 
-test fn branch_if_then_else_emit_holds() -> Bool {
+test fn branch_if_then_else_emit_holds() -> Bool  {
   match target_serialize_source_from_model(
     target: dag_pick_target_model(),
     emitted: dag_fixture_emitted_pick_fn
@@ -120,7 +120,7 @@ test fn branch_if_then_else_emit_holds() -> Bool {
   }
 }
 
-test fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool {
+test fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool  {
   match branch_if_then_else_emit_from_producer(target: dag_pick_target_model()) {
     Accepted { value: canonical, diagnostics: dc } =>
       match branch_if_then_else_emit_swapped_from_producer(target: dag_pick_target_model()) {

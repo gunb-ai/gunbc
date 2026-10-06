@@ -281,7 +281,7 @@ fn resolve_import_target() -> QualifiedName {
   Cons { head: ^anchor_imported_path_segment, tail: Empty }
 }
 
-test fn resolve_with_admission_imported_binding_accepts() -> Bool {
+test fn resolve_with_admission_imported_binding_accepts() -> Bool  {
   match resolve_roots_single_import() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>

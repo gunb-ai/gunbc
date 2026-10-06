@@ -287,7 +287,7 @@ fn interpreted_value_complement_equals(tree: InferredTree, expected_true: Bool) 
   }
 }
 
-test fn native_selected_witness_bundle_interpreter_meet_green_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_meet_green_holds() -> Bool  {
   interpreted_value_meet_join_equals(
     tree: family_crate_meet_tree(),
     root: dag_meet_eval_subgraph_fixture,
@@ -295,7 +295,7 @@ test fn native_selected_witness_bundle_interpreter_meet_green_holds() -> Bool {
   )
 }
 
-test fn native_selected_witness_bundle_interpreter_join_green_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_join_green_holds() -> Bool  {
   interpreted_value_meet_join_equals(
     tree: family_crate_join_tree(),
     root: dag_join_eval_subgraph_fixture,
@@ -303,14 +303,14 @@ test fn native_selected_witness_bundle_interpreter_join_green_holds() -> Bool {
   )
 }
 
-test fn native_selected_witness_bundle_interpreter_complement_green_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_complement_green_holds() -> Bool  {
   interpreted_value_complement_equals(
     tree: family_crate_complement_tree(),
     expected_true: false
   )
 }
 
-test fn native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds() -> Bool  {
   interpreted_value_meet_join_equals(
     tree: family_crate_meet_alt_tree(),
     root: dag_meet_eval_subgraph_fixture,
@@ -318,7 +318,7 @@ test fn native_selected_witness_bundle_interpreter_meet_wrong_body_oracle_holds(
   )
 }
 
-test fn native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds() -> Bool  {
   interpreted_value_meet_join_equals(
     tree: family_crate_join_alt_tree(),
     root: dag_join_eval_subgraph_fixture,
@@ -326,7 +326,7 @@ test fn native_selected_witness_bundle_interpreter_join_wrong_body_oracle_holds(
   )
 }
 
-test fn native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds() -> Bool {
+test fn native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_holds() -> Bool  {
   interpreted_value_complement_equals(
     tree: family_crate_complement_alt_tree(),
     expected_true: false
@@ -577,13 +577,13 @@ fn selected_logic_execution_admit(
   )
 }
 
-test fn native_selected_witness_bundle_monotonic_observation_holds() -> Bool {
+test fn native_selected_witness_bundle_monotonic_observation_holds() -> Bool  {
   let start = observed_monotonic_nanos("selected-bundle-monotonic-control-start")
   let finish = observed_monotonic_nanos("selected-bundle-monotonic-control-finish")
   finish > start
 }
 
-test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
+test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let interpreted = selected_logic_interpreted_verdicts(
     meet_tree: family_crate_meet_tree(),
@@ -616,7 +616,7 @@ test fn native_selected_witness_bundle_primary_typed_admission_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
+test fn native_selected_witness_bundle_primary_rows_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let interpreted = selected_logic_interpreted_verdicts(
     meet_tree: family_crate_meet_tree(),
@@ -650,7 +650,7 @@ test fn native_selected_witness_bundle_primary_rows_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_primary_interpreted_verdicts_holds() -> Bool {
+test fn native_selected_witness_bundle_primary_interpreted_verdicts_holds() -> Bool  {
   let interpreted = selected_logic_interpreted_verdicts(
     meet_tree: family_crate_meet_tree(),
     join_tree: family_crate_join_tree(),
@@ -661,7 +661,7 @@ test fn native_selected_witness_bundle_primary_interpreted_verdicts_holds() -> B
     && interpreted.complement == SelectedWitnessPassed
 }
 
-test fn native_selected_witness_bundle_primary_native_verdicts_holds() -> Bool {
+test fn native_selected_witness_bundle_primary_native_verdicts_holds() -> Bool  {
   let native = selected_logic_native_verdicts(
     stdout: selected_logic_expected_stdout(primary: true)
   )
@@ -682,7 +682,7 @@ fn selected_logic_cutover_evidence_holds() -> Bool {
   )
 }
 
-test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool {
+test fn native_selected_witness_bundle_cutover_evidence_holds() -> Bool  {
   selected_logic_cutover_evidence_holds()
 }
 
@@ -763,7 +763,7 @@ fn selected_logic_execution_holds(
   }
 }
 
-test fn native_selected_witness_bundle_cold_warm_equivalence_holds() -> Bool {
+test fn native_selected_witness_bundle_cold_warm_equivalence_holds() -> Bool  {
   let executed_red_evidence = selected_logic_discriminating_red_evidence()
   selected_logic_execution_holds(
     test_id: "primary",
@@ -841,7 +841,7 @@ fn selected_logic_discriminating_red_evidence() -> List<NativeBundleFamilyCutove
   }
 }
 
-test fn native_selected_witness_bundle_discriminating_red_holds() -> Bool {
+test fn native_selected_witness_bundle_discriminating_red_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   family_has_discriminating_red(
     family: "logic",
@@ -874,7 +874,7 @@ fn selected_logic_sample_receipt() -> NativeWitnessBundleExecutionReceipt {
   }
 }
 
-test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
+test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let divergent = NativeWitnessBundleExecutionReceipt {
@@ -919,7 +919,7 @@ test fn native_selected_witness_bundle_divergence_hard_red_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   match selected_logic_execution_admit(
     plan: plan,
@@ -931,7 +931,7 @@ test fn native_selected_witness_bundle_missing_red_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_non_discriminating_red_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_non_discriminating_red_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   match selected_logic_execution_admit(
     plan: plan,
@@ -945,7 +945,7 @@ test fn native_selected_witness_bundle_non_discriminating_red_refuses_holds() ->
   }
 }
 
-test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   match selected_logic_execution_admit(
     plan: plan,
@@ -960,7 +960,7 @@ test fn native_selected_witness_bundle_unplanted_subject_red_refuses_holds() -> 
   }
 }
 
-test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let invalid = NativeWitnessBundleExecutionReceipt {
@@ -983,7 +983,7 @@ test fn native_selected_witness_bundle_process_count_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let empty = NativeWitnessBundleExecutionReceipt {
@@ -1007,7 +1007,7 @@ test fn native_selected_witness_bundle_empty_coverage_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool  {
   let primary = selected_logic_primary_plan()
   let plan = SelectedWitnessPlan {
     compiler_identity: primary.compiler_identity
@@ -1035,7 +1035,7 @@ test fn native_selected_witness_bundle_no_native_members_refuses_holds() -> Bool
   }
 }
 
-test fn native_selected_witness_bundle_execution_plan_identity_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_execution_plan_identity_refuses_holds() -> Bool  {
   let required_plan = selected_logic_alt_plan()
   match selected_logic_execution_admit(
     plan: required_plan,
@@ -1051,7 +1051,7 @@ test fn native_selected_witness_bundle_execution_plan_identity_refuses_holds() -
   }
 }
 
-test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   match native_witness_bundle_execution_admit(
     plan: plan,
@@ -1067,7 +1067,7 @@ test fn native_selected_witness_bundle_execution_stale_compiler_refuses_holds() 
   }
 }
 
-test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let current = content_hash_atom(value: "different-compiler")
@@ -1095,7 +1095,7 @@ test fn native_selected_witness_bundle_execution_stale_plan_compiler_refuses_hol
   }
 }
 
-test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let cold = NativeWitnessBundleExecutionReceipt {
@@ -1118,7 +1118,7 @@ test fn native_selected_witness_bundle_warm_artifact_miss_refuses_holds() -> Boo
   }
 }
 
-test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let receipt = selected_logic_sample_receipt()
   let invalid = NativeWitnessBundleExecutionReceipt {
@@ -1142,7 +1142,7 @@ test fn native_selected_witness_bundle_frontier_count_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let bundle = native_witness_bundle_from_plan(plan: plan)
   match native_witness_bundle_admit(
@@ -1158,7 +1158,7 @@ test fn native_selected_witness_bundle_stale_compiler_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let required = native_witness_bundle_from_plan(plan: plan)
   let current = content_hash_atom(value: "different-compiler")
@@ -1180,7 +1180,7 @@ test fn native_selected_witness_bundle_stale_plan_compiler_refuses_holds() -> Bo
   }
 }
 
-test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool {
+test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool  {
   let plan = selected_logic_primary_plan()
   let required = native_witness_bundle_from_plan(plan: plan)
   let drifted = NativeWitnessBundle {
@@ -1199,7 +1199,7 @@ test fn native_selected_witness_bundle_member_drift_refuses_holds() -> Bool {
   }
 }
 
-test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
+test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool  {
   let primary = selected_logic_primary_plan()
   let unavailable = SelectedWitnessPlan {
     compiler_identity: primary.compiler_identity
@@ -1222,7 +1222,7 @@ test fn native_selected_witness_bundle_unavailable_is_counted_holds() -> Bool {
     )
 }
 
-test fn native_selected_witness_bundle_compiler_identity_keys_holds() -> Bool {
+test fn native_selected_witness_bundle_compiler_identity_keys_holds() -> Bool  {
   let primary = selected_logic_primary_plan()
   let changed = SelectedWitnessPlan {
     compiler_identity: content_hash_atom(value: "changed-compiler-identity")
