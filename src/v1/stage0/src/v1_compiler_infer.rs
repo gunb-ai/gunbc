@@ -3090,11 +3090,30 @@ pub fn node_admits_list_literal(
 pub fn empty_list_expected_element_is_unknown(
     expected: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> bool {
-    (!crate::v1_compiler_infer_types::node_is_element_collection(
-        expected.clone(),
-        source_indices.clone(),
-    ) && !conformance_ground_type(expected.clone(), source_indices.clone()))
+    (produced_is_unsolved_generic_at_conformance(expected.clone(), source_indices.clone())
+        || empty_list_expected_is_unbound_generic_name(
+            expected.clone(),
+            source_indices.clone(),
+            env.clone(),
+        ))
+}
+
+pub fn empty_list_expected_is_unbound_generic_name(
+    expected: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    let label = type_node_label(expected.clone(), source_indices.clone());
+    (((((expected.children.clone().len() as i64) == 0)
+        && (expected.connective.clone() == Connective::NoConnective))
+        && !conformance_ground_type(expected.clone(), source_indices.clone()))
+        && (label.clone() != "".to_string()))
+        && match lookup_type_by_name(env.clone(), label.clone()) {
+            std::option::Option::None => true,
+            Some(_) => false,
+        }
 }
 
 pub fn produced_is_unsolved_generic_at_conformance(
@@ -15037,6 +15056,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             if empty_list_expected_element_is_unknown(
                                 exp.clone(),
                                 scope.type_env.clone().source_indices.clone(),
+                                scope.type_env.clone(),
                             ) {
                                 Rc::new(vec![])
                             } else {
