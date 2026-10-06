@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_submission {
   submission_capture_text, submission_capture_basename,
 }
 import gunbc.scm.repository_load { load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.scm.repository_envelope { commit_at_reference, admit_capture, CaptureAdmitted, CaptureRoleRefused, AdmittedCapture }
 import gunbc.scm.intake { WorkCapture, NoWork, WorkUnrecordedByFormat, capture_work_eq, CaptureWork }
 import gunbc.scm.ancestry { RepositoryCommitRef }
