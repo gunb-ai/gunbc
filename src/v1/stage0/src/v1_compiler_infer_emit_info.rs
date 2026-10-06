@@ -2,6 +2,7 @@
 // Source module: v1.compiler.infer_emit_info
 
 use self::DataVariantWireSpelling::*;
+use self::TypeDeclOccurrenceBinding::*;
 use self::TypeDeclReferenceRoute::*;
 use self::TypeDeclResolution::*;
 use self::TypeRepr::*;
@@ -408,6 +409,39 @@ pub struct TypeDeclIndex {
     pub leaf_owners: Rc<HashMap<String, Rc<LeafOwner>>>,
     pub identities_by_leaf: Rc<HashMap<String, Rc<Vec<String>>>>,
     pub qualified_names: Rc<SymbolIndex>,
+    pub file_scopes: Rc<HashMap<String, Rc<TypeDeclFileScope>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeDeclFileScope {
+    pub module_path: String,
+    pub named_imports: Rc<HashMap<String, String>>,
+    pub glob_imports: Rc<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum TypeDeclOccurrenceBinding {
+    OccurrenceDeclaredHere { identity: String },
+    OccurrenceImported { identity: String },
+    OccurrenceUnboundInScope,
+    OccurrenceUndecided,
+}
+impl TypeDeclOccurrenceBinding {
+    pub fn identity(&self) -> String {
+        match self {
+            TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
+                identity: __val, ..
+            } => __val.clone(),
+            TypeDeclOccurrenceBinding::OccurrenceImported {
+                identity: __val, ..
+            } => __val.clone(),
+            TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
+                panic!("no identity on unit variant")
+            }
+            TypeDeclOccurrenceBinding::OccurrenceUndecided => panic!("no identity on unit variant"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -426,6 +460,7 @@ pub fn empty_type_decl_index() -> Rc<TypeDeclIndex> {
         leaf_owners: v1_rt::rc_empty_map::<String, Rc<LeafOwner>>(),
         identities_by_leaf: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         qualified_names: crate::v1_compiler_infer_env::empty_symbol_index(),
+        file_scopes: v1_rt::rc_empty_map::<String, Rc<TypeDeclFileScope>>(),
     })
 }
 
@@ -533,6 +568,7 @@ pub fn type_decl_index_insert(
                 ),
             ),
             qualified_names: index.qualified_names.clone(),
+            file_scopes: index.file_scopes.clone(),
         })
     }
 }
@@ -580,6 +616,7 @@ pub enum TypeDeclReferenceRoute {
     RouteDeclaringSpan,
     RouteReferencingModuleDeclarer,
     RouteQualifiedSpelling,
+    RouteReferencingModuleImport,
     RouteKernelMint,
     RouteLeafSpelling,
 }
@@ -645,16 +682,11 @@ pub fn resolve_type_decl_routed(
                     let referencing_module_identity = match (*by_spelling.clone()).clone() {
                         TypeDeclResolution::TypeDeclLeafAmbiguous { leaf: l, .. } => {
                             if (authored.clone() == l.clone()) {
-                                match type_decl_referencing_module_declarer(
+                                type_decl_occurrence_identity(
                                     index.clone(),
                                     l.clone(),
                                     type_expr.clone(),
-                                ) {
-                                    Some(identity) => Some(identity.clone()),
-                                    std::option::Option::None => {
-                                        type_decl_kernel_mint_declarer(index.clone(), l.clone())
-                                    }
-                                }
+                                )
                             } else {
                                 type_decl_qualifier_declarer(index.clone(), authored.clone())
                             }
@@ -735,10 +767,101 @@ pub fn type_decl_spelling_route(
     if (authored.clone() != leaf.clone()) {
         TypeDeclReferenceRoute::RouteQualifiedSpelling
     } else {
-        match type_decl_referencing_module_declarer(index.clone(), leaf.clone(), reference.clone())
+        match (*type_decl_occurrence_binding(index.clone(), leaf.clone(), reference.clone()))
+            .clone()
         {
-            Some(_) => TypeDeclReferenceRoute::RouteReferencingModuleDeclarer,
-            std::option::Option::None => TypeDeclReferenceRoute::RouteKernelMint,
+            TypeDeclOccurrenceBinding::OccurrenceDeclaredHere { identity: _, .. } => {
+                TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
+            }
+            TypeDeclOccurrenceBinding::OccurrenceImported { identity: _, .. } => {
+                TypeDeclReferenceRoute::RouteReferencingModuleImport
+            }
+            TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
+                TypeDeclReferenceRoute::RouteKernelMint
+            }
+            TypeDeclOccurrenceBinding::OccurrenceUndecided => {
+                TypeDeclReferenceRoute::RouteLeafSpelling
+            }
+        }
+    }
+}
+
+pub fn type_decl_occurrence_identity(
+    index: Rc<TypeDeclIndex>,
+    leaf: String,
+    reference: Rc<Node>,
+) -> Option<String> {
+    match (*type_decl_occurrence_binding(index.clone(), leaf.clone(), reference.clone())).clone() {
+        TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
+            identity: identity, ..
+        } => Some(identity.clone()),
+        TypeDeclOccurrenceBinding::OccurrenceImported {
+            identity: identity, ..
+        } => Some(identity.clone()),
+        TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
+            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
+        }
+        TypeDeclOccurrenceBinding::OccurrenceUndecided => std::option::Option::None,
+    }
+}
+
+pub fn type_decl_occurrence_binding(
+    index: Rc<TypeDeclIndex>,
+    leaf: String,
+    reference: Rc<Node>,
+) -> Rc<TypeDeclOccurrenceBinding> {
+    match v1_rt::map_get(
+        &index.file_scopes.clone(),
+        reference.span.clone().file.clone(),
+    ) {
+        std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
+        Some(scope) => {
+            let local = type_decl_local_declarers(index.clone(), leaf.clone(), reference.clone());
+            let local_count = local
+                .iter()
+                .cloned()
+                .fold(0, |n: i64, _identity: String| v1_rt::int_add(n, 1));
+            if (local_count.clone() == 1) {
+                local.iter().cloned().fold(
+                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
+                    |acc: Rc<TypeDeclOccurrenceBinding>, identity: String| {
+                        Rc::new(TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
+                            identity: identity.clone(),
+                        })
+                    },
+                )
+            } else {
+                if (local_count.clone() > 1) {
+                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+                } else {
+                    match v1_rt::map_get(&scope.named_imports.clone(), leaf.clone()) {
+                        Some(from_module) => {
+                            let imported = type_decl_identity(from_module.clone(), leaf.clone());
+                            match v1_rt::map_get(&index.by_identity.clone(), imported.clone()) {
+                                Some(_) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceImported {
+                                    identity: imported.clone(),
+                                }),
+                                std::option::Option::None => {
+                                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+                                }
+                            }
+                        }
+                        std::option::Option::None => {
+                            let glob_count = scope
+                                .glob_imports
+                                .clone()
+                                .iter()
+                                .cloned()
+                                .fold(0, |n: i64, _m: String| v1_rt::int_add(n, 1));
+                            if (glob_count.clone() == 0) {
+                                Rc::new(TypeDeclOccurrenceBinding::OccurrenceUnboundInScope)
+                            } else {
+                                Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -753,57 +876,56 @@ pub fn type_decl_index_with_qualified_names(
         leaf_owners: index.leaf_owners.clone(),
         identities_by_leaf: index.identities_by_leaf.clone(),
         qualified_names: qualified_names.clone(),
+        file_scopes: index.file_scopes.clone(),
+    })
+}
+
+pub fn type_decl_index_with_file_scope(
+    index: Rc<TypeDeclIndex>,
+    file: String,
+    scope: Rc<TypeDeclFileScope>,
+) -> Rc<TypeDeclIndex> {
+    Rc::new(TypeDeclIndex {
+        by_identity: index.by_identity.clone(),
+        identity_by_declaring_span: index.identity_by_declaring_span.clone(),
+        leaf_owners: index.leaf_owners.clone(),
+        identities_by_leaf: index.identities_by_leaf.clone(),
+        qualified_names: index.qualified_names.clone(),
+        file_scopes: v1_rt::rc_map_insert(index.file_scopes.clone(), file.clone(), scope.clone()),
     })
 }
 
 pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then both arms, type_decl_referencing_module_declarer and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
+            crate::std_dissolution::unbound_dissolution("RouteReferencingModuleDeclarer, RouteReferencingModuleImport, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, referencing_module_import, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then type_decl_occurrence_binding and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
 }
 
-pub fn type_decl_referencing_module_declarer(
+pub fn type_decl_local_declarers(
     index: Rc<TypeDeclIndex>,
     leaf: String,
     reference: Rc<Node>,
-) -> Option<String> {
-    {
-        let local = Rc::new({
-            let mut __result = Vec::new();
-            for identity in type_decl_identities_of_leaf(index.clone(), leaf.clone())
-                .iter()
-                .cloned()
-            {
-                if match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
-                    Some(decl) => {
-                        (decl.span.clone().file.clone() == reference.span.clone().file.clone())
-                    }
-                    std::option::Option::None => false,
-                } {
-                    __result.push(identity);
-                }
-            }
-            __result
-        });
-        if (local
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for identity in type_decl_identities_of_leaf(index.clone(), leaf.clone())
             .iter()
             .cloned()
-            .fold(0, |n: i64, _identity: String| v1_rt::int_add(n, 1))
-            == 1)
         {
-            local
-                .iter()
-                .cloned()
-                .fold(std::option::Option::None, |acc: _, identity: String| {
-                    Some(identity.clone())
-                })
-        } else {
-            std::option::Option::None
+            if match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
+                Some(decl) => {
+                    (decl.span.clone().file.clone() == reference.span.clone().file.clone())
+                }
+                std::option::Option::None => false,
+            } {
+                __result.push(identity);
+            }
         }
-    }
+        __result
+    })
 }
 
 pub fn resolve_type_decl_reference(
@@ -826,6 +948,9 @@ pub fn type_decl_routed_resolution_label(routed: Rc<TypeDeclRoutedResolution>) -
                 "referencing_module_declarer".to_string()
             }
             TypeDeclReferenceRoute::RouteQualifiedSpelling => "qualified_spelling".to_string(),
+            TypeDeclReferenceRoute::RouteReferencingModuleImport => {
+                "referencing_module_import".to_string()
+            }
             TypeDeclReferenceRoute::RouteKernelMint => "kernel_mint".to_string(),
             TypeDeclReferenceRoute::RouteLeafSpelling => "leaf_spelling".to_string(),
         };
@@ -2108,6 +2233,8 @@ pub struct RouteDeclaringSpan;
 pub struct RouteReferencingModuleDeclarer;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteQualifiedSpelling;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RouteReferencingModuleImport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RouteKernelMint;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

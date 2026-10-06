@@ -1072,11 +1072,7 @@ pub fn is_host_optional_carrier_type(
             };
             match declared.clone() {
                 Some(d) => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
-                std::option::Option::None => {
-                    ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
-                        == kernel_optional_mint_name())
-                        && ((n.children.clone().len() as i64) > 0))
-                }
+                std::option::Option::None => false,
             }
         }
     }

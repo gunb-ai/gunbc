@@ -118,7 +118,6 @@ pub use crate::v1_compiler_coercion::provenance_realizes_natively;
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
-pub use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling;
 use crate::v1_compiler_infer_emit_info::DataVariantWireSpelling::*;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 use crate::v1_compiler_infer_emit_info::TypeSummaryLookup::{
@@ -128,10 +127,12 @@ pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_decl_index,
     empty_type_env, empty_type_summary_index, is_enum_in_summaries, lookup_emit_type_summary,
-    type_decl_index_with_qualified_names, type_summary_lookup,
+    type_decl_index_with_file_scope, type_decl_index_with_qualified_names, type_summary_lookup,
 };
+pub use crate::v1_compiler_infer_emit_info::{DataVariantWireSpelling, TypeDeclIndex};
 pub use crate::v1_compiler_infer_emit_info::{
-    EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary, TypeSummaryIndex, TypeSummaryLookup,
+    EmitGraphInfo, EmitInfoBuildState, TypeDeclFileScope, TypeRepr, TypeSummary, TypeSummaryIndex,
+    TypeSummaryLookup,
 };
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
@@ -31324,6 +31325,60 @@ pub fn same_declaration_site(a: Rc<Node>, b: Rc<Node>) -> bool {
     }
 }
 
+pub fn type_decl_file_scope_of(typed_module: Rc<TypedModule>) -> Rc<TypeDeclFileScope> {
+    {
+        let si = typed_module.type_env.clone().source_indices.clone();
+        let imports = crate::v1_std_core::module_imports(typed_module.module.clone());
+        Rc::new(TypeDeclFileScope {
+            module_path: crate::v1_std_core::authored_name_at(
+                si.clone(),
+                typed_module.module.clone(),
+            ),
+            named_imports: Rc::new({
+                let mut __result = Vec::new();
+                for imp in imports.iter().cloned() {
+                    if !crate::v1_std_core::import_is_all(imp.clone()) {
+                        __result.push(imp);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, String>(),
+                |acc: Rc<HashMap<String, String>>, imp: Rc<Node>| {
+                    let from_module = import_module_path_at(imp.clone(), si.clone());
+                    crate::v1_std_core::import_specific_names_at(imp.clone(), si.clone())
+                        .iter()
+                        .cloned()
+                        .fold(acc, |inner: Rc<HashMap<String, String>>, name: String| {
+                            v1_rt::rc_map_insert(inner, name.clone(), from_module.clone())
+                        })
+                },
+            ),
+            glob_imports: Rc::new({
+                let mut __result = Vec::new();
+                for imp in Rc::new({
+                    let mut __result = Vec::new();
+                    for imp in imports.iter().cloned() {
+                        if crate::v1_std_core::import_is_all(imp.clone()) {
+                            __result.push(imp);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(import_module_path_at(imp.clone(), si.clone()));
+                }
+                __result
+            }),
+        })
+    }
+}
+
 pub fn build_emit_graph_info(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -31372,13 +31427,23 @@ pub fn build_emit_graph_info(
                 )
             },
         );
+        let scoped_type_decls = modules.iter().cloned().fold(
+            built_raw.type_decl_items.clone(),
+            |index: Rc<TypeDeclIndex>, typed_module: Rc<TypedModule>| {
+                crate::v1_compiler_infer_emit_info::type_decl_index_with_file_scope(
+                    index,
+                    typed_module.module.clone().span.clone().file.clone(),
+                    type_decl_file_scope_of(typed_module.clone()),
+                )
+            },
+        );
         let built = Rc::new(EmitInfoBuildState {
             type_summaries: crate::v1_compiler_infer_emit_info::close_fn_fields(
                 built_raw.type_summaries.clone(),
                 built_raw.structural_alias_fn_surface_names.clone(),
                 built_raw.structural_alias_direct_fn_names.clone(),
             ),
-            type_decl_items: built_raw.type_decl_items.clone(),
+            type_decl_items: scoped_type_decls.clone(),
             fn_decl_items: built_raw.fn_decl_items.clone(),
             structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names.clone(),
             structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names.clone(),
