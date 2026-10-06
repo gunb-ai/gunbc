@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, Set, String }
 import v2.std.algebra { filter }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
 import gunbc.instruments.native_emission_controls_optional_collision { collision_wrapped_row, collision_empty_row, collision_row_value }
+import gunbc.instruments.native_emission_controls_optional_importer { HeldChoice, held_wrapped_row, held_empty_row, held_choice_value }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -408,8 +409,17 @@ fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
 fn optional_named_coproduct_cases() -> List<NativeEmissionCase> {
   [
     NativeEmissionCase { identity: "optional_named_coproduct_wrapped_row_answers_its_value", held: collision_row_value(o: collision_wrapped_row) == 7 },
-    NativeEmissionCase { identity: "optional_named_coproduct_red_empty_row_answers_zero", held: collision_row_value(o: collision_empty_row) == 0 }
+    NativeEmissionCase { identity: "optional_named_coproduct_red_empty_row_answers_zero", held: collision_row_value(o: collision_empty_row) == 0 },
+    NativeEmissionCase { identity: "optional_imported_coproduct_payload_answers_its_value", held: imported_payload_value(c: held_wrapped_row) == 11 },
+    NativeEmissionCase { identity: "optional_imported_coproduct_red_empty_payload_answers_zero", held: imported_payload_value(c: held_empty_row) == 0 }
   ]
+}
+
+// THE IMPORTED COLLISION, read through a HeldChoice this module only imports: the payload type
+// reaches this closure from the type environment's copy of the declaration body, unstamped, and must
+// realize as the imported coproduct, not the host Option.
+fn imported_payload_value(c: HeldChoice) -> Int {
+  held_choice_value(c: c)
 }
 
 data native_emission_expected_identities: List<String> = [
@@ -447,6 +457,8 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_red_empty_keeps_init",
   "optional_named_coproduct_wrapped_row_answers_its_value",
   "optional_named_coproduct_red_empty_row_answers_zero",
+  "optional_imported_coproduct_payload_answers_its_value",
+  "optional_imported_coproduct_red_empty_payload_answers_zero",
   "list_index_in_range_yields_the_element",
   "list_index_red_in_range_is_not_another_element",
   "list_index_red_in_range_is_not_absent",
