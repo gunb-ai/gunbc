@@ -30,12 +30,15 @@ data realization_respells_a_modeled_folds_sequencing_to_instrument_it: Recurring
 
     "NEXT-RUNG TRIGGER, naming the CAPABILITY: a realization seam that produces per-phase spans and counts from a modeled fold WITHOUT re-authoring its sequencing -- sufficient that a driver wanting the split calls the fold and receives the spans. FOR THE SPECIMEN THAT MEANS a prepared-grammar, resolve-free, per-stage entry on `v2.compiler.staged_front_end`, after which the phases in `v2.compiler.program_assembly` are projections of that authority and the divergence note beside them is deleted. Explicitly NOT discharged by: a witness comparing the modeled composition against its own phases (vacuous, see above); a comment asserting the two agree; a lint over template text; or repairing this one driver. The population is every clock-owning realization that wants a split of a modeled fold, not this instrument.",
 
-    "UNCERTAINTY CARRIED RATHER THAN ROUNDED OFF: one specimen, one driver, one fold. Whether other emitted drivers already re-spell a modeled fold's sequencing to instrument it has NOT been counted, so this row claims no frequency.",
+    "THE POPULATION GREW: A SECOND CLOCK-OWNING RE-SPELLING, gunbc PR 13457, 2026-10-06, named by review 76892. The census-resolve mode of the SAME emitted driver (`v1.compiler.emit_rust` `emit_source_root_eval_driver_main_rs`, `run_census_resolve`) stopped calling `v2.compiler.compile` `native_test_context_from_ingest` as one door and now enters its parts -- front end and ingest scope once, then tokenize, seeded parse, seeded normalize and absorb per read, then `native_test_context_finish` -- so that a whole-tree census can print per-file phase timings and tell a slow fold from a hung one (run 37348196148 printed nothing for 3h56m inside the single-call door). Its first revision asserted it was that door entered with a clock and not a second fold; that is exactly the assertion this row says nothing executes, and it was withdrawn. So census-resolve no longer executes the unmeasured composition; the containment the WHAT IS ALREADY SINGLE-AUTHORED paragraph names now rests on the remaining single-door caller in the same template, `run_census`, and narrows with each mode that re-spells. Two specimens in one driver template; the trigger is unchanged and would discharge both.",
+
+    "UNCERTAINTY CARRIED RATHER THAN ROUNDED OFF: two specimens, one driver template, one fold. Whether other emitted drivers already re-spell a modeled fold's sequencing to instrument it has NOT been counted, so this row claims no frequency.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "v2.compiler.program_assembly", decl_name: "program_assembly_read_to_normalized_root_seeded", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.staged_front_end", decl_name: "run_front_end_to", field: WholeDeclaration },
     DeclarationRef { module_path: "v2.compiler.compile", decl_name: "native_test_context_absorb", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1.compiler.emit_rust", decl_name: "emit_source_root_eval_driver_main_rs", field: WholeDeclaration },
   ],
 }
