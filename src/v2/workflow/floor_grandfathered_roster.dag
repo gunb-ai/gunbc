@@ -124,16 +124,6 @@ type GrandfatheredRemoval =
 // old one is not -- and one is a deletion, because the band-grounding check it named was replaced
 // by the floored-ratio grounding rather than renamed into it.
 data floor_grandfathered_removals: List<GrandfatheredRemoval> = [
-  WitnessRenamed {
-    previous_identity: "v2.test.manual.match_infer_fail_open_audit.complement_body_real_infer_refuses_unsupported_pattern_holds" as NonEmptyStr,
-    new_identity: "v2.test.manual.match_infer_fail_open_audit.complement_body_real_infer_holds" as NonEmptyStr,
-    renamed_in: "review 77188: after Bool-native kw_true/false arms, infer Accepts; the old name claimed a refusal. New identity faces the new-witness tier" as NonEmptyStr,
-  },
-  WitnessRenamed {
-    previous_identity: "v2.test.manual.match_infer_fail_open_audit.complement_arrow_real_infer_refuses_unsupported_pattern_holds" as NonEmptyStr,
-    new_identity: "v2.test.manual.match_infer_fail_open_audit.complement_arrow_real_infer_holds" as NonEmptyStr,
-    renamed_in: "review 77188: same meaning-fork as the body claim; rename to the accept contract" as NonEmptyStr,
-  },
   WitnessDeleted {
     identity: "v2.test.v2_native_route.an_unattributed_head_advisory_is_refused" as NonEmptyStr,
     deleted_in: "advisories steps 3+4: HeadGrain deleted; the head-advisory clause (gunbc.witness_v2_native_route native_route_head_advisories_attributed) and its test go with it. Advisories are counted by the accepted-file advisory instrument, not owned" as NonEmptyStr,
