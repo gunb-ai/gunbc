@@ -2008,10 +2008,15 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
 // repository. First effect without a hermetic arm is shell.Mktemp.Dir (no mock_response). Triple
 // enrollment: this expectation, a WetScheduledClaim row in local_repo_wet_schedule, and the
 // gunbc.ci_layer_roots LocalRepoWetLane row for roadmap_belt_publish_realization_wet_witness_test.dag.
+// The test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test identity (the BaseAdvance
+// follow-up to gunbc#13111) joins it with the same first effect and the same triple enrollment: the
+// base advance over a throwaway repository's two real commits.
 fn floor_route_gap_expectation_chunk_40() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test.the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {}
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test.the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
+    tail: Empty {} }
   }
 }
 
