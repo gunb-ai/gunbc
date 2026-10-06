@@ -10,6 +10,9 @@ import gunbc.materialization_store_budgets {
   materialization_store_durable_budgets_consumer_frontier,
   typecheck_module_family_entry_budget_unit,
   materialization_store_typed_module_budget_policy,
+  typecheck_store_family_budget_frontier,
+  typecheck_store_family_entry_bet,
+  typecheck_store_family_entry_size_read_obligation,
 }
 import gunbc.typed_module_cache_capacity { typed_module_cache_entries_ceiling }
 import gunbc.typecheck_module_store {
@@ -23,6 +26,7 @@ import gunbc.typecheck_module_store {
 }
 import std.measure { measure_count }
 import v2.std.optional { Present }
+import extdeps.external_authority { TranscribedUncited, CitedToAuthority }
 
 fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v)
@@ -68,6 +72,23 @@ test fn typecheck_module_request_from_hex_refuses_a_non_digest() -> Bool {
   match typecheck_module_request_from_hex(source_digest_hex: "not-a-digest", import_interface_hexes: [], compiler_digest_hex: "abcd") {
     TypecheckModuleRequestDigestRefused { which: w } => w == "source_digest"
     TypecheckModuleRequestBuilt { req: _ } => false
+  }
+}
+
+test fn the_family_entry_size_is_a_transcribed_uncited_bet_naming_the_real_route_instrument() -> Bool {
+  match typecheck_store_family_entry_bet.standing {
+    TranscribedUncited { read_obligation: o } => (o as String) == (typecheck_store_family_entry_size_read_obligation as String)
+    CitedToAuthority { authority: _ } => false
+  }
+}
+
+test fn the_family_budget_frontier_stays_unbound_while_the_entry_size_is_a_bet() -> Bool {
+  match dissolution_status(condition: typecheck_store_family_budget_frontier, present_decls: [
+    decl_ref(module_path: "gunbc.materialization_store_budgets", decl_name: "typecheck_store_family_entry_bet")
+  ]) {
+    DissolutionUnbound => true
+    DissolutionFired => false
+    DissolutionPending => false
   }
 }
 

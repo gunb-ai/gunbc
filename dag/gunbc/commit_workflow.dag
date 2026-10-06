@@ -1554,8 +1554,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "floor_index_build_share_is_shared_by_reference",
         "floor_index_build_has_plural_readers",
         "floor_index_build_reds_without_reference_provider",
-        "floor_typecheck_store_persist_reds_without_any_provider",
-        "floor_typecheck_store_persist_is_discharged_by_the_local_store"
+        "floor_typecheck_store_persist_reds_without_any_provider"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared

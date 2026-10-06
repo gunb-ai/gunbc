@@ -1,9 +1,10 @@
 module gunbc.materialization_store_budgets
 
-import std.types { List }
+import std.types { List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ByteSize, byte_size, measure_count }
 import std.cache_identity { typed_module_artifact_kind }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.realization.materialization_store_local {
   LocalStoreFamilyBudget,
   local_store_budget_sum,
@@ -22,16 +23,29 @@ import gunbc.typed_module_cache_capacity {
 // is structural (std.materialization_store_grant DurableHostVolumeRoot names one path), so the host
 // ceiling is the declared sum of these rows and nothing else.
 
-// POLICY DERIVED FROM AN EXISTING PER-ENTRY AUTHORITY, NOT A SYNTHETIC INTERFACE LITERAL. The
-// in-process typed-module cap already names a per-entry byte estimate
-// (gunbc.typed_module_cache_capacity typed_module_bytes_per_entry_estimate) and a residency
-// ceiling. The durable family cannot outgrow that working set. C2's instrument (the seed
-// typecheck path committing real interface+diagnostics objects) must keep every served object
-// at or under that per-entry estimate; a larger real object is a revision of the estimate, never
-// a second authored size in this file.
+// The product of per-entry unit × residency ceiling remains the family budget shape. The per-entry
+// figure is typed as a TranscribedUncited BET (DESIGN 4d): it reuses typed_module_bytes_per_entry_estimate
+// (TypeEnv-grain in-process denominator) and does not claim to be a measured
+// interface-plus-diagnostics store object. The read_obligation names the instrument that would
+// ground it. typecheck_store_family_budget_frontier stays unbound until that standing is
+// CitedToAuthority.
+
+type TypecheckStoreFamilyEntryBet {
+  bytes: ByteSize
+  standing: CitedFigureStanding
+}
+
+data typecheck_store_family_entry_size_read_obligation: NonEmptyStr = "v1_compiler.cli_run typecheck_store_session observed_largest_entry_bytes after seed_commit_typecheck_hex of TypecheckModuleRequest objects constructed on reconcile_with_typed_cache (interface_text plus diagnostics_text of the real typecheck_module result). Cite that producer; do not transcribe a count into this module."
+
+data typecheck_store_family_entry_bet: TypecheckStoreFamilyEntryBet = TypecheckStoreFamilyEntryBet {
+  bytes: typed_module_bytes_per_entry_estimate,
+  standing: TranscribedUncited { read_obligation: typecheck_store_family_entry_size_read_obligation }
+}
+
+data typecheck_store_family_budget_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: typecheck_store_family_entry_bet.standing is CitedToAuthority whose authority is the executing observed_largest_entry_bytes instrument on the real typecheck commit path (v1_compiler.cli_run typecheck_store_session). SUFFICIENT FOR: typecheck_module_family_entry_budget_unit is derived from that measurement rather than from this bet. Retired by that standing change and nothing else." as NonEmptyStr)
 
 fn typecheck_module_family_entry_budget_unit() -> ByteSize {
-  typed_module_bytes_per_entry_estimate
+  typecheck_store_family_entry_bet.bytes
 }
 
 data materialization_store_typed_module_budget_policy: ByteSize = byte_size(

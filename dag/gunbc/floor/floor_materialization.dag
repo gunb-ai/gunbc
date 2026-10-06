@@ -154,8 +154,11 @@ data floor_typecheck_store_no_providers: List<CacheProvider> = []
 // processes. The frame is
 // UnboundedSiblingsFrame, not SharedStateFrame: recurring invocations of the fold on a runner host
 // are successive siblings with no shared mutable state to rewire, so there is no LCA process in
-// which the repetition could have been carried, and only a STORE tier can discharge it. C2 covers
-// it with floor_typecheck_store_persist_provider.
+// which the repetition could have been carried, and only a STORE tier can discharge it.
+// floor_typecheck_store_persist_provider is the modeled STORE row; it does not discharge the
+// live ladder while typecheck_materialization_seed_path_note and
+// typecheck_store_family_budget_frontier remain unbound. Live verdicts are
+// floor_typecheck_store_persist_verdicts_without_provider.
 
 fn floor_runner_host_frame() -> std.materialization_ladder.Frame {
   std.materialization_ladder.Frame { name: "runner-host", kind: UnboundedSiblingsFrame }
@@ -194,9 +197,11 @@ fn floor_typecheck_store_cross_process_demands() -> List<FrameDemand> {
 
 data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
 
-// C2: TypecheckModuleRequest through extdeps.realization.materialization_store_local, per-module
-// interface+diagnostics grain, family budget from gunbc.materialization_store_budgets. The
-// no-provider ladder remains the RED. The live ladder discharges on the runner-host ArtifactTier.
+// Modeled STORE row for TypecheckModuleRequest through
+// extdeps.realization.materialization_store_local. The no-provider ladder is the LIVE RED.
+// persist_verdicts with this provider is the intended discharge fold; it is not claimed as live
+// while typecheck_materialization_seed_path_note and typecheck_store_family_budget_frontier stay
+// unbound.
 
 data floor_typecheck_store_persist_provider_id: String = "materialization_store_local:typed_module"
 
