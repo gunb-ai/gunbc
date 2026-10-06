@@ -29,6 +29,7 @@ import v2.compiler.inferred_tree {
   ObligatedInferredTree,
   NodeGrounding
 }
+import v2.std.compilers.compilation_unit { type_atom_identity }
 import v2.std.algebra_structure_signature { FieldDeclared, FieldNotDeclared, InhabitanceFieldRead, InhabitanceFieldReadMalformed, InhabitanceMalformed, algebra_inhabitance_field_declaration, algebra_inhabitance_field_reading, free_monoid_structure_generator_optional }
 import v2.std.model_core { AlgebraInhabitanceDecl }
 import v2.std.grammar { node_atom_identity_optional }
@@ -3890,9 +3891,9 @@ fn infer_bound_generator_agreement(node: Node, structure: Node, derived: Optiona
 // The instance the call fixed for the bound's generator, when the generator is a type variable the argument walk
 // instanced; Absent when it is not a variable or was not fixed.
 fn infer_bound_generator_fixed_optional(declared: Node, instances: List<TypeVariableInstance>) -> Optional<Node> {
-  match declared.kind {
-    TypeNode { connective: Atom { identity: id } } => type_variable_instance_lookup(instances: instances, binder: id)
-    _ => optional_absent()
+  match type_atom_identity(node: declared) {
+    Present { value: id } => type_variable_instance_lookup(instances: instances, binder: id)
+    Absent => optional_absent()
   }
 }
 
