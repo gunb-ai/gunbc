@@ -14,10 +14,10 @@ import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_key, fabric_cache_
 import gunbc.fabric.fabric_blob_r2 {
   FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
 }
-import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
+import gunbc.cloudflare.r2_origin { FabricCacheBlobs, bucket_purpose_lifecycle_rules, r2_default_multipart_abort_rule, FabricDurableOrigin, FabricBootOrigin, FabricWorkspace }
 import extdeps.cloudflare.r2_lifecycle {
   R2LifecycleRule, R2LifecycleRulesRead, R2LifecycleRulesUnmodeled, R2LifecycleReadRefused,
-  r2_lifecycle_read_body, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire, r2_default_multipart_abort_rule,
+  r2_lifecycle_read_body, r2_lifecycle_rules_canonical, r2_lifecycle_rules_wire,
 }
 import gunbc.cloudflare.r2_bucket_ensure { classify_r2_lifecycle }
 import std.upsert_decision { Noop, Apply, Refuse }

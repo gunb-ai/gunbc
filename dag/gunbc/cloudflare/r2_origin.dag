@@ -8,7 +8,7 @@ import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault, R2BucketLocation, r2_location_enam }
 import v2.std.optional { Present }
-import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule, R2DeleteObjectsAfterAge, r2_default_multipart_abort_rule }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule, R2DeleteObjectsAfterAge, R2AbortMultipartUploadsAfterAge }
 import std.measure { second_count }
 import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditional }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
@@ -492,6 +492,20 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
     FabricBootOrigin {} => fabric_boot_origin_standing()
     FabricCacheBlobs {} => fabric_cache_blobs_standing()
     FabricWorkspace {} => fabric_workspace_standing()
+  }
+}
+
+// THE RULE CLOUDFLARE INSTALLED ON OUR NEW BUCKET, an OBSERVATION and so homed here rather than in
+// extdeps.cloudflare.r2_lifecycle (DESIGN 3: a receipt belongs to the observing layer), as the live GET answered it for gunbai-fabric-cache
+// (fleet-converge r2_bucket_ensure run 37361093408, 2026-10-05): incomplete multipart uploads are
+// aborted after seven days, bucket-wide. A PUT replaces the whole rule set, so a purpose that keeps
+// this default names it in its desired set rather than deleting it as a side effect.
+fn r2_default_multipart_abort_rule() -> R2LifecycleRule {
+  R2LifecycleRule {
+    id: "Default Multipart Abort Rule",
+    enabled: true,
+    prefix: none,
+    transition: R2AbortMultipartUploadsAfterAge { max_age_seconds: 604800 },
   }
 }
 
