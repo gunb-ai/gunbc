@@ -1,6 +1,6 @@
 # Nested optionality on the v1 type carrier
 
-**Status:** design + census only. No implementation until gentle-dove-36 rules.
+**Status:** design + census only. Parent ruled (a). No implementation until side-chat go.
 **Subject:** successor to parked gunbc#13467. C5 on gunbc#13280 (`match_arm_body_is_present_payload_binding`) is a claimed-scope exclusion while infer collapses `T??` and emission carries `Option<Option<T>>`.
 **Counts:** taken on `origin/main` at this worktree (`session/quiet-eagle-533`), authored `src/v1/*.dag` as the authority and `src/v1/stage0/**/*.rs` as the generated mirror. Stage0 counts are expected to track `.dag` plus interpreter/witness extras.
 
@@ -118,23 +118,29 @@ On that “predicates unified” head, `04_lookup.dag` still had `normed.return_
 
 ## 3. Recommended construction: (a) layer count on the carrier
 
-**One encoding:** replace the boolean with a count on the existing home.
+**Parent ruling (gentle-dove-36):** (a), reject #13467, wait for side-chat go on this plan before code. `CardOptional` with a zero count must be unwritable (§4b). Equality’s `name == "Optional"` peel dies in the same cut. Join stays max. C5 retires in the same implementation PR.
+
+**Zero unwritable — (i), not (ii).** There is no `PositiveNat` in `std`. `std.nat` `Nat = Zero | Succ { prev: Nat }` is the home; a positive count is a successor, which `nat_div_rem_by_succ` already encodes as “caller supplies the predecessor.” `v2.std.refinement` `PositiveInt` is an `Outcome` refinement (validation, not construction). So:
 
 ```
-type Cardinality = Required | CardOptional { layers: Nat }
+type Cardinality = Required | CardOptional { pred: Nat }
 ```
 
-`layers >= 1`. `Required` is zero layers. Do not keep a parallel `optional_layers` field beside `Cardinality` (that would be two homes).
+`optional_layer_count(Required) = 0`. `optional_layer_count(CardOptional { pred: n }) = n + 1`. One layer is `CardOptional { pred: Zero }`. Two is `pred: Succ { prev: Zero }`. There is no `CardOptional` whose count is 0: that state has only the `Required` constructor.
+
+**(ii) rejected:** a single `Nat` where 0 means required makes `Required` a nickname for `Zero` and turns every `match Required | CardOptional` into a numeric test. The two-arm type is already the home; we only give the optional arm a predecessor. (ii) also invites `layers == 0` comments as a second name for `Required`.
+
+Do not keep a parallel `optional_layers` field beside `Cardinality`. Do not write `CardOptional { layers: Nat }` — `layers: Zero` would be a second encoding of `Required`.
 
 **Operations (the only writers):**
 
 | op | meaning |
 | --- | --- |
-| `optional_layer_count(n)` | 0 or `layers` |
-| `is_optional(n)` | count > 0 |
-| `wrap_optional_layer(n)` | 0 → `CardOptional { layers: 1 }`; `k` → `k+1` |
-| `peel_optional_layer(n)` | `1` → `Required`; `k>1` → `k-1`; `0` → unchanged (or refuse at typed sites) |
-| `join` for inhabitance | `max` of counts (OR was max on `{0,1}` only — that is the collapse) |
+| `optional_layer_count(n)` | 0, or `pred + 1` |
+| `is_optional(n)` | `CardOptional { … }` (no `> 0` test on a count that can be 0) |
+| `wrap_optional_layer(n)` | `Required` → `CardOptional { pred: Zero }`; `CardOptional { pred: p }` → `CardOptional { pred: Succ { prev: p } }` |
+| `peel_optional_layer(n)` | `pred: Zero` → `Required`; `pred: Succ { prev: p }` → `CardOptional { pred: p }`; `Required` → unchanged (or refuse at typed sites) |
+| `join` for inhabitance | `max` of counts |
 
 Delete `with_optional_cardinality` as a boolean set, or make it a synonym of `wrap_optional_layer` and migrate call sites that meant “exactly one layer from required” vs “add a layer”. Default of a former `with_optional_cardinality` call is **wrap**, not **set**. Default of former `with_required_cardinality` is **peel one**, not **clear all**, except at sites whose documented meaning is “the required payload after all wrappers” (Present binding peels one; equality admission peels until required).
 
@@ -148,13 +154,22 @@ Delete `with_optional_cardinality` as a boolean set, or make it a synonym of `wr
 
 **Replacement migration.** Root is the `Cardinality` type and the four helpers. Delete the boolean arms in one motion; fix forward every red. Do not land canonicalize-plus-flag. Do not keep `CardOptional` as “at least one” while a second structure holds the rest.
 
-**Staged cut.** Not as dual encodings. The seed must keep compiling, which forces a **single** commit (or a tightly stacked pair: type change + mechanical `CardOptional` → `CardOptional { layers: 1 }` on every construction, then semantic wrap/peel at `OptionalOf` / `maybe_optional` / Present). That is gap-intolerant on parse of the compiler's own `Cardinality` literals, not a licence for a shadow Y. No adapter that understands both boolean and count.
+**Staged cut.** Not as dual encodings. Gap-intolerant only on parse of the compiler’s own `Cardinality` literals: one implementation PR, mechanical `CardOptional` → `CardOptional { pred: Zero }` plus wrap/peel at `OptionalOf` / `maybe_optional` / Present. No adapter that understands both boolean and count. No code until gentle-dove-36 relays side-chat go.
 
 **What “flatten” is allowed.**
 
 - **Optional-receiver method/field lift** peels **exactly one** outer layer, looks up on the inner type, then wraps the result **once**. Remaining inner layers stay on that inner type. `String?.len()` is `Int?`. `String??.len()` peels to `String?`, looks up `len` (which itself peels once to `String`), result `Int` wrapped once for the inner lookup and once for the outer receiver → `Int??` if both lifts wrap — **or** the inner lookup sees `String?` and lifts once to `Int?` without a second wrap if we define lift as “wrap iff the receiver layer we peeled was the one that made the method available.” The law: each peel that was required to reach the method contributes one wrap on the result. Flattening *all* layers so `T??.len()` and `T?.len()` are both `Int?` would erase nested optionality on the chaining axis and is not the C5 repair; it is a different product rule. **Why flatten-one is not a floor-green hack:** Absent at the *outer* layer means the method does not run; the result is absent at that layer only. An inner Absent is a value of the inner optional type, still Present at the outer layer. Collapsing those is the same fork as `first()`.
 - **`map_lookup_result_type`** today skips wrapping if the raw result is already optional. That is OR. After the cut it must wrap (or not) from the Map algebra row, not from “already flagged.”
-- **`join` / unify** uses max, not “set flag.” Unifying `T?` with `T??` is `T??` (information-preserving); unifying `T` with `T?` is `T?`.
+- **`join` / unify** uses max, not “set flag.” Unifying `T?` with `T??` is `T??`; unifying `T` with `T?` is `T?`.
+- **Match-arm join is max for the same reason.** Arms of one match share one result type. `Absent` next to a `T??` value is not a required `T`: `Absent` inhabits the optional stack of the scrutinee (or of the arm’s ascribed type). The LUB of layer counts is max: a required payload in one arm injects into a more-optional result by wrapping, never by peeling the other arm. Boolean OR was max on `{0,1}`; on `{0,2}` it would still report “optional” but only one wrap — `T?` — and the `T??` arm would no longer inhabit the join. Joining `Absent` (count 2) with `Present { value: x }` at `T` must yield count 2, or nested Present on `first()` is untypable again.
+
+**Equality peel — one reader.** `equality_operand_admission` today:
+
+`peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1)`
+
+The second disjunct is the production fork. After the cut, peel while `is_optional` (the `CardOptional` arm). Delete the `name == "Optional"` arm. A user type named `Optional` with one child is not inhabitance optionality; walking it as a layer was the collision. Residual nominal `Optional` applications, if any still exist as authored types, are not cardinality — they must not be peeled here. Same motion as the carrier cut, not a follow-up.
+
+**Implementation (after side-chat go only):** one PR, delete-first on the boolean `Cardinality`. Regen stage0 in a fresh standalone clone; floor green. Mechanical `return_cardinality: CardOptional` → `CardOptional { pred: Zero }`. Helpers become wrap/peel/max. C5 exclusion `match_arm_body_is_present_payload_binding` / `nested_optional_collapsed_by_infer_carried_by_emission` retires when control (1) is green.
 
 ---
 
@@ -175,4 +190,4 @@ Delete `with_optional_cardinality` as a boolean set, or make it a synonym of `wr
 - Not new `== CardOptional` sites; after the cut that token should not exist as a unit variant.
 - Not landing #13467's helpers.
 
-Implementation starts only after gentle-dove-36 chooses (a), or explicitly overrules toward (b).
+Implementation starts only after gentle-dove-36 relays side-chat go on this plan.
