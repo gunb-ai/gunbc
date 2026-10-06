@@ -6547,13 +6547,13 @@ fn infer_well_formed(tree: ResolvedTree) -> Outcome<ObligatedInferredTree> {
 // THE ADMITTED CALLER'S COORDS, AS THE CLAUSE AUTHORS THEM: the declaring module's dotted
 // spelling and the declaration's name, both as interned lexemes.
 type InferAdmitCallerCoords {
-  module_path: Symbol
+  module_path: Optional<Symbol>
   decl_name: Symbol
 }
 
 type InferAdmissionCtx {
   caller: Optional<InferAdmitCallerCoords>
-  module_symbol: Symbol
+  module_symbol: Optional<Symbol>
 }
 
 type InferAdmitEntry
@@ -6774,10 +6774,14 @@ fn infer_admission_judge_entries(
           )
         }
       AdmitEntryCoords { coords: coords } =>
-        if symbol_eq(a: coords.module_path, b: module_symbol) && symbol_eq(a: coords.decl_name, b: caller.decl_name) {
-          InferAdmitJudgement { matched: true, diags: acc.diags }
-        } else {
-          acc
+        match coords.module_path {
+          Absent => acc
+          Present { value: entry_module } =>
+            if symbol_eq(a: entry_module, b: module_symbol) && symbol_eq(a: coords.decl_name, b: caller.decl_name) {
+              InferAdmitJudgement { matched: true, diags: acc.diags }
+            } else {
+              acc
+            }
         }
     }
   })
@@ -6803,7 +6807,7 @@ fn infer_admission_judge_entries(
 fn infer_caller_admission_application_diags(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
-  module_symbol: Symbol,
+  module_symbol: Optional<Symbol>,
   entries: List<InferredFactsEntry>,
   declarations: SymbolIndex
 ) -> Diagnostics {
@@ -6872,7 +6876,7 @@ fn infer_callee_declaration_from_declarations(declarations: SymbolIndex, callee_
 fn infer_caller_admission_judged_diags(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
-  module_symbol: Symbol,
+  module_symbol: Optional<Symbol>,
   arrow: Node,
   declarations: SymbolIndex
 ) -> Diagnostics {
@@ -6966,10 +6970,16 @@ fn infer_caller_admission_roster_from_declarations(
   }
 }
 
+// THE JUDGMENT FROM A MINTED ROSTER. THE MODULE CHECK HAPPENS HERE, AT THE POINT OF JUDGMENT:
+// comparing the roster's entry coordinates against the caller's module is the judgment; a
+// fn-rooted grounding context carries no tree module, so the comparison is undetermined and the
+// call refuses (module_unreadable, located at the call) rather than judge with a fabricated
+// module -- fail closed where it matters, never at the root (a root-level refusal would refuse
+// every fn-rooted context wholesale).
 fn infer_admission_from_roster(
   application: Node,
   caller: Optional<InferAdmitCallerCoords>,
-  module_symbol: Symbol,
+  module_symbol: Optional<Symbol>,
   roster: Node
 ) -> Diagnostics {
   match infer_admit_clause_entries(roster: roster) {
@@ -6984,12 +6994,22 @@ fn infer_admission_from_roster(
           }
         ])
         Present { value: coords } =>
-          infer_admission_judge_entries(
-            application: application,
-            entries: records,
-            caller: coords,
-            module_symbol: module_symbol
-          )
+          match module_symbol {
+            Absent => infer_admission_diags_of([
+              Diagnostic {
+                reason: ^infer_reason_caller_admission_module_unreadable,
+                at: node_locus(node: application),
+                correction: Unavailable { reason: UserInputBoundary }
+              }
+            ])
+            Present { value: tree_module } =>
+              infer_admission_judge_entries(
+                application: application,
+                entries: records,
+                caller: coords,
+                module_symbol: tree_module
+              )
+          }
       }
   }
 }
@@ -7027,27 +7047,33 @@ fn infer_admission_child_context(self: Node, ctx: InferAdmissionCtx, edge: Edge)
   }
 }
 
-// THE WALL, over the whole resolved tree, top-down so each application is judged under the
-// declaration it sits in. Failure arms FAIL CLOSED (DESIGN.md §5: refuse, never widen): an
-// unreadable module name cannot key the judge, so the tree refuses with a typed, located
-// diagnostic rather than passing unjudged.
-fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsEntry>) -> Diagnostics {
-  match qualified_name_from_module_node(root: tree.root) {
-    Rejected { diagnostics: _ } =>
-      infer_admission_diags_of([
-        Diagnostic {
-          reason: ^infer_reason_caller_admission_module_unreadable,
-          at: node_locus(node: tree.root),
-          correction: Unavailable { reason: UserInputBoundary }
-        }
-      ])
+// THE ROOT'S MODULE NAME, when the root is a module: the caller-module key for module-rooted
+// trees. A sub-tree root (a fn-rooted grounding context) reads as no module and the wall still
+// runs -- see the judgment-point check in infer_admission_from_roster.
+fn infer_admission_root_module_symbol(root: Node) -> Optional<Symbol> {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: module_qn, diagnostics: _ } =>
-      fold_node_topdown(
-        n: tree.root,
-        ctx: InferAdmissionCtx {
-          caller: Absent,
-          module_symbol: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: module_qn))
-        },
+      optional_present(value: symbol_intern_lexeme(lexeme: qualified_name_to_dotted_string(qn: module_qn)))
+  }
+}
+
+// THE WALL, over the whole resolved tree, top-down so each application is judged under the
+// declaration it sits in. The tree is judged however it is rooted: a module-rooted tree carries
+// its module name in the descent context (it keys the caller's module); a sub-tree root (a
+// fn-rooted grounding context -- the cross-language and self-host fixtures run infer on slices)
+// carries NO module name, and the wall still runs. Failure arms FAIL CLOSED (DESIGN.md §5:
+// refuse, never widen) -- but where they fail matters: an unreadable module name is not a
+// tree-level fault, it is unreadable only where a judgment needs it, so the refusal fires at the
+// application being judged (module_unreadable, located at the call), never as a root-level
+// precondition that would refuse every fn-rooted context wholesale.
+fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsEntry>) -> Diagnostics {
+  fold_node_topdown(
+    n: tree.root,
+    ctx: InferAdmissionCtx {
+      caller: Absent,
+      module_symbol: infer_admission_root_module_symbol(root: tree.root)
+    },
         algebra: NodeFoldTopDown {
           init: fn(self, ctx) {
             infer_caller_admission_application_diags(
@@ -7062,5 +7088,4 @@ fn infer_caller_admission_diags(tree: ResolvedTree, entries: List<InferredFactsE
           step: fn(acc, _edge, sub) { diagnostics_merge(outer: acc, inner: sub) }
         }
       )
-  }
 }

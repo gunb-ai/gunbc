@@ -1,0 +1,64 @@
+module scratch.acprobe
+
+// DBG-PROBE (temporary, untracked): root-cause the five required-floor claim failures and the
+// re-pointed hermetic fail-closed witness. Deleted with the diagnosis.
+
+import v2.compiler.refinement_discharge { infer_and_discharge }
+import v2.test.manual.cross_language_add_python_to_typescript { claim_resolved_tree_without_declarations, python_emitted_add_fn_node, ts_target_model }
+import v2.compiler.emit { emit }
+import v2.std.diagnostic { diagnostics_fatal_reason, Rejected, None, NonEmptyDiagnostics }
+import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target, wall_unreadable_callee_application, wall_index_with_unreadable_arrow }
+import v2.std.node_query { declaration_reference_path_optional }
+import v2.std.symbol_index { symbol_index_lookup }
+import v2.std.optional { optional_present }
+import v2.compiler.infer { infer_caller_admission_application_diags, InferAdmitCallerCoords }
+
+fn diag_reason(d: NonEmptyDiagnostics) -> String {
+  if diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_caller_unkeyed { "caller_unkeyed" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_callee_unreadable { "callee_unreadable" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_refused { "admission_refused" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_reason_admit_callers_entries_unreadable { "entries_unreadable" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_reason_admit_callers_entry_not_decl_ref { "entry_not_decl_ref" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_reason_caller_admission_module_unreadable { "module_unreadable" }
+  else if diagnostics_fatal_reason(d: d) == ^infer_grounding_not_derived { "grounding_not_derived" }
+  else { "other" }
+}
+
+fn xlang_verdict() -> String {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: python_emitted_add_fn_node())) {
+    Accepted { value: inferred, diagnostics: _ } =>
+      match emit(tree: inferred, target: ts_target_model()) {
+        Rejected { diagnostics: d } => "accept+emit-reject"
+        Accepted { value: _, diagnostics: _ } => "accept+emit-accept"
+      }
+    Rejected { diagnostics: d } => "infer-reject"
+  }
+}
+
+fn xlang_reason() -> String {
+  match infer_and_discharge(tree: claim_resolved_tree_without_declarations(root: python_emitted_add_fn_node())) {
+    Accepted { value: _, diagnostics: _ } => "accepted"
+    Rejected { diagnostics: d } => diag_reason(d: d)
+  }
+}
+
+fn wall_qn_probe() -> String {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => "qn-absent"
+    Present { value: qn } =>
+      match symbol_index_lookup(index: wall_index_with_unreadable_arrow(), qualified_path: qn) {
+        Absent => "lookup-absent"
+        Present { value: decl } =>
+          match infer_caller_admission_application_diags(
+            application: wall_unreadable_callee_application(),
+            caller: optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller }),
+            module_symbol: optional_present(value: ^bcb),
+            entries: [],
+            declarations: wall_index_with_unreadable_arrow()
+          ) {
+            None => "diags-none"
+            Some { diagnostics: ned } => diag_reason(d: ned)
+          }
+      }
+  }
+}

@@ -29,6 +29,7 @@ import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, Occurrenc
 import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags }
 import v2.std.node_query { declaration_reference_path_optional }
 import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
+import v2.std.optional { optional_absent, optional_present }
 import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional }
@@ -122,7 +123,7 @@ test fn the_wall_refuses_a_call_from_a_declaration_outside_the_list_holds() -> B
   match infer_admission_judge_entries(
     application: wall_application,
     entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
-    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller },
+    caller: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller },
     module_symbol: ^bcb
   ) {
     None => false
@@ -138,7 +139,7 @@ test fn the_wall_admits_a_call_from_the_listed_declaration_holds() -> Bool {
   match infer_admission_judge_entries(
     application: wall_application,
     entries: [wall_record(mp: ^bcb, dn: ^listed_caller)],
-    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^listed_caller },
+    caller: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^listed_caller },
     module_symbol: ^bcb
   ) {
     None => true
@@ -155,7 +156,7 @@ test fn an_entry_that_is_not_a_decl_ref_call_refuses_at_the_entry_holds() -> Boo
   match infer_admission_judge_entries(
     application: wall_application,
     entries: [wall_marker_entry],
-    caller: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller },
+    caller: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller },
     module_symbol: ^bcb
   ) {
     None => false
@@ -194,7 +195,11 @@ test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
               match infer_admit_record_check(record: record) {
                 Absent => false
                 Present { value: coords } =>
-                  symbol_eq(a: coords.module_path, b: ^bcb) && symbol_eq(a: coords.decl_name, b: ^listed_caller)
+                  match coords.module_path {
+                    Absent => false
+                    Present { value: entry_module } =>
+                      symbol_eq(a: entry_module, b: ^bcb) && symbol_eq(a: coords.decl_name, b: ^listed_caller)
+                  }
               }
             Cons { head: _, tail: _ } => false
           }
@@ -220,8 +225,25 @@ fn wall_decl_ref_target() -> Node {
       Edge {
         label: StructuralLabel { label: CoreMarker { marker: DeclarationReferenceEdge } },
         target: Node {
-          kind: TypeNode { connective: Atom { identity: ^wall_callee } },
-          children: [],
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Authored { name: ^fold_list_node_head },
+              target: Node {
+                kind: TypeNode { connective: Atom { identity: ^wall_callee } },
+                children: [],
+                occurrence_id: wall_call_site_locus
+              }
+            },
+            Edge {
+              label: Authored { name: ^fold_list_node_tail },
+              target: Node {
+                kind: TypeNode { connective: Conj },
+                children: [],
+                occurrence_id: wall_call_site_locus
+              }
+            }
+          ],
           occurrence_id: wall_call_site_locus
         }
       }
@@ -262,8 +284,8 @@ fn wall_index_with_unreadable_arrow() -> SymbolIndex {
 test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
   match infer_caller_admission_application_diags(
     application: wall_unreadable_callee_application(),
-    caller: Present { value: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller } },
-    module_symbol: ^bcb,
+    caller: optional_present(value: InferAdmitCallerCoords { module_path: optional_present(value: ^bcb), decl_name: ^outside_caller }),
+    module_symbol: optional_present(value: ^bcb),
     entries: [],
     declarations: wall_index_with_unreadable_arrow()
   ) {
