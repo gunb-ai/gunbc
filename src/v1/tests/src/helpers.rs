@@ -201,7 +201,9 @@ fn resolve_imports_transitively_with_index(
     // routing through the both-closure authority would compile the reference closure
     // of every imported std module on every snippet (outside the 100ms unit bound).
     // Callers that name an explicit pool use resolve_imports_transitively_with_source_roots
-    // (resolve_virtual_entry_compile_closure). The mutant below is this function.
+    // (resolve_virtual_entry_compile_closure). The discriminating import-only mutant is
+    // `import_only_virtual_entry_closure` in entry_resolve's cfg(test) module, not this
+    // production helper.
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)

@@ -258,6 +258,11 @@ pub(crate) fn import_closure_dag_files(
 /// authored `import` lines. That is the same class as #13437 / #13464: a provider
 /// reached only by qualified or bare reference was omitted. This function is not a
 /// second walker — it seeds the entry and calls `extend_sources_to_both_closure_fixpoint`.
+///
+/// SEED DELTA (ctrl hand-Rust receipt): production `resolve_imports_transitively_with_source_roots`
+/// lost its own import-line BFS (that body is gone). Net production seed is this wrapper.
+/// `virtual_entry_compile_closure_controls` is `#[cfg(test)]` only, including the import-only
+/// mutant `import_only_virtual_entry_closure` — not a second production walker.
 pub fn resolve_virtual_entry_compile_closure(
     entry_path: &str,
     entry_content: &str,
