@@ -8686,6 +8686,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           generic_names: call_sig_split.generic_names,
           formals: resolved_formals,
           subst: call_subst,
+          typed_args: typed_args,
           return_type: match sig { Present { value: s } => s.inferred  Absent => error_type },
           span: span,
           scope: scope
@@ -13751,9 +13752,10 @@ fn unify_lambda_solves(solved: Map<String, Node>, generic_names: List<String>, a
   )
 }
 
-// Skipping an uninformative actual must not default the generic (§5). When a value formal
-// mentioned A and every actual failed to inform it, the call's result stays A: refuse
-// "cannot infer A here; annotate" rather than let declared-return conformance stay silent.
+// Skipping an uninformative actual must not default the generic (§5). A recursive
+// nat_cata / fold_list call binds A to A from `succ(zero)` / `cons(empty, h)` — that
+// is not a default, and refusing it broke the corpus. The skip is absorbing only
+// when an empty-list literal was the actual for A and nothing else informed A.
 fn type_node_mentions_generic_name(n: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   if type_node_label(n: n, source_indices: source_indices) == name { true }
   else {
@@ -13776,18 +13778,30 @@ fn subst_binds_generic_informatively(subst: Map<String, Node>, name: String, sou
   }
 }
 
+fn type_is_uninformative_empty_list(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_is_element_collection(n: n, source_indices: source_indices) && unify_binding_is_uninformative(n: n)
+}
+
 fn unsolved_generic_from_uninformative_actuals_diags(
   generic_names: List<String>,
   formals: List<ResolvedFormal>,
   subst: Map<String, Node>,
+  typed_args: List<Node>,
   return_type: Node,
   span: SourceSpan,
   scope: InferScope
 ) -> List<ErrorNode> {
   let si = scope.type_env.source_indices
   generic_names |> flat_map(g =>
+    let empty_list_offered = typed_args |> any(a =>
+      type_is_uninformative_empty_list(n: resolved_type(n: arg_value(n: a)), source_indices: si)
+        && (formals |> any(f =>
+          (match arg_name_at(n: a, source_indices: si) { Present { value: name } => name == f.parameter_identity  Absent => false })
+            && type_node_mentions_generic_name(n: f.substitution_basis, name: g, source_indices: si)
+        ))
+    )
     if type_node_mentions_generic_name(n: return_type, name: g, source_indices: si)
-      && (formals |> any(f => type_node_mentions_generic_name(n: f.substitution_basis, name: g, source_indices: si)))
+      && empty_list_offered
       && !subst_binds_generic_informatively(subst: subst, name: g, source_indices: si) {
       [inference_error(message: concat("cannot infer ", concat(g, " here; annotate")), span: span, module_name: scope.module_name)]
     } else { [] }

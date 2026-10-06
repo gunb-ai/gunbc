@@ -13365,6 +13365,7 @@ Rc::new(InferResult {
                                             call_sig_split.generic_names.clone(),
                                             resolved_formals.clone(),
                                             call_subst.clone(),
+                                            typed_args.clone(),
                                             match sig.clone() {
                                                 Some(s) => s.inferred.clone(),
                                                 std::option::Option::None => error_type(),
@@ -23870,10 +23871,19 @@ pub fn subst_binds_generic_informatively(
     }
 }
 
+pub fn type_is_uninformative_empty_list(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (crate::v1_compiler_infer_types::node_is_element_collection(n.clone(), source_indices.clone())
+        && unify_binding_is_uninformative(n.clone()))
+}
+
 pub fn unsolved_generic_from_uninformative_actuals_diags(
     generic_names: Rc<Vec<String>>,
     formals: Rc<Vec<Rc<ResolvedFormal>>>,
     subst: Rc<HashMap<String, Rc<Node>>>,
+    typed_args: Rc<Vec<Rc<Node>>>,
     return_type: Rc<Node>,
     span: Rc<SourceSpan>,
     scope: Rc<InferScope>,
@@ -23884,21 +23894,42 @@ pub fn unsolved_generic_from_uninformative_actuals_diags(
         for g in generic_names.iter().cloned() {
             let in_return =
                 type_node_mentions_generic_name(return_type.clone(), g.clone(), si.clone());
-            let in_formal = {
+            let empty_list_offered = {
                 let mut __found = false;
-                for f in formals.iter().cloned() {
-                    if type_node_mentions_generic_name(
-                        f.substitution_basis.clone(),
-                        g.clone(),
+                for a in typed_args.iter().cloned() {
+                    if type_is_uninformative_empty_list(
+                        crate::v1_compiler_infer_types::resolved_type(
+                            crate::v1_std_core::arg_value(a.clone()),
+                        ),
                         si.clone(),
                     ) {
-                        __found = true;
+                        for f in formals.iter().cloned() {
+                            let name_match = match crate::v1_std_core::arg_name_at(
+                                a.clone(),
+                                si.clone(),
+                            ) {
+                                Some(name) => name == f.parameter_identity.clone(),
+                                std::option::Option::None => false,
+                            };
+                            if (name_match
+                                && type_node_mentions_generic_name(
+                                    f.substitution_basis.clone(),
+                                    g.clone(),
+                                    si.clone(),
+                                ))
+                            {
+                                __found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if __found {
                         break;
                     }
                 }
                 __found
             };
-            if ((in_return && in_formal)
+            if ((in_return && empty_list_offered)
                 && !subst_binds_generic_informatively(subst.clone(), g.clone(), si.clone()))
             {
                 __result.push(inference_error(
