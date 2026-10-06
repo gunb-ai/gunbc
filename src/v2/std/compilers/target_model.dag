@@ -8277,8 +8277,13 @@ fn target_value_expr_match_is_int_bool_octet_channel(
   arms: List<TargetValueExprMatchArmSlot>
 ) -> Bool {
   match scrutinee.kind {
-    TargetValueExprBindingRef =>
-      target_value_expr_match_arms_are_int_bool_octet_channel(arms: arms)
+    // A BINDING-REF SCRUTINEE IS NOT AN INT WIRE. After std.types Bool, a bool parameter
+    // match (complement: `match (a) { true => false, false => true }`) is this shape; treating
+    // it as the octet staging bridge (`a != 0`) demanded an operator catalog row the bool
+    // staging models do not carry and would emit the wrong program. The Int-scrutinee bool-arm
+    // bridge stays for an Int-classified carrier once infer facts reach this fold (dissolve-on
+    // the same codec inhabitation `target_value_expr_int_bool_octet_channel_dissolve_on` names).
+    TargetValueExprBindingRef => false
     TargetValueExprSymbolIdentity => false
     TargetValueExprSymbolToOwnedString => false
     TargetValueExprBoolLiteral => false
@@ -15402,6 +15407,10 @@ fn target_value_expr_binding_ref_for_literal_atom(id: Symbol) -> Optional<Symbol
     optional_present(value: ^dag_binding_pick_lit_two)
   } else if id == ^dag_rec_lit_nine {
     optional_present(value: ^dag_binding_rec_lit_nine)
+  } else if id == ^dag_binding_rec_v {
+    optional_present(value: ^dag_binding_rec_v)
+  } else if id == ^dag_binding_type_variant_true {
+    optional_present(value: ^dag_binding_type_variant_true)
   } else {
     optional_absent()
   }
