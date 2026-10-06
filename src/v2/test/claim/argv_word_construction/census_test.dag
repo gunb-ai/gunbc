@@ -106,11 +106,11 @@ test fn census_fixture_route_counts_its_members() -> Bool {
     Absent => false
     Present { value: facts } =>
       (length(xs: filter(xs: facts, p => is_census_member(f: p))) == 4)
-      && (length(xs: filter(xs: facts, p => f.decl_kind == DataDecl)) == 3)
+      && (length(xs: filter(xs: facts, p => p.decl_kind == DataDecl)) == 3)
       && (length(xs: facts) == 7)
       && match fact_named(xs: facts, want: "fixture_transient_unit_argv") {
         Absent => false
-        Present { value: f } => is_census_member(f: f) && (f.counted == true)
+        Present { value: member } => is_census_member(f: member) && (member.counted == true)
       }
   }
 }
@@ -125,9 +125,9 @@ test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
   match fixture_facts() {
     Absent => false
     Present { value: facts } =>
-      (length(xs: filter(xs: facts, p => f.decl_kind == DataDecl)) == 3)
+      (length(xs: filter(xs: facts, p => p.decl_kind == DataDecl)) == 3)
       && (length(xs: facts) == 7)
-      && (length(xs: filter(xs: facts, p => (f.decl_kind == DataDecl) && is_census_member(f: p))) == 0)
+      && (length(xs: filter(xs: facts, p => (p.decl_kind == DataDecl) && is_census_member(f: p))) == 0)
       && match fact_named(xs: facts, want: "fixture_waits_quietly") {
         Absent => false
         Present { value: waits } =>
