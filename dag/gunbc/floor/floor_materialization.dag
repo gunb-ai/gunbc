@@ -154,8 +154,8 @@ data floor_typecheck_store_no_providers: List<CacheProvider> = []
 // processes. The frame is
 // UnboundedSiblingsFrame, not SharedStateFrame: recurring invocations of the fold on a runner host
 // are successive siblings with no shared mutable state to rewire, so there is no LCA process in
-// which the repetition could have been carried, and only a STORE tier can discharge it. No provider
-// does today (see the note above the no-provider verdict below).
+// which the repetition could have been carried, and only a STORE tier can discharge it. C2 covers
+// it with floor_typecheck_store_persist_provider.
 
 fn floor_runner_host_frame() -> std.materialization_ladder.Frame {
   std.materialization_ladder.Frame { name: "runner-host", kind: UnboundedSiblingsFrame }
@@ -194,15 +194,32 @@ fn floor_typecheck_store_cross_process_demands() -> List<FrameDemand> {
 
 data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
 
-// NO PROVIDER COVERS THESE DEMANDS (2026-10-03). The host-persisted provider that discharged them --
-// shared_typecheck_store PersistentTypedStore, armed by GUNBC_TYPED_STORE_PERSIST -- was DELETED
-// after measurement: armed, a 5-entry claim_batch run exceeded 720 s against ~150 s unarmed and
-// wrote ~7.3 GB in two entries, so its per-entry payload was a closure snapshot rather than one
-// module, and nothing bounded its root or cleaned it. The demands below are unchanged and the
-// ladder therefore REFUSES them; that refusal is the live state, not a fixture. The replacement is a
-// TypecheckModuleRequest store realized through extdeps.realization.materialization_store_local
-// with a per-module encoding, a byte ceiling with oldest-generation eviction and a scoped,
-// self-cleaning root; it re-adds the provider row here with its own green and red controls.
+// C2: TypecheckModuleRequest through extdeps.realization.materialization_store_local, per-module
+// interface+diagnostics grain, family budget from gunbc.materialization_store_budgets. The
+// no-provider ladder remains the RED. The live ladder discharges on the runner-host ArtifactTier.
+
+data floor_typecheck_store_persist_provider_id: String = "materialization_store_local:typed_module"
+
+data floor_typecheck_store_persist_provider: CacheProvider = provider_row(
+  id: floor_typecheck_store_persist_provider_id,
+  scope: [floor_runner_host_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
+  tier: ArtifactTier { keying: ContentKeyed },
+  retention: persistent_retention(capacity: CapacityBounded {
+    limit: ByteCapacity { limit: ExactLimit { value: materialization_store_typed_module_budget_policy } },
+    at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed }
+  })
+)
+
+data floor_typecheck_store_persist_providers: List<CacheProvider> = [floor_typecheck_store_persist_provider]
+
+fn floor_typecheck_store_persist_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: floor_typecheck_store_persist_providers,
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
 
 fn floor_typecheck_store_persist_verdicts_without_provider() -> List<LadderVerdict> {
   materialization_ladder(

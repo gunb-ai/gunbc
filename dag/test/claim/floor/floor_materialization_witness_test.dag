@@ -11,13 +11,16 @@ import gunbc.floor_materialization {
   floor_index_build_materialization_without_provider,
   floor_index_build_reader_count,
   floor_typecheck_store_identity,
+  floor_typecheck_store_persist_provider_id,
+  floor_typecheck_store_persist_verdicts,
   floor_typecheck_store_persist_verdicts_without_provider
 }
 import std.materialization_ladder {
   LadderVerdict,
   value_verdict_is_shared_by_reference,
   value_verdict_is_refused_needing_reference,
-  verdict_is_refused_no_provider
+  verdict_is_refused_no_provider,
+  verdict_is_discharged_by
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -71,5 +74,13 @@ test fn floor_typecheck_store_persist_reds_without_any_provider() -> Bool {
     Absent => false
     Present { value: v } =>
       verdict_is_refused_no_provider(v: v, identity: floor_typecheck_store_identity)
+  }
+}
+
+test fn floor_typecheck_store_persist_is_discharged_by_the_local_store() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_discharged_by(v: v, identity: floor_typecheck_store_identity, provider_id: floor_typecheck_store_persist_provider_id)
   }
 }

@@ -1,0 +1,47 @@
+module test.claim.typecheck_module_store_witness
+
+import std.types { Bool }
+import std.decl_ref { decl_ref }
+import std.dissolution { dissolution_status, DissolutionFired, DissolutionPending, DissolutionUnbound }
+import std.materialization_provider { request_key }
+import gunbc.materialization_store_budgets {
+  materialization_store_durable_budgets_consumer_frontier,
+  typecheck_module_measured_largest_entry,
+  materialization_store_typed_module_budget_policy,
+}
+import gunbc.typed_module_cache_capacity { typed_module_cache_entries_ceiling }
+import gunbc.typecheck_module_store {
+  typecheck_module_request,
+  typecheck_module_payloads,
+  typecheck_module_entry_bytes,
+}
+import std.measure { measure_count }
+
+test fn the_durable_budgets_consumer_frontier_is_bound_to_the_c2_open() -> Bool {
+  let target = decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "open_durable_typecheck_store")
+  match dissolution_status(condition: materialization_store_durable_budgets_consumer_frontier, present_decls: [target]) {
+    DissolutionFired => true
+    DissolutionPending => false
+    DissolutionUnbound => false
+  }
+}
+
+test fn typecheck_module_request_key_is_derived_from_the_judgment_contract() -> Bool {
+  let a = typecheck_module_request(source: "mod-a", import_interfaces: ["iface-1"], compiler: "compiler-x")
+  let b = typecheck_module_request(source: "mod-a", import_interfaces: ["iface-1"], compiler: "compiler-x")
+  let changed = typecheck_module_request(source: "mod-a", import_interfaces: ["iface-2"], compiler: "compiler-x")
+  request_key(req: a) == request_key(req: b)
+    && (request_key(req: a) == request_key(req: changed)) == false
+}
+
+test fn the_typed_module_family_budget_is_the_measured_entry_times_the_residency_ceiling() -> Bool {
+  measure_count(m: materialization_store_typed_module_budget_policy)
+    == measure_count(m: typecheck_module_measured_largest_entry()) * typed_module_cache_entries_ceiling
+}
+
+test fn a_typecheck_entry_for_the_probe_interface_fits_the_measured_largest_entry() -> Bool {
+  let req = typecheck_module_request(source: "mod-a", import_interfaces: [], compiler: "compiler-x")
+  let payloads = typecheck_module_payloads(interface: "export fn f\n", diagnostics: "")
+  measure_count(m: typecheck_module_entry_bytes(req: req, payloads: payloads))
+    <= measure_count(m: typecheck_module_measured_largest_entry())
+}

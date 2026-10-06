@@ -1,0 +1,108 @@
+module gunbc.typecheck_module_store
+
+import std.types { List, String, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import std.interface_summary { InterfaceHash }
+import std.measure { ByteSize }
+import std.materialization_provider {
+  ArtifactRequest,
+  ArtifactPayload,
+  TypecheckModuleRequest,
+  compiler_identity_input,
+  output_typed_module_interface,
+  output_typecheck_diagnostics,
+}
+import std.materialization_object {
+  store_commit_prepare,
+  StoreCommitPrepared,
+  StoreCommitNotPrepared,
+  StoreCommitSettled,
+  StoreCommitRefused,
+  StoreLookup,
+  store_lookup_is_hit,
+  store_lookup_is_miss,
+}
+import std.materialization_store_grant { DurableHostVolumeRoot }
+import extdeps.realization.materialization_store_local {
+  LocalStoreCapability,
+  LocalStoreOpening,
+  LocalStoreCommit,
+  local_store_open,
+  local_store_lookup,
+  local_store_commit,
+  local_store_object_bytes,
+}
+import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets }
+
+// THE TYPECHECK-MODULE CONSUMER OF THE LOCAL STORE (C2). TypecheckModuleRequest keys are DERIVED
+// (std.materialization_provider request_key); this module never takes a key, digest, or roster as a
+// caller-chosen argument. A HIT is the store's verified read (local_store_lookup already runs
+// provider_serve_persisted); a miss computes by committing the contract payloads (typed module
+// interface + typecheck diagnostics) and reading back. A stale or tampered object REFUSES, and that
+// refusal is not a miss. The durable open takes gunbc.materialization_store_budgets
+// materialization_store_durable_family_budgets and DurableHostVolumeRoot; it does not initialize a
+// missing volume and does not fall through to scratch.
+
+fn typecheck_module_request(source: NonEmptyStr, import_interfaces: List<String>, compiler: NonEmptyStr) -> ArtifactRequest {
+  TypecheckModuleRequest {
+    source_digest: content_hash_atom(value: source),
+    direct_import_interfaces: import_interfaces |> map(s => content_hash_atom(value: s as NonEmptyStr) as InterfaceHash),
+    compiler: compiler_identity_input(digest: content_hash_atom(value: compiler))
+  }
+}
+
+fn typecheck_module_payloads(interface: String, diagnostics: String) -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_typed_module_interface, content: interface },
+    ArtifactPayload { id: output_typecheck_diagnostics, content: diagnostics },
+  ]
+}
+
+fn typecheck_module_prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
+    StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
+    StoreCommitNotPrepared { commit: _ } => ""
+  }
+}
+
+fn typecheck_module_entry_bytes(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ByteSize {
+  local_store_object_bytes(object: typecheck_module_prepared_object(req: req, payloads: payloads))
+}
+
+fn open_durable_typecheck_store() -> LocalStoreOpening {
+  local_store_open(root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets)
+}
+
+type TypecheckModuleServe
+  = TypecheckModuleHit { lookup: StoreLookup }
+  | TypecheckModuleMiss { lookup: StoreLookup }
+  | TypecheckModuleRefused { lookup: StoreLookup }
+
+fn typecheck_module_serve(capability: LocalStoreCapability, req: ArtifactRequest) -> TypecheckModuleServe {
+  let lookup = local_store_lookup(capability: capability, req: req)
+  if store_lookup_is_hit(l: lookup) {
+    TypecheckModuleHit { lookup: lookup }
+  } else {
+    if store_lookup_is_miss(l: lookup) {
+      TypecheckModuleMiss { lookup: lookup }
+    } else {
+      TypecheckModuleRefused { lookup: lookup }
+    }
+  }
+}
+
+fn typecheck_module_commit_computed(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> LocalStoreCommit {
+  local_store_commit(capability: capability, req: req, payloads: payloads, parts: [])
+}
+
+fn typecheck_module_materialize(capability: LocalStoreCapability, req: ArtifactRequest, payloads: List<ArtifactPayload>) -> TypecheckModuleServe {
+  match typecheck_module_serve(capability: capability, req: req) {
+    TypecheckModuleHit { lookup: h } => TypecheckModuleHit { lookup: h }
+    TypecheckModuleRefused { lookup: r } => TypecheckModuleRefused { lookup: r }
+    TypecheckModuleMiss { lookup: _ } =>
+      match typecheck_module_commit_computed(capability: capability, req: req, payloads: payloads).commit {
+        StoreCommitSettled { receipt: _ } => typecheck_module_serve(capability: capability, req: req)
+        StoreCommitRefused { key: _, refusal: _ } => typecheck_module_serve(capability: capability, req: req)
+      }
+  }
+}
