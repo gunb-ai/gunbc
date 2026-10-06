@@ -14815,8 +14815,10 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
     transparent_alias_rep: transparent_alias_representatives(
       module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
     type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices),
-    file_named_imports: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
-      map_insert(acc, module_node.span.file, file_named_imports_of(module_node: module_node, source_indices: source_indices)))
+    file_modules: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, module_node.span.file, authored_name_at(source_indices: source_indices, node: module_node))),
+    module_named_imports: module_nodes |> fold(init: empty_map(), f: (acc, module_node) =>
+      map_insert(acc, authored_name_at(source_indices: source_indices, node: module_node), file_named_imports_of(module_node: module_node, source_indices: source_indices)))
   }
 }
 
@@ -15026,7 +15028,7 @@ fn census_bare_fill_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Ma
       Absent => acc
     }
   )
-  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, file_named_imports: index.file_named_imports }
+  SymbolIndex { entries: index.entries, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, file_modules: index.file_modules, module_named_imports: index.module_named_imports }
 }
 
 fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15045,7 +15047,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
     }
   )
   let fill = census_bare_fill_with_resolved_fn_sigs(index: index, source_indices: source_indices)
-  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures, file_named_imports: fill.file_named_imports }
+  SymbolIndex { entries: entries2, global_bare: fill.global_bare, services: fill.services, transparent_alias_rep: fill.transparent_alias_rep, type_head_exposures: fill.type_head_exposures, file_modules: fill.file_modules, module_named_imports: fill.module_named_imports }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -15086,7 +15088,8 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
     entries: closure.entries, global_bare: global2, services: services2,
     transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
     type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures),
-    file_named_imports: map_merge(tree.file_named_imports, closure.file_named_imports)
+    file_modules: map_merge(tree.file_modules, closure.file_modules),
+    module_named_imports: map_merge(tree.module_named_imports, closure.module_named_imports)
   }
 }
 
@@ -15126,7 +15129,8 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
     entries: entries2, global_bare: closure.global_bare, services: closure.services,
     transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
     type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
-    file_named_imports: map_merge(fill.file_named_imports, closure.file_named_imports)
+    file_modules: map_merge(fill.file_modules, closure.file_modules),
+    module_named_imports: map_merge(fill.module_named_imports, closure.module_named_imports)
   }
 }
 
