@@ -1,0 +1,44 @@
+module test.claim.typecheck_materialization_witness
+
+import std.types { Bool, List, String }
+import std.content_hash { Fnv1a64Structural, content_hash_atom, as_content_hash_structural }
+import std.interface_summary { InterfaceHash, module_key, typed_module_key }
+import std.materialization_provider { request_key }
+import std.dissolution { dissolution_is_bound }
+import gunbc.materialization_store_budgets { materialization_store_durable_budgets_consumer_frontier }
+import gunbc.typecheck_materialization {
+  typecheck_module_request,
+  open_durable_typecheck_store_ref,
+}
+import gunbc.floor_materialization {
+  floor_typecheck_store_persist_provider_id,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn h(v: String) -> Fnv1a64Structural {
+  content_hash_atom(value: v)
+}
+
+test fn typecheck_module_request_key_is_derived_never_passed_in() -> Bool {
+  let src = h(v: "source-1")
+  let imp = h(v: "iface-1") as InterfaceHash
+  let compiler = h(v: "compiler-1")
+  let req = typecheck_module_request(source_digest: src, direct_import_interfaces: [imp], compiler_digest: compiler)
+  let again = typecheck_module_request(source_digest: src, direct_import_interfaces: [imp], compiler_digest: compiler)
+  let apart = typecheck_module_request(source_digest: src, direct_import_interfaces: [h(v: "iface-2") as InterfaceHash], compiler_digest: compiler)
+  let expected = typed_module_key(
+    interface_key: module_key(source_hash: src, direct_import_interface_hashes: [imp]),
+    compiler_identity: compiler
+  )
+  request_key(req: req) == request_key(req: again)
+    && request_key(req: req) != request_key(req: apart)
+    && request_key(req: req) == as_content_hash_structural(structural: expected)
+}
+
+test fn durable_budgets_consumer_frontier_is_bound_to_the_durable_open() -> Bool {
+  dissolution_is_bound(condition: materialization_store_durable_budgets_consumer_frontier)
+    && open_durable_typecheck_store_ref.decl_name == "open_durable_typecheck_store"
+    && floor_typecheck_store_persist_provider_id == "materialization_store_local"
+}

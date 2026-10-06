@@ -1,0 +1,144 @@
+module gunbc.typecheck_materialization
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import std.interface_summary { InterfaceHash }
+import std.judgment_contract { output_typed_module_interface, output_typecheck_diagnostics }
+import std.materialization_provider {
+  ArtifactRequest, TypecheckModuleRequest, compiler_identity_input,
+}
+import std.effect_grant { Write }
+import std.filesystem_path_grant { absolute_path_position }
+import std.materialization_store_grant {
+  DurableHostVolumeRoot, WitnessScratchRoot,
+  materialization_store_durable_root_path, materialization_store_frame,
+}
+import std.materialization_object {
+  ArtifactPayload, StoreLookup,
+  store_lookup_is_hit, store_lookup_is_miss, store_lookup_refusal_tag,
+}
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.realization.materialization_store_local {
+  LocalStoreOpening, LocalStoreOpened, LocalStoreUnavailable, LocalStoreCapability,
+  LocalStoreInitialization, LocalStoreInitialized, LocalStoreInitializationRefused,
+  LocalStoreCommit, LocalStoreGrantRefused,
+  local_store_open, local_store_initialize, local_store_lookup, local_store_commit,
+}
+import gunbc.materialization_store_budgets { materialization_store_durable_family_budgets }
+
+// PRODUCTION CONSUMER OF THE DURABLE MATERIALIZATION STORE (DESIGN 3c). This module is the TypecheckModuleRequest
+// consumer named by gunbc.materialization_store_budgets materialization_store_durable_budgets_consumer_frontier:
+// it opens DurableHostVolumeRoot through extdeps.realization.materialization_store_local passing
+// materialization_store_durable_family_budgets. A miss computes elsewhere and commits here; a hit is the
+// store's verified lookup, never a trusted byte. There is no scratch fallback: an unavailable durable
+// volume is a miss that refuses the store, not a second root.
+
+data typecheck_store_instance_label: NonEmptyStr = "gunbc-typecheck-host"
+
+fn typecheck_module_request(
+  source_digest: Fnv1a64Structural,
+  direct_import_interfaces: List<InterfaceHash>,
+  compiler_digest: Fnv1a64Structural
+) -> ArtifactRequest {
+  TypecheckModuleRequest {
+    source_digest: source_digest,
+    direct_import_interfaces: direct_import_interfaces,
+    compiler: compiler_identity_input(digest: compiler_digest)
+  }
+}
+
+fn typecheck_module_payloads(interface_text: String, diagnostics_text: String) -> List<ArtifactPayload> {
+  [
+    ArtifactPayload { id: output_typed_module_interface, content: interface_text },
+    ArtifactPayload { id: output_typecheck_diagnostics, content: diagnostics_text },
+  ]
+}
+
+fn open_durable_typecheck_store() -> LocalStoreOpening {
+  local_store_open(root: DurableHostVolumeRoot, budgets: materialization_store_durable_family_budgets)
+}
+
+fn initialize_durable_typecheck_store() -> LocalStoreInitialization {
+  local_store_initialize(
+    root: DurableHostVolumeRoot,
+    instance_label: typecheck_store_instance_label,
+    budgets: materialization_store_durable_family_budgets
+  )
+}
+
+// First production open: initialize (create-new marker, or converge on an existing one) then return
+// that opening. A grant or catalog refusal stays a refusal; nothing opens WitnessScratchRoot here.
+fn ensure_durable_typecheck_store() -> LocalStoreOpening {
+  match initialize_durable_typecheck_store() {
+    LocalStoreInitialized { opening: o } => o
+    LocalStoreInitializationRefused { root_path: p, cause: c } =>
+      LocalStoreUnavailable { root_path: p, cause: c }
+  }
+}
+
+fn lookup_typecheck_module(capability: LocalStoreCapability, req: ArtifactRequest) -> StoreLookup {
+  local_store_lookup(capability: capability, req: req)
+}
+
+// Distinct from the durable open: witnesses exercise the same family budgets on an ephemeral
+// scratch root. This is a different operation, not a required argument on the durable door.
+fn initialize_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreInitialization {
+  match root {
+    DurableHostVolumeRoot => initialize_durable_typecheck_store()
+    WitnessScratchRoot { root: r } => local_store_initialize(
+      root: WitnessScratchRoot { root: r },
+      instance_label: "gunbc-typecheck-witness" as NonEmptyStr,
+      budgets: materialization_store_durable_family_budgets
+    )
+  }
+}
+
+fn open_witness_typecheck_store(root: WitnessScratchRoot) -> LocalStoreOpening {
+  match root {
+    DurableHostVolumeRoot => open_durable_typecheck_store()
+    WitnessScratchRoot { root: r } =>
+      local_store_open(root: WitnessScratchRoot { root: r }, budgets: materialization_store_durable_family_budgets)
+  }
+}
+
+fn commit_typecheck_module(
+  capability: LocalStoreCapability,
+  req: ArtifactRequest,
+  interface_text: String,
+  diagnostics_text: String
+) -> LocalStoreCommit {
+  local_store_commit(
+    capability: capability,
+    req: req,
+    payloads: typecheck_module_payloads(interface_text: interface_text, diagnostics_text: diagnostics_text),
+    parts: []
+  )
+}
+
+fn typecheck_lookup_is_verified_hit(l: StoreLookup) -> Bool {
+  store_lookup_is_hit(l: l)
+}
+
+fn typecheck_lookup_is_miss(l: StoreLookup) -> Bool {
+  store_lookup_is_miss(l: l)
+}
+
+fn typecheck_lookup_refused_integrity(l: StoreLookup) -> Bool {
+  let tag = store_lookup_refusal_tag(l: l)
+  tag != "hit" && tag != "miss"
+}
+
+data open_durable_typecheck_store_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.typecheck_materialization",
+  decl_name: "open_durable_typecheck_store"
+)
+
+data ensure_durable_typecheck_store_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.typecheck_materialization",
+  decl_name: "ensure_durable_typecheck_store"
+)
+
+data typecheck_materialization_seed_path_note: DissolutionCondition = unbound_dissolution(
+  description: "TRIGGER: the seed typecheck path (v1_compiler.cli_run reconcile miss/hit) constructs TypecheckModuleRequest through typecheck_module_request, looks up through lookup_typecheck_module, and commits through commit_typecheck_module. SUFFICIENT FOR: a verified store hit skips typecheck_module compute and a stale or tampered object refuses rather than serving. The durable open is ensure_durable_typecheck_store." as NonEmptyStr
+)

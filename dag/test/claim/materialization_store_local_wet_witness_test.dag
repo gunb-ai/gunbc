@@ -12,6 +12,7 @@ import std.materialization_provider {
   evaluation_store_address_preimage, request_judgment_contract,
   output_module_test_verdicts, output_module_preparation_diagnostics,
   output_universe_test_identity_population, output_universe_module_import_closures,
+  output_typed_module_interface,
 }
 import std.materialization_store_grant { MaterializationStoreRoot, WitnessScratchRoot, DurableHostVolumeRoot }
 import std.materialization_object {
@@ -57,6 +58,12 @@ import std.cache_identity { native_module_verdict_bundle_artifact_kind, typed_mo
 import gunbc.materialization_store_budgets {
   materialization_store_host_ceiling_bytes, materialization_store_typed_module_budget_policy, materialization_store_durable_family_budgets,
 }
+import gunbc.typecheck_materialization {
+  typecheck_module_request, commit_typecheck_module, lookup_typecheck_module,
+  initialize_witness_typecheck_store, typecheck_lookup_is_verified_hit, typecheck_lookup_is_miss,
+  typecheck_lookup_refused_integrity,
+}
+import std.interface_summary { InterfaceHash }
 import std.measure { byte_size }
 import std.measure { measure_count }
 import std.render_repeat_string_bootstrap { repeat_string }
@@ -1334,6 +1341,92 @@ test fn a_leftover_copy_that_cannot_be_removed_leaves_the_store_unwritable_by_re
       commit_tag(c: kept.commit) == "committed" && residue > 0 && planted
         && opening_refused_for_sweep(o: reopened) && !wrote
         && root_object_bytes(root_path: root_path) + residue <= budget
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+fn typecheck_req(source: String) -> ArtifactRequest {
+  typecheck_module_request(
+    source_digest: h(v: source),
+    direct_import_interfaces: [h(v: "import-a") as InterfaceHash],
+    compiler_digest: h(v: "compiler-1")
+  )
+}
+
+fn opened_typecheck(root: MaterializationStoreRoot) -> LocalStoreCapability? {
+  match root {
+    DurableHostVolumeRoot => none
+    WitnessScratchRoot { root: r } =>
+      match initialize_witness_typecheck_store(root: WitnessScratchRoot { root: r }) {
+        LocalStoreInitialized { opening: o } => match o {
+          LocalStoreOpened { capability: c, durability: _ } => Present { value: c }
+          LocalStoreUnavailable { root_path: _, cause: _ } => none
+        }
+        LocalStoreInitializationRefused { root_path: _, cause: _ } => none
+      }
+  }
+}
+
+test fn typecheck_module_commit_then_verified_hit_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let req = typecheck_req(source: "mod-a")
+  let verdict = match opened_typecheck(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let committed = commit_tag(c: commit_typecheck_module(capability: store, req: req, interface_text: "exports:a", diagnostics_text: "").commit)
+      let read = lookup_typecheck_module(capability: store, req: req)
+      let iface = match store_lookup_payload(l: read, id: output_typed_module_interface) {
+        Present { value: v } => v == "exports:a"
+        Absent => false
+      }
+      committed == "committed" && typecheck_lookup_is_verified_hit(l: read) && iface
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+test fn typecheck_module_second_lookup_is_a_verified_hit_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let req = typecheck_req(source: "mod-warm")
+  let verdict = match opened_typecheck(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let first = commit_typecheck_module(capability: store, req: req, interface_text: "iface-warm", diagnostics_text: "diag-warm")
+      let miss_other = lookup_typecheck_module(capability: store, req: typecheck_req(source: "mod-other"))
+      let warm = lookup_typecheck_module(capability: store, req: req)
+      commit_tag(c: first.commit) == "committed"
+        && typecheck_lookup_is_miss(l: miss_other)
+        && typecheck_lookup_is_verified_hit(l: warm)
+        && match store_lookup_payload(l: warm, id: output_typed_module_interface) {
+          Present { value: v } => v == "iface-warm"
+          Absent => false
+        }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: root_path)
+  verdict && removed.success
+}
+
+test fn a_tampered_typecheck_module_object_is_an_integrity_refusal_by_real_execution() -> Bool {
+  let root_path = fresh_root_path()
+  let root = WitnessScratchRoot { root: root_path }
+  let req = typecheck_req(source: "mod-tamper")
+  let verdict = match opened_typecheck(root: root) {
+    Absent => false
+    Present { value: store } => {
+      let committed = commit_tag(c: commit_typecheck_module(capability: store, req: req, interface_text: "iface-ok", diagnostics_text: "").commit)
+      let path = object_path(root_path: root_path, req: req)
+      let good = Filesystem.Read(path: path)
+      let corrupt = Filesystem.Write(path: path, content: replace(good.content, "iface-ok", "iface-BAD"))
+      let read = lookup_typecheck_module(capability: store, req: req)
+      committed == "committed" && good.success && corrupt.success
+        && typecheck_lookup_is_miss(l: read) == false
+        && typecheck_lookup_refused_integrity(l: read)
     }
   }
   let removed = shell.Remove.RecursiveForce(path: root_path)

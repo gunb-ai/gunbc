@@ -11,13 +11,16 @@ import gunbc.floor_materialization {
   floor_index_build_materialization_without_provider,
   floor_index_build_reader_count,
   floor_typecheck_store_identity,
+  floor_typecheck_store_persist_provider_id,
+  floor_typecheck_store_persist_verdicts,
   floor_typecheck_store_persist_verdicts_without_provider
 }
 import std.materialization_ladder {
   LadderVerdict,
   value_verdict_is_shared_by_reference,
   value_verdict_is_refused_needing_reference,
-  verdict_is_refused_no_provider
+  verdict_is_refused_no_provider,
+  verdict_is_discharged_by
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,10 +60,9 @@ test fn floor_index_build_reds_without_reference_provider() -> Bool {
 
 // C3 — the cross-process demand set: two sibling PROCESSES over one corpus under one built binary
 // (the witness fold and the generated-artifact drift gate), whose obligation LCA is the runner
-// host. Only a store tier can discharge it, and since 2026-10-03 none does: the host-persisted
-// provider was deleted after measurement (see gunbc.floor_materialization). The live verdict is
-// therefore the no-provider refusal below. The provider's discharge claim and its three per-
-// obligation reds were deleted with it; the replacement store re-adds all four.
+// host. C2 discharges it with the local materialization store (TypecheckModuleRequest). The
+// without-provider control remains the discriminating red; the persist_verdicts green is the
+// covering ArtifactTier provider.
 
 fn first_persist_verdict(vs: List<LadderVerdict>) -> LadderVerdict? {
   vs.first()
@@ -71,5 +73,13 @@ test fn floor_typecheck_store_persist_reds_without_any_provider() -> Bool {
     Absent => false
     Present { value: v } =>
       verdict_is_refused_no_provider(v: v, identity: floor_typecheck_store_identity)
+  }
+}
+
+test fn floor_typecheck_store_persist_is_discharged_by_the_local_store() -> Bool {
+  match first_persist_verdict(vs: floor_typecheck_store_persist_verdicts()) {
+    Absent => false
+    Present { value: v } =>
+      verdict_is_discharged_by(v: v, identity: floor_typecheck_store_identity, provider_id: floor_typecheck_store_persist_provider_id)
   }
 }

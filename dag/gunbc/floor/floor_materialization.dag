@@ -194,20 +194,34 @@ fn floor_typecheck_store_cross_process_demands() -> List<FrameDemand> {
 
 data floor_typecheck_store_no_cost_floor_exemptions: List<String> = []
 
-// NO PROVIDER COVERS THESE DEMANDS (2026-10-03). The host-persisted provider that discharged them --
-// shared_typecheck_store PersistentTypedStore, armed by GUNBC_TYPED_STORE_PERSIST -- was DELETED
-// after measurement: armed, a 5-entry claim_batch run exceeded 720 s against ~150 s unarmed and
-// wrote ~7.3 GB in two entries, so its per-entry payload was a closure snapshot rather than one
-// module, and nothing bounded its root or cleaned it. The demands below are unchanged and the
-// ladder therefore REFUSES them; that refusal is the live state, not a fixture. The replacement is a
-// TypecheckModuleRequest store realized through extdeps.realization.materialization_store_local
-// with a per-module encoding, a byte ceiling with oldest-generation eviction and a scoped,
-// self-cleaning root; it re-adds the provider row here with its own green and red controls.
+// C2 — TypecheckModuleRequest through extdeps.realization.materialization_store_local. The
+// host-persisted PersistentTypedStore was deleted after measurement (closure snapshots, unbounded
+// root). This provider is the local store at the durable host ceiling, covering the same
+// union-typecheck-store identity. The red without-provider control stays; the green is the
+// discharged ladder over floor_typecheck_store_persist_providers.
+
+data floor_typecheck_store_persist_provider_id: String = "materialization_store_local"
+
+data floor_typecheck_store_persist_provider: CacheProvider = extdeps.cache.materialization.provider_from_catalog(
+  facts: gunbc.materialization_store_budgets.materialization_store_local_facts,
+  scope: [floor_runner_host_frame()],
+  coverage: CoversIdentities { identities: [floor_typecheck_store_identity] }
+)
+
+data floor_typecheck_store_persist_providers: List<CacheProvider> = [floor_typecheck_store_persist_provider]
 
 fn floor_typecheck_store_persist_verdicts_without_provider() -> List<LadderVerdict> {
   materialization_ladder(
     demands: floor_typecheck_store_cross_process_demands(),
     providers: floor_typecheck_store_no_providers,
+    cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
+  )
+}
+
+fn floor_typecheck_store_persist_verdicts() -> List<LadderVerdict> {
+  materialization_ladder(
+    demands: floor_typecheck_store_cross_process_demands(),
+    providers: floor_typecheck_store_persist_providers,
     cost_floor_exempt: floor_typecheck_store_no_cost_floor_exemptions
   )
 }
