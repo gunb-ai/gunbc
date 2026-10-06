@@ -8,9 +8,10 @@
 
 | | |
 |---|---|
-| Run created → aggregate green | 17:09:29 → 18:19:02 = **69.5 min wall** |
+| Run created → aggregate green | 17:09:29 → 18:19:02 = **69.6 min wall** |
+| Accumulated queue time | 33.9 min, which overlaps across jobs and cannot be subtracted from wall time |
 | Runner time consumed | rust-unit-tests 5.9 + emit-build 51.6 + generated 19.4 + floor 41.0 + aggregate 0.1 = **~118 runner-min** |
-| Time spent evaluating the 787 claims (the thing the floor exists to do) | **13.2 s CPU** in total; the slowest claim is 432 ms |
+| Marginal CPU of the 787 claims | **13.2 s** in total. `run_claim_measured` subtracts shared-artifact fill CPU (fixture compilation and other shared fills), which is reported separately, so this is **not** the full cost of the testing: a compiler test's compilation is test work |
 | Jobs that each build the seed `gunbc` from scratch | 4 (rust-unit-tests via `cargo test`, emit-build, generated, floor) |
 
 Critical path: emit-build (51.6 min) → the aggregate then waits **15.7 min for a free runner** to run a 5-second job.
@@ -56,9 +57,9 @@ Critical path: emit-build (51.6 min) → the aggregate then waits **15.7 min for
 | **Build the compiler and the witness executor** (release) | **3.9 min** | Seed build #3 |
 | **Lint every target** `cargo clippy --all-targets -- -D warnings` | 1.7 min | A second, dev-profile compile of the whole workspace |
 | `claim_executor --required-ci --required-lane build` startup | 1.0 min | |
-| generated-artifact: docs projections | 2.8 min | Each projection **typechecks its own module set separately** (`✅ typecheck … done in` ×7) |
-| generated-artifact: registry projections (59 rostered) | 6.6 min | Same pattern, ~20 separate per-module typechecks, then 59 regenerations |
-| generated-artifact: stage0 mirrors | 3.0 min | `regen.corpus_load` 52 s (whole tree again) → frontend → **compile.reconcile 77 s** (reconcile #3) → **compile.emit 5 min CPU** (emit #3) → mirror write |
+| generated-artifact: docs projections | 2.8 min | The `✅ typecheck <module>` lines are **slow cache-miss module typechecks** (≥2 s), not separate projection invocations |
+| generated-artifact: registry projections (59 rostered) | 6.6 min | One shared resolved context for all 59 artifacts; the typecheck lines are slow module misses |
+| generated-artifact: stage0 mirrors | (overlaps) | Runs as a **child process concurrently** with the docs and registry checks, so its durations are not additive. Its own v1 mirror population: `regen.corpus_load` 52 s → **compile.reconcile 77 s** → `compile.emit` (the 5-minute line is buffered output, not established CPU) → mirror write |
 | Repair-candidate steps (only on drift) | 0 | Skipped on a green run |
 
 ## 4. Job `floor` (required; lane `witnesses`)
@@ -84,9 +85,9 @@ Critical path: emit-build (51.6 min) → the aggregate then waits **15.7 min for
 | ↳ **discovery authority** (re-scans 7,980 sources → 28,986 rows) | **1.6 min** | Another whole-tree pass to find the claims |
 | ↳ site projection → 787 claims | 0.2 min | |
 | ↳ cross-claim share derivation + install | 0.4 min | |
-| ↳ **claim evaluation fold** | **4.7 min** | **282 per-claim `compile.reconcile` at ~220 ms ≈ 1.0 min**, plus per-claim compile overhead. The claims themselves total 13.2 s CPU |
+| ↳ **claim evaluation fold** | **4.7 min** | Includes 282 fixture `compile.reconcile` calls at ~220 ms. These are compiler-test fixtures, so they are test work, not a re-preparation of the subject |
 | ↳ terminal ledger publish | <0.1 min | The verdict is now known |
-| ↳ **fixture-closure-union-emit** (235 fixture compiles, 55 memo hits) | **10.0 min** | Runs **after** the verdict was published |
+| ↳ **fixture-closure-union-emit** | **10.0 min** | Collects the dependency sources of the 235 fixture compiles that ran earlier, deduplicates them, compiles the union once and emits it. **It is a blocking emitter-coverage check**: its errors fail the floor even though the ledger was published first |
 | D0 measure / publish / adjudicate, cost-receipt upload | <0.1 min | |
 
 ## 5. Job `witnesses` (aggregate; the required context)
@@ -99,32 +100,45 @@ Critical path: emit-build (51.6 min) → the aggregate then waits **15.7 min for
 
 ---
 
-## 6. Redundant work
+## 6. Redundant work (corrected after review)
 
-Each row is work done more than once per run, or work that the run's verdict does not consume. "Once" is the target: done a single time and read by every consumer. The rows here are this run's measured instances; the classes they belong to are the redundancy the consolidation removes.
+**Corrections from review of the first draft.** The first version of this table misread several entries:
+- **R8:** the per-claim compiles are fixture compiles, and they are test work.
+- **R12:** the fixture tail is a blocking check over one union, not post-verdict waste.
+- **R13:** the typecheck log lines are slow module cache misses, not separate projection typechecks.
+- **R9:** the two native closures cannot be emitted as one union. They declare different `compiler_pipeline_entry` drivers, the emitter admits exactly one entry per closure, and stage0 regenerates its own v1 mirror population.
+- **R4:** queue time overlaps across jobs.
 
-| # | Work | Where it happens in this run | Times per run | Wall spent | If done once | Removable | Kind |
-|---|---|---|---|---|---|---|---|
-| R1 | Release build of the seed `gunbc` (+ `claim_executor`) | rust-unit-tests, emit-build, generated, floor | 4 | ~17.2 min | ~4 min | **~13 min of runner time** | duplicated across jobs |
-| R2 | Second, dev-profile compile of the whole workspace for clippy | generated | 1 (beside R1) | 1.7 min | could share the check artifacts | small | duplicated profile |
-| R3 | Job prelude: checkout, toolchain isolation, toolchain install, pin | every job | 5 | ~1.5 min | ~0.3 min | ~1.2 min | duplicated across jobs |
-| R4 | Queueing for a runner | every job | 5 | **34 min** (1.0 + 2.1 + 4.9 + 10.3 + 15.7) | 1 queue | **most of it**, including all 15.7 min of the aggregate's queue | multi-job fan-out |
-| R5 | Whole-tree read / tokenize / parse of ~8,000 files | floor `parse`; floor `[pre-entry]` re-tokenize and re-parse heads; floor census parse; emit-build ×2 index; generated `regen.corpus_load` | ≥6 | ~8–9 min | ~1–2 min | **~7 min** | duplicated within and across jobs |
-| R6 | Whole-tree **name census / declaration scan** over 7,980 files | floor `[pre-entry]` closure name census; floor unimported-bare-provider frontier; floor discovery authority; emit-build `[census]` ×2 | ≥5 | ~5–6 min | once | **~4–5 min** | duplicated within and across jobs |
-| R7 | **compile.reconcile** over large, overlapping closures | floor strict preparation (2,931 modules, 9.9 min); emit-build self-host (3.2 min); emit-build native-cli (3.4 min); generated stage0 mirrors (1.3 min); floor `[pre-entry]` reconcile fills + entry-graph resolve (~2 min) | 5 | **~20 min** | one reconcile of the union closure | **~10+ min**, more once reconcile is fixed | duplicated across jobs + a cost-shape defect (9.9 min for 2,931 modules) |
-| R8 | **Per-claim recompile** inside the claim fold | floor claim evaluation | 282 | ~1 min reconcile + ~3.5 min other per-claim compile overhead | the subject is already prepared | **~4 min** | re-preparing a prepared subject |
-| R9 | **Seed emit** over overlapping v2 closures | emit-build self-host (12.4 min, 244 files); emit-build native-cli (9.0 min, 209 files); generated stage0 mirrors (5 min) | 3 | ~26 min | one emit of the union | **~10–15 min** | duplicated + cost-shape defect (emit at ~3 s per file) |
-| R10 | Discriminating-red rebuild (inject a fault, rebuild, expect a red) | emit-build ×2 | 2 per run, every PR | 8.6 min | once per **change to the instrument**, not per PR | **8.6 min** | re-proves the instrument, not the subject |
-| R11 | cargo build of two emitted crates sharing most of their modules | emit-build ×2 | 2 | 7.3 min | one crate or a shared target dir | ~3 min | duplicated |
-| R12 | **Fixture-closure-union emit** (235 fixture compiles) | floor, after `terminal-ledger-publish` | 1 | **10.0 min** | — | **10 min on the critical path** (off-path or merge-group only) | runs after the verdict is known |
-| R13 | Per-projection separate typechecks in generated-artifact | generated docs + registry projections (~27 `✅ typecheck` lines) | ~27 | ~9.4 min total for the two populations | one typecheck of the union, read by every projection | **~6–7 min** | duplicated within a job |
-| R14 | A full self-hosted runner slot to aggregate lane results | `witnesses` aggregate | 1 | 15.7 min queue + 5 s work | in-job | **15.7 min** | fan-out cost |
-| R15 | Claim evaluation itself | floor | 1 | 13.2 s CPU | — | **not redundant: this is the work** | — |
+The table below keeps only what the code supports.
 
-### Reading the table
+| # | Work | Where | Runner-min (this run) | Disposition |
+|---|---|---|---|---|
+| R1 | Seed `gunbc` / `claim_executor` built per job, cold (checkout `git clean -ffdx` removes `target/`; toolchain `cache: false`; fresh isolated `CARGO_HOME`) | emit-build, generated, floor (+ the separate test-harness build in rust-unit-tests) | ~11.8 across the three binary builds | Build or restore once per run and hand the product to every consumer; restore into private writable dirs. **≈7–8 min** |
+| R2 | Native fault-and-restoration experiment (inject an error, require the failure, restore, rebuild, compare identity) | emit-build ×2 | ~8.6 | Run when the instrument, producer, build wiring, cache or toolchain changes; keep the small behavioral controls per PR. **≈8.6 min** |
+| R3 | Native emit + build with no reuse across runs (fresh private source and target dirs per instrument) | emit-build ×2 | ~38 after R2 | Key each entry's product by its effective inputs (producer, closure and declaration universe, target, runtime deps, driver, toolchain); reuse on a hit and run the controls against it. **The largest single item** |
+| R4 | Rust unit tests and clippy on changes that touch no Rust/build input | rust-unit-tests, generated | ~7.6 | Run when Rust, generated Rust, embedded `.dag`, Cargo config or build scripts change |
+| R5 | Full heavy run for hand-authored prose (e.g. this doc's own PR) | all | ~118 | Narrow prose route that runs the applicable document checks only |
+| R6 | Aggregate waits for a full runner slot | witnesses | 0.08 (15.7 min of latency) | Fold into the required job, or give it a cheap route. Latency win, not a runner-minute win |
+| R7 | Fixture emit-check memo key includes the `includes`/`excludes` assertions, which are evaluated after compilation | floor | unmeasured | Key on source and render; evaluate each assertion separately |
+| R8 | Cold-path cost: floor strict-preparation `compile.reconcile` 9.9 min; native emits 12.4 / 9.0 min | floor, emit-build | ~30 | Needed whenever inputs change; root-cause the reconcile and emit cost |
+| R9 | Hosted `heal-publish` follow-on with nothing to publish | heal-publish | ~0.5 | Outside the headline; small |
 
-- **Useful work in a ~70-minute, ~118-runner-minute run is small:** 787 claims in 13 s, one seed build, one clippy, one parse, one reconcile of the subject, and, if it stays on the PR path, one emit + build + ~1 s of spawning the built binaries.
-- **R4/R14 (queueing) and R1/R3 (per-job setup) exist only because the run is four jobs.** One job removes them by construction.
-- **R5–R9 and R13 share one cause: no prepared corpus is shared between consumers.** Every lane, phase and projection re-derives parse → census → resolve → reconcile for itself. DESIGN §2 says to carry the first value to the least common ancestor of its demands. In one job, that ancestor is the job.
-- **R7 and R9 are also cost-shape defects** (DESIGN §6, bare minimum cost). A 9.9-minute reconcile and an emitter that spends ~3 s per file are wrong at any n, so they get fixed regardless of the consolidation.
-- **R10 and R12 are checks that do not need to run per PR.** R10 re-proves the instrument, and R12 runs after the verdict. They move to the merge queue or to a change-triggered lane, each with a declared `gunbc.rung_drop` row if anything leaves the merge path.
+### Budget (implementation target, not a forecast)
+
+| Work | Target runner-min |
+|---|---:|
+| Setup, restore, one seed/executor preparation | ≤4 |
+| Corpus acquisition, admission, shared preparation | ≤5 |
+| Witness execution, fixture compilation, fixture-union emission | ≤6 |
+| Both native products and their execution controls | ≤9 |
+| Relevant generated artifacts and Rust checks | ≤4 |
+| Reporting and overhead | ≤1 |
+| **Total** | **≤29** |
+
+The easy cuts (R1, R2, R4) remove about 23–24 min on an eligible run. The budget also needs R3 (native product reuse) and R8 (cold-path cost). Moving work to the merge queue cuts PR latency but still spends runner-minutes, so PR and merge-group cost are reported together.
+
+### Work programme
+
+1. **Scope and build sharing:** R1, R2, R4, R5, R6.
+2. **Native product reuse:** R3.
+3. **Cold-path reductions:** R7, R8.
