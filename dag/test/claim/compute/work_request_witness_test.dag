@@ -226,7 +226,7 @@ test fn the_unit_binds_the_termination_policy_the_release_decision_relies_on() -
   let props = compute_unit_properties(
     layout: compute_layout(instance: srv1_live_dashboard_instance(), identity_hex: "abc"),
     granted: kibibyte(count: 1048576))
-  contains(property_words(props), join([compute_kill_mode_property, "=", compute_kill_mode_value], ""))
+  contains(property_words(props), join([systemd_unit_property_wire(property: compute_kill_mode_property) as String, "=", compute_kill_mode_value as String], ""))
     && compute_kill_mode_value == "control-group"
     && count(filter(property_words(props), p => starts_with(s: p, prefix: "MemoryMax="))) == 1
 }
