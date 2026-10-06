@@ -6815,23 +6815,27 @@ fn infer_caller_admission_application_diags(
           match resolved_reference_body_kind(target: child0) {
             NotMarkedReference => None
             MarkedReference { kind: DeclarationReferenceKind } =>
-              match infer_callee_arrow_from_declarations(declarations: declarations, callee_ref: child0) {
-                Absent =>
-                  infer_admission_diags_of([
-                    Diagnostic {
-                      reason: ^infer_reason_caller_admission_callee_unreadable,
-                      at: node_locus(node: application),
-                      correction: Suggested { node: child0 }
-                    }
-                  ])
-                Present { value: arrow } =>
-                  infer_caller_admission_judged_diags(
-                    application: application,
-                    caller: caller,
-                    module_symbol: module_symbol,
-                    arrow: arrow,
-                    declarations: declarations
-                  )
+              match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
+                Absent => None
+                Present { value: decl } =>
+                  match infer_operator_arrow(operator: decl) {
+                    Absent =>
+                      infer_admission_diags_of([
+                        Diagnostic {
+                          reason: ^infer_reason_caller_admission_callee_unreadable,
+                          at: node_locus(node: application),
+                          correction: Suggested { node: child0 }
+                        }
+                      ])
+                    Present { value: arrow } =>
+                      infer_caller_admission_judged_diags(
+                        application: application,
+                        caller: caller,
+                        module_symbol: module_symbol,
+                        arrow: arrow,
+                        declarations: declarations
+                      )
+                  }
               }
             MarkedReference { kind: _ } => None
           }
@@ -6847,18 +6851,21 @@ fn infer_caller_admission_application_diags(
   }
 }
 
-// THE CALLEE'S ARROW FROM THE RESOLVED-DECLARATIONS INDEX: a cross-module callee's facts are never in
-// the subject's gather (the gather walks the subject root), so the wall reads the callee's own
-// declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported modules
-// included. Absent when the operator's child is not a declaration reference or names no declaration.
-fn infer_callee_arrow_from_declarations(declarations: SymbolIndex, callee_ref: Node) -> Optional<Node> {
+// THE CALLEE'S DECLARATION FROM THE RESOLVED-DECLARATIONS INDEX: a cross-module callee's facts are
+// never in the subject's gather (the gather walks the subject root), so the wall reads the callee's
+// own declaration node from resolved_declarations -- declarations WITH RESOLVED BODIES, imported
+// modules included. Absent when the operator's child is not a declaration reference or names no
+// declaration: a callee that names no declaration is NOT a declared callee, no clause can exist for
+// it, and the wall imposes nothing -- the ordinary grounding machinery owns the call. The fail-closed
+// arm lives at the arrow read, not at the lookup: a FOUND declaration whose arrow cannot be read is
+// an undetermined check and refuses (infer_reason_caller_admission_callee_unreadable) rather than
+// admit. Refusing on the lookup miss instead would conflate "not declared" (a determination) with
+// "declared but unreadable" (a failure), and would refuse every call in a grounding context whose
+// declarations are stripped -- the corpus runs such contexts on purpose.
+fn infer_callee_declaration_from_declarations(declarations: SymbolIndex, callee_ref: Node) -> Optional<Node> {
   match declaration_reference_path_optional(node: callee_ref) {
     Absent => optional_absent()
-    Present { value: qn } =>
-      match symbol_index_lookup(index: declarations, qualified_path: qn) {
-        Absent => optional_absent()
-        Present { value: decl } => infer_operator_arrow(operator: decl)
-      }
+    Present { value: qn } => symbol_index_lookup(index: declarations, qualified_path: qn)
   }
 }
 
@@ -6892,6 +6899,17 @@ fn infer_caller_admission_judged_diags(
               correction: Unavailable { reason: UserInputBoundary }
             }
           ])
+        RosterLookupUnreadable =>
+          infer_admission_diags_of([
+            Diagnostic {
+              reason: ^infer_reason_caller_admission_callee_unreadable,
+              at: node_locus(node: application),
+              correction: match list_at_optional(xs: node_positional_child_targets(node: application), index: 0) {
+                Absent => Unavailable { reason: ExternalContractUnknown }
+                Present { value: callee_ref } => Suggested { node: callee_ref }
+              }
+            }
+          ])
         RosterLookupFound { target: roster } => infer_admission_from_roster(
           application: application,
           caller: caller,
@@ -6917,6 +6935,7 @@ fn infer_caller_admission_judged_diags(
 type InferAdmitRosterLookup
   = RosterLookupAbsent
   | RosterLookupAmbiguous
+  | RosterLookupUnreadable
   | RosterLookupFound { target: Node }
 
 fn infer_caller_admission_roster_from_declarations(
@@ -6929,13 +6948,17 @@ fn infer_caller_admission_roster_from_declarations(
       match resolved_reference_body_kind(target: child0) {
         NotMarkedReference => RosterLookupAbsent
         MarkedReference { kind: DeclarationReferenceKind } =>
-          match infer_callee_arrow_from_declarations(declarations: declarations, callee_ref: child0) {
+          match infer_callee_declaration_from_declarations(declarations: declarations, callee_ref: child0) {
             Absent => RosterLookupAbsent
-            Present { value: resolved_arrow } =>
-              match core_edge_target_lookup(children: resolved_arrow.children, marker: AdmitCallersEdge) {
-                Absent => RosterLookupAbsent
-                Ambiguous => RosterLookupAmbiguous
-                Found { target: roster } => RosterLookupFound { target: roster }
+            Present { value: decl } =>
+              match infer_operator_arrow(operator: decl) {
+                Absent => RosterLookupUnreadable
+                Present { value: resolved_arrow } =>
+                  match core_edge_target_lookup(children: resolved_arrow.children, marker: AdmitCallersEdge) {
+                    Absent => RosterLookupAbsent
+                    Ambiguous => RosterLookupAmbiguous
+                    Found { target: roster } => RosterLookupFound { target: roster }
+                  }
               }
           }
         MarkedReference { kind: _ } => RosterLookupAbsent

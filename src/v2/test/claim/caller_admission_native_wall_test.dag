@@ -27,7 +27,8 @@ module v2.test.claim.caller_admission_native_wall
 import std.algebra { Cons, Empty }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceProjected, OccurrencePending, OccurrenceSynthetic }
 import v2.compiler.infer { InferAdmitCallerCoords, infer_admission_judge_entries, infer_admit_clause_entries, infer_admit_record_check, infer_caller_admission_application_diags }
-import v2.std.symbol_index { empty_symbol_index }
+import v2.std.node_query { declaration_reference_path_optional }
+import v2.std.symbol_index { empty_symbol_index, symbol_index_insert }
 import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }
 import v2.std.node { Edge, Node, Symbol, symbol_eq, Atom, Conj, TypeNode, Authored, StructuralLabel, CoreMarker, DeclarationReferenceEdge, Positional }
@@ -202,10 +203,12 @@ test fn a_well_formed_roster_reads_as_the_authored_coordinates_holds() -> Bool {
 }
 
 // ---------------------------------------------------------------------------
-// (6) FAIL CLOSED: a declared callee whose arrow cannot be read refuses with a typed,
-// located cause carrying the looked-up key -- never an admit. This pins the application
-// layer's miss arm (facts gather absent + resolved_declarations miss), independent of the
-// lookup's success paths, which claims (1)-(2) exercise.
+// (6) FAIL CLOSED: a DECLARED callee whose arrow cannot be read refuses with a typed,
+// located cause carrying the looked-up key -- never an admit. The declaration is present in
+// resolved_declarations (keyed by the reference's own qualified path) but is not an Arrow, so
+// the arrow read fails: undetermined check, refusal. A callee that names no declaration at all
+// is NOT judged -- the ordinary grounding machinery owns it (claims (1)-(2) exercise the
+// lookup's success paths).
 // ---------------------------------------------------------------------------
 
 data wall_decl_ref_locus: NodeOccurrenceIdentity = OccurrenceMinted { id: OccurrenceId { value: 915 } }
@@ -235,13 +238,34 @@ fn wall_unreadable_callee_application() -> Node {
   }
 }
 
+// THE INDEX FOR THE FAIL-CLOSED WITNESS: the declaration IS present — keyed by the very qualified
+// path the callee reference yields — but the declared node is not an Arrow, so the arrow read
+// cannot succeed. This pins the refusal's true scope: a DECLARED callee whose arrow is unreadable
+// refuses (fail closed); a callee that names no declaration at all is not judged (the ordinary
+// grounding machinery owns it).
+fn wall_index_with_unreadable_arrow() -> SymbolIndex {
+  match declaration_reference_path_optional(node: wall_decl_ref_target()) {
+    Absent => empty_symbol_index()
+    Present { value: qn } =>
+      symbol_index_insert(
+        index: empty_symbol_index(),
+        qualified_path: qn,
+        resolved: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: OccurrenceSynthetic
+        }
+      )
+  }
+}
+
 test fn a_declared_callee_whose_arrow_is_unreadable_refuses_holds() -> Bool {
   match infer_caller_admission_application_diags(
     application: wall_unreadable_callee_application(),
     caller: Present { value: InferAdmitCallerCoords { module_path: ^bcb, decl_name: ^outside_caller } },
     module_symbol: ^bcb,
     entries: [],
-    declarations: empty_symbol_index()
+    declarations: wall_index_with_unreadable_arrow()
   ) {
     None => false
     Some { diagnostics: d } =>
