@@ -106,26 +106,26 @@ fn w_numeric_conversion_still_uses_cast_syntax() -> Bool {
   )
 }
 
-test fn single_refinement_carrier_emits_no_unsupported_cast() -> Bool {
+test fn single_refinement_carrier_emits_no_unsupported_cast() -> Bool  {
   w_single_refinement_emits_no_unsupported_cast()
 }
 
-test fn nested_refinement_carrier_emits_no_unsupported_cast() -> Bool {
+test fn nested_refinement_carrier_emits_no_unsupported_cast() -> Bool  {
   w_nested_refinement_emits_no_unsupported_cast()
 }
 
-test fn intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool {
+test fn intermediate_refinement_casts_emit_no_unsupported_cast() -> Bool  {
   w_intermediate_refinement_casts_emit_no_unsupported_cast()
 }
 
-test fn brand_refinement_casts_emit_no_unsupported_cast() -> Bool {
+test fn brand_refinement_casts_emit_no_unsupported_cast() -> Bool  {
   w_brand_refinement_casts_emit_no_unsupported_cast()
 }
 
-test fn unrelated_carriers_still_refuse_the_cast() -> Bool {
+test fn unrelated_carriers_still_refuse_the_cast() -> Bool  {
   w_unrelated_carriers_still_refuse_the_cast()
 }
 
-test fn numeric_conversion_still_uses_cast_syntax() -> Bool {
+test fn numeric_conversion_still_uses_cast_syntax() -> Bool  {
   w_numeric_conversion_still_uses_cast_syntax()
 }

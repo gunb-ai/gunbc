@@ -193,7 +193,7 @@ fn store_refused() -> CommitTransportOutcome {
 }
 
 // THE POSITIVE CONTROL: a store that answered and a read that found the intended manifest.
-test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
+test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -207,7 +207,7 @@ test fn an_answered_commit_confirmed_by_readback_publishes_success() -> Bool {
 // THE RULE WITH TEETH. A write whose acknowledgement never arrived, with the object not yet visible,
 // is PENDING -- not a failure. Rendering it absent would re-execute work that may already be
 // committed, and rendering it success would green over bytes nobody read.
-test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
+test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -225,7 +225,7 @@ test fn an_unanswered_write_with_no_object_yet_is_pending() -> Bool {
 
 // AND THE SAME UNANSWERED WRITE RECONCILES once an independent read finds the intended manifest, so
 // the pending arm above is a state that resolves rather than a dead end.
-test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool {
+test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -243,7 +243,7 @@ test fn an_unanswered_write_reconciles_when_the_object_is_read_back() -> Bool {
 
 // A READ THAT COULD NOT RUN IS ALSO UNKNOWN, never absence: not reaching the store says nothing
 // about what the store holds.
-test fn an_unavailable_readback_is_pending_not_absent() -> Bool {
+test fn an_unavailable_readback_is_pending_not_absent() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -256,7 +256,7 @@ test fn an_unavailable_readback_is_pending_not_absent() -> Bool {
 
 // AN OBJECT THE READER LOOKED FOR AND DID NOT FIND, after a store that DID answer, is decided
 // against us -- this is the arm that must not be confused with the two above.
-test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
+test fn an_answered_commit_with_no_object_prevents_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -272,7 +272,7 @@ test fn an_answered_commit_with_no_object_prevents_success() -> Bool {
 // absent, so this is the case where collapsing to absence would re-execute committed work while
 // looking maximally conservative. It is a separate witness from the store-answered one above
 // because they are different branches, and covering one left the other free to lie.
-test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
+test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -291,7 +291,7 @@ test fn an_unanswered_write_with_an_unavailable_read_is_pending() -> Bool {
 // AN ANSWER ABOUT SOMEONE ELSE'S SLOT IS NOT EVIDENCE ABOUT OURS. The CAS authority declares this
 // relation outside its own guarantee -- its observation carries no key, so generations agreeing is
 // enough to commit to the wrong slot -- and names the realization as the owner. This is that owner.
-test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
+test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -312,7 +312,7 @@ test fn an_answer_about_a_foreign_slot_cannot_publish_success() -> Bool {
 
 // AND A FOREIGN-SLOT ANSWER IS NOT REPORTED AS ABSENCE EITHER, so the check above is not satisfied
 // by an implementation that simply fails everything it cannot match.
-test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool {
+test fn a_foreign_slot_answer_is_not_reported_as_absence() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -344,7 +344,7 @@ fn precondition_failed() -> CommitTransportOutcome {
 // most often OUR OWN earlier write: A writes, the ack is lost, the retry asks create-if-absent, and
 // the store answers precondition-failed because A's manifest is already there. Reporting that as
 // absence fails a job whose result is committed and readable.
-test fn a_precondition_failure_reconciles_when_our_manifest_is_read_back() -> Bool {
+test fn a_precondition_failure_reconciles_when_our_manifest_is_read_back() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -357,7 +357,7 @@ test fn a_precondition_failure_reconciles_when_our_manifest_is_read_back() -> Bo
 
 // AND A FOREIGN OCCUPANT IS STILL A CONFLICT, so the repair above does not turn precondition failure
 // into a blanket success. The reconciliation is earned by the digest matching, not by the branch.
-test fn a_precondition_failure_with_a_conflicting_manifest_prevents_success() -> Bool {
+test fn a_precondition_failure_with_a_conflicting_manifest_prevents_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -370,7 +370,7 @@ test fn a_precondition_failure_with_a_conflicting_manifest_prevents_success() ->
 
 // AND A PRECONDITION FAILURE WITH NOTHING AT THE SLOT IS STILL ABSENCE: the store answered, so a
 // fruitless read establishes non-commitment rather than leaving it unknown.
-test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
+test fn a_precondition_failure_with_no_object_is_absence() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -393,7 +393,7 @@ test fn a_precondition_failure_with_no_object_is_absence() -> Bool {
 // witness now establishes is that the cache route still reaches pending rather than success. The
 // discriminating evidence that the confirming route is unreachable from outside is a compile
 // refusal, not a value comparison, and lives in test.claim.fabric_m0_origin_readback_seal.
-test fn a_manifest_read_from_the_local_cache_cannot_publish_success() -> Bool {
+test fn a_manifest_read_from_the_local_cache_cannot_publish_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -411,7 +411,7 @@ test fn a_manifest_read_from_the_local_cache_cannot_publish_success() -> Bool {
 
 // AND THE SAME BYTES FROM THE ORIGIN DO PUBLISH, so the refusal above is attributable to the source
 // and not to anything about the content. Identical digest, identical transport, opposite verdict.
-test fn the_same_manifest_read_from_the_origin_publishes_success() -> Bool {
+test fn the_same_manifest_read_from_the_origin_publishes_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>

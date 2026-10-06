@@ -69,7 +69,7 @@ fn count_matching(causes: List<CutRefusalCause>, p: fn(CutRefusalCause) -> Bool)
   fold(causes, init: 0, f: fn(acc, c) { if p(c) { acc + 1 } else { acc } })
 }
 
-test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool {
+test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool  {
   let causes = causes_of(admission: endpoint_authority_cut_admission())
   list_length(items: causes) > 0
     && count_matching(causes: causes, p: is_uncovered_surviving) == list_length(items: causes)
@@ -78,14 +78,14 @@ test fn the_endpoint_cut_refuses_only_for_missing_coverage() -> Bool {
 // The count is pinned to the census rather than to a literal measured off the current tree: every
 // consumer is CoverageOpen, so one relation is one cause, and adding a consumer without coverage
 // must move both sides together.
-test fn every_censused_relation_produces_exactly_one_coverage_cause() -> Bool {
+test fn every_censused_relation_produces_exactly_one_coverage_cause() -> Bool  {
   let causes = causes_of(admission: endpoint_authority_cut_admission())
   list_length(items: causes) == list_length(items: endpoint_authority_cut_consumers())
 }
 
 // Both endpoint functions leave together. The helper contributes no production boundary of its own,
 // which is exactly why a region assertion is needed: nothing else would notice it being dropped.
-test fn the_region_is_exactly_the_two_endpoint_projections() -> Bool {
+test fn the_region_is_exactly_the_two_endpoint_projections() -> Bool  {
   let region = endpoint_authority_cut_region()
   list_length(items: region) == 2
     && fold(region, init: false, f: fn(acc, r) {
@@ -113,7 +113,7 @@ fn evidence_named(rows: List<EvidenceDisposition>, name: String) -> Bool {
 // -- spark_endpoint_or_empty -- is an ordinary declaration rather than a test fn, which is precisely
 // why one witness FILE is not one evidence subject. Omitting it would have left a known observed use
 // with no disposition for the eventual evidence-population join to report.
-test fn all_four_evidence_declarations_are_dispositioned() -> Bool {
+test fn all_four_evidence_declarations_are_dispositioned() -> Bool  {
   let rows = endpoint_authority_cut_evidence()
   list_length(items: rows) == 4
     && evidence_named(rows: rows, name: "test.claim.host_reach_identity_probe_witness spark_probe_targets_are_modeled_addresses_not_names")
@@ -124,7 +124,7 @@ test fn all_four_evidence_declarations_are_dispositioned() -> Bool {
 
 // The real registry, not a synthetic one: one exact cut and one remeasurement obligation, coherent.
 // A synthetic-fixture registry passing says nothing about whether the production rows collide.
-test fn the_production_registry_is_coherent_with_both_arms_occupied() -> Bool {
+test fn the_production_registry_is_coherent_with_both_arms_occupied() -> Bool  {
   match production_registry_standing() {
     CutRegistryAdmitted { exact_count: e, remeasure_required_count: r } => e == 1 && r == 1
     CutRegistryRefused { causes: _ } => false
@@ -175,7 +175,7 @@ fn count_evidence(rows: List<EvidenceDisposition>, p: fn(EvidenceDisposition) ->
   fold(rows, init: 0, f: fn(acc, e) { if p(e) { acc + 1 } else { acc } })
 }
 
-test fn the_evidence_partition_is_pinned_by_variant_and_by_name() -> Bool {
+test fn the_evidence_partition_is_pinned_by_variant_and_by_name() -> Bool  {
   let rows = endpoint_authority_cut_evidence()
   count_evidence(rows: rows, p: is_replace_evidence) == 2
     && count_evidence(rows: rows, p: is_retire_evidence) == 2
@@ -201,7 +201,7 @@ test fn the_evidence_partition_is_pinned_by_variant_and_by_name() -> Bool {
        )
 }
 
-test fn the_cut_grants_no_surviving_external_role_to_x() -> Bool {
+test fn the_cut_grants_no_surviving_external_role_to_x() -> Bool  {
   match endpoint_authority_cut_external_x() {
     NoExternalOracleRequired { justification: j } =>
       contains(j as String, "no terminal role")

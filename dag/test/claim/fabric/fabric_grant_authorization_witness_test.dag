@@ -86,7 +86,7 @@ fn issued_authorization_of(o: GrantIssue<NonEmptyStr, Count, One>) -> List<Issue
 //
 // The absent-grant case has no claim BECAUSE IT HAS NO CONSTRUCTOR: the grant is a required
 // parameter, so "no grant" cannot be written at a call site.
-test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
+test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(
@@ -113,7 +113,7 @@ test fn a_grant_that_does_not_fence_authorizes_nothing() -> Bool {
 // against a WRONG generation, so it can only go green if the presented counter actually
 // participates -- and it is exactly the claim that reds if the lease generation is substituted back
 // in, because the lease and the money request agree at 9 while this presents 10.
-test fn a_grant_fenced_at_another_money_generation_authorizes_nothing() -> Bool {
+test fn a_grant_fenced_at_another_money_generation_authorizes_nothing() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(
@@ -138,7 +138,7 @@ test fn a_grant_fenced_at_another_money_generation_authorizes_nothing() -> Bool 
 // coordinate agrees except Work: a grant issued for one execution presented against another
 // execution's reservation. Before the join existed this combination was ADMITTED, because the only
 // thing read off the grant was its money reservation.
-test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
+test fn a_grant_for_another_work_authorizes_nothing() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(
@@ -163,7 +163,7 @@ test fn a_grant_for_another_work_authorizes_nothing() -> Bool {
 // joins and each needs its own RED: with only the Work control enrolled, a rule that dropped the
 // Demand and Offer checks entirely would still green every claim in this file, so the join would be
 // reported at a rung its executed evidence does not establish.
-test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
+test fn a_grant_for_another_demand_authorizes_nothing() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(
@@ -184,7 +184,7 @@ test fn a_grant_for_another_demand_authorizes_nothing() -> Bool {
   }
 }
 
-test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
+test fn a_grant_for_another_offer_authorizes_nothing() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(
@@ -208,7 +208,7 @@ test fn a_grant_for_another_offer_authorizes_nothing() -> Bool {
 // THE POSITIVE CONTROL FOR THE SAME RULE. Without it every row above is satisfied by a rule that
 // refuses unconditionally -- which is exactly the shape that passed here once already, when the
 // fence was checked against the pre-issuance account and refused everything.
-test fn the_issued_grant_authorizes_its_own_reservation() -> Bool {
+test fn the_issued_grant_authorizes_its_own_reservation() -> Bool  {
   match issued_authorizations() {
     Cons { head: auth, tail: _ } =>
       match grant_authorizes_reservation(

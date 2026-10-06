@@ -50,7 +50,7 @@ fn replay_repo_read_envelope() -> Envelope {
   }
 }
 
-test fn classify_region_closure_is_substrate() -> Bool {
+test fn classify_region_closure_is_substrate() -> Bool  {
   match classify_region(root: region_substrate_closure_root) {
     SubstrateClosure => true
     RepoTree => false
@@ -59,7 +59,7 @@ test fn classify_region_closure_is_substrate() -> Bool {
   }
 }
 
-test fn classify_region_repo_is_repo() -> Bool {
+test fn classify_region_repo_is_repo() -> Bool  {
   match classify_region(root: region_repo_root) {
     RepoTree => true
     SubstrateClosure => false
@@ -68,7 +68,7 @@ test fn classify_region_repo_is_repo() -> Bool {
   }
 }
 
-test fn classify_region_scratch_is_frame_scratch() -> Bool {
+test fn classify_region_scratch_is_frame_scratch() -> Bool  {
   match classify_region(root: region_frame_scratch_root) {
     FrameScratch => true
     SubstrateClosure => false
@@ -77,7 +77,7 @@ test fn classify_region_scratch_is_frame_scratch() -> Bool {
   }
 }
 
-test fn classify_region_unknown_is_unclassified() -> Bool {
+test fn classify_region_unknown_is_unclassified() -> Bool  {
   match classify_region(root: filesystem_position(path: ["elsewhere"])) {
     UnclassifiedRegion => true
     SubstrateClosure => false
@@ -86,43 +86,43 @@ test fn classify_region_unknown_is_unclassified() -> Bool {
   }
 }
 
-test fn hermetic_is_replayable_isolated_not_live() -> Bool {
+test fn hermetic_is_replayable_isolated_not_live() -> Bool  {
   envelope_replayable(env: hermetic_envelope())
     && envelope_isolated(env: hermetic_envelope())
     && !envelope_live_tree_intersects(env: hermetic_envelope())
 }
 
-test fn wet_is_not_replayable_not_isolated_reads_live() -> Bool {
+test fn wet_is_not_replayable_not_isolated_reads_live() -> Bool  {
   !envelope_replayable(env: wet_envelope())
     && !envelope_isolated(env: wet_envelope())
     && envelope_live_tree_intersects(env: wet_envelope())
 }
 
-test fn record_reach_identical_to_wet() -> Bool {
+test fn record_reach_identical_to_wet() -> Bool  {
   (envelope_replayable(env: record_envelope()) == envelope_replayable(env: wet_envelope()))
     && (envelope_isolated(env: record_envelope()) == envelope_isolated(env: wet_envelope()))
     && (envelope_live_tree_intersects(env: record_envelope()) == envelope_live_tree_intersects(env: wet_envelope()))
 }
 
-test fn derive_disposition_hermetic_is_substrate_only() -> Bool {
+test fn derive_disposition_hermetic_is_substrate_only() -> Bool  {
   match derive_live_tree_disposition(env: hermetic_envelope()) {
     SubstrateInputsOnly => true
     ReadsLiveTree => false
   }
 }
 
-test fn derive_disposition_wet_is_reads_live() -> Bool {
+test fn derive_disposition_wet_is_reads_live() -> Bool  {
   match derive_live_tree_disposition(env: wet_envelope()) {
     ReadsLiveTree => true
     SubstrateInputsOnly => false
   }
 }
 
-test fn unclassified_read_assumed_live_failclosed() -> Bool {
+test fn unclassified_read_assumed_live_failclosed() -> Bool  {
   envelope_live_tree_intersects(env: unclassified_read_envelope())
 }
 
-test fn replay_repo_read_is_replayable_not_live() -> Bool {
+test fn replay_repo_read_is_replayable_not_live() -> Bool  {
   envelope_replayable(env: replay_repo_read_envelope())
     && !envelope_live_tree_intersects(env: replay_repo_read_envelope())
 }

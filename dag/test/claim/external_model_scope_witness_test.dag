@@ -106,12 +106,12 @@ fn red_generic_browser_module() -> DeclaredScopeFacts {
   }
 }
 
-test fn red_generic_browser_module_with_product_rows_incoherent() -> Bool {
+test fn red_generic_browser_module_with_product_rows_incoherent() -> Bool  {
   let d = external_model_scope_decision(m: red_generic_browser_module())
   decision_incoherent_with_count(d: d, n: 3)
 }
 
-test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bool {
+test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bool  {
   match external_model_scope_decision(m: red_generic_browser_module()) {
     ScopeCoherent => false
     ScopeIncoherent { finding_count: _, findings: fs } =>
@@ -119,7 +119,7 @@ test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bo
   }
 }
 
-test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
+test fn red_consumer_coverage_in_upstream_incoherent() -> Bool  {
   let m = DeclaredScopeFacts {
     module: "extdeps.browser.chromium",
     scope: synthetic_scope(
@@ -180,13 +180,13 @@ fn green_downstream_roster() -> DownstreamSupportRoster {
   }
 }
 
-test fn green_decomposed_portfolio_with_downstream_roster_coherent() -> Bool {
+test fn green_decomposed_portfolio_with_downstream_roster_coherent() -> Bool  {
   let roster = green_downstream_roster()
   decision_coherent(d: external_model_scope_portfolio_decision(mods: green_portfolio()))
     && (roster.coverage_rows |> count) == 2
 }
 
-test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
+test fn adopted_vendor_scopes_coherent_by_execution() -> Bool  {
   let ms_subject = extdeps.vendor.microsoft.extdeps_model_scope.subject
   let at_subject = extdeps.vendor.atlassian.extdeps_model_scope.subject
   let ms = DeclaredScopeFacts {
@@ -210,7 +210,7 @@ test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
     && extdeps.vendor.atlassian.extdeps_model_scope.first_citation.uri.locator == "www.sec.gov/cgi-bin/browse-edgar?CIK=TEAM"
 }
 
-test fn preflight_rows_counted() -> Bool {
+test fn preflight_rows_counted() -> Bool  {
   (extdeps_modeling_preflight_rows |> count) == 8
 }
 
@@ -227,7 +227,7 @@ fn read_manifest_rows() -> List<String> {
   parse_frontier_manifest(content: r.content)
 }
 
-test fn manifest_rows_nonempty_floor() -> Bool {
+test fn manifest_rows_nonempty_floor() -> Bool  {
   (read_manifest_rows() |> count) > 150
 }
 
@@ -236,12 +236,12 @@ fn roster_path_resolves(path: String) -> Bool {
   r.content != ""
 }
 
-test fn roster_paths_resolve_on_disk() -> Bool {
+test fn roster_paths_resolve_on_disk() -> Bool  {
   let union = concat(scope_carrier_paths, concat(scope_machinery_exempt_paths, read_manifest_rows()))
   all(union, p => roster_path_resolves(path: p))
 }
 
-test fn red_scope_placement_refuses_unrostered_added_extdeps_file() -> Bool {
+test fn red_scope_placement_refuses_unrostered_added_extdeps_file() -> Bool  {
   let refused = scope_placement_refused_paths(
     added: ["dag/extdeps/browser/opera.dag", "dag/gunbc/other.dag", "docs/plans/x.md", "dag/extdeps/notes.tsv"],
     carriers: scope_carrier_paths,
@@ -251,7 +251,7 @@ test fn red_scope_placement_refuses_unrostered_added_extdeps_file() -> Bool {
     && strings_contain(xs: refused, s: "dag/extdeps/browser/opera.dag")
 }
 
-test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
+test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool  {
   let refused = scope_placement_refused_paths(
     added: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag", "src/v2/lens/x.dag"],
     carriers: scope_carrier_paths,
@@ -286,7 +286,7 @@ fn exit_is_success(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
+test fn red_membership_arm_refuses_file_this_change_adds() -> Bool  {
   let verdict = scope_placement_membership_verdict(
     observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
   )
@@ -295,18 +295,18 @@ test fn red_membership_arm_refuses_file_this_change_adds() -> Bool {
     && string_contains(s: exit_reason_of(e: verdict), pattern: "THIS CHANGE")
 }
 
-test fn membership_arm_admits_an_empty_change_set() -> Bool {
+test fn membership_arm_admits_an_empty_change_set() -> Bool  {
   exit_is_success(
     e: scope_placement_membership_verdict(observation: AddedPathsObserved { paths: [] })
   )
 }
 
-test fn red_membership_arm_refuses_unreadable_observation() -> Bool {
+test fn red_membership_arm_refuses_unreadable_observation() -> Bool  {
   !exit_is_success(e: scope_placement_membership_verdict(observation: DiffObserveFailed))
     && !exit_is_success(e: scope_placement_membership_verdict(observation: DiffParseTruncated))
 }
 
-test fn green_membership_arm_admits_rostered_addition() -> Bool {
+test fn green_membership_arm_admits_rostered_addition() -> Bool  {
   exit_is_success(
     e: scope_placement_membership_verdict(
       observation: AddedPathsObserved { paths: ["dag/extdeps/vendor/microsoft.dag", "dag/extdeps/uri.dag"] }
@@ -314,12 +314,12 @@ test fn green_membership_arm_admits_rostered_addition() -> Bool {
   )
 }
 
-test fn red_freeze_arm_refuses_unreadable_observation() -> Bool {
+test fn red_freeze_arm_refuses_unreadable_observation() -> Bool  {
   !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffObserveFailed))
     && !exit_is_success(e: scope_placement_freeze_verdict(observation: DiffParseTruncated))
 }
 
-test fn failure_reason_is_empty_only_on_success() -> Bool {
+test fn failure_reason_is_empty_only_on_success() -> Bool  {
   exit_reason_of(e: ExitSuccess) == ""
     && exit_reason_of(
          e: scope_placement_membership_verdict(
@@ -351,7 +351,7 @@ fn remove_only_exit_is_success(observation: ManifestLineObservation) -> Bool {
   }
 }
 
-test fn red_manifest_remove_only_refuses_added_row() -> Bool {
+test fn red_manifest_remove_only_refuses_added_row() -> Bool  {
   let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
   match observation {
     ManifestLinesAdded { rows: rows } =>
@@ -362,7 +362,7 @@ test fn red_manifest_remove_only_refuses_added_row() -> Bool {
   }
 }
 
-test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool {
+test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool  {
   let removal_only = join([
     "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
     "--- a/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
@@ -382,7 +382,7 @@ test fn green_manifest_remove_only_admits_removal_and_unrelated_edits() -> Bool 
   }
 }
 
-test fn green_manifest_introduction_admitted_once() -> Bool {
+test fn green_manifest_introduction_admitted_once() -> Bool  {
   let intro = join([
     "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
     "new file mode 100644",
@@ -399,7 +399,7 @@ test fn green_manifest_introduction_admitted_once() -> Bool {
   }
 }
 
-test fn red_manifest_unreadable_refuses_through_parser() -> Bool {
+test fn red_manifest_unreadable_refuses_through_parser() -> Bool  {
   let truncated = join([
     "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
     "index 1111111..2222222 100644",
@@ -412,7 +412,7 @@ test fn red_manifest_unreadable_refuses_through_parser() -> Bool {
   }
 }
 
-test fn red_manifest_deletion_refuses_through_parser() -> Bool {
+test fn red_manifest_deletion_refuses_through_parser() -> Bool  {
   let deletion = join([
     "diff --git a/dag/gunbc/legacy_extdeps_scope_frontier.tsv b/dag/gunbc/legacy_extdeps_scope_frontier.tsv",
     "deleted file mode 100644",
@@ -428,7 +428,7 @@ test fn red_manifest_deletion_refuses_through_parser() -> Bool {
   }
 }
 
-test fn frontier_rosters_are_disjoint() -> Bool {
+test fn frontier_rosters_are_disjoint() -> Bool  {
   let manifest = read_manifest_rows()
   all(scope_carrier_paths, p => !strings_contain(xs: scope_machinery_exempt_paths, s: p) && !strings_contain(xs: manifest, s: p))
     && all(scope_machinery_exempt_paths, p => !strings_contain(xs: manifest, s: p))
@@ -447,37 +447,37 @@ test fn frontier_rosters_are_disjoint() -> Bool {
 // (scope_cover_holds, manifest_freeze_holds on gunbc.extdeps_scope_frontier) that the wet file
 // executes against live observations.
 
-test fn red_cover_check_refuses_unrostered_file() -> Bool {
+test fn red_cover_check_refuses_unrostered_file() -> Bool  {
   scope_cover_holds(
     walked: ["dag/extdeps/a.dag", "dag/extdeps/unrostered_probe.dag"],
     union: ["dag/extdeps/a.dag"]
   ) == false
 }
 
-test fn red_cover_check_refuses_stale_roster_row() -> Bool {
+test fn red_cover_check_refuses_stale_roster_row() -> Bool  {
   scope_cover_holds(
     walked: ["dag/extdeps/a.dag"],
     union: ["dag/extdeps/a.dag", "dag/extdeps/departed_stale_row.dag"]
   ) == false
 }
 
-test fn red_carrier_content_check_refuses_undeclared() -> Bool {
+test fn red_carrier_content_check_refuses_undeclared() -> Bool  {
   carrier_content_declares_scope(content: "module extdeps.vendor.example\n\ndata something_else: String = \"x\"\n") == false
 }
 
-test fn carriers_declare_scope_on_disk() -> Bool {
+test fn carriers_declare_scope_on_disk() -> Bool  {
   (scope_carrier_paths |> count) > 0
     && all(scope_carrier_paths, p => carrier_content_declares_scope(content: filesystem_read(path: p).content))
 }
 
-test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool {
+test fn red_manifest_freeze_refuses_post_freeze_row() -> Bool  {
   manifest_freeze_holds(
     manifest: ["dag/extdeps/a.dag", "dag/extdeps/smuggled_new_module.dag"],
     observation: AddedPathsObserved { paths: ["dag/extdeps/smuggled_new_module.dag"] }
   ) == false
 }
 
-test fn red_manifest_freeze_refuses_failed_diff() -> Bool {
+test fn red_manifest_freeze_refuses_failed_diff() -> Bool  {
   manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: DiffObserveFailed) == false
     && manifest_freeze_holds(manifest: ["dag/extdeps/a.dag"], observation: DiffParseTruncated) == false
 }

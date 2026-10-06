@@ -33,11 +33,11 @@ fn dpkg_status_materialized(package: NonEmptyStr) -> List<String> {
   )
 }
 
-test fn extdeps_dpkg_status_argv_holds() -> Bool {
+test fn extdeps_dpkg_status_argv_holds() -> Bool  {
   argv_join(argv: dpkg_status_materialized(package: package_tailscale))
     == concat("dpkg -s ", package_tailscale as String)
 }
 
-test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool {
+test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool  {
   argv_join(argv: dpkg_status_materialized(package: package_tailscale)) != "dpkg -s nodejs"
 }

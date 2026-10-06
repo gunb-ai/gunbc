@@ -24,14 +24,14 @@ fn nat_to_int(n: Nat) -> Int {
 
 data one_nat: Nat = 1
 
-test fn list_identity_cast_holds() -> Bool {
+test fn list_identity_cast_holds() -> Bool  {
   list_identity([1, 2, 3]) == [1, 2, 3]
 }
 
-test fn int_identity_cast_holds() -> Bool {
+test fn int_identity_cast_holds() -> Bool  {
   int_identity(42) == 42
 }
 
-test fn nat_to_int_cast_is_carrier_identity() -> Bool {
+test fn nat_to_int_cast_is_carrier_identity() -> Bool  {
   nat_to_int(one_nat) == 1 && (one_nat as Int) + 1 == 2
 }

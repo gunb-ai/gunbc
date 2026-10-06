@@ -35,7 +35,7 @@ fn refusal_of(a: FlashInferWheelAdmission) -> FlashInferWheelRefusal? {
 // THE POSITIVE CONTROL, over the real cited rows rather than a fixture. Every 0.6.18.post1 wheel re-admits
 // through the mint against its own release, and there are exactly the three packages an aarch64 cu130
 // image installs. Without this, every refusal below would pass against a mint that refused everything.
-test fn every_cited_0_6_18_post1_wheel_readmits_through_the_mint() -> Bool {
+test fn every_cited_0_6_18_post1_wheel_readmits_through_the_mint() -> Bool  {
   count(flashinfer_0_6_18_post1_wheels) == 3
     && all(flashinfer_0_6_18_post1_wheels, w => admitted(a: admit_flashinfer_wheel(
       acquisition: flashinfer_0_6_18_post1,
@@ -47,7 +47,7 @@ test fn every_cited_0_6_18_post1_wheel_readmits_through_the_mint() -> Bool {
 
 // A MALFORMED DIGEST REFUSES AS A DIGEST DEFECT: uppercase hex is not the canonical form, and a digest one
 // character short is not a digest. The filename and package are the real ones, so only the digest decides.
-test fn a_malformed_sha256_refuses() -> Bool {
+test fn a_malformed_sha256_refuses() -> Bool  {
   let upper = admit_flashinfer_wheel(
     acquisition: flashinfer_0_6_18_post1,
     package: "flashinfer-python" as NonEmptyStr,
@@ -73,7 +73,7 @@ test fn a_malformed_sha256_refuses() -> Bool {
 
 // A NEIGHBOURING VERSION'S FILE DOES NOT SATISFY A PIN. `0.6.18` is a prefix of `0.6.18.post1`, which is
 // exactly the case a prefix-without-separator test would admit.
-test fn a_wheel_from_a_neighbouring_version_refuses() -> Bool {
+test fn a_wheel_from_a_neighbouring_version_refuses() -> Bool  {
   let bare_0_6_18 = FlashInferPublishedRelease {
     version: "0.6.18" as NonEmptyStr,
     channel: FlashInferProjectStable,
@@ -92,7 +92,7 @@ test fn a_wheel_from_a_neighbouring_version_refuses() -> Bool {
 }
 
 // A FILE PASTED UNDER THE WRONG PACKAGE REFUSES before its version is even read.
-test fn a_wheel_filed_under_another_package_refuses() -> Bool {
+test fn a_wheel_filed_under_another_package_refuses() -> Bool  {
   match refusal_of(a: admit_flashinfer_wheel(
     acquisition: flashinfer_0_6_18_post1,
     package: "flashinfer-cubin" as NonEmptyStr,
@@ -107,7 +107,7 @@ test fn a_wheel_filed_under_another_package_refuses() -> Bool {
 
 // AN UNPUBLISHED ACQUISITION HAS NO WHEELS AND NO VERSION. A source revision refuses as a category error
 // even with an otherwise-valid row, and it cannot be spelled as a version-shaped argument.
-test fn an_unpublished_source_revision_refuses_a_wheel_pin_and_has_no_version() -> Bool {
+test fn an_unpublished_source_revision_refuses_a_wheel_pin_and_has_no_version() -> Bool  {
   let unpublished = FlashInferSourceRevision {
     revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
     reason_unreleased: "fixture: a revision with no published release" as NonEmptyStr,
@@ -142,7 +142,7 @@ fn rows_for(package: String) -> List<FlashInferWheel> {
 // exactly one row in the pin set, asserted rather than assumed: FlashInfer publishes several platform and
 // CUDA variants per package and version, so a second jit-cache row would make "the jit-cache wheel" a
 // question row order cannot answer, and this goes red instead of reading whichever row came first.
-test fn only_the_jit_cache_wheel_is_cuda_and_architecture_specific() -> Bool {
+test fn only_the_jit_cache_wheel_is_cuda_and_architecture_specific() -> Bool  {
   let jit = rows_for(package: "flashinfer-jit-cache")
   let python = rows_for(package: "flashinfer-python")
   count(jit) == 1
@@ -169,7 +169,7 @@ fn refuses_as_malformed(filename: NonEmptyStr) -> Bool {
 // empty field, and a build tag that does not begin with a digit all refuse as malformed. The positive
 // control is a well-formed six-field filename with a numeric build tag, which admits -- so the refusals are
 // not a mint that has stopped accepting six fields.
-test fn an_incomplete_wheel_filename_refuses_as_malformed() -> Bool {
+test fn an_incomplete_wheel_filename_refuses_as_malformed() -> Bool  {
   refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-garbage" as NonEmptyStr)
     && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none.whl" as NonEmptyStr)
     && refuses_as_malformed(filename: "flashinfer_python-0.6.18.post1-py3-none-any" as NonEmptyStr)
@@ -185,7 +185,7 @@ test fn an_incomplete_wheel_filename_refuses_as_malformed() -> Bool {
 
 // THE CONSUMER READS THE VERSION FROM THIS AUTHORITY: both cited vLLM recipes carry the same spelling the
 // acquisition row publishes, so the version exists once.
-test fn the_vllm_recipes_pin_the_authority_release_version() -> Bool {
+test fn the_vllm_recipes_pin_the_authority_release_version() -> Bool  {
   (vllm_07b75534_default_recipe.flashinfer_version as String) == (flashinfer_0_6_18_post1_version as String)
     && (vllm_07b75534_aarch64_release_recipe.flashinfer_version as String) == (flashinfer_0_6_18_post1_version as String)
     && (match flashinfer_published_version(a: flashinfer_0_6_18_post1) {
@@ -197,7 +197,7 @@ test fn the_vllm_recipes_pin_the_authority_release_version() -> Bool {
 // THE STABLE CHANNEL IS ONE UPSTREAM'S DOCKERFILE NAMES; THE NIGHTLY CHANNEL IS NOT. This is channel
 // recognition only -- it asserts nothing about whether a version publishes the wheel population an image
 // needs.
-test fn the_stable_channel_is_referenced_by_the_upstream_dockerfile_and_the_nightly_is_not() -> Bool {
+test fn the_stable_channel_is_referenced_by_the_upstream_dockerfile_and_the_nightly_is_not() -> Bool  {
   flashinfer_channel_is_referenced_by_upstream_dockerfile(a: flashinfer_0_6_18_post1)
     && !flashinfer_channel_is_referenced_by_upstream_dockerfile(a: FlashInferPublishedRelease {
       version: "0.7.0.dev20260910" as NonEmptyStr,

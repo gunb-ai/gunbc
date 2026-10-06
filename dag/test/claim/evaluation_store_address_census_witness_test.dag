@@ -31,7 +31,7 @@ import gunbc.evaluation_store_address_census {
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
+test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool  {
   let direct = evaluation_store_address_production_consumers
   let persist = evaluation_store_address_persist_callers_expected
   let admitted = evaluation_store_address_admitted_consumers_expected
@@ -43,7 +43,7 @@ test fn evaluation_store_address_expected_rosters_are_well_formed() -> Bool {
     && (dissolution_description(condition: evaluation_store_address_production_partition_dissolve_on) != "")
 }
 
-test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> Bool {
+test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> Bool  {
   match evaluation_store_address_zero_candidate_plant_coverage() {
     CandidateOutsideExactResolution { root, path, target_leaf } =>
       (root == "dag/test/fixture/evaluation_store_address_zero_candidate_plant")
@@ -54,7 +54,7 @@ test fn evaluation_store_address_zero_candidate_guard_reports_planted_call() -> 
   }
 }
 
-test fn evaluation_store_address_zero_candidate_guard_qualifies_without_planted_invocation() -> Bool {
+test fn evaluation_store_address_zero_candidate_guard_qualifies_without_planted_invocation() -> Bool  {
   match evaluation_store_address_zero_candidate_plant_absent_coverage() {
     ProductionCoverageQualified { exact_resolved_roots: _, zero_candidate_roots } =>
       (zero_candidate_roots |> count()) == 1
@@ -100,7 +100,7 @@ fn evaluation_store_address_imported_same_leaf_and_qualified_observed(edges: Lis
     ) == false)
 }
 
-test fn evaluation_store_address_resolver_distinguishes_imported_same_leaf_and_qualified() -> Bool {
+test fn evaluation_store_address_resolver_distinguishes_imported_same_leaf_and_qualified() -> Bool  {
   match evaluation_store_address_mutation_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
     ResolvedCallEdgeCensusObserved { edges } =>
@@ -134,7 +134,7 @@ fn evaluation_store_address_fixture_reference_forms_observed(edges: List<Resolve
   )
 }
 
-test fn evaluation_store_address_import_graph_misses_fixture_reference_forms() -> Bool {
+test fn evaluation_store_address_import_graph_misses_fixture_reference_forms() -> Bool  {
   match evaluation_store_address_fixture_import_only_census() {
     ResolvedCallEdgeCensusRefused { cause: _ } => false
     ResolvedCallEdgeCensusObserved { edges } =>

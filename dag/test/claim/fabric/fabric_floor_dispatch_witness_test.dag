@@ -138,7 +138,7 @@ fn d_considered_count(selection: SupplySelection<NonEmptyStr>) -> Int {
 
 // A sixty-four thread host covers the floor's eight. This is the positive control: without it
 // every refusal row below is satisfied by a fold that selects nothing at all.
-test fn a_host_larger_than_the_floor_is_selected_for_it() -> Bool {
+test fn a_host_larger_than_the_floor_is_selected_for_it() -> Bool  {
   floor_selection_selected_offer_count(
     selection: d_select(candidates: d_bound(offer: d_offer(key: "offer-srv1", threads: hardware_thread_count(count: 64)), key: "offer-srv1")),
   ) == 1
@@ -149,7 +149,7 @@ test fn a_host_larger_than_the_floor_is_selected_for_it() -> Bool {
 // something weaker, or the caller's rather than the authority's -- this row would select an offer
 // that cannot run the floor, and nothing downstream would refuse it because fungibility already
 // said yes.
-test fn a_host_smaller_than_the_floor_is_considered_and_refused() -> Bool {
+test fn a_host_smaller_than_the_floor_is_considered_and_refused() -> Bool  {
   let selection = d_select(
     candidates: d_bound(offer: d_offer(key: "offer-small", threads: hardware_thread_count(count: 4)), key: "offer-small"),
   )
@@ -160,7 +160,7 @@ test fn a_host_smaller_than_the_floor_is_considered_and_refused() -> Bool {
 // NOTHING OFFERED IS NOT THE SAME STATE AS EVERYTHING REFUSED, and the two are told apart by the
 // considered roster rather than by the verdict. Both answer NoAdmissibleOffer; only one of them
 // means a screen rejected something.
-test fn an_empty_roster_selects_nothing_and_considers_nothing() -> Bool {
+test fn an_empty_roster_selects_nothing_and_considers_nothing() -> Bool  {
   let selection = d_select(candidates: [])
   floor_selection_selected_offer_count(selection: selection) == 0
     && d_considered_count(selection: selection) == 0
@@ -169,7 +169,7 @@ test fn an_empty_roster_selects_nothing_and_considers_nothing() -> Bool {
 // The floor's satisfaction requirement is the AUTHORITY's, not the caller's: a terminal receipt
 // may not satisfy it and a new attempt is required. A caller cannot weaken that by construction
 // because floor_demand does not accept it as a parameter.
-test fn the_floor_demand_carries_the_authority_satisfaction_requirement() -> Bool {
+test fn the_floor_demand_carries_the_authority_satisfaction_requirement() -> Bool  {
   let d = floor_demand(
     id: FabricIdentity { principal: "gunbc", key: "demand-floor-1" },
     work: FabricIdentity { principal: "gunbc", key: "work-floor-1" },

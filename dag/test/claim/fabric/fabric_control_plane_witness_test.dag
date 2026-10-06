@@ -72,7 +72,7 @@ fn cp_demand_id(key: DemandKey) -> FabricIdentity<NonEmptyStr, DemandKey> {
 // second place a cell's name can be written and disagree. The slash check is the
 // store's precondition: a key carrying a separator is refused at the mint, so a
 // projection that ever produced one would make every reservation unmintable.
-test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool {
+test fn the_allocation_key_is_the_slots_own_canonical_spelling() -> Bool  {
   let key = fabric_cell_allocation_key(slot: cp_slot())
   (key as String) == "srv3-06"
     && !(key as String).contains("/")
@@ -150,7 +150,7 @@ fn cp_broker_for(
   )
 }
 
-test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool {
+test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bool  {
   let refusals = cp_admission_refusals(
     r: cp_broker(
       roster: cp_roster(executor: "srv3-06"),
@@ -161,7 +161,7 @@ test fn an_executor_refused_on_the_capacity_line_is_reported_not_dropped() -> Bo
     && fold(refusals, init: false, f: (acc, a) => acc || cp_refusal_is_class(a: a))
 }
 
-test fn an_empty_roster_reports_no_admission_refusals_at_all() -> Bool {
+test fn an_empty_roster_reports_no_admission_refusals_at_all() -> Bool  {
   (cp_admission_refusals(r: cp_broker(roster: [], sanctions: [])) |> count) == 0
 }
 
@@ -175,7 +175,7 @@ fn cp_refusal_is_class(a: CapacityClassAdmission) -> Bool {
 
 // The slot's contents must say WHO holds the cell and FOR WHAT, or a reservation
 // is an anonymous lock nobody can attribute or release.
-test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool {
+test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool  {
   let payload = fabric_reservation_payload(
     demand: cp_demand_id(key: "demand-7"),
     offer: cp_offer_id(key: "offer-1"),
@@ -187,7 +187,7 @@ test fn the_reservation_payload_names_both_the_demand_and_the_offer() -> Bool {
 // The deployment authority is a real absolute path rather than a relative or
 // empty one: the store does not create its root, so a root that named nothing
 // would surface as an operational refusal on every reservation.
-test fn the_store_root_is_an_absolute_deployment_path() -> Bool {
+test fn the_store_root_is_an_absolute_deployment_path() -> Bool  {
   (fabric_control_plane_store_root() as String).starts_with("/")
 }
 
@@ -278,7 +278,7 @@ fn cp_bind_is_bound(b: CellCandidateBinding) -> Bool {
 // THE POSITIVE CONTROL FOR THE ARROW. An offer whose executor IS the cell's
 // canonical spelling binds, so the row below is not satisfied by a mint that
 // refuses everything -- which would be a roster that can never be built.
-test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
+test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool  {
   let bound = cp_binds(executor: "srv3-06")
   match bound.first() {
     Present { value: b } => bound.length() == 1 && cp_bind_is_bound(b: b)
@@ -292,7 +292,7 @@ test fn an_offer_executed_by_the_cell_itself_binds_to_that_cell() -> Bool {
 // true facts with nothing relating them, and every arm still plausible. The
 // mint refuses the mismatched pair, so a reservation for a cell the market did
 // not choose cannot be constructed rather than being caught afterwards.
-test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool {
+test fn an_offer_executed_by_anyone_else_cannot_be_bound_to_this_cell() -> Bool  {
   let bound = cp_binds(executor: "srv1-02")
   match bound.first() {
     Present { value: b } => bound.length() == 1 && !cp_bind_is_bound(b: b)
@@ -389,7 +389,7 @@ fn cp_refusal_is_currency(f: MoneyRefusal) -> Bool {
 // carries both an account and no cell, so the partial commit has no constructor.
 // That has no authorable RED -- the invalid state does not compile -- so it is
 // correctly covered by no row at all.
-test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
+test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool  {
   let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 1)))
   (refusals |> count) == 1
     && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
@@ -407,7 +407,7 @@ test fn an_underfunded_budget_refuses_with_a_ledger_cause() -> Bool {
 // broker passed the account's own currency through, the two would agree by
 // construction and this refusal could never fire (§4b -- a check whose red is
 // unauthorable is a decoration, not a wall).
-test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> Bool {
+test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> Bool  {
   let refusals = cp_budget_refusal(
     r: cp_priced(account: cp_account(currency: Eur, ceiling: 1000000)),
   )
@@ -422,7 +422,7 @@ test fn an_offer_quoted_in_another_currency_is_refused_at_the_budget_seam() -> B
 // the marginal charge alone would present 500, clear 999 comfortably, and this
 // row would go red. That is the discrimination the two rows above cannot make,
 // because both of their ceilings refuse against any nonzero amount.
-test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool {
+test fn the_encumbered_liability_is_the_full_selection_cost() -> Bool  {
   let refusals = cp_budget_refusal(r: cp_priced(account: cp_account(currency: Usd, ceiling: 999)))
   (refusals |> count) == 1
     && fold(refusals, init: false, f: (acc, f) => acc || cp_refusal_is_ceiling(f: f))
@@ -552,7 +552,7 @@ fn cp_admission_receipt_refused(a: CellSettlementAdmission?) -> Bool {
 
 // THE POSITIVE CONTROL, and the two rows below are worth nothing without it: a
 // settlement that refused every receipt would satisfy both of them.
-test fn a_settlement_receipt_for_this_grant_is_admitted() -> Bool {
+test fn a_settlement_receipt_for_this_grant_is_admitted() -> Bool  {
   cp_admission_is_admitted(a: cp_admission(r: cp_settlement_receipt(payload: cp_spend_payload())))
 }
 
@@ -562,7 +562,7 @@ test fn a_settlement_receipt_for_this_grant_is_admitted() -> Bool {
 // settlement that accepted it would have to invent the missing rule, which is
 // the fabricated plausible output, so the payload is matched rather than
 // trusted.
-test fn an_execution_receipt_cannot_settle_because_it_carries_no_spend() -> Bool {
+test fn an_execution_receipt_cannot_settle_because_it_carries_no_spend() -> Bool  {
   cp_admission_carries_no_spend(
     a: cp_admission(
       r: cp_settlement_receipt(
@@ -583,7 +583,7 @@ test fn an_execution_receipt_cannot_settle_because_it_carries_no_spend() -> Bool
 // account here holds no lease for this reservation at all, so a settlement that
 // reached the budget would refuse on the fence instead and answer a different
 // arm.
-test fn a_receipt_from_another_attempt_is_refused_before_the_budget() -> Bool {
+test fn a_receipt_from_another_attempt_is_refused_before_the_budget() -> Bool  {
   cp_admission_receipt_refused(
     a: cp_admission(
       r: Receipt {
@@ -624,7 +624,7 @@ fn cp_reservation_label(r: CellReservation) -> NonEmptyStr {
 // serve a different one; before this arm the permit's demand was read by nothing on this path -
 // issue_grant checks it, and the broker never calls issue_grant - so the candidate would have been
 // ranked and money reserved for a use nobody admitted.
-test fn w_the_broker_refuses_a_winner_admitted_for_another_demand() -> Bool {
+test fn w_the_broker_refuses_a_winner_admitted_for_another_demand() -> Bool  {
   cp_reservation_label(r: cp_broker_for(
     roster: cp_roster_sized(executor: "srv3-06", threads: 8),
     sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],
@@ -640,7 +640,7 @@ test fn w_the_broker_refuses_a_winner_admitted_for_another_demand() -> Bool {
 // that the row above is satisfied by permit_standing refusing everything, and that is a question
 // about permit_standing, which is pure. Same permit, same offer, same route, same work: only the
 // demand moves, and the answer flips to PermitAuthorizesUse.
-test fn w_the_same_permit_on_its_own_demand_authorizes() -> Bool {
+test fn w_the_same_permit_on_its_own_demand_authorizes() -> Bool  {
   fold(
     cp_candidate_sized(executor: "srv3-06", threads: 8),
     init: false,
@@ -663,7 +663,7 @@ test fn w_the_same_permit_on_its_own_demand_authorizes() -> Bool {
 
 // AND THE SAME PERMIT ON ANOTHER DEMAND DOES NOT, which is what makes the pair discriminating:
 // the two rows differ in exactly one argument.
-test fn w_the_same_permit_on_another_demand_does_not_authorize() -> Bool {
+test fn w_the_same_permit_on_another_demand_does_not_authorize() -> Bool  {
   fold(
     cp_candidate_sized(executor: "srv3-06", threads: 8),
     init: false,
@@ -690,7 +690,7 @@ test fn w_the_same_permit_on_another_demand_does_not_authorize() -> Bool {
 // what forced this row: killing the work comparison in permit_standing reddened the selection and
 // issuance witnesses and left THIS one green, which is the precise shape of a check that is only
 // believed to be covered. The demand matches here, so nothing but the work comparison can answer.
-test fn w_the_broker_refuses_a_winner_admitted_for_another_work() -> Bool {
+test fn w_the_broker_refuses_a_winner_admitted_for_another_work() -> Bool  {
   cp_reservation_label(r: cp_broker_for(
     roster: cp_roster_sized(executor: "srv3-06", threads: 8),
     sanctions: [ExecutorSanctioned { executor: "srv3-06", sanctioned: ControlPlaneCapacity }],

@@ -33,7 +33,7 @@ data wrong_octet_count_stdout: String = "7"
 
 // THE OLD PREDICATE, RESTATED EXECUTABLY. Both causes collapse to the same answer, which is the
 // defect. This witness is green because the collapse is real, not because it is acceptable.
-test fn folded_answer_cannot_separate_the_two_causes() -> Bool {
+test fn folded_answer_cannot_separate_the_two_causes() -> Bool  {
   let absent = emit_host_smoke_holds(
     harness_ok: false,
     reported_stdout: toolchain_absent_stdout,
@@ -53,7 +53,7 @@ test fn folded_answer_cannot_separate_the_two_causes() -> Bool {
 // conjunct, and this goes red. An earlier revision of this file asserted `false != true` over two
 // literals instead; that could not go red under any edit to the production code, which makes it
 // decoration rather than a control, and it is replaced rather than kept beside this one.
-test fn harness_failure_is_not_rescued_by_a_matching_report() -> Bool {
+test fn harness_failure_is_not_rescued_by_a_matching_report() -> Bool  {
   !emit_host_smoke_holds(
     harness_ok: false,
     reported_stdout: expected_octets,
@@ -63,7 +63,7 @@ test fn harness_failure_is_not_rescued_by_a_matching_report() -> Bool {
 
 // The comparison itself is a statement about the subject and nothing else: it is false for a wrong
 // count and true for the expected one, with no toolchain state reachable from its inputs.
-test fn comparison_answers_only_about_the_octets() -> Bool {
+test fn comparison_answers_only_about_the_octets() -> Bool  {
   let wrong = emit_host_reported_octets_match(
     reported_stdout: wrong_octet_count_stdout,
     expected_text: expected_octets
@@ -78,7 +78,7 @@ test fn comparison_answers_only_about_the_octets() -> Bool {
 // An empty report is NOT silently equal to an expected count. This is the arm that would fabricate a
 // pass if the expected text were ever empty, and it is pinned so that a future change making
 // expected_text derivable-to-empty goes red here rather than greening every smoke.
-test fn empty_report_never_matches_a_nonempty_expectation() -> Bool {
+test fn empty_report_never_matches_a_nonempty_expectation() -> Bool  {
   !emit_host_reported_octets_match(
     reported_stdout: toolchain_absent_stdout,
     expected_text: expected_octets

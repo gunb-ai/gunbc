@@ -178,7 +178,7 @@ fn field_against(offer: SupplierOffer<NonEmptyStr>) -> List<AdmittedDemand<NonEm
 // case the fleet is about to have. If offer_quoted_total_for_grant ever stopped
 // seeing the billing quantum, both columns would collapse to the same winner
 // and this goes red.
-test fn the_same_two_bidders_rank_oppositely_on_continuous_and_hourly_supply() -> Bool {
+test fn the_same_two_bidders_rank_oppositely_on_continuous_and_hourly_supply() -> Bool  {
   winner_key(o: contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())))
     == "demand-short"
   && winner_key(o: contend(offer: hourly_offer(), candidates: field_against(offer: hourly_offer())))
@@ -190,7 +190,7 @@ test fn the_same_two_bidders_rank_oppositely_on_continuous_and_hourly_supply() -
 // so the ordering cannot be reading the bid alone. This pins the arithmetic
 // that separates them rather than only the verdict, because a verdict alone
 // would still be produced by a fold that compared the wrong two numbers.
-test fn buyer_headroom_is_the_ceiling_minus_the_projected_bill_for_this_offer() -> Bool {
+test fn buyer_headroom_is_the_ceiling_minus_the_projected_bill_for_this_offer() -> Bool  {
   match field_against(offer: continuous_offer()) {
     Cons { head: s, tail: rest } =>
       match rest {
@@ -212,7 +212,7 @@ test fn buyer_headroom_is_the_ceiling_minus_the_projected_bill_for_this_offer() 
 // the comparator degenerates to comparing margins. If this ever reported the
 // elapsed seconds instead, the hourly column of the two-mode witness would be
 // decided by a rate nobody is billed for.
-test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool {
+test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool  {
   match field_against(offer: hourly_offer()) {
     Cons { head: s, tail: rest } =>
       match rest {
@@ -267,7 +267,7 @@ test fn an_hourly_quantum_gives_both_bidders_the_same_billed_occupancy() -> Bool
 // running the mutation, not from reasoning about which witness ought to notice.
 fn rich_slow_demand() -> Demand<NonEmptyStr> { c_demand(key: "demand-rich-slow", reservation: 500) }
 
-test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bool {
+test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bool  {
   let quick = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
   let slow = admitted_or_none(a: admit_demand_for_offer(
@@ -307,7 +307,7 @@ test fn a_larger_total_margin_loses_to_a_larger_margin_per_billed_second() -> Bo
 // switched on billing mode would be a second authority for a fact the quantum
 // already states, and it would agree with this one on exactly these two rows
 // while being free to disagree on the next supplier.
-test fn the_same_pair_flips_back_when_the_billed_hour_is_indivisible() -> Bool {
+test fn the_same_pair_flips_back_when_the_billed_hour_is_indivisible() -> Bool  {
   let quick = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: hourly_offer(), duration: short_duration()))
   let slow = admitted_or_none(a: admit_demand_for_offer(
@@ -349,7 +349,7 @@ fn paid_through_offer() -> SupplierOffer<NonEmptyStr> {
   )
 }
 
-test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
+test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool  {
   let quick = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
   let slow = admitted_or_none(a: admit_demand_for_offer(
@@ -384,7 +384,7 @@ test fn a_free_offer_is_still_ranked_by_bid_per_second_not_by_bid() -> Bool {
 // zero-occupancy candidate cross-multiplies to zero against every other, so
 // admitting one would report a field of perfectly distinguishable buyers as an
 // unresolvable tie -- a fabricated verdict, not a cautious one.
-test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool {
+test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool  {
   match admit_demand_for_offer(
     demand: short_demand(),
     offer: continuous_offer(),
@@ -404,7 +404,7 @@ test fn a_grant_billing_no_time_is_refused_rather_than_ranked_at_zero() -> Bool 
 // -- first-one-wins reappearing inside the pass written to remove it. Refusing
 // also refuses what a duplicate actually means: one demand admitted twice
 // against one grant of capacity.
-test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itself() -> Bool {
+test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itself() -> Bool  {
   let once = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
   match contend(offer: continuous_offer(), candidates: concat(once, once)) {
@@ -424,7 +424,7 @@ test fn the_same_demand_admitted_twice_refuses_rather_than_winning_against_itsel
 // that only ever presented candidates in one order could not tell a real
 // ordering from first-one-wins. Presenting the same field reversed must return
 // the same winner.
-test fn the_winner_does_not_depend_on_the_order_candidates_arrive_in() -> Bool {
+test fn the_winner_does_not_depend_on_the_order_candidates_arrive_in() -> Bool  {
   let forward = field_against(offer: continuous_offer())
   let reversed = concat(
     admitted_or_none(a: admit_demand_for_offer(
@@ -442,7 +442,7 @@ test fn the_winner_does_not_depend_on_the_order_candidates_arrive_in() -> Bool {
 // the model could reach for today -- submitted_at, the demand key -- is string
 // collation wearing a schedule's or a merit's name. The refusal names both
 // demands so the caller can decide something this policy cannot.
-test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -> Bool {
+test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -> Bool  {
   let a = admitted_or_none(a: admit_demand_for_offer(
     demand: c_demand(key: "demand-a", reservation: 200),
     offer: continuous_offer(), duration: short_duration()))
@@ -474,7 +474,7 @@ test fn two_indistinguishable_bidders_refuse_instead_of_one_winning_silently() -
 // SAME price is admitted against the cheap supplier and refused against the
 // expensive one, so the refusal is arithmetic about the pair and not a property
 // of the demand.
-test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool {
+test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool  {
   let poor = c_demand(key: "demand-poor", reservation: 95)
   let against_cheap = admit_demand_for_offer(
     demand: poor, offer: continuous_offer(), duration: short_duration())
@@ -505,7 +505,7 @@ test fn a_bid_below_the_bill_cannot_enter_contention_at_all() -> Bool {
 // exceeds the 50 the buyer said it would pay. Before this module nothing
 // consulted reservation_price at all, so an offer could be "affordable" under a
 // generous per-grant ceiling while sitting above the price the buyer named.
-test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Bool {
+test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Bool  {
   match admit_demand_for_offer(
     demand: c_demand(key: "demand-ceiling", reservation: 50),
     offer: hourly_offer(),
@@ -523,7 +523,7 @@ test fn clearing_the_grant_ceiling_is_not_clearing_the_buyers_own_price() -> Boo
 // pair, so a field mixing candidates judged against two suppliers holds values
 // that are each individually true and are not comparable. The mint records the
 // offer it judged, which is what gives this check something to check.
-test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Bool {
+test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Bool  {
   let owned = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
   let rented = admitted_or_none(a: admit_demand_for_offer(
@@ -545,7 +545,7 @@ test fn a_field_judged_against_two_offers_refuses_rather_than_comparing() -> Boo
 // ordinary market result whose remedy is more demand or a cheaper offer;
 // collapsing it into the refusal arm would hand a caller a diagnostic for a
 // working market.
-test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool {
+test fn an_empty_field_reports_no_admissible_demand_rather_than_refusing() -> Bool  {
   match contend(offer: continuous_offer(), candidates: []) {
     NoAdmissibleDemand => true
     DemandSelected { winner: _, basis: _ } => false
@@ -593,7 +593,7 @@ fn basis_is_projected(b: OccupancyBasis) -> Bool {
   }
 }
 
-test fn an_estimated_duration_projects_the_denominator_even_when_affordability_is_certain() -> Bool {
+test fn an_estimated_duration_projects_the_denominator_even_when_affordability_is_certain() -> Bool  {
   match admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: per_second_offer(), duration: estimated_short())) {
     Cons { head: metered, tail: _ } =>
@@ -611,7 +611,7 @@ test fn an_estimated_duration_projects_the_denominator_even_when_affordability_i
 // AN EXACT DURATION IS THE POSITIVE CONTROL. Without it the witness above is
 // satisfied by a function that answers ProjectedOccupancy unconditionally,
 // which would be permanently green and carry no information.
-test fn an_exact_duration_reports_a_measured_denominator() -> Bool {
+test fn an_exact_duration_reports_a_measured_denominator() -> Bool  {
   match admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: per_second_offer(), duration: short_duration())) {
     Cons { head: a, tail: _ } => !basis_is_projected(b: admitted_occupancy_basis(a: a))
@@ -624,7 +624,7 @@ test fn an_exact_duration_reports_a_measured_denominator() -> Bool {
 // whose denominator was projected, so the ORDERING rested on a projection even
 // though the selected demand did not. A consumer reading the winner's own basis
 // would read this decision as measured; the outcome reports it as projected.
-test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis() -> Bool {
+test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis() -> Bool  {
   let exact_winner = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: continuous_offer(), duration: short_duration()))
   let estimated_rival = admitted_or_none(a: admit_demand_for_offer(
@@ -642,7 +642,7 @@ test fn a_selection_decided_against_a_projected_rival_reports_a_projected_basis(
 
 // AND AN ALL-EXACT FIELD REPORTS MEASURED, so the witness above is not
 // satisfied by a fold that answers ProjectedOccupancy for every field.
-test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool {
+test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool  {
   match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
     DemandSelected { winner: _, basis: b } => !basis_is_projected(b: b)
     NoAdmissibleDemand => false
@@ -667,7 +667,7 @@ test fn a_field_of_exact_durations_reports_a_measured_basis() -> Bool {
 // against 100), so no opportunity-cost fact could change the winner and the
 // fold answers unconditionally. If refusal ever widened to this case, the
 // policy would have stopped being able to decide anything.
-test fn a_winner_that_also_leads_on_total_margin_is_selected_unconditionally() -> Bool {
+test fn a_winner_that_also_leads_on_total_margin_is_selected_unconditionally() -> Bool  {
   match contend(offer: continuous_offer(), candidates: field_against(offer: continuous_offer())) {
     DemandSelected { winner: w, basis: _ } => id_key(i: admitted_identity(a: w)) == "demand-short"
     NoAdmissibleDemand => false
@@ -686,7 +686,7 @@ test fn a_winner_that_also_leads_on_total_margin_is_selected_unconditionally() -
 // field this fold already ranked. product.fabric.supply made the same call for
 // the same reason, declining to become a selector on these missing inputs and
 // saying so in its own header.
-test fn a_contingent_ordering_refuses_and_names_both_candidates() -> Bool {
+test fn a_contingent_ordering_refuses_and_names_both_candidates() -> Bool  {
   let quick = admitted_or_none(a: admit_demand_for_offer(
     demand: short_demand(), offer: paid_through_offer(), duration: short_duration()))
   let slow = admitted_or_none(a: admit_demand_for_offer(
@@ -721,7 +721,7 @@ test fn a_contingent_ordering_refuses_and_names_both_candidates() -> Bool {
 // that would let a field of one measured and one projected candidate report
 // MEASURED -- turns this red, and the selection witnesses alone would catch it
 // only in the orderings they happen to exercise.
-test fn occupancy_evidence_degrades_to_the_weakest_member() -> Bool {
+test fn occupancy_evidence_degrades_to_the_weakest_member() -> Bool  {
   match occupancy_basis_meet(a: MeasuredOccupancy, b: MeasuredOccupancy) {
     MeasuredOccupancy =>
       basis_is_projected(b: occupancy_basis_meet(a: MeasuredOccupancy, b: ProjectedOccupancy))
@@ -768,7 +768,7 @@ fn billed_no_time(a: DemandAdmission<NonEmptyStr>) -> Bool {
 // with no duration whatsoever -- which is exactly how an unmeasured grant
 // reaches admission on a live path. The price is fine; the occupancy
 // denominator is not, and that is what admission turns on.
-test fn an_unmeasured_grant_under_a_flat_quote_refuses_to_rank_rather_than_ranking_it() -> Bool {
+test fn an_unmeasured_grant_under_a_flat_quote_refuses_to_rank_rather_than_ranking_it() -> Bool  {
   refuses_to_rank(
     a: admit_demand_for_offer(
       demand: short_demand(),
@@ -784,7 +784,7 @@ test fn an_unmeasured_grant_under_a_flat_quote_refuses_to_rank_rather_than_ranki
 // missing measurement -- and collapsing them produces a refusal that looks
 // legitimate and names the wrong repair. Same offer, same demand, durations
 // differing only in whether one was observed.
-test fn an_unmeasured_grant_is_not_reported_as_a_grant_that_bills_no_time() -> Bool {
+test fn an_unmeasured_grant_is_not_reported_as_a_grant_that_bills_no_time() -> Bool  {
   let unmeasured = admit_demand_for_offer(
     demand: short_demand(),
     offer: continuous_offer(),
@@ -803,7 +803,7 @@ test fn an_unmeasured_grant_is_not_reported_as_a_grant_that_bills_no_time() -> B
 // one stage earlier than the flat one above. It must land on the SAME verdict:
 // two routes, one underlying fact, and a second arm for the second route would
 // be a second name for one concept.
-test fn a_rate_quoted_unmeasured_grant_refuses_by_the_same_verdict_as_a_flat_one() -> Bool {
+test fn a_rate_quoted_unmeasured_grant_refuses_by_the_same_verdict_as_a_flat_one() -> Bool  {
   refuses_to_rank(
     a: admit_demand_for_offer(
       demand: short_demand(),
@@ -822,7 +822,7 @@ test fn a_rate_quoted_unmeasured_grant_refuses_by_the_same_verdict_as_a_flat_one
 
 // A measured grant against the same offer still ranks. Without this the three
 // witnesses above are satisfied by a fold that refuses everything.
-test fn measuring_the_grant_is_what_lets_it_rank_at_all() -> Bool {
+test fn measuring_the_grant_is_what_lets_it_rank_at_all() -> Bool  {
   !refuses_to_rank(
     a: admit_demand_for_offer(
       demand: short_demand(),

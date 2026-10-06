@@ -14,7 +14,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the cfg arm is present in the emitted runtime, and the feature is declared in the
 // emitted manifest -- so a fork between them reds here rather than in a CI job whose
 // subject is something else.
-test fn emitted_manifest_declares_the_runtime_gated_feature() -> Bool {
+test fn emitted_manifest_declares_the_runtime_gated_feature() -> Bool  {
   compile_dag_rust_emit_check(
     "module emittedmanifestfeaturefix\n\nfn one() -> Int {\n  1\n}\n",
     "Cargo.toml",
@@ -23,7 +23,7 @@ test fn emitted_manifest_declares_the_runtime_gated_feature() -> Bool {
   )
 }
 
-test fn emitted_runtime_gates_on_the_declared_feature() -> Bool {
+test fn emitted_runtime_gates_on_the_declared_feature() -> Bool  {
   compile_dag_rust_emit_check(
     "module emittedruntimecfgfix\n\nfn one() -> Int {\n  1\n}\n",
     "src/v1_rt.rs",

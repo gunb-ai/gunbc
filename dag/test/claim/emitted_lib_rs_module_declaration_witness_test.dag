@@ -82,10 +82,10 @@ fn w_partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
   )
 }
 
-test fn small_crate_lib_rs_omits_dispatch_and_declares_its_own_module() -> Bool {
+test fn small_crate_lib_rs_omits_dispatch_and_declares_its_own_module() -> Bool  {
   w_small_crate_lib_rs_omits_dispatch_and_declares_its_own_module()
 }
 
-test fn partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool {
+test fn partial_crate_declares_macro_provider_before_ordinary_modules() -> Bool  {
   w_partial_crate_declares_macro_provider_before_ordinary_modules()
 }

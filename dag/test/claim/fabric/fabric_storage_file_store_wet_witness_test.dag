@@ -57,7 +57,7 @@ fn event(body: NonEmptyStr, parent: FabricObject?) -> FabricObject {
 
 // THE INHABITANCE CLAIM: a three-event chain appended through put + advance is read back whole by
 // the closure walk, from files, newest first -- the route the P0-B hole broke.
-test fn a_chain_appended_through_the_store_is_read_back_whole_by_the_closure() -> Bool {
+test fn a_chain_appended_through_the_store_is_read_back_whole_by_the_closure() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: Present { value: a })
@@ -78,7 +78,7 @@ test fn a_chain_appended_through_the_store_is_read_back_whole_by_the_closure() -
 
 // LOST RACE: a writer expecting the head it built on, after another writer moved it, is answered
 // FabricHeadMoved carrying the head that beat it -- never a store refusal.
-test fn an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner() -> Bool {
+test fn an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: Present { value: a })
@@ -93,7 +93,7 @@ test fn an_advance_against_a_moved_head_is_a_lost_race_naming_the_winner() -> Bo
 }
 
 // MISSING OBJECT: a head is never pointed at an object the store does not hold.
-test fn an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent() -> Bool {
+test fn an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stays_absent() -> Bool  {
   let s = fresh_store()
   let refused = match fabric_storage_file_advance(root: s, name: "p", expected: ExpectHeadAbsent, target: fabric_object_ref_of(object: event(body: "never-put", parent: none))) {
     FabricHeadAdvanceRefused { fault: f } => match f { FabricObjectMissing { object: _ } => true  _ => false }
@@ -105,7 +105,7 @@ test fn an_advance_to_an_unstored_object_is_refused_as_missing_and_the_head_stay
 
 // A HOLE IN A CHAIN: a head whose parent was never stored is refused by the closure with the
 // missing ref, never returned as a shorter chain.
-test fn a_closure_over_a_hole_refuses_with_the_missing_object() -> Bool {
+test fn a_closure_over_a_hole_refuses_with_the_missing_object() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: Present { value: a })
@@ -118,7 +118,7 @@ test fn a_closure_over_a_hole_refuses_with_the_missing_object() -> Bool {
 }
 
 // CORRUPTION: bytes under an object's name that do not hash to it are refused, never served.
-test fn an_object_file_holding_other_bytes_is_refused_as_corrupt() -> Bool {
+test fn an_object_file_holding_other_bytes_is_refused_as_corrupt() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let _w = Filesystem.Write(path: fabric_storage_object_path(root: s, object: fabric_object_ref_of(object: a)), content: "fabric_storage.object;B1:z")
@@ -129,7 +129,7 @@ test fn an_object_file_holding_other_bytes_is_refused_as_corrupt() -> Bool {
 }
 
 // THE BOUND REFUSES RATHER THAN TRUNCATING.
-test fn a_closure_longer_than_its_bound_refuses_rather_than_truncating() -> Bool {
+test fn a_closure_longer_than_its_bound_refuses_rather_than_truncating() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: Present { value: a })
@@ -142,7 +142,7 @@ test fn a_closure_longer_than_its_bound_refuses_rather_than_truncating() -> Bool
 }
 
 // A NAME THAT WOULD NAVIGATE is the caller's defect, refused before the store is read.
-test fn a_head_name_with_a_separator_is_refused() -> Bool {
+test fn a_head_name_with_a_separator_is_refused() -> Bool  {
   let s = fresh_store()
   match fabric_storage_file_head(root: s, name: "../escape") {
     FabricHeadReadRefused { fault: f } => match f { FabricHeadNameRefused { name: _ } => true  _ => false }
@@ -151,7 +151,7 @@ test fn a_head_name_with_a_separator_is_refused() -> Bool {
 }
 
 // PUT IS IDEMPOTENT: the same object twice is stored once and answered stored both times.
-test fn putting_the_same_object_twice_is_answered_stored_both_times() -> Bool {
+test fn putting_the_same_object_twice_is_answered_stored_both_times() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let one = fabric_storage_file_put(root: s, object: a)
@@ -163,7 +163,7 @@ test fn putting_the_same_object_twice_is_answered_stored_both_times() -> Bool {
 // handler runs the file store on real files, and the reply -- with the status line the transport
 // appends -- decodes on the caller's side as the same arm the store decided. Only the HTTP carrier
 // itself is not in this claim; its receipt is the live endpoint probe.
-test fn a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution() -> Bool {
+test fn a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: Present { value: a })
@@ -183,7 +183,7 @@ test fn a_lost_race_through_the_served_handler_decodes_as_the_same_lost_race_by_
 // THE IDENTITY ROUTE THROUGH THE REAL HANDLER: the login the proxy handed the handler is what the
 // caller's side decodes, and the request reads no head and writes no object (the store is empty
 // before and after). An empty header decodes as absent, never as a login.
-test fn the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution() -> Bool {
+test fn the_identity_route_echoes_the_presented_login_and_touches_no_head_by_real_execution() -> Bool  {
   let s = fresh_store()
   let reply = fabric_storage_serve_handle_over(root: s, rosters: fixture_rosters(), method: "POST", path: "/fabric-storage/identity", body: "", tailscale_identity: "writer@example.ts.net", peer_user: "root")
   let echoed = match served_reply_from(exit_code: 0, stdout: join([reply.body, "\n", to_string(reply.status)], ""), stderr: "") {
@@ -227,7 +227,7 @@ fn observed_mode_octal(path: String) -> String {
   }
 }
 
-test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bool {
+test fn a_declared_entry_mode_is_the_published_mode_of_objects_and_heads() -> Bool  {
   let base = fresh_store()
   let s = fabric_storage_file_root_with(root: shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_fabric_storage_mode.XXXXXX").path as NonEmptyStr, entry_mode: Present { value: read_only_by_all() })
   let ready = match fabric_storage_file_root_ensure(root: s) { FabricStorageRootReady => true  FabricStorageRootRefused { area: _, detail: _ } => false }
@@ -281,7 +281,7 @@ fn object_absent(s: FabricStorageFileRoot, o: FabricObject) -> Bool {
   match fabric_storage_file_get(root: s, object: fabric_object_ref_of(object: o)) { FabricObjectGetRefused { fault: f } => match f { FabricObjectMissing { object: _ } => true  _ => false }  FabricObjectFetched { stored: _ } => false }
 }
 
-test fn a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution() -> Bool {
+test fn a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_served_door_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let outsider_put = served_put(s: s, peer: "root", login: "stranger@example.ts.net", o: a)
@@ -291,7 +291,7 @@ test fn a_put_or_advance_from_a_login_outside_the_roster_is_refused_at_the_serve
   put_writer_refused(p: outsider_put) && outsider_left_nothing && advance_writer_refused(a: outsider_advance) && head_absent(s: s)
 }
 
-test fn a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution() -> Bool {
+test fn a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let absent_put = served_put(s: s, peer: "root", login: "", o: a)
@@ -301,7 +301,7 @@ test fn a_put_or_advance_with_no_presented_login_is_refused_at_the_served_door_b
   put_writer_refused(p: absent_put) && absent_left_nothing && advance_writer_refused(a: absent_advance) && head_absent(s: s)
 }
 
-test fn a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution() -> Bool {
+test fn a_rostered_login_puts_and_advances_through_the_served_door_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let put = match served_put(s: s, peer: "root", login: fixture_writer as String, o: a) { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }
@@ -331,7 +331,7 @@ test fn a_rostered_login_puts_and_advances_through_the_served_door_by_real_execu
 // a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution,
 // which supplies a refusal no uid bypasses. This claim is the inhabitance claim for the arm the
 // runner's own principal selects.
-test fn a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store() -> Bool {
+test fn a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_by_the_real_file_store() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: none)
@@ -354,7 +354,7 @@ test fn a_put_or_advance_by_a_principal_the_store_areas_do_not_admit_is_refused_
 // a control write, so every put and advance is refused by the kernel with ENOTDIR -- a refusal uid 0
 // does not bypass. The real file store must answer each with a typed refusal, and leave the planted
 // files as they were: no area recreated, no partial write.
-test fn a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution() -> Bool {
+test fn a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed_fault_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let b = event(body: "b", parent: none)
@@ -378,7 +378,7 @@ test fn a_put_or_advance_into_store_areas_that_refuse_every_principal_is_a_typed
 // account: a rostered account writes whatever header it sends, an unrostered account is refused even
 // when it presents a rostered login (the header is believed only from the proxy), and a connection
 // whose peer was never attested is refused. Same requests, same real handler over real files.
-test fn a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a_rostered_login_by_real_execution() -> Bool {
+test fn a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a_rostered_login_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let forged_put = served_put(s: s, peer: "stranger", login: fixture_writer as String, o: a)
@@ -388,7 +388,7 @@ test fn a_put_or_advance_from_an_unrostered_local_account_is_refused_even_with_a
   put_writer_refused(p: forged_put) && left_nothing && advance_writer_refused(a: forged_advance) && head_absent(s: s)
 }
 
-test fn a_put_or_advance_on_an_unattested_connection_is_refused_by_real_execution() -> Bool {
+test fn a_put_or_advance_on_an_unattested_connection_is_refused_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let put = served_put(s: s, peer: "", login: fixture_writer as String, o: a)
@@ -398,7 +398,7 @@ test fn a_put_or_advance_on_an_unattested_connection_is_refused_by_real_executio
   put_writer_refused(p: put) && left_nothing && advance_writer_refused(a: advance) && head_absent(s: s)
 }
 
-test fn a_rostered_local_account_puts_and_advances_through_the_door_by_real_execution() -> Bool {
+test fn a_rostered_local_account_puts_and_advances_through_the_door_by_real_execution() -> Bool  {
   let s = fresh_store()
   let a = event(body: "a", parent: none)
   let put = match served_put(s: s, peer: fixture_local_writer as String, login: "", o: a) { FabricObjectStored { object: _ } => true  FabricPutRefused { fault: _ } => false }

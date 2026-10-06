@@ -4,7 +4,7 @@ import std.types { Bool }
 import gunbc.fabric_storage_file_store { fabric_storage_file_root }
 import gunbc.fabric_storage_state_serve { fabric_storage_state_serve_over }
 
-test fn witness_state_raw_routes_require_service_authentication() -> Bool {
+test fn witness_state_raw_routes_require_service_authentication() -> Bool  {
   let root = fabric_storage_file_root(root: "/fixture-never-read")
   all(["head", "closure", "put", "advance"], operation =>
     fabric_storage_state_serve_over(root: root, method: "POST", path: concat("/fabric-storage/state/", operation), body: "untrusted").status == 403)

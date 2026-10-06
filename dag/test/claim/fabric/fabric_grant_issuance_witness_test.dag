@@ -313,7 +313,7 @@ fn committed_grants(o: GrantIssue<NonEmptyStr, Count, One>) -> List<ExecutionGra
 }
 
 // The positive control. One admitted offer yields one committed grant.
-test fn one_admitted_offer_yields_one_committed_grant() -> Bool {
+test fn one_admitted_offer_yields_one_committed_grant() -> Bool  {
   outcome_label_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -327,7 +327,7 @@ test fn one_admitted_offer_yields_one_committed_grant() -> Bool {
 // The grant a committed issuance produces names the exact subject Work and the exact attempt, and
 // its principal is the WORK's. Asserting "committed" alone would pass against an issuer that
 // grants the wrong thing.
-test fn the_committed_grant_names_the_exact_work_and_attempt() -> Bool {
+test fn the_committed_grant_names_the_exact_work_and_attempt() -> Bool  {
   let issued = committed_grants_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -345,7 +345,7 @@ test fn the_committed_grant_names_the_exact_work_and_attempt() -> Bool {
 }
 
 // DUPLICATE-GRANT. A second issuance for one attempt is refused by that name.
-test fn a_second_grant_for_one_attempt_is_refused() -> Bool {
+test fn a_second_grant_for_one_attempt_is_refused() -> Bool  {
   let first = committed_grants_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -365,7 +365,7 @@ test fn a_second_grant_for_one_attempt_is_refused() -> Bool {
 }
 
 // WORK-MISMATCH. An attempt that names another Work cannot be authorized under this one.
-test fn an_attempt_naming_another_work_is_refused() -> Bool {
+test fn an_attempt_naming_another_work_is_refused() -> Bool  {
   outcome_label_of(os: issue(
     work: subject_work,
     attempt: misdirected_attempt,
@@ -379,7 +379,7 @@ test fn an_attempt_naming_another_work_is_refused() -> Bool {
 // The cross-tenant reading of the same wall. The foreign attempt's work key is byte-identical to
 // the subject's -- same contract, same requirements -- and only the principal half differs, so a
 // comparison on the key alone admits it.
-test fn an_attempt_under_another_principal_is_refused() -> Bool {
+test fn an_attempt_under_another_principal_is_refused() -> Bool  {
   foreign_work.id.key == subject_work.id.key
     && outcome_label_of(os: issue(
       work: subject_work,
@@ -393,7 +393,7 @@ test fn an_attempt_under_another_principal_is_refused() -> Bool {
 
 // Selection precedes reservation: an offer that cannot run the work is refused for that reason,
 // not for a downstream one, and nothing is reserved on the way.
-test fn an_offer_outside_the_trust_domain_is_refused_before_any_reservation() -> Bool {
+test fn an_offer_outside_the_trust_domain_is_refused_before_any_reservation() -> Bool  {
   outcome_label_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -406,7 +406,7 @@ test fn an_offer_outside_the_trust_domain_is_refused_before_any_reservation() ->
 
 // Supply conservation. The offer's bound is 1, so a second attempt against it is refused even
 // though that attempt has no grant of its own.
-test fn a_second_attempt_against_a_single_bound_offer_is_refused() -> Bool {
+test fn a_second_attempt_against_a_single_bound_offer_is_refused() -> Bool  {
   let first = committed_grants_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -427,7 +427,7 @@ test fn a_second_attempt_against_a_single_bound_offer_is_refused() -> Bool {
 
 // THE ATOMIC JOIN, MONEY SIDE. The budget ledger refuses; no grant exists and therefore no
 // resource reservation was committed under one.
-test fn a_refused_budget_yields_no_grant() -> Bool {
+test fn a_refused_budget_yields_no_grant() -> Bool  {
   let os = issue(
     work: subject_work,
     attempt: first_attempt,
@@ -443,7 +443,7 @@ test fn a_refused_budget_yields_no_grant() -> Bool {
 // atomic: the budget ledger ADMITS and the resource ledger refuses. The advanced account is a
 // component of the committed arm alone, so it reaches no caller -- there is no partial state to
 // compensate for, because the refusal carries no advanced ledger at all.
-test fn a_budget_that_admitted_beside_a_refused_resource_yields_no_grant() -> Bool {
+test fn a_budget_that_admitted_beside_a_refused_resource_yields_no_grant() -> Bool  {
   let os = issue(
     work: subject_work,
     attempt: first_attempt,
@@ -457,7 +457,7 @@ test fn a_budget_that_admitted_beside_a_refused_resource_yields_no_grant() -> Bo
 
 // The key is DERIVED, so identical coordinates yield one key and a changed attempt yields another.
 // Without the second half the first passes against a derivation that ignores every input.
-test fn identical_coordinates_derive_one_grant_key() -> Bool {
+test fn identical_coordinates_derive_one_grant_key() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -471,7 +471,7 @@ test fn identical_coordinates_derive_one_grant_key() -> Bool {
   )
 }
 
-test fn a_different_attempt_derives_a_different_grant_key() -> Bool {
+test fn a_different_attempt_derives_a_different_grant_key() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -485,7 +485,7 @@ test fn a_different_attempt_derives_a_different_grant_key() -> Bool {
   )
 }
 
-test fn a_different_offer_derives_a_different_grant_key() -> Bool {
+test fn a_different_offer_derives_a_different_grant_key() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -503,7 +503,7 @@ test fn a_different_offer_derives_a_different_grant_key() -> Bool {
 // mutation and must not be cited as covering it: two epochs having different identities says
 // nothing about whether an expired epoch can authorize, and issuance has no arm that could refuse
 // one. That subject arrives with FCI-1's lifetime-held reservation.
-test fn a_different_lease_derives_a_different_grant_key() -> Bool {
+test fn a_different_lease_derives_a_different_grant_key() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -523,7 +523,7 @@ test fn a_different_lease_derives_a_different_grant_key() -> Bool {
 
 // The second principal relation, isolated. attempt.work equals the subject Work, so the
 // work-mismatch wall is not what refuses here; the attempt's own principal is.
-test fn an_attempt_whose_own_principal_is_foreign_is_refused() -> Bool {
+test fn an_attempt_whose_own_principal_is_foreign_is_refused() -> Bool  {
   outcome_label_of(os: issue(
     work: subject_work,
     attempt: sponsored_attempt,
@@ -536,7 +536,7 @@ test fn an_attempt_whose_own_principal_is_foreign_is_refused() -> Bool {
 
 // The refusal above is not the work-mismatch wall wearing another name: this fixture agrees with
 // the subject Work on the very comparison that fires for foreign_attempt.
-test fn the_two_principal_relations_refuse_by_different_names() -> Bool {
+test fn the_two_principal_relations_refuse_by_different_names() -> Bool  {
   outcome_label_of(os: issue(
     work: subject_work,
     attempt: sponsored_attempt,
@@ -558,7 +558,7 @@ test fn the_two_principal_relations_refuse_by_different_names() -> Bool {
 // it cannot also account for the supplier's; without the supplier principal in the material, two
 // suppliers posting one offer key derive one grant key and the duplicate check reads two
 // authorizations as one.
-test fn one_offer_key_under_two_suppliers_derives_two_grant_keys() -> Bool {
+test fn one_offer_key_under_two_suppliers_derives_two_grant_keys() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -574,7 +574,7 @@ test fn one_offer_key_under_two_suppliers_derives_two_grant_keys() -> Bool {
 
 // SAME LEASE KEY, DIFFERENT SLOT. The fingerprint names the exact reserved claim rather than the
 // host, which is what keeps two admitted slices of one machine distinguishable at the fence.
-test fn one_lease_key_over_two_slots_derives_two_grant_keys() -> Bool {
+test fn one_lease_key_over_two_slots_derives_two_grant_keys() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -598,7 +598,7 @@ test fn one_lease_key_over_two_slots_derives_two_grant_keys() -> Bool {
 
 // SAME LEASE KEY AND SLOT, DIFFERENT GENERATION -- the fence alone. The lease witness below varies
 // the key and the generation together, so it cannot establish that the generation participates.
-test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool {
+test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool  {
   derive_grant_key(
     work: subject_work.id,
     attempt: first_attempt.id,
@@ -625,7 +625,7 @@ test fn one_lease_at_two_generations_derives_two_grant_keys() -> Bool {
 // RECORDS were two writable representations of one fact, free to disagree with nothing able to
 // notice. The argument is gone and the field is derived from the committed request; this asserts
 // the equality that the removal makes structural, so a future re-introduction reds here.
-test fn the_recorded_liability_is_the_booked_liability() -> Bool {
+test fn the_recorded_liability_is_the_booked_liability() -> Bool  {
   let issued = committed_grants_of(os: issue(
     work: subject_work,
     attempt: first_attempt,
@@ -687,7 +687,7 @@ fn issue_unadmitted(
 // This runs the same helper the committed rows run, with a funded account so no economic cause can
 // be doing the work, and asserts that NO grant comes back - and the positive control beside it is
 // the identical call on an admitted use, which does commit.
-test fn w_an_unadmitted_use_yields_no_grant() -> Bool {
+test fn w_an_unadmitted_use_yields_no_grant() -> Bool  {
   count(issue_unadmitted(offer: admitted_offer, account: funded_account)) == 0
     && outcome_label_of(os: issue_unadmitted(offer: admitted_offer, account: funded_account))
       == "no-permit-issued"
@@ -706,7 +706,7 @@ test fn w_an_unadmitted_use_yields_no_grant() -> Bool {
 // RED - A PERMIT DOES NOT OVERRIDE AN EXHAUSTED BUDGET. The selection is admitted in both halves and
 // the only thing that moves is the account, so this says what a permit IS: authority to use a
 // route, never authority to spend money that is not there.
-test fn w_a_permit_does_not_override_an_exhausted_budget() -> Bool {
+test fn w_a_permit_does_not_override_an_exhausted_budget() -> Bool  {
   fold(
     selected_for(offer: admitted_offer),
     init: false,
@@ -759,7 +759,7 @@ fn granted_offer_keys(os: List<GrantIssue<NonEmptyStr, Count, One>>) -> List<Non
 // the sole_constructor wall whose own fixture corpus is dag/test/fixture/sole_constructor_sealed.
 // What executes here is the inhabitance claim that the real producer emits the value issuance
 // consumes and that the grant is its winner.
-test fn w_the_grant_is_for_the_offer_the_ranking_chose() -> Bool {
+test fn w_the_grant_is_for_the_offer_the_ranking_chose() -> Bool  {
   let dear_first = concat(bound_for_subject(offer: admitted_offer), bound_for_subject(offer: cheaper_offer))
   let cheap_first = concat(bound_for_subject(offer: cheaper_offer), bound_for_subject(offer: admitted_offer))
   let issued_dear_first = map(
@@ -778,7 +778,7 @@ test fn w_the_grant_is_for_the_offer_the_ranking_chose() -> Bool {
 // POSITIVE CONTROL FOR THE ROW ABOVE: the dearer offer is not unissuable in itself - ranked alone
 // it wins and commits. So the row above is the ranking at work, not the dearer offer failing some
 // other screen.
-test fn w_the_dearer_offer_ranked_alone_commits() -> Bool {
+test fn w_the_dearer_offer_ranked_alone_commits() -> Bool  {
   granted_offer_keys(os: map(
     selected_from_population(requirements: fixture_requirements, candidates: bound_for_subject(offer: admitted_offer)),
     sel => issue_selected(selected: sel, account: funded_account),
@@ -796,7 +796,7 @@ fn selected_with_admission(
   selected_under(offer: offer, admission: admission, demand: subject_demand(), work: subject_work.id)
 }
 
-test fn w_a_permit_for_another_offer_or_region_selects_nothing() -> Bool {
+test fn w_a_permit_for_another_offer_or_region_selects_nothing() -> Bool  {
   count(selected_with_admission(
     offer: admitted_offer,
     admission: fixture_admitted_use(
@@ -813,7 +813,7 @@ test fn w_a_permit_for_another_offer_or_region_selects_nothing() -> Bool {
 
 // POSITIVE CONTROL FOR THE ROW ABOVE: the same helper, handed the offer's own id and route,
 // selects the offer and it commits.
-test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool {
+test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool  {
   fold(
     selected_with_admission(
       offer: admitted_offer,
@@ -833,7 +833,7 @@ test fn w_the_same_helper_on_the_offers_own_route_commits() -> Bool {
 // Admission is granted FOR a customer profile and a data-handling profile, and both are properties
 // of the work, so accepting this would run work B under the scope somebody admitted for work A.
 // Selection does not know the issuing Work, so this check stays at issuance.
-test fn w_a_permit_for_another_work_refuses_at_issuance() -> Bool {
+test fn w_a_permit_for_another_work_refuses_at_issuance() -> Bool  {
   fold(
     selected_for_use(
       offer: admitted_offer,
@@ -850,7 +850,7 @@ test fn w_a_permit_for_another_work_refuses_at_issuance() -> Bool {
 // RED - A SELECTION MADE FOR ANOTHER DEMAND REFUSES, for the same reason one level across: the
 // demand is who is being served, and a permit that named a different one is authority for
 // somebody else.
-test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
+test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool  {
   fold(
     selected_for_use(
       offer: admitted_offer,
@@ -869,7 +869,7 @@ test fn w_a_permit_for_another_demand_refuses_at_issuance() -> Bool {
 // can re-derive the posture revision, the route-facts revision and the route. The expected
 // revisions are read off fx_posture / fx_facts, the same constructors that minted the permit,
 // so a second seed string cannot drift from what admission actually recorded.
-test fn w_a_committed_grant_names_its_admitting_posture_and_route() -> Bool {
+test fn w_a_committed_grant_names_its_admitting_posture_and_route() -> Bool  {
   let issued = committed_grants_of(os: issue(
     work: subject_work,
     attempt: first_attempt,

@@ -400,7 +400,7 @@ fn shown(e: DemandCommandEffect<NonEmptyStr>?) -> NonEmptyStr {
 // continues. This is the case the prose says a provider binding cannot decide
 // on its own, because only the core holds the second demand.
 
-test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
+test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool  {
   match decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "github", key: "demand-gh")) {
     Absent => false
     Present { value: e } =>
@@ -415,7 +415,7 @@ test fn withdrawing_one_of_two_demands_leaves_the_work_required() -> Bool {
 // direction the test above is satisfied by an implementation that never
 // releases anything at all.
 
-test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() -> Bool {
+test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() -> Bool  {
   match decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "github", key: "demand-gh")) {
     Absent => false
     Present { value: after_first } =>
@@ -436,7 +436,7 @@ test fn withdrawing_the_last_demand_releases_the_work_and_stops_the_attempt() ->
 // Losing the last demand before any grant issued is a real state with its own
 // arm, not a release directive naming an attempt that does not exist.
 
-test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool {
+test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool  {
   let e = decide(population: single_github_registry(), grants: [], command: withdraw(principal: "github", key: "demand-gh"))
   effect_label(e: e) == "released-nothing-running"
     && released_reservations(e: e).length() == 0
@@ -454,7 +454,7 @@ test fn releasing_a_work_with_nothing_running_names_no_attempt() -> Bool {
 // permanently green check standing where the carrier already made the state
 // unwritable.
 
-test fn a_withdrawal_from_the_wrong_principal_refuses_by_principal_not_as_unknown() -> Bool {
+test fn a_withdrawal_from_the_wrong_principal_refuses_by_principal_not_as_unknown() -> Bool  {
   shown(e: decide_live(population: both_demands(), grants: one_running(), command: withdraw(principal: "gitlab", key: "demand-gh")))
     == "principal-mismatch"
 }
@@ -464,7 +464,7 @@ test fn a_withdrawal_from_the_wrong_principal_refuses_by_principal_not_as_unknow
 // someone else. One cause covering both would report a cross-tenant attempt as
 // a stale binding.
 
-test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> Bool {
+test fn an_unregistered_key_refuses_as_unknown_not_as_a_principal_mismatch() -> Bool  {
   effect_label(e: decide(population: both_demands(), grants: [], command: withdraw(principal: "github", key: "demand-none")))
     == "unknown-demand"
 }
@@ -486,7 +486,7 @@ fn decide_with_receipt(command: DemandCommand<NonEmptyStr>) -> DemandCommandEffe
   }
 }
 
-test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool {
+test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() -> Bool  {
   let may = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: true, new_attempt_required: false, step_reuse_permitted: true })
   let may_not = demand_of(principal: "github", key: "d-1", work_key: "w-1", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: false, step_reuse_permitted: true })
   effect_label(e: decide_with_receipt(command: SubmitDemand { demand: may }))
@@ -499,7 +499,7 @@ test fn the_terminal_receipt_answer_alone_decides_whether_a_receipt_satisfies() 
 // this field alone decides between attaching to it and demanding a fresh
 // attempt - the answer a system offering only "rerun" cannot give separately.
 
-test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bool {
+test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bool  {
   let attaches = github_demand()
   let reruns = Demand {
     id: demand_id(principal: "github", key: "demand-gh"),
@@ -520,7 +520,7 @@ test fn the_new_attempt_answer_alone_decides_attach_versus_fresh_attempt() -> Bo
 // separation the three-field decomposition is for: wanting a re-execution must
 // not force a clean recompute.
 
-test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> Bool {
+test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> Bool  {
   let reusing = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: true })
   let clean = demand_of(principal: "github", key: "d-2", work_key: "w-2", satisfaction: SatisfactionRequirement { terminal_receipt_may_satisfy: false, new_attempt_required: true, step_reuse_permitted: false })
   effect_label(e: decide(population: empty_demand_population(), grants: [], command: SubmitDemand { demand: reusing }))
@@ -535,7 +535,7 @@ test fn the_step_reuse_answer_alone_decides_what_the_new_attempt_may_reuse() -> 
 // matching, which must be admitted - otherwise the refusal above is satisfied
 // by an implementation that refuses every supersede.
 
-test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admitted() -> Bool {
+test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admitted() -> Bool  {
   let elsewhere = demand_of(principal: "github", key: "demand-gh2", work_key: "work-2", satisfaction: attaching_satisfaction())
   let same_work = Demand {
     id: demand_id(principal: "github", key: "demand-gh2"),
@@ -569,7 +569,7 @@ test fn a_supersede_onto_a_different_work_refuses_while_the_matching_one_is_admi
 // refactor of the population transition from making a supersede look like a
 // withdrawal to the execution half.
 
-test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
+test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool  {
   let replacement = Demand {
     id: demand_id(principal: "github", key: "demand-gh2"),
     work: work_of(principal: "fabric", key: "work-1"),
@@ -596,7 +596,7 @@ test fn a_supersede_of_the_only_demand_never_releases_the_work() -> Bool {
 // replacement under its own principal, which is the two-provider failure
 // arriving through the supersede door instead of the withdrawal one.
 
-test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
+test fn a_supersede_may_not_replace_another_principals_demand() -> Bool  {
   let intruder = demand_of(principal: "gitlab", key: "demand-gh2", work_key: "work-1", satisfaction: attaching_satisfaction())
   shown(
     e: decide_live(
@@ -611,7 +611,7 @@ test fn a_supersede_may_not_replace_another_principals_demand() -> Bool {
 // overwrite would let a binding change a live demand's buy terms and
 // satisfaction requirement without presenting the evidence a supersede needs.
 
-test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> Bool {
+test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> Bool  {
   effect_label(e: decide(population: both_demands(), grants: [], command: SubmitDemand { demand: github_demand() }))
     == "duplicate-demand"
 }
@@ -632,7 +632,7 @@ test fn resubmitting_a_registered_identity_refuses_rather_than_overwriting() -> 
 // admitted. Without it, this test is satisfied by a gate that refuses every
 // withdrawal.
 
-test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
+test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool  {
   let impersonating = admit_command(
     attestation: attesting(principal: "github"),
     command: withdraw(principal: "gitlab", key: "demand-gl"),
@@ -655,7 +655,7 @@ test fn a_binding_may_not_withdraw_a_demand_it_did_not_attest_to() -> Bool {
 // The gate covers submission too, so a binding cannot register a demand under a
 // principal it did not authenticate and then withdraw it truthfully afterwards.
 
-test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to() -> Bool {
+test fn a_binding_may_not_submit_a_demand_under_a_principal_it_did_not_attest_to() -> Bool  {
   admission_label(
     a: admit_command(
       attestation: attesting(principal: "github"),
@@ -720,7 +720,7 @@ fn second_running_grant() -> ExecutionGrant<NonEmptyStr>? {
   }
 }
 
-test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() -> Bool {
+test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() -> Bool  {
   match decide_live(
     population: both_demands(),
     grants: two_running(),
@@ -745,7 +745,7 @@ test fn releasing_a_work_names_every_grants_reservations_not_just_the_first() ->
 // every running attempt continues, and an arm naming one of them would tell the
 // caller to keep one alive while saying nothing about the others.
 
-test fn a_surviving_work_names_every_running_attempt() -> Bool {
+test fn a_surviving_work_names_every_running_attempt() -> Bool  {
   match decide_live(
     population: both_demands(),
     grants: two_running(),
@@ -784,7 +784,7 @@ fn continuing_attempts(
 // refusal is measured as a compile-time RED probe rather than asserted here,
 // because a runtime test of an unconstructable value would be permanently green.
 
-test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
+test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool  {
   population_demands(p: both_demands()).length() == 2
     && shown(
       e: decide_live(
@@ -801,7 +801,7 @@ test fn the_registry_can_only_be_built_by_the_cores_own_transitions() -> Bool {
 // finds - the release - could not answer it. Asserting the receipt alone would
 // have passed against that defect, which is why this reads the authority.
 
-test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool {
+test fn a_release_names_the_authority_that_vouched_for_the_command() -> Bool  {
   match decide_live(
     population: both_demands(),
     grants: one_running(),

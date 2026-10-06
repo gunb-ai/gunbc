@@ -13,26 +13,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the empty suffix, a suffix longer than the subject, equality, multi-byte text, and repetition.
 // The same expectations were run against the deleted re-implementation before removal.
 
-test fn ends_with_empty_suffix_holds() -> Bool {
+test fn ends_with_empty_suffix_holds() -> Bool  {
   ends_with(s: "abc", suffix: "") && ends_with(s: "", suffix: "")
 }
 
-test fn ends_with_suffix_longer_than_subject_refuses() -> Bool {
+test fn ends_with_suffix_longer_than_subject_refuses() -> Bool  {
   !ends_with(s: "ab", suffix: "abc") && !ends_with(s: "", suffix: "a")
 }
 
-test fn ends_with_equal_strings_holds() -> Bool {
+test fn ends_with_equal_strings_holds() -> Bool  {
   ends_with(s: "abc", suffix: "abc")
 }
 
-test fn ends_with_multibyte_text_is_judged_by_character() -> Bool {
+test fn ends_with_multibyte_text_is_judged_by_character() -> Bool  {
   ends_with(s: "naïve", suffix: "ïve")
     && ends_with(s: "日本語", suffix: "語")
     && !ends_with(s: "é", suffix: "e")
     && !ends_with(s: "日本語", suffix: "本")
 }
 
-test fn ends_with_repeated_suffix_matches_only_the_tail() -> Bool {
+test fn ends_with_repeated_suffix_matches_only_the_tail() -> Bool  {
   ends_with(s: "aaa", suffix: "aa")
     && ends_with(s: "abab", suffix: "ab")
     && !ends_with(s: "abab", suffix: "ba")

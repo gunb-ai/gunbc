@@ -75,16 +75,16 @@ fn completed_with_struct(o: MultiModuleCompileFixtureOutcome) -> Bool {
   }
 }
 
-test fn a_type_spelled_into_the_dotted_service_space_refuses() -> Bool {
+test fn a_type_spelled_into_the_dotted_service_space_refuses() -> Bool  {
   refused_with_class(collision_run(), "EmittedSymbolCollision")
 }
 
-test fn the_live_git_worktree_shape_compiles_with_two_symbols() -> Bool {
+test fn the_live_git_worktree_shape_compiles_with_two_symbols() -> Bool  {
   completed_with_struct(live_shape_run())
     && !refused_with_class(live_shape_run(), "EmittedSymbolCollision")
 }
 
-test fn the_reserved_space_collision_is_refused_as_a_fixture() -> Bool {
+test fn the_reserved_space_collision_is_refused_as_a_fixture() -> Bool  {
   compile_dag_rust_emit_check(
     collide_source,
     "src/esc_probe.rs",
@@ -93,7 +93,7 @@ test fn the_reserved_space_collision_is_refused_as_a_fixture() -> Bool {
   ) == false
 }
 
-test fn the_live_git_worktree_shape_emits_both_structs() -> Bool {
+test fn the_live_git_worktree_shape_emits_both_structs() -> Bool  {
   compile_dag_rust_emit_check(
     live_shape_source,
     "src/esc_probe.rs",

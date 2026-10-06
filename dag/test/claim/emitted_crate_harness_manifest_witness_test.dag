@@ -66,7 +66,7 @@ fn derived_over_supplied(target: HarnessCrateTarget, linkage: HarnessSeedLinkage
 // The discriminating control for the class: a dependency present only in the emitted manifest is
 // present in every harness manifest. A harness that wrote its own roster over the emitted one
 // fails this for whichever dependency its roster omits.
-test fn a_dependency_only_the_emission_declared_reaches_every_harness_manifest() -> Bool {
+test fn a_dependency_only_the_emission_declared_reaches_every_harness_manifest() -> Bool  {
   string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }), pattern: supplied_dependency_line)
     && string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedAbsent), pattern: supplied_dependency_line)
     && string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedLinked { root: "/r" }), pattern: supplied_dependency_line)
@@ -76,7 +76,7 @@ test fn a_dependency_only_the_emission_declared_reaches_every_harness_manifest()
 // What the harness adds over an EMPTY emitted manifest is the whole of what it authors. It may
 // carry target tables and the seed path; a registry requirement in it is the second dependency
 // authority returning.
-test fn the_harness_overlay_declares_no_registry_dependency() -> Bool {
+test fn the_harness_overlay_declares_no_registry_dependency() -> Bool  {
   let seed_linked = harness_manifest_over_emitted(emitted: "", target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
   let seed_absent = harness_manifest_over_emitted(emitted: "", target: ProbeLibTarget, linkage: SeedAbsent)
   !string_contains(s: seed_linked, pattern: "version")
@@ -85,7 +85,7 @@ test fn the_harness_overlay_declares_no_registry_dependency() -> Bool {
     && !string_contains(s: seed_absent, pattern: "[dependencies")
 }
 
-test fn the_seed_dependency_table_exists_exactly_when_the_build_is_seed_linked() -> Bool {
+test fn the_seed_dependency_table_exists_exactly_when_the_build_is_seed_linked() -> Bool  {
   let seed_table = "\n[dependencies.v1-compiler]\npath = \"/r/src/v1/stage0\"\n"
   string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }), pattern: seed_table)
     && string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedLinked { root: "/r" }), pattern: seed_table)
@@ -93,7 +93,7 @@ test fn the_seed_dependency_table_exists_exactly_when_the_build_is_seed_linked()
     && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "v1-compiler")
 }
 
-test fn only_the_witness_target_declares_the_witness_binary() -> Bool {
+test fn only_the_witness_target_declares_the_witness_binary() -> Bool  {
   let bin_table = "\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n"
   string_contains(s: derived_over_supplied(target: WitnessBinTarget, linkage: SeedAbsent), pattern: bin_table)
     && !string_contains(s: derived_over_supplied(target: ProbeLibTarget, linkage: SeedAbsent), pattern: "[[bin]]")
@@ -129,7 +129,7 @@ fn planned_content(o: HarnessEmittedManifestObservation) -> String {
 // The reading is supplied: a read that returned nothing usable refuses, and no refusal yields a
 // manifest made of the overlay alone. The effectful wrapper that performs the real observation is
 // exercised by the transports that build through it.
-test fn an_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool {
+test fn an_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone() -> Bool  {
   plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: "")))
     && !plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
 }
@@ -142,7 +142,7 @@ test fn an_empty_emitted_manifest_refuses_instead_of_planning_the_overlay_alone(
 // and the conflated arm is exactly what this assertion refuses to accept. Both worlds here come
 // through the owning module's producers -- a refused listing mints an indeterminate observation, a
 // listed subject that could not be read mints another one, and neither is an absence.
-test fn an_unobservable_manifest_refuses_as_unobservable_never_as_an_established_absence() -> Bool {
+test fn an_unobservable_manifest_refuses_as_unobservable_never_as_an_established_absence() -> Bool  {
   plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: false, entries: "", read_succeeded: false, content: "")))
     && plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: false, content: "")))
     && !plan_is_unobservable_refusal(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
@@ -152,7 +152,7 @@ test fn an_unobservable_manifest_refuses_as_unobservable_never_as_an_established
 // The absence world stays its own world, and it is only reachable the way the owning module mints
 // it: a listing that succeeded and did not name the subject, with a read that was refused. It
 // refuses as absence, never as an observation failure, and it never plans.
-test fn an_established_absence_refuses_as_absence_and_never_plans() -> Bool {
+test fn an_established_absence_refuses_as_absence_and_never_plans() -> Bool  {
   match plan_harness_manifest(emitted: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "some_other_file.rs", read_succeeded: false, content: "")), target: WitnessBinTarget, linkage: SeedLinked { root: "/r" }) {
     PlanEmittedAbsentConfirmed(e) =>
       plan_refuses(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "some_other_file.rs", read_succeeded: false, content: "")))
@@ -165,7 +165,7 @@ test fn an_established_absence_refuses_as_absence_and_never_plans() -> Bool {
 }
 
 // The planned world is unchanged: bytes the emitter wrote, plus exactly the overlay.
-test fn a_read_emitted_manifest_plans_the_emitted_text_plus_the_overlay() -> Bool {
+test fn a_read_emitted_manifest_plans_the_emitted_text_plus_the_overlay() -> Bool  {
   let planned = planned_content(o: harness_emitted_manifest_observation_of(o: supplied_observation(listing_success: true, entries: "Cargo.toml", read_succeeded: true, content: supplied_emitted_manifest)))
   planned == derived_over_supplied(target: WitnessBinTarget, linkage: SeedLinked { root: "/r" })
     && string_contains(s: planned, pattern: supplied_dependency_line)

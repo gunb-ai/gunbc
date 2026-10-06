@@ -161,7 +161,7 @@ fn object_reads(r: OriginReading) -> List<OriginObservation> {
   ]
 }
 
-test fn fixture_work_resolves_two_obligations() -> Bool {
+test fn fixture_work_resolves_two_obligations() -> Bool  {
   match resolve_output_obligations(
     contract: the_work().contract,
     requirements: the_work().requirements,
@@ -175,7 +175,7 @@ test fn fixture_work_resolves_two_obligations() -> Bool {
 }
 
 // THE POSITIVE CONTROL of the named join: a complete attempt publishes success.
-test fn a_complete_work_admits_job_success() -> Bool {
+test fn a_complete_work_admits_job_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -201,7 +201,7 @@ test fn a_complete_work_admits_job_success() -> Bool {
 }
 
 // Discriminating RED: a failed computation cannot be inverted by a confirmed store.
-test fn a_failed_computation_refuses_job_success() -> Bool {
+test fn a_failed_computation_refuses_job_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -227,7 +227,7 @@ test fn a_failed_computation_refuses_job_success() -> Bool {
 }
 
 // ReadbackUnknown must not collapse into success. A cache hit is not origin confirmation.
-test fn a_cache_manifest_read_refuses_job_success() -> Bool {
+test fn a_cache_manifest_read_refuses_job_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -253,7 +253,7 @@ test fn a_cache_manifest_read_refuses_job_success() -> Bool {
 }
 
 // An unanswered write with nothing found is pending, not success and not a decided absence.
-test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
+test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -278,7 +278,7 @@ test fn a_lost_ack_without_origin_read_refuses_job_success() -> Bool {
   }
 }
 
-test fn an_unavailable_origin_read_refuses_job_success() -> Bool {
+test fn an_unavailable_origin_read_refuses_job_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>

@@ -67,7 +67,7 @@ fn cc_contract() -> WorkContract {
 // This has already happened twice in that function. Its own annotation records
 // isolation being omitted and repaired "ONE FIELD LATER". This is the third
 // field, and the row rather than the diligence is what makes it the last.
-test fn two_demands_differing_only_in_capacity_class_do_not_share_an_identity() -> Bool {
+test fn two_demands_differing_only_in_capacity_class_do_not_share_an_identity() -> Bool  {
   let control = work_identity_material(
     contract: cc_contract(),
     requirements: cc_requirements(class: ControlPlaneCapacity),
@@ -82,7 +82,7 @@ test fn two_demands_differing_only_in_capacity_class_do_not_share_an_identity() 
 // The positive control for the row above. Without it the assertion is satisfied
 // by a material function that returns something different every call, which
 // would break identity entirely rather than fix it.
-test fn two_identical_demands_do_share_an_identity() -> Bool {
+test fn two_identical_demands_do_share_an_identity() -> Bool  {
   let first = work_identity_material(
     contract: cc_contract(),
     requirements: cc_requirements(class: ControlPlaneCapacity),
@@ -130,7 +130,7 @@ fn cc_admitted(a: CapacityClassAdmission) -> Bool {
 // sanctioned for customer execution. This is the state that was representable
 // and unremarked before this cut -- not a failure that was contained, an
 // invalid state with nothing to contain it.
-test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool {
+test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool  {
   cc_refused_for_class(
     a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
@@ -142,7 +142,7 @@ test fn control_plane_work_is_refused_on_customer_sanctioned_capacity() -> Bool 
 
 // And the reverse direction, which is the one that actually loses money and
 // trust: customer work must not land on the cells running our control plane.
-test fn customer_work_is_refused_on_control_plane_capacity() -> Bool {
+test fn customer_work_is_refused_on_control_plane_capacity() -> Bool  {
   cc_refused_for_class(
     a: admit_executor_capacity(
       requirements: cc_requirements(class: CustomerExecutableCapacity),
@@ -154,7 +154,7 @@ test fn customer_work_is_refused_on_control_plane_capacity() -> Bool {
 
 // The positive control for both walls. Without it they are satisfied by an
 // admission that refuses everything, which is a fabric that can never run.
-test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool {
+test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool  {
   cc_admitted(
     a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
@@ -169,7 +169,7 @@ test fn control_plane_work_is_admitted_on_a_fleet_cell() -> Bool {
 // states with different remedies, and a default would let the roster grow a
 // sanction nobody authored. The remedy for this refusal is to classify it,
 // which is a thing a person does once and deliberately.
-test fn an_unclassified_executor_is_refused_rather_than_defaulted() -> Bool {
+test fn an_unclassified_executor_is_refused_rather_than_defaulted() -> Bool  {
   cc_unclassified(
     a: admit_executor_capacity(
       requirements: cc_requirements(class: ControlPlaneCapacity),
@@ -183,7 +183,7 @@ test fn an_unclassified_executor_is_refused_rather_than_defaulted() -> Bool {
 // no ordering in which one class covers another, and this row exists so that a
 // later reader does not add one: an offered class is never "at least" a needed
 // class the way threads are.
-test fn the_class_relation_is_equality_and_not_an_ordering() -> Bool {
+test fn the_class_relation_is_equality_and_not_an_ordering() -> Bool  {
   capacity_class_eq(left: ControlPlaneCapacity, right: ControlPlaneCapacity)
     && capacity_class_eq(left: CustomerExecutableCapacity, right: CustomerExecutableCapacity)
     && !capacity_class_eq(left: ControlPlaneCapacity, right: CustomerExecutableCapacity)
@@ -192,7 +192,7 @@ test fn the_class_relation_is_equality_and_not_an_ordering() -> Bool {
 
 // The two classes must render distinctly, or the material row above is satisfied
 // by a wire function that is itself collapsing them.
-test fn the_two_classes_render_distinctly() -> Bool {
+test fn the_two_classes_render_distinctly() -> Bool  {
   (capacity_class_wire(c: ControlPlaneCapacity) as String)
     != (capacity_class_wire(c: CustomerExecutableCapacity) as String)
 }

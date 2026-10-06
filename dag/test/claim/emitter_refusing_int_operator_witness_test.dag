@@ -53,18 +53,18 @@ fn w_float_operators_keep_infix() -> Bool {
   )
 }
 
-test fn int_binary_operators_route_through_refusing_helpers() -> Bool {
+test fn int_binary_operators_route_through_refusing_helpers() -> Bool  {
   w_int_binary_operators_route_through_refusing_helpers()
 }
 
-test fn int_negation_routes_through_refusing_helper() -> Bool {
+test fn int_negation_routes_through_refusing_helper() -> Bool  {
   w_int_negation_routes_through_refusing_helper()
 }
 
-test fn float_operators_keep_infix() -> Bool {
+test fn float_operators_keep_infix() -> Bool  {
   w_float_operators_keep_infix()
 }
 
-test fn nat_binary_operators_route_through_refusing_helpers() -> Bool {
+test fn nat_binary_operators_route_through_refusing_helpers() -> Bool  {
   w_nat_binary_operators_route_through_refusing_helpers()
 }

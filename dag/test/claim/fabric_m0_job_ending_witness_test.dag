@@ -156,7 +156,7 @@ fn object_reads(r: OriginReading) -> List<OriginObservation> {
 
 // POSITIVE CONTROL: a complete attempt's check conclusion is Success, and only Success
 // passes gunbc.merge_admission check_conclusion_is_success.
-test fn a_complete_work_concludes_check_success() -> Bool {
+test fn a_complete_work_concludes_check_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -185,7 +185,7 @@ test fn a_complete_work_concludes_check_success() -> Bool {
   }
 }
 
-test fn a_failed_computation_concludes_check_failure() -> Bool {
+test fn a_failed_computation_concludes_check_failure() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -216,7 +216,7 @@ test fn a_failed_computation_concludes_check_failure() -> Bool {
 
 // RED: a cache hit must not conclude Success. Pending maps to ActionRequired, never Neutral
 // (GitHub treats Neutral as success for required checks).
-test fn a_cache_manifest_read_concludes_action_required() -> Bool {
+test fn a_cache_manifest_read_concludes_action_required() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -247,7 +247,7 @@ test fn a_cache_manifest_read_concludes_action_required() -> Bool {
   }
 }
 
-test fn a_lost_ack_without_origin_read_concludes_action_required() -> Bool {
+test fn a_lost_ack_without_origin_read_concludes_action_required() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -276,7 +276,7 @@ test fn a_lost_ack_without_origin_read_concludes_action_required() -> Bool {
   }
 }
 
-test fn an_unavailable_origin_read_concludes_action_required() -> Bool {
+test fn an_unavailable_origin_read_concludes_action_required() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -305,7 +305,7 @@ test fn an_unavailable_origin_read_concludes_action_required() -> Bool {
   }
 }
 
-test fn an_absent_manifest_at_answered_store_concludes_failure() -> Bool {
+test fn an_absent_manifest_at_answered_store_concludes_failure() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -334,7 +334,7 @@ test fn an_absent_manifest_at_answered_store_concludes_failure() -> Bool {
   }
 }
 
-test fn pending_publication_never_maps_to_success() -> Bool {
+test fn pending_publication_never_maps_to_success() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>
@@ -360,7 +360,7 @@ test fn pending_publication_never_maps_to_success() -> Bool {
 // holds, so a resolution bound to a foreign work -- the only producer of PublishObligationsUnreadable
 // -- has no route through the ending. The mapping over it is exercised on the value directly: an
 // unenumerable roster is DECIDED, so it concludes Failure rather than waiting on reconciliation.
-test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> Bool {
+test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> Bool  {
   check_conclusion_of_publication(
     publication: PublishObligationsUnreadable {
       attempt: the_attempt(),
@@ -373,7 +373,7 @@ test fn an_unreadable_roster_concludes_failure_rather_than_action_required() -> 
 
 // THE PROCESS EXIT FOLLOWS THE ENDING. A concluded Success exits zero; a pending ending exits
 // NON-ZERO -- a process cannot stay in progress, and zero would be green over unread bytes.
-test fn a_successful_ending_exits_zero_and_a_pending_one_does_not() -> Bool {
+test fn a_successful_ending_exits_zero_and_a_pending_one_does_not() -> Bool  {
   match read_outcome() {
     OriginReadingUnavailable { staged_path: _, cause: _ } => false
     OriginReadingTaken { reading: r } =>

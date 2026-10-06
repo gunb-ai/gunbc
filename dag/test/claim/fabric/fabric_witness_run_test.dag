@@ -81,7 +81,7 @@ fn t_offer_with_quantum(
 // two would collapse to the same number and this test goes red -- which is the point:
 // the waste is the modeled advantage of owned compute, and a rate comparison that cannot
 // see it ranks suppliers by the wrong number.
-test fn billing_quantum_separates_continuous_capacity_from_an_hourly_supplier() -> Bool {
+test fn billing_quantum_separates_continuous_capacity_from_an_hourly_supplier() -> Bool  {
   let ninety = ExactGrantDuration { seconds: second(count: 90) }
   let rate = QuotedPerSecond(MoneyRate { amount: money_amount_micro(count: 1), currency: Usd })
   let continuous = offer_affordability_for(
@@ -170,14 +170,14 @@ fn floor_affordability(offer: SupplierOffer<NonEmptyStr>) -> DemandOfferAffordab
 // CONTROLS. Without these, every refusal below is satisfied by a fold that
 // refuses unconditionally -- the shape a wall takes when it is actually a brick.
 
-test fn fleet_offer_is_eligible_for_the_floor() -> Bool {
+test fn fleet_offer_is_eligible_for_the_floor() -> Bool  {
   fungible(e: floor_fungibility(offer: t_fleet_offer())) && affordable(a: floor_affordability(offer: t_fleet_offer()))
 }
 
 // The shape wall is an INEQUALITY. An offer larger than the requirement must
 // still be fungible; one that rejected a bigger machine would be a bug wearing
 // a wall's clothing.
-test fn larger_offer_is_still_eligible() -> Bool {
+test fn larger_offer_is_still_eligible() -> Bool  {
   fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 256),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -193,7 +193,7 @@ test fn larger_offer_is_still_eligible() -> Bool {
 
 // A host outside the declared trust domain must be refused even when it is
 // larger: capacity does not substitute for trust.
-test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
+test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool  {
   match floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 1024),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -208,7 +208,7 @@ test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
   }
 }
 
-test fn missing_capabilities_refuse() -> Bool {
+test fn missing_capabilities_refuse() -> Bool  {
   !fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
@@ -217,7 +217,7 @@ test fn missing_capabilities_refuse() -> Bool {
   )))
 }
 
-test fn insufficient_threads_refuse() -> Bool {
+test fn insufficient_threads_refuse() -> Bool  {
   !fungible(e: floor_fungibility(offer: t_offer(
     threads: hardware_thread_count(count: 2),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -232,7 +232,7 @@ test fn insufficient_threads_refuse() -> Bool {
 // prove the check is reachable and can refuse, and none of them carry shape,
 // trust domain or capabilities -- offer_affordability_for takes none of them.
 
-test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
+test fn quote_above_the_maximum_buy_order_refuses() -> Bool  {
   match floor_affordability(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -252,7 +252,7 @@ test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
 // not be reported through the fungibility coproduct at all, and does not need to
 // be distinguished from an over-budget refusal because the two are now different
 // TYPES, not two constructors of one type a caller could confuse.
-test fn foreign_currency_quote_refuses_distinctly() -> Bool {
+test fn foreign_currency_quote_refuses_distinctly() -> Bool  {
   match floor_affordability(offer: t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -286,7 +286,7 @@ fn t_free_offer() -> SupplierOffer<NonEmptyStr> {
   )
 }
 
-test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() -> Bool {
+test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() -> Bool  {
   affordable(a: floor_offer_affordability(
     offer: t_free_offer(),
     maximum_buy_order: money_amount_micro(count: 0),
@@ -296,7 +296,7 @@ test fn a_zero_quote_clears_a_zero_ceiling_because_the_comparison_is_strict() ->
 
 // The control that keeps the row above from being satisfied by a fold that
 // admits everything: one micro over the ceiling refuses.
-test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
+test fn one_micro_over_a_zero_ceiling_refuses() -> Bool  {
   !affordable(a: floor_offer_affordability(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
@@ -315,7 +315,7 @@ test fn one_micro_over_a_zero_ceiling_refuses() -> Bool {
 // declared root: `--required-ci --source-root <r>... --required-lane <lane>`. It is what keeps
 // the row from being satisfied by an argv that names the roots and also carries a word nobody
 // declared.
-test fn floor_argv_carries_every_declared_source_root() -> Bool {
+test fn floor_argv_carries_every_declared_source_root() -> Bool  {
   let argv = argv_words(command: witnesses_lane_run_command())
   all(witness_layer_roots, r => any(argv, a => a == r))
     && length(xs: argv) == 4 + 2 * length(xs: witness_layer_roots)
@@ -329,7 +329,7 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
 // discriminating clause is the last one: two argvs that agreed on everything BUT the lane word
 // would satisfy the first two and fail the third only if the lane words themselves differ,
 // which is what makes this a partition rather than a duplicate.
-test fn the_two_lanes_are_one_command_differing_only_in_the_lane_word() -> Bool {
+test fn the_two_lanes_are_one_command_differing_only_in_the_lane_word() -> Bool  {
   let build = argv_words(command: build_lane_run_command())
   let witnesses = argv_words(command: witnesses_lane_run_command())
   length(xs: build) == length(xs: witnesses)
@@ -354,7 +354,7 @@ test fn the_two_lanes_are_one_command_differing_only_in_the_lane_word() -> Bool 
 // argv, since shell_command_render single-quotes every word and '$ROOT/dag' does not expand.
 // So its presence would mean someone hand-built the path back into the script, which is the
 // only way the fork returns.
-test fn workflow_step_renders_the_fabric_command_and_does_not_respell_it() -> Bool {
+test fn workflow_step_renders_the_fabric_command_and_does_not_respell_it() -> Bool  {
   let script = witness_floor_run_script()
   string_contains(s: script, pattern: shell_command_render(command: witnesses_lane_run_command()))
     && !string_contains(s: script, pattern: "$ROOT/dag")
@@ -363,7 +363,7 @@ test fn workflow_step_renders_the_fabric_command_and_does_not_respell_it() -> Bo
 
 // The renderer must actually place every declared root in the emitted step, single-quoted.
 // Without this the row above is satisfied by a renderer that emits nothing at all.
-test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
+test fn every_declared_source_root_reaches_the_emitted_step() -> Bool  {
   let script = witness_floor_run_script()
   all(witness_layer_roots, r => string_contains(s: script, pattern: concat("'", concat(r, "'"))))
 }
@@ -377,12 +377,12 @@ test fn every_declared_source_root_reaches_the_emitted_step() -> Bool {
 // `--required-floor`, and the agreement witness of the day was green throughout. Deleting that
 // witness in favour of construction would have dropped the one clause that caught it, so the
 // clause is carried here rather than lost with its old carrier.
-test fn fabric_command_names_the_consolidated_mode() -> Bool {
+test fn fabric_command_names_the_consolidated_mode() -> Bool  {
   let argv = argv_words(command: witnesses_lane_run_command())
   any(argv, a => a == "--required-ci") && !any(argv, a => a == "--required-floor")
 }
 
-test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
+test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool  {
   floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
 }
 
@@ -395,7 +395,7 @@ test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
 // rather than one of two steps. The claim is not weakened by the change, so the
 // witness is re-pointed rather than retired -- what it defends is that the
 // contract matches the job shape, and the number is the thing that moved.
-test fn floor_contract_is_one_composed_step() -> Bool {
+test fn floor_contract_is_one_composed_step() -> Bool  {
   let steps = floor_work_contract(source: t_source()).steps
   length(xs: steps) == 1
     && all(steps, s => s.step_id == "required-ci")
@@ -409,7 +409,7 @@ test fn floor_contract_is_one_composed_step() -> Bool {
 // ever reads true while the floor's purity is unproven, an identical tree stops
 // re-running and today's Actions behaviour has been changed by a policy edit
 // nobody made deliberately.
-test fn floor_demand_requires_a_new_attempt() -> Bool {
+test fn floor_demand_requires_a_new_attempt() -> Bool  {
   let s = floor_satisfaction_requirement()
   s.new_attempt_required && !s.terminal_receipt_may_satisfy
 }
@@ -417,7 +417,7 @@ test fn floor_demand_requires_a_new_attempt() -> Bool {
 // Step reuse stays permitted: a materialization provider may accelerate a rerun.
 // That is not the same claim as "the step completed", and the two must not
 // collapse -- a build cache making the second attempt faster is not a receipt.
-test fn floor_demand_still_permits_step_reuse() -> Bool {
+test fn floor_demand_still_permits_step_reuse() -> Bool  {
   floor_satisfaction_requirement().step_reuse_permitted
 }
 
@@ -426,7 +426,7 @@ test fn floor_demand_still_permits_step_reuse() -> Bool {
 // whose maximum buy order is below an offer's quote must not be affordable to
 // it, and that must hold through the floor's own terms rather than only through
 // the hand-built ones above.
-test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
+test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool  {
   let terms = floor_buy_terms(
     account: "gunbc.budget.ci",
     reservation_price: money_amount_micro(count: 0),
@@ -459,7 +459,7 @@ test fn floor_buy_terms_ceiling_is_the_one_eligibility_reads() -> Bool {
 // the ordinary one it was handed. The RED is authorable: adding any rank-shaped
 // field back to AdmissionTerms fails to compile at this construction, which is
 // the wall a string comparison could never be.
-test fn floor_admission_states_only_ordinary_buy_terms() -> Bool {
+test fn floor_admission_states_only_ordinary_buy_terms() -> Bool  {
   let buy = floor_buy_terms(
     account: "gunbc.budget.ci",
     reservation_price: money_amount_micro(count: 4),
@@ -485,7 +485,7 @@ test fn floor_admission_states_only_ordinary_buy_terms() -> Bool {
 // by construction: a genuinely expensive hourly quote -- one whose amount times
 // the grant's own duration exceeds the ceiling -- still refuses, for the real
 // arithmetic reason rather than a blanket one.
-test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool {
+test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool  {
   !affordable(a: offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
@@ -506,7 +506,7 @@ test fn an_hourly_rate_priced_above_its_projected_total_still_refuses() -> Bool 
 // of 1 projects to 1: against a ceiling of 1000 the two now DIVERGE, one
 // refusing and one affordable, which is the erasure being gone rather than
 // merely relabelled.
-test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> Bool {
+test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> Bool  {
   let duration = ExactGrantDuration { seconds: second(count: 3600) }
   let per_second = offer_affordability_for(
     offer: t_offer(
@@ -549,7 +549,7 @@ test fn per_second_and_per_hour_quotes_diverge_once_a_duration_is_supplied() -> 
 // fold. KEEP THIS ENROLLED: per DESIGN section 4b, the evidence that a climb
 // happened survives even if the production machinery it discriminates is later
 // replaced.
-test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> Bool {
+test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> Bool  {
   let offer = t_offer(
     threads: hardware_thread_count(count: 128),
     caps: "gunbc.capabilities.linux-rust-toolchain",
@@ -568,7 +568,7 @@ test fn an_hourly_offer_that_is_capable_in_currency_and_cheap_is_eligible() -> B
 // still eligible, so the arm above refuses rates specifically and has not simply
 // made every priced offer ineligible -- which would pass both reds above while
 // destroying the fold.
-test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
+test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool  {
   affordable(a: floor_offer_affordability(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
@@ -585,7 +585,7 @@ test fn a_per_grant_total_under_the_ceiling_is_still_eligible() -> Bool {
 // so a demand whose ceiling sits below it cannot claim the hour. This is the witness that would
 // have been unwritable while the fleet quoted zero: at zero it clears every
 // ceiling, so no ceiling can refuse it and the arm has no discriminating input.
-test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool {
+test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool  {
   !affordable(a: floor_offer_affordability(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 39),
@@ -596,7 +596,7 @@ test fn an_owned_hour_with_an_asking_price_can_be_outbid() -> Bool {
 // The control for the row above: the same owned-fleet offer IS affordable to a
 // demand willing to pay its asking price. Without this, refusing at 39 is
 // equally explained by the fleet offer having become unaffordable outright.
-test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> Bool {
+test fn an_owned_hour_is_eligible_to_a_demand_that_meets_its_asking_price() -> Bool  {
   affordable(a: floor_offer_affordability(
     offer: t_fleet_offer(),
     maximum_buy_order: money_amount_micro(count: 40),
@@ -639,7 +639,7 @@ fn t_reported_obligation(a: DemandOfferAffordability, expected: NonEmptyStr) -> 
   }
 }
 
-test fn an_unobserved_duration_refusal_reports_the_durations_own_obligation() -> Bool {
+test fn an_unobserved_duration_refusal_reports_the_durations_own_obligation() -> Bool  {
   let first = "Time one full run of the reconcile stage before pricing an hourly quote against it."
   let second = "Nobody has ever timed the emitted-closure cargo phase. Measure it, or bound it."
   t_reported_obligation(a: t_unpriceable_obligation(why: first), expected: first)
@@ -649,7 +649,7 @@ test fn an_unobserved_duration_refusal_reports_the_durations_own_obligation() ->
 // The control: the same offer, the same ceiling, a MEASURED duration. Without it the witness
 // above is equally satisfied by a fold that refuses every hourly quote as unpriceable, which is
 // the blanket refusal this suite's dimensional pair already records once.
-test fn the_same_offer_prices_normally_once_the_duration_is_measured() -> Bool {
+test fn the_same_offer_prices_normally_once_the_duration_is_measured() -> Bool  {
   affordable(a: offer_affordability_for(
     offer: t_offer(
       threads: hardware_thread_count(count: 128),
