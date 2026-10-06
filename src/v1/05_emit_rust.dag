@@ -184,7 +184,7 @@ import std.types { is_container_type, is_kernel_type, container_template_algebra
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import v1.compiler.infer_env {
   lookup_unit_variant_phantom_type, UnitVariantPhantomPresent, UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable,
-  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, binding_declares_span, type_reference_declaration_ref }
+  TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_binding_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, empty_type_env, declaration_ref_of_declaration_node, bare_occurrence_binding, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName, BareOccurrenceBoundByImports, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -196,7 +196,7 @@ import std.operator_realization {
 }
 import gunbc.structural_realization_bindings { structural_ordering_rows, kernel_grounding_rows, kernel_mint_declaration_rows, kernel_optional_mint_name }
 import gunbc.rust_source_type_bindings { rust_host_option_carrier_declarations }
-import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_ownership, DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous }
+import std.literal_elaboration { KernelIntLiteral, kernel_grounding_for, KernelGroundingFound, KernelGroundingAbsent, KernelGroundingAmbiguous, kernel_mint_ownership, DeclarationOwnsTheMint, DeclarationDoesNotOwnTheMint, KernelMintOwnershipAmbiguous, kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -622,8 +622,29 @@ fn declaration_owns_host_option(module_path: String, decl_name: String) -> Bool 
 // unstamped) is decided by WHICH declaration it is, read through the join every emitter reader of a
 // declaration node uses (v1.compiler.infer_env declaration_ref_of_declaration_node: the declaring span
 // against the corpus symbol index), so a coproduct another module declares as `Optional` is never read
-// as the host option. A reference that is neither is not the host option: its spelling establishes
-// nothing about which declaration it denotes, so no leaf rule stands in for the declaration.
+// as the host option. A reference that is neither is decided by unstamped_reference_is_host_option.
+// AN UNSTAMPED REFERENCE is decided by the one occurrence decision the type-declaration router reads
+// (v1.compiler.infer_env bare_occurrence_binding, the resolver's order): its own file's declaration, or
+// on the kernel arm the declaration the kernel mint names. No leaf comparison stands in for either.
+fn unstamped_reference_is_host_option(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  let leaf = authored_name_at(source_indices: source_indices, node: n)
+  match bare_occurrence_binding(index: env.symbol_index, name: leaf, reference: n) {
+    BareOccurrenceDeclaredInItsFile { declaration: decl } =>
+      match declaration_ref_of_declaration_node(decl: decl, source_indices: source_indices, env: env) {
+        Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
+        Absent => false
+      }
+    BareOccurrenceDeclaredTwiceInItsFile => false
+    BareOccurrenceIsKernelName =>
+      match kernel_mint_declaration_for(rows: kernel_mint_declaration_rows, minted_name: leaf) {
+        KernelMintDeclarationFound { declaration: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
+        KernelMintDeclarationAbsent => false
+        KernelMintDeclarationAmbiguous { row_count: _ } => false
+      }
+    BareOccurrenceBoundByImports => false
+  }
+}
+
 fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   match n.declaration {
     Present { value: d } =>
@@ -636,7 +657,7 @@ fn is_host_optional_carrier_type(n: Node, source_indices: Map<String, NewlineInd
       let declared = if is_declaration_structure { declaration_ref_of_declaration_node(decl: n, source_indices: source_indices, env: env) } else { none }
       match declared {
         Present { value: d } => declaration_owns_host_option(module_path: d.module_path as String, decl_name: d.decl_name as String)
-        Absent => false
+        Absent => unstamped_reference_is_host_option(n: n, source_indices: source_indices, env: env)
       }
   }
 }
