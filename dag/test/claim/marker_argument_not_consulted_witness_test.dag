@@ -173,14 +173,14 @@ fn inline_baseline_blocking_total() -> Int {
        f: fn(acc, a) { measure_arm(a: a).total })
 }
 
-test fn m_all_four_arms_are_enrolled() -> Bool {
+test fn m_all_four_arms_are_enrolled() -> Bool  {
   let total = marker_arms |> count
   let refusing = marker_arms |> filter(a => a.expect_blocking) |> count
   let accepting = marker_arms |> filter(a => !a.expect_blocking) |> count
   total == 4 && refusing == 2 && accepting == 2 && refusing + accepting == total
 }
 
-test fn m_every_arm_behaves_as_declared() -> Bool {
+test fn m_every_arm_behaves_as_declared() -> Bool  {
   let baseline = inline_baseline_blocking_total()
   marker_arms |> all(a => arm_agrees(a: a, baseline_total: baseline))
 }
@@ -205,7 +205,7 @@ fn arm_names() -> List<String> {
   map(marker_arms, a => a.name)
 }
 
-test fn m_arm_names_are_pairwise_distinct() -> Bool {
+test fn m_arm_names_are_pairwise_distinct() -> Bool  {
   all(arm_names(), n => count(filter(arm_names(), x => x == n)) == 1)
 }
 
@@ -213,7 +213,7 @@ test fn m_arm_names_are_pairwise_distinct() -> Bool {
 // would green the identical-marker half while the inline half reddened elsewhere in the report, and
 // a reader consulting either alone would draw the opposite conclusion from the one the pair
 // supports. Joined, the only way to pass is for the line to sit exactly where these fixtures put it.
-test fn m_equality_reads_the_name_and_not_the_marker() -> Bool {
+test fn m_equality_reads_the_name_and_not_the_marker() -> Bool  {
   let baseline = inline_baseline_blocking_total()
   exactly_one_arm_agrees(wanted: "named_identical", baseline_total: baseline)
     && exactly_one_arm_agrees(wanted: "inline_distinct", baseline_total: baseline)

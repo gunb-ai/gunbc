@@ -47,7 +47,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // it here would pick one side of a fork this claim has no business deciding. The RED is intact: a
 // receipt recording a hex the extdeps module does not declare reddens this, which is what a
 // mirror serving different bytes produces.
-test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
+test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool  {
   match mt_jade_gsg_publisher_citation_read_receipt.provenance {
     DocumentLocatorFetchedAndTextIngested { http_status: _, byte_count: _, content_digest: d, detail: _ } =>
       string_contains(s: d as String, pattern: mt_jade_gsg_content_digest.hex as String)
@@ -60,7 +60,7 @@ test fn w_jade_gsg_declared_digest_is_the_digest_both_reads_recorded() -> Bool {
     }
 }
 
-test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool {
+test fn w_jade_gsg_table11_16_dimm_row_is_the_odd_hash_slots() -> Bool  {
   mt_jade_gsg_population_2s2p_16_dimms.dimm_count == (2 * altra_ddr4_channel_count)
     && list_length(mt_jade_gsg_socket0_channel_pairs) == altra_ddr4_channel_count
     && list_length(mt_jade_gsg_socket1_channel_pairs) == altra_ddr4_channel_count
@@ -87,7 +87,7 @@ fn jade_gsg_scope_cites(scope: ExternalModelScope, authority: ExternalAuthority)
   fold(external_model_scope_citations(scope: scope), init: false, f: (acc, c) => acc || (c == authority))
 }
 
-test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool {
+test fn w_jade_gsg_publisher_is_first_citation_drive_is_mirror_and_carriage_admits() -> Bool  {
   mt_jade_gsg_model_scope.first_citation == mt_jade_gsg_authority
     && jade_gsg_scope_cites(scope: mt_jade_gsg_model_scope, authority: mt_jade_gsg_operator_drive_mirror_authority)
     && mt_jade_gsg_operator_drive_mirror_authority != mt_jade_gsg_authority

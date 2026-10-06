@@ -43,7 +43,7 @@ fn cpu_catalog_shape() -> MachineShape {
   }
 }
 
-test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
+test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool  {
   match cpu_catalog_shape().domains.first() {
     Present { value: domain } => {
       let memory = domain.memory
@@ -72,7 +72,7 @@ test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
   }
 }
 
-test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {
+test fn w_cpu_catalog_lane_count_matches_threads() -> Bool  {
   match machine_shape_domain_lane_count(shape: cpu_catalog_shape()) {
     Present { value: lanes } =>
       hardware_thread_count_value(t: lanes) == hardware_thread_count_value(t: altra_max_m12830_catalog.threads)

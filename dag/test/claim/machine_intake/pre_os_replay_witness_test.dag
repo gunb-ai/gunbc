@@ -28,7 +28,7 @@ fn replay_fixture(seq: Nat, generation: NonEmptyStr, record: NonEmptyStr) -> Obs
 fn baseline_text() -> String { "685 | 09/12/2026 | 10:59:50 AM | Fan #0x1 | Device Present | Asserted" }
 fn stimulus_text() -> String { concat(baseline_text(), "\n686 | 09/12/2026 | 10:59:51 AM | System Boot Initiated #0x0 | Initiated by power up | Asserted") }
 
-test fn w_generation_change_retained_without_new_stimulus() -> Bool {
+test fn w_generation_change_retained_without_new_stimulus() -> Bool  {
   let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let positive = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-a", record: "686"), payload: stimulus_text())
   let reset = pre_os_ingest_sel(previous: first.cursor, envelope: replay_fixture(seq: 2, generation: "sel-b", record: "686"), payload: stimulus_text())
@@ -38,7 +38,7 @@ test fn w_generation_change_retained_without_new_stimulus() -> Bool {
     && match reset.continuity { ObservationRefused { cause: _ } => true _ => false }
 }
 
-test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool {
+test fn w_sel_continuity_refusal_retains_the_observed_cause() -> Bool  {
   let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
   all([t_reach(through: 10), ContinuityUnknown { detail: "source reset not observed" }], continuity => {
@@ -73,13 +73,13 @@ fn row_is_occurrence_conflict(row: PreOsTimelineRow) -> Bool {
   }
 }
 
-test fn w_duplicate_application_is_idempotent_but_equal_payload_occurrences_survive() -> Bool {
+test fn w_duplicate_application_is_idempotent_but_equal_payload_occurrences_survive() -> Bool  {
   let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
   let b = replay_fixture(seq: 2, generation: "sel-a", record: "685")
   count(timeline_of(envelopes: [a, b])) == 2 && count(timeline_of(envelopes: [a, b, a, b])) == 2
 }
 
-test fn w_same_occurrence_changed_source_generation_is_conflict() -> Bool {
+test fn w_same_occurrence_changed_source_generation_is_conflict() -> Bool  {
   let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
   let b = replay_fixture(seq: 1, generation: "sel-b", record: "685")
   let rows = timeline_of(envelopes: [a, b])
@@ -87,7 +87,7 @@ test fn w_same_occurrence_changed_source_generation_is_conflict() -> Bool {
 }
 
 
-test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admission() -> Bool {
+test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admission() -> Bool  {
   let envelope = replay_fixture(seq: 1, generation: "console-a", record: "685")
   let observation = PreOsReplayObservation { envelope: envelope, format: PreOsConsoleText,
     payload: ObservationEstablished { observed: concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) } }
@@ -115,7 +115,7 @@ test fn w_timeline_separates_os_milestone_from_boot_identity_and_present_admissi
 
 // A delivery receipt is new evidence about an existing occurrence, not a new
 // host event and not an unchanged retry that may be discarded.
-test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
+test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool  {
   let a = replay_fixture(seq: 1, generation: "sel-a", record: "685")
   let b = ObservationEnvelope { binding: a.binding, source_generation: a.source_generation, native_cursor: a.native_cursor,
     ownership: a.ownership, chunk: a.chunk, producer_timestamp: a.producer_timestamp, received: a.received, local_commit: a.local_commit,
@@ -126,7 +126,7 @@ test fn w_same_occurrence_new_continuity_receipt_is_retained() -> Bool {
 
 // Delivery changes retention for the same occurrence; it must neither erase
 // the earlier exposure nor establish an OS boot from the delivery receipt.
-test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool {
+test fn w_timeline_retains_local_exposure_and_downstream_acceptance() -> Bool  {
   let local = replay_fixture(seq: 1, generation: "console-a", record: "685")
   let delivered = ObservationEnvelope { binding: local.binding, source_generation: local.source_generation, native_cursor: local.native_cursor,
     ownership: local.ownership, chunk: local.chunk, producer_timestamp: local.producer_timestamp, received: local.received,
@@ -161,7 +161,7 @@ fn replay_console_chunk(seq: Nat, first: Nat, payload: NonEmptyStr, continuity: 
   }
 }
 
-test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
+test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool  {
   let a = replay_console_chunk(seq: 1, first: 0, payload: "NOTICE:  DRAM FW ver", continuity: t_reach(through: 20))
   let b = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: t_reach(through: 31))
   let gap = replay_console_chunk(seq: 2, first: 20, payload: "sion 210525", continuity: ContinuityUnknown { detail: "reconnect lost continuity" })
@@ -176,7 +176,7 @@ test fn w_console_chunks_compose_only_across_verified_continuity() -> Bool {
 
 // The SEL cursor consumer must preserve independent commit and ownership causes.
 // These fixtures change the evidence, not the observer's refusal implementation.
-test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
+test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool  {
   let base = replay_fixture(seq: 1, generation: "sel-a", record: "685")
   let positive = pre_os_sel_cursor(envelope: base, payload: baseline_text())
   let commits: List<LocalCommitStanding> = [LocalCommitNotAttempted, t_commit_for(payload: "different payload")]
@@ -210,7 +210,7 @@ test fn w_sel_cursor_retains_commit_and_owner_refusals() -> Bool {
 // anchor sits at its marker's byte offset. The chunk boundaries are placed so that the first
 // chunk holds one whole cycle plus the head of the second marker, and the third chunk closes the
 // second marker and carries the second cycle's text.
-test fn w_carried_cycle_scan_finds_a_marker_that_straddles_chunks() -> Bool {
+test fn w_carried_cycle_scan_finds_a_marker_that_straddles_chunks() -> Bool  {
   let marker = "NOTICE:  DRAM FW version 210525"
   let one = concat("x", marker, "A", "NOTICE:  DRAM")
   let two = " FW version 210525B"
@@ -225,7 +225,7 @@ test fn w_carried_cycle_scan_finds_a_marker_that_straddles_chunks() -> Bool {
     && match cycles.skip(n: 1).first() { Present { value: c } => match c.anchor { ObservationEstablished { observed: anchor } => anchor.stream_offset == t_pos(at: 33) _ => false } Absent => false }
 }
 
-test fn w_cycle_anchor_refuses_cross_stream_position() -> Bool {
+test fn w_cycle_anchor_refuses_cross_stream_position() -> Bool  {
   let chunk = replay_console_chunk(seq: 1, first: 0, payload: "abc", continuity: t_reach(through: 3))
   let positive = pre_os_cycle_anchor(chunks: [chunk], at: t_pos(at: 1))
   let foreign = pre_os_cycle_anchor(chunks: [chunk], at: stream_position(stream: t_other_stream, since_stream_origin: byte_size(count: 1)))
@@ -235,7 +235,7 @@ test fn w_cycle_anchor_refuses_cross_stream_position() -> Bool {
 
 // The carrier's foreign-stream reach enters through admitted construction; the
 // SEL consumer must retain incomparability rather than invent a shorter reach.
-test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool {
+test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool  {
   let first = pre_os_ingest_sel(previous: ObservationRefused { cause: pre_os_text_refusal(text: "no prior cursor") }, envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
   let base = replay_fixture(seq: 2, generation: "sel-a", record: "686")
   let positive = pre_os_ingest_sel(previous: first.cursor, envelope: base, payload: stimulus_text())
@@ -256,7 +256,7 @@ test fn w_sel_incomparable_continuity_keeps_both_streams() -> Bool {
 
 // An unread payload refuses boot with its located cause; an assessed console
 // without an OS milestone remains indeterminate. Neither is a boot success.
-test fn w_boot_retains_payload_refusal_but_assessed_no_milestone_is_indeterminate() -> Bool {
+test fn w_boot_retains_payload_refusal_but_assessed_no_milestone_is_indeterminate() -> Bool  {
   let envelope = replay_fixture(seq: 1, generation: "console-a", record: "685")
   all([true, false], unread => {
     let observation = PreOsReplayObservation { envelope: envelope, format: PreOsConsoleText,
@@ -318,7 +318,7 @@ fn replay_carrier_assessment_control(standing: LocalCommitStanding, continuity: 
   }
 }
 
-test fn w_timeline_assessments_consume_commit_and_continuity_refusals() -> Bool {
+test fn w_timeline_assessments_consume_commit_and_continuity_refusals() -> Bool  {
   let payload = concat("NOTICE:  DRAM FW version 210525\n", observer_test_boot_payload()) as NonEmptyStr
   let valid_commit = t_commit_for(payload: payload)
   let reach = t_reach(through: 10000)
@@ -336,7 +336,7 @@ test fn w_timeline_assessments_consume_commit_and_continuity_refusals() -> Bool 
 }
 
 // Recovery labels locate the previous refusal; they must not replace its cause.
-test fn w_sel_baseline_retains_prior_cursor_refusal() -> Bool {
+test fn w_sel_baseline_retains_prior_cursor_refusal() -> Bool  {
   let prior = pre_os_text_refusal(text: "prior capture digest mismatch")
   let reading = pre_os_ingest_sel(previous: ObservationRefused { cause: prior },
     envelope: replay_fixture(seq: 1, generation: "sel-a", record: "685"), payload: baseline_text())
@@ -348,7 +348,7 @@ test fn w_sel_baseline_retains_prior_cursor_refusal() -> Bool {
 
 // A late conflict must refuse the first occurrence too. The input-order list
 // remains independent of index traversal, and an exact retry keeps its first row.
-test fn w_indexed_timeline_preserves_order_and_late_conflicts() -> Bool {
+test fn w_indexed_timeline_preserves_order_and_late_conflicts() -> Bool  {
   let a = replay_fixture(seq: 1, generation: "console-a", record: "685")
   let b = replay_fixture(seq: 2, generation: "console-a", record: "685")
   let changed = replay_fixture(seq: 1, generation: "console-b", record: "685")

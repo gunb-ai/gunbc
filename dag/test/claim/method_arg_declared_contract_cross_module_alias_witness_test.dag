@@ -53,7 +53,7 @@ fn method_arg_cross_module_alias_fixture_source() -> String {
 // expand the cross-module alias without a TypeEnv, so it answered ContractUnavailable
 // and wrongly refused this well-typed call outright. Fixed, expand_field_type resolves
 // the alias's real Int parameter and the well-typed call compiles clean.
-test fn w_method_arg_infers_against_cross_module_alias_contract_test() -> Bool {
+test fn w_method_arg_infers_against_cross_module_alias_contract_test() -> Bool  {
   compile_dag_rust_emit_check(
     method_arg_cross_module_alias_fixture_source(),
     "src/fixture_cross_module_call.rs",
@@ -71,7 +71,7 @@ fn method_arg_contract_unavailable_fixture_source() -> String {
 // and this repair must not relax that refusal. This fixture must keep refusing
 // (hard diagnostic) unchanged by the repair; it is enrolled to prove the
 // ContractUnavailable boundary itself was not widened.
-test fn w_method_arg_contract_unavailable_boundary_unchanged_test() -> Bool {
+test fn w_method_arg_contract_unavailable_boundary_unchanged_test() -> Bool  {
   !compile_dag_rust_emit_check(
     method_arg_contract_unavailable_fixture_source(),
     "src/fixture_contract_unavailable_probe.rs",

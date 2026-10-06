@@ -19,23 +19,23 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   floor_exit_code: 1,
 )
 
-test fn floor_exit_zero_maps_to_success() -> Bool {
+test fn floor_exit_zero_maps_to_success() -> Bool  {
   floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
 }
 
-test fn floor_exit_nonzero_maps_to_failure() -> Bool {
+test fn floor_exit_nonzero_maps_to_failure() -> Bool  {
   floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
 }
 
-test fn mint_binds_current_gate_roster_hash() -> Bool {
+test fn mint_binds_current_gate_roster_hash() -> Bool  {
   green_receipt.gate_roster_hash == current_gate_roster_hash
 }
 
-test fn shell_stdout_line_strips_trailing_newline() -> Bool {
+test fn shell_stdout_line_strips_trailing_newline() -> Bool  {
   shell_stdout_line(raw: "abc123\n") == "abc123"
 }
 
-test fn wire_roundtrip_preserves_admission_fields() -> Bool {
+test fn wire_roundtrip_preserves_admission_fields() -> Bool  {
   let wire = render_receipt_wire(receipt: green_receipt)
   match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
@@ -51,7 +51,7 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
   }
 }
 
-test fn wire_missing_head_sha_returns_absent() -> Bool {
+test fn wire_missing_head_sha_returns_absent() -> Bool  {
   let wire = concat(
     concat(
       concat(git_object_id_wire_hex(oid: scenario_base), "\n"),
@@ -65,7 +65,7 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
   }
 }
 
-test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
+test fn wire_missing_pr_number_parses_as_absent_field() -> Bool  {
   let wire = concat(
     concat(
       concat(concat(git_object_id_wire_hex(oid: scenario_base), "\n"), concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")),
@@ -83,7 +83,7 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   }
 }
 
-test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
+test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool  {
   let receipt = stamp_floor_receipt(
     pr_number: none,
     head_sha: scenario_head,
@@ -104,16 +104,16 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
   }
 }
 
-test fn red_floor_stamps_failure_conclusion() -> Bool {
+test fn red_floor_stamps_failure_conclusion() -> Bool  {
   red_receipt.conclusion == extdeps.github.checks.Failure
 }
 
-test fn receipt_schema_and_path_are_stable() -> Bool {
+test fn receipt_schema_and_path_are_stable() -> Bool  {
   (merge_admission_receipt_schema == "gunbc.merge_admission_receipt.v1")
     && (merge_admission_receipt_rel_path == ".gunbc/merge-admission-receipt.wire")
 }
 
-test fn mint_matches_explicit_constructor() -> Bool {
+test fn mint_matches_explicit_constructor() -> Bool  {
   let explicit = mint_merge_admission_receipt(
     pr_number: Present { value: 5933 },
     head_sha: scenario_head,

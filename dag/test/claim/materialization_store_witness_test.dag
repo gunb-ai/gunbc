@@ -165,7 +165,7 @@ fn lookup_present(req: ArtifactRequest, object: String) -> StoreLookup {
 
 // ---- request families
 
-test fn every_verdict_bundle_identity_is_load_bearing_on_the_key() -> Bool {
+test fn every_verdict_bundle_identity_is_load_bearing_on_the_key() -> Bool  {
   let base = subject(module: "v2.test.alpha")
   let k = request_key(req: NativeModuleVerdictBundleRequest(base))
   let variants = [
@@ -184,7 +184,7 @@ test fn every_verdict_bundle_identity_is_load_bearing_on_the_key() -> Bool {
 
 // universe_req and compiler_req carry the SAME digests in their subject and first input; the
 // kind inside the key is what keeps them apart.
-test fn native_families_key_apart_over_identical_digests() -> Bool {
+test fn native_families_key_apart_over_identical_digests() -> Bool  {
   (request_key(req: universe_req()) == request_key(req: compiler_req())) == false
     && (request_kind(req: universe_req()) == request_kind(req: compiler_req())) == false
     && request_required_outputs(req: compiler_req()) |> any(o => o == output_native_compiler_executable)
@@ -192,7 +192,7 @@ test fn native_families_key_apart_over_identical_digests() -> Bool {
 
 // ---- lookup: the positive control and each refusal
 
-test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
+test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool  {
   let l = lookup_present(req: bundle_req(), object: prepared_object(req: bundle_req(), payloads: bundle_payloads()))
   let payload_ok = match store_lookup_payload(l: l, id: output_module_test_verdicts) {
     Present { value: v } => v == "v2.test.alpha.t1 pass\nv2.test.alpha.t2 fail 100% sure"
@@ -213,11 +213,11 @@ test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
   store_lookup_is_hit(l: l) && payload_ok && empty_ok && receipt_ok
 }
 
-test fn an_absent_object_is_the_only_miss() -> Bool {
+test fn an_absent_object_is_the_only_miss() -> Bool  {
   store_lookup_is_miss(l: store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectAbsent))
 }
 
-test fn an_unavailable_object_refuses_and_is_not_a_miss() -> Bool {
+test fn an_unavailable_object_refuses_and_is_not_a_miss() -> Bool  {
   let l = store_lookup_decide(
     store: witness_store(),
     req: bundle_req(),
@@ -226,7 +226,7 @@ test fn an_unavailable_object_refuses_and_is_not_a_miss() -> Bool {
   store_lookup_refusal_tag(l: l) == "unavailable" && store_lookup_is_miss(l: l) == false
 }
 
-test fn a_corrupted_payload_is_an_integrity_refusal() -> Bool {
+test fn a_corrupted_payload_is_an_integrity_refusal() -> Bool  {
   let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
   let flipped = replace(good, "t1%20pass", "t1%20PASS")
   (flipped == good) == false
@@ -235,7 +235,7 @@ test fn a_corrupted_payload_is_an_integrity_refusal() -> Bool {
 }
 
 // the empty diagnostics part is recorded with size 0; claim 1 instead
-test fn a_tampered_part_size_is_an_integrity_refusal() -> Bool {
+test fn a_tampered_part_size_is_an_integrity_refusal() -> Bool  {
   let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
   let parts_line = join(["part", output_module_preparation_diagnostics as String, payload_part(payload: ArtifactPayload { id: output_module_preparation_diagnostics, content: "" }).digest.digest as String], " ")
   let tampered = replace(good, concat(parts_line, " 0"), concat(parts_line, " 1"))
@@ -243,20 +243,20 @@ test fn a_tampered_part_size_is_an_integrity_refusal() -> Bool {
     && store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: tampered)) == "contract_wrong_content"
 }
 
-test fn a_truncated_object_is_malformed_not_incomplete() -> Bool {
+test fn a_truncated_object_is_malformed_not_incomplete() -> Bool  {
   let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
   let torn = replace(good, "\nend", "")
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: torn)) == "malformed"
 }
 
-test fn a_foreign_object_refuses_as_evaluation_preimage_mismatch() -> Bool {
+test fn a_foreign_object_refuses_as_evaluation_preimage_mismatch() -> Bool  {
   let foreign = prepared_object(req: universe_req(), payloads: universe_payloads())
   store_lookup_refusal_tag(l: lookup_present(req: bundle_req(), object: foreign)) == "evaluation_preimage_mismatch"
 }
 
 // Kind and request-key walls still discriminate after a matching preimage: the stored
 // evaluation_preimage is the lookup's, while kind or recorded request_key is forged.
-test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
+test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool  {
   let lookup = bundle_req()
   let universe = prepared_object(req: universe_req(), payloads: universe_payloads())
   let expected = percent_encode_payload(s: eval_preimage(req: lookup) as String)
@@ -265,7 +265,7 @@ test fn an_object_of_another_kind_refuses_as_kind_mismatch() -> Bool {
   store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_kind_mismatch"
 }
 
-test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool {
+test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact() -> Bool  {
   let lookup = bundle_req()
   let good = prepared_object(req: lookup, payloads: bundle_payloads())
   let foreign_key = serialize_content_hash(
@@ -277,7 +277,7 @@ test fn an_object_for_another_request_of_the_same_kind_refuses_as_wrong_artifact
     && store_lookup_refusal_tag(l: lookup_present(req: lookup, object: forged)) == "contract_wrong_artifact"
 }
 
-test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
+test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool  {
   let verdicts = ArtifactPayload { id: output_module_test_verdicts, content: "v2.test.alpha.t1 pass" }
   let incomplete = encode_store_object(
     manifest: ArtifactManifest {
@@ -294,7 +294,7 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
 
 // ---- commit: the door, and each settle arm
 
-test fn the_write_door_refuses_before_publishing() -> Bool {
+test fn the_write_door_refuses_before_publishing() -> Bool  {
   let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }])
   let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]))
   let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]))
@@ -317,7 +317,7 @@ fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> Cont
   }
 }
 
-test fn commit_settles_only_on_a_verified_read_back() -> Bool {
+test fn commit_settles_only_on_a_verified_read_back() -> Bool  {
   let key = request_key(req: bundle_req())
   let offered = offered_digest(req: bundle_req(), payloads: bundle_payloads())
   let offered_result = offered_result_of(req: bundle_req(), payloads: bundle_payloads())
@@ -349,7 +349,7 @@ fn settle_tag(key: ContentHash, offered: ContentHash, offered_result: ResultCont
     store: witness_store(), prepared_key: key, offered_digest: offered, offered_result: offered_result, publish: publish, read_back: read_back))
 }
 
-test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
+test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool  {
   let object = prepared_object(req: bundle_req(), payloads: bundle_payloads())
   let other_store = OpenedMaterializationStore { provider: "some_other_realization" as CacheInterfaceId, instance: content_hash_of_value(value: "other-instance") }
   let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
@@ -368,7 +368,7 @@ test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
   }
 }
 
-test fn payload_encoding_round_trips_its_own_delimiters() -> Bool {
+test fn payload_encoding_round_trips_its_own_delimiters() -> Bool  {
   let s = "a %0A b\n%25 %20\n\nend"
   percent_decode_payload(s: percent_encode_payload(s: s)) == s
     && string_contains(s: percent_encode_payload(s: s), pattern: "\n") == false
@@ -377,7 +377,7 @@ test fn payload_encoding_round_trips_its_own_delimiters() -> Bool {
 
 // ---- the transport folds and the open decision
 
-test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool {
+test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool  {
   let absent = match filesystem_exact_read(path: "/p", content: "", success: false, error: "No such file", error_kind: "not_found") {
     FilesystemExactPathAbsent { path: _ } => true
     _ => false
@@ -402,7 +402,7 @@ test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool {
 }
 
 // a durable store's marker is not an ephemeral store's marker: a scratch root holding it refuses
-test fn a_store_opens_only_on_its_own_marker() -> Bool {
+test fn a_store_opens_only_on_its_own_marker() -> Bool  {
   let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
   let marker = store_marker_content(root: root, instance_label: "witness")
   let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }) {
@@ -422,14 +422,14 @@ test fn a_store_opens_only_on_its_own_marker() -> Bool {
 
 // A part's size is its UTF-8 BYTE count, not its code-point count: "é€" is 2 code points and 5
 // bytes, so a ByteSize filled from string_length would answer 2 here (review 63888).
-test fn a_part_size_counts_utf8_bytes_not_code_points() -> Bool {
+test fn a_part_size_counts_utf8_bytes_not_code_points() -> Bool  {
   payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "é€" }).bytes == byte_size(count: 5)
     && string_length("é€") == 2
 }
 
 // A payload line repeated for one declared output is corruption: it refuses, like a repeated manifest
 // part, instead of serving the first copy (review 63921). The same object without the duplicate hits.
-test fn a_repeated_payload_line_is_refused_not_resolved() -> Bool {
+test fn a_repeated_payload_line_is_refused_not_resolved() -> Bool  {
   let good = prepared_object(req: bundle_req(), payloads: bundle_payloads())
   let duplicated = replace(good, "\nend", join(["\npayload", output_module_test_verdicts as String, "forged\nend"], " "))
   (duplicated == good) == false
@@ -439,7 +439,7 @@ test fn a_repeated_payload_line_is_refused_not_resolved() -> Bool {
 
 // An unreadable object reaches the store as unavailable, and its fault carries the host's KIND by
 // name (filesystem_failure_kind_name), not only the host's free text (review 63940).
-test fn an_unreadable_object_fault_names_the_host_kind() -> Bool {
+test fn an_unreadable_object_fault_names_the_host_kind() -> Bool  {
   match store_read_observation(read: FilesystemExactPathUnreadable { path: "/s/o", kind: FilesystemPermissionDenied, error: "denied" }) {
     StoreObjectUnavailable { fault: f } => starts_with(s: f.detail, prefix: "permission_denied: ")
     StoreObjectPresent { content: _ } => false
@@ -462,7 +462,7 @@ test fn an_unreadable_object_fault_names_the_host_kind() -> Bool {
 // check above passes perfectly well over a SHORT variant list, so an axis added to the type and not
 // to this list would be invisible here. That is exactly how this witness read 5 while the type had
 // six axes, which review 64579 caught on this PR.
-test fn every_generation_causal_axis_is_load_bearing_on_the_compiler_key() -> Bool {
+test fn every_generation_causal_axis_is_load_bearing_on_the_compiler_key() -> Bool  {
   let base = generation_axes()
   let k = request_key(req: compiler_req())
   let variants = [
@@ -488,7 +488,7 @@ test fn every_generation_causal_axis_is_load_bearing_on_the_compiler_key() -> Bo
 // native_compiler arm while every key control passed. This control reads the projection DIRECTLY:
 // the named row is present carrying the identity's own digest, and moving only the contract moves
 // only that row.
-test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bool {
+test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bool  {
   let base = generation_axes()
   let moved = PreMaterializationIdentity {
     producer_compiler: base.producer_compiler,
@@ -519,7 +519,7 @@ test fn the_declared_input_projection_carries_the_required_lens_contract() -> Bo
 // AND THE PROVIDER IS NOT IN THAT KEY. The same compiler request served from two different stores
 // keys identically and yields the same content digest; only the receipt differs. A provider or store
 // instance in the computation key would give one artifact as many identities as it has homes.
-test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
+test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool  {
   let payloads = [
     ArtifactPayload { id: output_native_compiler_executable, content: "ELF-bytes-fixture" },
     ArtifactPayload { id: output_native_compiler_build_diagnostics, content: "" },
@@ -543,7 +543,7 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
   }
 }
 
-test fn store_hit_requires_evaluation_preimage() -> Bool {
+test fn store_hit_requires_evaluation_preimage() -> Bool  {
   let req = bundle_req()
   let good = prepared_object(req: req, payloads: bundle_payloads())
   let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
@@ -553,7 +553,7 @@ test fn store_hit_requires_evaluation_preimage() -> Bool {
     && store_lookup_refusal_tag(l: lookup_present(req: req, object: tampered)) == "evaluation_preimage_mismatch"
 }
 
-test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
+test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool  {
   let req = bundle_req()
   let good = prepared_object(req: req, payloads: bundle_payloads())
   let foreign = eval_preimage(req: NativeModuleVerdictBundleRequest(subject(module: "v2.test.beta")))
@@ -577,7 +577,7 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
   }
 }
 
-test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool {
+test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bool  {
   let req = bundle_req()
   match evaluation_store_admitted_address(admission: evaluation_store_address(req: req)) {
     Absent => false
@@ -600,7 +600,7 @@ test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bo
   }
 }
 
-test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
+test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool  {
   let req = bundle_req()
   let part = payload_part(payload: ArtifactPayload { id: output_module_test_verdicts, content: "x" })
   let payloads = [ArtifactPayload { id: output_module_test_verdicts, content: "x" }]
@@ -663,7 +663,7 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
   }
 }
 
-test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {
+test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool  {
   match sha256_hex_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
     Absent => false
     Present { value: sha } => {

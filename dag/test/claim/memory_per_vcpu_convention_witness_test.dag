@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ARM CONVENTION IS SUPPORTED AND NOT UNIVERSAL: at least one surveyed arm64 surface quotes
 // three GB per vCPU and at least one quotes something else. A convention that came back universal
 // would mean the consulted set had been narrowed to its conformers.
-test fn w_arm_three_gb_is_supported_but_not_universal() -> Bool {
+test fn w_arm_three_gb_is_supported_but_not_universal() -> Bool  {
   let supported = match convention_verdict(c: arm64_three_gb_per_vcpu_convention) {
     EvidenceSupported { supporting_count: s, contrasting_count: _ } => s >= 1
     EvidenceUnsupported { consulted_count: _, contrasting_count: _ } => false
@@ -38,7 +38,7 @@ test fn w_arm_three_gb_is_supported_but_not_universal() -> Bool {
     && !convention_is_universal(c: arm64_three_gb_per_vcpu_convention)
 }
 
-test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool {
+test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool  {
   conforming_count(c: x64_four_gb_per_vcpu_convention) >= 1
     && !convention_is_universal(c: x64_four_gb_per_vcpu_convention)
 }
@@ -46,7 +46,7 @@ test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool {
 // THE ORIGIN IS TYPED AS UNKNOWN, WITH A NON-EMPTY SEARCH RECEIPT. Both halves matter: an
 // Attributed arm with no authority is unwritable, and an Unattributed arm with an empty search
 // list would be a shrug rather than a standing obligation.
-test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool {
+test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool  {
   let arm_open = match arm64_three_gb_per_vcpu_convention.origin {
     Unattributed { searched: s } => list_length(items: s) >= 3
     Attributed { authority: _ } => false
@@ -60,7 +60,7 @@ test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool {
 
 // EVERY CONSULTED SET SPANS THE SURVEY: the arm convention consults every surveyed arm64 surface,
 // not a hand-picked subset, so the non-conforming count is a reading of the market.
-test fn w_the_consulted_set_is_the_whole_arm_survey() -> Bool {
+test fn w_the_consulted_set_is_the_whole_arm_survey() -> Bool  {
   list_length(items: arm_benchmarks()) == 5
     && list_length(items: arm64_three_gb_per_vcpu_convention.consulted) == list_length(items: arm_benchmarks())
     && list_length(items: surveyed_conventions) == 2
@@ -68,7 +68,7 @@ test fn w_the_consulted_set_is_the_whole_arm_survey() -> Bool {
 
 // RED: A FIGURE NO SURFACE QUOTES COMES BACK UNSUPPORTED. Five GB per arm64 vCPU is quoted
 // nowhere; if the grader admitted it, conformity would be decoration.
-test fn w_red_a_ratio_nobody_quotes_is_unsupported() -> Bool {
+test fn w_red_a_ratio_nobody_quotes_is_unsupported() -> Bool  {
   let bogus = MemoryPerVcpuConvention {
     architecture: Aarch64,
     per_vcpu: QuotedDecimalGigabytes { value: gigabyte(count: 5) },

@@ -120,7 +120,7 @@ fn every_closure_import_resolves_in_pool(closure: FreeMonoid<String>) -> Bool {
   })
 }
 
-test fn dag_import_closure_live_witness_bundle_holds() -> Bool {
+test fn dag_import_closure_live_witness_bundle_holds() -> Bool  {
   let derived = derived_conformance_closure()
   set_equal(xs: derived, ys: declared_paths())
     && set_equal(xs: derived, ys: declared_without_entry()) == false

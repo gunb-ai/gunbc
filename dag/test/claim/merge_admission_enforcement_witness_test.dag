@@ -37,12 +37,12 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   floor_exit_code: 1,
 )
 
-test fn gating_still_deferred_until_activation_flip() -> Bool {
+test fn gating_still_deferred_until_activation_flip() -> Bool  {
   (merge_freshness_gating_status == GatingComputedDeferred)
     && (gating_is_enforced(s: merge_freshness_gating_status) == false)
 }
 
-test fn enforcement_gating_scaffold_is_tracked() -> Bool {
+test fn enforcement_gating_scaffold_is_tracked() -> Bool  {
   match merge_admission_enforcement_gating_scaffold {
     Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
     Terminal { reason: _ } => false
@@ -51,14 +51,14 @@ test fn enforcement_gating_scaffold_is_tracked() -> Bool {
   }
 }
 
-test fn gating_activation_trigger_names_flip() -> Bool {
+test fn gating_activation_trigger_names_flip() -> Bool  {
   match merge_admission_enforcement_gating_scaffold {
     Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
-test fn would_block_stale_base() -> Bool {
+test fn would_block_stale_base() -> Bool  {
   merge_admission_would_block(
     receipt: stale_base_receipt,
     merge_target_tree_hash: scenario_base_b1,
@@ -66,7 +66,7 @@ test fn would_block_stale_base() -> Bool {
   )
 }
 
-test fn would_block_stale_roster() -> Bool {
+test fn would_block_stale_roster() -> Bool  {
   merge_admission_would_block(
     receipt: stale_roster_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -74,7 +74,7 @@ test fn would_block_stale_roster() -> Bool {
   )
 }
 
-test fn would_block_red_conclusion() -> Bool {
+test fn would_block_red_conclusion() -> Bool  {
   merge_admission_would_block(
     receipt: red_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -82,7 +82,7 @@ test fn would_block_red_conclusion() -> Bool {
   )
 }
 
-test fn would_not_block_fresh_green() -> Bool {
+test fn would_not_block_fresh_green() -> Bool  {
   !merge_admission_would_block(
     receipt: fresh_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -90,7 +90,7 @@ test fn would_not_block_fresh_green() -> Bool {
   )
 }
 
-test fn blocks_merge_false_while_deferred_even_if_stale() -> Bool {
+test fn blocks_merge_false_while_deferred_even_if_stale() -> Bool  {
   merge_admission_would_block(
     receipt: stale_base_receipt,
     merge_target_tree_hash: scenario_base_b1,
@@ -103,7 +103,7 @@ test fn blocks_merge_false_while_deferred_even_if_stale() -> Bool {
     ) == false)
 }
 
-test fn wire_stale_base_fails_verdict_parse_path() -> Bool {
+test fn wire_stale_base_fails_verdict_parse_path() -> Bool  {
   let wire = render_receipt_wire(receipt: stale_base_receipt)
   match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
@@ -123,7 +123,7 @@ test fn wire_stale_base_fails_verdict_parse_path() -> Bool {
   }
 }
 
-test fn fresh_verdict_is_merge_admitted() -> Bool {
+test fn fresh_verdict_is_merge_admitted() -> Bool  {
   match classify_merge_admission_verdict(
     receipt: fresh_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -138,7 +138,7 @@ test fn fresh_verdict_is_merge_admitted() -> Bool {
   }
 }
 
-test fn red_verdict_is_merge_denied_not_success() -> Bool {
+test fn red_verdict_is_merge_denied_not_success() -> Bool  {
   match classify_merge_admission_verdict(
     receipt: red_receipt,
     merge_target_tree_hash: scenario_base_b0,

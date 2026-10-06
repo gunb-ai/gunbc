@@ -143,7 +143,7 @@ fn handshake_includes_slave_start(chain: List<PlatformSequencingHandshake>) -> B
 // THE SUBJECT SCOPE NAMES THE PLATFORM ROW AND CITES THE OCP DOCUMENT. A module that models facts
 // without declaring which declaration they are about is the floating-island shape extdeps exists
 // to refuse.
-test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
+test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool  {
   external_subject_ref_eq(
     a: mt_jade_model_scope.subject,
     b: expected_mt_jade_subject_ref,
@@ -159,7 +159,7 @@ test fn w_the_model_scope_points_at_the_reference_platform_row() -> Bool {
 }
 
 // THE PLATFORM MODULE MUST CARRY THE SAME TYPED SUBJECT EDGE, NOT ONLY A SHARED URI IMPORT.
-test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
+test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool  {
   (mt_jade_platform_subject.marketing_name as String) == (mt_jade_reference_platform.marketing_name as String)
     && match mt_jade_platform_subject.revision {
       MtJadeRev1_0 {} => match mt_jade_reference_platform.revision {
@@ -173,7 +173,7 @@ test fn w_the_platform_module_carries_a_typed_subject_edge() -> Bool {
 }
 
 // THE LICENCE TERMS AND APPENDIX EXCLUSION ARE LOAD-BEARING FOR PUBLIC REPOSITORY ADMISSION.
-test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool {
+test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool  {
   match mt_jade_specification_license {
     Owfa1_0FinalSpecificationAgreement {} => true
   }
@@ -190,7 +190,7 @@ test fn w_the_specification_license_excludes_non_normative_appendices() -> Bool 
 }
 
 // THE PUBLISHER FETCH REFUSAL AND THE INGESTED TEXT PATH ARE TWO OBSERVATIONS, NOT ONE.
-test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool {
+test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool  {
   match mt_jade_publisher_citation_read_receipt.provenance {
     DocumentLocatorFetchRefused { http_status: code, detail: _ } => code == 403
     DocumentLocatorFetchedButTextUnread { http_status: _, detail: _ } => false
@@ -202,7 +202,7 @@ test fn w_the_publisher_citation_provenance_records_the_refused_fetch() -> Bool 
   }
 }
 
-test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
+test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool  {
   match mt_jade_ingested_citation_read_receipt.provenance {
     OperatorSuppliedDocumentText {} => true
     DocumentLocatorFetchRefused { http_status: _, detail: _ } => false
@@ -217,7 +217,7 @@ test fn w_platform_facts_ground_on_operator_supplied_text() -> Bool {
 }
 
 // SECTION 7.2/7.3: 428 BY 479.36 MM OUTLINE AND ILM4926 SOCKET ON A DUAL-SOCKET 32-DIMM BOARD.
-test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
+test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool  {
   micrometer_count(m: mt_jade_motherboard_mechanical.outline_width) == 428000
     && micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth) == 479360
     && (mt_jade_motherboard_mechanical.cpu_socket_designation as String) == "ILM4926"
@@ -227,7 +227,7 @@ test fn w_the_motherboard_outline_and_socket_facts_are_carried() -> Bool {
 }
 
 // SECTION 7.10.3 NAMES SEVEN RAILS IN ORDER, STARTING AT VDD_SOC AND ENDING AT VDD3V3_SOC.
-test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
+test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool  {
   list_length(items: processor_power_rail_enable_order) == 7
     && (processor_power_rail_name(rail: VddSoc) as String) == "VDD_SOC"
     && (processor_power_rail_name(rail: Vdd3v3Soc) as String) == "VDD3V3_SOC"
@@ -235,14 +235,14 @@ test fn w_the_processor_power_rail_sequence_matches_the_spec() -> Bool {
 }
 
 // THE MASTER AND SLAVE SOCKET NAMES ARE DISTINCT ROLES, NOT TWO LABELS FOR ONE SOCKET.
-test fn w_the_socket_roles_are_named_distinctly() -> Bool {
+test fn w_the_socket_roles_are_named_distinctly() -> Bool  {
   (processor_socket_role_name(role: MasterSocket) as String) == "socket0 master"
     && (processor_socket_role_name(role: SlaveSocket) as String) == "socket1 slave"
     && (processor_socket_role_name(role: MasterSocket) as String) != (processor_socket_role_name(role: SlaveSocket) as String)
 }
 
 // SLAVE-SOCKET FIRMWARE START IS GATED THROUGH THE CPLD WITH A ONE-MICROSECOND ALERT3 PULSE.
-test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool {
+test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool  {
   handshake_includes_slave_start(chain: platform_sequencing_handshake_chain)
     && microsecond_count(m: slave_socket_alert3_pulse_width) == 1
     && list_contains_cpld_role(
@@ -252,7 +252,7 @@ test fn w_the_slave_start_handshake_names_the_cpld_and_the_pulse_width() -> Bool
 }
 
 // THE CPLD ROLE SET INCLUDES THE THREE FUNCTIONS THE SPEC SPREADS ACROSS GPIO, JTAG AND RESET.
-test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
+test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool  {
   list_length(items: mt_jade_board_cpld_responsibilities) == 7
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: PciePerstDecodeFromCpuGpio)
     && list_contains_cpld_role(rows: mt_jade_board_cpld_responsibilities, wanted: BmcJtagMasterProgramsCpld)
@@ -261,7 +261,7 @@ test fn w_the_board_cpld_responsibilities_cover_gpio_jtag_and_perst() -> Bool {
 }
 
 // THE CLOCK TREE NAMES THE RENESAS GENERATORS AT 100 MHZ AND KEEPS THE CPLD TIMER DERIVATION SEPARATE.
-test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool {
+test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bool  {
   list_length(items: mt_jade_clock_tree) == 6
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGV1006B")
     && clock_tree_contains_part_number(nodes: mt_jade_clock_tree, part: "9FGL0841")
@@ -271,7 +271,7 @@ test fn w_the_clock_tree_names_the_cited_generators_and_the_cpld_divider() -> Bo
 }
 
 // REFERENCE PART ROWS CARRY THE AST2500 BMC AND THE CLOCK GENERATORS AS PRECEDENT, EACH CITING THE OCP AUTHORITY.
-test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
+test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool  {
   list_length(items: mt_jade_reference_parts) == 9
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: BaseboardManagementController)
     && reference_part_roles_include(rows: mt_jade_reference_parts, wanted: PcieClockGenerator)
@@ -282,12 +282,12 @@ test fn w_reference_parts_name_the_bmc_and_clock_generators() -> Bool {
 }
 
 // THE BMC REFERENCE PART JOINS THE ASPEED CHIP AUTHORITY, NOT ONLY OCP PROSE LABELS.
-test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool {
+test fn w_mt_jade_bmc_chip_catalog_joins_the_aspeed_ast2500_authority() -> Bool  {
   (mt_jade_bmc_chip_catalog.ordering_part_number as String) == "AST2500"
     && mt_jade_bmc_chip_catalog == aspeed_ast2500_catalog
 }
 
-test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool {
+test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool  {
   rack_unit_count(u: mt_jade_fan_connectors_2u.chassis_height) == 2
     && mt_jade_fan_connectors_2u.connector_count == 6
     && millimeter_count(m: mt_jade_fan_connectors_2u.frame_width) == 60
@@ -300,7 +300,7 @@ test fn w_2u_fan_connectors_are_six_60_by_56_dual_rotor() -> Bool {
     && mt_jade_fan_connectors_1u.dual_rotor
 }
 
-test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Bool {
+test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Bool  {
   mt_jade_crps_power.psu_count == 2
     && mt_jade_crps_power.required_count == 1
     && mt_jade_crps_power.spare_count == 1
@@ -312,7 +312,7 @@ test fn w_crps_is_dual_redundant_and_inlet_names_the_owed_discriminator() -> Boo
     }
 }
 
-test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e_phy() -> Bool {
+test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e_phy() -> Bool  {
   match mt_jade_bmc_management_network.network.controller {
     OnboardControllerUnstated { read_obligation: _ } => true
     _ => false
@@ -326,7 +326,7 @@ test fn w_bmc_management_nic_is_one_rear_rj45_rtl8211e_phy() -> Bool {
     && (mt_jade_bmc_management_network.location_label as String) == "rear RJ45, power-supply / bottom-side I/O"
 }
 
-test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool {
+test fn w_cited_bmc_firmware_is_a_disjunction_not_a_default() -> Bool  {
   list_length(items: mt_jade_cited_bmc_firmware_options) == 2
     && mt_jade_cited_bmc_firmware_options_include(
     options: mt_jade_cited_bmc_firmware_options,

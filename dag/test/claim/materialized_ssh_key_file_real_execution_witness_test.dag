@@ -30,7 +30,7 @@ fn stat_octal_mode(path: String) -> String {
   trim(result.stdout)
 }
 
-test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
+test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool  {
   let identity = "witness-bracket-key" as NonEmptyStr
   let secret = "synthetic-ssh-private-key-material" as Secret
   let outcome = with_materialized_ssh_key_file(
@@ -55,7 +55,7 @@ test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -
   }
 }
 
-test fn witness_write_owner_only_refuses_when_path_already_exists() -> Bool {
+test fn witness_write_owner_only_refuses_when_path_already_exists() -> Bool  {
   let dir = shell.Mktemp.Dir()
   if !dir.success {
     false

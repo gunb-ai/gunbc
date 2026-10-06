@@ -128,7 +128,7 @@ fn opened(root: MaterializationStoreRoot) -> OpenedMaterializationStore? {
 }
 
 // commit + exact read-back; a fresh read of the committed name serves the same bytes.
-test fn commit_then_read_back_by_real_execution() -> Bool {
+test fn commit_then_read_back_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
@@ -148,7 +148,7 @@ test fn commit_then_read_back_by_real_execution() -> Bool {
 }
 
 // corruption -> integrity refusal, and the refusal is not a miss (nothing may recompute past it).
-test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
+test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
@@ -170,7 +170,7 @@ test fn corruption_is_an_integrity_refusal_by_real_execution() -> Bool {
 // wrong kind under a matching evaluation preimage: a universe-shaped object whose stored
 // preimage is the bundle lookup's, planted at the bundle name. A raw universe object at that
 // name is evaluation_preimage_mismatch (dry: a_foreign_object_refuses_as_evaluation_preimage_mismatch).
-test fn wrong_kind_refuses_by_real_execution() -> Bool {
+test fn wrong_kind_refuses_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let lookup = bundle_req(module: "a")
@@ -192,7 +192,7 @@ test fn wrong_kind_refuses_by_real_execution() -> Bool {
 // incomplete: the stored manifest omits a part the kind requires.
 // Plant the same incomplete object the dry control encodes — one required part, matching result_preimage —
 // rather than substring-filtering a complete object (that also deletes the result_preimage header).
-test fn incomplete_refuses_by_real_execution() -> Bool {
+test fn incomplete_refuses_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
@@ -227,7 +227,7 @@ test fn incomplete_refuses_by_real_execution() -> Bool {
 
 // concurrent writers of one key: the second converges on the first's commit, and every reader sees
 // the one verified content.
-test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() -> Bool {
+test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
@@ -252,7 +252,7 @@ test fn a_second_writer_converges_on_the_committed_artifact_by_real_execution() 
 
 // a second writer with DIFFERENT content for the same key is result_content_conflict; the committed
 // artifact is untouched and is what every reader gets.
-test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution() -> Bool {
+test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {
@@ -274,7 +274,7 @@ test fn a_divergent_second_writer_conflicts_and_changes_nothing_by_real_executio
 
 // provider unavailable: an uninitialized root is not a store. Open, batch and lookup all refuse,
 // nothing is answered as a miss, and nothing is written anywhere to stand in for it.
-test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() -> Bool {
+test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let open_refused = match local_store_open(root: root) {
@@ -302,7 +302,7 @@ test fn an_unavailable_store_refuses_and_leaves_no_shadow_by_real_execution() ->
 }
 
 // batch: one open, one exact read per request -- a committed request hits, an uncommitted one misses.
-test fn a_batch_answers_each_request_by_real_execution() -> Bool {
+test fn a_batch_answers_each_request_by_real_execution() -> Bool  {
   let root_path = fresh_root_path()
   let root = WitnessScratchRoot { root: root_path }
   let verdict = match opened(root: root) {

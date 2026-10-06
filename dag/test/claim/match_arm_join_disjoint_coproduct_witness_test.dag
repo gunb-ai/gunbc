@@ -79,7 +79,7 @@ fn maj_matching_ground_element_collection_arms_fixture_source() -> String {
 // THE DISCRIMINATING RED. The join answers MajRes because MajRes is the FIRST arm, and the MajOth
 // second arm reaches a formal declared MajRes unjudged. This is the arm order that COMPILED CLEAN
 // before the wall; it is the whole subject.
-test fn maj_satisfying_arm_first_must_refuse() -> Bool {
+test fn maj_satisfying_arm_first_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     maj_satisfying_arm_first_fixture_source(),
     "src/maj_probe_a.rs",
@@ -91,7 +91,7 @@ test fn maj_satisfying_arm_first_must_refuse() -> Bool {
 // THE ORDER-INDEPENDENCE HALF OF THE SAME RED. This order already refused before the wall, at the
 // direct-call argument seam rather than at the join, so it is carried as the row that says the two
 // orders now agree -- not as a second measurement of the same fact.
-test fn maj_satisfying_arm_later_must_refuse() -> Bool {
+test fn maj_satisfying_arm_later_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     maj_satisfying_arm_later_fixture_source(),
     "src/maj_probe_b.rs",
@@ -102,7 +102,7 @@ test fn maj_satisfying_arm_later_must_refuse() -> Bool {
 
 // POSITIVE CONTROL 1. Two arms of the DECLARED coproduct must still compile, or the reds above are
 // satisfied by a compiler that refuses every match.
-test fn maj_both_arms_declared_type_still_compiles() -> Bool {
+test fn maj_both_arms_declared_type_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     maj_both_arms_declared_type_fixture_source(),
     "src/maj_control_same.rs",
@@ -115,7 +115,7 @@ test fn maj_both_arms_declared_type_still_compiles() -> Bool {
 // at all -- its body's inferred type is the ENCLOSING FUNCTION'S return type, which answers to the
 // return seam and not to the join. Judging it here refused extdeps.uri_path path_segment_tokens,
 // which is correct code; this row is what says that stays admitted.
-test fn maj_diverging_arm_still_compiles() -> Bool {
+test fn maj_diverging_arm_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     maj_diverging_arm_fixture_source(),
     "src/maj_control_diverging.rs",
@@ -129,7 +129,7 @@ test fn maj_diverging_arm_still_compiles() -> Bool {
 // carrier and is excluded on both sides by the same authority the declared-type walls at this stage
 // use. Judging it refused std.observation observation_subject_module_path and gunbc.output_policy
 // surface_effect_stream.
-test fn maj_optional_carrier_arms_still_compiles() -> Bool {
+test fn maj_optional_carrier_arms_still_compiles() -> Bool  {
   compile_dag_rust_emit_check(
     maj_optional_carrier_arms_fixture_source(),
     "src/maj_control_optional.rs",
@@ -140,7 +140,7 @@ test fn maj_optional_carrier_arms_still_compiles() -> Bool {
 
 // The join selects the first, conforming Int arm, so the enclosing declared-return check sees
 // Int-vs-Int. The losing String arm must be refused here, where every arm is still present.
-test fn maj_kernel_arm_mismatch_must_refuse() -> Bool {
+test fn maj_kernel_arm_mismatch_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     maj_kernel_arm_mismatch_fixture_source(),
     "src/maj_control_kernel_red.rs",
@@ -150,7 +150,7 @@ test fn maj_kernel_arm_mismatch_must_refuse() -> Bool {
 }
 
 // A scalar widening is discriminating only if two inhabitants of the same kernel type remain valid.
-test fn maj_matching_kernel_arms_still_compile() -> Bool {
+test fn maj_matching_kernel_arms_still_compile() -> Bool  {
   compile_dag_rust_emit_check(
     maj_matching_kernel_arms_fixture_source(),
     "src/maj_control_kernel_green.rs",
@@ -161,7 +161,7 @@ test fn maj_matching_kernel_arms_still_compile() -> Bool {
 
 // conformance_ground_type also establishes one level of non-keyed ground element collection.
 // Enroll that half explicitly so a later scalar-only narrowing cannot satisfy this wall.
-test fn maj_ground_element_collection_mismatch_must_refuse() -> Bool {
+test fn maj_ground_element_collection_mismatch_must_refuse() -> Bool  {
   !compile_dag_rust_emit_check(
     maj_ground_element_collection_mismatch_fixture_source(),
     "src/maj_control_collection_red.rs",
@@ -170,7 +170,7 @@ test fn maj_ground_element_collection_mismatch_must_refuse() -> Bool {
   )
 }
 
-test fn maj_matching_ground_element_collection_arms_still_compile() -> Bool {
+test fn maj_matching_ground_element_collection_arms_still_compile() -> Bool  {
   compile_dag_rust_emit_check(
     maj_matching_ground_element_collection_arms_fixture_source(),
     "src/maj_control_collection_green.rs",

@@ -68,11 +68,11 @@ fn refused_shift_amount(result: WordResult) -> Bool {
   }
 }
 
-test fn word_of_int_admits_the_top_of_the_range_holds() -> Bool {
+test fn word_of_int_admits_the_top_of_the_range_holds() -> Bool  {
   word32_value_or(result: word_of_int(width: Width32, value: 4294967295), fallback: 0 - 1) == 4294967295
 }
 
-test fn word_of_int_refuses_one_past_the_range_holds() -> Bool {
+test fn word_of_int_refuses_one_past_the_range_holds() -> Bool  {
   match word_of_int(width: Width32, value: 4294967296) {
     WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 4294967296
     WordRefused { cause: _ } => false
@@ -80,14 +80,14 @@ test fn word_of_int_refuses_one_past_the_range_holds() -> Bool {
   }
 }
 
-test fn word_of_int_refuses_a_negative_value_holds() -> Bool {
+test fn word_of_int_refuses_a_negative_value_holds() -> Bool  {
   refused_value_out_of_range(result: word_of_int(width: Width32, value: 0 - 1))
 }
 
 // Width64 has no residue the Int realization can hold, so it refuses BY NAME rather than being
 // absent from the width vocabulary. An operation that silently answered here would be the arm
 // std.checked_arithmetic exists to prevent: the model's unbounded integer asserted about an i64.
-test fn width64_refuses_as_unrealizable_holds() -> Bool {
+test fn width64_refuses_as_unrealizable_holds() -> Bool  {
   match word_of_int(width: Width64, value: 0) {
     WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
     WordRefused { cause: _ } => false
@@ -95,7 +95,7 @@ test fn width64_refuses_as_unrealizable_holds() -> Bool {
   }
 }
 
-test fn width8_and_width16_are_realizable_holds() -> Bool {
+test fn width8_and_width16_are_realizable_holds() -> Bool  {
   word32_value_or(result: word_of_int(width: Width8, value: 255), fallback: 0 - 1) == 255
     && refused_value_out_of_range(result: word_of_int(width: Width8, value: 256))
     && word32_value_or(result: word_of_int(width: Width16, value: 65535), fallback: 0 - 1) == 65535
@@ -117,7 +117,7 @@ test fn width8_and_width16_are_realizable_holds() -> Bool {
 // octets it unpacks to are four two-or-three-digit numbers a reader can check against the hex in
 // one glance. Mistype the decimal again and THIS claim reds and names the constant, instead of the
 // connective claims reding and blaming the fold.
-test fn bitwise_operand_transcription_holds() -> Bool {
+test fn bitwise_operand_transcription_holds() -> Bool  {
   octets_of(result: word_to_octets(a: word32_or_zero(value: 4042322160), endianness: BigEndian)) == [240, 240, 240, 240]
     && octets_of(result: word_to_octets(a: word32_or_zero(value: 267390960), endianness: BigEndian)) == [15, 240, 15, 240]
 }
@@ -129,15 +129,15 @@ test fn bitwise_operand_transcription_holds() -> Bool {
 // a wrong PLACE DECISION (bitwise_place_bit disagreeing with the connective) and a wrong PLACE
 // ACCUMULATION (bitwise_fold assembling the decisions into the wrong number), which a claim over
 // the composed operation alone cannot tell apart.
-test fn bitwise_and_holds() -> Bool {
+test fn bitwise_and_holds() -> Bool  {
   word32_value_or(result: word_and(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267390960)), fallback: 0 - 1) == 15728880
 }
 
-test fn bitwise_or_holds() -> Bool {
+test fn bitwise_or_holds() -> Bool  {
   word32_value_or(result: word_or(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267390960)), fallback: 0 - 1) == 4293984240
 }
 
-test fn bitwise_xor_holds() -> Bool {
+test fn bitwise_xor_holds() -> Bool  {
   word32_value_or(result: word_xor(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267390960)), fallback: 0 - 1) == 4278255360
 }
 
@@ -145,14 +145,14 @@ test fn bitwise_xor_holds() -> Bool {
 // accumulation that overflowed the width and a place decision that disagreed with the connective.
 // A claim that only compares the value conflates them, because word32_value_or reports a refusal
 // as its fallback and a fallback is indistinguishable from a wrong number.
-test fn bitwise_and_answers_rather_than_refusing_holds() -> Bool {
+test fn bitwise_and_answers_rather_than_refusing_holds() -> Bool  {
   match word_and(a: word32_or_zero(value: 4042322160), b: word32_or_zero(value: 267390960)) {
     WordReady { word: _ } => true
     WordRefused { cause: _ } => false
   }
 }
 
-test fn bitwise_place_decisions_hold() -> Bool {
+test fn bitwise_place_decisions_hold() -> Bool  {
   bitwise_place_bit(op: BitAnd, x: 1, y: 1) == 1
     && bitwise_place_bit(op: BitAnd, x: 1, y: 0) == 0
     && bitwise_place_bit(op: BitOr, x: 1, y: 0) == 1
@@ -161,14 +161,14 @@ test fn bitwise_place_decisions_hold() -> Bool {
     && bitwise_place_bit(op: BitXor, x: 1, y: 1) == 0
 }
 
-test fn bitwise_fold_accumulates_places_holds() -> Bool {
+test fn bitwise_fold_accumulates_places_holds() -> Bool  {
   bitwise_fold(op: BitXor, a: 3, b: 1, remaining: 2, place: 1, acc: 0) == 2
     && bitwise_fold(op: BitAnd, a: 3, b: 1, remaining: 2, place: 1, acc: 0) == 1
     && bitwise_fold(op: BitOr, a: 2, b: 1, remaining: 2, place: 1, acc: 0) == 3
     && bitwise_fold(op: BitXor, a: 8, b: 0, remaining: 4, place: 1, acc: 0) == 8
 }
 
-test fn bitwise_narrow_connectives_hold() -> Bool {
+test fn bitwise_narrow_connectives_hold() -> Bool  {
   let one = word32_or_zero(value: 1)
   let two = word32_or_zero(value: 2)
   let three = word32_or_zero(value: 3)
@@ -181,17 +181,17 @@ test fn bitwise_narrow_connectives_hold() -> Bool {
 // The highest place a 32-bit fold reaches, isolated. The accumulation multiplies a place decision
 // by a running place that doubles 32 times, so the top place is 2^31 and the running place reaches
 // 2^32 after the last step -- the one value in the loop that is outside the width it is folding.
-test fn bitwise_top_place_holds() -> Bool {
+test fn bitwise_top_place_holds() -> Bool  {
   word32_value_or(result: word_or(a: word32_or_zero(value: 2147483648), b: word32_or_zero(value: 1)), fallback: 0 - 1) == 2147483649
     && word32_value_or(result: word_and(a: word32_or_zero(value: 2147483648), b: word32_or_zero(value: 4294967295)), fallback: 0 - 1) == 2147483648
 }
 
-test fn complement_of_zero_is_all_ones_holds() -> Bool {
+test fn complement_of_zero_is_all_ones_holds() -> Bool  {
   word32_value_or(result: word_not(a: word32_or_zero(value: 0)), fallback: 0 - 1) == 4294967295
     && word32_value_or(result: word_not(a: word32_or_zero(value: 4294967295)), fallback: 0 - 1) == 0
 }
 
-test fn bitwise_refuses_a_width_mismatch_holds() -> Bool {
+test fn bitwise_refuses_a_width_mismatch_holds() -> Bool  {
   match word_and(a: word32_or_zero(value: 1), b: Word { width: Width8, value: 1 }) {
     WordRefused { cause: WordWidthMismatch { left: _, right: _ } } => true
     WordRefused { cause: _ } => false
@@ -199,7 +199,7 @@ test fn bitwise_refuses_a_width_mismatch_holds() -> Bool {
   }
 }
 
-test fn shifts_hold() -> Bool {
+test fn shifts_hold() -> Bool  {
   let v = word32_or_zero(value: 305419896)
   word32_value_or(result: word_shift_left(a: v, amount: 3), fallback: 0 - 1) == 2443359168
     && word32_value_or(result: word_shift_right(a: v, amount: 3), fallback: 0 - 1) == 38177487
@@ -207,11 +207,11 @@ test fn shifts_hold() -> Bool {
 
 // The left shift of a word whose high bits are set is where the obvious (value * 2^k) % modulus
 // form overflows the i64 realization before any modulus is applied. 0xFFFFFFFF << 31 is that case.
-test fn shift_left_at_the_top_of_the_width_holds() -> Bool {
+test fn shift_left_at_the_top_of_the_width_holds() -> Bool  {
   word32_value_or(result: word_shift_left(a: word32_or_zero(value: 4294967295), amount: 31), fallback: 0 - 1) == 2147483648
 }
 
-test fn shift_refuses_out_of_range_amounts_holds() -> Bool {
+test fn shift_refuses_out_of_range_amounts_holds() -> Bool  {
   let v = word32_or_zero(value: 1)
   refused_shift_amount(result: word_shift_left(a: v, amount: 32))
     && refused_shift_amount(result: word_shift_right(a: v, amount: 32))
@@ -219,13 +219,13 @@ test fn shift_refuses_out_of_range_amounts_holds() -> Bool {
     && refused_shift_amount(result: word_rotate_left(a: v, amount: 32))
 }
 
-test fn rotate_direction_is_pinned_both_ways_holds() -> Bool {
+test fn rotate_direction_is_pinned_both_ways_holds() -> Bool  {
   let v = word32_or_zero(value: 305419896)
   word32_value_or(result: word_rotate_left(a: v, amount: 8), fallback: 0 - 1) == 878082066
     && word32_value_or(result: word_rotate_right(a: v, amount: 8), fallback: 0 - 1) == 2014458966
 }
 
-test fn rotate_by_zero_is_the_identity_holds() -> Bool {
+test fn rotate_by_zero_is_the_identity_holds() -> Bool  {
   let v = word32_or_zero(value: 305419896)
   word32_value_or(result: word_rotate_left(a: v, amount: 0), fallback: 0 - 1) == 305419896
     && word32_value_or(result: word_rotate_right(a: v, amount: 0), fallback: 0 - 1) == 305419896
@@ -235,7 +235,7 @@ test fn rotate_by_zero_is_the_identity_holds() -> Bool {
 // the algorithm's own first initial-hash word: rotr(7) xor rotr(18) xor shr(3). This is the exact
 // shape CRYPTO-0 (gunbc#11628) consumes, established here so that lane inherits a pinned substrate
 // rather than re-establishing it.
-test fn sha2_small_sigma_zero_shape_holds() -> Bool {
+test fn sha2_small_sigma_zero_shape_holds() -> Bool  {
   let v = word32_or_zero(value: 1779033703)
   match word_rotate_right(a: v, amount: 7) {
     WordRefused { cause: _ } => false
@@ -255,14 +255,14 @@ test fn sha2_small_sigma_zero_shape_holds() -> Bool {
   }
 }
 
-test fn wrapping_add_reduces_modulo_the_width_holds() -> Bool {
+test fn wrapping_add_reduces_modulo_the_width_holds() -> Bool  {
   let big = word32_or_zero(value: 4294967295)
   let one = word32_or_zero(value: 1)
   word32_value_or(result: word_wrapping_add(a: big, b: one), fallback: 0 - 1) == 0
     && word32_value_or(result: word_wrapping_add(a: one, b: one), fallback: 0 - 1) == 2
 }
 
-test fn wrapping_subtract_reduces_modulo_the_width_holds() -> Bool {
+test fn wrapping_subtract_reduces_modulo_the_width_holds() -> Bool  {
   let zero = word32_or_zero(value: 0)
   let one = word32_or_zero(value: 1)
   word32_value_or(result: word_wrapping_subtract(a: zero, b: one), fallback: 0 - 1) == 4294967295
@@ -273,18 +273,18 @@ test fn wrapping_subtract_reduces_modulo_the_width_holds() -> Bool {
 // refuses; the same multiplication at 32 bits is the operation it will consume once a limb carrier
 // lands, and it is the case where the two 32-bit operands' product exceeds the i64 realization --
 // 0x811C9DC5 * 0x01000193 is a 56-bit product reduced to 32 bits.
-test fn wrapping_multiply_exceeds_the_realization_product_holds() -> Bool {
+test fn wrapping_multiply_exceeds_the_realization_product_holds() -> Bool  {
   let basis = word32_or_zero(value: 2166136261)
   let prime = word32_or_zero(value: 16777619)
   word32_value_or(result: word_wrapping_multiply(a: basis, b: prime), fallback: 0 - 1) == 84696351
 }
 
-test fn wrapping_multiply_by_one_is_the_identity_holds() -> Bool {
+test fn wrapping_multiply_by_one_is_the_identity_holds() -> Bool  {
   let v = word32_or_zero(value: 305419896)
   word32_value_or(result: word_wrapping_multiply(a: v, b: word32_or_zero(value: 1)), fallback: 0 - 1) == 305419896
 }
 
-test fn carry_is_pinned_in_both_directions_holds() -> Bool {
+test fn carry_is_pinned_in_both_directions_holds() -> Bool  {
   match word_carrying_add(a: word32_or_zero(value: 4294967295), b: word32_or_zero(value: 1)) {
     CarryingSumRefused { cause: _ } => false
     CarryingSumReady { result: crossed } =>
@@ -331,19 +331,19 @@ fn octets_of(result: OctetsResult) -> List<Int> {
   }
 }
 
-test fn endianness_is_pinned_both_ways_holds() -> Bool {
+test fn endianness_is_pinned_both_ways_holds() -> Bool  {
   let octets = octet_words(values: [222, 173, 190, 239])
   word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: BigEndian), fallback: 0 - 1) == 3735928559
     && word32_value_or(result: word_from_octets(width: Width32, octets: octets, endianness: LittleEndian), fallback: 0 - 1) == 4022250974
 }
 
-test fn word_to_octets_is_pinned_both_ways_holds() -> Bool {
+test fn word_to_octets_is_pinned_both_ways_holds() -> Bool  {
   let v = word32_or_zero(value: 3735928559)
   octets_of(result: word_to_octets(a: v, endianness: BigEndian)) == [222, 173, 190, 239]
     && octets_of(result: word_to_octets(a: v, endianness: LittleEndian)) == [239, 190, 173, 222]
 }
 
-test fn octet_packing_round_trips_holds() -> Bool {
+test fn octet_packing_round_trips_holds() -> Bool  {
   let v = word32_or_zero(value: 305419896)
   match word_to_octets(a: v, endianness: BigEndian) {
     OctetsRefused { cause: _ } => false
@@ -352,7 +352,7 @@ test fn octet_packing_round_trips_holds() -> Bool {
   }
 }
 
-test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
+test fn packing_refuses_the_wrong_octet_count_holds() -> Bool  {
   match word_from_octets(width: Width32, octets: octet_words(values: [1, 2, 3]), endianness: BigEndian) {
     WordRefused { cause: OctetCountMismatch { width: _, expected: e, observed: o } } => e == 4 && o == 3
     WordRefused { cause: _ } => false
@@ -376,14 +376,14 @@ test fn packing_refuses_the_wrong_octet_count_holds() -> Bool {
 // at a formal, which is measured rather than assumed -- this very file once passed [256, 0, 0] to a
 // List<UInt8> parameter and compiled. The constructor is mitigation; sole construction is the
 // trigger, stated at std.integer.
-test fn an_octet_cannot_be_built_out_of_range_holds() -> Bool {
+test fn an_octet_cannot_be_built_out_of_range_holds() -> Bool  {
   match uint8_of_int(value: 256) {
     UInt8OutOfRange { observed: o } => o == 256
     UInt8Ready { value: _ } => false
   }
 }
 
-test fn an_octet_admits_the_byte_range_holds() -> Bool {
+test fn an_octet_admits_the_byte_range_holds() -> Bool  {
   match uint8_of_int(value: 255) {
     UInt8Ready { value: v } => v == 255
     UInt8OutOfRange { observed: _ } => false
@@ -394,13 +394,13 @@ test fn an_octet_admits_the_byte_range_holds() -> Bool {
 // Int realization cannot count to, and the refusal arm must NOT fire there: an unrepresentable
 // bound is ignorance about the bound, not an answer about the value. The four-octet case is the
 // same question where the capacity IS representable, so the two arms are both executed.
-test fn length_field_rendering_holds() -> Bool {
+test fn length_field_rendering_holds() -> Bool  {
   raw_octets_of(result: int_to_octets(value: 512, count: 8, endianness: BigEndian)) == [0, 0, 0, 0, 0, 0, 2, 0]
     && raw_octets_of(result: int_to_octets(value: 512, count: 4, endianness: BigEndian)) == [0, 0, 2, 0]
     && raw_octets_of(result: int_to_octets(value: 512, count: 4, endianness: LittleEndian)) == [0, 2, 0, 0]
 }
 
-test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
+test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool  {
   match int_to_octets(value: 256, count: 1, endianness: BigEndian) {
     RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 256 && c == 1
     RawOctetsRefused { cause: _ } => false
@@ -416,7 +416,7 @@ test fn length_field_refuses_a_value_past_its_capacity_holds() -> Bool {
 // computed x * 65536 + y * 256 + z on it and produced a plausible wrong string with no error; the
 // substrate route refuses at word_of_int because the width is a fact the value has to establish.
 // So re-introducing the displaced arithmetic turns this Absent into a Present and reds the claim.
-test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
+test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool  {
   match base64_octets(values: [256, 0, 0]) {
     QualifiedOctetsRefused { observed: v } => v == 256
     QualifiedOctetsReady { value: _ } => false
@@ -427,14 +427,14 @@ test fn base64_encode_refuses_an_out_of_range_octet_holds() -> Bool {
 // prefix a caller could pre-load (the accumulator it replaced took one; a supplied `admitted: [256]`
 // minted a sealed value nothing had checked). A fold that scanned from the tail, or that stopped at
 // the first member, answers 400 or 1 here and reds this claim.
-test fn uint8_octets_of_ints_names_the_first_out_of_range_member_holds() -> Bool {
+test fn uint8_octets_of_ints_names_the_first_out_of_range_member_holds() -> Bool  {
   match uint8_octets_of_ints(values: [1, 300, 400]) {
     QualifiedOctetsRefused { observed: v } => v == 300
     QualifiedOctetsReady { value: _ } => false
   }
 }
 
-test fn base64_encode_still_admits_the_byte_range_holds() -> Bool {
+test fn base64_encode_still_admits_the_byte_range_holds() -> Bool  {
   match base64_octets(values: [255, 0, 255]) {
     QualifiedOctetsRefused { observed: _ } => false
     QualifiedOctetsReady { value: qualified } => base64_encode(octets: qualified, variant: Standard) == "/wD/"
@@ -465,7 +465,7 @@ fn modulus_agrees_at(w: WordWidth) -> Bool {
   }
 }
 
-test fn word_modulus_agrees_with_the_power_authority_holds() -> Bool {
+test fn word_modulus_agrees_with_the_power_authority_holds() -> Bool  {
   modulus_agrees_at(w: Width8)
     && modulus_agrees_at(w: Width16)
     && modulus_agrees_at(w: Width32)
@@ -488,7 +488,7 @@ fn frontier_subject_key(row: FrontierRow) -> String {
 // octet constructor lives at std.integer because that is where UInt8 lives; a row about ipv4
 // consuming it is this lane's obligation and names the declaration this lane landed. Anything
 // outside those two homes would be this roster reaching onto a surface it does not own.
-test fn machine_word_frontier_rows_name_an_owned_module_holds() -> Bool {
+test fn machine_word_frontier_rows_name_an_owned_module_holds() -> Bool  {
   machine_word_consumer_frontier_rows |> all(row =>
     match row.subject {
       DeclSubject { ref: r } =>
@@ -497,7 +497,7 @@ test fn machine_word_frontier_rows_name_an_owned_module_holds() -> Bool {
     })
 }
 
-test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool {
+test fn machine_word_frontier_covers_the_awaited_operations_holds() -> Bool  {
   let keys = machine_word_consumer_frontier_rows |> map(row => frontier_subject_key(row: row))
   let expected = [
     "std.machine_word.word_wrapping_add",
@@ -534,7 +534,7 @@ fn half_radix_agrees_at(w: WordWidth) -> Bool {
   }
 }
 
-test fn word_half_radix_agrees_with_the_power_authority_holds() -> Bool {
+test fn word_half_radix_agrees_with_the_power_authority_holds() -> Bool  {
   half_radix_agrees_at(w: Width8)
     && half_radix_agrees_at(w: Width16)
     && half_radix_agrees_at(w: Width32)
@@ -544,7 +544,7 @@ test fn word_half_radix_agrees_with_the_power_authority_holds() -> Bool {
 // must not: a Width64 word has no residue the carrier can hold, and handing back a split point for
 // one would be answering a question whose subject does not exist. The two therefore disagree here
 // BY CONSTRUCTION, and that disagreement is claimed rather than left to look like an oversight.
-test fn word_half_radix_refuses_width64_although_the_power_exists_holds() -> Bool {
+test fn word_half_radix_refuses_width64_although_the_power_exists_holds() -> Bool  {
   match word_half_radix(w: Width64) {
     Present { value: _ } => false
     Absent =>
@@ -555,7 +555,7 @@ test fn word_half_radix_refuses_width64_although_the_power_exists_holds() -> Boo
   }
 }
 
-test fn octet_radix_is_the_width8_modulus_holds() -> Bool {
+test fn octet_radix_is_the_width8_modulus_holds() -> Bool  {
   match octet_radix() {
     Absent => false
     Present { value: r } =>
@@ -579,7 +579,7 @@ test fn octet_radix_is_the_width8_modulus_holds() -> Bool {
 // of it, by subject key rather than by count -- a count agrees while membership differs. Dropping
 // machine_word_consumer_frontier_rows from gunbc.census_closure_frontier
 // census_closure_frontier_row_groups reds it, which is the mutation it exists to catch.
-test fn machine_word_frontier_rows_are_enrolled_in_the_census_holds() -> Bool {
+test fn machine_word_frontier_rows_are_enrolled_in_the_census_holds() -> Bool  {
   let census_keys = census_closure_frontier_rows() |> map(row => frontier_subject_key(row: row))
   machine_word_consumer_frontier_rows |> all(row =>
     census_keys |> any(k => k == frontier_subject_key(row: row)))
@@ -594,7 +594,7 @@ test fn machine_word_frontier_rows_are_enrolled_in_the_census_holds() -> Bool {
 // reds on a path no claim runs. These pin both directions of the packing boundary, and the
 // from_octets arm is RED against the pre-fix code rather than merely green against the new code,
 // because it is supplied the exact eight-octet input that made the accumulator overflow.
-test fn packing_refuses_width64_before_accumulating_holds() -> Bool {
+test fn packing_refuses_width64_before_accumulating_holds() -> Bool  {
   let all_ones = octet_words(values: [255, 255, 255, 255, 255, 255, 255, 255])
   match word_from_octets(width: Width64, octets: all_ones, endianness: BigEndian) {
     WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
@@ -605,7 +605,7 @@ test fn packing_refuses_width64_before_accumulating_holds() -> Bool {
 
 // A width that cannot exist is refused as such, not as a count disagreement -- the wider fact wins,
 // and this claim is what keeps the refusal ORDER from silently inverting.
-test fn packing_refuses_width64_ahead_of_the_count_check_holds() -> Bool {
+test fn packing_refuses_width64_ahead_of_the_count_check_holds() -> Bool  {
   match word_from_octets(width: Width64, octets: octet_words(values: [1, 2, 3]), endianness: BigEndian) {
     WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
     WordRefused { cause: _ } => false
@@ -613,7 +613,7 @@ test fn packing_refuses_width64_ahead_of_the_count_check_holds() -> Bool {
   }
 }
 
-test fn word_to_octets_refuses_width64_holds() -> Bool {
+test fn word_to_octets_refuses_width64_holds() -> Bool  {
   match word_to_octets(a: Word { width: Width64, value: 0 }, endianness: BigEndian) {
     OctetsRefused { cause: WordWidthUnrealizable { width: _ } } => true
     OctetsRefused { cause: _ } => false
@@ -629,7 +629,7 @@ fn unqualified_width8_256() -> Word {
   Word { width: Width8, value: 256 }
 }
 
-test fn shift_refuses_an_unqualified_operand_holds() -> Bool {
+test fn shift_refuses_an_unqualified_operand_holds() -> Bool  {
   match word_shift_right(a: unqualified_width8_256(), amount: 1) {
     WordRefused { cause: WordValueOutOfRange { width: _, value: v } } => v == 256
     WordRefused { cause: _ } => false
@@ -639,7 +639,7 @@ test fn shift_refuses_an_unqualified_operand_holds() -> Bool {
 
 // One control per exported family, because the premise check is per-boundary: a repair applied to
 // some entries and not others is exactly the state the first cut was in.
-test fn every_exported_family_refuses_an_unqualified_operand_holds() -> Bool {
+test fn every_exported_family_refuses_an_unqualified_operand_holds() -> Bool  {
   let bad = unqualified_width8_256()
   let good = match word_of_int(width: Width8, value: 1) {
     WordReady { word: w } => w
@@ -657,7 +657,7 @@ test fn every_exported_family_refuses_an_unqualified_operand_holds() -> Bool {
     && refused_value_out_of_range(result: word_wrapping_multiply(a: bad, b: good))
 }
 
-test fn carrying_add_refuses_an_unqualified_operand_holds() -> Bool {
+test fn carrying_add_refuses_an_unqualified_operand_holds() -> Bool  {
   match word_carrying_add(a: unqualified_width8_256(), b: unqualified_width8_256()) {
     CarryingSumRefused { cause: WordValueOutOfRange { width: _, value: _ } } => true
     CarryingSumRefused { cause: _ } => false
@@ -665,7 +665,7 @@ test fn carrying_add_refuses_an_unqualified_operand_holds() -> Bool {
   }
 }
 
-test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool {
+test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool  {
   match word_to_octets(a: unqualified_width8_256(), endianness: BigEndian) {
     OctetsRefused { cause: WordValueOutOfRange { width: _, value: _ } } => true
     OctetsRefused { cause: _ } => false
@@ -678,14 +678,14 @@ test fn to_octets_refuses_an_unqualified_operand_holds() -> Bool {
 // packing to refuse -- because the carrier at the time proved neither. Admitting the same list
 // through the octet constructor refuses before any packing happens, and that is the state the
 // packing no longer has to re-inspect.
-test fn admitting_an_out_of_range_member_refuses_before_packing_holds() -> Bool {
+test fn admitting_an_out_of_range_member_refuses_before_packing_holds() -> Bool  {
   match uint8_octets_of_ints(values: [1, 256]) {
     QualifiedOctetsRefused { observed: v } => v == 256
     QualifiedOctetsReady { value: _ } => false
   }
 }
 
-test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
+test fn admitting_an_in_range_list_succeeds_holds() -> Bool  {
   match uint8_octets_of_ints(values: [1, 255]) {
     QualifiedOctetsReady { value: o } => qualified_octet_members(q: o) == [1, 255]
     QualifiedOctetsRefused { observed: _ } => false
@@ -695,7 +695,7 @@ test fn admitting_an_in_range_list_succeeds_holds() -> Bool {
 // THE OCTET-COUNT TRIPLE. A negative count is not a small capacity, and reading it as one returned
 // a successful empty rendering. The three cases together are what separate "refused as nonsense"
 // from "rendered nothing because nothing fits" from "rendered nothing because nothing was asked".
-test fn negative_octet_count_refuses_holds() -> Bool {
+test fn negative_octet_count_refuses_holds() -> Bool  {
   match int_to_octets(value: 0, count: 0 - 1, endianness: BigEndian) {
     RawOctetsRefused { cause: OctetCountOutOfRange { observed: n } } => n == (0 - 1)
     RawOctetsRefused { cause: _ } => false
@@ -703,14 +703,14 @@ test fn negative_octet_count_refuses_holds() -> Bool {
   }
 }
 
-test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool {
+test fn zero_octet_count_renders_nothing_for_zero_holds() -> Bool  {
   match int_to_octets(value: 0, count: 0, endianness: BigEndian) {
     RawOctetsReady { octets: o } => list_length(items: o) == 0
     RawOctetsRefused { cause: _ } => false
   }
 }
 
-test fn zero_octet_count_refuses_a_nonzero_value_holds() -> Bool {
+test fn zero_octet_count_refuses_a_nonzero_value_holds() -> Bool  {
   match int_to_octets(value: 1, count: 0, endianness: BigEndian) {
     RawOctetsRefused { cause: IntegerDoesNotFitOctets { value: v, octets: c } } => v == 1 && c == 0
     RawOctetsRefused { cause: _ } => false
@@ -720,7 +720,7 @@ test fn zero_octet_count_refuses_a_nonzero_value_holds() -> Bool {
 
 // THE REFUSAL ORDER, pinned so the four shift and rotate arms cannot drift apart again. A width
 // that cannot exist is the wider fact; naming the amount instead answers a narrower question.
-test fn rotate_right_refuses_width_before_amount_holds() -> Bool {
+test fn rotate_right_refuses_width_before_amount_holds() -> Bool  {
   match word_rotate_right(a: Word { width: Width64, value: 0 }, amount: 64) {
     WordRefused { cause: WordWidthUnrealizable { width: _ } } => true
     WordRefused { cause: _ } => false
@@ -728,7 +728,7 @@ test fn rotate_right_refuses_width_before_amount_holds() -> Bool {
   }
 }
 
-test fn all_shift_and_rotate_arms_agree_on_refusal_order_holds() -> Bool {
+test fn all_shift_and_rotate_arms_agree_on_refusal_order_holds() -> Bool  {
   let w64 = Word { width: Width64, value: 0 }
   word_refuses_unrealizable(result: word_shift_left(a: w64, amount: 64))
     && word_refuses_unrealizable(result: word_shift_right(a: w64, amount: 64))
@@ -752,14 +752,14 @@ fn word_refuses_unrealizable(result: WordResult) -> Bool {
 // left the range half to mitigation beside the route; that was the defect, not the design -- a wall
 // beside a route is a wall with a door next to it, and octet_int_values([256]) answered [256] on the
 // head this replaces. What remains claimable is that the projection reads what was admitted.
-test fn octet_projection_reads_what_was_admitted_holds() -> Bool {
+test fn octet_projection_reads_what_was_admitted_holds() -> Bool  {
   match uint8_octets_of_ints(values: [0, 1, 255]) {
     QualifiedOctetsReady { value: o } => qualified_octet_members(q: o) == [0, 1, 255]
     QualifiedOctetsRefused { observed: _ } => false
   }
 }
 
-test fn octet_projection_passes_qualified_members_holds() -> Bool {
+test fn octet_projection_passes_qualified_members_holds() -> Bool  {
   octets_of(result: word_to_octets(a: word32_or_zero(value: 255), endianness: BigEndian)) == [0, 0, 0, 255]
 }
 
@@ -769,7 +769,7 @@ test fn octet_projection_passes_qualified_members_holds() -> Bool {
 // encoder out. [251, 255, 191] is the RFC 4648 pattern whose 24 bits are the four sextets
 // 62, 63, 62, 63 -- the two alphabet-tail characters in both orders, which is what makes it the
 // vector that separates Standard from UrlSafe.
-test fn base64_standard_tail_vector_survives_the_sealed_carrier_holds() -> Bool {
+test fn base64_standard_tail_vector_survives_the_sealed_carrier_holds() -> Bool  {
   match base64_octets(values: [251, 255, 191]) {
     QualifiedOctetsRefused { observed: _ } => false
     QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: Standard) == "+/+/"
@@ -778,7 +778,7 @@ test fn base64_standard_tail_vector_survives_the_sealed_carrier_holds() -> Bool 
 
 // THE SAME THREE OCTETS ON THE URL-SAFE ALPHABET, because a single-alphabet claim cannot tell a
 // correct variant table from one that ignores its variant argument.
-test fn base64_urlsafe_tail_vector_survives_the_sealed_carrier_holds() -> Bool {
+test fn base64_urlsafe_tail_vector_survives_the_sealed_carrier_holds() -> Bool  {
   match base64_octets(values: [251, 255, 191]) {
     QualifiedOctetsRefused { observed: _ } => false
     QualifiedOctetsReady { value: q } => base64_encode(octets: q, variant: UrlSafe) == "-_-_"
@@ -789,7 +789,7 @@ test fn base64_urlsafe_tail_vector_survives_the_sealed_carrier_holds() -> Bool {
 // earlier cut got wrong: it claimed uint8_of_int refused 256 while base64_encode accepted [256, 0, 0]
 // and answered "AAAA". base64_octets is now the ONLY route to a value base64_encode will take, so a
 // red here is a red on the encoder's own input path.
-test fn the_encoder_input_route_refuses_an_out_of_range_octet_holds() -> Bool {
+test fn the_encoder_input_route_refuses_an_out_of_range_octet_holds() -> Bool  {
   match base64_octets(values: [251, 256, 191]) {
     QualifiedOctetsRefused { observed: v } => v == 256
     QualifiedOctetsReady { value: _ } => false

@@ -60,11 +60,11 @@ fn demand_walk_closure() -> FreeMonoid<String> {
 
 // The demand walk reaches exactly the declared closure: the chain, the diamond once, the excluded
 // gate as a target, and neither the module behind the gate nor the island.
-test fn the_demand_walk_reaches_exactly_the_fixture_closure() -> Bool {
+test fn the_demand_walk_reaches_exactly_the_fixture_closure() -> Bool  {
   same_set(a: demand_walk_closure(), b: expected_closure)
 }
 
 // And it agrees with the adjacency fold it replaced, on the same pool and exclusions.
-test fn the_demand_walk_agrees_with_the_corpus_walk() -> Bool {
+test fn the_demand_walk_agrees_with_the_corpus_walk() -> Bool  {
   same_set(a: demand_walk_closure(), b: corpus_walk_closure())
 }

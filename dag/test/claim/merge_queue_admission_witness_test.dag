@@ -92,7 +92,7 @@ fn healthy_queue() -> List<MergeQueueEntry> {
 }
 
 // THE POSITIVE CONTROL.
-test fn w_a_chained_all_green_queue_admits_its_last_entry() -> Bool {
+test fn w_a_chained_all_green_queue_admits_its_last_entry() -> Bool  {
   queue_admission_admits(v: classify_queue_admission(
     strategy: AllGreenGrouping,
     target_tip_sha: tip,
@@ -102,7 +102,7 @@ test fn w_a_chained_all_green_queue_admits_its_last_entry() -> Bool {
   ))
 }
 
-test fn w_a_chained_queue_reports_no_ordering_break() -> Bool {
+test fn w_a_chained_queue_reports_no_ordering_break() -> Bool  {
   match queue_ordering_break(target_tip_sha: tip, entries: healthy_queue()) {
     Absent => true
     Present { value: _ } => false
@@ -111,14 +111,14 @@ test fn w_a_chained_queue_reports_no_ordering_break() -> Bool {
 
 // EXACT SUBJECT. The queue's whole guarantee is that the checked commit IS the published one, so
 // the discriminating case is a green entry whose composition is not what fast-forwards.
-test fn w_the_checked_composition_is_the_admitted_commit() -> Bool {
+test fn w_the_checked_composition_is_the_admitted_commit() -> Bool  {
   match merge_group_exact_subject_verdict(entry: last_entry(), admitted_commit_sha: c2) {
     ExactSubject => true
     SubjectSubstituted { tested: _, admitted: _ } => false
   }
 }
 
-test fn w_RED_a_green_entry_whose_composition_is_not_what_lands_is_refused() -> Bool {
+test fn w_RED_a_green_entry_whose_composition_is_not_what_lands_is_refused() -> Bool  {
   let verdict = classify_queue_admission(
     strategy: AllGreenGrouping,
     target_tip_sha: tip,
@@ -136,7 +136,7 @@ test fn w_RED_a_green_entry_whose_composition_is_not_what_lands_is_refused() -> 
 // built onto a tip that is no longer the tip, so every green in it is about a tree that will never
 // exist. The entries are UNCHANGED and all still green -- only the observed tip differs -- so a
 // green here cannot be produced by anything except the tip comparison.
-test fn w_RED_main_moving_under_the_queue_breaks_the_head_of_the_chain() -> Bool {
+test fn w_RED_main_moving_under_the_queue_breaks_the_head_of_the_chain() -> Bool  {
   match queue_ordering_break(target_tip_sha: moved_tip, entries: healthy_queue()) {
     Present { value: QueueHeadNotOnTarget { position: p, expected_parent: e, observed_parent: o } } =>
       p == 0 && e == moved_tip && o == tip
@@ -144,7 +144,7 @@ test fn w_RED_main_moving_under_the_queue_breaks_the_head_of_the_chain() -> Bool
   }
 }
 
-test fn w_RED_an_all_green_queue_off_the_tip_admits_nothing() -> Bool {
+test fn w_RED_an_all_green_queue_off_the_tip_admits_nothing() -> Bool  {
   !queue_admission_admits(v: classify_queue_admission(
     strategy: AllGreenGrouping,
     target_tip_sha: moved_tip,
@@ -164,7 +164,7 @@ fn unchained_queue() -> List<MergeQueueEntry> {
   ]
 }
 
-test fn w_RED_an_entry_composed_off_its_predecessor_is_a_different_break() -> Bool {
+test fn w_RED_an_entry_composed_off_its_predecessor_is_a_different_break() -> Bool  {
   match queue_ordering_break(target_tip_sha: tip, entries: unchained_queue()) {
     Present { value: QueueEntryNotChained { position: p, expected_parent: e, observed_parent: o } } =>
       p == 1 && e == c0 && o == other
@@ -176,7 +176,7 @@ fn misordered_queue() -> List<MergeQueueEntry> {
   [head_entry(), entry(position: 2, composed: c1, parent: c0, conclusion: Success)]
 }
 
-test fn w_RED_a_gap_in_queue_positions_refuses_rather_than_renumbering() -> Bool {
+test fn w_RED_a_gap_in_queue_positions_refuses_rather_than_renumbering() -> Bool  {
   match queue_ordering_break(target_tip_sha: tip, entries: misordered_queue()) {
     Present { value: QueuePositionsNotConsecutive { position: p, expected: e } } => p == 2 && e == 1
     _ => false
@@ -194,7 +194,7 @@ fn queue_with_red_predecessor() -> List<MergeQueueEntry> {
   [red_head_entry(), mid_entry()]
 }
 
-test fn w_RED_allgreen_refuses_an_entry_behind_a_red_one() -> Bool {
+test fn w_RED_allgreen_refuses_an_entry_behind_a_red_one() -> Bool  {
   match grouping_admission(
     strategy: AllGreenGrouping,
     entries: queue_with_red_predecessor(),
@@ -207,7 +207,7 @@ test fn w_RED_allgreen_refuses_an_entry_behind_a_red_one() -> Bool {
 
 // THE DISCRIMINATOR BETWEEN THE TWO STRATEGIES, on the SAME queue. Without this, both arms could be
 // one function and the ALLGREEN row in gunbc.repo_ruleset's proposal would be carrying no meaning.
-test fn w_headgreen_admits_exactly_where_allgreen_refuses() -> Bool {
+test fn w_headgreen_admits_exactly_where_allgreen_refuses() -> Bool  {
   match grouping_admission(
     strategy: HeadGreenGrouping,
     entries: queue_with_red_predecessor(),
@@ -218,7 +218,7 @@ test fn w_headgreen_admits_exactly_where_allgreen_refuses() -> Bool {
   }
 }
 
-test fn w_RED_an_entry_that_is_itself_red_is_not_reported_as_a_predecessor_failure() -> Bool {
+test fn w_RED_an_entry_that_is_itself_red_is_not_reported_as_a_predecessor_failure() -> Bool  {
   match grouping_admission(
     strategy: AllGreenGrouping,
     entries: queue_with_red_predecessor(),
@@ -229,7 +229,7 @@ test fn w_RED_an_entry_that_is_itself_red_is_not_reported_as_a_predecessor_failu
   }
 }
 
-test fn w_RED_an_unrecognized_grouping_strategy_refuses_rather_than_defaulting() -> Bool {
+test fn w_RED_an_unrecognized_grouping_strategy_refuses_rather_than_defaulting() -> Bool  {
   match grouping_admission(
     strategy: UnrecognizedGroupingStrategy { raw: "SOMEDAYSTRATEGY" },
     entries: healthy_queue(),
@@ -244,7 +244,7 @@ test fn w_RED_an_unrecognized_grouping_strategy_refuses_rather_than_defaulting()
 // If this goes red the required aggregate can never schedule for a merge_group composition, so the
 // required check would sit permanently pending on every queue entry -- the quiet failure, not a
 // loud one.
-test fn w_the_required_workflow_can_schedule_for_a_composition() -> Bool {
+test fn w_the_required_workflow_can_schedule_for_a_composition() -> Bool  {
   floor_workflow_admits_merge_group()
 }
 
@@ -281,7 +281,7 @@ fn roster_with(mode: String) -> BypassActorRosterObservation {
 }
 
 // EXCLUSIVE REQUIRES AN OBSERVED EMPTY ROSTER AND NOTHING WEAKER.
-test fn w_a_configured_queue_with_an_observed_empty_roster_is_exclusive() -> Bool {
+test fn w_a_configured_queue_with_an_observed_empty_roster_is_exclusive() -> Bool  {
   match merge_queue_terminal(standing: configured_standing(), bypass_roster: observed_empty_roster()) {
     MergeQueueExclusive { grouping_strategy: g } => g == "ALLGREEN"
     _ => false
@@ -293,7 +293,7 @@ test fn w_a_configured_queue_with_an_observed_empty_roster_is_exclusive() -> Boo
 // Exclusive, a reader-relative "I cannot bypass" has been read as "nobody can" -- the strongest
 // claim minted from the weakest observation. The cause must survive to the terminal, because
 // "nobody has established the roster" and "a role may bypass" have different remedies.
-test fn w_RED_an_unavailable_bypass_roster_cannot_mint_exclusive() -> Bool {
+test fn w_RED_an_unavailable_bypass_roster_cannot_mint_exclusive() -> Bool  {
   match merge_queue_terminal(standing: configured_standing(), bypass_roster: unavailable_roster()) {
     MergeQueueOperational { grouping_strategy: _, nonexclusive: cause } =>
       match cause {
@@ -308,7 +308,7 @@ test fn w_RED_an_unavailable_bypass_roster_cannot_mint_exclusive() -> Bool {
 // THE LIVE SUBJECT, AS OBSERVED. A privileged read of gunb-ai/gunbc ruleset 16178731 on 2026-09-03
 // reported an always-bypass actor: actor_type RepositoryRole, actor_id 2. Exclusive is therefore
 // not merely unproven for this repository -- it is FALSE while that grant stands.
-test fn w_RED_an_always_bypass_actor_holds_the_terminal_at_operational() -> Bool {
+test fn w_RED_an_always_bypass_actor_holds_the_terminal_at_operational() -> Bool  {
   match merge_queue_terminal(standing: configured_standing(), bypass_roster: roster_with(mode: "always")) {
     MergeQueueOperational { grouping_strategy: _, nonexclusive: cause } =>
       match cause {
@@ -322,7 +322,7 @@ test fn w_RED_an_always_bypass_actor_holds_the_terminal_at_operational() -> Bool
 // THE NARROWER GRANT IS ITS OWN CAUSE, because its remedy is a different revocation. And an
 // UNRECOGNIZED mode reads as the WIDER grant, fail-closed: an unestablished grant is treated as
 // granting everything rather than being skipped.
-test fn w_RED_the_two_grants_and_an_unreadable_mode_do_not_collapse() -> Bool {
+test fn w_RED_the_two_grants_and_an_unreadable_mode_do_not_collapse() -> Bool  {
   let pr = match merge_queue_terminal(standing: configured_standing(), bypass_roster: roster_with(mode: "pull_request")) {
     MergeQueueOperational { grouping_strategy: _, nonexclusive: c } =>
       match c { PullRequestBypassActorObserved { actor_type: _, actor_id: _ } => true _ => false }
@@ -336,7 +336,7 @@ test fn w_RED_the_two_grants_and_an_unreadable_mode_do_not_collapse() -> Bool {
   pr && unknown
 }
 
-test fn w_RED_an_absent_or_ambiguous_queue_rule_is_unconfigured() -> Bool {
+test fn w_RED_an_absent_or_ambiguous_queue_rule_is_unconfigured() -> Bool  {
   let absent = match merge_queue_terminal(standing: NoMergeQueueRule, bypass_roster: observed_empty_roster()) {
     MergeQueueUnconfigured { reason: _ } => true
     _ => false

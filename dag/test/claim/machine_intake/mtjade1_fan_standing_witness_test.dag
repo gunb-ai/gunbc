@@ -36,7 +36,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the claim reds if gunbc.fleet_acoustic_intent raises that ceiling to full duty -- which is the
 // change that would actually make unbounded full duty tolerable at this site, and which the old
 // two-arm version could not see at all.
-test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
+test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool  {
   percent_count(p: mtjade1_residence_acoustic_intent.ceiling.duty) < 100
     && percent_count(p: mtjade1_residence_acoustic_intent.ceiling.duty) == percent_count(p: operator_residence_duty_ceiling.duty)
     && match mtjade1_failsafe_window_close {
@@ -49,7 +49,7 @@ test fn w_mtjade1_residence_refuses_indefinite_full_failsafe() -> Bool {
 // rather than over a local pair. Its red is unchanged in meaning -- the unit has not posted -- and
 // wider in reach: HostPosted and HostPoweredOff are now distinguishable states this claim refuses,
 // where the deleted HostThermalTelemetry pair could not tell a powered-off host from a pre-POST one.
-test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
+test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool  {
   match mtjade1_first_post_fan_capture {
     AwaitingFirstPostWithDimms => true
     FirstPostFanCaptured { standing: _ } => false
@@ -73,7 +73,7 @@ test fn w_mtjade1_first_post_fan_finding_includes_stay_at_failsafe() -> Bool {
 // THE FAMILY IS SUPPLIED HERE (DESIGN §3, a witness discriminates at one interface). The real path --
 // the committed capture read, digest-checked, bound and discriminated into jade_current_fan_policy_
 // convergence -- runs once, in test.claim.mtjade1_recorded_manager_capture_witness.
-test fn w_jade_fan_convergence_binds_openbmc_and_leaves_megarac_unbound() -> Bool {
+test fn w_jade_fan_convergence_binds_openbmc_and_leaves_megarac_unbound() -> Bool  {
   match jade_fan_policy_convergence(family: FamilyObserved { family: OpenBmc }) {
       JadeFanRouteSelected { route: r } => match r {
         ConvergeRouteBound { authority: _, write_operation: _, transport: _, readback: _ } => true

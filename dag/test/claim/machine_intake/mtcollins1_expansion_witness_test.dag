@@ -100,7 +100,7 @@ data apertures_without_riser_report_fixture: MtCollinsExpansionOperatorObservati
 // Offered { positions: 0 } for a report of zero fitted risers, because zero is Less than the
 // platform bound of two. An offer of zero is not an offer -- the same shape as a populated bay
 // offering an attachment point, which review 66015 caught one arm over.
-test fn zero_fitted_risers_is_not_an_offer_of_zero() -> Bool {
+test fn zero_fitted_risers_is_not_an_offer_of_zero() -> Bool  {
   match pcie_attachment_standing(observation: zero_risers_fixture) {
     AttachmentPointAbsent { basis: _ } => true
     AttachmentPointOffered { positions: _, basis: _ } => false
@@ -113,7 +113,7 @@ test fn zero_fitted_risers_is_not_an_offer_of_zero() -> Bool {
 // REPAIR CONTROL (review 66015, first finding). OcpBayEmpty and OcpBayPopulated used to produce the
 // identical Offered standing, so the coproduct's discriminating information was declared and then
 // discarded by its only consumer. A bay with a card in it offers nothing.
-test fn a_populated_ocp_bay_offers_nothing() -> Bool {
+test fn a_populated_ocp_bay_offers_nothing() -> Bool  {
   match ocp_attachment_standing(observation: populated_bay_fixture) {
     AttachmentPointOccupied { basis: _ } => true
     AttachmentPointOffered { positions: _, basis: _ } => false
@@ -126,7 +126,7 @@ test fn a_populated_ocp_bay_offers_nothing() -> Bool {
 // REPAIR CONTROL (review 66015, second finding). The platform bound was imported and then consumed
 // only by the arm where nothing was observed, so a report of three fitted risers on a two-position
 // platform was returned as an offer of three. A bound that does not bound is not a bound.
-test fn a_riser_report_beyond_the_platform_bound_refuses() -> Bool {
+test fn a_riser_report_beyond_the_platform_bound_refuses() -> Bool  {
   match pcie_attachment_standing(observation: overreported_risers_fixture) {
     AttachmentPointReportExceedsPlatform { reported: reported, platform_upper_bound: bound } =>
       reported == 3 && bound == 2
@@ -143,7 +143,7 @@ test fn a_riser_report_beyond_the_platform_bound_refuses() -> Bool {
 // standing would become Offered. The platform upper bound of two is carried INSIDE the unobserved
 // arm precisely so that a reader gets the capacity and the open question together instead of one
 // standing in for the other.
-test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
+test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool  {
   match pcie_attachment_standing(observation: apertures_without_riser_report_fixture) {
     AttachmentPointOffered { positions: _, basis: _ } => false
     AttachmentPointOccupied { basis: _ } => false
@@ -155,7 +155,7 @@ test fn two_rear_apertures_do_not_establish_two_fitted_risers() -> Bool {
 
 // The OCP bay is a platform fact and its OCCUPANCY is not. The brief establishes the slot; nobody
 // has reported whether a card sits in it, so this must answer unobserved rather than offered.
-test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
+test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool  {
   match ocp_attachment_standing(observation: apertures_without_riser_report_fixture) {
     AttachmentPointOffered { positions: _, basis: _ } => false
     AttachmentPointOccupied { basis: _ } => false
@@ -177,7 +177,7 @@ test fn ocp_bay_presence_does_not_establish_its_occupancy() -> Bool {
 // string because a consumer prices a card against it: two fitted positions is the platform's full upper
 // bound, so this chassis reaches it rather than falling one short. The OCP count stays 1 - that fold
 // offers a single mezzanine bay and is a different question from the rear positions.
-test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
+test fn the_observed_unit_resolves_to_its_evidence() -> Bool  {
   match expansion_evidence_for_unit(unit: observed_unit) {
     NoExpansionObservationForUnit { requested_unit: _ } => false
     UnitExpansionEvidence { observation: _, pcie: pcie, ocp: ocp } =>
@@ -211,7 +211,7 @@ test fn the_observed_unit_resolves_to_its_evidence() -> Bool {
 // a fabricated reference inside the control against fabricated answers. It now points at a real
 // declaration in this module. That declaration is a fixture rather than a machine, and it stands in
 // for "a reference that is not observed_unit"; nothing here claims it identifies a host.
-test fn another_unit_gets_no_observation_rather_than_this_one() -> Bool {
+test fn another_unit_gets_no_observation_rather_than_this_one() -> Bool  {
   let other_unit: DeclarationRef = DeclarationRef {
     module_path: "test.claim.mtcollins1_expansion_witness_test",
     decl_name: "fixture_apertures",

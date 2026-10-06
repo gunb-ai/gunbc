@@ -78,14 +78,14 @@ fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // THE DISCRIMINATING RED. Two modules whose names differ only by a dot-versus-underscore refuse
 // with the class that names the defect -- not merely "something refused", which a typo in the
 // fixture source would also satisfy.
-test fn dot_underscore_module_pair_refuses_rather_than_overwriting() -> Bool {
+test fn dot_underscore_module_pair_refuses_rather_than_overwriting() -> Bool  {
   refused_with_class(collision_run(), "ModuleFilenameCollision")
 }
 
 // THE POSITIVE CONTROL. The same shape with one segment renamed so the two filenames differ
 // compiles clean -- zero diagnostics of ANY severity. Without this the RED above is satisfied by
 // a wall that refuses everything.
-test fn distinct_filenames_still_compile() -> Bool {
+test fn distinct_filenames_still_compile() -> Bool  {
   completed_with_no_diagnostics(distinct_run())
     && !refused_with_class(distinct_run(), "ModuleFilenameCollision")
 }

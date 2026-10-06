@@ -37,7 +37,7 @@ import gunbc.machine_intake_mtjade1_first_dpc_population_plan {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_jade_first_dpc_is_sixteen_slot0_positions() -> Bool {
+test fn w_jade_first_dpc_is_sixteen_slot0_positions() -> Bool  {
   jade_first_dpc_topology == OneDimmPerChannel
     && dimms_per_channel_count(topology: jade_first_dpc_topology) == 1
     && dimms_per_channel_count(topology: TwoDimmsPerChannel) == 2
@@ -46,7 +46,7 @@ test fn w_jade_first_dpc_is_sixteen_slot0_positions() -> Bool {
     && jade_first_dpc_slot() == DimmSlot0
 }
 
-test fn w_jade_first_dpc_names_master_and_slave_channel_ends() -> Bool {
+test fn w_jade_first_dpc_names_master_and_slave_channel_ends() -> Bool  {
   let a = jade_channel_slot(socket: MasterSocket, channel_ordinal: 0)
   let h = jade_channel_slot(socket: MasterSocket, channel_ordinal: 7)
   let i = jade_channel_slot(socket: SlaveSocket, channel_ordinal: 0)
@@ -66,7 +66,7 @@ test fn w_jade_first_dpc_names_master_and_slave_channel_ends() -> Bool {
     }
 }
 
-test fn w_jade_first_dpc_does_not_engage_same_channel_mixing_and_refuses_1r_2r_tbd() -> Bool {
+test fn w_jade_first_dpc_does_not_engage_same_channel_mixing_and_refuses_1r_2r_tbd() -> Bool  {
   dimms_per_channel_count(topology: jade_first_dpc_topology) == 1
     && dimms_per_channel_count(topology: TwoDimmsPerChannel) > 1
     && match jade_first_dpc_cross_channel_1r_2r() {
@@ -76,7 +76,7 @@ test fn w_jade_first_dpc_does_not_engage_same_channel_mixing_and_refuses_1r_2r_t
     }
 }
 
-test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4() -> Bool {
+test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4() -> Bool  {
   match jade_first_dpc_preferred_class {
     UniformMonolithicRdimm => true
     UniformDualDieRdimm => false
@@ -99,7 +99,7 @@ test fn w_jade_first_dpc_modules_are_uniform_and_ddp_is_a_class_not_a_bogus_2rx4
     }
 }
 
-test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool {
+test fn w_jade_first_dpc_silk_is_gsg_table11_hash_numbers() -> Bool  {
   match jade_first_dpc_silk_standing {
     ConnectorSilkFromGsgTable11 { prefix: HashNumberPrefix, socket0: a, socket1: b, citation: _ } =>
       list_length(a) == 8

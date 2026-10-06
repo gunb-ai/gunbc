@@ -89,19 +89,19 @@ fn census_reference() -> AmpereCheckpointReference {
 
 data step1_digest: Sha256FileDigest = Sha256FileDigest { digest: sha256_digest(hex: "6f33812ce2af74aacf9deba90931aa9144b1ba974532ae9e890b90a57c5900c1") }
 
-test fn the_step1_loop_prints_two_banner_spans_and_the_last_ends_at_00001a0a() -> Bool {
+test fn the_step1_loop_prints_two_banner_spans_and_the_last_ends_at_00001a0a() -> Bool  {
   let o = ampere_checkpoint_console_observation(lines: lines_of(text: step1_last_two_cycles))
   count(o.spans) == 2 && all(o.spans, s => s.opened_by_banner && count(s.malformed) == 0)
     && (match o.spans.last() { Present { value: s } => count(s.tokens) == 27 Absent => false })
     && last_token_digits(text: step1_last_two_cycles) == "00001a0a"
 }
 
-test fn dropping_the_last_token_moves_the_stop_to_00001a09() -> Bool {
+test fn dropping_the_last_token_moves_the_stop_to_00001a09() -> Bool  {
   last_token_digits(text: without_line(text: step1_last_two_cycles, line: "CP: 00001a0a\r")) == "00001a09"
 }
 
 // R2: the relation names the capture, the reference, its digest and its scope, and nothing more.
-test fn the_relation_says_the_reference_continued_and_under_what_scope() -> Bool {
+test fn the_relation_says_the_reference_continued_and_under_what_scope() -> Bool  {
   match last_span(text: step1_last_two_cycles) {
     Absent => false
     Present { value: s } => match ampere_checkpoint_relation(span: s, capture: step1_digest, reference: census_reference()) {
@@ -113,7 +113,7 @@ test fn the_relation_says_the_reference_continued_and_under_what_scope() -> Bool
   }
 }
 
-test fn a_token_the_reference_never_printed_is_not_placed_in_it() -> Bool {
+test fn a_token_the_reference_never_printed_is_not_placed_in_it() -> Bool  {
   match ampere_checkpoint_console_observation(lines: ["CP: deadbeef"]).spans.first() {
     Absent => false
     Present { value: s } => match ampere_checkpoint_relation(span: s, capture: step1_digest, reference: census_reference()) {
@@ -123,7 +123,7 @@ test fn a_token_the_reference_never_printed_is_not_placed_in_it() -> Bool {
   }
 }
 
-test fn a_short_word_is_kept_as_malformed_not_dropped() -> Bool {
+test fn a_short_word_is_kept_as_malformed_not_dropped() -> Bool  {
   match ampere_checkpoint_console_observation(lines: ["NOTICE:  DRAM FW version 220414", "CP: 0ff00900", "CP: 1a0a"]).spans.first() {
     Present { value: s } => s.opened_by_banner && count(s.tokens) == 1 && s.malformed == ["CP: 1a0a"]
     Absent => false
@@ -131,29 +131,29 @@ test fn a_short_word_is_kept_as_malformed_not_dropped() -> Bool {
 }
 
 // Tokens before the first banner are their own span, which no banner opened; the banner then opens span 1.
-test fn tokens_before_the_first_banner_are_a_span_no_banner_opened() -> Bool {
+test fn tokens_before_the_first_banner_are_a_span_no_banner_opened() -> Bool  {
   let o = ampere_checkpoint_console_observation(lines: ["CP: 04001a0a", "NOTICE:  DRAM FW version 220414", "CP: 0ff00900"])
   count(o.spans) == 2
     && (match o.spans.first() { Present { value: s } => !s.opened_by_banner && s.index == 0 Absent => false })
     && (match o.spans.last() { Present { value: s } => s.opened_by_banner && s.index == 1 Absent => false })
 }
 
-test fn a_console_without_checkpoints_or_banners_has_no_span_and_no_relation() -> Bool {
+test fn a_console_without_checkpoints_or_banners_has_no_span_and_no_relation() -> Bool  {
   count(ampere_checkpoint_console_observation(lines: lines_of(text: run_37069907299_panic)).spans) == 0
 }
 
-test fn run_37069907299_states_an_initrd_efi_load_error_and_a_panic() -> Bool {
+test fn run_37069907299_states_an_initrd_efi_load_error_and_a_panic() -> Bool  {
   let o = linux_boot_console_observation(lines: concat(lines_of(text: run_37069907299_stub_and_banner), concat(lines_of(text: run_37069907299_panic), lines_of(text: run_37069907299_panic_end))))
   o.stub_lines == 4 && o.kernel_banner_printed
     && (match o.initrd { InitrdLoadFailed { status: s, line: _ } => (match s { EfiLoadError => true _ => false }) _ => false })
     && (match o.panic { KernelPanicked { reason: r } => (r as String) == "VFS: Unable to mount root fs on unknown-block(0,0)" KernelPanicNotPrinted => false })
 }
 
-test fn the_panic_end_marker_alone_is_not_a_panic() -> Bool {
+test fn the_panic_end_marker_alone_is_not_a_panic() -> Bool  {
   match linux_boot_console_observation(lines: lines_of(text: run_37069907299_panic_end)).panic { KernelPanicNotPrinted => true KernelPanicked { reason: _ } => false }
 }
 
-test fn a_stub_that_loaded_its_initrd_states_no_failure() -> Bool {
+test fn a_stub_that_loaded_its_initrd_states_no_failure() -> Bool  {
   let o = linux_boot_console_observation(lines: lines_of(text: own_image_stub_and_banner))
   o.stub_lines == 4 && o.kernel_banner_printed
     && (match o.initrd { InitrdFailureNotPrinted => true _ => false })
@@ -162,21 +162,21 @@ test fn a_stub_that_loaded_its_initrd_states_no_failure() -> Bool {
 
 // ── CONSOLE MILESTONES (ruling Q1) ────────────────────────────────────────────────────────────
 
-test fn the_ami_setup_prompt_is_a_uefi_console_prompt_milestone_with_its_line() -> Bool {
+test fn the_ami_setup_prompt_is_a_uefi_console_prompt_milestone_with_its_line() -> Bool  {
   match mtcollins1_console_milestones(lines: lines_of(text: run_37069907299_setup_prompt)).sightings.first() {
     Present { value: m } => (match m.milestone { UefiConsolePromptObserved => true _ => false }) && contains(m.line as String, "Press <DEL> or <ESC>") && m.line_index == 1
     Absent => false
   }
 }
 
-test fn grub_stub_and_kernel_lines_are_their_components_milestones() -> Bool {
+test fn grub_stub_and_kernel_lines_are_their_components_milestones() -> Bool  {
   let ms = mtcollins1_console_milestones(lines: lines_of(text: run_37069907299_stub_and_banner)).sightings
   any(ms, m => match m.milestone { EfiStubLineObserved => true _ => false })
     && any(ms, m => match m.milestone { KernelBannerObserved => true _ => false })
 }
 
 // A milestone's span is the checkpoint reader's span for the same line, by construction.
-test fn a_milestone_falls_in_the_checkpoint_readers_span() -> Bool {
+test fn a_milestone_falls_in_the_checkpoint_readers_span() -> Bool  {
   let lines = lines_of(text: step1_last_two_cycles)
   let banners = filter(mtcollins1_console_milestones(lines: lines).sightings, m => match m.milestone { DramFirmwareBannerObserved => true _ => false })
   let spans = ampere_checkpoint_console_observation(lines: lines).spans
@@ -184,6 +184,6 @@ test fn a_milestone_falls_in_the_checkpoint_readers_span() -> Bool {
 }
 
 // RED: a line that only mentions UEFI is not a milestone.
-test fn a_line_mentioning_uefi_is_not_a_milestone() -> Bool {
+test fn a_line_mentioning_uefi_is_not_a_milestone() -> Bool  {
   count(mtcollins1_console_milestones(lines: ["the UEFI firmware is booting", "Shell> "]).sightings) == 0
 }

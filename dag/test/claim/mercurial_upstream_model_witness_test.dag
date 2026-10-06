@@ -540,13 +540,13 @@ fn mercurial_r0_fixture_expected_execution_receipt() -> String {
   "node_width=40|local_revs=0,1,2|heads=2|bookmark=left|local_tag=right|branches=default,default,default|phases=public,draft,secret|copy=bin/run<-src/main.dag|flags=exec,symlink,regular|requirements=present|verify=ok"
 }
 
-test fn witness_mercurial_upstream_authority_is_version_pinned() -> Bool {
+test fn witness_mercurial_upstream_authority_is_version_pinned() -> Bool  {
   mercurial_upstream_version.major == 7
     && mercurial_upstream_version.minor == 2
     && mercurial_upstream_version.patch == 3
 }
 
-test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
+test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool  {
   match mercurial_decode_node_identity(
     observation: MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
@@ -558,7 +558,7 @@ test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
   }
 }
 
-test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool {
+test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool  {
   let short = mercurial_decode_node_identity(
     observation: MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
@@ -599,7 +599,7 @@ test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool {
   }
 }
 
-test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool {
+test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool  {
   let receipt = mercurial_r0_fixture_expected_execution_receipt()
   string_contains(s: receipt, pattern: "local_revs=0,1,2")
     && string_contains(s: receipt, pattern: "heads=2")
@@ -607,7 +607,7 @@ test fn witness_mercurial_execution_receipt_binds_native_distinctions() -> Bool 
     && string_contains(s: receipt, pattern: "copy=bin/run<-src/main.dag")
 }
 
-test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool {
+test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool  {
   let invalid = MercurialPartialProjection {
     contents: fixture_projection_contents(),
     missing_changesets: [hg_c0],
@@ -622,7 +622,7 @@ test fn witness_mercurial_present_identity_cannot_be_declared_missing() -> Bool 
   }
 }
 
-test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts() -> Bool {
+test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts() -> Bool  {
   let inaccessible = MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
@@ -652,7 +652,7 @@ test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts(
   }
 }
 
-test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> Bool {
+test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> Bool  {
   let inaccessible = MercurialInaccessibleProjection {
     reason: "repository permission denied",
   }
@@ -663,7 +663,7 @@ test fn witness_mercurial_empty_inaccessible_projection_stays_unavailable() -> B
   }
 }
 
-test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
+test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool  {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecodeRefused { cause: _ } => false
     MercurialRepositoryUnavailable { reason: _ } => false
@@ -687,7 +687,7 @@ test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
   }
 }
 
-test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() -> Bool {
+test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
@@ -711,7 +711,7 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
   }
 }
 
-test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool {
+test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
@@ -748,7 +748,7 @@ test fn witness_mercurial_manifest_flags_and_raw_path_remain_distinct() -> Bool 
   }
 }
 
-test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
+test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
@@ -764,7 +764,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
   }
 }
 
-test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
+test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool  {
   let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
   let broken = MercurialFileRevision {
@@ -799,7 +799,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
+test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool  {
   let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
   let partial = MercurialFileRevision {
@@ -835,7 +835,7 @@ test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabrica
   }
 }
 
-test fn witness_mercurial_clone_local_revision_can_change_without_identity_change() -> Bool {
+test fn witness_mercurial_clone_local_revision_can_change_without_identity_change() -> Bool  {
   let a = mercurial_decode_projection(
     projection: fixture_projection_with_local_revisions(local_revisions: local_revisions_a()),
   )
@@ -857,7 +857,7 @@ test fn witness_mercurial_clone_local_revision_can_change_without_identity_chang
   }
 }
 
-test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> Bool {
+test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
@@ -873,7 +873,7 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
   }
 }
 
-test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
+test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: repository } =>
@@ -903,7 +903,7 @@ test fn witness_mercurial_public_draft_secret_phases_remain_distinct() -> Bool {
   }
 }
 
-test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct() -> Bool {
+test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct() -> Bool  {
   match mercurial_exchange_disposition(
     publishing: MercurialPublishingServer,
     phase: MercurialDraft,
@@ -927,7 +927,7 @@ test fn witness_mercurial_publishing_and_secret_exchange_rules_remain_distinct()
   }
 }
 
-test fn witness_mercurial_missing_phase_refuses() -> Bool {
+test fn witness_mercurial_missing_phase_refuses() -> Bool  {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
@@ -943,7 +943,7 @@ test fn witness_mercurial_missing_phase_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
+test fn witness_mercurial_duplicate_phase_refuses() -> Bool  {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
@@ -961,7 +961,7 @@ test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
+test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool  {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
@@ -983,7 +983,7 @@ test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history() -> Bool {
+test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history() -> Bool  {
   match mercurial_fixture_repository() {
     Absent => false
     Present { value: with_evolution } =>
@@ -1001,7 +1001,7 @@ test fn witness_mercurial_evolution_metadata_is_orthogonal_to_portable_history()
   }
 }
 
-test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
+test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool  {
   let invalid = projection_with_manifests(
     projection: fixture_projection(),
     manifests: [
@@ -1024,7 +1024,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_unknown_phase_refuses() -> Bool {
+test fn witness_mercurial_unknown_phase_refuses() -> Bool  {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
@@ -1036,7 +1036,7 @@ test fn witness_mercurial_unknown_phase_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_missing_parent_refuses() -> Bool {
+test fn witness_mercurial_missing_parent_refuses() -> Bool  {
   let projection_contents = fixture_projection_contents()
   let broken = MercurialChangeset {
     node: hg_c2,
@@ -1062,7 +1062,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
+test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool  {
   let projection_contents = fixture_projection_contents()
   let duplicate_parent = MercurialChangeset {
     node: hg_c2,
@@ -1089,7 +1089,7 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
+test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool  {
   let projection_contents = fixture_projection_contents()
   let self_parent = MercurialChangeset {
     node: hg_c2,
@@ -1116,7 +1116,7 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
   }
 }
 
-test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
+test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool  {
   let cycle_left = MercurialChangeset {
     node: hg_c1,
     manifest: hg_manifest,
@@ -1162,7 +1162,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
+test fn witness_mercurial_file_revision_cycle_refuses() -> Bool  {
   let cycle_regular = MercurialFileRevision {
     node: hg_file_regular,
     parents: MercurialOneParent { parent: hg_file_executable },
@@ -1200,7 +1200,7 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
+test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool  {
   let duplicate_parent = MercurialFileRevision {
     node: hg_file_executable,
     parents: MercurialTwoParents {
@@ -1236,7 +1236,7 @@ test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_observed_non_head_refuses() -> Bool {
+test fn witness_mercurial_observed_non_head_refuses() -> Bool  {
   let invalid = projection_with_heads(
     projection: MercurialCompleteProjection {
       contents: fixture_projection_contents(),
@@ -1253,7 +1253,7 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_children() -> Bool {
+test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_children() -> Bool  {
   let changesets = [
     MercurialChangeset {
       node: hg_c0,
@@ -1330,7 +1330,7 @@ fn fixture_projection_with_closed_right_head() -> MercurialRepositoryProjection 
   )
 }
 
-test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bool {
+test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bool  {
   let complete = projection_with_heads(
     projection: fixture_projection_with_closed_right_head(),
     heads: [MercurialHead { changeset: hg_c1 }],
@@ -1341,7 +1341,7 @@ test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bo
   }
 }
 
-test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Bool {
+test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Bool  {
   let invalid = projection_with_heads(
     projection: fixture_projection_with_closed_right_head(),
     heads: [
@@ -1359,7 +1359,7 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
   }
 }
 
-test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
+test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool  {
   let with_missing_head = projection_with_heads(
     projection: fixture_projection(),
     heads: [MercurialHead { changeset: hg_missing_c }],
@@ -1384,7 +1384,7 @@ test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bo
   }
 }
 
-test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
+test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool  {
   let projection_contents = fixture_projection_contents()
   let merge = MercurialChangeset {
     node: hg_c2,
@@ -1413,7 +1413,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
   }
 }
 
-test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
+test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool  {
   let invalid = projection_with_local_revisions(
     projection: fixture_projection(),
     local_revisions: [
@@ -1434,7 +1434,7 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
   }
 }
 
-test fn witness_mercurial_r0_write_capability_stays_unavailable() -> Bool {
+test fn witness_mercurial_r0_write_capability_stays_unavailable() -> Bool  {
   match mercurial_r0_conditional_advance {
     MercurialConditionalAdvanceUnavailable { reason } =>
       string_contains(s: reason, pattern: "no executing transaction transport")

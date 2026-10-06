@@ -91,30 +91,30 @@ fn w_fn_field_record_as_map_key_refuses() -> Bool {
   )
 }
 
-test fn map_key_record_earns_eq_and_hash() -> Bool {
+test fn map_key_record_earns_eq_and_hash() -> Bool  {
   w_map_key_record_earns_eq_and_hash()
 }
 
-test fn non_key_record_derives_no_hash() -> Bool {
+test fn non_key_record_derives_no_hash() -> Bool  {
   w_non_key_record_derives_no_hash()
 }
 
-test fn map_value_position_does_not_seed() -> Bool {
+test fn map_value_position_does_not_seed() -> Bool  {
   w_map_value_position_does_not_seed()
 }
 
-test fn map_key_requirement_propagates_to_field_types() -> Bool {
+test fn map_key_requirement_propagates_to_field_types() -> Bool  {
   w_map_key_requirement_propagates_to_field_types()
 }
 
-test fn fn_return_type_seeds_the_requirement() -> Bool {
+test fn fn_return_type_seeds_the_requirement() -> Bool  {
   w_fn_return_type_seeds_the_requirement()
 }
 
-test fn nullary_coproduct_key_gains_only_hash() -> Bool {
+test fn nullary_coproduct_key_gains_only_hash() -> Bool  {
   w_nullary_coproduct_key_gains_only_hash()
 }
 
-test fn fn_field_record_as_map_key_refuses() -> Bool {
+test fn fn_field_record_as_map_key_refuses() -> Bool  {
   w_fn_field_record_as_map_key_refuses()
 }

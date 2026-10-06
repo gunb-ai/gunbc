@@ -22,11 +22,11 @@ import v2.std.algebra { length }
 // stays enrolled after any clause climbs to Delivered — a silent revert to NotDelivered is caught
 // by this assertion flipping true, not by a fresh test someone forgot to add.
 
-test fn materialization_kernel_audit_not_all_delivered_today() -> Bool {
+test fn materialization_kernel_audit_not_all_delivered_today() -> Bool  {
   materialization_kernel_all_clauses_delivered(clauses: closing_frontier_clauses()) == false
 }
 
-test fn materialization_kernel_seven_clauses_enrolled() -> Bool {
+test fn materialization_kernel_seven_clauses_enrolled() -> Bool  {
   materialization_kernel_clause_count(clauses: closing_frontier_clauses()) == 7
     && length(xs: closing_frontier_clauses()) == 7
 }
@@ -40,7 +40,7 @@ test fn materialization_kernel_seven_clauses_enrolled() -> Bool {
 // join, not a count equality. This test keeps the two derived properties an id-grain test cannot
 // state: progress is nonzero and has not yet reached the clause count.
 
-test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool {
+test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool  {
   materialization_kernel_progress_count(clauses: closing_frontier_clauses()) > 0
     && materialization_kernel_progress_count(clauses: closing_frontier_clauses()) <
       materialization_kernel_clause_count(clauses: closing_frontier_clauses())
@@ -64,7 +64,7 @@ fn clause_delivered_by_id(clauses: List<FrontierClause>, id: String) -> Bool {
   }
 }
 
-test fn contract_exists_clause_delivered() -> Bool {
+test fn contract_exists_clause_delivered() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "contract-exists-and-can-fail")
 }
 
@@ -80,29 +80,29 @@ test fn contract_exists_clause_delivered() -> Bool {
 // assertion flipped from false to true and the test became the regression control against a
 // future silent revert.
 
-test fn warm_hit_clause_not_delivered_evidence_withdrawn() -> Bool {
+test fn warm_hit_clause_not_delivered_evidence_withdrawn() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "warm-hit-skips-semantic-recompute") == false
 }
 
-test fn refusal_clause_not_delivered_evidence_withdrawn() -> Bool {
+test fn refusal_clause_not_delivered_evidence_withdrawn() -> Bool  {
   clause_delivered_by_id(
     clauses: closing_frontier_clauses(),
     id: "corruption-identity-completeness-overcap-refuse"
   ) == false
 }
 
-test fn eviction_clause_not_delivered_evidence_withdrawn() -> Bool {
+test fn eviction_clause_not_delivered_evidence_withdrawn() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "bounded-eviction-and-full-store") == false
 }
 
-test fn lookup_reorder_clause_not_delivered() -> Bool {
+test fn lookup_reorder_clause_not_delivered() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "lookup-ahead-of-index-construction") == false
 }
 
-test fn production_invocation_clause_not_delivered() -> Bool {
+test fn production_invocation_clause_not_delivered() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "real-production-invocation") == false
 }
 
-test fn hand_rust_tracking_clause_not_delivered_subject_removed() -> Bool {
+test fn hand_rust_tracking_clause_not_delivered_subject_removed() -> Bool  {
   clause_delivered_by_id(clauses: closing_frontier_clauses(), id: "hand-rust-growth-tracked-live") == false
 }
