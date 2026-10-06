@@ -2632,12 +2632,12 @@ fn infer_match_coproduct_of_type(scrutinee_type: Node, resolved: ResolvedTree) -
   match declaration_reference_path_optional(node: head_args.head) {
     Absent => CoproductNotDeclared
     Present { value: path } =>
-      match symbol_index_lookup(index: resolved.symbol_index, qualified_path: path) {
+      match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
         Absent => CoproductNotDeclared
         Present { value: declared } =>
           match declared.kind {
             TypeNode { connective: Disj } =>
-              let params = symbol_index_declared_type_params_at(index: resolved.symbol_index, qualified_path: path)
+              let params = symbol_index_declared_type_params_at(index: resolved.resolved_declarations, qualified_path: path)
               if length(xs: params) != length(xs: head_args.args) {
                 CoproductArityMismatch
               } else {
