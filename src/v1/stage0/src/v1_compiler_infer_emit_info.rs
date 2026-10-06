@@ -23,8 +23,14 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_coercion::{declaration_realization, realized_checkpoint};
-pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env, symbol_index_lookup};
-pub use crate::v1_compiler_infer_env::{SymbolIndex, TypeEnv};
+use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
+    BareOccurrenceBoundByImports, BareOccurrenceDeclaredInItsFile,
+    BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName,
+};
+pub use crate::v1_compiler_infer_env::{
+    bare_occurrence_binding, empty_symbol_index, empty_type_env, symbol_index_lookup,
+};
+pub use crate::v1_compiler_infer_env::{BareOccurrenceBinding, SymbolIndex, TypeEnv};
 use crate::v1_compiler_infer_types::TextJudgment::{TextJudgedIn, TextNotAsked};
 use crate::v1_compiler_infer_types::TextNotAskedReason::{
     TextNotAskedForCallableComponentResidue, TextNotAskedInVariantFieldSummary,
@@ -416,15 +422,14 @@ pub struct TypeDeclIndex {
 pub struct TypeDeclFileScope {
     pub module_path: String,
     pub named_imports: Rc<HashMap<String, String>>,
-    pub glob_imports: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TypeDeclOccurrenceBinding {
     OccurrenceDeclaredHere { identity: String },
+    OccurrenceIsKernelName,
     OccurrenceImported { identity: String },
-    OccurrenceUnboundInScope,
     OccurrenceUndecided,
 }
 impl TypeDeclOccurrenceBinding {
@@ -433,12 +438,12 @@ impl TypeDeclOccurrenceBinding {
             TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
                 identity: __val, ..
             } => __val.clone(),
+            TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
+                panic!("no identity on unit variant")
+            }
             TypeDeclOccurrenceBinding::OccurrenceImported {
                 identity: __val, ..
             } => __val.clone(),
-            TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
-                panic!("no identity on unit variant")
-            }
             TypeDeclOccurrenceBinding::OccurrenceUndecided => panic!("no identity on unit variant"),
         }
     }
@@ -773,11 +778,11 @@ pub fn type_decl_spelling_route(
             TypeDeclOccurrenceBinding::OccurrenceDeclaredHere { identity: _, .. } => {
                 TypeDeclReferenceRoute::RouteReferencingModuleDeclarer
             }
+            TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
+                TypeDeclReferenceRoute::RouteKernelMint
+            }
             TypeDeclOccurrenceBinding::OccurrenceImported { identity: _, .. } => {
                 TypeDeclReferenceRoute::RouteReferencingModuleImport
-            }
-            TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
-                TypeDeclReferenceRoute::RouteKernelMint
             }
             TypeDeclOccurrenceBinding::OccurrenceUndecided => {
                 TypeDeclReferenceRoute::RouteLeafSpelling
@@ -795,12 +800,12 @@ pub fn type_decl_occurrence_identity(
         TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
             identity: identity, ..
         } => Some(identity.clone()),
+        TypeDeclOccurrenceBinding::OccurrenceIsKernelName => {
+            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
+        }
         TypeDeclOccurrenceBinding::OccurrenceImported {
             identity: identity, ..
         } => Some(identity.clone()),
-        TypeDeclOccurrenceBinding::OccurrenceUnboundInScope => {
-            type_decl_kernel_mint_declarer(index.clone(), leaf.clone())
-        }
         TypeDeclOccurrenceBinding::OccurrenceUndecided => std::option::Option::None,
     }
 }
@@ -810,59 +815,65 @@ pub fn type_decl_occurrence_binding(
     leaf: String,
     reference: Rc<Node>,
 ) -> Rc<TypeDeclOccurrenceBinding> {
+    match (*crate::v1_compiler_infer_env::bare_occurrence_binding(
+        index.qualified_names.clone(),
+        leaf.clone(),
+        reference.clone(),
+    ))
+    .clone()
+    {
+        BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
+            declaration: decl, ..
+        } => match decl.ident_span.clone() {
+            Some(sp) => match v1_rt::map_get(
+                &index.identity_by_declaring_span.clone(),
+                declaring_span_key(sp.clone()),
+            ) {
+                Some(identity) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
+                    identity: identity.clone(),
+                }),
+                std::option::Option::None => {
+                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+                }
+            },
+            std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
+        },
+        BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile => {
+            Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
+        }
+        BareOccurrenceBinding::BareOccurrenceIsKernelName => {
+            Rc::new(TypeDeclOccurrenceBinding::OccurrenceIsKernelName)
+        }
+        BareOccurrenceBinding::BareOccurrenceBoundByImports => {
+            type_decl_import_binding(index.clone(), leaf.clone(), reference.clone())
+        }
+    }
+}
+
+pub fn type_decl_import_binding(
+    index: Rc<TypeDeclIndex>,
+    leaf: String,
+    reference: Rc<Node>,
+) -> Rc<TypeDeclOccurrenceBinding> {
     match v1_rt::map_get(
         &index.file_scopes.clone(),
         reference.span.clone().file.clone(),
     ) {
         std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
-        Some(scope) => {
-            let local = type_decl_local_declarers(index.clone(), leaf.clone(), reference.clone());
-            let local_count = local
-                .iter()
-                .cloned()
-                .fold(0, |n: i64, _identity: String| v1_rt::int_add(n, 1));
-            if (local_count.clone() == 1) {
-                local.iter().cloned().fold(
-                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
-                    |acc: Rc<TypeDeclOccurrenceBinding>, identity: String| {
-                        Rc::new(TypeDeclOccurrenceBinding::OccurrenceDeclaredHere {
-                            identity: identity.clone(),
-                        })
-                    },
-                )
-            } else {
-                if (local_count.clone() > 1) {
-                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
-                } else {
-                    match v1_rt::map_get(&scope.named_imports.clone(), leaf.clone()) {
-                        Some(from_module) => {
-                            let imported = type_decl_identity(from_module.clone(), leaf.clone());
-                            match v1_rt::map_get(&index.by_identity.clone(), imported.clone()) {
-                                Some(_) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceImported {
-                                    identity: imported.clone(),
-                                }),
-                                std::option::Option::None => {
-                                    Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
-                                }
-                            }
-                        }
-                        std::option::Option::None => {
-                            let glob_count = scope
-                                .glob_imports
-                                .clone()
-                                .iter()
-                                .cloned()
-                                .fold(0, |n: i64, _m: String| v1_rt::int_add(n, 1));
-                            if (glob_count.clone() == 0) {
-                                Rc::new(TypeDeclOccurrenceBinding::OccurrenceUnboundInScope)
-                            } else {
-                                Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
-                            }
-                        }
+        Some(scope) => match v1_rt::map_get(&scope.named_imports.clone(), leaf.clone()) {
+            Some(from_module) => {
+                let imported = type_decl_identity(from_module.clone(), leaf.clone());
+                match v1_rt::map_get(&index.by_identity.clone(), imported.clone()) {
+                    Some(_) => Rc::new(TypeDeclOccurrenceBinding::OccurrenceImported {
+                        identity: imported.clone(),
+                    }),
+                    std::option::Option::None => {
+                        Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided)
                     }
                 }
             }
-        }
+            std::option::Option::None => Rc::new(TypeDeclOccurrenceBinding::OccurrenceUndecided),
+        },
     }
 }
 
@@ -902,30 +913,6 @@ pub fn referencing_module_declarer_route_dissolves_on() -> Rc<DissolutionConditi
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())
-}
-
-pub fn type_decl_local_declarers(
-    index: Rc<TypeDeclIndex>,
-    leaf: String,
-    reference: Rc<Node>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for identity in type_decl_identities_of_leaf(index.clone(), leaf.clone())
-            .iter()
-            .cloned()
-        {
-            if match v1_rt::map_get(&index.by_identity.clone(), identity.clone()) {
-                Some(decl) => {
-                    (decl.span.clone().file.clone() == reference.span.clone().file.clone())
-                }
-                std::option::Option::None => false,
-            } {
-                __result.push(identity);
-            }
-        }
-        __result
-    })
 }
 
 pub fn resolve_type_decl_reference(

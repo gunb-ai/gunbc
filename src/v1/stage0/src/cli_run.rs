@@ -32858,9 +32858,13 @@ fn module_self_bound_names(module: &Rc<crate::v1_std_core::Node>) -> BTreeSet<St
 /// declaring module. ONE rule, read by every producer that turns a bare name into a module edge --
 /// the census pull and the reference-derived dependency producer -- so neither can bind `String`
 /// to whichever module happens to declare the spelling nearest the reader.
+/// A name the resolver binds in the KERNEL scope layer, which sits above every import
+/// (`v1.compiler.infer` `direct_import_export_precedence_note`): read through the resolver's own
+/// predicate, `v1.compiler.infer_env` `overlay_skips_kernel_name`, so a bare `Optional`,
+/// `Present`, `Absent` or `Unit` is never judged as a read of a same-spelled declaration outside
+/// the file's import closure. A narrower list here was a second copy of that rule.
 pub(crate) fn is_substrate_vocabulary(name: &str) -> bool {
-    crate::std_types::kernel_type_set().contains_key(name)
-        || crate::std_types::container_type_arity().contains_key(name)
+    crate::v1_compiler_infer_env::overlay_skips_kernel_name(name.to_string())
 }
 
 /// The head `ExprVar` of a dotted chain: the node `ref_field_chain` stops at, along the same

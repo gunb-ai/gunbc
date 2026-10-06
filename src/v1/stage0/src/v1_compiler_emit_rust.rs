@@ -86,13 +86,18 @@ pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_literal_elaboration::KernelGroundingLookup::{
     KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound,
 };
+use crate::std_literal_elaboration::KernelMintDeclarationLookup::{
+    KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous, KernelMintDeclarationFound,
+};
 use crate::std_literal_elaboration::KernelMintOwnership::{
     DeclarationDoesNotOwnTheMint, DeclarationOwnsTheMint, KernelMintOwnershipAmbiguous,
 };
 use crate::std_literal_elaboration::LiteralSourceKind::KernelIntLiteral;
-pub use crate::std_literal_elaboration::{kernel_grounding_for, kernel_mint_ownership};
 pub use crate::std_literal_elaboration::{
-    KernelGroundingLookup, KernelMintOwnership, LiteralSourceKind,
+    kernel_grounding_for, kernel_mint_declaration_for, kernel_mint_ownership,
+};
+pub use crate::std_literal_elaboration::{
+    KernelGroundingLookup, KernelMintDeclarationLookup, KernelMintOwnership, LiteralSourceKind,
 };
 pub use crate::std_measure::millisecond_count;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
@@ -243,6 +248,10 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, TypeDeclIndex, TypeDeclResolution, TypeRepr, TypeSummary, TypeSummaryIndex,
     TypeSummaryLookup, TypeSurfaceOccurrence,
 };
+use crate::v1_compiler_infer_env::BareOccurrenceBinding::{
+    BareOccurrenceBoundByImports, BareOccurrenceDeclaredInItsFile,
+    BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName,
+};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
@@ -250,12 +259,13 @@ use crate::v1_compiler_infer_env::UnitVariantPhantomLookup::{
     UnitVariantPhantomAbsent, UnitVariantPhantomEvidenceUnavailable, UnitVariantPhantomPresent,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, binding_declares_span, declaration_ref_of_declaration_node, empty_symbol_index,
-    empty_type_env, lookup_binding_by_name, lookup_type_by_name, lookup_type_for,
-    lookup_unit_variant_phantom_type, type_reference_declaration_ref,
+    authored_name, bare_occurrence_binding, binding_declares_span,
+    declaration_ref_of_declaration_node, empty_symbol_index, empty_type_env,
+    lookup_binding_by_name, lookup_type_by_name, lookup_type_for, lookup_unit_variant_phantom_type,
+    type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{
-    GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
+    BareOccurrenceBinding, GlobalBareLookupState, TypeBinding, TypeEnv, UnitVariantPhantomLookup,
 };
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 use crate::v1_compiler_infer_items::ItemLookup::{ItemFound, ItemLeafAmbiguous, ItemNotFound};
@@ -1044,6 +1054,54 @@ pub fn declaration_owns_host_option(module_path: String, decl_name: String) -> b
     }
 }
 
+pub fn unstamped_reference_is_host_option(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> bool {
+    {
+        let leaf = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+        match (*crate::v1_compiler_infer_env::bare_occurrence_binding(
+            env.symbol_index.clone(),
+            leaf.clone(),
+            n.clone(),
+        ))
+        .clone()
+        {
+            BareOccurrenceBinding::BareOccurrenceDeclaredInItsFile {
+                declaration: decl, ..
+            } => match crate::v1_compiler_infer_env::declaration_ref_of_declaration_node(
+                decl.clone(),
+                source_indices.clone(),
+                env.clone(),
+            ) {
+                Some(d) => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
+                std::option::Option::None => false,
+            },
+            BareOccurrenceBinding::BareOccurrenceDeclaredTwiceInItsFile => false,
+            BareOccurrenceBinding::BareOccurrenceIsKernelName => {
+                match (*crate::std_literal_elaboration::kernel_mint_declaration_for(
+                    kernel_mint_declaration_rows(),
+                    leaf.clone(),
+                ))
+                .clone()
+                {
+                    KernelMintDeclarationLookup::KernelMintDeclarationFound {
+                        declaration: d,
+                        ..
+                    } => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
+                    KernelMintDeclarationLookup::KernelMintDeclarationAbsent => false,
+                    KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
+                        row_count: _,
+                        ..
+                    } => false,
+                }
+            }
+            BareOccurrenceBinding::BareOccurrenceBoundByImports => false,
+        }
+    }
+}
+
 pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -1072,7 +1130,11 @@ pub fn is_host_optional_carrier_type(
             };
             match declared.clone() {
                 Some(d) => declaration_owns_host_option(d.module_path.clone(), d.decl_name.clone()),
-                std::option::Option::None => false,
+                std::option::Option::None => unstamped_reference_is_host_option(
+                    n.clone(),
+                    source_indices.clone(),
+                    env.clone(),
+                ),
             }
         }
     }

@@ -148,11 +148,11 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type_by_name, listed_import_required_bare_call_blocked, lookup_binding_by_name,
     lookup_binding_on_chain, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
-    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup, text_crossing_by_identity,
-    text_representation_by_identity, text_representation_is_text_arm,
+    node_with_inferred, overlay_skips_kernel_name, put_inductive_field, put_inductive_field_cross,
+    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
+    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
+    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
+    text_crossing_by_identity, text_representation_by_identity, text_representation_is_text_arm,
     text_representation_is_unidentified, text_representations_cross, type_reference_declaration,
     type_reference_declaration_ref, unit_variant_index_shadow_insert,
 };
@@ -25000,32 +25000,84 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
-        items.iter().cloned().fold(index.clone(), |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
-    Connective::Disj => {
-            let tname = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
-item.children.clone().iter().cloned().fold(acc.clone(), |a2: Rc<SymbolIndex>, child: Rc<Node>| {
-                let vname = crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone());
-let a2_qualified = crate::v1_compiler_infer_env::symbol_index_insert(a2, v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), tname.clone()), ".".to_string()), vname.clone()), item.clone());
-match v1_rt::map_get(&counts, vname.clone()) {
-    Some(1) => match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
-    Some(1) => if ((v1_rt::map_get(&corpus_item_counts, vname.clone()) != std::option::Option::None) || overlay_skips_kernel_name(vname.clone())) {
-                    crate::v1_compiler_infer_env::symbol_index_insert(a2_qualified.clone(), v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), vname.clone()), item.clone())
-                } else {
-                    crate::v1_compiler_infer_env::symbol_index_insert_decl(a2_qualified.clone(), module_path.clone(), Rc::new(TypeBinding {
-    name: vname.clone(),
-    resolved: item.clone(),
-    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-    alias_rhs: std::option::Option::None,
-}))
-                },
-    _ => crate::v1_compiler_infer_env::symbol_index_insert(a2_qualified.clone(), v1_rt::concat(v1_rt::concat(module_path.clone(), ".".to_string()), vname.clone()), item.clone()),
-},
-    _ => a2_qualified.clone(),
-}
-})
-},
-    _ => acc.clone(),
-})
+        items.iter().cloned().fold(
+            index.clone(),
+            |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
+                Connective::Disj => {
+                    let tname =
+                        crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
+                    item.children.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                            let vname = crate::v1_std_core::authored_name_at(
+                                source_indices.clone(),
+                                child.clone(),
+                            );
+                            let a2_qualified = crate::v1_compiler_infer_env::symbol_index_insert(
+                                a2,
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            tname.clone(),
+                                        ),
+                                        ".".to_string(),
+                                    ),
+                                    vname.clone(),
+                                ),
+                                item.clone(),
+                            );
+                            match v1_rt::map_get(&counts, vname.clone()) {
+                                Some(1) => match v1_rt::map_get(
+                                    &corpus_variant_counts,
+                                    vname.clone(),
+                                ) {
+                                    Some(1) => if ((v1_rt::map_get(
+                                        &corpus_item_counts,
+                                        vname.clone(),
+                                    ) != std::option::Option::None)
+                                        || crate::v1_compiler_infer_env::overlay_skips_kernel_name(
+                                            vname.clone(),
+                                        )) {
+                                        crate::v1_compiler_infer_env::symbol_index_insert(
+                                            a2_qualified.clone(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                                vname.clone(),
+                                            ),
+                                            item.clone(),
+                                        )
+                                    } else {
+                                        crate::v1_compiler_infer_env::symbol_index_insert_decl(
+                                            a2_qualified.clone(),
+                                            module_path.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: vname.clone(),
+                                                resolved: item.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                                alias_rhs: std::option::Option::None,
+                                            }),
+                                        )
+                                    },
+                                    _ => crate::v1_compiler_infer_env::symbol_index_insert(
+                                        a2_qualified.clone(),
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            vname.clone(),
+                                        ),
+                                        item.clone(),
+                                    ),
+                                },
+                                _ => a2_qualified.clone(),
+                            }
+                        },
+                    )
+                }
+                _ => acc.clone(),
+            },
+        )
     }
 }
 
@@ -26288,15 +26340,6 @@ pub fn direct_import_export_precedence_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn overlay_skips_kernel_name(name: String) -> bool {
-    (((((crate::std_types::is_kernel_type(name.clone())
-        || crate::std_types::is_container_type(name.clone()))
-        || (name.clone() == "Unit".to_string()))
-        || (name.clone() == "Optional".to_string()))
-        || (name.clone() == "Present".to_string()))
-        || (name.clone() == "Absent".to_string()))
-}
-
 pub fn overlay_direct_import_exports(
     ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
@@ -26332,7 +26375,7 @@ pub fn overlay_direct_import_exports(
                 selected.iter().cloned().fold(
                     acc.clone(),
                     |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                        if overlay_skips_kernel_name(name.clone()) {
+                        if crate::v1_compiler_infer_env::overlay_skips_kernel_name(name.clone()) {
                             bacc.clone()
                         } else {
                             match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
@@ -31357,24 +31400,6 @@ pub fn type_decl_file_scope_of(typed_module: Rc<TypedModule>) -> Rc<TypeDeclFile
                         })
                 },
             ),
-            glob_imports: Rc::new({
-                let mut __result = Vec::new();
-                for imp in Rc::new({
-                    let mut __result = Vec::new();
-                    for imp in imports.iter().cloned() {
-                        if crate::v1_std_core::import_is_all(imp.clone()) {
-                            __result.push(imp);
-                        }
-                    }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(import_module_path_at(imp.clone(), si.clone()));
-                }
-                __result
-            }),
         })
     }
 }
