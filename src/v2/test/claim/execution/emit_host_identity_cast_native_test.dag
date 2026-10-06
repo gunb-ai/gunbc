@@ -14,8 +14,7 @@ import v2.std.text { String }
 import v2.std.witness { Violates }
 import v2.test.claim.coercion.identity_cast_emission_route {
   IdentityCastClosureRefused, IdentityCastEntryEmitted, IdentityCastEntryRefused,
-  identity_cast_route_admitted_holds, identity_cast_route_refused_holds, identity_cast_route_verdict,
-  refused_cast_route_verdict,
+  identity_cast_route_admitted_holds, identity_cast_route_verdict,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -61,13 +60,6 @@ fn identity_cast_native_emitted() -> Optional<String> {
   } else {
     optional_absent()
   }
-}
-
-// The real door's Int-as-Bool refusal, also asserted on the required gate by
-// a_cast_with_no_witness_refuses_before_realization_holds. This row is the native partner, not the
-// last merge-time execution.
-test fn a_cast_with_no_witness_is_refused_on_the_closure_route_holds() -> Bool {
-  identity_cast_route_refused_holds(v: refused_cast_route_verdict())
 }
 
 // One run of the emitted program on one argv value: true only when it exited through the logical-run
