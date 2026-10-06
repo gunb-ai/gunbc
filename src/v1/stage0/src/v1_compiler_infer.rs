@@ -2431,7 +2431,6 @@ pub fn declared_type_conformance_diags_core(
                                             && produced_is_unsolved_generic_at_conformance(
                                                 produced.clone(),
                                                 si.clone(),
-                                                scope.type_env.clone(),
                                             ))
                                         {
                                             Rc::new(vec![type_mismatch_error(
@@ -3101,37 +3100,16 @@ pub fn empty_list_expected_element_is_unknown(
 pub fn produced_is_unsolved_generic_at_conformance(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
 ) -> bool {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: _, .. }) => true,
         Some(InferredNode::Resolved { node: inner, .. }) => {
-            produced_is_unsolved_generic_at_conformance(
-                inner.clone(),
-                source_indices.clone(),
-                env.clone(),
-            )
+            produced_is_unsolved_generic_at_conformance(inner.clone(), source_indices.clone())
         }
         _ => {
             let label = type_node_label(n.clone(), source_indices.clone());
-            if (label.clone() == "empty_list_element".to_string()
+            (label.clone() == "empty_list_element".to_string()
                 || unify_binding_is_uninformative(n.clone()))
-            {
-                true
-            } else {
-                if ((((n.children.clone().len() as i64) == 0)
-                    && (n.connective.clone() == Connective::NoConnective))
-                    && !conformance_ground_type(n.clone(), source_indices.clone()))
-                    && (label.clone() != "".to_string())
-                {
-                    match lookup_type_by_name(env.clone(), label.clone()) {
-                        std::option::Option::None => true,
-                        Some(_) => false,
-                    }
-                } else {
-                    false
-                }
-            }
         }
     }
 }
@@ -23698,14 +23676,16 @@ pub fn unify_generics(
         {
             match v1_rt::map_get(&acc, bind_name.clone()) {
                 std::option::Option::None => {
-                    if unify_binding_is_uninformative(actual.clone()) {
-                        break acc.clone();
-                    } else {
-                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
-                    }
+                    break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
                 }
-                Some(_) => {
-                    break acc.clone();
+                Some(prev) => {
+                    if (unify_binding_is_uninformative(prev.clone())
+                        && !unify_binding_is_uninformative(actual.clone()))
+                    {
+                        break v1_rt::rc_map_insert(acc.clone(), bind_name.clone(), actual.clone());
+                    } else {
+                        break acc.clone();
+                    }
                 }
             }
         } else {
