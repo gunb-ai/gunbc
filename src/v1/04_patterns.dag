@@ -496,7 +496,8 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  if type_node.return_cardinality == CardOptional {
+  let card_opt = type_node.return_cardinality == CardOptional
+  if card_opt {
     with_optional_cardinality(n: resolved_raw)
   } else {
     if scrut_is_optional {
