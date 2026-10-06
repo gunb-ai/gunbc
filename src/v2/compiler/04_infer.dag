@@ -72,7 +72,7 @@ import v2.std.optional {
 }
 import v2.std.qualified_name { QualifiedName, declaration_reference_node, declaration_reference_path_optional, qualified_name_to_dotted_string, lexical_reference_label_optional, parameter_reference_path_optional }
 import v2.std.node_query { BinderParts, binder_node, binder_node_parts, construct_field_edges, construct_tag_optional, construct_tag_path_optional, declared_field_from_edge, declared_field_named, find_labeled_child }
-import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup, symbol_index_variant_alias_carrier }
+import v2.std.symbol_index { RecordTypePayload, SymbolIndex, VariantArmPayload, symbol_index_declared_payload_at, symbol_index_declared_type_params_at, symbol_index_lookup }
 import v2.std.grammar { node_atom_identity_optional }
 import v2.compiler.fold_lowering { FoldMemberFormal, RosterSignatureLookup, NotARosterPrimitiveCallRow, RosterPrimitiveCallSignature, RosterPrimitiveCallSignatureUnreadable, collection_roster_primitive_call_signature_at, FoldMemberRole, FoldStepTakesCollectionMember, FoldStepTakesNoMember, fold_collection_member_type, fold_loop_step, fold_realized_member_role, fold_step_body_node, fold_step_carrier_formal, fold_step_declared_return, fold_step_member_formal }
 import v2.std.node { LoopBoundMeasure, LoopCarrierBinder, LoopDomainValue, LoopEdgeUnrecognized, LoopIteratedBody, LoopRealizedDeclaration, loop_edge_role, NodeFoldDependent, fold_node_dependent, loop_domain_value_target, loop_realized_declaration_target, Ambiguous, Found, NotMarkedReference, arrow_body_target_lookup, arrow_named_edge_is_contract, arrow_signature_order_edge, match_arm_pattern_edge, resolved_reference_body_kind, edge_label_of, MatchArmBodyEdge, MatchArmPatternEdge, production_edge_label }
@@ -5841,19 +5841,18 @@ fn infer_record_construct_read(node: Node, resolved: ResolvedTree) -> InferConst
             Present { value: kind } =>
               match kind {
                 VariantArmPayload =>
-                  match symbol_index_variant_alias_carrier(index: resolved.resolved_declarations, alias_path: path) {
-                    Absent =>
-                      infer_variant_arm_construct(
-                        reference: reference,
-                        resolved: resolved,
-                        declared_path: path
-                      )
-                    Present { value: declared } =>
-                      infer_variant_arm_construct(
-                        reference: reference,
-                        resolved: resolved,
-                        declared_path: declared
-                      )
+                  // THE DECLARING PATH OF A VARIANT-ARM PAYLOAD PATH: for the variant's own row
+                  // this is the row itself (no claimants), for its module-level alias the binding
+                  // filed by symbol_index_fill_containment_node answers the variant's declaring
+                  // path. One authority, no parallel carrier map.
+                  infer_variant_arm_construct(
+                    reference: reference,
+                    resolved: resolved,
+                    declared_path: symbol_index_declaring_path_of(
+                      index: resolved.resolved_declarations,
+                      target: path
+                    )
+                  )
                   }
                 RecordTypePayload =>
                   match symbol_index_lookup(index: resolved.resolved_declarations, qualified_path: path) {
