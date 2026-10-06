@@ -2843,19 +2843,45 @@ fn with_optional_cardinality(n: Node) -> Node {
   Node { occurrence_identity: n.occurrence_identity, name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span, children: n.children, connective: n.connective, params: n.params, inferred: n.inferred, return_cardinality: CardOptional, uses: n.uses, body: n.body, transport: n.transport, properties: n.properties, type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern, module_item_kind: n.module_item_kind, declaration_marker: n.declaration_marker, declaration: n.declaration, expr_data: n.expr_data }
 }
 
-// One CardOptional flag cannot distinguish T? from T??. A second optional layer is the
-// nominal Optional application whose child is already optional (the existing coproduct
-// mint, not a third cardinality). Empty-list Absent and a present null element are
-// different values; joining flags would make them one type (DESIGN §3 / §5).
+// Canonical optional spelling: the first layer is the CardOptional flag; only a
+// second layer is a nominal Optional application wrapping an already-optional inner.
+// wrap_optional_layer is the only constructor that adds a layer. A one-layer
+// Optional application is normalized to the flag here, not left standing.
+fn node_is_optional_application(n: Node) -> Bool {
+  let named = n.name == "Optional"
+  let no_conn = n.connective == NoConnective
+  let one = (n.children |> count) == 1
+  named && no_conn && one
+}
+
 fn node_is_optional_layer(n: Node) -> Bool {
-  n.return_cardinality == CardOptional || (n.name == "Optional" && n.connective == NoConnective && (n.children |> count) == 1)
+  let flag = n.return_cardinality == CardOptional
+  flag || node_is_optional_application(n: n)
+}
+
+fn canonicalize_optional_spelling(n: Node) -> Node {
+  if node_is_optional_application(n: n) {
+    match n.children |> first {
+      Present { value: inner } =>
+        let inner_opt = node_is_optional_layer(n: inner)
+        if inner_opt {
+          n
+        } else {
+          with_optional_cardinality(n: inner)
+        }
+      Absent => n
+    }
+  } else {
+    n
+  }
 }
 
 fn wrap_optional_layer(n: Node) -> Node {
-  if node_is_optional_layer(n: n) {
-    Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: n.span, ident_span: Present { value: kernel_span(name: "Optional") }, children: [n], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
+  let canonical = canonicalize_optional_spelling(n: n)
+  if node_is_optional_layer(n: canonical) {
+    Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: canonical.span, ident_span: Present { value: kernel_span(name: "Optional") }, children: [canonical], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, module_item_kind: NotAModuleItem, declaration_marker: Unmarked, declaration: none, expr_data: NoExprData }
   } else {
-    with_optional_cardinality(n: n)
+    with_optional_cardinality(n: canonical)
   }
 }
 

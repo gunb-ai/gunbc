@@ -36,7 +36,7 @@ import v1.std.core { Unmarked,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
   AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
   InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
-  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality, wrap_optional_layer, node_is_optional_layer,
+  leaf_node_with_span, no_span, with_optional_cardinality, with_required_cardinality, wrap_optional_layer, node_is_optional_layer, node_is_optional_application, canonicalize_optional_spelling,
   unit_type, bool_type, string_type, int_type, float_type, none_type,
   error_type,
   default_ident_span, kernel_span,
@@ -86,9 +86,9 @@ fn algebra_optional_of_type(inner: Node, receiver: Node) -> Node {
       if el_opt {
         wrap_optional_layer(n: inner)
       } else {
-        with_optional_cardinality(n: inner)
+        wrap_optional_layer(n: with_required_cardinality(n: inner))
       }
-    Absent => with_optional_cardinality(n: inner)
+    Absent => wrap_optional_layer(n: with_required_cardinality(n: inner))
   }
 }
 
@@ -1304,16 +1304,19 @@ fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String,
 }
 
 fn extract_optional_inner_node(n: Node) -> Node {
-  let is_optional = n.return_cardinality == CardOptional
-  if is_optional {
-    with_required_cardinality(n: n)
-  } else if n.name == "Optional" && n.connective == NoConnective && n.children |> count == 1 {
-
-    match n.children |> first {
+  let canonical = canonicalize_optional_spelling(n: n)
+  if node_is_optional_application(n: canonical) {
+    match canonical.children |> first {
       Present { value: inner } => inner
-      Absent => n
+      Absent => canonical
     }
-  } else { n }
+  } else {
+    if node_is_optional_layer(n: canonical) {
+      with_required_cardinality(n: canonical)
+    } else {
+      canonical
+    }
+  }
 }
 
 fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {

@@ -21,7 +21,7 @@ import v1.std.core { Unmarked,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
   LitBool, LitNull,
-  with_optional_cardinality, node_is_optional_layer,
+  with_optional_cardinality, node_is_optional_layer, node_is_optional_application,
   none_type, error_type, no_span, kernel_span,
   qualified_last_segment
 }
@@ -496,12 +496,12 @@ fn resolve_scrutinee_type(type_node: Node, env: TypeEnv) -> Node {
       Absent => type_node
     }
   }
-  let card_opt = type_node.return_cardinality == CardOptional
-  if card_opt {
-    with_optional_cardinality(n: resolved_raw)
+  let card_app = node_is_optional_application(n: type_node)
+  if card_app {
+    type_node
   } else {
     if scrut_is_optional {
-      type_node
+      with_optional_cardinality(n: resolved_raw)
     } else {
       resolved_raw
     }

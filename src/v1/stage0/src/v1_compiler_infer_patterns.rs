@@ -914,11 +914,12 @@ pub fn resolve_scrutinee_type(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node>
                 std::option::Option::None => type_node.clone(),
             }
         };
-        if (type_node.return_cardinality.clone() == Cardinality::CardOptional) {
-            crate::v1_std_core::with_optional_cardinality(resolved_raw.clone())
+        let card_app = crate::v1_std_core::node_is_optional_application(type_node.clone());
+        if card_app.clone() {
+            type_node.clone()
         } else {
             if scrut_is_optional.clone() {
-                type_node.clone()
+                crate::v1_std_core::with_optional_cardinality(resolved_raw.clone())
             } else {
                 resolved_raw.clone()
             }

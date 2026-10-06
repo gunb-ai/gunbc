@@ -18,6 +18,8 @@ data nested_element_source: String = "module probe_nested_optional_first\nimport
 
 data required_element_source: String = "module probe_required_element_first\nimport std.types { String, List }\nfn probe(xs: List<String>) -> String {\n  match xs.first() {\n    Present { value: s } => s\n    Absent => \"\"\n  }\n}\n"
 
+data required_element_nested_present_source: String = "module probe_required_element_nested_present\nimport std.types { String, List }\nfn probe(xs: List<String>) -> String {\n  match xs.first() {\n    Present { value: inner } => match inner {\n      Present { value: s } => s\n      Absent => \"\"\n    }\n    Absent => \"\"\n  }\n}\n"
+
 test fn first_over_list_of_optional_binds_present_payload_as_optional() -> Bool {
   blocking_class_count_for(source: nested_element_source, wanted_class: variant_not_found_class) == 0
     && total_blocking_count_for(source: nested_element_source) == 0
@@ -26,4 +28,8 @@ test fn first_over_list_of_optional_binds_present_payload_as_optional() -> Bool 
 test fn first_over_list_of_required_still_binds_present_payload_as_the_element() -> Bool {
   blocking_class_count_for(source: required_element_source, wanted_class: variant_not_found_class) == 0
     && total_blocking_count_for(source: required_element_source) == 0
+}
+
+test fn first_over_list_of_required_is_not_an_optional_application() -> Bool {
+  blocking_class_count_for(source: required_element_nested_present_source, wanted_class: variant_not_found_class) >= 1
 }

@@ -132,10 +132,12 @@ pub fn algebra_optional_of_type(inner: Rc<Node>, receiver: Rc<Node>) -> Rc<Node>
             if el_opt.clone() {
                 crate::v1_std_core::wrap_optional_layer(inner.clone())
             } else {
-                with_optional_cardinality(inner.clone())
+                crate::v1_std_core::wrap_optional_layer(with_required_cardinality(inner.clone()))
             }
         }
-        std::option::Option::None => with_optional_cardinality(inner.clone()),
+        std::option::Option::None => {
+            crate::v1_std_core::wrap_optional_layer(with_required_cardinality(inner.clone()))
+        }
     }
 }
 
@@ -3287,20 +3289,17 @@ pub fn method_receiver_element_node(
 
 pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     {
-        let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
-        if is_optional.clone() {
-            crate::v1_std_core::with_required_cardinality(n.clone())
+        let canonical = crate::v1_std_core::canonicalize_optional_spelling(n.clone());
+        if crate::v1_std_core::node_is_optional_application(canonical.clone()) {
+            match canonical.children.clone().first().cloned() {
+                Some(inner) => inner.clone(),
+                std::option::Option::None => canonical.clone(),
+            }
         } else {
-            if (((n.name.clone() == "Optional".to_string())
-                && (n.connective.clone() == Connective::NoConnective))
-                && ((n.children.clone().len() as i64) == 1))
-            {
-                match n.children.clone().first().cloned() {
-                    Some(inner) => inner.clone(),
-                    std::option::Option::None => n.clone(),
-                }
+            if crate::v1_std_core::node_is_optional_layer(canonical.clone()) {
+                crate::v1_std_core::with_required_cardinality(canonical.clone())
             } else {
-                n.clone()
+                canonical.clone()
             }
         }
     }

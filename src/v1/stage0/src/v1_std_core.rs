@@ -5288,41 +5288,71 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn node_is_optional_application(n: Rc<Node>) -> bool {
+    {
+        let named = (n.name.clone() == "Optional".to_string());
+        let no_conn = (n.connective.clone() == Connective::NoConnective);
+        let one = ((n.children.clone().len() as i64) == 1);
+        ((named && no_conn) && one)
+    }
+}
+
 pub fn node_is_optional_layer(n: Rc<Node>) -> bool {
-    ((n.return_cardinality.clone() == Cardinality::CardOptional)
-        || (((n.name.clone() == "Optional".to_string())
-            && (n.connective.clone() == Connective::NoConnective))
-            && ((n.children.clone().len() as i64) == 1)))
+    {
+        let flag = (n.return_cardinality.clone() == Cardinality::CardOptional);
+        (flag || node_is_optional_application(n.clone()))
+    }
+}
+
+pub fn canonicalize_optional_spelling(n: Rc<Node>) -> Rc<Node> {
+    if node_is_optional_application(n.clone()) {
+        match n.children.clone().first().cloned() {
+            Some(inner) => {
+                let inner_opt = node_is_optional_layer(inner.clone());
+                if inner_opt.clone() {
+                    n.clone()
+                } else {
+                    with_optional_cardinality(inner.clone())
+                }
+            }
+            std::option::Option::None => n.clone(),
+        }
+    } else {
+        n.clone()
+    }
 }
 
 pub fn wrap_optional_layer(n: Rc<Node>) -> Rc<Node> {
-    if node_is_optional_layer(n.clone()) {
-        Rc::new(Node {
-            occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            name: "Optional".to_string(),
-            span: n.span.clone(),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![n.clone()]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: std::option::Option::None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: std::option::Option::None,
-            transport: std::option::Option::None,
-            properties: Rc::new(vec![]),
-            type_annotation: std::option::Option::None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: std::option::Option::None,
-            module_item_kind: ParsedModuleItemKind::NotAModuleItem,
-            declaration_marker: DeclarationMarker::Unmarked,
-            declaration: std::option::Option::None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        })
-    } else {
-        with_optional_cardinality(n.clone())
+    {
+        let canonical = canonicalize_optional_spelling(n.clone());
+        if node_is_optional_layer(canonical.clone()) {
+            Rc::new(Node {
+                occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
+                name: "Optional".to_string(),
+                span: canonical.span.clone(),
+                ident_span: Some(kernel_span("Optional".to_string())),
+                children: Rc::new(vec![canonical.clone()]),
+                connective: Connective::NoConnective,
+                params: Rc::new(vec![]),
+                inferred: std::option::Option::None,
+                return_cardinality: Cardinality::Required,
+                uses: Rc::new(vec![]),
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
+                properties: Rc::new(vec![]),
+                type_annotation: std::option::Option::None,
+                is_self_recursive: false,
+                has_non_tail_self_call: false,
+                match_pattern: std::option::Option::None,
+                module_item_kind: ParsedModuleItemKind::NotAModuleItem,
+                declaration_marker: DeclarationMarker::Unmarked,
+                declaration: std::option::Option::None,
+                expr_data: Rc::new(ExprData::NoExprData),
+                ident: None,
+            })
+        } else {
+            with_optional_cardinality(canonical.clone())
+        }
     }
 }
 
@@ -5655,3 +5685,24 @@ pub struct SvcAuthInput;
 pub struct SvcAuthSource;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SvcRateLimit;
+
+#[cfg(test)]
+mod optional_layer_canonical_tests {
+    use super::*;
+
+    #[test]
+    fn wrap_required_is_flag_not_application() {
+        let wrapped = wrap_optional_layer(string_type());
+        assert_eq!(wrapped.return_cardinality, Cardinality::CardOptional);
+        assert!(!node_is_optional_application(wrapped));
+    }
+
+    #[test]
+    fn wrap_flag_is_application_of_optional_inner() {
+        let once = wrap_optional_layer(string_type());
+        let twice = wrap_optional_layer(once);
+        assert!(node_is_optional_application(twice.clone()));
+        let inner = twice.children.first().cloned().expect("inner");
+        assert!(node_is_optional_layer(inner));
+    }
+}
