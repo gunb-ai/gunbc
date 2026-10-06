@@ -7,7 +7,7 @@ import extdeps.securities { Securities }
 import extdeps.vendor { Vendor }
 import extdeps.vendor.cloudflare { cloudflare }
 import extdeps.cloudflare.r2 { R2Jurisdiction, R2JurisdictionDefault, R2BucketLocation, r2_location_enam }
-import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule }
+import extdeps.cloudflare.r2_lifecycle { R2LifecycleRule, R2DeleteObjectsAfterAge, R2AbortMultipartUploadsAfterAge, R2BucketWide, R2Prefix }
 import std.measure { second_count }
 import extdeps.object_storage { ObjectPutPrecondition, PutIfAbsent, PutUnconditional }
 import gunbc.fabric.fabric_blob_placement { fabric_cache_blob_prefix, fabric_cache_release }
@@ -494,9 +494,24 @@ fn bucket_purpose_origin_standing(purpose: BucketPurpose) -> R2OriginStanding {
   }
 }
 
+// THE RULE CLOUDFLARE INSTALLED ON OUR NEW BUCKET, an OBSERVATION and so homed here rather than in
+// extdeps.cloudflare.r2_lifecycle (DESIGN 3: a receipt belongs to the observing layer), as the live GET answered it for gunbai-fabric-cache
+// (fleet-converge r2_bucket_ensure run 37361093408, 2026-10-05): incomplete multipart uploads are
+// aborted after seven days, bucket-wide. A PUT replaces the whole rule set, so a purpose that keeps
+// this default names it in its desired set rather than deleting it as a side effect.
+fn r2_default_multipart_abort_rule() -> R2LifecycleRule {
+  R2LifecycleRule {
+    id: "Default Multipart Abort Rule",
+    enabled: true,
+    scope: R2BucketWide,
+    transition: R2AbortMultipartUploadsAfterAge { max_age_seconds: 604800 },
+  }
+}
+
 // WHICH OBJECTS A PURPOSE'S BUCKET RELEASES BY AGE, DERIVED FROM THE PLACEMENT THAT OWNS THE
-// INTERVAL rather than restated: the cache's one rule is gunbc.fabric.fabric_blob_placement's
-// release over its blob prefix. The durable origin, the boot origin and the workspace declare no
+// INTERVAL rather than restated: the cache's release rule is gunbc.fabric.fabric_blob_placement's
+// release over its blob prefix, and it keeps Cloudflare's default multipart-abort rule beside it,
+// because a PUT replaces the whole set and leaving the default out would delete it. The durable origin, the boot origin and the workspace declare no
 // lifecycle rule, and an empty list here is that declaration -- their objects are released never.
 // The workspace's empty list is load-bearing: its history must never inherit the cache's rule.
 fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRule> {
@@ -508,9 +523,10 @@ fn bucket_purpose_lifecycle_rules(purpose: BucketPurpose) -> List<R2LifecycleRul
       R2LifecycleRule {
         id: "fabric-cache-blobs-release",
         enabled: true,
-        prefix: fabric_cache_blob_prefix as String,
-        delete_after_age_seconds: second_count(s: fabric_cache_release()),
+        scope: R2Prefix { prefix: fabric_cache_blob_prefix as NonEmptyStr },
+        transition: R2DeleteObjectsAfterAge { max_age_seconds: second_count(s: fabric_cache_release()) },
       },
+      r2_default_multipart_abort_rule(),
     ]
   }
 }

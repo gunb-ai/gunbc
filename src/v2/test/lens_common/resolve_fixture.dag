@@ -20,7 +20,7 @@ import v2.std.qualified_name { QualifiedName }
 import v2.std.node { Atom, Authored, Conj, Edge, Node, Symbol, TypeNode, allocate_pending_occurrences, content_hash, node_occurrence_allocator_after, node_with_occurrence_id }
 import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceId, OccurrenceMinted, OccurrenceSynthetic, scoped_occurrence_allocator }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.optional { optional_present }
+import std.optional { optional_present }
 import v2.std.algebra { fold_list_node, list_map }
 import v2.std.collection { List }
 import v2.std.integer { Int }

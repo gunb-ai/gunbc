@@ -1,0 +1,175 @@
+module test.claim.roadmap.roadmap_belt_base_advance_witness_test
+
+// THE BELT'S BASE SELECTION AND THE ADVANCE'S RE-BINDING, AT THEIR OWN INTERFACES (the BaseAdvance
+// follow-up to gunbc#13111). belt_scm_advance_fold is the pure half of a base advance: the intake
+// tip's manifest with exactly the external diff applied -- the diff and the bytes at the target
+// revision are SUPPLIED here, because the claim is about the re-binding, not about git; the real
+// route (git observing both revisions, the diff, the reads) is executed by the wet control
+// test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test. belt_scm_intake_base_for is asked
+// only the questions that need no git: a revision the repository has met answers its own intake
+// commit, and a repository whose commits predate the typed record is refused by name rather than
+// based on its root by position.
+
+import std.types { Bool, String, List, NonEmptyStr, Map }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
+import gunbc.scm.object_store {
+  find_corpus_manifest_record, CorpusManifestFound, CorpusManifestAbsent, CorpusManifestIsAuthoredSource, CorpusManifestIsSemanticNode,
+  CorpusManifestEntry, path_unique_entry_list, scm_object_identity, authored_source_object,
+}
+import gunbc.scm.repository_envelope {
+  RepositoryEnvelope, commit_at_reference,
+  encode_repository_v8, decode_repository_v8_index, decode_repository_v7_finish,
+  ShardedIndexDecoded, ShardedIndexRefused, RepositoryDecoded, RepositoryDecodeRefused,
+}
+import gunbc.scm.worktree_inventory { WorktreeChange, WorktreeBind, WorktreeDelete }
+import gunbc.scm.object_table_json { object_id_key }
+import gunbc.roadmap_belt_actuate {
+  belt_scm_advance_fold, BeltDeltaFold,
+  belt_scm_intake_base_for, BeltIntakeBaseReady, BeltIntakeBaseRefused, BeltIntakeBasePoisoned,
+}
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_intake_base }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data advance_r0_hex: String = "d012e00a3f1accbfbdafa732a7f9eb892ffa1e44"
+
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+fn tip_build(r0: IntakeRevision) -> MbBuild {
+  mb_intake_base(
+    build: mb_stage(build: mb_stage(build: mb_stage(build: mb_start(), path: "src/kept.dag", text: "kept"), path: "src/modified.dag", text: "before"), path: "src/deleted.dag", text: "gone"),
+    message: "project base",
+    revision: r0,
+  )
+}
+
+fn texts_of(rows: List<String>) -> Map<String, String> {
+  fold(rows, init: empty_map(), f: fn(m, row) {
+    match split(s: row, delimiter: "=").first() {
+      Absent => m
+      Present { value: path } => map_insert(m, path, substring(s: row, start: string_length(s: path) + 1, end: string_length(s: row)))
+    }
+  })
+}
+
+fn population(entries: List<CorpusManifestEntry>) -> List<String> {
+  sort_by(map(entries, e => join([e.path as String, "=", object_id_key(identity: e.source.locator)], "")), r => r)
+}
+
+fn expected(rows: List<String>) -> List<String> {
+  sort_by(map(rows, r => match split(s: r, delimiter: "=").first() {
+    Absent => r
+    Present { value: path } =>
+      join([path, "=", object_id_key(identity: scm_object_identity(object: authored_source_object(text: substring(s: r, start: string_length(s: path) + 1, end: string_length(s: r)))))], "")
+  }), r => r)
+}
+
+fn advanced_population(changes: List<WorktreeChange>, texts: Map<String, String>) -> List<String>? {
+  match rev(hex: advance_r0_hex) {
+    Absent => none
+    Present { value: r0 } =>
+      match tip_build(r0: r0) {
+        MbSetupFailed => none
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => none
+            Present { value: tip_ref } =>
+              match commit_at_reference(commits: repository.commits, reference: tip_ref) {
+                Absent => none
+                Present { value: tip } =>
+                  match find_corpus_manifest_record(store: repository.store, identity: tip.root.locator) {
+                    CorpusManifestFound(record) => {
+                      let folded = belt_scm_advance_fold(path: "/nonexistent/envelope.json", store: repository.store, tip_record: record, changes: changes, texts: texts)
+                      match folded.refused {
+                        Present { value: _ } => none
+                        Absent => Present { value: population(entries: path_unique_entry_list(unique: folded.unique)) }
+                      }
+                    }
+                    CorpusManifestAbsent { identity: _ } => none
+                    CorpusManifestIsAuthoredSource { identity: _ } => none
+                    CorpusManifestIsSemanticNode { identity: _ } => none
+                  }
+              }
+          }
+      }
+  }
+}
+
+// EXACTLY THE DIFF: a modify re-binds to the target's bytes, an add binds, a delete removes, and every
+// path the diff does not name keeps the tip's bytes.
+test fn an_advance_rebinds_exactly_the_paths_the_diff_names() -> Bool {
+  advanced_population(
+    changes: [WorktreeBind { path: "src/modified.dag" as NonEmptyStr }, WorktreeBind { path: "src/added.dag" as NonEmptyStr }, WorktreeDelete { path: "src/deleted.dag" as NonEmptyStr }],
+    texts: texts_of(rows: ["src/modified.dag=after", "src/added.dag=new"]),
+  ) == Present { value: expected(rows: ["src/kept.dag=kept", "src/modified.dag=after", "src/added.dag=new"]) }
+}
+
+// A RE-BOUND PATH WHOSE BYTES WERE NOT READ IS REFUSED, NOT SKIPPED: skipping would leave the tip's
+// bytes at a path the diff says changed, the stale tree the advance exists to end.
+test fn an_advance_bind_without_its_bytes_refuses() -> Bool {
+  match advanced_population(
+    changes: [WorktreeBind { path: "src/modified.dag" as NonEmptyStr }],
+    texts: texts_of(rows: []),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// A REVISION THE REPOSITORY HAS MET IS ANSWERED BY ITS OWN INTAKE COMMIT, with no git asked (the git
+// program here is one that does not exist).
+test fn a_met_revision_answers_its_own_intake_commit() -> Bool {
+  match rev(hex: advance_r0_hex) {
+    Absent => false
+    Present { value: r0 } =>
+      match tip_build(r0: r0) {
+        MbSetupFailed => false
+        MbBuilt { repository, at } =>
+          match at {
+            Absent => false
+            Present { value: tip_ref } =>
+              match belt_scm_intake_base_for(git_program: "/nonexistent/git", worktree: "/nonexistent", path: "/nonexistent/envelope.json", envelope: repository, revision: r0) {
+                BeltIntakeBaseReady { envelope: _, base_ref } => repository_commit_ref_eq(left: base_ref, right: tip_ref)
+                BeltIntakeBaseRefused { detail: _ } => false
+                BeltIntakeBasePoisoned { detail: _ } => false
+              }
+          }
+      }
+  }
+}
+
+// A REPOSITORY THAT PREDATES THE TYPED RECORD IS REFUSED BY NAME, never based on its root by
+// position: the same repository as a v8 belt wrote it (aged through a real v8 document) carries no
+// intake on any commit.
+test fn a_repository_predating_the_typed_record_is_refused_by_name() -> Bool {
+  let legacy = mb_commit(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A"), message: join(["project base: ", advance_r0_hex], ""))
+  match legacy {
+    MbSetupFailed => false
+    MbBuilt { repository, at: _ } =>
+      match decode_repository_v8_index(v: encode_repository_v8(repo: repository)) {
+        ShardedIndexRefused { cause: _ } => false
+        ShardedIndexDecoded { index } =>
+          match decode_repository_v7_finish(v: index.document, store: repository.store, commit_policy: index.commit_policy) {
+            RepositoryDecodeRefused { cause: _ } => false
+            RepositoryDecoded { envelope } =>
+              match rev(hex: advance_r0_hex) {
+                Absent => false
+                Present { value: r0 } =>
+                  match belt_scm_intake_base_for(git_program: "/nonexistent/git", worktree: "/nonexistent", path: "/nonexistent/envelope.json", envelope: envelope, revision: r0) {
+                    BeltIntakeBasePoisoned { detail } => string_contains(s: detail, pattern: "predates typed base records")
+                    BeltIntakeBaseReady { envelope: _, base_ref: _ } => false
+                    BeltIntakeBaseRefused { detail: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}

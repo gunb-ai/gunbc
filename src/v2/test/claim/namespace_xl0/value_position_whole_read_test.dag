@@ -47,7 +47,7 @@ import v2.std.node_query { binder_node_parts, field_projection_optional, node_po
 import v2.std.type_binder { type_param_names }
 import v2.std.collection { list_at_optional }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import std.algebra { Cons, Empty, FreeMonoid, list_append }
 import extdeps.communication.medium { Lossless, Medium }

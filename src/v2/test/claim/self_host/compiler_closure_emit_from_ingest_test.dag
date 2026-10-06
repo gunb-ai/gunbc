@@ -32,7 +32,7 @@ import v2.compiler.self_host.compiler_closure_emit_driver {
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { Empty, fold_list, length }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional
 }

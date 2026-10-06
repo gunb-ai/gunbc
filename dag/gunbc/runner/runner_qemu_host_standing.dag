@@ -2,7 +2,7 @@ module gunbc.runner_qemu_host_standing
 
 import std.types { Bool, List, NonEmptyStr, String, FilePath }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.posix.test_utility { test_exists_command, test_writable_command, test_executable_command }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable, sha256sum_file_digest_via_shell }
 import extdeps.virtualization.qemu {
