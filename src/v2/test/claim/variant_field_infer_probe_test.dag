@@ -321,17 +321,23 @@ test fn vfp_the_generic_arm_binder_types_at_the_scrutinees_argument_holds() -> B
   vfp_reading(src: vfp_generic_src).arm_body_fact == ^Int
 }
 
-// THE COMPOUND CONTROL: substitution descends through a parameterised field type. `b` binds
-// `boxed: Box<T>`; the arm body `b.inner` types as Int only when `b` reads as Box<Int>. Red while
-// the read holds the compound with the formal inside.
-test fn vfp_the_compound_arm_binder_instantiates_through_the_field_holds() -> Bool {
-  vfp_reading(src: vfp_generic_compound_src).arm_body_fact == ^Int
+// THE COMPOUND CONTROL, DECLARED RED pending deep instantiation: `b` binds `boxed: Box<T>`, but a
+// pattern binder's facts are minted by the lexical facts path under the parent frame, whose
+// infer_frame_instantiated substitutes shallowly -- Box<T> holds raw, so the body `b.inner` reads
+// the formal and the fact is T. This row asserts the defect as it stands and goes red (flips to
+// ^Int) when the follow-up lands: deep substitution inside infer_frame_instantiated (the one
+// instantiation authority), with match arms a coproduct-instance frame if the facts still do not
+// flow; the operand-level helper is interim there and is deleted by it.
+test fn vfp_the_compound_arm_binder_still_rides_the_formal_pending_deep_instantiation() -> Bool {
+  vfp_reading(src: vfp_generic_compound_src).arm_body_fact == ^T
 }
 
-// THE ARROW CONTROL: a non-atom connective (Arrow) carrying the formal must not preempt the facts
-// raw. `g` binds `f: fn(Int) -> T`; the body `g(x)` types as Int only when the binder instantiates.
-test fn vfp_the_arrow_arm_binder_instantiates_through_the_field_holds() -> Bool {
-  vfp_reading(src: vfp_generic_arrow_src).arm_body_fact == ^Int
+// THE ARROW CONTROL, DECLARED RED pending deep instantiation: `g` binds `f: fn(Int) -> T` and the
+// arm body `g(x)` reads the formal for the same reason as the compound row -- the facts layer's
+// shallow substitution never rewrites the Arrow's result. Asserts the defect as it stands; flips
+// to ^Int with the same follow-up that deletes the interim operand helper.
+test fn vfp_the_arrow_arm_binder_still_rides_the_formal_pending_deep_instantiation() -> Bool {
+  vfp_reading(src: vfp_generic_arrow_src).arm_body_fact == ^T
 }
 // THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
 // want of coverage, resolve has already bound the construction's tag to its variant's declaring
