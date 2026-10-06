@@ -1,7 +1,7 @@
 module gunbc.workspace_allocation_admission
 
 import std.types { NonEmptyStr, String, Timestamp, List }
-import v2.std.optional { Optional, Absent, Present }
+import std.optional { Optional, Absent, Present }
 import gunbc.workspace_allocation { WorkspaceRequest, WorkspaceAllocationId, workspace_profile_parse, workspace_policy_ref, workspace_lease_bound_seconds }
 import gunbc.auth.approval_capability { utc_instant_is_canonical, utc_instant_seconds_after }
 import std.access { AccessDecision, Permit, Deny, AccessActionNotGranted, decision_meet }

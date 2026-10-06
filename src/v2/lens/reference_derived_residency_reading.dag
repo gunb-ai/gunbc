@@ -19,7 +19,7 @@ import gunbc.namespace_reference_derived_residency_qualification {
 import std.decl_ref { DeclarationRef }
 import v2.std.algebra { length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.node_query { member_edge_type_node }
 import v2.std.node {
   Arrow,

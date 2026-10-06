@@ -1,0 +1,637 @@
+module test.claim.claude_code_dispatch_witness_test
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.claim_evidence { RecordedFactId }
+import std.measure { basis_point_count }
+import v2.std.optional { Present, Absent }
+import gunbc.roadmap_model { RoadmapNodeId }
+import extdeps.llm.claude_code_stream_json {
+  ClaudeCodeStreamLine,
+  ClaudeCodeRateLimitEventLine,
+  ClaudeCodeResultLine,
+  ClaudeCodeOtherLine,
+  ClaudeCodeLineUnreadable,
+  StreamLineNotJson,
+  StreamLineMemberMissing,
+  StreamLineMemberMalformed,
+  claude_code_stream_line,
+}
+import extdeps.posix.shell_command_language { admit_posix_shell_name, PosixShellNameAdmitted, PosixShellNameRefused }
+import gunbc.roadmap_belt_actuate {
+  BeltSpawnOutcome, Spawned, SupervisorConvened, SpawnFailed, SpawnNotAdmitted,
+  belt_snapshot_disposition, SnapshotConsumedByChild, SnapshotDiscardRequired,
+}
+import gunbc.roadmap_launch_admission { launch_identity_exemplar, LaunchTransitionInhibited }
+import gunbc.claude_code_limit_standing {
+  ClaudeCodeStandingReading,
+  ClaudeCodeStandingRead,
+  ClaudeCodeStandingUnreadable,
+  claude_code_standing_from_trip,
+}
+import gunbc.provider_standing {
+  ProviderStandingBundle,
+  ProviderLimitObservation,
+  LimitDispatchDrawAutomatic,
+  LimitDispatchDrawAccount,
+  LimitCredentialLabel,
+  LimitUnavailableUntilReset,
+  LimitObservedAvailable,
+  LimitObservationUnobserved,
+  LimitExhausted,
+  LimitWarning,
+  LimitResetAt,
+  LimitResetInstantUnobserved,
+  ProviderNativeLimitBucket,
+  ProviderAccountLimit,
+  AuthenticationAuthenticated,
+  AuthenticationRefreshFailed,
+  ToolEnvironmentReady,
+  provider_standing_bundle_is_selection_eligible,
+  provider_standing_from_observed_bundle,
+  provider_standing_inventory_unobserved,
+}
+import gunbc.claude_code_credential {
+  claude_code_harness_credential_label,
+  claude_code_oauth_harness_host_path,
+  claude_code_oauth_harness_secret_ref,
+  claude_code_custody_path,
+}
+import gunbc.dispatch_selection {
+  ProviderInventory,
+  OfferClaude,
+  OfferCodex,
+  OfferCursor,
+  ClaudeOAuthTokenSecretRef,
+  ClaudeStateRootRef,
+  ClaudeApiKeySecretRef,
+  DispatchSelectionResolved,
+  DispatchSelectionRefused,
+  ResolvedClaude,
+  ResolvedCodex,
+  ResolvedCursor,
+  NoDerivedSizingExpectation,
+  claude_dispatch_credential,
+  inventory_with_observed_standing,
+  provider_inventory_for_instance,
+  provider_selection_request_for_kind,
+  resolve_dispatch_selection,
+  claude_offer_for_instance,
+  srv1_live_dashboard_instance,
+}
+import extdeps.llm.cli_lifecycle { ClaudeCliProvider, CodexCliProvider, CursorCliProvider }
+import extdeps.llm.cli { ReasoningMedium, ProviderAccountDefaultModel }
+import gunbc.roadmap_dispatch_actuator {
+  DispatchExecutorRequestDecoded,
+  DispatchExecutorRequestUnknown,
+  ExecutorDefault,
+  ExecutorVendor,
+  ClaudeCodeProvider,
+  CodexDispatchProvider,
+  CursorDispatchProvider,
+  GunbcHarnessProvider,
+  DispatchProviderInnerArgvReady,
+  CodexProviderExecutableAbsent,
+  CursorProviderSpawnUnwired,
+  GunbcHarnessSpawnNeedsInstance,
+  ClaudeProviderCredentialUnbound,
+  RecordedAttemptFingerprint,
+  DispatchActuatorSelectionOk,
+  DispatchActuatorSelectionRefused,
+  decode_dispatch_executor_request,
+  claude_inner_argv_for_credential,
+  dispatch_provider_inner_argv_for_instance,
+  dispatch_tmux_session_scope_for_recorded,
+  dispatch_credential_snapshot_path_for_instance,
+  provider_kind_to_dispatch_cli,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// ── Supplied wire lines ──────────────────────────────────────────────────────────────────────────
+// The first two are the VERBATIM lines claude 2.1.289 wrote on 2026-10-05 (uuid/session ids
+// shortened); the rest are planted variants that differ from them in exactly the field a claim
+// discriminates on.
+
+data receipt_rate_limit_allowed: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":1791190800,\"rateLimitType\":\"five_hour\",\"overageStatus\":\"rejected\",\"overageDisabledReason\":\"org_level_disabled\",\"isUsingOverage\":false,\"unifiedWindows\":{\"five_hour\":{\"utilization\":0.01,\"resetsAt\":1791190800},\"seven_day\":{\"utilization\":0.45,\"resetsAt\":1791554400}}},\"uuid\":\"u1\",\"session_id\":\"s1\"}"
+
+data receipt_result_success: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"terminal_reason\":\"completed\",\"api_error_status\":null,\"result\":\"ok\",\"session_id\":\"s1\"}"
+
+data receipt_result_unauthorized: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":401,\"result\":\"Failed to authenticate. API Error: 401 OAuth access token is invalid.\",\"session_id\":\"s2\"}"
+
+data planted_rate_limit_five_hour_rejected: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":1791190800,\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":1.0,\"resetsAt\":1791190800},\"seven_day\":{\"utilization\":0.45,\"resetsAt\":1791554400}}}}"
+
+data planted_rate_limit_rejected_unnamed: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\",\"resetsAt\":1791190800,\"unifiedWindows\":{\"five_hour\":{\"utilization\":0.2,\"resetsAt\":1791190800}}}}"
+
+data planted_rate_limit_seven_day_full: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"rateLimitType\":\"five_hour\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":0.1,\"resetsAt\":1791190800},\"seven_day\":{\"utilization\":1,\"resetsAt\":1791554400}}}}"
+
+data planted_rate_limit_utilization_string: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"unifiedWindows\":{\"five_hour\":{\"utilization\":\"0.1\"}}}}"
+
+data planted_assistant_line: String = "{\"type\":\"assistant\",\"message\":{\"content\":[]}}"
+
+fn trip(lines: List<String>) -> String {
+  join(lines, "\n")
+}
+
+fn standing_of(stdout: String) -> ClaudeCodeStandingReading {
+  claude_code_standing_from_trip(
+    credential_label: claude_code_harness_credential_label,
+    stdout: stdout,
+    tool_environment: ToolEnvironmentReady,
+  )
+}
+
+fn eligible_automatic(stdout: String) -> Bool {
+  match standing_of(stdout: stdout) {
+    ClaudeCodeStandingRead { bundle } =>
+      provider_standing_bundle_is_selection_eligible(bundle: bundle, draw: LimitDispatchDrawAutomatic)
+    ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => false
+  }
+}
+
+fn limits_of(stdout: String) -> List<ProviderLimitObservation> {
+  match standing_of(stdout: stdout) {
+    ClaudeCodeStandingRead { bundle } => bundle.limits
+    ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => []
+  }
+}
+
+// ── Decoder (extdeps.llm.claude_code_stream_json) ───────────────────────────────────────────────
+
+test fn the_captured_rate_limit_line_decodes_both_windows_in_basis_points() -> Bool {
+  match claude_code_stream_line(line: receipt_rate_limit_allowed) {
+    ClaudeCodeRateLimitEventLine { info } =>
+      info.status as String == "allowed"
+        && list_length(items: info.windows) == 2
+        && any(info.windows, w => w.name as String == "five_hour" && basis_point_count(bp: w.utilization) == 100)
+        && any(info.windows, w => w.name as String == "seven_day" && basis_point_count(bp: w.utilization) == 4500)
+    ClaudeCodeResultLine { result: _ } => false
+    ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeLineUnreadable { gap: _ } => false
+  }
+}
+
+// subtype says success on the 401 receipt; the decoder must carry is_error and the NUMERIC status.
+test fn the_unauthorized_result_carries_is_error_and_numeric_status() -> Bool {
+  match claude_code_stream_line(line: receipt_result_unauthorized) {
+    ClaudeCodeResultLine { result } =>
+      result.is_error
+        && match result.api_error_status {
+             Present { value: code } => code == 401
+             Absent => false
+           }
+    ClaudeCodeRateLimitEventLine { info: _ } => false
+    ClaudeCodeOtherLine { event_type: _ } => false
+    ClaudeCodeLineUnreadable { gap: _ } => false
+  }
+}
+
+test fn a_string_utilization_refuses_naming_the_member() -> Bool {
+  match claude_code_stream_line(line: planted_rate_limit_utilization_string) {
+    ClaudeCodeLineUnreadable { gap } =>
+      match gap {
+        StreamLineMemberMalformed { member } => member == "unifiedWindows.five_hour.utilization"
+        StreamLineMemberMissing { member: _ } => false
+        StreamLineNotJson => false
+      }
+    ClaudeCodeRateLimitEventLine { info: _ } => false
+    ClaudeCodeResultLine { result: _ } => false
+    ClaudeCodeOtherLine { event_type: _ } => false
+  }
+}
+
+// A malformed OPTIONAL member refuses naming the member; it is never read as absent (review 76293).
+data planted_result_status_string: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true,\"api_error_status\":\"401\"}"
+data planted_result_terminal_reason_number: String = "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"terminal_reason\":7}"
+data planted_rate_limit_negative_reset: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"resetsAt\":-1,\"unifiedWindows\":{}}}"
+data planted_rate_limit_empty_type: String = "{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"allowed\",\"rateLimitType\":\"\",\"unifiedWindows\":{}}}"
+
+fn refuses_naming(line: String, member: String) -> Bool {
+  match claude_code_stream_line(line: line) {
+    ClaudeCodeLineUnreadable { gap } =>
+      match gap {
+        StreamLineMemberMalformed { member: m } => m == member
+        StreamLineMemberMissing { member: _ } => false
+        StreamLineNotJson => false
+      }
+    ClaudeCodeRateLimitEventLine { info: _ } => false
+    ClaudeCodeResultLine { result: _ } => false
+    ClaudeCodeOtherLine { event_type: _ } => false
+  }
+}
+
+test fn malformed_optional_members_refuse_naming_the_member() -> Bool {
+  refuses_naming(line: planted_result_status_string, member: "api_error_status")
+    && refuses_naming(line: planted_result_terminal_reason_number, member: "terminal_reason")
+    && refuses_naming(line: planted_rate_limit_negative_reset, member: "rate_limit_info.resetsAt")
+    && refuses_naming(line: planted_rate_limit_empty_type, member: "rate_limit_info.rateLimitType")
+}
+
+// ── Standing (gunbc.claude_code_limit_standing) ─────────────────────────────────────────────────
+
+test fn the_captured_trip_is_eligible_and_authenticated() -> Bool {
+  let stdout = trip(lines: [planted_assistant_line, receipt_rate_limit_allowed, receipt_result_success])
+  eligible_automatic(stdout: stdout)
+    && match standing_of(stdout: stdout) {
+         ClaudeCodeStandingRead { bundle } =>
+           match bundle.authentication {
+             AuthenticationAuthenticated => true
+             _ => false
+           }
+         ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => false
+       }
+}
+
+test fn a_rejected_five_hour_window_blocks_until_its_reset() -> Bool {
+  let stdout = trip(lines: [planted_rate_limit_five_hour_rejected, receipt_result_success])
+  !eligible_automatic(stdout: stdout)
+    && any(limits_of(stdout: stdout), o =>
+         match o {
+           LimitUnavailableUntilReset { subject, cause: _, reset, reason: _ } =>
+             match subject {
+               ProviderNativeLimitBucket { credential: _, native_key } => native_key as String == "five_hour"
+               _ => false
+             }
+               && match reset {
+                    LimitResetAt { at } => at == 1791190800
+                    LimitResetInstantUnobserved => false
+                  }
+           _ => false
+         })
+}
+
+// A window at full utilization is exhausted even when the line's top-level status concerns a
+// different window and says allowed.
+test fn a_full_seven_day_window_is_exhausted_under_an_allowed_five_hour_status() -> Bool {
+  let stdout = trip(lines: [planted_rate_limit_seven_day_full, receipt_result_success])
+  !eligible_automatic(stdout: stdout)
+    && any(limits_of(stdout: stdout), o =>
+         match o {
+           LimitExhausted { subject, native_token: _ } =>
+             match subject {
+               ProviderNativeLimitBucket { credential: _, native_key } => native_key as String == "seven_day"
+               _ => false
+             }
+           _ => false
+         })
+}
+
+test fn a_rejection_naming_no_window_is_held_at_account_scope() -> Bool {
+  let stdout = trip(lines: [planted_rate_limit_rejected_unnamed, receipt_result_success])
+  !eligible_automatic(stdout: stdout)
+    && any(limits_of(stdout: stdout), o =>
+         match o {
+           LimitUnavailableUntilReset { subject, cause: _, reset: _, reason: _ } =>
+             match subject {
+               ProviderAccountLimit { credential: _ } => true
+               _ => false
+             }
+           _ => false
+         })
+}
+
+// THE ROSTER PROPERTY: an exhausted credential blocks draws on ITSELF, not on another credential --
+// what lets a second account be selected while the first waits out its window.
+test fn an_exhausted_credential_does_not_block_a_draw_on_another_label() -> Bool {
+  match standing_of(stdout: trip(lines: [planted_rate_limit_five_hour_rejected, receipt_result_success])) {
+    ClaudeCodeStandingRead { bundle } =>
+      !provider_standing_bundle_is_selection_eligible(
+        bundle: bundle,
+        draw: LimitDispatchDrawAccount { credential: LimitCredentialLabel { label: claude_code_harness_credential_label } },
+      )
+        && provider_standing_bundle_is_selection_eligible(
+             bundle: bundle,
+             draw: LimitDispatchDrawAccount { credential: LimitCredentialLabel { label: "gmail2" as NonEmptyStr } },
+           )
+    ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => false
+  }
+}
+
+test fn an_unauthorized_trip_is_ineligible_on_authentication() -> Bool {
+  let stdout = trip(lines: [receipt_rate_limit_allowed, receipt_result_unauthorized])
+  !eligible_automatic(stdout: stdout)
+    && match standing_of(stdout: stdout) {
+         ClaudeCodeStandingRead { bundle } =>
+           match bundle.authentication {
+             AuthenticationRefreshFailed { reason: _ } => true
+             _ => false
+           }
+         ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => false
+       }
+}
+
+// No rate_limit_event is NOT "no limit": it is unobserved, and unobserved blocks every draw.
+test fn a_trip_without_a_rate_limit_line_is_ineligible() -> Bool {
+  let stdout = trip(lines: [receipt_result_success])
+  !eligible_automatic(stdout: stdout)
+    && any(limits_of(stdout: stdout), o =>
+         match o {
+           LimitObservationUnobserved { reason: _ } => true
+           _ => false
+         })
+}
+
+// One unreadable line refuses the whole reading; it is never skipped into "no limit reported".
+test fn an_unreadable_line_refuses_the_whole_trip() -> Bool {
+  match standing_of(stdout: trip(lines: [receipt_result_success, planted_rate_limit_utilization_string])) {
+    ClaudeCodeStandingUnreadable { line_index, gap: _ } => line_index == 1
+    ClaudeCodeStandingRead { bundle: _ } => false
+  }
+}
+
+// ── Executor request (gunbc.roadmap_dispatch_actuator) ──────────────────────────────────────────
+
+test fn the_executor_word_decodes_over_the_provider_labels() -> Bool {
+  let claude = match decode_dispatch_executor_request(word: "claude") {
+    DispatchExecutorRequestDecoded { request } =>
+      match request {
+        ExecutorVendor { provider } =>
+          match provider {
+            ClaudeCodeProvider => true
+            CodexDispatchProvider => false
+            CursorDispatchProvider => false
+            GunbcHarnessProvider => false
+          }
+        ExecutorDefault => false
+      }
+    DispatchExecutorRequestUnknown { word: _, known: _ } => false
+  }
+  let absent = match decode_dispatch_executor_request(word: "") {
+    DispatchExecutorRequestDecoded { request } =>
+      match request {
+        ExecutorDefault => true
+        ExecutorVendor { provider: _ } => false
+      }
+    DispatchExecutorRequestUnknown { word: _, known: _ } => false
+  }
+  let harness = match decode_dispatch_executor_request(word: "gunbc-harness") {
+    DispatchExecutorRequestDecoded { request } =>
+      match request {
+        ExecutorDefault => true
+        ExecutorVendor { provider: _ } => false
+      }
+    DispatchExecutorRequestUnknown { word: _, known: _ } => false
+  }
+  claude && absent && harness
+}
+
+test fn an_unknown_executor_word_refuses_naming_the_accepted_set() -> Bool {
+  match decode_dispatch_executor_request(word: "claude-max") {
+    DispatchExecutorRequestUnknown { word, known } =>
+      word == "claude-max" && any(known, k => k == "claude") && any(known, k => k == "gunbc-harness")
+    DispatchExecutorRequestDecoded { request: _ } => false
+  }
+}
+
+// ── Credential binding (spawn) ──────────────────────────────────────────────────────────────────
+
+data spawn_argv_tail: List<String> = ["env", "CLAUDE_CODE_NO_FLICKER=1", "claude", "--session-id", "u"]
+
+data witness_snapshot_path: NonEmptyStr = "/state/node-claude-a0123456789abcdef.claude-credential"
+
+test fn the_setup_token_credential_binds_through_the_env_wrapper_never_argv() -> Bool {
+  match claude_inner_argv_for_credential(credential: claude_dispatch_credential(), snapshot: witness_snapshot_path, argv: spawn_argv_tail) {
+    DispatchProviderInnerArgvReady { argv } =>
+      list_length(items: argv) == 4 + list_length(items: spawn_argv_tail)
+        && match argv.first() {
+             Present { value: w } => w == "sh"
+             Absent => false
+           }
+        && any(argv, a => a == witness_snapshot_path as String)
+        && !any(argv, a => a == claude_code_oauth_harness_host_path as String)
+        && any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\""))
+        && any(argv, a => string_contains(s: a, pattern: "'exec' \"$@\""))
+        && !any(argv, a => starts_with(s: a, prefix: "CLAUDE_CODE_OAUTH_TOKEN=") && !string_contains(s: a, pattern: "\"$0\""))
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+test fn an_ambient_profile_tree_is_not_a_bindable_credential() -> Bool {
+  match claude_inner_argv_for_credential(
+    credential: ClaudeStateRootRef { root: "~/.claude" as FilePath },
+    snapshot: witness_snapshot_path,
+    argv: spawn_argv_tail,
+  ) {
+    ClaudeProviderCredentialUnbound { reason: _ } => true
+    DispatchProviderInnerArgvReady { argv: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+// The env-var name reaches the sh script only as an admitted POSIX name (review 76372).
+fn name_refused(spelling: String) -> Bool {
+  match admit_posix_shell_name(spelling: spelling) {
+    PosixShellNameRefused { spelling: _ } => true
+    PosixShellNameAdmitted { name: _ } => false
+  }
+}
+
+test fn only_a_posix_name_is_admitted_into_the_env_wrapper() -> Bool {
+  !name_refused(spelling: "CLAUDE_CODE_OAUTH_TOKEN")
+    && name_refused(spelling: "A;B")
+    && name_refused(spelling: "$(x)")
+    && name_refused(spelling: "A B")
+    && name_refused(spelling: "9A")
+    && name_refused(spelling: "")
+}
+
+// SNAPSHOT LIFECYCLE: only a launched child consumes the snapshot; every other post-selection
+// outcome requires its discard (side-chat finding). Every arm of BeltSpawnOutcome, by name.
+fn discard_required(o: BeltSpawnOutcome) -> Bool {
+  match belt_snapshot_disposition(outcome: o) {
+    SnapshotDiscardRequired => true
+    SnapshotConsumedByChild => false
+  }
+}
+
+test fn only_a_launched_child_consumes_the_snapshot() -> Bool {
+  let id = launch_identity_exemplar()
+  !discard_required(o: Spawned { node_id: "x", session_name: "gunbc-dispatch-x", provider: "claude", launch: id })
+    && discard_required(o: SupervisorConvened { node_id: "x", unit: "u", provider: "claude", launch: id })
+    && discard_required(o: SpawnFailed { node_id: "x", step: "claude-cli", detail: "preflight refused", provider: "claude", launch: id })
+    && discard_required(o: SpawnNotAdmitted { node_id: "x", refusal: LaunchTransitionInhibited { reason: "r" } })
+}
+
+// The removal is a precondition of the exec: the program carries the removal's own failure arm.
+test fn a_snapshot_that_cannot_be_removed_refuses_the_launch() -> Bool {
+  match claude_inner_argv_for_credential(credential: claude_dispatch_credential(), snapshot: witness_snapshot_path, argv: spawn_argv_tail) {
+    DispatchProviderInnerArgvReady { argv } =>
+      any(argv, a => string_contains(s: a, pattern: "'rm' '-f' '--' \"$0\" || exit 79"))
+    ClaudeProviderCredentialUnbound { reason: _ } => false
+    CodexProviderExecutableAbsent { reason: _ } => false
+    CursorProviderSpawnUnwired { reason: _ } => false
+    GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+  }
+}
+
+// ── Inventory and selection (gunbc.dispatch_selection) ──────────────────────────────────────────
+
+fn srv1_declared() -> ProviderInventory {
+  provider_inventory_for_instance(instance: srv1_live_dashboard_instance())
+}
+
+fn select_claude_over(inventory: ProviderInventory) -> Bool {
+  match resolve_dispatch_selection(
+    inventory: inventory,
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.provider_kind {
+        ClaudeCliProvider => true
+        CodexCliProvider => false
+        CursorCliProvider => false
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+  }
+}
+
+fn observed(stdout: String) -> ProviderInventory {
+  match standing_of(stdout: stdout) {
+    ClaudeCodeStandingRead { bundle } =>
+      inventory_with_observed_standing(
+        inventory: srv1_declared(),
+        kind: ClaudeCliProvider,
+        standing: provider_standing_from_observed_bundle(
+          fact_id: "witness-claude-trip" as RecordedFactId,
+          provider: claude_offer_for_instance(instance: srv1_live_dashboard_instance()).instance,
+          bundle: bundle,
+        ),
+      )
+    ClaudeCodeStandingUnreadable { line_index: _, gap: _ } => srv1_declared()
+  }
+}
+
+test fn the_declared_claude_row_carries_the_setup_token_credential() -> Bool {
+  any(srv1_declared().offers, offer =>
+    match offer {
+      OfferClaude { offer: o } =>
+        match o.credential {
+          ClaudeOAuthTokenSecretRef { secret_ref } => secret_ref.secret == claude_code_oauth_harness_secret_ref.secret
+          ClaudeStateRootRef { root: _ } => false
+          ClaudeApiKeySecretRef { secret_ref: _ } => false
+        }
+      OfferCodex { offer: _ } => false
+      OfferCursor { offer: _ } => false
+    })
+}
+
+// The declared row admits no draw: Claude is reachable only after observation.
+test fn witness_production_claude_row_admits_no_automatic_draw() -> Bool {
+  !select_claude_over(inventory: srv1_declared())
+}
+
+test fn an_observed_eligible_trip_makes_claude_selectable_and_an_exhausted_one_does_not() -> Bool {
+  select_claude_over(inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])))
+    && !select_claude_over(inventory: observed(stdout: trip(lines: [planted_rate_limit_five_hour_rejected, receipt_result_success])))
+}
+
+// THE RECEIPT NAMES THE CREDENTIAL THE PROCESS RECEIVES (review 76871): an observed-eligible explicit
+// Claude draw over the production srv1 inventory resolves with the setup-token secret, the same
+// credential claude_inner_argv_for_credential binds -- never the ambient profile tree.
+test fn the_receipt_names_the_setup_token_secret_the_spawn_binds() -> Bool {
+  match resolve_dispatch_selection(
+    inventory: observed(stdout: trip(lines: [receipt_rate_limit_allowed, receipt_result_success])),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionResolved { receipt } =>
+      match receipt.resolved_selection {
+        ResolvedClaude { selection: s, instance: _ } =>
+          match s.credential {
+            ClaudeOAuthTokenSecretRef { secret_ref } => secret_ref.secret == claude_code_oauth_harness_secret_ref.secret
+            ClaudeStateRootRef { root: _ } => false
+            ClaudeApiKeySecretRef { secret_ref: _ } => false
+          }
+        ResolvedCodex { selection: _, instance: _, account_binding: _ } => false
+        ResolvedCursor { selection: _, instance: _ } => false
+      }
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+  }
+}
+
+// ── Recorded attempt fingerprint (observation and stop) ────────────────────────────────────────
+
+test fn a_recorded_fingerprint_scopes_the_session_over_the_default_selection() -> Bool {
+  let node = "node-claude" as NonEmptyStr as RoadmapNodeId
+  let harness_selection = DispatchActuatorSelectionOk {
+    provider: GunbcHarnessProvider,
+    effort: ReasoningMedium,
+    model: ProviderAccountDefaultModel,
+    process_fingerprint: "gunbc" as NonEmptyStr,
+  }
+  let recorded = match dispatch_tmux_session_scope_for_recorded(
+    node_id: node,
+    recorded: [RecordedAttemptFingerprint { node_id: "node-claude", fingerprint: "claude" as NonEmptyStr }],
+    selection: harness_selection,
+  ) {
+    Present { value: scope } => scope.expected_process_fingerprint as String == "claude"
+    Absent => false
+  }
+  let fallback = match dispatch_tmux_session_scope_for_recorded(
+    node_id: node,
+    recorded: [RecordedAttemptFingerprint { node_id: "other-node", fingerprint: "claude" as NonEmptyStr }],
+    selection: harness_selection,
+  ) {
+    Present { value: scope } => scope.expected_process_fingerprint as String == "gunbc"
+    Absent => false
+  }
+  recorded && fallback
+}
+
+// ── THE REAL-PATH INHABITANCE CLAIM ─────────────────────────────────────────────────────────────
+// The route an explicit Claude dispatch takes, through every real producer except the CLI process
+// itself, whose stdout is the captured 2.1.289 receipt: the trip's lines become the standing
+// (claude_code_standing_from_trip), the standing replaces the declared srv1 row
+// (inventory_with_observed_standing over the PRODUCTION provider_inventory_for_instance), selection
+// resolves Claude (resolve_dispatch_selection), the receipt's kind becomes the dispatch provider
+// (provider_kind_to_dispatch_cli), and the PRODUCTION spawn fold for srv1
+// (dispatch_provider_inner_argv_for_instance) emits the custody-wrapped claude argv. It asserts the
+// ROUTE -- the wrapper and the custody path reach the argv -- not only that some argv appeared.
+test fn the_captured_trip_reaches_a_credential_bound_claude_spawn_on_srv1() -> Bool {
+  let instance = srv1_live_dashboard_instance()
+  match resolve_dispatch_selection(
+    inventory: observed(stdout: trip(lines: [planted_assistant_line, receipt_rate_limit_allowed, receipt_result_success])),
+    request: provider_selection_request_for_kind(kind: ClaudeCliProvider),
+    sizing_expectation: NoDerivedSizingExpectation,
+  ) {
+    DispatchSelectionRefused { sizing_expectation: _, requested_selection: _, reason: _ } => false
+    DispatchSelectionResolved { receipt } =>
+      match dispatch_provider_inner_argv_for_instance(
+        instance: instance,
+        provider: provider_kind_to_dispatch_cli(kind: receipt.provider_kind),
+        effort: receipt.applied_effort,
+        model: ProviderAccountDefaultModel,
+        session_uuid: "00000000-0000-4000-8000-000000000000",
+        node_id: "node-claude" as NonEmptyStr as RoadmapNodeId,
+        attempt_key: "0123456789abcdef",
+        worktree_path: "/tmp/w",
+        brief: "brief",
+        alignment_chain_fingerprint: "fp",
+      ) {
+        DispatchProviderInnerArgvReady { argv } =>
+          match argv.first() {
+            Present { value: w } => w == "sh"
+            Absent => false
+          }
+            && any(argv, a =>
+                 a == dispatch_credential_snapshot_path_for_instance(
+                   instance: instance,
+                   node_id: "node-claude" as NonEmptyStr as RoadmapNodeId,
+                   attempt_key: "0123456789abcdef",
+                   provider: ClaudeCodeProvider,
+                 ) as String)
+            && !any(argv, a => a == claude_code_oauth_harness_host_path as String)
+            && any(argv, a => a == "claude")
+        ClaudeProviderCredentialUnbound { reason: _ } => false
+        CodexProviderExecutableAbsent { reason: _ } => false
+        CursorProviderSpawnUnwired { reason: _ } => false
+        GunbcHarnessSpawnNeedsInstance { reason: _ } => false
+      }
+  }
+}

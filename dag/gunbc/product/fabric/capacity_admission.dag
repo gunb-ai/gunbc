@@ -2,7 +2,7 @@ module product.fabric.capacity_admission
 
 import std.types { List, EpochSecs }
 import std.decl_ref { DeclarationRef }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.identity { FabricIdentity, OfferKey, WorkKey, DemandKey, fabric_identity_eq }
 import product.fabric.work { ExecutionRequirements }
 import product.fabric.provider_route { ProviderRoute, ProviderRouteFacts, CompliancePostureRevision }

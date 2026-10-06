@@ -29,7 +29,7 @@ import gunbc.fleet.app_control_plane_inspection { app_control_plane_receipt_path
 import gunbc.fleet.org_actions_inspection { org_actions_validation_receipt_path }
 import gunbc.spark.pair_serving_d0_door { pair_serving_d0_consent_env, pair_serving_d0_step_timeout_minutes }
 import gunbc.spark.runtime_image_produce_dispatch { runtime_image_env, runtime_image_options }
-import gunbc.spark.arm_group_launch_dispatch { arm_checkpoint_env, arm_checkpoint_options, arm_group_launch_arm_env, arm_group_launch_step_env, arm_group_launch_incumbent_env, arm_group_launch_arm_options, arm_group_launch_step_options, arm_group_launch_incumbent_options }
+import gunbc.spark.arm_group_launch_dispatch { arm_checkpoint_env, arm_checkpoint_options, arm_group_launch_arm_env, arm_group_launch_step_env, arm_group_launch_incumbent_env, arm_group_launch_arm_options, arm_group_launch_step_options, arm_group_launch_incumbent_options, arm_launch_step_timeout_minutes }
 import gunbc.fleet.organization_runner_roster_read { organization_runner_roster_receipt_path, runner_id_probes_env_name, roster_page_size_env_name }
 import gunbc.cloudflare.r2_permission_group_observe { r2_mint_preflight_receipt_path }
 import gunbc.cloudflare.r2_bucket_ensure { r2_bucket_ensure_receipt_path }
@@ -3841,7 +3841,7 @@ fn fleet_converge_spark_arm_group_launch_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_arm_group_launch_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
+    timeout_minutes: Present { value: arm_launch_step_timeout_minutes }
   }
 }
 

@@ -9,7 +9,7 @@ import v2.std.algebra {
 }
 import std.algebra { Cons, list_snoc_item }
 import v2.std.collection { Map, empty_map, map_insert }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.text { String, string_eq }
 import v2.lens.common.construction_justification {
   ConstructionJustification,
