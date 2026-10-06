@@ -41,7 +41,7 @@ import gunbc.fleet.convergence_fold {
   ConvergenceReceiptProjection, convergence_receipt_projection,
   fold_convergence_run, step_instance_key, step_outcome_receipt, step_outcome_refusal,
   ungated_readonly_step, AuthorizationUndischarged, mutation_lanes, instance_authorization,
-  step_instance_key_eq,
+  step_instance_key_eq, InstanceAuthorization,
 }
 import gunbc.machine_intake_prior_life_boundary {
   DryPriorLifeWorld, DryArchiveStore, DryArchiveStoreLosesWrites, ArchiveWrittenButNotReadBack, ArchiveWritten, LogsArchivedWithBaselineCursor,
@@ -52,8 +52,14 @@ import std.content_hash { content_hash_equal }
 import test.claim.machine_intake_prior_life_boundary_witness { prior_life_minimal_dry_world }
 import gunbc.auth.standing_operator_grant {
   mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost, StandingBmcSecureAccountWrite,
+  StandingOperatorGrant,
 }
-import gunbc.fleet_host_identity { operator_host_mtjade1 }
+import gunbc.auth.authorization_pattern_selection {
+  InterlockPending, UnconditionalStanding, InterlockedBy, StandingDestructiveAuthorization,
+  select_authorization_pattern, StandingRulingUnderInterlock, NoWitnessDischarge,
+  PatternSelected, OperatorApprovedCapability, AuthorizationPatternSelection,
+}
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
 import gunbc.machine_intake_arrival_converge {
   ArrivalPrefixVerdict, ArrivalRunFolded, ArrivalPlanRefused, ArrivalPrefixUnstepped,
   ArrivalStepReceipt, AccessDiscoverReceipt, IdentityBindReceipt, PriorLifeBoundaryReceipt, ArrivalStepRefusal,
@@ -65,6 +71,7 @@ import gunbc.machine_intake_arrival_converge {
   arrival_prefix_last, arrival_receipt_projection, access_discover, identity_bind_provisional,
   converge_mtjade1_arrival_prefix, converge_arrival_prefix, mtjade1_identity_bind_inputs,
   bmc_secure_step_ref, arrival_bmc_secure_mutation_lanes, BmcSecureReceipt,
+  grant_discharges_bmc_secure_account_write,
 }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -562,6 +569,70 @@ test fn w_bmc_secure_apply_without_discharge_refuses() -> Bool {
   }
 }
 
+fn mtjade1_grant_with_interlock_pending() -> StandingOperatorGrant {
+  let g = mtjade1_live_standing_grant
+  StandingOperatorGrant {
+    identity: g.identity,
+    principal: g.principal,
+    ruled_at: g.ruled_at,
+    ruling: StandingDestructiveAuthorization {
+      ruling_text: g.ruling.ruling_text,
+      effect_subject: g.ruling.effect_subject,
+      interlock: InterlockPending { obligation: "hold not named" as NonEmptyStr },
+    },
+    scope: g.scope,
+    effects: g.effects,
+  }
+}
+
+fn apply_fold_undischarged(discharges: List<InstanceAuthorization>) -> Bool {
+  let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
+  let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
+  let prior = step_instance_key(run: run_a, step: prior_life_boundary_step_ref, subject: mtjade1_key)
+  let bmc = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: mtjade1_key)
+  let outcomes: List<StepOutcome<ProbeReceipt, String, String>> = [
+    StepEstablished { receipt: ProbeReceipt { key: access, consumed: [] } },
+    StepEstablished { receipt: ProbeReceipt { key: identity, consumed: [access] } },
+    StepEstablished { receipt: ProbeReceipt { key: prior, consumed: [identity] } },
+    StepEstablished { receipt: ProbeReceipt { key: bmc, consumed: [prior] } },
+  ]
+  match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
+    ConvergencePlanAdmitted { plan: p } =>
+      match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: discharges) {
+        RunStopped { ledger: l, at: at } =>
+          step_instance_key_eq(a: at, b: bmc)
+            && match l.instances.last() {
+              Present { value: s } => match s {
+                InstanceRefused { key: _, cause: c } => match c { AuthorizationUndischarged => true  _ => false }
+                _ => false
+              }
+              Absent => false
+            }
+        _ => false
+      }
+    ConvergencePlanRefused { cause: _ } => false
+  }
+}
+
+test fn w_bmc_secure_apply_pending_interlock_refuses_at_discharge() -> Bool {
+  grant_discharges_bmc_secure_account_write(g: mtjade1_grant_with_interlock_pending(), host: operator_host_mtjade1) == false
+    && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1)
+}
+
+test fn w_mtcollins1_is_not_discharged_by_the_mtjade1_grant() -> Bool {
+  grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtcollins1) == false
+}
+
+test fn w_bmc_secure_apply_discharge_for_another_run_refuses() -> Bool {
+  let foreign = step_instance_key(run: run_b, step: bmc_secure_step_ref, subject: mtjade1_key)
+  apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
+}
+
+test fn w_bmc_secure_apply_discharge_for_another_unit_refuses() -> Bool {
+  let foreign = step_instance_key(run: run_a, step: bmc_secure_step_ref, subject: "mtcollins1" as StepSubjectKey)
+  apply_fold_undischarged(discharges: [instance_authorization(key: foreign, principal: mtjade1_live_standing_grant.principal)])
+}
+
 test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world() -> Bool {
   let access = step_instance_key(run: run_a, step: access_discover_step_ref, subject: mtjade1_key)
   let identity = step_instance_key(run: run_a, step: identity_bind_provisional_step_ref, subject: mtjade1_key)
@@ -576,7 +647,7 @@ test fn w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dr
   let covered = standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingBmcSecureAccountWrite)
   match admit_convergence_plan(planning: arrival_planning_authority(), steps: four_steps()) {
     ConvergencePlanAdmitted { plan: p } =>
-      covered && match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [instance_authorization(key: bmc, principal: mtjade1_live_standing_grant.principal)]) {
+      covered && grant_discharges_bmc_secure_account_write(g: mtjade1_live_standing_grant, host: operator_host_mtjade1) && match fold_convergence_run(plan: p, run: run_a, subject: mtjade1_key, outcomes: outcomes, projection: convergence_receipt_projection(key_of: probe_key, consumed_of: probe_consumed, authorization_required_of: probe_auth_on_bmc_secure), discharges: [instance_authorization(key: bmc, principal: mtjade1_live_standing_grant.principal)]) {
         RunConverged { run: r } => length(xs: r.ledger.instances) == 4
         _ => false
       }

@@ -1,7 +1,7 @@
 module gunbc.machine_intake_arrival_converge
 
 import std.types { List, NonEmptyStr, String }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.goal_assessment {
   ObservationAttempt,
   ObservationEstablished,
@@ -118,6 +118,9 @@ import gunbc.machine_intake_bmc_secure {
   bmc_secure_phase_noop,
   bmc_secure_phase_applied,
   BmcAccountApplication,
+}
+import gunbc.auth.authorization_pattern_selection {
+  InterlockedBy, InterlockPending, UnconditionalStanding,
 }
 import gunbc.auth.standing_operator_grant {
   StandingOperatorGrant,
@@ -665,10 +668,23 @@ type BmcSecureInputs {
   apply: BmcSecureApplyInputs?
 }
 
+fn bmc_secure_apply_interlock_hold() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_rotation_apply")
+}
+
+fn grant_discharges_bmc_secure_account_write(g: StandingOperatorGrant, host: HostIdentity) -> Bool {
+  standing_grant_covers(g: g, scope: StandingGrantHost { host: host }, effect: StandingBmcSecureAccountWrite)
+    && match g.ruling.interlock {
+      InterlockPending { obligation: _ } => false
+      UnconditionalStanding { reason: _ } => false
+      InterlockedBy { hold: h } => declaration_ref_eq(a: h, b: bmc_secure_apply_interlock_hold())
+    }
+}
+
 fn discharge_bmc_secure_apply(key: StepInstanceKey, inputs: BmcSecureInputs) -> InstanceAuthorization? {
   match inputs.grant {
     Present { value: g } =>
-      if standing_grant_covers(g: g, scope: StandingGrantHost { host: inputs.host }, effect: StandingBmcSecureAccountWrite) {
+      if grant_discharges_bmc_secure_account_write(g: g, host: inputs.host) {
         Present { value: instance_authorization(key: key, principal: g.principal) }
       } else {
         none
