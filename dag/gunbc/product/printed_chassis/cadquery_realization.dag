@@ -432,7 +432,7 @@ fn coupon_wire_row(op: CouponOperation) -> RawOperationRow {
     OpThroughHole { diameter: d, center_x: x, center_y: y } =>
       raw_operation_row(
         kind: "through_hole",
-        diameter_um: micrometer_count(m: d),
+        diameter_um: d,
         center_x_um: micrometer_count(m: x),
         center_y_um: micrometer_count(m: y),
       )
@@ -450,9 +450,9 @@ fn expected_coupon_cadquery_program() -> CouponProgramGeneration {
       let g = contract.specimen.geometry
       let envelope = raw_realization_envelope(
         schema_version: contract_schema_version,
-        plate_x_um: micrometer_count(m: g.plate.size_x),
-        plate_y_um: micrometer_count(m: g.plate.size_y),
-        plate_z_um: micrometer_count(m: g.plate.size_z),
+        plate_x_um: g.plate.size_x,
+        plate_y_um: g.plate.size_y,
+        plate_z_um: g.plate.size_z,
         orientation_datum: coupon_wire_row(op: g.orientation_datum),
         ladder_holes: fold(g.ladder_holes, init: [], f: fn(acc, op) {
           concat(acc, [coupon_wire_row(op: op)])

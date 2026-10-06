@@ -2151,6 +2151,21 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "gunbc-project-root", contribution: "Known gaps and recurring failure modes, each retired against its rostered trigger, stop charging every later change for the same defect."),
     ),
     roadmap_node(
+      identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
+      id: "printed-chassis-python-kernel-retirement",
+      owner: "debt",
+      carriers: carrier(path: "docs/plans/cassette-inventory-convergence-implementation.md"),
+      line: ticket(t: level_fields(
+          headline: "Printed-chassis preparation kernels leave Python strings",
+          boundary: "The three kernels replaced by .dag folds with external tools as declared realizations.",
+          approach: "Express the plate-pack call, G-code readback parser and archived-process observer in .dag; CadQuery and OrcaSlicer remain declared external-tool realizations. Delete the dissolve-on rows when those folds exist.",
+          red_control: "A kernel still authored as a Python String keeps it open.",
+          displaced_cost: "An opaque string program no check can read before it runs.",
+          handback: "The dissolve-on rows deleted with their witnesses green."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "The printed-chassis plate-pack, G-code readback and archived-process observer are still Python strings; retiring them is the same uncheckable-invocation debt the shell batch names, on the cassette preparation path."),
+    ),
+    roadmap_node(
       identity: "rn_AD947T6ESTC3B76PKSKSEGZD1M",
       id: "dp-m1-dissolvable-rows-retired",
       owner: "debt",

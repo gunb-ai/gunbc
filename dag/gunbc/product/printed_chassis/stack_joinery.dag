@@ -1,5 +1,6 @@
 module product.printed_chassis.stack_joinery
 import std.types {List,Int,Bool}
+import std.measure {Micrometer, micrometer, micrometer_count}
 import std.euclidean_geometry {Axis3X}
 import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,MechanicalInterface,Printed,Cassette,LayOnXZ,LayOnYZ,block,round,part,mechanical_interface,PrintedRetainingPin,Proposed}
 import product.printed_chassis.cassette {tray_w,tray_d}
@@ -8,17 +9,18 @@ import product.printed_chassis.cassette {tray_w,tray_d}
 // tray rails; rear shoes bear under the existing rear socket floor rather than
 // intersecting its side walls. No enclosing rack is added. Snap/friction retention,
 // creep, layer strength and populated lifting remain unqualified.
-data post_outer_um:Int=20000
-data post_inner_um:Int=12000
-data post_x_um:Int=tray_w/2+17000
-data post_z_um:Int=tray_d/2-14000
+data post_outer_um:Micrometer=micrometer(count: 20000)
+data post_inner_um:Micrometer=micrometer(count: 12000)
+data post_x_um:Micrometer=micrometer(count: tray_w/2+17000)
+data post_z_um:Micrometer=micrometer(count: tray_d/2-14000)
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
 data shoe_bottom_um:Int= -19000
-data post_split_um:Int=115000
-data middle_key_um:Int=16000
-data middle_engagement_um:Int=20000
-data stack_key_um:Int=16000
-data stack_key_depth_um:Int=6000
-data key_clearance_um:Int=250
+data post_split_um:Micrometer=micrometer(count: 115000)
+data middle_key_um:Micrometer=micrometer(count: 16000)
+data middle_engagement_um:Micrometer=micrometer(count: 20000)
+data stack_key_um:Micrometer=micrometer(count: 16000)
+data stack_key_depth_um:Micrometer=micrometer(count: 6000)
+data key_clearance_um:Micrometer=micrometer(count: 250)
 
 type StackServiceReading = TopUnitMayLift | UpperUnitsNeedIndependentSupport {count:Int} | InvalidStackService
 fn stack_service(node_count:Int,index_from_bottom:Int) -> StackServiceReading {
@@ -31,39 +33,74 @@ fn join_pin_hole(y:Int) -> Primitive {round(diameter:4400,length:30000,axis:Axis
 fn lower_post(sx:Int,sz:Int) -> AssemblyPart {
  let inset=0-sx*9000
  let front_pad=if sz==1 {[block(w:16000,h:11000,d:24000,x:0-sx*18000,y: -9500,z:0)]} else {[]}
+ let post_outer=micrometer_count(m: post_outer_um) as Int
+ let post_inner=micrometer_count(m: post_inner_um) as Int
+ let post_split=micrometer_count(m: post_split_um) as Int
+ let middle_key=micrometer_count(m: middle_key_um) as Int
+ let middle_engagement=micrometer_count(m: middle_engagement_um) as Int
+ let stack_key=micrometer_count(m: stack_key_um) as Int
+ let stack_key_depth=micrometer_count(m: stack_key_depth_um) as Int
+ let key_clearance=micrometer_count(m: key_clearance_um) as Int
+ let post_x=micrometer_count(m: post_x_um) as Int
+ let post_z=micrometer_count(m: post_z_um) as Int
  part(id:concat("CL",concat(to_string(sx),to_string(sz))),name:"Corner shoe and lower hollow post",kind:Printed,scope:Cassette,
  adds:concat([
- block(w:post_outer_um,h:post_split_um-shoe_bottom_um,d:post_outer_um,x:0,y:(post_split_um+shoe_bottom_um)/2,z:0),
+ block(w:post_outer,h:post_split-shoe_bottom_um,d:post_outer,x:0,y:(post_split+shoe_bottom_um)/2,z:0),
  block(w:38000,h:4000,d:24000,x:inset,y: -17000,z:0),
  block(w:38000,h:4000,d:24000,x:inset,y:12000,z:0),
- block(w:middle_key_um,h:middle_engagement_um,d:middle_key_um,x:0,y:post_split_um+middle_engagement_um/2,z:0),
+ block(w:middle_key,h:middle_engagement,d:middle_key,x:0,y:post_split+middle_engagement/2,z:0),
  ],front_pad),
- cuts:concat(if sz== -1 {map([-17000,13000],y=>block(w:14500,h:6000,d:10500,x:0-sx*24000,y:y,z:8000))} else {[]},[block(w:post_inner_um,h:100000,d:post_inner_um,x:0,y:60000,z:0),
- block(w:stack_key_um+2*key_clearance_um,h:stack_key_depth_um+key_clearance_um+1000,d:stack_key_um+2*key_clearance_um,x:0,y:shoe_bottom_um+(stack_key_depth_um+key_clearance_um-1000)/2,z:0),join_pin_hole(y:post_split_um+middle_engagement_um/2)]),
- x:sx*post_x_um,y:0,z:sz*post_z_um,ex:sx*45000,ey:0,ez:sz*25000,plane:LayOnXZ,
+ cuts:concat(if sz== -1 {map([-17000,13000],y=>block(w:14500,h:6000,d:10500,x:0-sx*24000,y:y,z:8000))} else {[]},[block(w:post_inner,h:100000,d:post_inner,x:0,y:60000,z:0),
+ block(w:stack_key+2*key_clearance,h:stack_key_depth+key_clearance+1000,d:stack_key+2*key_clearance,x:0,y:shoe_bottom_um+(stack_key_depth+key_clearance-1000)/2,z:0),join_pin_hole(y:post_split+middle_engagement/2)]),
+ x:sx*post_x,y:0,z:sz*post_z,ex:sx*45000,ey:0,ez:sz*25000,plane:LayOnXZ,
  notes:"Cassette-owned clip shoe. Rear lower lip bears under socket floor with an open corner notch for its through-bolt hardware; front pad bears under the rail. Hollow 20/12 mm post. 16 mm middle key, 20 mm engagement, 0.25 mm clearance per side. Tray clipping and loaded lifting are not qualified.")
 }
-fn upper_post(sx:Int,sz:Int,pitch_um:Int) -> AssemblyPart {
- let top=pitch_um+shoe_bottom_um
+fn upper_post(sx:Int,sz:Int,pitch_um:Micrometer) -> AssemblyPart {
+ let pitch=micrometer_count(m: pitch_um) as Int
+ let top=pitch+shoe_bottom_um
+ let post_outer=micrometer_count(m: post_outer_um) as Int
+ let post_inner=micrometer_count(m: post_inner_um) as Int
+ let post_split=micrometer_count(m: post_split_um) as Int
+ let middle_key=micrometer_count(m: middle_key_um) as Int
+ let middle_engagement=micrometer_count(m: middle_engagement_um) as Int
+ let stack_key=micrometer_count(m: stack_key_um) as Int
+ let stack_key_depth=micrometer_count(m: stack_key_depth_um) as Int
+ let key_clearance=micrometer_count(m: key_clearance_um) as Int
+ let post_x=micrometer_count(m: post_x_um) as Int
+ let post_z=micrometer_count(m: post_z_um) as Int
  part(id:concat("CU",concat(to_string(sx),to_string(sz))),name:"Upper hollow post and stack locator",kind:Printed,scope:Cassette,
- adds:[block(w:post_outer_um,h:top-post_split_um,d:post_outer_um,x:0,y:(top+post_split_um)/2,z:0),block(w:stack_key_um,h:stack_key_depth_um,d:stack_key_um,x:0,y:top+stack_key_depth_um/2,z:0)],
- cuts:[block(w:middle_key_um+2*key_clearance_um,h:middle_engagement_um+key_clearance_um+1000,d:middle_key_um+2*key_clearance_um,x:0,y:post_split_um+(middle_engagement_um+key_clearance_um-1000)/2,z:0),
- block(w:post_inner_um,h:top-post_split_um-30000,d:post_inner_um,x:0,y:(top+post_split_um+20000)/2,z:0),join_pin_hole(y:post_split_um+middle_engagement_um/2)],
- x:sx*post_x_um,y:0,z:sz*post_z_um,ex:sx*45000,ey:45000,ez:sz*25000,plane:LayOnXZ,
+ adds:[block(w:post_outer,h:top-post_split,d:post_outer,x:0,y:(top+post_split)/2,z:0),block(w:stack_key,h:stack_key_depth,d:stack_key,x:0,y:top+stack_key_depth/2,z:0)],
+ cuts:[block(w:middle_key+2*key_clearance,h:middle_engagement+key_clearance+1000,d:middle_key+2*key_clearance,x:0,y:post_split+(middle_engagement+key_clearance-1000)/2,z:0),
+ block(w:post_inner,h:top-post_split-30000,d:post_inner,x:0,y:(top+post_split+20000)/2,z:0),join_pin_hole(y:post_split+middle_engagement/2)],
+ x:sx*post_x,y:0,z:sz*post_z,ex:sx*45000,ey:45000,ez:sz*25000,plane:LayOnXZ,
  notes:"Shoulder carries vertical load; the cross-pin retains the two post segments. Top key locates the next cassette shoe. Bearing area at the shoe socket and printed joint strength require qualification. Middle extraction needs independent support for every unit above.")
 }
 fn post_pin(sx:Int,sz:Int) -> AssemblyPart {
+ let post_x=micrometer_count(m: post_x_um) as Int
+ let post_z=micrometer_count(m: post_z_um) as Int
+ let post_split=micrometer_count(m: post_split_um) as Int
+ let middle_engagement=micrometer_count(m: middle_engagement_um) as Int
  part(id:concat("CP",concat(to_string(sx),to_string(sz))),name:"Broad-grip post retaining pin",kind:Printed,scope:Cassette,
  adds:[round(diameter:4100,length:24000,axis:Axis3X,x:0,y:0,z:0),block(w:4000,h:14000,d:10000,x:14000,y:0,z:0)],cuts:[],
- x:sx*post_x_um,y:post_split_um+middle_engagement_um/2,z:sz*post_z_um,ex:sx*75000,ey:0,ez:sz*25000,plane:LayOnYZ,
+ x:sx*post_x,y:post_split+middle_engagement/2,z:sz*post_z,ex:sx*75000,ey:0,ez:sz*25000,plane:LayOnYZ,
  notes:"Unthreaded cross-pin retains the middle joint; vertical load belongs on the shoulder. Positive retention and vibration behavior still need validation.")
 }
 type StackJoineryReading = StackJoineryGeometry {parts:List<AssemblyPart>} | StackJoineryHeightUnsupported
-fn stack_joinery(pitch_um:Int) -> StackJoineryReading {
- if pitch_um<190000 || pitch_um>280000 {StackJoineryHeightUnsupported} else {
+fn stack_joinery(pitch_um:Micrometer) -> StackJoineryReading {
+ let pitch=micrometer_count(m: pitch_um) as Int
+ if pitch<190000 || pitch>280000 {StackJoineryHeightUnsupported} else {
  StackJoineryGeometry {parts:flat_map([-1,1],sx=>flat_map([-1,1],sz=>[lower_post(sx:sx,sz:sz),upper_post(sx:sx,sz:sz,pitch_um:pitch_um),post_pin(sx:sx,sz:sz)]))}
  }
 }
 // Section values are geometric screens only; the keyed joints are not a continuous tube.
-fn post_wall_area_mm2() -> Int {(post_outer_um*post_outer_um-post_inner_um*post_inner_um)/1000000}
-fn shoe_bearing_area_um2() -> Int {post_outer_um*post_outer_um-(stack_key_um+2*key_clearance_um)*(stack_key_um+2*key_clearance_um)}
+fn post_wall_area_mm2() -> Int {
+ let post_outer=micrometer_count(m: post_outer_um) as Int
+ let post_inner=micrometer_count(m: post_inner_um) as Int
+ (post_outer*post_outer-post_inner*post_inner)/1000000
+}
+fn shoe_bearing_area_um2() -> Int {
+ let post_outer=micrometer_count(m: post_outer_um) as Int
+ let stack_key=micrometer_count(m: stack_key_um) as Int
+ let key_clearance=micrometer_count(m: key_clearance_um) as Int
+ post_outer*post_outer-(stack_key+2*key_clearance)*(stack_key+2*key_clearance)
+}

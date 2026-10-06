@@ -1,22 +1,23 @@
 module product.printed_chassis.bed_partition
 import std.types {Int,List,Bool}
 import std.nat {nat_range_inclusive}
+import std.measure {Micrometer, micrometer, micrometer_count}
 
 // Axis-aligned panel allocation under declared feature envelopes. Protrusions
 // belong to a particular side, not a blanket deduction repeated on every cell.
 // Brim and bed-edge clearance are independent, per-side process allowances.
 type AxisPrintAllowance {
- bed_um:Int,brim_each_side_um:Int,edge_clearance_each_side_um:Int,
- outer_low_um:Int,outer_high_um:Int,internal_low_um:Int,internal_high_um:Int
+ bed_um:Micrometer,brim_each_side_um:Micrometer,edge_clearance_each_side_um:Micrometer,
+ outer_low_um:Micrometer,outer_high_um:Micrometer,internal_low_um:Micrometer,internal_high_um:Micrometer
 }
 type AxisCell {
- start_um:Int,end_um:Int,low_overhang_um:Int,high_overhang_um:Int,
- occupied_with_process_um:Int
+ start_um:Micrometer,end_um:Micrometer,low_overhang_um:Micrometer,high_overhang_um:Micrometer,
+ occupied_with_process_um:Micrometer
 }
 type AxisAllocation = AxisAllocated {cells:List<AxisCell>} | AxisAllocationInvalid | AxisAllocationNoFit
 fn lesser(a:Int,b:Int) -> Int {if a<b {a} else {b}}
 fn positive(n:Int) -> Int {if n>0 {n} else {0}}
-fn process_allowance(a:AxisPrintAllowance) -> Int {2*(a.brim_each_side_um+a.edge_clearance_each_side_um)}
+fn process_allowance(a:AxisPrintAllowance) -> Int {2*(micrometer_count(m: a.brim_each_side_um) as Int+micrometer_count(m: a.edge_clearance_each_side_um) as Int)}
 fn covered(n:Int,first:Int,inner:Int,last:Int,limit:Int) -> Int {
  if n==1 {lesser(a:first,b:limit)} else {lesser(a:first,b:limit)+lesser(a:last,b:limit)+(n-2)*lesser(a:inner,b:limit)}
 }
@@ -31,33 +32,35 @@ fn balanced_limit(span:Int,n:Int,first:Int,inner:Int,last:Int,low:Int,high:Int) 
  }
 }
 fn allocate_cells(span:Int,n:Int,first:Int,inner:Int,last:Int,a:AxisPrintAllowance) -> AxisAllocation {
- let limit=balanced_limit(span:span,n:n,first:first,inner:inner,last:last,low:1,high:a.bed_um)
+ let limit=balanced_limit(span:span,n:n,first:first,inner:inner,last:last,low:1,high:micrometer_count(m: a.bed_um) as Int)
  let excess=covered(n:n,first:first,inner:inner,last:last,limit:limit)-span
  let cells=map(nat_range_inclusive(lo:0,hi:n-1),i=>{
   let capacity=if i==0 {first} else {if i==n-1 {last} else {inner}}
   let eligible_before=(if i>0 && first>=limit {1} else {0})+(if inner>=limit {positive(n:i-1)} else {0})
   let before=if i==0 {0} else {lesser(a:first,b:limit)+(i-1)*lesser(a:inner,b:limit)-lesser(a:excess,b:eligible_before)}
   let width=lesser(a:capacity,b:limit)-(if capacity>=limit && eligible_before<excess {1} else {0})
-  let lo=if i==0 {a.outer_low_um} else {a.internal_low_um}
-  let hi=if i==n-1 {a.outer_high_um} else {a.internal_high_um}
-  AxisCell {start_um:before,end_um:before+width,low_overhang_um:lo,high_overhang_um:hi,occupied_with_process_um:width+lo+hi+process_allowance(a:a)}
+  let lo=if i==0 {micrometer_count(m: a.outer_low_um) as Int} else {micrometer_count(m: a.internal_low_um) as Int}
+  let hi=if i==n-1 {micrometer_count(m: a.outer_high_um) as Int} else {micrometer_count(m: a.internal_high_um) as Int}
+  AxisCell {start_um:micrometer(count: before),end_um:micrometer(count: before+width),low_overhang_um:micrometer(count: lo),high_overhang_um:micrometer(count: hi),occupied_with_process_um:micrometer(count: width+lo+hi+process_allowance(a:a))}
  })
- if any(cells,c=>c.end_um<=c.start_um || c.occupied_with_process_um>a.bed_um) {AxisAllocationNoFit} else {AxisAllocated {cells:cells}}
+ if any(cells,c=>micrometer_count(m: c.end_um)<=micrometer_count(m: c.start_um) || micrometer_count(m: c.occupied_with_process_um)>micrometer_count(m: a.bed_um)) {AxisAllocationNoFit} else {AxisAllocated {cells:cells}}
 }
 // For n>=2, capacity is first + last + (n-2)*inner. This derives the minimum
 // count without enumerating arbitrary cut grids. Balanced cuts then preserve
 // exact coverage, including integer-micrometre remainder, with no zero-width cell.
-fn allocate_axis(span_um:Int,allowance:AxisPrintAllowance) -> AxisAllocation {
+fn allocate_axis(span_um:Micrometer,allowance:AxisPrintAllowance) -> AxisAllocation {
  let a=allowance
- if span_um<=0 || a.bed_um<=0 || any([a.brim_each_side_um,a.edge_clearance_each_side_um,a.outer_low_um,a.outer_high_um,a.internal_low_um,a.internal_high_um],v=>v<0) {return AxisAllocationInvalid}
- let usable=a.bed_um-process_allowance(a:a)
- let single=usable-a.outer_low_um-a.outer_high_um
- if span_um<=single {return allocate_cells(span:span_um,n:1,first:single,inner:single,last:single,a:a)}
- let first=usable-a.outer_low_um-a.internal_high_um
- let last=usable-a.internal_low_um-a.outer_high_um
- let inner=usable-a.internal_low_um-a.internal_high_um
- let extra=positive(n:span_um-first-last)
+ let span=micrometer_count(m: span_um) as Int
+ let bed=micrometer_count(m: a.bed_um) as Int
+ if span<=0 || bed<=0 {return AxisAllocationInvalid}
+ let usable=bed-process_allowance(a:a)
+ let single=usable-micrometer_count(m: a.outer_low_um) as Int-micrometer_count(m: a.outer_high_um) as Int
+ if span<=single {return allocate_cells(span:span,n:1,first:single,inner:single,last:single,a:a)}
+ let first=usable-micrometer_count(m: a.outer_low_um) as Int-micrometer_count(m: a.internal_high_um) as Int
+ let last=usable-micrometer_count(m: a.internal_low_um) as Int-micrometer_count(m: a.outer_high_um) as Int
+ let inner=usable-micrometer_count(m: a.internal_low_um) as Int-micrometer_count(m: a.internal_high_um) as Int
+ let extra=positive(n:span-first-last)
  if first<=0 || last<=0 || (extra>0 && inner<=0) {return AxisAllocationNoFit}
  let n=if extra==0 {2} else {2+(extra+inner-1)/inner}
- allocate_cells(span:span_um,n:n,first:first,inner:inner,last:last,a:a)
+ allocate_cells(span:span,n:n,first:first,inner:inner,last:last,a:a)
 }

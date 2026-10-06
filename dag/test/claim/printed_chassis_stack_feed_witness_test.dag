@@ -6,7 +6,7 @@ import product.printed_chassis.harness_census {selected_fan_harness,SelectedFanH
 import extdeps.fans.arctic { arctic_p8_cable_length, arctic_p8_pwm_sharing, arctic_p8_rated_current, arctic_p14_rated_current, arctic_p14_pwm_sharing }
 import std.types { Bool, List }
 import std.nat { Nat }
-import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count }
+import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count, Watt, Millimeter, Millivolt }
 import std.optional { Present, Absent }
 import product.printed_chassis.node_power_feed {
   NodeFeedInputs, declared_connector_derating, node_feed, NodeFeedReading, NodeFeedScreeningOnly, NodeFeedRefused,
@@ -21,14 +21,14 @@ import product.printed_chassis.harness_census { HarnessCensus, HarnessPlan, FanH
 import extdeps.connector.molex_mini_fit_jr { mini_fit_jr_standard_terminal_rating }
 import extdeps.standards.atx12v_psdg { atx12v_twelve_volt_regulation }
 
-fn inputs(load_w: Nat, gauge: Nat, length_mm: Nat, setpoint_mv: Nat) -> NodeFeedInputs {
+fn inputs(load_w: Watt, gauge: Nat, length_mm: Millimeter, setpoint_mv: Millivolt) -> NodeFeedInputs {
   NodeFeedInputs {
-    node_dc_load: watt(count: load_w),
+    node_dc_load: load_w,
     connector_rating: mini_fit_jr_standard_terminal_rating,
     derating: declared_connector_derating(retained: percent(count: 60)),
     branch_gauge_awg: gauge,
-    branch_length: millimeter(count: length_mm),
-    station_setpoint: millivolt(count: setpoint_mv),
+    branch_length: length_mm,
+    station_setpoint: setpoint_mv,
     regulation: atx12v_twelve_volt_regulation,
   }
 }
@@ -37,7 +37,7 @@ fn inputs(load_w: Nat, gauge: Nat, length_mm: Nat, setpoint_mv: Nat) -> NodeFeed
 // cannot carry it, two can; the round-trip drop is a few hundred millivolts and the connector
 // stays inside the band.
 test fn a_300_watt_node_takes_two_inputs_and_stays_in_band() -> Bool {
-  match node_feed(inputs: inputs(load_w: 300, gauge: 10, length_mm: 1500, setpoint_mv: 12200)) {
+  match node_feed(inputs: inputs(load_w: watt(count: 300), gauge: 10, length_mm: millimeter(count: 1500), setpoint_mv: millivolt(count: 12200))) {
     NodeFeedScreeningOnly { feed: f } => f.inputs_populated == 2 && milliampere_count(i: f.node_current) == 26316
       && millivolt_count(v: f.at_connector) >= millivolt_count(v: atx12v_twelve_volt_regulation.minimum)
       && millivolt_count(v: f.branch_round_trip_drop) > 0
@@ -48,22 +48,22 @@ test fn a_300_watt_node_takes_two_inputs_and_stays_in_band() -> Bool {
 // The same node over 18 AWG at 3 m lands below 11.40 V at the connector: a typed refusal
 // naming the drop, not a quietly undervolted board.
 test fn a_thin_long_branch_refuses_below_the_band() -> Bool {
-  match node_feed(inputs: inputs(load_w: 300, gauge: 18, length_mm: 3000, setpoint_mv: 12000)) {
+  match node_feed(inputs: inputs(load_w: watt(count: 300), gauge: 18, length_mm: millimeter(count: 3000), setpoint_mv: millivolt(count: 12000))) {
     NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { ConnectorVoltageBelowBand { at_connector: v, band_minimum: m, drop: _ } => millivolt_count(v: v) < millivolt_count(v: m) LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
 }
 
 test fn a_load_beyond_three_inputs_and_an_unknown_gauge_each_refuse_by_name() -> Bool {
-  let over = match node_feed(inputs: inputs(load_w: 1500, gauge: 10, length_mm: 500, setpoint_mv: 12000)) {
+  let over = match node_feed(inputs: inputs(load_w: watt(count: 1500), gauge: 10, length_mm: millimeter(count: 500), setpoint_mv: millivolt(count: 12000))) {
     NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { LoadExceedsBoardInputs { required_inputs: r, available_inputs: a, per_input_limit: _ } => r > a && a == 3 ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
-  let gauge = match node_feed(inputs: inputs(load_w: 300, gauge: 11, length_mm: 500, setpoint_mv: 12000)) {
+  let gauge = match node_feed(inputs: inputs(load_w: watt(count: 300), gauge: 11, length_mm: millimeter(count: 500), setpoint_mv: millivolt(count: 12000))) {
     NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { BranchGaugeUnknown { gauge: g } => g == 11 LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false SetpointAboveBand { setpoint: _, band_maximum: _ } => false }
   }
-  let high = match node_feed(inputs: inputs(load_w: 300, gauge: 10, length_mm: 500, setpoint_mv: 12700)) {
+  let high = match node_feed(inputs: inputs(load_w: watt(count: 300), gauge: 10, length_mm: millimeter(count: 500), setpoint_mv: millivolt(count: 12700))) {
     NodeFeedScreeningOnly { feed: _ } => false
     NodeFeedRefused { cause: c } => match c { SetpointAboveBand { setpoint: _, band_maximum: _ } => true LoadExceedsBoardInputs { required_inputs: _, available_inputs: _, per_input_limit: _ } => false ConnectorVoltageBelowBand { at_connector: _, band_minimum: _, drop: _ } => false PopulationRuleUnresolved => false BranchGaugeUnknown { gauge: _ } => false }
   }
@@ -124,7 +124,7 @@ fn role_length(c: HarnessCensus, pigtail: Bool) -> Nat {
 }
 
 test fn zero_connector_derating_cannot_admit_a_feed() -> Bool {
- let i=inputs(load_w:300,gauge:10,length_mm:1500,setpoint_mv:12200)
+ let i=inputs(load_w:watt(count: 300),gauge:10,length_mm:millimeter(count: 1500),setpoint_mv:millivolt(count: 12200))
  let invalid=NodeFeedInputs {node_dc_load:i.node_dc_load,connector_rating:i.connector_rating,derating:declared_connector_derating(retained:percent(count:0)),branch_gauge_awg:i.branch_gauge_awg,branch_length:i.branch_length,station_setpoint:i.station_setpoint,regulation:i.regulation}
  match node_feed(inputs:invalid) {NodeFeedRefused {cause:PopulationRuleUnresolved}=>true _=>false}
 }

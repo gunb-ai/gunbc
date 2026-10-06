@@ -2,19 +2,20 @@ module test.claim.printed_chassis_exhaust_thermal_witness
 import product.printed_chassis.exhaust_thermal {measured_mount_screen,InstalledThermalUnresolved,MeasuredMountExceedsScreen,MeasuredMountBelowScreenOnly,installed_thermal_without_measurement,fan_inlet_screen,FanInletExceedsCatalogAmbient,FanInletWithinCatalogAmbient}
 import extdeps.printing.sunlu_filament {sunlu_high_speed_matte_petg,sunlu_hdt_tolerance}
 import std.types { Bool }
-import std.measure { watt, percent, celsius, celsius_count, celsius_delta, celsius_delta_count }
+import std.nat { Nat }
+import std.measure { watt, percent, celsius, celsius_count, celsius_delta, celsius_delta_count, Watt, Percent }
 import product.printed_chassis.exhaust_thermal { ExhaustCase, assumed_air_margin, ThermalMargin, AssumedAirBelowHdt, AssumedAirMarginInsufficient, NoAirflow, worst_inlet, processor_junction_limit }
 import extdeps.printing.bambu_lab_filament { bambu_pla_basic_tds, bambu_petg_hf_tds }
 
-fn case(heat_w: Nat, fans: Nat, free_air_fraction: Nat) -> ExhaustCase {
-  ExhaustCase { node_heat: watt(count: heat_w), fans: fans, free_air_fraction: percent(count: free_air_fraction), inlet: worst_inlet(), margin_required: celsius_delta(count: 10) }
+fn case(heat_w: Watt, fans: Nat, free_air_fraction: Percent) -> ExhaustCase {
+  ExhaustCase { node_heat: heat_w, fans: fans, free_air_fraction: free_air_fraction, inlet: worst_inlet(), margin_required: celsius_delta(count: 10) }
 }
 
 // Hypothetical catalog free-air flow, not installed flow: single-digit rise, PLA Basic's
 // 57 C HDT stays more than ten kelvin away, and the exhaust is nowhere near the 100 C die
 // limit the question was framed around.
 test fn assumed_free_air_case_has_bulk_air_margin_only() -> Bool {
-  match assumed_air_margin(case: case(heat_w: 300, fans: 3, free_air_fraction: 100), sheet: bambu_pla_basic_tds) {
+  match assumed_air_margin(case: case(heat_w: watt(count: 300), fans: 3, free_air_fraction: percent(count: 100)), sheet: bambu_pla_basic_tds) {
     AssumedAirBelowHdt { exhaust: e, hdt: _, margin: m } => celsius_count(c: e) < 45 && celsius_delta_count(delta: m) >= 10 && celsius_count(c: e) < celsius_count(c: processor_junction_limit())
     AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => false
     NoAirflow => false
@@ -24,7 +25,7 @@ test fn assumed_free_air_case_has_bulk_air_margin_only() -> Bool {
 // The same heat at twenty percent free_air_fraction is a different answer: the rise is tens of kelvin and
 // PLA reaches its HDT. The fan floor is a safety input, and the instrument says so by refusing.
 test fn low_free_air_fraction_with_full_load_reaches_the_hdt() -> Bool {
-  match assumed_air_margin(case: case(heat_w: 300, fans: 3, free_air_fraction: 20), sheet: bambu_pla_basic_tds) {
+  match assumed_air_margin(case: case(heat_w: watt(count: 300), fans: 3, free_air_fraction: percent(count: 20)), sheet: bambu_pla_basic_tds) {
     AssumedAirMarginInsufficient { exhaust: e, hdt: h, excess: x } => celsius_count(c: e) + 10 > celsius_count(c: h) && celsius_delta_count(delta: x) > 0
     AssumedAirBelowHdt { exhaust: _, hdt: _, margin: _ } => false
     NoAirflow => false
@@ -32,10 +33,10 @@ test fn low_free_air_fraction_with_full_load_reaches_the_hdt() -> Bool {
 }
 
 test fn petg_carries_more_margin_than_pla_and_no_fans_is_a_refusal() -> Bool {
-  let pla = match assumed_air_margin(case: case(heat_w: 300, fans: 3, free_air_fraction: 70), sheet: bambu_pla_basic_tds) { AssumedAirBelowHdt { exhaust: _, hdt: _, margin: m } => celsius_delta_count(delta: m) AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => 0 NoAirflow => 0 }
-  let petg = match assumed_air_margin(case: case(heat_w: 300, fans: 3, free_air_fraction: 70), sheet: bambu_petg_hf_tds) { AssumedAirBelowHdt { exhaust: _, hdt: _, margin: m } => celsius_delta_count(delta: m) AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => 0 NoAirflow => 0 }
+  let pla = match assumed_air_margin(case: case(heat_w: watt(count: 300), fans: 3, free_air_fraction: percent(count: 70)), sheet: bambu_pla_basic_tds) { AssumedAirBelowHdt { exhaust: _, hdt: _, margin: m } => celsius_delta_count(delta: m) AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => 0 NoAirflow => 0 }
+  let petg = match assumed_air_margin(case: case(heat_w: watt(count: 300), fans: 3, free_air_fraction: percent(count: 70)), sheet: bambu_petg_hf_tds) { AssumedAirBelowHdt { exhaust: _, hdt: _, margin: m } => celsius_delta_count(delta: m) AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => 0 NoAirflow => 0 }
   petg > pla && pla > 0
-  && (match assumed_air_margin(case: case(heat_w: 300, fans: 0, free_air_fraction: 100), sheet: bambu_pla_basic_tds) { NoAirflow => true AssumedAirBelowHdt { exhaust: _, hdt: _, margin: _ } => false AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => false })
+  && (match assumed_air_margin(case: case(heat_w: watt(count: 300), fans: 0, free_air_fraction: percent(count: 100)), sheet: bambu_pla_basic_tds) { NoAirflow => true AssumedAirBelowHdt { exhaust: _, hdt: _, margin: _ } => false AssumedAirMarginInsufficient { exhaust: _, hdt: _, excess: _ } => false })
 }
 
 

@@ -33,7 +33,6 @@ import extdeps.fans.arctic { PwmSharingChain, PstPassThrough, NoPassThrough }
 // fraction (70 means seventy percent of the rating is used) so no subtraction is needed.
 type DeclaredConnectorDerating sole_constructor { retained: Percent }
 fn declared_connector_derating(retained: Percent) -> DeclaredConnectorDerating { DeclaredConnectorDerating { retained: retained } }
-data zero_ma: Nat = 0
 data one_input: Nat = 1
 
 type NodeFeedInputs {
@@ -119,7 +118,7 @@ fn node_feed(inputs: NodeFeedInputs) -> NodeFeedReading {
           NodeFeedRefused { cause: SetpointAboveBand { setpoint: inputs.station_setpoint, band_maximum: inputs.regulation.maximum } }
         } else {
           let drop = branch_drop_mv(resistance: resistance, length: inputs.branch_length, current: current)
-          let at_connector = match nat_sub(a: millivolt_count(v: inputs.station_setpoint), b: millivolt_count(v: drop)) { NatDifference { value: v } => millivolt(count: v) NatSubtrahendExceedsMinuend => millivolt(count: zero_ma) }
+          let at_connector = match nat_sub(a: millivolt_count(v: inputs.station_setpoint), b: millivolt_count(v: drop)) { NatDifference { value: v } => millivolt(count: v) NatSubtrahendExceedsMinuend => millivolt(count: 0) }
           if millivolt_count(v: at_connector) < millivolt_count(v: inputs.regulation.minimum) {
             NodeFeedRefused { cause: ConnectorVoltageBelowBand { at_connector: at_connector, band_minimum: inputs.regulation.minimum, drop: drop } }
           } else {

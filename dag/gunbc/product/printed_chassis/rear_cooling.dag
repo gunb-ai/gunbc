@@ -1,6 +1,6 @@
 module product.printed_chassis.rear_cooling
 import std.types {Int,List,String,Bool}
-import std.measure {micrometer,micrometer_count,Millimeter, millimeter_count, Milliampere, milliampere_count}
+import std.measure {Micrometer, micrometer, micrometer_count, Millimeter, millimeter_count, Milliampere, milliampere_count}
 import std.optional {Present,Absent}
 import std.nat {nat_range_inclusive}
 import extdeps.fans.types {FanMountingPattern}
@@ -11,51 +11,53 @@ import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,js
 // Fit is geometric only: frame size cannot establish airflow, header capacity or noise.
 // RearOpening is a single unobstructed rectangle after subtracting structural and service space.
 // Multiple disjoint openings must be evaluated separately, never added into a fictitious width.
-type RearOpening {width_um:Int,height_um:Int,depth_um:Int}
-type RearFanCandidate {id:String,pattern:FanMountingPattern,depth_um:Int,cable_length:Millimeter?,rated_current:Milliampere?,sharing:PwmSharingChain?}
-type RearFanBank {fan:RearFanCandidate,count:Int,plate_edge_um:Int,centres_x_um:List<Int>}
+type RearOpening {width_um:Micrometer,height_um:Micrometer,depth_um:Micrometer}
+type RearFanCandidate {id:String,pattern:FanMountingPattern,depth_um:Micrometer,cable_length:Millimeter?,rated_current:Milliampere?,sharing:PwmSharingChain?}
+// feature:signed-length-carrier — dissolve-on: std.measure gains a signed length (affine) carrier
+type RearFanBank {fan:RearFanCandidate,count:Int,plate_edge_um:Micrometer,centres_x_um:List<Int>}
 type RearCoolingReading = RearFanGeometry {bank:RearFanBank} | RearCoolingInvalidInput | RearCoolingNoFit
 
 // 40 mm is a conservative design reservation for a fan body, not a vendor depth claim.
 // It includes the published 25/27 mm bodies; mounts/guards/cables reserve another 20 mm.
 data rear_fan_candidates:List<RearFanCandidate> = [
- RearFanCandidate {id:"arctic-p14-pwm-pst",pattern:arctic_p14_mounting_pattern,depth_um:40000,cable_length:Present {value:arctic_p14_cable_length},rated_current:Present {value:arctic_p14_rated_current},sharing:Present {value:arctic_p14_pwm_sharing}},
- RearFanCandidate {id:"arctic-p12-pwm-pst",pattern:arctic_p12_mounting_pattern,depth_um:40000,cable_length:Absent,rated_current:Absent,sharing:Absent},
- RearFanCandidate {id:"arctic-f9-pwm-pst",pattern:arctic_f9_mounting_pattern,depth_um:40000,cable_length:Absent,rated_current:Absent,sharing:Absent},
- RearFanCandidate {id:"arctic-p8-pwm-pst",pattern:arctic_p8_mounting_pattern,depth_um:40000,cable_length:Present {value:arctic_p8_cable_length},rated_current:Present {value:arctic_p8_rated_current},sharing:Present {value:arctic_p8_pwm_sharing}},
+ RearFanCandidate {id:"arctic-p14-pwm-pst",pattern:arctic_p14_mounting_pattern,depth_um:micrometer(count: 40000),cable_length:Present {value:arctic_p14_cable_length},rated_current:Present {value:arctic_p14_rated_current},sharing:Present {value:arctic_p14_pwm_sharing}},
+ RearFanCandidate {id:"arctic-p12-pwm-pst",pattern:arctic_p12_mounting_pattern,depth_um:micrometer(count: 40000),cable_length:Absent,rated_current:Absent,sharing:Absent},
+ RearFanCandidate {id:"arctic-f9-pwm-pst",pattern:arctic_f9_mounting_pattern,depth_um:micrometer(count: 40000),cable_length:Absent,rated_current:Absent,sharing:Absent},
+ RearFanCandidate {id:"arctic-p8-pwm-pst",pattern:arctic_p8_mounting_pattern,depth_um:micrometer(count: 40000),cable_length:Present {value:arctic_p8_cable_length},rated_current:Present {value:arctic_p8_rated_current},sharing:Present {value:arctic_p8_pwm_sharing}},
 ]
-data rear_mount_margin_um:Int=6000
-data rear_plate_gap_um:Int=2000
-data rear_mount_service_depth_um:Int=20000
-fn rear_plate_edge(fan:RearFanCandidate) -> Int {micrometer_count(m:fan.pattern.frame_edge)+2*rear_mount_margin_um}
-fn rear_opening(width_um:Int,pitch_um:Int,left_um:Int,right_um:Int,bottom_um:Int,top_um:Int,depth_um:Int) -> RearOpening {
- RearOpening {width_um:width_um-left_um-right_um,height_um:pitch_um-bottom_um-top_um,depth_um:depth_um}
+data rear_mount_margin_um: Micrometer = micrometer(count: 6000)
+data rear_plate_gap_um: Micrometer = micrometer(count: 2000)
+data rear_mount_service_depth_um: Micrometer = micrometer(count: 20000)
+fn rear_plate_edge(fan:RearFanCandidate) -> Micrometer {micrometer(count: micrometer_count(m:fan.pattern.frame_edge)+2*micrometer_count(m: rear_mount_margin_um))}
+fn rear_opening(width_um:Micrometer,pitch_um:Micrometer,left_um:Micrometer,right_um:Micrometer,bottom_um:Micrometer,top_um:Micrometer,depth_um:Micrometer) -> RearOpening {
+ RearOpening {width_um:micrometer(count: micrometer_count(m: width_um)-micrometer_count(m: left_um)-micrometer_count(m: right_um)),height_um:micrometer(count: micrometer_count(m: pitch_um)-micrometer_count(m: bottom_um)-micrometer_count(m: top_um)),depth_um:depth_um}
 }
-fn rear_fan_fits(fan:RearFanCandidate,opening:RearOpening,bed_um:Int) -> Bool {
- let edge=rear_plate_edge(fan:fan)
- edge<=opening.width_um && edge<=opening.height_um && edge<=bed_um && fan.depth_um+rear_mount_service_depth_um<=opening.depth_um
+fn rear_fan_fits(fan:RearFanCandidate,opening:RearOpening,bed_um:Micrometer) -> Bool {
+ let edge=micrometer_count(m: rear_plate_edge(fan:fan))
+ edge<=micrometer_count(m: opening.width_um) && edge<=micrometer_count(m: opening.height_um) && edge<=micrometer_count(m: bed_um) && micrometer_count(m: fan.depth_um)+micrometer_count(m: rear_mount_service_depth_um)<=micrometer_count(m: opening.depth_um)
 }
-fn select_rear_fans(candidates:List<RearFanCandidate>,opening:RearOpening,bed_um:Int) -> RearCoolingReading {
- if opening.width_um<=0 || opening.height_um<=0 || opening.depth_um<=0 || bed_um<=0 {return RearCoolingInvalidInput}
- let fits=filter(candidates,c=>c.depth_um>0 && micrometer_count(m:c.pattern.frame_edge)>0 && rear_fan_fits(fan:c,opening:opening,bed_um:bed_um))
+fn select_rear_fans(candidates:List<RearFanCandidate>,opening:RearOpening,bed_um:Micrometer) -> RearCoolingReading {
+ if micrometer_count(m: opening.width_um)<=0 || micrometer_count(m: opening.height_um)<=0 || micrometer_count(m: opening.depth_um)<=0 || micrometer_count(m: bed_um)<=0 {return RearCoolingInvalidInput}
+ let fits=filter(candidates,c=>micrometer_count(m: c.depth_um)>0 && micrometer_count(m:c.pattern.frame_edge)>0 && rear_fan_fits(fan:c,opening:opening,bed_um:bed_um))
  match fits.first() {
   Absent=>RearCoolingNoFit
   Present {value:first}=>{
    let selected=fold(fits,init:first,f:(a,b)=>if micrometer_count(m:b.pattern.frame_edge)>micrometer_count(m:a.pattern.frame_edge) {b} else {a})
-   let edge=rear_plate_edge(fan:selected)
-   let n=(opening.width_um+rear_plate_gap_um)/(edge+rear_plate_gap_um)
-   let span=n*edge+(n-1)*rear_plate_gap_um
-   RearFanGeometry {bank:RearFanBank {fan:selected,count:n,plate_edge_um:edge,centres_x_um:map(nat_range_inclusive(lo:0,hi:n-1),i=>0-span/2+edge/2+i*(edge+rear_plate_gap_um))}}
+   let edge=micrometer_count(m: rear_plate_edge(fan:selected))
+   let gap=micrometer_count(m: rear_plate_gap_um)
+   let n=(micrometer_count(m: opening.width_um)+gap)/(edge+gap)
+   let span=n*edge+(n-1)*gap
+   RearFanGeometry {bank:RearFanBank {fan:selected,count:n,plate_edge_um:micrometer(count: edge),centres_x_um:map(nat_range_inclusive(lo:0,hi:n-1),i=>0-span/2+edge/2+i*(edge+gap))}}
   }
  }
 }
 fn rear_mount(bank:RearFanBank) -> FanMountAdmission {
- admit_fan_mount(pattern:bank.fan.pattern,plate_edge:micrometer(count:bank.plate_edge_um),plate_thickness:micrometer(count:4000),bore_diameter:micrometer(count:micrometer_count(m:bank.fan.pattern.frame_edge)-4000))
+ admit_fan_mount(pattern:bank.fan.pattern,plate_edge:bank.plate_edge_um,plate_thickness:micrometer(count:4000),bore_diameter:micrometer(count:micrometer_count(m:bank.fan.pattern.frame_edge)-4000))
 }
 fn rear_cooling_json(reading:RearCoolingReading) -> JsonValue {
  match reading {
   RearCoolingInvalidInput=>json_object(members:[json_kv(key:"standing",value:json_string(s:"invalid rear opening or bed"))])
   RearCoolingNoFit=>json_object(members:[json_kv(key:"standing",value:json_string(s:"no standard candidate fits"))])
-  RearFanGeometry {bank:b}=>json_object(members:[json_kv(key:"fan",value:json_string(s:b.fan.id)),json_kv(key:"count",value:json_int(n:b.count)),json_kv(key:"fan_lead_mm",value:match b.fan.cable_length {Present {value:l}=>json_int(n:millimeter_count(m:l)) Absent=>json_null()}),json_kv(key:"bank_rated_current_ma",value:match b.fan.rated_current {Present {value:i}=>json_int(n:b.count*milliampere_count(i:i)) Absent=>json_null()}),json_kv(key:"frame_edge_um",value:json_int(n:micrometer_count(m:b.fan.pattern.frame_edge))),json_kv(key:"hole_pitch_um",value:json_int(n:micrometer_count(m:b.fan.pattern.hole_pitch))),json_kv(key:"plate_edge_um",value:json_int(n:b.plate_edge_um)),json_kv(key:"centres_x_um",value:json_array(elements:map(b.centres_x_um,x=>json_int(n:x)))),json_kv(key:"standing",value:json_string(s:"geometric candidate; airflow, header load, acoustics and mount attachment unresolved"))])
+  RearFanGeometry {bank:b}=>json_object(members:[json_kv(key:"fan",value:json_string(s:b.fan.id)),json_kv(key:"count",value:json_int(n:b.count)),json_kv(key:"fan_lead_mm",value:match b.fan.cable_length {Present {value:l}=>json_int(n:millimeter_count(m:l) as Int) Absent=>json_null()}),json_kv(key:"bank_rated_current_ma",value:match b.fan.rated_current {Present {value:i}=>json_int(n:b.count*milliampere_count(i:i) as Int) Absent=>json_null()}),json_kv(key:"frame_edge_um",value:json_int(n:micrometer_count(m:b.fan.pattern.frame_edge) as Int)),json_kv(key:"hole_pitch_um",value:json_int(n:micrometer_count(m:b.fan.pattern.hole_pitch) as Int)),json_kv(key:"plate_edge_um",value:json_int(n:micrometer_count(m: b.plate_edge_um) as Int)),json_kv(key:"centres_x_um",value:json_array(elements:map(b.centres_x_um,x=>json_int(n:x)))),json_kv(key:"standing",value:json_string(s:"geometric candidate; airflow, header load, acoustics and mount attachment unresolved"))])
  }
 }

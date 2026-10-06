@@ -1,6 +1,9 @@
 module product.printed_chassis.print_preparation_kernel
 import std.types {String}
+import std.dissolution {DissolutionCondition, unbound_dissolution}
 import product.printing.deposited_geometry {deposited_geometry_source}
+
+data printed_chassis_python_kernel_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: the plate-pack call, G-code readback parser and archived-process observer are expressed in .dag (G-code read as a modeled grammar fold; CadQuery/OrcaSlicer reached only as declared external-tool realizations). Operator-approved scaffold 2026-10-06 (option A on review 77164 finding 2); tracked as roadmap node printed-chassis-python-kernel-retirement.")
 
 // Host geometry/archive/G-code adapter. It consumes modeled placements, envelope,
 // expected instances and process constraints; no board geometry is authored here.

@@ -1,5 +1,5 @@
 module test.claim.print_preparation_kernel_validation
-import std.types {String}
+import std.measure {micrometer_count}
 import std.process {ProcessExit}
 import product.printed_chassis.print_preparation {run_kernel,required_settings,deposited_path_edge_allowance_um}
 import extdeps.languages.json.emit {serialize_json}
@@ -79,7 +79,7 @@ fn controls() -> String {join([
  "print('PASS: process observations, relative/absolute E, G92, cross-layer recovery, wipes, modal feed, arc time, unknown feed, firmware commands and admission/retrospective integration')\n",
 ],"")}
 fn exercise_kernel(script:String) -> ProcessExit {
- run_kernel(script:script,call:join(["\nrequirements=",serialize_json(v:required_settings()),"\nedge_allowance_um=",to_string(deposited_path_edge_allowance_um),"\n",controls()],""))
+ run_kernel(script:script,call:join(["\nrequirements=",serialize_json(v:required_settings()),"\nedge_allowance_um=",to_string(micrometer_count(m: deposited_path_edge_allowance_um)),"\n",controls()],""))
 }
 
 fn run(script:String) -> ProcessExit {exercise_kernel(script:script)}

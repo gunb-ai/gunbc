@@ -3,7 +3,7 @@ module product.printed_chassis.component_mass
 import product.printed_chassis.cooler_configuration {CoolerConfiguration,DynatronW1,NoctuaU14sAmp4926,noctua_envelope}
 import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
 import std.types {Bool,Int,List,String,NonEmptyStr}
-import std.measure {Gram,gram,gram_count}
+import std.measure {Gram,gram,gram_count,Micrometer}
 import std.affine_space {Point3,signed_frame_component_count}
 import std.optional {Present,Absent}
 import extdeps.cpu.ampere {ampere_altra_max_typical_package_mass}
@@ -123,7 +123,7 @@ data dimm_planning_mass: MassEvidence = PlanningMassRange {
 }
 
 // Swap the cooler assembly once; its two fans are already included in vendor mass.
-fn node_components_for_cooler(population:HostMemoryPopulation,cooler:CoolerConfiguration,contact_plane_um:Int) -> List<MassComponent> {
+fn node_components_for_cooler(population:HostMemoryPopulation,cooler:CoolerConfiguration,contact_plane_um:Micrometer) -> List<MassComponent> {
  map(node_components(population:population),r=>if r.id=="COOLER" {match cooler {
   DynatronW1=>r
   NoctuaU14sAmp4926=>MassComponent {id:r.id,quantity:1,mass:VendorNominal {mass:nh_u14s_amp_4926.mass},at:envelope_centre(p:noctua_envelope(contact_plane_um:contact_plane_um)),position:EnvelopeCentre}

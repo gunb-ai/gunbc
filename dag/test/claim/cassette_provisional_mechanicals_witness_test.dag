@@ -46,12 +46,12 @@ test fn whole_review_emits_mounting_evidence_for_every_profile() -> Bool {
  match platform_projects_review() {JsonArray {elements:e}=>count(e)>0 && all(e,p=>has_reference(v:p)) JsonObject {members:_}=>false JsonNull=>false JsonBool {value:_}=>false JsonNumber {lexeme:_}=>false JsonString {value:_}=>false}
 }
 fn columns_for(width:Int) -> Int {
- match partition_layout(layout:layout_from_outline(width_um:width,depth_um:200000,edge_margin_um:14000),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>p.columns TrayPartitionInvalid=>0 TrayPartitionNeedsOutline=>0}
+ match partition_layout(layout:layout_from_outline(width_um:micrometer(count: width),depth_um:micrometer(count: 200000),edge_margin_um:micrometer(count: 14000)),policy:proposed_panel_print_policy) {TrayPartitionKnown {partition:p}=>p.columns TrayPartitionInvalid=>0 TrayPartitionNeedsOutline=>0}
 }
 test fn partition_threshold_is_visible_at_one_micrometre_not_hidden_by_rounding() -> Bool {
  let a=proposed_panel_print_policy.along_width
- let process=2*(a.brim_each_side_um+a.edge_clearance_each_side_um)
- let boundary=3*(a.bed_um-process)-a.outer_low_um-a.outer_high_um-2*a.internal_low_um-2*a.internal_high_um-2*14000
+ let process=2*(micrometer_count(m: a.brim_each_side_um)+micrometer_count(m: a.edge_clearance_each_side_um))
+ let boundary=3*(micrometer_count(m: a.bed_um)-process)-micrometer_count(m: a.outer_low_um)-micrometer_count(m: a.outer_high_um)-2*micrometer_count(m: a.internal_low_um)-2*micrometer_count(m: a.internal_high_um)-2*14000
  columns_for(width:boundary)==3 && columns_for(width:boundary+1)==4
 }
 

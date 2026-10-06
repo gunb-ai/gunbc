@@ -1,7 +1,7 @@
 module product.printed_chassis.harness_census
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.measure {Milliampere,milliampere_count}
+import std.measure {Milliampere,milliampere_count,Micrometer,micrometer_count,Millimeter, millimeter, millimeter_count}
 import product.printed_chassis.rear_cooling {RearFanBank,RearCoolingReading,RearFanGeometry,RearCoolingInvalidInput,RearCoolingNoFit,rear_plate_gap_um}
 import product.printed_chassis.node_power_feed {FanHeaderLoad,fan_bank_header_load,FanHeaderLoadAgainstUnreadLimit,FanBankNeedsOneHeaderPerFan}
 import extdeps.external_authority {CitedToAuthority,TranscribedUncited}
@@ -102,7 +102,7 @@ fn selected_fan_harness(bank:RearFanBank,service_allowance:Millimeter) -> Select
  let sharing=match bank.fan.sharing {Present {value:s}=>s Absent=>return SelectedFanHarnessOpen {reason:"Selected fan sharing facts unread"}}
  let plan=FanHarnessPlan {fans:bank.count,cable_length:lead,sharing:sharing,rated_current:current,
  header_run:millimeter(count:(tray_d/2-rear_plate_z)/1000+millimeter_count(m:service_allowance)),
- pst_link_run:millimeter(count:(bank.plate_edge_um+rear_plate_gap_um)/1000)}
+ pst_link_run:millimeter(count:(micrometer_count(m: bank.plate_edge_um)+micrometer_count(m: rear_plate_gap_um))/1000)}
  SelectedFanHarnessReady {plan:plan,load:fan_bank_header_load(fans:plan.fans,rated_current:plan.rated_current,sharing:plan.sharing)}
 }
 fn fan_plan_needs_extension(plan:FanHarnessPlan) -> Bool {millimeter_count(m:plan.header_run)>millimeter_count(m:plan.cable_length)}

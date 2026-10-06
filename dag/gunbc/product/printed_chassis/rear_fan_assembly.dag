@@ -1,6 +1,6 @@
 module product.printed_chassis.rear_fan_assembly
 import std.types {List,Int,String}
-import std.measure {micrometer_count}
+import std.measure {micrometer,micrometer_count}
 import std.euclidean_geometry {Axis3Y,Axis3Z}
 import product.printed_chassis.assembly_geometry {AssemblyPart,Primitive,MechanicalInterface,Printed,Purchased,Cassette,LayOnXY,LayOnXZ,block,round,part,mechanical_interface,PrintedRetainingPin,M4FanThroughBolt,M4SocketThroughBolt,Proposed}
 import product.printed_chassis.cassette {tray_w,tray_d,rear_plate_z,rear_beam_z,extension,retaining_pin,rear_socket}
@@ -15,49 +15,55 @@ import extdeps.fans.arctic {arctic_p14_frame_depth}
 // a corresponding crossmember layout before this producer can admit it.
 type RearAssemblyReading = RearAssemblyGeometry {parts:List<AssemblyPart>,interfaces:List<MechanicalInterface>} | RearAssemblyUnsupportedBank | RearAssemblyMountRefused
 
-data rear_pin_clearance_um:Int=4400
-data rear_cradle_foot_x_um:Int=60000
-data rear_cradle_foot_z_um:Int=20000
-data rear_guard_spacing_um:Int=6000
-data rear_guard_bar_um:Int=3000
-data rear_guard_pitch_um:Int=10000
-fn through_y(x:Int,z:Int) -> Primitive {round(diameter:rear_pin_clearance_um,length:50000,axis:Axis3Y,x:x,y:0,z:z)}
+data rear_pin_clearance_um:Micrometer=micrometer(count: 4400)
+data rear_cradle_foot_x_um:Micrometer=micrometer(count: 60000)
+data rear_cradle_foot_z_um:Micrometer=micrometer(count: 20000)
+data rear_guard_spacing_um:Micrometer=micrometer(count: 6000)
+data rear_guard_bar_um:Micrometer=micrometer(count: 3000)
+data rear_guard_pitch_um:Micrometer=micrometer(count: 10000)
+fn through_y(x:Int,z:Int) -> Primitive {round(diameter:micrometer_count(m: rear_pin_clearance_um) as Int,length:50000,axis:Axis3Y,x:x,y:0,z:z)}
 fn crossmember(side:Int,id:String) -> AssemblyPart {
  let half=tray_w/2+6000
  let centre=side*(half+200)/2
+ let foot_x=micrometer_count(m: rear_cradle_foot_x_um) as Int
  part(id:id,name:"Split rear crossmember",kind:Printed,scope:Cassette,
  adds:[block(w:half-200,h:8000,d:40000,x:0,y:0,z:0)],
- cuts:[through_y(x:side*(tray_w/2-7000)-centre,z:0),through_y(x:side*rear_cradle_foot_x_um-centre,z:0)],
+ cuts:[through_y(x:side*(tray_w/2-7000)-centre,z:0),through_y(x:side*foot_x-centre,z:0)],
  x:centre,y:0,z:rear_beam_z,ex:side*55000,ey: -18000,ez: -50000,plane:LayOnXZ,
  notes:"Each half rests on one original support arm. Outer pin retains beam to arm; inner pin retains the one-piece cradle to beam. The cradle bridges the 0.4 mm centre gap. Prototype bearing and bending capacity unqualified.")
 }
 fn cradle(bank:RearFanBank,cuts:List<Primitive>) -> AssemblyPart {
- let edge=bank.plate_edge_um
+ let edge=micrometer_count(m: bank.plate_edge_um) as Int
  let cy=20000+edge/2
+ let foot_x=micrometer_count(m: rear_cradle_foot_x_um) as Int
+ let pin=micrometer_count(m: rear_pin_clearance_um) as Int
  let feet=flat_map([-1,1],s=>[
-  block(w:24000,h:8000,d:40000,x:s*rear_cradle_foot_x_um,y:8000-cy,z:20000),
+  block(w:24000,h:8000,d:40000,x:s*foot_x,y:8000-cy,z:20000),
   block(w:16000,h:16000,d:8000,x:s*(edge/2-8000),y:20000-cy,z:2000),
  ])
  part(id:"M140",name:"Keyed 140 mm fan cradle",kind:Printed,scope:Cassette,
  adds:concat([block(w:edge,h:edge,d:4000,x:0,y:0,z:0)],feet),
- cuts:concat(cuts,map([-1,1],s=>round(diameter:rear_pin_clearance_um,length:50000,axis:Axis3Y,x:s*rear_cradle_foot_x_um,y:8000-cy,z:20000))),
+ cuts:concat(cuts,map([-1,1],s=>round(diameter:pin,length:50000,axis:Axis3Y,x:s*foot_x,y:8000-cy,z:20000))),
  x:0,y:cy,z:rear_plate_z,ex:0,ey:40000,ez: -70000,plane:LayOnXY,
  notes:"One-piece plate with two feet and rising webs. Seats on split crossmember; two broad-grip pins retain it. Fan and guard use two diagonal bolts. Layer direction, foot/web strength and print supports require review.")
 }
 fn guard(bank:RearFanBank) -> AssemblyPart {
- let edge=bank.plate_edge_um
+ let edge=micrometer_count(m: bank.plate_edge_um) as Int
  let off=micrometer_count(m:bank.fan.pattern.hole_pitch)/2
  let t=3000
+ let bar=micrometer_count(m: rear_guard_bar_um) as Int
+ let pitch=micrometer_count(m: rear_guard_pitch_um) as Int
+ let spacing=micrometer_count(m: rear_guard_spacing_um) as Int
  let rim=flat_map([-1,1],s=>[
   block(w:edge,h:8000,d:t,x:0,y:s*(edge/2-4000),z:0),
   block(w:8000,h:edge,d:t,x:s*(edge/2-4000),y:0,z:0),
  ])
- let bars=map([-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6],i=>block(w:edge-12000,h:rear_guard_bar_um,d:t,x:0,y:i*rear_guard_pitch_um,z:0))
- let spacers=flat_map([-1,1],x=>map([-1,1],y=>round(diameter:10000,length:rear_guard_spacing_um+1500,axis:Axis3Z,x:x*off,y:y*off,z:(rear_guard_spacing_um+1500)/2)))
- let pins=map([-1,1],s=>round(diameter:3800,length:6000,axis:Axis3Z,x:s*off,y:0-s*off,z:rear_guard_spacing_um+4500))
+ let bars=map([-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6],i=>block(w:edge-12000,h:bar,d:t,x:0,y:i*pitch,z:0))
+ let spacers=flat_map([-1,1],x=>map([-1,1],y=>round(diameter:10000,length:spacing+1500,axis:Axis3Z,x:x*off,y:y*off,z:(spacing+1500)/2)))
+ let pins=map([-1,1],s=>round(diameter:3800,length:6000,axis:Axis3Z,x:s*off,y:0-s*off,z:spacing+4500))
  let cuts=map([-1,1],s=>round(diameter:micrometer_count(m:bank.fan.pattern.hole_clearance_diameter),length:60000,axis:Axis3Z,x:s*off,y:s*off,z:0))
  part(id:"G140",name:"Rear guard with integral spacers",kind:Printed,scope:Cassette,adds:concat(rim,concat(bars,concat(spacers,pins))),cuts:cuts,
- x:0,y:20000+edge/2,z:rear_plate_z-2000-micrometer_count(m:arctic_p14_frame_depth)-rear_guard_spacing_um-1500,ex:0,ey:0,ez: -155000,plane:LayOnXY,
+ x:0,y:20000+edge/2,z:rear_plate_z-2000-micrometer_count(m:arctic_p14_frame_depth) as Int-spacing-1500,ex:0,ey:0,ez: -155000,plane:LayOnXY,
  notes:"3 mm bars on 10 mm pitch: nominal 7 mm gaps. Integral 6 mm spacers separate grille from fan rear frame; opposite locating pins register the guard. Two diagonal through-bolts join cradle, fan and guard. Blade clearance, deflection and finger protection are unqualified.")
 }
 fn fan_body(bank:RearFanBank) -> AssemblyPart {
@@ -67,7 +73,7 @@ fn fan_body(bank:RearFanBank) -> AssemblyPart {
  let holes=flat_map([-1,1],x=>map([-1,1],y=>round(diameter:micrometer_count(m:bank.fan.pattern.hole_clearance_diameter),length:depth+2000,axis:Axis3Z,x:x*off,y:y*off,z:0)))
  part(id:"F140",name:"ARCTIC P14 PWM PST envelope",kind:Purchased,scope:Cassette,
  adds:[block(w:frame,h:frame,d:depth,x:0,y:0,z:0)],cuts:concat([round(diameter:frame-8000,length:depth+2000,axis:Axis3Z,x:0,y:0,z:0)],holes),
- x:0,y:20000+bank.plate_edge_um/2,z:rear_plate_z-2000-depth/2,ex:0,ey:0,ez: -110000,plane:LayOnXY,
+ x:0,y:20000+micrometer_count(m: bank.plate_edge_um) as Int/2,z:rear_plate_z-2000-depth/2,ex:0,ey:0,ez: -110000,plane:LayOnXY,
  notes:"Publisher 140 x 140 x 27 mm frame envelope and 125 mm mounting pitch. Simplified frame aperture; rotor not modeled. Installed-flow, PWM floor and board header current limit remain unresolved.")
 }
 fn rear_interfaces() -> List<MechanicalInterface> {[
@@ -83,13 +89,14 @@ fn rear_assembly(bank:RearFanBank) -> RearAssemblyReading {
   FanMountBoreNotEnclosedByPlate {bore_diameter:_,plate_edge:_}=>RearAssemblyMountRefused
   FanMountPlateSmallerThanPattern {plate_edge:_,required_edge:_}=>RearAssemblyMountRefused
   FanMountAdmitted {geometry:g}=>{
-   let edge=bank.plate_edge_um
+   let edge=micrometer_count(m: bank.plate_edge_um) as Int
+   let foot_x=micrometer_count(m: rear_cradle_foot_x_um) as Int
    let cuts=map(concat([fan_mount_bore(g:g)],fan_mount_mounting_holes(g:g)),op=>match op {OpThroughHole {diameter:d,center_x:x,center_y:y}=>round(diameter:micrometer_count(m:d),length:12000,axis:Axis3Z,x:micrometer_count(m:x)-edge/2,y:micrometer_count(m:y)-edge/2,z:0)})
    RearAssemblyGeometry {interfaces:rear_interfaces(),parts:[
     extension(sx: -1,id:"E1"),extension(sx:1,id:"E2"),crossmember(side: -1,id:"B140L"),crossmember(side:1,id:"B140R"),cradle(bank:bank,cuts:cuts),fan_body(bank:bank),guard(bank:bank),
     rear_socket(sx: -1,id:"S1"),rear_socket(sx:1,id:"S2"),
     retaining_pin(x:0-tray_w/2+7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K3"),retaining_pin(x:tray_w/2-7000,z:rear_beam_z,bottom: -12000,top:4000,id:"K4"),
-    retaining_pin(x: -rear_cradle_foot_x_um,z:rear_beam_z,bottom: -4000,top:12000,id:"K6"),retaining_pin(x:rear_cradle_foot_x_um,z:rear_beam_z,bottom: -4000,top:12000,id:"K7"),
+    retaining_pin(x: 0-foot_x,z:rear_beam_z,bottom: -4000,top:12000,id:"K6"),retaining_pin(x:foot_x,z:rear_beam_z,bottom: -4000,top:12000,id:"K7"),
    ]}
   }
  }

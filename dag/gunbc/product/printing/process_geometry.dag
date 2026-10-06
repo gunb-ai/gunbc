@@ -1,5 +1,6 @@
 module product.printing.process_geometry
 import std.types {Int,Bool,List}
+import std.measure {Micrometer, micrometer, micrometer_count}
 import extdeps.languages.json.emit {JsonValue,JsonKeyValue,json_object,json_kv,json_int,json_bool,json_string}
 
 import std.decimal {ExactDecimal,exact_decimal_wire}
@@ -7,17 +8,17 @@ import std.decimal {ExactDecimal,exact_decimal_wire}
 // Manufacturing geometry is separate from functional geometry. The pinned slicer
 // is the first generic support realizer; no part name selects handcrafted supports.
 // These are process-policy inputs, not claims of material or stability qualification.
-type AutomaticSupportPolicy {threshold_degrees:Int,top_gap_um:Int,bottom_gap_um:Int,xy_gap_um:Int,bed_only:Bool}
+type AutomaticSupportPolicy {threshold_degrees:Int,top_gap_um:Micrometer,bottom_gap_um:Micrometer,xy_gap_um:Micrometer,bed_only:Bool}
 data prototype_support_policy:AutomaticSupportPolicy=AutomaticSupportPolicy {
- threshold_degrees:30,top_gap_um:200,bottom_gap_um:200,xy_gap_um:350,bed_only:true,
+ threshold_degrees:30,top_gap_um:micrometer(count: 200),bottom_gap_um:micrometer(count: 200),xy_gap_um:micrometer(count: 350),bed_only:true,
 }
 fn support_policy_json(p:AutomaticSupportPolicy) -> JsonValue {
  json_object(members:[
   json_kv(key:"algorithm",value:json_string(s:"normal(auto)")),
   json_kv(key:"threshold_degrees",value:json_int(n:p.threshold_degrees)),
-  json_kv(key:"top_gap_um",value:json_int(n:p.top_gap_um)),
-  json_kv(key:"bottom_gap_um",value:json_int(n:p.bottom_gap_um)),
-  json_kv(key:"xy_gap_um",value:json_int(n:p.xy_gap_um)),
+  json_kv(key:"top_gap_um",value:json_int(n:micrometer_count(m: p.top_gap_um) as Int)),
+  json_kv(key:"bottom_gap_um",value:json_int(n:micrometer_count(m: p.bottom_gap_um) as Int)),
+  json_kv(key:"xy_gap_um",value:json_int(n:micrometer_count(m: p.xy_gap_um) as Int)),
   json_kv(key:"bed_only",value:json_bool(b:p.bed_only))
  ])
 }
@@ -30,9 +31,9 @@ fn support_settings(p:AutomaticSupportPolicy) -> List<JsonKeyValue> {
   json_kv(key:"support_type",value:json_string(s:"normal(auto)")),
   json_kv(key:"support_threshold_angle",value:json_string(s:to_string(p.threshold_degrees))),
   json_kv(key:"support_on_build_plate_only",value:json_string(s:if p.bed_only {"1"} else {"0"})),
-  json_kv(key:"support_top_z_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:p.top_gap_um,fraction_digits:3}))),
-  json_kv(key:"support_bottom_z_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:p.bottom_gap_um,fraction_digits:3}))),
-  json_kv(key:"support_object_xy_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:p.xy_gap_um,fraction_digits:3})))
+  json_kv(key:"support_top_z_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:micrometer_count(m: p.top_gap_um) as Int,fraction_digits:3}))),
+  json_kv(key:"support_bottom_z_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:micrometer_count(m: p.bottom_gap_um) as Int,fraction_digits:3}))),
+  json_kv(key:"support_object_xy_distance",value:json_string(s:exact_decimal_wire(d:ExactDecimal {units:micrometer_count(m: p.xy_gap_um) as Int,fraction_digits:3})))
  ]
 }
 

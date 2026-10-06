@@ -1,6 +1,6 @@
 module product.printed_chassis.residential_review
 import product.printed_chassis.assembly_inventory { required_slots_json }
-import std.measure {micrometer_count,millimeter}
+import std.measure {micrometer,micrometer_count,millimeter}
 import product.printed_chassis.harness_census {selected_fan_harness_json}
 import product.printed_chassis.cassette {printed_parts,tray_w,tray_d,board_w,board_d,rear_socket_bolt_clearances}
 import product.printed_chassis.rack_assembly {hardware}
@@ -21,15 +21,15 @@ import product.printed_chassis.assembly_geometry {AssemblyPart,MechanicalInterfa
 
 type ResidentialAssembly = ResidentialAssemblyReady {parts:List<AssemblyPart>,joints:List<MechanicalInterface>,pitch:Int,cooling:RearCoolingReading} | ResidentialAssemblyRefused {reason:String}
 fn residential_assembly() -> ResidentialAssembly {
- let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:30000)
- let selection=select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:tray_w,pitch_um:pitch,left_um:20000,right_um:20000,bottom_um:20000,top_um:20000,depth_um:60000),bed_um:170000)
+ let pitch=stack_pitch_for_cooler(cooler:residential_cooler,contact_plane_um:micrometer(count: 30000))
+ let selection=select_rear_fans(candidates:rear_fan_candidates,opening:rear_opening(width_um:micrometer(count: tray_w),pitch_um:micrometer(count: pitch),left_um:micrometer(count: 20000),right_um:micrometer(count: 20000),bottom_um:micrometer(count: 20000),top_um:micrometer(count: 20000),depth_um:micrometer(count: 60000)),bed_um:micrometer(count: 170000))
  match selection {
   RearFanGeometry {bank:b}=>{
    if b.count!=1 || micrometer_count(m:b.fan.pattern.frame_edge)!=140000 {return ResidentialAssemblyRefused {reason:"Residential configuration requires single 140 mm fan"}}
    match rear_assembly(bank:b) {
-    RearAssemblyGeometry {parts:rear,interfaces:joints}=>match stack_joinery(pitch_um:pitch) {
+    RearAssemblyGeometry {parts:rear,interfaces:joints}=>match stack_joinery(pitch_um:micrometer(count: pitch)) {
      StackJoineryGeometry {parts:posts}=>ResidentialAssemblyReady {
-      parts:concat(filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4"),concat(filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO"),concat([noctua_envelope(contact_plane_um:30000)],concat(rear,concat(posts,rear_socket_bolt_clearances()))))),joints:joints,pitch:pitch,cooling:selection}
+      parts:concat(filter(printed_parts(),p=>p.id=="P1"||p.id=="P2"||p.id=="P3"||p.id=="P4"),concat(filter(hardware(),p=>p.id=="BOARD"||p.id=="RAM1"||p.id=="RAM2"||p.id=="IO"),concat([noctua_envelope(contact_plane_um:micrometer(count: 30000))],concat(rear,concat(posts,rear_socket_bolt_clearances()))))),joints:joints,pitch:pitch,cooling:selection}
      StackJoineryHeightUnsupported=>ResidentialAssemblyRefused {reason:"Stack joinery height unsupported"}
     }
     RearAssemblyUnsupportedBank=>ResidentialAssemblyRefused {reason:"Rear assembly refused"} RearAssemblyMountRefused=>ResidentialAssemblyRefused {reason:"Rear assembly refused"}

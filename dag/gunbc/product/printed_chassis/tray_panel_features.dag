@@ -1,36 +1,36 @@
 module product.printed_chassis.tray_panel_features
-import std.types {Int}
+import std.measure {Micrometer, micrometer, micrometer_count}
 
 // Shared feature dimensions for the retained Altra solids and the planning
 // allocator. Moving a protrusion changes both its geometry and its bed envelope.
-data panel_seam_um:Int = 400
-data lap_center_offset_um:Int = 9500
-data lap_along_joint_um:Int = 21000
-data rail_foot_width_um:Int = 14000
-data rail_foot_inset_um:Int = 1000
-data rail_wall_width_um:Int = 6000
-data rail_wall_offset_um:Int = 2000
-data rear_socket_width_um:Int = 27000
-data rear_socket_wall_width_um:Int = 3000
-data rear_socket_inset_um:Int = 7000
-data handle_center_from_edge_um:Int = 22000
-data handle_depth_um:Int = 10000
-data handle_support_center_from_edge_um:Int = 13000
-data handle_support_depth_um:Int = 28000
-fn donor_joint_overhang_um() -> Int {lap_center_offset_um+lap_along_joint_um/2}
-fn side_rail_overhang_um() -> Int {
- let foot=rail_foot_width_um/2-rail_foot_inset_um
- let wall=rail_wall_width_um/2+rail_wall_offset_um
- if foot>wall {foot} else {wall}
+data panel_seam_um: Micrometer = micrometer(count: 400)
+data lap_center_offset_um: Micrometer = micrometer(count: 9500)
+data lap_along_joint_um: Micrometer = micrometer(count: 21000)
+data rail_foot_width_um: Micrometer = micrometer(count: 14000)
+data rail_foot_inset_um: Micrometer = micrometer(count: 1000)
+data rail_wall_width_um: Micrometer = micrometer(count: 6000)
+data rail_wall_offset_um: Micrometer = micrometer(count: 2000)
+data rear_socket_width_um: Micrometer = micrometer(count: 27000)
+data rear_socket_wall_width_um: Micrometer = micrometer(count: 3000)
+data rear_socket_inset_um: Micrometer = micrometer(count: 7000)
+data handle_center_from_edge_um: Micrometer = micrometer(count: 22000)
+data handle_depth_um: Micrometer = micrometer(count: 10000)
+data handle_support_center_from_edge_um: Micrometer = micrometer(count: 13000)
+data handle_support_depth_um: Micrometer = micrometer(count: 28000)
+fn donor_joint_overhang_um() -> Micrometer {micrometer(count: micrometer_count(m: lap_center_offset_um)+micrometer_count(m: lap_along_joint_um)/2)}
+fn side_rail_overhang_um() -> Micrometer {
+ let foot=micrometer_count(m: rail_foot_width_um)/2-micrometer_count(m: rail_foot_inset_um)
+ let wall=micrometer_count(m: rail_wall_width_um)/2+micrometer_count(m: rail_wall_offset_um)
+ if foot>wall {micrometer(count: foot)} else {micrometer(count: wall)}
 }
-fn front_handle_overhang_um() -> Int {
- let grip=handle_center_from_edge_um+handle_depth_um/2
- let support=handle_support_center_from_edge_um+handle_support_depth_um/2
- if grip>support {grip} else {support}
+fn front_handle_overhang_um() -> Micrometer {
+ let grip=micrometer_count(m: handle_center_from_edge_um)+micrometer_count(m: handle_depth_um)/2
+ let support=micrometer_count(m: handle_support_center_from_edge_um)+micrometer_count(m: handle_support_depth_um)/2
+ if grip>support {micrometer(count: grip)} else {micrometer(count: support)}
 }
 
-fn side_panel_overhang_um() -> Int {
- let socket=rear_socket_width_um/2-rear_socket_inset_um
- let rail=side_rail_overhang_um()
- if socket>rail {socket} else {rail}
+fn side_panel_overhang_um() -> Micrometer {
+ let socket=micrometer_count(m: rear_socket_width_um)/2-micrometer_count(m: rear_socket_inset_um)
+ let rail=micrometer_count(m: side_rail_overhang_um())
+ if socket>rail {micrometer(count: socket)} else {micrometer(count: rail)}
 }

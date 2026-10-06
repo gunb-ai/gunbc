@@ -1,6 +1,6 @@
 module test.claim.printed_chassis_component_mass_witness
 import std.types {Bool,Int,List}
-import std.measure {gram,gram_count}
+import std.measure {gram,gram_count,micrometer}
 import extdeps.memory.types {HostMemoryPopulation,MemoryPopulationRow}
 import extdeps.memory.samsung {m393a8g40d40_crb0q_catalog}
 import product.printed_chassis.assembly_geometry {placed}
@@ -34,11 +34,11 @@ test fn complete_inventory_includes_previously_omitted_loads_and_uses_population
  && (match mass_ledger(components:rows,measurements:[]) {MassIncomplete {issues:i}=>count(i)>3 _=>false})
 }
 fn scenario(x:Int,height:Int,push_height:Int) -> LoadScenario {
- LoadScenario {components:[PlacedMass {id:"fixture",mass:gram(count:1000),at:placed(x:x,y:height,z:0)}],support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:push_height}
+ LoadScenario {components:[PlacedMass {id:"fixture",mass:gram(count:1000),at:placed(x:x,y:height,z:0)}],support:SupportRectangle {half_x_um:micrometer(count: 100000),half_z_um:micrometer(count: 100000)},push_height_um:micrometer(count: push_height)}
 }
 test fn top_push_and_base_acceleration_have_different_lever_arms() -> Bool {
  match placed_load_screen(case:scenario(x:0,height:100000,push_height:200000)) {
- RigidBodyScreen {mass_g:m,cg_x_um:_,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:_,restoring_x_negative_mn_mm:_,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:f,tip_base_acceleration_um_s2:a,corner_reactions_mn:c,boundary:_}=>m==1000 && f==4903 && a==9806650 && all(c,n=>n==2451)
+ RigidBodyScreen {mass_g:m,cg_x_um:_,cg_y_um:_,cg_z_um:_,restoring_x_positive_mn_mm:_,restoring_x_negative_mn_mm:_,restoring_z_positive_mn_mm:_,restoring_z_negative_mn_mm:_,tip_push_mn:f,tip_base_acceleration_um_s2:a,corner_reactions_mn:c,boundary:_}=>gram_count(g: m)==1000 && f==4903 && a==9806650 && all(c,n=>n==2451)
  _=>false}
 }
 test fn offcentre_load_changes_corner_reactions_and_tipping() -> Bool {
@@ -63,5 +63,5 @@ test fn online_mass_inputs_replace_operator_weighing_requests() -> Bool {
 }
 test fn unfinished_prints_still_refuse_without_requesting_hardware_measurements() -> Bool {
  let ledger=mass_ledger(components:node_components(population:population()),measurements:[])
- match load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:100000,half_z_um:100000},push_height_um:200000) {InvalidLoadScenario {reason:_}=>true _=>false}
+ match load_from_ledger(ledger:ledger,endpoint:LowerMassEndpoint,support:SupportRectangle {half_x_um:micrometer(count: 100000),half_z_um:micrometer(count: 100000)},push_height_um:micrometer(count: 200000)) {InvalidLoadScenario {reason:_}=>true _=>false}
 }
