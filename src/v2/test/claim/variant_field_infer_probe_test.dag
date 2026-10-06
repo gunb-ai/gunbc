@@ -223,6 +223,12 @@ type VfpFixtureReading {
   generic_arm_fact: Symbol
   projection_fact: Symbol
   compound_arm_fact: Symbol
+}
+
+// THE ARROW FIXTURE'S READING: same shape as the combined reading, for the arrow module alone.
+type VfpArrowReading {
+  reasons: List<Symbol>
+  construct_read: Symbol
   arrow_arm_fact: Symbol
 }
 
@@ -292,9 +298,16 @@ fn vfp_arm_body_second(m: Optional<Node>) -> Optional<Node> {
 // non-exhaustive reason (the same one the inline count it replaced reported).
 fn vfp_partial_reading() -> VfpReading { vfp_reading(src: vfp_partial_src) }
 
+// THE ARROW FIXTURE, ITS OWN MODULE: the payload field's type is an arrow whose RESULT is the
+// formal (`f: fn(ParseTree) -> T`) -- the one shape the match_binder fixture never exercises, and
+// the current suspect for the grounding cascade. It rides alone so a refusal here cannot take the
+// other readings' facts down with it, and it carries a second consumer claim (its resolve-side
+// construct read) so the derived producer-share admits its fill.
+data vfp_arrow_src: String = "module p\n\ntype ParseTree {\n  root: Int\n}\n\ntype Apply<T>\n  = Mk { f: fn(ParseTree) -> T }\n\nfn useit(a: Apply<ParseTree>, n: ParseTree) -> ParseTree {\n  match a {\n    Mk { f: g } => g(n)\n  }\n}"
+
 data vfp_partial_src: String = "module p\n\ntype Seal = Boxed(Int) | Held { value: Int }\n\nfn partial(s: Seal) -> Int {\n  match s {\n    Boxed(v) => v\n  }\n}"
 
-data vfp_fixture_src: String = "module p\n\ntype ParseTree {\n  root: Int\n}\n\ntype NonEmptyDiagnostics {\n  head: Int\n}\n\ntype Diagnostics\n  = None\n  | Some { diagnostics: NonEmptyDiagnostics }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: NonEmptyDiagnostics }\n\ntype Box<T> = Wrapped { inner: T }\n\ntype Hold<T>\n  = Keep { boxed: Box<T> }\n  | Dropped\n\ntype Apply<T>\n  = Mk { f: fn(ParseTree) -> T }\n\ntype Seal\n  = Boxed(ParseTree)\n  | Held { value: ParseTree }\n\nfn make(n: ParseTree) -> Seal {\n  Boxed(n)\n}\n\nfn unbox(s: Seal) -> ParseTree {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}\n\nfn pick(o: Outcome<ParseTree>) -> ParseTree {\n  match o {\n    Accepted { value: val } => val\n    Rejected { diagnostics: d } => d.head\n  }\n}\n\nfn unkeep(k: Hold<Box<ParseTree>>, fallback: ParseTree) -> ParseTree {\n  match k {\n    Keep { boxed: b } => b.inner\n    Dropped => fallback\n  }\n}\n\nfn useit(a: Apply<ParseTree>, n: ParseTree) -> ParseTree {\n  match a {\n    Mk { f: g } => g(n)\n  }\n}"
+data vfp_fixture_src: String = "module p\n\ntype ParseTree {\n  root: Int\n}\n\ntype NonEmptyDiagnostics {\n  head: Int\n}\n\ntype Diagnostics\n  = None\n  | Some { diagnostics: NonEmptyDiagnostics }\n\ntype Outcome<T>\n  = Accepted { value: T, diagnostics: Diagnostics }\n  | Rejected { diagnostics: NonEmptyDiagnostics }\n\ntype Box<T> = Wrapped { inner: T }\n\ntype Hold<T>\n  = Keep { boxed: Box<T> }\n  | Dropped\n\ntype Seal\n  = Boxed(ParseTree)\n  | Held { value: ParseTree }\n\nfn make(n: ParseTree) -> Seal {\n  Boxed(n)\n}\n\nfn unbox(s: Seal) -> ParseTree {\n  match s {\n    Boxed(v) => v\n    Held { value: w } => w\n  }\n}\n\nfn pick(o: Outcome<ParseTree>) -> ParseTree {\n  match o {\n    Accepted { value: val } => val\n    Rejected { diagnostics: d } => d.head\n  }\n}\n\nfn unkeep(k: Hold<Box<ParseTree>>, fallback: ParseTree) -> ParseTree {\n  match k {\n    Keep { boxed: b } => b.inner\n    Dropped => fallback\n  }\n}"
 
 
 fn vfp_reading(src: String) -> VfpReading {
@@ -357,8 +370,7 @@ fn vfp_fixture_reading() -> VfpFixtureReading {
       rt_arm_fact: r.head.reason,
       generic_arm_fact: r.head.reason,
       projection_fact: r.head.reason,
-      compound_arm_fact: r.head.reason,
-      arrow_arm_fact: r.head.reason
+      compound_arm_fact: r.head.reason
     }
     Accepted { value: resolved, diagnostics: _ } =>
       match infer(tree: resolved) {
@@ -371,8 +383,7 @@ fn vfp_fixture_reading() -> VfpFixtureReading {
           rt_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
           generic_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
           projection_fact: vfp_last(xs: vfp_reasons(r: r)),
-          compound_arm_fact: vfp_last(xs: vfp_reasons(r: r)),
-          arrow_arm_fact: vfp_last(xs: vfp_reasons(r: r))
+          compound_arm_fact: vfp_last(xs: vfp_reasons(r: r))
         }
         Accepted { value: inferred, diagnostics: d } => VfpFixtureReading {
           reasons: match d {
@@ -404,10 +415,35 @@ fn vfp_fixture_reading() -> VfpFixtureReading {
           compound_arm_fact: vfp_fact_in(
             inferred: inferred,
             subject: vfp_arm_body_first(m: vfp_third_of(xs: vfp_matches_of(n: resolved.root)))
-          ),
+          )
+        }
+      }
+  }
+}
+
+fn vfp_arrow_reading() -> VfpArrowReading {
+  match vfp_assemble(src: vfp_arrow_src) {
+    Rejected { diagnostics: r } => VfpArrowReading {
+      reasons: vfp_reasons(r: r),
+      construct_read: ^vfp_refused_at_resolve,
+      arrow_arm_fact: r.head.reason
+    }
+    Accepted { value: resolved, diagnostics: _ } =>
+      match infer(tree: resolved) {
+        Rejected { diagnostics: r } => VfpArrowReading {
+          reasons: vfp_reasons(r: r),
+          construct_read: vfp_construct_read_decode(resolved: resolved),
+          arrow_arm_fact: vfp_last(xs: vfp_reasons(r: r))
+        }
+        Accepted { value: inferred, diagnostics: d } => VfpArrowReading {
+          reasons: match d {
+            None => [^infers]
+            Some { diagnostics: r } => Cons { head: ^infers, tail: vfp_reasons(r: r) }
+          },
+          construct_read: vfp_construct_read_decode(resolved: resolved),
           arrow_arm_fact: vfp_fact_in(
             inferred: inferred,
-            subject: vfp_arm_body_first(m: vfp_fourth_of(xs: vfp_matches_of(n: resolved.root)))
+            subject: vfp_arm_body_first(m: vfp_first_of(xs: vfp_matches_of(n: resolved.root)))
           )
         }
       }
@@ -468,12 +504,19 @@ test fn vfp_the_compound_arm_binder_still_rides_the_formal_pending_deep_instanti
   vfp_fixture_reading().compound_arm_fact == ^T
 }
 
-// THE ARROW CONTROL, DECLARED RED pending deep instantiation: `g` binds `f: fn(Int) -> T` and the
-// arm body `g(x)` reads the formal for the same reason as the compound row -- the facts layer's
+// THE ARROW CONTROL, DECLARED RED pending deep instantiation: `g` binds `f: fn(ParseTree) -> T` and
+// the arm body `g(n)` reads the formal for the same reason as the compound row -- the facts layer's
 // shallow substitution never rewrites the Arrow's result. Asserts the defect as it stands; flips
-// to ^Int with the same follow-up that deletes the interim operand helper.
+// to ^ParseTree with the same follow-up that deletes the interim operand helper.
 test fn vfp_the_arrow_arm_binder_still_rides_the_formal_pending_deep_instantiation() -> Bool {
-  vfp_fixture_reading().arrow_arm_fact == ^T
+  vfp_arrow_reading().arrow_arm_fact == ^T
+}
+
+// THE ARROW FIXTURE'S RESOLVE-SIDE CONTROL (its second consumer claim): resolve must bind the
+// module's sole variant tag so the construct read names Mk, separating resolve binding from
+// whatever the infer facts say about the arrow binder.
+test fn vfp_the_arrow_fixture_resolves_and_names_its_variant_holds() -> Bool {
+  vfp_arrow_reading().construct_read == ^Mk
 }
 // THE RESOLVE-SIDE CONTROL ON THE SAME READING: even while infer refuses the partial match for
 // want of coverage, resolve has already bound the construction's tag to its variant's declaring
@@ -495,7 +538,13 @@ data vfp_fx2_src: String = "module p\n\ntype N = Wrap { seed: N }\n\nfn f(a: N) 
 // through `gunbc run --function` so the actual values are readable, not guessed. DELETED WITH THE
 // RFM RETIREMENT RECEIPT.
 fn vfp_decode_fixture_reading(r: VfpFixtureReading) -> CliWireResponse {
-  CliWirePrintable { bytes: "read=" + symbol_lexeme(sym: r.construct_read) + " carr=" + symbol_lexeme(sym: r.construct_read_carrier) + " rt_constr=" + symbol_lexeme(sym: r.rt_construction_fact) + " rt_match=" + symbol_lexeme(sym: r.rt_match_fact) + " rt_arm=" + symbol_lexeme(sym: r.rt_arm_fact) + " gen_arm=" + symbol_lexeme(sym: r.generic_arm_fact) + " proj=" + symbol_lexeme(sym: r.projection_fact) + " comp=" + symbol_lexeme(sym: r.compound_arm_fact) + " arr=" + symbol_lexeme(sym: r.arrow_arm_fact), exit: ExitSuccess }
+  CliWirePrintable { bytes: "read=" + symbol_lexeme(sym: r.construct_read) + " carr=" + symbol_lexeme(sym: r.construct_read_carrier) + " rt_constr=" + symbol_lexeme(sym: r.rt_construction_fact) + " rt_match=" + symbol_lexeme(sym: r.rt_match_fact) + " rt_arm=" + symbol_lexeme(sym: r.rt_arm_fact) + " gen_arm=" + symbol_lexeme(sym: r.generic_arm_fact) + " proj=" + symbol_lexeme(sym: r.projection_fact) + " comp=" + symbol_lexeme(sym: r.compound_arm_fact) + " reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
 }
 
 fn vfp_decode_fixture() -> CliWireResponse { vfp_decode_fixture_reading(r: vfp_fixture_reading()) }
+
+fn vfp_decode_arrow_reading(r: VfpArrowReading) -> CliWireResponse {
+  CliWirePrintable { bytes: "arr_read=" + symbol_lexeme(sym: r.construct_read) + " arr=" + symbol_lexeme(sym: r.arrow_arm_fact) + " arr_reasons=" + fold(r.reasons, init: "", f: fn(acc, sym) { acc + "/" + symbol_lexeme(sym: sym) }), exit: ExitSuccess }
+}
+
+fn vfp_decode_arrow() -> CliWireResponse { vfp_decode_arrow_reading(r: vfp_arrow_reading()) }
