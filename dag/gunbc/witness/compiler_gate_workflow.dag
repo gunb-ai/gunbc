@@ -1094,9 +1094,31 @@ fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep>
 // THE PRELUDE IS THE FLEET PRELUDE over `gunbc` alone, because the subject steps need exactly what it
 // provides on the fleet: the judged checkout, an isolated toolchain home (and the guard requiring
 // it), a pinned default, and the `gunbc` binary the instruments are invoked through.
+// EMIT-BUILD BUILDS ITS OWN `gunbc` AND DOES NOT RESTORE THE SEED PAIR. `gunbc test` refuses a binary
+// whose cargo dep-info it cannot read inside this checkout (BinaryFreshnessUndecided, #13007): a
+// restored pair carries no dep-info for this worktree, so the freshness guard rightly cannot judge
+// it. Until that guard can judge a restored binary, this lane keeps the one build it always paid.
+fn compiler_gate_emit_build_prelude_bound_steps() -> List<CompilerGateBoundStep> {
+  concat(compiler_gate_fleet_head_bound_steps(), [
+    CompilerGateBoundStep {
+      step: witness_floor_build_step(
+        step_name: compiler_gate_build_step_name,
+        build_script: repo_self_build_command(bins: compiler_gate_required_bins),
+      ),
+      role: consumes_only(capabilities: [CargoCapability]),
+      step_name: compiler_gate_build_step_name,
+    },
+    CompilerGateBoundStep {
+      step: witness_toolchain_homes_isolated_guard_step(),
+      role: capability_neutral,
+      step_name: "Require isolated toolchain homes",
+    },
+  ])
+}
+
 fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
   concat(
-    concat(compiler_gate_fleet_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
+    concat(compiler_gate_emit_build_prelude_bound_steps(), compiler_gate_emit_build_subject_bound_steps()),
     [CompilerGateBoundStep {
       step: compiler_gate_emit_build_notice_step(),
       role: capability_neutral,
@@ -1123,7 +1145,7 @@ fn compiler_gate_emit_build_job() -> Job {
     runner: gunbc_ci_selected_runner_spec(),
     environment: none,
     steps: list_map(xs: compiler_gate_emit_build_bound_steps(), f: fn(b) { b.step }),
-    needs: [compiler_gate_seed_job_id],
+    needs: [],
     env: Present {
       value: [
         kv(key: malloc_arena_max_env_key, value: yaml_string(s: malloc_arena_max_value))
