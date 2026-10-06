@@ -219,53 +219,26 @@ fn file_key_in_workspace(workspace: &Path, rel: &str) -> String {
 /// narrower closure but a blind one: a Class B entry whose imports reached a
 /// module that names a provider only by reference would omit that provider from
 /// the skip set, and a change to the provider would skip the gate.
+///
+/// Seeds are the declared entries only. The authority already follows import
+/// lines (via `module_paths_of_references` / `ref_out`); a second BFS here would
+/// be the fork this function exists to delete (review 76991).
 pub(crate) fn import_closure_dag_files(
     workspace: &Path,
     source_roots: &[PathBuf],
     seed_entries: &[&str],
 ) -> Result<HashSet<String>, String> {
-    let index = dag_module_index(source_roots)?;
-    let mut by_rel: std::collections::HashMap<String, Rc<v1_compiler_compile::SourceFile>> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<String> = Vec::new();
+    let mut seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
     for rel in seed_entries {
         let path = workspace.join(rel);
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("read declared Class B gate entry {rel}: {e}"))?;
         let key = file_key_in_workspace(workspace, rel);
-        by_rel.insert(
-            key.clone(),
-            Rc::new(v1_compiler_compile::SourceFile {
-                path: key,
-                content: content.clone(),
-            }),
-        );
-        queue.push(content);
+        seeds.push(Rc::new(v1_compiler_compile::SourceFile {
+            path: key,
+            content,
+        }));
     }
-    while let Some(content) = queue.pop() {
-        for module_path in extract_import_paths(&content) {
-            let Some(candidates) = index.get(&module_path) else {
-                continue;
-            };
-            for path in candidates {
-                let rel = normalize_repo_path(&module_index_path_key(path));
-                if by_rel.contains_key(&rel) {
-                    continue;
-                }
-                let file_content = std::fs::read_to_string(path)
-                    .map_err(|e| format!("read imported module {}: {e}", path.display()))?;
-                by_rel.insert(
-                    rel.clone(),
-                    Rc::new(v1_compiler_compile::SourceFile {
-                        path: rel,
-                        content: file_content.clone(),
-                    }),
-                );
-                queue.push(file_content);
-            }
-        }
-    }
-    let seeds: Vec<Rc<v1_compiler_compile::SourceFile>> = by_rel.into_values().collect();
     let root_strings: Vec<String> = source_roots
         .iter()
         .map(|p| p.to_string_lossy().into_owned())
