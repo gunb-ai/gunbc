@@ -226,7 +226,6 @@ type StringOps {
   string_literal: String
   string_interp: String
   code_point: String
-  from_code_point: String
 }
 
 type MapOps {
@@ -813,7 +812,6 @@ data rust_string_ops: StringOps = {
   string_literal: "\"\{value\}\".to_string()",
   string_interp: "format!(\"\{fmt\}\", \{args\})",
   code_point: "\{recv\} as u32 as i64",
-  from_code_point: "char::from_u32(\{arg\} as u32).map(|c| c.to_string()).unwrap_or_default()"
 }
 
 data rust_map_ops: MapOps = {
@@ -897,7 +895,6 @@ data go_string_ops: StringOps = {
   string_literal: "\"\{value\}\"",
   string_interp: "fmt.Sprintf(\"\{fmt\}\", \{args\})",
   code_point: "int64([]rune(\{recv\})[0])",
-  from_code_point: "string(rune(\{arg\}))"
 }
 
 data go_map_ops: MapOps = {
@@ -979,7 +976,6 @@ data python_string_ops: StringOps = {
   string_literal: "\"\{value\}\"",
   string_interp: "f\"\{fmt\}\"",
   code_point: "ord(\{recv\})",
-  from_code_point: "chr(\{arg\})"
 }
 
 data python_map_ops: MapOps = {
