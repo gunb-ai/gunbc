@@ -395,6 +395,11 @@ type TranscriptRateObservation
   | TranscriptRateRefused { reason: String, rows: List<TranscriptAppendInterval> }
   | TranscriptRateClockUndefined { from: ObservationInstant, to: ObservationInstant, order: InstantOrder, rows: List<TranscriptAppendInterval> }
 
+// THE SPAN IS DERIVED, NEVER SUBTRACTED: std.checkpointed_workspace workspace_age_between orders two
+// consecutive sample instants first, so a later sample that does not follow the earlier one
+// (InstantAfter) or one on another clock (InstantIncomparable) ends the window as its own typed
+// refusal, TranscriptRateClockUndefined, instead of standing in a span.
+//
 // THE PURE WINDOW: a baseline sample and one sample per interval, each interval the difference of
 // consecutive samples. The sampler and the pause are supplied, so the wet entry passes the real
 // walk and the real sleep and a witness passes recorded samples; the fold itself is one function.
@@ -410,10 +415,6 @@ fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining
         match next(remaining) {
           TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root became unreadable mid-window: ", join(rs, "; ")), rows: reverse(rows) }
           TranscriptRateSampled { at: at2, files: files2 } =>
-            // THE SPAN IS DERIVED, NEVER SUBTRACTED: std.checkpointed_workspace workspace_age_between
-            // orders the two instants first, so a later sample that does not follow the earlier one
-            // (InstantAfter) or one on another clock (InstantIncomparable) ends the window as its own
-            // typed refusal instead of standing in a span.
             match workspace_age_between(from: at, to: at2) {
               WorkspaceAgeUndefined { order: o } => TranscriptRateClockUndefined { from: at, to: at2, order: o, rows: reverse(rows) }
               WorkspaceAgeOf { age: span } =>
