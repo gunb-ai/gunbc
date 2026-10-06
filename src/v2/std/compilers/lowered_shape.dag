@@ -8,7 +8,15 @@ module v2.std.compilers.lowered_shape
 // declares what it built: its result leaves the producer inside the stage's Lowered wrapper, carrying
 // one of these arms as a constant the producer writes, and a reader matches the term
 // (v2.compiler.body_lowering_fold body_term_of) instead of classifying the node. The arms name the
-// producer family that built the value, so a refusal can say whose output it was.
+// producer family that built the value.
+// WHO READS THE ARM, STATED AS IT IS (review 76884; DESIGN section 3c). In this change the SEAL is
+// consumed -- body_term_of keys Lowered versus RawParse/RawLeaf on its presence -- and the arm it
+// carries is not: every reader takes a Lowered term whole (shape: _). That is a declared frontier,
+// not a consumer. Its named consumer is the stage ceiling body_lowering_fold states beside the seal:
+// a sealed BodyTerm term tree that normalize consumes by dispatching on the producer arm instead of
+// re-reading node shapes (MQ-6). TRIGGER: that change lands its first normalize match over
+// LoweredShape. If it does not, this arm collapses to a unit seal -- the discriminator alone is what
+// this change needs -- rather than staying as data nothing reads.
 // It sits in its own module, below v2.std.node, because the seal on the Lowered wrapper's edge
 // carries it (v2.std.node BodyTermLoweredSeal): the seal holds the closed shape itself, so no
 // symbol round-trip, roster list or unknown-shape arm exists to drift from this declaration.
