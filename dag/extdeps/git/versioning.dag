@@ -30,10 +30,14 @@ type GitCliReportedVersion {
   suffix: GitVersionPlatformSuffix
 }
 
+// THE FIELDS ARE CODE POINTS, NOT DIGIT VALUES: a numeric field is a validated digit
+// sequence read back through from_code_point, so '2' is 50 and '0' is 48. A round-trip
+// witness pins this anchor against its parsed form so a control-character mistake like
+// [2]/[0]/[0] cannot pass silently.
 data git_2_0_release: GitReleaseVersion = {
-  major: [2],
-  minor: [0],
-  patch: [0]
+  major: [50],
+  minor: [48],
+  patch: [48]
 }
 
 data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"

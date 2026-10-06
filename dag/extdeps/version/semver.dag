@@ -264,7 +264,7 @@ fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
 // THE LAST FIELD CONSUMES THE WHOLE REMAINDER, never a dot-split: a leftover delimiter
 // then fails the numeric run here instead of being split off and silently accepted.
 // SemVer 2.0.0 §2 is X.Y.Z with no trailing delimiter, so "1.2.3." must refuse, not rank.
-fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeInt>? {
+fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<SemVerNumericField>? {
   if remaining == 0 {
     if cps.count() == 0 { Present { value: [] } } else { none }
   } else if remaining == 1 {

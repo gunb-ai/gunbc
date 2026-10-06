@@ -450,7 +450,7 @@ pub fn semver_label_from_code_points(cps: Rc<Vec<i64>>) -> String {
 pub fn semver_core_fields_parse(
     cps: Rc<Vec<i64>>,
     remaining: i64,
-) -> Option<Rc<Vec<NonNegativeInt>>> {
+) -> Option<Rc<Vec<SemVerNumericField>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (remaining.clone() == 0) {
             if ((cps.clone().len() as i64) == 0) {
