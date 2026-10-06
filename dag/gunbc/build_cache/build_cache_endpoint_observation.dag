@@ -79,7 +79,10 @@ fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
     h =>
       match build_cache_ci_placement_observation(host: h) {
         ServerPlacementUnknown { detail: _ } => true
-        _ => false
+        ServerManagedUnitOwned { unit: _ } => false
+        ServerRunnerOwned { slot: _, lifecycle: _ } => false
+        ServerUnsupervised { cgroup: _ } => false
+        ServerPlacementAbsent => false
       },
   ).length()
 }
