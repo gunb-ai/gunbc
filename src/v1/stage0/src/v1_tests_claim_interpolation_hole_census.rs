@@ -99,6 +99,7 @@ impl HoleSite {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HoleRow {
     pub file: String,
+    pub start: i64,
     pub line: i64,
     pub decl: String,
     pub ordinal: i64,
@@ -133,6 +134,13 @@ pub struct LexicalTemplateCount {
     pub file: String,
     pub templates: i64,
     pub holes: i64,
+    pub hole_starts: Rc<Vec<i64>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct IhcHoleStartScan {
+    pub after_opener: bool,
+    pub starts: Rc<Vec<i64>>,
 }
 
 pub fn ihc_token_is_template_start(t: Rc<Token>) -> bool {
@@ -147,6 +155,36 @@ pub fn ihc_token_closes_hole(t: Rc<Token>) -> bool {
         TokenShape::ShStrMid => true,
         TokenShape::ShStrEnd => true,
         _ => false,
+    }
+}
+
+pub fn ihc_token_opens_hole(t: Rc<Token>) -> bool {
+    match t.shape.clone() {
+        TokenShape::ShStrBegin => true,
+        TokenShape::ShStrMid => true,
+        _ => false,
+    }
+}
+
+pub fn ihc_hole_starts(tokens: Rc<Vec<Rc<Token>>>) -> Rc<Vec<i64>> {
+    {
+        let scan = tokens.iter().cloned().fold(
+            Rc::new(IhcHoleStartScan {
+                after_opener: false,
+                starts: Rc::new(vec![]),
+            }),
+            |acc: Rc<IhcHoleStartScan>, t: Rc<Token>| {
+                Rc::new(IhcHoleStartScan {
+                    after_opener: ihc_token_opens_hole(t.clone()),
+                    starts: if acc.after_opener.clone() {
+                        v1_rt::rc_list_push(acc.starts.clone(), t.span.clone().start.clone())
+                    } else {
+                        acc.starts.clone()
+                    },
+                })
+            },
+        );
+        scan.starts.clone()
     }
 }
 
@@ -179,6 +217,7 @@ pub fn ihc_lexical_count(s: Rc<SourceFile>) -> Rc<LexicalTemplateCount> {
                 __result
             })
             .len() as i64),
+            hole_starts: ihc_hole_starts(tokens.clone()),
         })
     }
 }
@@ -449,9 +488,36 @@ pub fn ihc_template_observation(
     }
 }
 
+pub fn ihc_leftmost_start(n: Rc<Node>) -> i64 {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let own = if (n.span.clone().end.clone() > n.span.clone().start.clone()) {
+            n.span.clone().start.clone()
+        } else {
+            v1_rt::int_neg(1)
+        };
+        n.children
+            .clone()
+            .iter()
+            .cloned()
+            .fold(own.clone(), |m: i64, c: Rc<Node>| {
+                let cm = ihc_leftmost_start(c.clone());
+                if (cm.clone() < 0) {
+                    m.clone()
+                } else {
+                    if ((m.clone() < 0) || (cm.clone() < m.clone())) {
+                        cm.clone()
+                    } else {
+                        m.clone()
+                    }
+                }
+            })
+    })
+}
+
 pub fn ihc_hole_row(ctx: Rc<HoleWalkContext>, h: Rc<Node>, fused: bool) -> Rc<HoleRow> {
     Rc::new(HoleRow {
         file: h.span.clone().file.clone(),
+        start: ihc_leftmost_start(h.clone()),
         line: ihc_line(h.clone(), ctx.si.clone()),
         decl: ctx.file_decl.clone(),
         ordinal: 0,
@@ -581,6 +647,7 @@ pub fn ihc_number_holes(rows: Rc<Vec<Rc<HoleRow>>>) -> Rc<Vec<Rc<HoleRow>>> {
                         acc.out.clone(),
                         Rc::new(HoleRow {
                             file: r.file.clone(),
+                            start: r.start.clone(),
                             line: r.line.clone(),
                             decl: r.decl.clone(),
                             ordinal: next.clone(),
@@ -842,89 +909,123 @@ pub fn ihc_observed_count(templates: Rc<Vec<Rc<ObservedTemplate>>>, file: String
     .len() as i64)
 }
 
-pub fn ihc_observed_hole_count(templates: Rc<Vec<Rc<ObservedTemplate>>>, file: String) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for t in Rc::new({
-            let mut __result = Vec::new();
-            for t in templates.iter().cloned() {
-                if (t.file.clone() == file.clone()) {
-                    __result.push(t);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.extend((*t.holes.clone()).iter().cloned());
-        }
-        __result
-    })
-    .len() as i64)
+pub fn ihc_int_set(xs: Rc<Vec<i64>>) -> Rc<HashMap<i64, bool>> {
+    xs.iter().cloned().fold(
+        v1_rt::rc_empty_map::<i64, bool>(),
+        |acc: Rc<HashMap<i64, bool>>, x: i64| v1_rt::rc_map_insert(acc, x.clone(), true),
+    )
 }
 
-pub fn ihc_completeness_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
+pub fn ihc_int_in(set: Rc<HashMap<i64, bool>>, key: i64) -> bool {
+    match v1_rt::map_get(&set, key.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
+pub fn ihc_completeness_join(
+    lexical: Rc<Vec<Rc<LexicalTemplateCount>>>,
+    observed: Rc<Vec<Rc<HoleRow>>>,
+    observed_templates: Rc<Vec<Rc<ObservedTemplate>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
-        for l in c.lexical.clone().iter().cloned() {
+        for l in lexical.iter().cloned() {
             __result.extend(
                 (*{
-                    let ot = ihc_observed_count(c.templates.clone(), l.file.clone());
-                    let oh = ihc_observed_hole_count(c.templates.clone(), l.file.clone());
-                    if ((ot.clone() == l.templates.clone()) && (oh.clone() == l.holes.clone())) {
+                    let observed_starts = Rc::new({
+                        let mut __result = Vec::new();
+                        for r in Rc::new({
+                            let mut __result = Vec::new();
+                            for r in observed.iter().cloned() {
+                                if (r.file.clone() == l.file.clone()) {
+                                    __result.push(r);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(r.start.clone());
+                        }
+                        __result
+                    });
+                    let observed_set = ihc_int_set(observed_starts.clone());
+                    let lexed_set = ihc_int_set(l.hole_starts.clone());
+                    let unobserved = Rc::new({
+                        let mut __result = Vec::new();
+                        for x in Rc::new({
+                            let mut __result = Vec::new();
+                            for x in l.hole_starts.clone().iter().cloned() {
+                                if !ihc_int_in(observed_set.clone(), x.clone()) {
+                                    __result.push(x);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("UNOBSERVED\t".to_string(), l.file.clone()),
+                                    "\tlexed_hole_start=".to_string(),
+                                ),
+                                (x.clone()).to_string(),
+                            ));
+                        }
+                        __result
+                    });
+                    let unlexed = Rc::new({
+                        let mut __result = Vec::new();
+                        for x in Rc::new({
+                            let mut __result = Vec::new();
+                            for x in observed_starts.iter().cloned() {
+                                if !ihc_int_in(lexed_set.clone(), x.clone()) {
+                                    __result.push(x);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.push(v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("UNLEXED\t".to_string(), l.file.clone()),
+                                    "\tobserved_hole_start=".to_string(),
+                                ),
+                                (x.clone()).to_string(),
+                            ));
+                        }
+                        __result
+                    });
+                    let ot = ihc_observed_count(observed_templates.clone(), l.file.clone());
+                    let counts = if (ot.clone() == l.templates.clone()) {
                         Rc::new(vec![])
                     } else {
-                        Rc::new(vec![Rc::new(vec![
-                            "UNOBSERVED".to_string(),
-                            l.file.clone(),
+                        Rc::new(vec![v1_rt::concat(
                             v1_rt::concat(
-                                "lexed_templates=".to_string(),
-                                (l.templates.clone()).to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "TEMPLATE_COUNT_DIFFERS\t".to_string(),
+                                            l.file.clone(),
+                                        ),
+                                        "\tlexed_templates=".to_string(),
+                                    ),
+                                    (l.templates.clone()).to_string(),
+                                ),
+                                "\tobserved_templates=".to_string(),
                             ),
-                            v1_rt::concat(
-                                "observed_templates=".to_string(),
-                                (ot.clone()).to_string(),
-                            ),
-                            v1_rt::concat(
-                                "lexed_holes=".to_string(),
-                                (l.holes.clone()).to_string(),
-                            ),
-                            v1_rt::concat("observed_holes=".to_string(), (oh.clone()).to_string()),
-                            v1_rt::concat(
-                                "observed_texts=".to_string(),
-                                Rc::new({
-                                    let mut __result = Vec::new();
-                                    for t in Rc::new({
-                                        let mut __result = Vec::new();
-                                        for t in c.templates.clone().iter().cloned() {
-                                            if (t.file.clone() == l.file.clone()) {
-                                                __result.push(t);
-                                            }
-                                        }
-                                        __result
-                                    })
-                                    .iter()
-                                    .cloned()
-                                    {
-                                        __result.push(
-                                            Rc::new({
-                                                let mut __result = Vec::new();
-                                                for h in t.holes.clone().iter().cloned() {
-                                                    __result.push(h.text.clone());
-                                                }
-                                                __result
-                                            })
-                                            .join(&"+".to_string()),
-                                        );
-                                    }
-                                    __result
-                                })
-                                .join(&" | ".to_string()),
-                            ),
-                        ])
-                        .join(&"\t".to_string())])
-                    }
+                            (ot.clone()).to_string(),
+                        )])
+                    };
+                    v1_rt::concat(
+                        v1_rt::concat(unobserved.clone(), unlexed.clone()),
+                        counts.clone(),
+                    )
                 })
                 .iter()
                 .cloned(),
@@ -932,6 +1033,10 @@ pub fn ihc_completeness_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
         }
         __result
     })
+}
+
+pub fn ihc_completeness_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
+    ihc_completeness_join(c.lexical.clone(), c.rows.clone(), c.templates.clone())
 }
 
 pub fn ihc_summary_lines(c: Rc<IhcCensus>) -> Rc<Vec<String>> {
@@ -1079,6 +1184,77 @@ pub fn ihc_transport_row_is(rows: Rc<Vec<Rc<HoleRow>>>, text: String, reading: S
     }
 }
 
+pub fn ihc_probe_row(file: String, start: i64) -> Rc<HoleRow> {
+    Rc::new(HoleRow {
+        file: file.clone(),
+        start: start.clone(),
+        line: 1,
+        decl: "probe".to_string(),
+        ordinal: 1,
+        text: "x".to_string(),
+        shape: Rc::new(HoleShape::HoleIdentifier),
+        reading: Rc::new(HoleTypeReading::HoleTypedString),
+        site: Rc::new(HoleSite::HoleInBody),
+        fused: false,
+    })
+}
+
+pub fn ihc_identity_join_not_count_holds() -> bool {
+    {
+        let lexed = Rc::new(vec![Rc::new(LexicalTemplateCount {
+            file: "probe".to_string(),
+            templates: 1,
+            holes: 2,
+            hole_starts: Rc::new(vec![10, 20]),
+        })]);
+        let template = Rc::new(vec![Rc::new(ObservedTemplate {
+            file: "probe".to_string(),
+            holes: Rc::new(vec![]),
+        })]);
+        let mismatched = ihc_completeness_join(
+            lexed.clone(),
+            Rc::new(vec![
+                ihc_probe_row("probe".to_string(), 10),
+                ihc_probe_row("probe".to_string(), 30),
+            ]),
+            template.clone(),
+        );
+        let matched = ihc_completeness_join(
+            lexed.clone(),
+            Rc::new(vec![
+                ihc_probe_row("probe".to_string(), 10),
+                ihc_probe_row("probe".to_string(), 20),
+            ]),
+            template.clone(),
+        );
+        (((((mismatched.clone().len() as i64) == 2) && {
+            let mut __found = false;
+            for l in mismatched.iter().cloned() {
+                if v1_rt::starts_with(
+                    l.clone(),
+                    "UNOBSERVED\tprobe\tlexed_hole_start=20".to_string(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) && {
+            let mut __found = false;
+            for l in mismatched.iter().cloned() {
+                if v1_rt::starts_with(
+                    l.clone(),
+                    "UNLEXED\tprobe\tobserved_hole_start=30".to_string(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }) && ((matched.clone().len() as i64) == 0))
+    }
+}
+
 pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let subjects = interpolation_hole_census_subjects(sources.clone());
@@ -1150,11 +1326,13 @@ pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> 
                     == 2);
                 let complete = (((ihc_completeness_lines(c.clone()).len() as i64) == 0)
                     && ((rows.clone().len() as i64) == 8));
-                let held = ((((((string_ident.clone() && own_type.clone()) && dotted.clone())
+                let identity_join = ihc_identity_join_not_count_holds();
+                let held = (((((((string_ident.clone() && own_type.clone()) && dotted.clone())
                     && call.clone())
                     && transport.clone())
                     && fusion.clone())
-                    && complete.clone());
+                    && complete.clone())
+                    && identity_join.clone());
                 v1_rt::concat(
                     v1_rt::concat(
                         Rc::new(vec![
@@ -1190,6 +1368,10 @@ pub fn interpolation_hole_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> 
                             ihc_control_line(
                                 "every_lexed_hole_observed".to_string(),
                                 complete.clone(),
+                            ),
+                            ihc_control_line(
+                                "completeness_is_an_identity_join_not_a_count".to_string(),
+                                identity_join.clone(),
                             ),
                         ]),
                         Rc::new({
