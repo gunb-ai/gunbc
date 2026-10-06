@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_hierarchy_view {
   NodeRelation, RelationRow, RelationKind, RelationParent, RelationSubIssues, RelationBlockedBy, RelationBlocking,
   RowChildrenNotCarried, RowChildrenExpandable,
 }
-import gunbc.design.material { BuildRule, StaticRule, CssDecl, serialize_rules, serialize_decls, decl }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, AmbientRule, MediaRule, CssDecl, serialize_rules, serialize_decls, decl }
 import gunbc.design.palette { Swatch, grade_pairing, grade_rank, TextAa }
 import gunbc.design.theme_transition { rule_selector, unthemed_color_decls, untokened_length_decls }
 import gunbc.site.markup { txt }
@@ -62,8 +62,10 @@ import gunbc.site.element.field_list {
 }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { Color, Padding, css_property_wire }
+import extdeps.languages.css.media_queries { coarse_pointer, media_condition_wire }
 import gunbc.design.scale { scale_value_wire, font_sans }
 import gunbc.site.web_fonts { web_font_faces }
+import v2.std.algebra { filter }
 
 // GUARDS FOR THE FRONTEND ELEMENTS. Each claim below reads one interface with a supplied fixture:
 // an element's markup function, an element's rules, the token block, the palette, a text role.
@@ -703,4 +705,48 @@ test fn text_roles_set_the_served_faces_through_the_family_tokens() -> Bool {
     && !stack_opens_with_a_served_face(stack: "'Product Sans', 'Roboto', sans-serif", served: served)
     && replace(s: heading, from: "'", to: "") == issue_tracker_visual_tokens.font_heading
     && replace(s: body, from: "'", to: "") == issue_tracker_visual_tokens.font_body
+}
+
+// R3 UNDER A COARSE POINTER. Every interactive control the elements draw (the buttons, the links of
+// NodeRow, NodeChain and FieldList, the disclosure summaries and the meter's link) takes the touch
+// target, the field list keeps one pitch, and nothing else is conditioned: a chip, a status or a
+// priority takes no rule. The rules are read from the registry every page serializes
+// (element_rules), each conditioned selector exactly once, and the fine-pointer rule a condition
+// overrides comes before it.
+fn coarse_rules(rules: List<BuildRule>) -> List<BuildRule> {
+  filter(rules, r => match r {
+    MediaRule { condition, selector: _, decls: _ } => media_condition_wire(c: condition) == media_condition_wire(c: coarse_pointer)
+    StaticRule { selector: _, decls: _ } => false
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } => false
+    AmbientRule { selector: _, cycle: _, timing: _, repeat: _ } => false
+  })
+}
+
+data touch_target_selectors: List<String> = [
+  ".el-button", ".el-button[data-button-size=\"small\"]",
+  ".el-node-row-children", ".el-node-row-link",
+  ".el-node-chain-link", ".el-node-chain-fold-count",
+  ".el-build-meter",
+  ".el-field-list-summary", ".el-field-list-action", ".el-field-list-link",
+]
+
+data touch_pitch_selectors: List<String> = [".el-field-list-row", ".el-field-list-label", ".el-field-list-value"]
+
+test fn interactive_controls_take_the_touch_target_under_a_coarse_pointer() -> Bool {
+  let coarse = coarse_rules(rules: element_rules())
+  let selectors = map(coarse, r => rule_selector(rule: r))
+  let css = serialize_rules(rules: coarse)
+  let expected = concat(touch_target_selectors, touch_pitch_selectors)
+  let button_css = serialize_rules(rules: button_rules())
+  count(selectors) == count(expected)
+    && all(expected, e => count(filter(selectors, s => s == e)) == 1)
+    && all(touch_target_selectors, s => has(s: css, pattern: join(["@media (pointer: coarse) { ", s, " { "], "")))
+    && count(split(s: css, delimiter: "min-height: var(--h-control); min-width: var(--h-control)")) == count(touch_target_selectors) + 1
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-button { min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-build-meter { display: inline-flex; align-items: center; min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-link { display: inline-block; vertical-align: middle; max-width: 100%; line-height: var(--h-control); padding-block: var(--space-0); overflow: hidden; text-overflow: ellipsis; min-height: var(--h-control); min-width: var(--h-control) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-summary { min-height: var(--h-control); min-width: var(--h-control); margin-block: var(--space-0) } }")
+    && has(s: css, pattern: "@media (pointer: coarse) { .el-field-list-row { min-height: var(--h-control) } }")
+    && !any(selectors, s => has(s: s, pattern: "chip") || has(s: s, pattern: "priority") || has(s: s, pattern: "status"))
+    && has(s: join(split(s: button_css, delimiter: "@media (pointer: coarse) { .el-button {").take(n: 1), ""), pattern: ".el-button { display: inline-flex; align-items: center; justify-content: center; height: var(--h-button); min-height: var(--h-button)")
 }

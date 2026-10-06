@@ -11,6 +11,7 @@ import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_
 import gunbc.site.element.tokens { radius_element }
 import gunbc.site.element.palette { palette_var, SlotText, SlotTextDim, SlotAction, SlotError }
 import gunbc.site.element.chip { chip_surface_decls }
+import gunbc.site.element.touch_target { touch_target_rule, TouchTargetBox, TouchTargetCentredLink }
 import extdeps.languages.css.selectors { ClassSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderRadius, Color, Cursor, Display, FlexWrap, Gap, JustifyContent, ListStyle, Margin,
@@ -231,5 +232,7 @@ fn node_chain_rules() -> List<BuildRule> {
     ] },
     node_chain_focus_rule(class_name: node_chain_link_class),
     node_chain_focus_rule(class_name: node_chain_fold_count_class),
+    touch_target_rule(selector: ClassSelector { name: node_chain_link_class }, shape: TouchTargetCentredLink),
+    touch_target_rule(selector: ClassSelector { name: node_chain_fold_count_class }, shape: TouchTargetBox),
   ]
 }

@@ -4,8 +4,8 @@ import std.types { Bool, Int, List, String }
 import std.markup { Fragment, Attribute, attr }
 import gunbc.site.markup { el_attrs, txt }
 import gunbc.roadmap_issue_status { IssueDisplayStatus, issue_display_status_label }
-import gunbc.design.material { BuildRule, StaticRule, ResponseRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
-import gunbc.design.scale { scale_var, scale_pair, scale_border, space_0, space_1, space_2, space_3, space_4, space_6, space_8, radius_999, border_2 }
+import gunbc.design.material { BuildRule, StaticRule, ResponseRule, MediaRule, SelfResponse, OnHover, OnFocusVisible, respond_fast, CssDecl, decl }
+import gunbc.design.scale { scale_var, scale_pair, scale_border, height_control, space_0, space_1, space_2, space_3, space_4, space_6, space_8, radius_999, border_2 }
 import gunbc.site.element.tokens {
   radius_element, height_button_small, height_field_row, field_label_max,
   field_label_gap, field_avatar,
@@ -14,6 +14,8 @@ import gunbc.site.element.palette { palette_var, palette_action_ink_var, SlotTex
 import gunbc.site.element.text { element_text_decls, ElementBody, ElementLabel }
 import gunbc.site.element.status_chip { status_chip }
 import gunbc.site.element.build_meter { CompactWorkSummary, build_meter }
+import gunbc.site.element.touch_target { touch_target_rule, touch_target_decls, TouchTargetBox, TouchTargetInlineLink }
+import extdeps.languages.css.media_queries { coarse_pointer }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, Border, FlexDirection, JustifyContent, BorderRadius, Color, Cursor, Display, Flex, FontFamily, FontSize,
@@ -263,6 +265,16 @@ fn field_focus_rule(class_name: String) -> BuildRule {
   ] }
 }
 
+// Under a coarse pointer every control a value holds is a touch target (gunbc.site.element
+// touch_target), and the list keeps one row pitch by taking the target as its pitch: a row that
+// holds a control and a row that holds text stay the same height, and a disclosure's summary fills
+// its row instead of sitting inside it with the fine-pointer margins.
+fn field_touch_pitch_rule(class_name: String) -> BuildRule {
+  MediaRule { condition: coarse_pointer, selector: ClassSelector { name: class_name }, decls: [
+    decl(prop: MinHeight, value: scale_var(t: height_control)),
+  ] }
+}
+
 fn field_list_rules() -> List<BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: field_list_class }, decls: [
@@ -388,5 +400,13 @@ fn field_list_rules() -> List<BuildRule> {
     field_focus_rule(class_name: field_list_text_class),
     field_focus_rule(class_name: field_list_link_class),
     field_focus_rule(class_name: field_list_action_class),
+    field_touch_pitch_rule(class_name: field_list_row_class),
+    field_touch_pitch_rule(class_name: field_list_label_class),
+    field_touch_pitch_rule(class_name: field_list_value_class),
+    MediaRule { condition: coarse_pointer, selector: ClassSelector { name: field_list_summary_class }, decls: concat(touch_target_decls(shape: TouchTargetBox), [
+      decl(prop: RawProperty { name: "margin-block" }, value: scale_var(t: space_0)),
+    ]) },
+    touch_target_rule(selector: ClassSelector { name: field_list_action_class }, shape: TouchTargetBox),
+    touch_target_rule(selector: ClassSelector { name: field_list_link_class }, shape: TouchTargetInlineLink),
   ]
 }

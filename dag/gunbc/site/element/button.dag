@@ -18,6 +18,7 @@ import gunbc.site.element.palette {
   palette_var, SlotText, SlotSurface, SlotBorder, SlotAction, SlotActionHover, SlotOnAction,
 }
 import gunbc.site.element.text { element_text_decls, element_control_small_size_decls, ElementControl }
+import gunbc.site.element.touch_target { touch_target_rule, TouchTargetBox }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, Border, BorderColor, BorderRadius, Color, Cursor, Display, Height,
@@ -67,6 +68,10 @@ fn button(input: Button) -> Fragment {
   ], button_availability_attributes(availability: input.availability)), [txt(input.label)])
 }
 
+fn button_size_selector(size: ButtonSize) -> String {
+  join([".", button_class, "[", button_size_attribute, "=\"", button_size_key(size: size), "\"]"], "")
+}
+
 fn button_idiom_selector(idiom: IssueActionButtonIdiom) -> String {
   join([".", button_class, "[", button_idiom_attribute, "=\"", issue_button_idiom_wire(idiom: idiom), "\"]"], "")
 }
@@ -92,7 +97,7 @@ fn button_rules() -> List<BuildRule> {
       decl(prop: Cursor, value: "pointer"),
       decl(prop: WhiteSpace, value: "nowrap"),
     ], element_text_decls(role: ElementControl)) },
-    StaticRule { selector: RawSelector { text: join([".", button_class, "[", button_size_attribute, "=\"", button_size_key(size: ButtonSmall), "\"]"], "") }, decls: concat([
+    StaticRule { selector: RawSelector { text: button_size_selector(size: ButtonSmall) }, decls: concat([
       decl(prop: Height, value: scale_var(t: height_button_small)),
       decl(prop: MinHeight, value: scale_var(t: height_button_small)),
       decl(prop: Padding, value: scale_pair(a: space_0, b: button_small_padding)),
@@ -123,5 +128,7 @@ fn button_rules() -> List<BuildRule> {
       decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
       decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
     ] },
+    touch_target_rule(selector: ClassSelector { name: button_class }, shape: TouchTargetBox),
+    touch_target_rule(selector: RawSelector { text: button_size_selector(size: ButtonSmall) }, shape: TouchTargetBox),
   ]
 }

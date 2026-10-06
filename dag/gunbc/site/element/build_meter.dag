@@ -17,6 +17,7 @@ import gunbc.site.element.palette {
   SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
 }
 import gunbc.site.element.text { element_text_decls, ElementLabel }
+import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegmentKind, WorkflowSegmentState, workflow_segment_kind_label, workflow_segment_state_key,
 }
@@ -1230,5 +1231,6 @@ fn build_meter_rules() -> List<BuildRule> {
       build_meter_lid_state_rule(state_class: build_meter_waking_class, lid_class: build_meter_sleep_class, opacity: "0"),
       AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_worker_class) }, cycle: build_meter_nudge_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
       AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_blink_class) }, cycle: build_meter_long_blink_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
+      touch_target_rule(selector: ClassSelector { name: build_meter_class }, shape: TouchTargetCentredLink),
     ]))
 }

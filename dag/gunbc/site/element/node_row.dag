@@ -18,6 +18,7 @@ import gunbc.site.element.chip { Chip, chip }
 import gunbc.site.element.priority_mark { PriorityMark, priority_mark, priority_mark_label_inset }
 import gunbc.roadmap_priority { issue_priority_explanation }
 import gunbc.site.element.status_chip { status_chip, status_chip_of, StatusChipAccepted, StatusChipWithheld }
+import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
   AlignItems, Background, BorderBottom, Color, CustomProperty, Display, Flex, Gap, Height,
@@ -318,5 +319,7 @@ fn node_row_rules() -> List<BuildRule> {
         decl(prop: Outline, value: scale_border(w: border_2, color_var: palette_var(slot: SlotAction))),
         decl(prop: RawProperty { name: "outline-offset" }, value: scale_var(t: space_2)),
       ] },
+      touch_target_rule(selector: ClassSelector { name: node_row_children_class }, shape: TouchTargetCentredLink),
+      touch_target_rule(selector: ClassSelector { name: node_row_link_class }, shape: TouchTargetCentredLink),
     ])
 }
