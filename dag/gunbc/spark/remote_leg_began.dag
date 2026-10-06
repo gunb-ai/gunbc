@@ -42,10 +42,17 @@ fn remote_leg_reported_began(stdout: String) -> Bool {
 // A consumer that reads the output as ONE WORD says so through remote_stdout_as_one_word below; nothing
 // is normalized on its behalf.
 fn remote_leg_stdout_without_began(stdout: String) -> String {
-  let lines = split(s: stdout, delimiter: "\n")
-  let marker_lines = map(filter(enumerate(lines), p => p.second == remote_leg_began_word), p => p.first)
-  if count(marker_lines) == 0 { stdout }
-  else { join(map(filter(enumerate(lines), p => !(p.second == remote_leg_began_word && count(filter(marker_lines, m => m < p.first)) == 0)), p => p.second), "\n") }
+  let first_line = join([remote_leg_began_word, "\n"], "")
+  let inner_line = join(["\n", remote_leg_began_word, "\n"], "")
+  let last_line = join(["\n", remote_leg_began_word], "")
+  if starts_with(s: stdout, prefix: first_line) { substring(s: stdout, start: length(first_line), end: length(stdout)) }
+  else if stdout == remote_leg_began_word { "" }
+  else if string_contains(s: stdout, pattern: inner_line) {
+    let parts = split(s: stdout, delimiter: inner_line)
+    join([join(parts.take(n: 1), ""), join(skip(xs: parts, n: 1), inner_line)], "\n")
+  }
+  else if ends_with(s: stdout, suffix: last_line) { substring(s: stdout, start: 0, end: length(stdout) - length(last_line)) }
+  else { stdout }
 }
 
 // STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
