@@ -15,7 +15,7 @@ import std.measure {
   mebibyte_count,
   mebibyte_to_byte_size,
 }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.machine_intake_terminal_transcript { terminal_transcript_lines }

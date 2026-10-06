@@ -1,5 +1,6 @@
 module test.claim.materialization_store_witness
 
+import std.cache_identity { native_module_verdict_bundle_artifact_kind }
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.content_hash {
   ContentHash, Fnv1a64Structural, content_hash_atom, content_hash_of_value, serialize_content_hash, parse_content_hash,
@@ -48,9 +49,11 @@ import extdeps.filesystem.filesystem_io {
   filesystem_exact_read, filesystem_create_new,
 }
 import extdeps.realization.materialization_store_local {
-  LocalStoreOpened, LocalStoreUnavailable,
+  LocalStorePreOpened, LocalStorePreOpenRefused, LocalStoreCatalogInadmissible,
+  store_marker_decode, StoreMarkerDecoded, StoreMarkerForeign, StoreMarkerMalformed,
+  store_marker_head, store_marker_catalog_field, store_marker_catalog_admissible,
   LocalStoreNotInitialized, LocalStoreMarkerUnrecognized, LocalStoreMarkerUnavailable,
-  local_store_open_decide, store_marker_content, materialization_store_local_id,
+  local_store_open_decide, store_marker_content, materialization_store_local_id, LocalStoreFamilyBudget,
   store_read_observation,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -153,7 +156,7 @@ fn eval_preimage(req: ArtifactRequest) -> NonEmptyStr {
 }
 
 fn prepared_object(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> String {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: o, offered_digest: _, offered_result: _ } => o
     StoreCommitNotPrepared { commit: _ } => ""
   }
@@ -204,7 +207,7 @@ test fn a_committed_object_reads_back_as_a_hit_with_its_payloads() -> Bool {
   }
   let receipt_ok = store_lookup_fold(
     l: l,
-    hit: (a, ps, r) => r.request_key == request_key(req: bundle_req())
+    hit: (a, ps, bs, r) => r.request_key == request_key(req: bundle_req())
       && r.provider == materialization_store_local_id
       && match r.disposition { RealizationServed => true, RealizationCommitted => false, RealizationConvergedOnPriorCommit => false },
     miss: k => false,
@@ -286,6 +289,7 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
       parts: [payload_part(payload: verdicts)]
     },
     payloads: [verdicts],
+    blobs: [],
     evaluation_preimage: eval_preimage(req: bundle_req()),
     result_preimage: result_content_canonical(parts: [payload_part(payload: verdicts)], payloads: [verdicts])
   )
@@ -295,12 +299,12 @@ test fn an_object_missing_a_required_part_refuses_as_incomplete() -> Bool {
 // ---- commit: the door, and each settle arm
 
 test fn the_write_door_refuses_before_publishing() -> Bool {
-  let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }])
-  let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]))
-  let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]))
+  let missing = store_commit_prepare(req: bundle_req(), payloads: [ArtifactPayload { id: output_module_test_verdicts, content: "x" }], blobs: [])
+  let undeclared = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_native_compiler_executable, content: "x" }]), blobs: [])
+  let repeated = store_commit_prepare(req: bundle_req(), payloads: concat(bundle_payloads(), [ArtifactPayload { id: output_module_test_verdicts, content: "y" }]), blobs: [])
   preparation_tag(p: missing) == "contract_refused" && preparation_tag(p: undeclared) == "manifest_uninterpretable"
     && preparation_tag(p: repeated) == "manifest_uninterpretable"
-    && preparation_tag(p: store_commit_prepare(req: bundle_req(), payloads: bundle_payloads())) == "prepared"
+    && preparation_tag(p: store_commit_prepare(req: bundle_req(), payloads: bundle_payloads(), blobs: [])) == "prepared"
 }
 
 fn preparation_tag(p: StoreCommitPreparation) -> String {
@@ -311,7 +315,7 @@ fn preparation_tag(p: StoreCommitPreparation) -> String {
 }
 
 fn offered_digest(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ContentHash {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: d, offered_result: _ } => d
     StoreCommitNotPrepared { commit: _ } => request_key(req: req)
   }
@@ -335,7 +339,7 @@ test fn commit_settles_only_on_a_verified_read_back() -> Bool {
 }
 
 fn offered_result_of(req: ArtifactRequest, payloads: List<ArtifactPayload>) -> ResultContentIdentity {
-  match store_commit_prepare(req: req, payloads: payloads) {
+  match store_commit_prepare(req: req, payloads: payloads, blobs: []) {
     StoreCommitPrepared { key: _, object_name: _, object: _, offered_digest: _, offered_result: r } => r
     StoreCommitNotPrepared { commit: _ } => result_content_identity(
       bucket: request_key(req: req),
@@ -355,9 +359,9 @@ test fn provider_identity_is_in_the_receipt_and_not_in_the_key() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: bundle_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: bundle_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
+    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
+        StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && (ra.provider == rb.provider) == false && (ra.store_instance == rb.store_instance) == false
         StoreLookupMiss { key: _ } => false
@@ -401,23 +405,97 @@ test fn the_error_kind_channel_separates_absent_from_unreadable() -> Bool {
   absent && unreadable && unrecognized && occupied && refused
 }
 
-// a durable store's marker is not an ephemeral store's marker: a scratch root holding it refuses
+// a durable store's marker is not an ephemeral store's marker: a scratch root holding it refuses.
+// The marker decision yields a PRE-OPEN whose budgets are the catalog DECODED from the marker: offered
+// out of order, the bound catalog still comes back in the marker's canonical order, so the binding is
+// read from the marker and not copied from the caller's list.
 test fn a_store_opens_only_on_its_own_marker() -> Bool {
   let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
-  let marker = store_marker_content(root: root, instance_label: "witness")
-  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }) {
-    LocalStoreOpened { root: _, store: s, durability: _ } => s.provider == materialization_store_local_id
-    LocalStoreUnavailable { root_path: _, cause: _ } => false
+  let two = [budget_row(family: "zeta", bytes: 7), budget_row(family: "alpha", bytes: 4096)]
+  let marker = store_marker_content(root: root, instance_label: "witness", budgets: two)
+  let opened = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: two) {
+    LocalStorePreOpened { pre: p, durability: _ } =>
+      p.binding.store.provider == materialization_store_local_id
+        && (p.binding.budgets |> map(b => b.family as String)) == ["alpha", "zeta"]
+        && (p.binding.budgets |> map(b => measure_count(m: b.budget))) == [4096, 7]
+    LocalStorePreOpenRefused { root_path: _, cause: _ } => false
   }
-  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }) {
-    LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
-    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  let uninitialized = match local_store_open_decide(root: root, marker_read: FilesystemExactPathAbsent { path: "/m" }, budgets: two) {
+    LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreNotInitialized { marker_path: _ } => true, _ => false }
+    LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness") }) {
-    LocalStoreUnavailable { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
-    LocalStoreOpened { root: _, store: _, durability: _ } => false
+  let foreign = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: store_marker_content(root: DurableHostVolumeRoot, instance_label: "witness", budgets: two) }, budgets: two) {
+    LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreMarkerUnrecognized { marker_path: _ } => true, _ => false }
+    LocalStorePreOpened { pre: _, durability: _ } => false
   }
-  opened && uninitialized && foreign
+  let duplicate_offer = match local_store_open_decide(root: root, marker_read: FilesystemExactPathRead { path: "/m", content: marker }, budgets: [budget_row(family: "alpha", bytes: 4096), budget_row(family: "alpha", bytes: 4096), budget_row(family: "zeta", bytes: 7)]) {
+    LocalStorePreOpenRefused { root_path: _, cause: c } => match c { LocalStoreCatalogInadmissible { detail: _ } => true, _ => false }
+    LocalStorePreOpened { pre: _, durability: _ } => false
+  }
+  opened && uninitialized && foreign && duplicate_offer
+}
+
+fn budget_row(family: String, bytes: Int) -> LocalStoreFamilyBudget {
+  LocalStoreFamilyBudget { family: family as ArtifactKindId, budget: byte_size(count: bytes) }
+}
+
+fn catalog_text(c: List<LocalStoreFamilyBudget>) -> List<String> {
+  c |> map(b => concat(concat(b.family as String, " -> "), measure_count(m: b.budget) as String))
+}
+
+fn decodes_to(root: MaterializationStoreRoot, content: String, expected: List<LocalStoreFamilyBudget>) -> Bool {
+  match store_marker_decode(root: root, content: content) {
+    StoreMarkerDecoded { catalog: c } => catalog_text(c: c) == catalog_text(c: expected)
+    StoreMarkerForeign => false
+    StoreMarkerMalformed { detail: _ } => false
+  }
+}
+
+fn is_malformed(root: MaterializationStoreRoot, content: String) -> Bool {
+  match store_marker_decode(root: root, content: content) {
+    StoreMarkerMalformed { detail: _ } => true
+    StoreMarkerDecoded { catalog: _ } => false
+    StoreMarkerForeign => false
+  }
+}
+
+fn hand_marker(root: MaterializationStoreRoot, after_head: String) -> String {
+  concat(store_marker_head(root: root), after_head)
+}
+
+// THE MARKER CODEC IS EXACT. Family names that carry every delimiter the old text form used
+// (",", "=", ";", ":", a line feed, a non-ASCII scalar) round-trip to exactly their catalog, and the
+// catalog [x=1, y=2] and the single family "x=1,y" at 2 -- one text under the old encoding -- encode
+// differently and each decodes to itself.
+test fn the_marker_catalog_round_trips_and_no_two_catalogs_share_an_encoding() -> Bool {
+  let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
+  let awkward = [budget_row(family: "a=1,b;2:c", bytes: 10), budget_row(family: "line\nfeed", bytes: 0), budget_row(family: "é€", bytes: 99)]
+  let sorted_awkward = awkward |> sort_by(b => b.family as String)
+  let pair = [budget_row(family: "x", bytes: 1), budget_row(family: "y", bytes: 2)]
+  let fused = [budget_row(family: "x=1,y", bytes: 2)]
+  decodes_to(root: root, content: store_marker_content(root: root, instance_label: "w", budgets: awkward), expected: sorted_awkward)
+    && decodes_to(root: root, content: store_marker_content(root: root, instance_label: "w", budgets: pair), expected: pair)
+    && decodes_to(root: root, content: store_marker_content(root: root, instance_label: "w", budgets: fused), expected: fused)
+    && store_marker_catalog_field(budgets: pair) != store_marker_catalog_field(budgets: fused)
+}
+
+// THE DECODER ACCEPTS ONLY THE ENCODER'S IMAGE. A duplicated family refuses in either order (so no
+// "first row wins" can pick a budget), two catalog fields refuse, and so do a leading zero, a length
+// that runs past its name, an unsorted pair, an empty catalog and a missing or doubled instance line.
+test fn a_marker_outside_the_canonical_encoding_is_malformed() -> Bool {
+  let root = WitnessScratchRoot { root: "/tmp/gunbc_matstore_witness" }
+  is_malformed(root: root, content: hand_marker(root: root, after_head: "1:F=10;1:F=20;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:F=20;1:F=10;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:x=1;\nfamilies 1:x=9;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "01:x=1;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:x=01;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "9:x=1;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:y=2;1:x=1;\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "\ninstance w\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:x=1;\n"))
+    && is_malformed(root: root, content: hand_marker(root: root, after_head: "1:x=1;\ninstance w\ninstance v\n"))
+    && decodes_to(root: root, content: hand_marker(root: root, after_head: "1:x=1;1:y=2;\ninstance w\n"), expected: [budget_row(family: "x", bytes: 1), budget_row(family: "y", bytes: 2)])
+    && !store_marker_catalog_admissible(budgets: [budget_row(family: "F", bytes: 10), budget_row(family: "F", bytes: 20)])
 }
 
 // A part's size is its UTF-8 BYTE count, not its code-point count: "é€" is 2 code points and 5
@@ -529,9 +607,9 @@ test fn a_compiler_request_key_ignores_which_store_serves_it() -> Bool {
   let a = store_lookup_decide(store: witness_store(), req: compiler_req(), read: StoreObjectPresent { content: object })
   let b = store_lookup_decide(store: other_store, req: compiler_req(), read: StoreObjectPresent { content: object })
   match a {
-    StoreLookupHit { artifact: _, payloads: _, receipt: ra, evaluation_identity: _ } =>
+    StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: ra, evaluation_identity: _ } =>
       match b {
-        StoreLookupHit { artifact: _, payloads: _, receipt: rb, evaluation_identity: _ } =>
+        StoreLookupHit { artifact: _, payloads: _, blobs: _, receipt: rb, evaluation_identity: _ } =>
           ra.request_key == rb.request_key && ra.content_digest == rb.content_digest
             && ra.request_key == request_key(req: compiler_req())
             && (ra.provider == rb.provider) == false
@@ -561,7 +639,7 @@ test fn dropping_preimage_compare_would_serve_a_foreign_canonical() -> Bool {
   let tampered = replace(good, percent_encode_payload(s: expected as String), percent_encode_payload(s: foreign as String))
   match decode_store_object(content: tampered) {
     StoreObjectMalformed { cause: _ } => false
-    StoreObjectDecoded { manifest: m, payloads: ps, evaluation_preimage: p, result_preimage: _ } =>
+    StoreObjectDecoded { manifest: m, payloads: ps, blobs: _, evaluation_preimage: p, result_preimage: _ } =>
       match artifact_from_manifest(m: m) {
         ManifestDecoded { artifact: a } =>
           lookup_is_refused_evaluation_preimage_mismatch(l: provider_serve(
@@ -594,7 +672,7 @@ test fn store_object_generation_is_in_the_name_and_v1_magic_is_malformed() -> Bo
           (name == v1_name) == false
             && (name |> split(delimiter: ".") |> filter(p => p == store_object_format_version) |> count()) == 1
             && (c |> split(delimiter: store_object_format_version) |> count()) > 1
-        StoreObjectDecoded { manifest: _, payloads: _, evaluation_preimage: _, result_preimage: _ } => false
+        StoreObjectDecoded { manifest: _, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } => false
       }
     }
   }
@@ -617,21 +695,23 @@ test fn recorded_store_key_round_trips_sha256_and_sha512_wire() -> Bool {
           let o256 = encode_store_object(
             manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k256, parts: [part] },
             payloads: payloads,
+            blobs: [],
             evaluation_preimage: pre,
             result_preimage: result
           )
           let o512 = encode_store_object(
             manifest: ArtifactManifest { kind: request_kind(req: req), request_key: k512, parts: [part] },
             payloads: payloads,
+            blobs: [],
             evaluation_preimage: pre,
             result_preimage: result
           )
           match decode_store_object(content: o256) {
             StoreObjectMalformed { cause: _ } => false
-            StoreObjectDecoded { manifest: m256, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+            StoreObjectDecoded { manifest: m256, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } =>
               match decode_store_object(content: o512) {
                 StoreObjectMalformed { cause: _ } => false
-                StoreObjectDecoded { manifest: m512, payloads: _, evaluation_preimage: _, result_preimage: _ } =>
+                StoreObjectDecoded { manifest: m512, payloads: _, blobs: _, evaluation_preimage: _, result_preimage: _ } =>
                   m256.request_key == k256
                     && m512.request_key == k512
                     && match content_hash_family(hash: m256.request_key) {
@@ -669,8 +749,8 @@ test fn parse_content_hash_refuses_trailing_repeated_prefix() -> Bool {
     Present { value: sha } => {
       let h = as_content_hash_cryptographic(digest: sha)
       let canon = serialize_content_hash(hash: h) as String
-      let alias = concat(canon, "sha256:ignored")
-      match parse_content_hash(wire: alias) {
+      let alias_value = concat(canon, "sha256:ignored")
+      match parse_content_hash(wire: alias_value) {
         Present { value: _ } => false
         Absent =>
           match parse_content_hash(wire: canon) {

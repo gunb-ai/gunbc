@@ -1,7 +1,7 @@
 module extdeps.linux.proc_mountinfo
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { trim }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -38,12 +38,14 @@ fn mountinfo_mount_points(content: String) -> MountinfoMountPoints {
       Present { value: _ } => acc
       Absent => {
         let fields = split(s: line, delimiter: " ")
-        if length(fields) <= mountinfo_mount_point_field_index {
-          MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the line has fewer than five fields, so it names no mount point" as NonEmptyStr } } }
-        } else if string_contains(s: fields[mountinfo_mount_point_field_index], pattern: "\\") {
-          MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the mount point carries a kernel octal escape, which this model does not decode" as NonEmptyStr } } }
-        } else {
-          MountinfoFold { points: list_push(acc.points, fields[mountinfo_mount_point_field_index]), refusal: none }
+        match fields[mountinfo_mount_point_field_index] {
+          Absent => MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the line has fewer than five fields, so it names no mount point" as NonEmptyStr } } }
+          Present { value: point } =>
+            if string_contains(s: point, pattern: "\\") {
+              MountinfoFold { points: acc.points, refusal: Present { value: MountPointsUndecodable { line: line, cause: "the mount point carries a kernel octal escape, which this model does not decode" as NonEmptyStr } } }
+            } else {
+              MountinfoFold { points: list_push(acc.points, point), refusal: none }
+            }
         }
       }
     },

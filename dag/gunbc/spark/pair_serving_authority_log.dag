@@ -4,15 +4,15 @@ import std.types { String, Bool, Int, NonEmptyStr, List, EpochSecs }
 import std.nat { Nat }
 import std.measure { Second, second, second_count }
 import gunbc.spark.host_effect_quiescence { HostEffectResidueSpec, HostQuiescenceEvidence, residue_spec_members, residue_spec_decode, quiescence_evidence_members, quiescence_evidence_decode, quiescence_evidence_covers, ReleaseProvenance, ClaimantTerminal, RecoveryAuthorized, release_provenance_members, release_provenance_decode, release_provenance_covers, parse_claimant_standing }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, serialize_content_hash, parse_content_hash, content_hash_equal }
 import std.temporal_effect {
   HeldLease, HeldLeaseObservedState, LeaseEpoch, held_lease, held_lease_with_observed,
   LeaseRunningExpected, LeaseRunningStale, LeaseInaccessible,
 }
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity, lease_grant_expired_at }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonArray, json_kv, json_string, json_int, json_array, json_object, serialize_json }
-import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse { json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject }
 import product.capacity.event_chain {
   PartitionId, EventId, ChainEvent, ChainEnvelope, HeadExpectation, HeadAbsent, HeadAt, head_expectation_eq,
   EventDecode, ChainWalk, ChainWalked, ChainIncomplete, ChainBudgetExhausted,
@@ -315,7 +315,7 @@ fn same_host_set(a: List<HostIdentity>, b: List<HostIdentity>) -> Bool {
 }
 
 fn preparation_is_pending(r: PlacementPreparationRecord) -> Bool {
-  match r.state { Prepared => true  AppendClaimed { claimant: _, expected_head: _, intent: _ } => true  _ => false }
+  match r.state { Prepared => true  AppendClaimed { claimant: _, expected_head: _, intent: _ } => true  Finalized { authority_event: _, finalized_by: _, intent: _ } => false  Aborted => false }
 }
 
 fn preparation_ref_of(r: PlacementPreparationRecord) -> PlacementPreparationRef {
@@ -414,7 +414,7 @@ fn preparation_ref_expected(id: EventId, group: FabricGroup, previous: List<Host
 // THE GROUP'S LIVE COMMITMENT: the next population of its newest finalized preparation (none
 // before the first finalization).
 fn group_live_commitment(preps: List<PlacementPreparationRecord>, group: FabricGroup) -> List<HostIdentity> {
-  match last(filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _, intent: _ } => true  _ => false }))) {
+  match last(filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _, intent: _ } => true  Prepared => false  AppendClaimed { claimant: _, expected_head: _, intent: _ } => false  Aborted => false }))) {
     Absent => [] as List<HostIdentity>
     Present { value: r } => r.next_hosts
   }
@@ -533,7 +533,11 @@ fn host_elements_decode_allowing_empty(elements: List<JsonValue>) -> List<HostId
         Present { value: hs } =>
           match e {
             JsonString { value: h } => if h == "" { none } else { Present { value: concat(hs, [h as HostIdentity]) } }
-            _ => none
+            JsonNull => none
+            JsonBool { value: _ } => none
+            JsonNumber { lexeme: _ } => none
+            JsonArray { elements: _ } => none
+            JsonObject { members: _ } => none
           }
       })
 }
@@ -541,7 +545,14 @@ fn host_elements_decode_allowing_empty(elements: List<JsonValue>) -> List<HostId
 fn hosts_decode_allowing_empty(doc: JsonValue, prefix: String) -> List<HostIdentity>? {
   match json_object_unique_member(v: doc, key: join([prefix, "hosts"], "")) {
     JsonMemberFound { value: JsonArray { elements: es } } => host_elements_decode_allowing_empty(elements: es)
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -579,7 +590,14 @@ fn preparation_ref_decode(doc: JsonValue) -> PlacementPreparationRef? {
 fn hosts_decode(doc: JsonValue, prefix: String) -> List<HostIdentity>? {
   match json_object_unique_member(v: doc, key: join([prefix, "hosts"], "")) {
     JsonMemberFound { value: JsonArray { elements: es } } => host_elements_decode(elements: es)
-    _ => none
+    JsonMemberFound { value: JsonNull } => none
+    JsonMemberFound { value: JsonBool { value: _ } } => none
+    JsonMemberFound { value: JsonNumber { lexeme: _ } } => none
+    JsonMemberFound { value: JsonString { value: _ } } => none
+    JsonMemberFound { value: JsonObject { members: _ } } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -1252,7 +1270,12 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
           AuthorityFoldRefused { at_event: env.id, reason: "a transition was recorded before any authority was established on this partition" }
         EntryStateRecorded { transaction: _, body: _ } =>
           AuthorityFoldRefused { at_event: env.id, reason: "an entry state was recorded before any authority was established on this partition" }
-        _ => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        HostEffectAdmitted { host: _, purpose: _, executor: _, term: _, residue: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        HostEffectReleased { admitted_by: _, evidence: _, provenance: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementPrepared { operation: _, group: _, previous_hosts: _, next_hosts: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementAppendClaimed { preparation: _, intent: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementFinalized { preparation: _, authority_event: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementAborted { preparation: _, reason: _, provenance: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
       }
     AuthorityFolded { current: cur, generation: g, grant: cg, entry_state: ces, previous: cp, admitted_by: cab, transitions: recs, preparations_consumed: pcs, cancelled: xs } =>
       match env.event.payload {
@@ -1294,7 +1317,12 @@ fn authority_fold_step(acc: AuthorityFold, env: ChainEnvelope<PairAuthorityEvent
           }
           }
           }
-        _ => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        HostEffectAdmitted { host: _, purpose: _, executor: _, term: _, residue: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        HostEffectReleased { admitted_by: _, evidence: _, provenance: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementPrepared { operation: _, group: _, previous_hosts: _, next_hosts: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementAppendClaimed { preparation: _, intent: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementFinalized { preparation: _, authority_event: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
+        PlacementAborted { preparation: _, reason: _, provenance: _ } => AuthorityFoldRefused { at_event: env.id, reason: placement_event_on_group_partition }
       }
   }
 }
@@ -1329,7 +1357,8 @@ fn abort_provenance_covers(r: PlacementPreparationRecord, provenance: ReleasePro
   match r.state {
     Prepared => release_provenance_covers(p: provenance, claim: r.id, claimant: r.prepared_by, actor: actor)
     AppendClaimed { claimant: cl, expected_head: _, intent: _ } => release_provenance_covers(p: provenance, claim: r.id, claimant: cl, actor: actor)
-    _ => false
+    Finalized { authority_event: _, finalized_by: _, intent: _ } => false
+    Aborted => false
   }
 }
 
@@ -1372,7 +1401,10 @@ fn placement_fold_step(acc: PlacementFold, env: ChainEnvelope<PairAuthorityEvent
                   }
               }
             }
-            _ => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
+            Absent => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
+            Present { value: PlacementPreparationRecord { state: AppendClaimed { claimant: _, expected_head: _, intent: _ } } } => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
+            Present { value: PlacementPreparationRecord { state: Finalized { authority_event: _, finalized_by: _, intent: _ } } } => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
+            Present { value: PlacementPreparationRecord { state: Aborted } } => PlacementFoldRefused { at_event: env.id, reason: join(["an append claim names no Prepared preparation ", pr as String], "") }
           }
           }
         PlacementFinalized { preparation: pr, authority_event: ae } =>
@@ -1385,7 +1417,9 @@ fn placement_fold_step(acc: PlacementFold, env: ChainEnvelope<PairAuthorityEvent
                   } else {
                     PlacementFolded { effects: effs, preparations: map(preps, x => if (x.id as String) == (pr.id as String) { preparation_with_state(r: x, state: Finalized { authority_event: ae, finalized_by: env.id, intent: i }) } else { x }) }
                   }
-                _ => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names preparation ", pr.id as String, " whose append was never claimed"], "") }
+                Prepared => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names preparation ", pr.id as String, " whose append was never claimed"], "") }
+                Finalized { authority_event: _, finalized_by: _, intent: _ } => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names preparation ", pr.id as String, " whose append was never claimed"], "") }
+                Aborted => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names preparation ", pr.id as String, " whose append was never claimed"], "") }
               }
             Absent => PlacementFoldRefused { at_event: env.id, reason: join(["a finalization names no pending preparation ", pr.id as String], "") }
           }
@@ -1399,7 +1433,10 @@ fn placement_fold_step(acc: PlacementFold, env: ChainEnvelope<PairAuthorityEvent
                 PlacementFolded { effects: effs, preparations: map(preps, x => if (x.id as String) == (pr as String) { preparation_with_state(r: x, state: Aborted) } else { x }) }
               }
           }
-        _ => PlacementFoldRefused { at_event: env.id, reason: "an authority event on the placement partition: authority lives on the group partitions only" }
+        AuthorityEstablished { authority: _, placement: _ } => PlacementFoldRefused { at_event: env.id, reason: "an authority event on the placement partition: authority lives on the group partitions only" }
+        AuthorityTransitioned { previous: _, next: _, transaction: _, lifecycle: _, grant: _, entry_state: _, placement: _ } => PlacementFoldRefused { at_event: env.id, reason: "an authority event on the placement partition: authority lives on the group partitions only" }
+        EntryStateRecorded { transaction: _, body: _ } => PlacementFoldRefused { at_event: env.id, reason: "an authority event on the placement partition: authority lives on the group partitions only" }
+        AuthorityAppendCancelled { preparation: _, provenance: _ } => PlacementFoldRefused { at_event: env.id, reason: "an authority event on the placement partition: authority lives on the group partitions only" }
       }
   }
 }
@@ -1606,7 +1643,7 @@ fn placement_read_over(placement: PlacementRead, groups: List<GroupSnapshot>) ->
 // the fold's word, never a raw event's presence: an event the fold refuses (a cancelled or
 // twice-consumed preparation, a wrong previous state, a bad grant) discharges nothing.
 fn finalization_gaps(group: FabricGroup, partition: GroupPartitionRead, preps: List<PlacementPreparationRecord>) -> List<String> {
-  let finalized = filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _, intent: _ } => true  _ => false }))
+  let finalized = filter(preps, r => same_group(a: r.group, b: group) && (match r.state { Finalized { authority_event: _, finalized_by: _, intent: _ } => true  Prepared => false  AppendClaimed { claimant: _, expected_head: _, intent: _ } => false  Aborted => false }))
   if length(finalized) == 0 { [] as List<String> } else {
     match partition {
       GroupPartitionUnread { step: st, reason: why } => [join([fabric_group_wire(g: group) as String, "'s chain could not be read at ", st, ": ", why], "")]
@@ -1622,7 +1659,9 @@ fn finalization_gaps(group: FabricGroup, partition: GroupPartitionRead, preps: L
                     Absent => [join(["preparation ", r.id as String, " is finalized to authority event ", ae as String, ", which ", fabric_group_wire(g: group) as String, "'s accepted history did not admit"], "")]
                     Present { value: c } => match consumed_join(consumed: c, r: r) { Absent => [] as List<String>  Present { value: gap } => [gap] }
                   }
-                _ => [] as List<String>
+                Prepared => [] as List<String>
+                AppendClaimed { claimant: _, expected_head: _, intent: _ } => [] as List<String>
+                Aborted => [] as List<String>
               })
         }
     }
@@ -1731,7 +1770,10 @@ fn placement_claim_append(store: FabricStorageBinding, preparation: EventId, int
             EventAppendStale { expected: _, observed: _ } => PlacementAppendClaimStale
             EventAppendRefused { cause: c } => PlacementAppendClaimRefused { step: "store", reason: event_log_refusal_wire(cause: c) }
           }
-        _ => PlacementAppendClaimRefused { step: "preparation", reason: join(["preparation ", preparation as String, " is not Prepared (aborted, already claimed, or unknown)"], "") }
+        Absent => PlacementAppendClaimRefused { step: "preparation", reason: join(["preparation ", preparation as String, " is not Prepared (aborted, already claimed, or unknown)"], "") }
+        Present { value: PlacementPreparationRecord { state: AppendClaimed { claimant: _, expected_head: _, intent: _ } } } => PlacementAppendClaimRefused { step: "preparation", reason: join(["preparation ", preparation as String, " is not Prepared (aborted, already claimed, or unknown)"], "") }
+        Present { value: PlacementPreparationRecord { state: Finalized { authority_event: _, finalized_by: _, intent: _ } } } => PlacementAppendClaimRefused { step: "preparation", reason: join(["preparation ", preparation as String, " is not Prepared (aborted, already claimed, or unknown)"], "") }
+        Present { value: PlacementPreparationRecord { state: Aborted } } => PlacementAppendClaimRefused { step: "preparation", reason: join(["preparation ", preparation as String, " is not Prepared (aborted, already claimed, or unknown)"], "") }
       }
   }
 }
@@ -1772,7 +1814,8 @@ fn preparation_consumption(store: FabricStorageBinding, preparation: EventId) ->
                         match r.state {
                           AppendClaimed { claimant: _, expected_head: _, intent: i } => if write_intent_eq(a: i, b: c.intent) { PreparationConsumedBy { preparation: ref, authority_event: c.authority_event, state: r.state } } else { PreparationConsumptionUnread { step: "join", reason: join(["authority event ", c.authority_event as String, " is not the write preparation ", preparation as String, "'s append claim named"], "") } }
                           Finalized { authority_event: _, finalized_by: _, intent: i } => if write_intent_eq(a: i, b: c.intent) { PreparationConsumedBy { preparation: ref, authority_event: c.authority_event, state: r.state } } else { PreparationConsumptionUnread { step: "join", reason: join(["authority event ", c.authority_event as String, " is not the write preparation ", preparation as String, "'s append claim named"], "") } }
-                          _ => PreparationConsumptionUnread { step: "join", reason: join(["authority event ", c.authority_event as String, " consumed preparation ", preparation as String, " whose append was never claimed"], "") }
+                          Prepared => PreparationConsumptionUnread { step: "join", reason: join(["authority event ", c.authority_event as String, " consumed preparation ", preparation as String, " whose append was never claimed"], "") }
+                          Aborted => PreparationConsumptionUnread { step: "join", reason: join(["authority event ", c.authority_event as String, " consumed preparation ", preparation as String, " whose append was never claimed"], "") }
                         }
                       }
                   }
@@ -1811,7 +1854,10 @@ fn placement_finalize_attempt(store: FabricStorageBinding, preparation: Placemen
               else { PlacementCleanupStillFencing { preparation: preparation.id, cause: "the placement partition kept moving while the finalization was being appended" } }
             EventAppendRefused { cause: c } => PlacementCleanupStillFencing { preparation: preparation.id, cause: join(["the finalization was refused at ", "store", ": ", event_log_refusal_wire(cause: c)], "") }
           }
-        _ => PlacementCleanupStillFencing { preparation: preparation.id, cause: "the finalization names no append-claimed pending preparation" }
+        Absent => PlacementCleanupStillFencing { preparation: preparation.id, cause: "the finalization names no append-claimed pending preparation" }
+        Present { value: PlacementPreparationRecord { state: Prepared } } => PlacementCleanupStillFencing { preparation: preparation.id, cause: "the finalization names no append-claimed pending preparation" }
+        Present { value: PlacementPreparationRecord { state: Finalized { authority_event: _, finalized_by: _, intent: _ } } } => PlacementCleanupStillFencing { preparation: preparation.id, cause: "the finalization names no append-claimed pending preparation" }
+        Present { value: PlacementPreparationRecord { state: Aborted } } => PlacementCleanupStillFencing { preparation: preparation.id, cause: "the finalization names no append-claimed pending preparation" }
       }
   }
 }
@@ -1841,13 +1887,16 @@ fn placement_abort_attempt(store: FabricStorageBinding, read: PlacementRead, pre
             } else {
               match cancel_claimed_append(store: store, group: rec.group, head: ghead, preparation: preparation, provenance: provenance, actor: actor, at: at) {
                 CancellationRefused { cause: c } => PlacementCleanupStillFencing { preparation: preparation, cause: c }
-                _ => placement_abort_attempt(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: attempts_left - 1)
+                CancellationLanded { id: _ } => placement_abort_attempt(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: attempts_left - 1)
+                CancellationStale => placement_abort_attempt(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at, attempts_left: attempts_left - 1)
               }
             }
           } else {
             placement_abort_append(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
           }
-        _ => placement_abort_append(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+        Prepared => placement_abort_append(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+        Finalized { authority_event: _, finalized_by: _, intent: _ } => placement_abort_append(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
+        Aborted => placement_abort_append(store: store, read: read, preparation: preparation, reason: reason, provenance: provenance, actor: actor, at: at)
       }
       }
   }
@@ -1979,7 +2028,9 @@ fn host_placement_cleanup_wet(preparation: String, cleanup: fn(FabricStorageBind
             Present { value: at } =>
               match cleanup(store, executor as NonEmptyStr, at) {
                 PlacementCleanupStillFencing { preparation: _, cause: why } => exit_failure(reason: why)
-                _ => ExitSuccess
+                PlacementFinalizedAt { preparation: _, id: _ } => ExitSuccess
+                PlacementAbortedAt { preparation: _, id: _ } => ExitSuccess
+                PlacementCleanupUnread { cause: why } => exit_failure(reason: why)
               }
           }
       }

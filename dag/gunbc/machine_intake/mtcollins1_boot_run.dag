@@ -72,7 +72,7 @@ import extdeps.bootloader.grub {
 }
 import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_endpoint, mtcollins1_boot_ipmi_read_deadline, mtcollins1_boot_ipmi_kill_after }
 import gunbc.host_reset_return_run { host_reset_bmc_credential_path_env }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.actions_run_binding { ActionsVariableRead, actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, actions_variable_trimmed }
 import extdeps.github.actions_environment { github_run_id_variable_name, github_sha_variable_name }
 import extdeps.bmc.ipmi
@@ -121,6 +121,7 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmObserverStart, KvmObserverStarted, KvmObserverNotStarted, KvmObserverRecord, KvmJournalEvent,
   KvmHandoffAdmitted, KvmHandoffRefused, kvm_handoff_admission, kvm_observer_standing_now, kvm_standing_text,
   KvmObserverStanding, KvmObserverProcessNotRunning, KvmObserverJournalUnread, KvmObserverStopped,
+  KvmObserverEstablished, KvmObserverLost, KvmObserverMismatch, KvmObserverRefused, KvmObserverFailed, KvmObserverPending,
   megarac_kvm_observer_start, megarac_kvm_observer_finish, kvm_observer_trigger, kvm_observer_record_not_started,
   kvm_boundary_events, kvm_journal_events_at, kvm_event_text, kvm_observer_receipt_line,
   megarac_kvm_still_allowance,

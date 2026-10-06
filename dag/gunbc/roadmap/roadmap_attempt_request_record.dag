@@ -4,7 +4,10 @@ import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.filesystem.filesystem_io {
   Filesystem, FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused,
   FilesystemCreateKindUnrecognized, filesystem_create_new,
+  FilesystemFileObservation, FilesystemFileRead, FilesystemFileAbsent, FilesystemFileIndeterminate,
+  FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
 import extdeps.languages.json.emit { JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject, json_object, json_kv, json_string, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -155,20 +158,24 @@ type AttemptRequestBindingRead
   | RequestBindingAbsent
   | RequestBindingUnreadable { reason: String }
 
-fn attempt_request_binding_read_of(success: Bool, error_kind: String, error: String, content: String) -> AttemptRequestBindingRead {
-  if success {
-    match attempt_request_binding_decode(text: content) {
-      RequestBindingDecoded { binding } => RequestBindingRead { binding: binding }
-      RequestBindingUndecodable { reason } => RequestBindingUnreadable { reason: reason }
-    }
-  } else if error_kind == "not_found" {
-    RequestBindingAbsent
-  } else {
-    RequestBindingUnreadable { reason: error }
+fn attempt_request_binding_read_from_observation(observation: FilesystemFileObservation) -> AttemptRequestBindingRead {
+  match observation {
+    FilesystemFileAbsent(_) => RequestBindingAbsent
+    FilesystemFileRead { path: _, content } =>
+      match attempt_request_binding_decode(text: content) {
+        RequestBindingDecoded { binding } => RequestBindingRead { binding: binding }
+        RequestBindingUndecodable { reason } => RequestBindingUnreadable { reason: reason }
+      }
+    FilesystemFileIndeterminate { cause } => RequestBindingUnreadable { reason: cause }
+    FilesystemFileObservationsDisagree { path: _, cause } => RequestBindingUnreadable { reason: cause }
+    FilesystemFileSubjectRefused { directory: _, name: _, cause } => RequestBindingUnreadable { reason: cause }
   }
 }
 
 fn attempt_request_binding_read_for_instance(instance: HostDashboardInstance, node_id: RoadmapNodeId, attempt_key: String) -> AttemptRequestBindingRead {
-  let read = Filesystem.Read(path: attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key))
-  attempt_request_binding_read_of(success: read.success, error_kind: read.error_kind, error: read.error, content: read.content)
+  attempt_request_binding_read_from_observation(
+    observation: filesystem_file_observation_of_path(
+      path: attempt_request_binding_path_for_instance(instance: instance, node_id: node_id, attempt_key: attempt_key),
+    ),
+  )
 }

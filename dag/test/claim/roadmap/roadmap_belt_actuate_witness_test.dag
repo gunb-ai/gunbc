@@ -2,6 +2,7 @@ module test.claim.roadmap_belt_actuate_witness
 
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap_nesting { roadmap_memberships }
+import extdeps.filesystem.filesystem_io { filesystem_read_outcome, filesystem_file_observation, filesystem_listing_observation, FilesystemReadRefused, FilesystemFileObservation }
 import gunbc.roadmap_belt_actuate { belt_spawn_outcome_with_release }
 
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
@@ -50,6 +51,9 @@ import gunbc.roadmap_belt_actuate {
   belt_candidate_subject_reading, CandidateSubjectSettled, CandidateSubjectBound,
   VerificationPassedConfirmed, VerificationNotPassed, VerificationUnreadable,
   belt_publish_pass_outcome_from,
+  WorkflowModeledStatePointerState, WorkflowModeledStatePointerAbsent, WorkflowModeledStatePointerUnreadable,
+  selection_standing_for_pointer, verification_source_standing_for_pointer,
+  publication_source_standing_for_pointer, review_report_standing_for_pointer,
 }
 import gunbc.roadmap.roadmap_submission {
   SubmissionReadiness, SubmissionReady, SubmissionNeedsContext,
@@ -91,7 +95,7 @@ import gunbc.roadmap_dispatch_actuator {
 import extdeps.tmux { classify_tmux_session_list, TmuxSessionsListed }
 import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
 import std.upsert_decision { ObservationVerdict, Converged }
-import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef }
+import gunbc.roadmap_dispatch_actuator { DispatchAttemptRef, ExecutorDefault }
 import gunbc.roadmap_attempt_metering { MeteringNotDue, MeteringPersisted, MeteringPersistRefused, MeteringStandingFinal }
 import gunbc.roadmap_belt_actuate { belt_metering_pass_outcome_from, workflow_attempt_scope_admits, WorkflowAttemptsAllNodes, WorkflowAttemptsOneNode, belt_tick_receipt_schema, belt_path_parent_dir, belt_worker_process_terminal, belt_attempt_worker_terminal }
 import gunbc.roadmap_provider_events { ProviderRunning, ProviderEventsRefused, ProviderAwaitingSeat }
@@ -127,7 +131,7 @@ import gunbc.roadmap_belt_actuate {
   belt_workflow_attempt_presentation_json_with_tick_read,
   belt_verification_presentation_detail,
   belt_tick_receipt_decode,
-  belt_tick_receipt_read_from_filesystem,
+  belt_tick_receipt_read_from_observation,
   belt_tick_receipt_wire_json_from_read,
   BeltTickReceiptRead,
   BeltTickReceiptAbsent,
@@ -198,6 +202,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.roadmap_workflow_stage {
   WorkflowSegment, VerificationWorkflowSegment, WorkflowSegmentFailed,
+  WorkflowSegmentRefused,
 }
 import gunbc.roadmap_authority { declared_roadmap_nodes, declared_roadmap_edges }
 import gunbc.worker_lifecycle { WorkerProcessUnobserved }
@@ -1001,8 +1006,7 @@ fn preflight_with_config(config: String) -> BeltClaudePreflight {
     claude_on_path: true,
     home: "/home/u",
     trust_store_path: "/home/u/.claude.json",
-    trust_store_readable: true,
-    trust_store_text: config,
+    trust_store_read: filesystem_read_outcome(content: config, success: true, error: "unused on success"),
     trust_root: "/opt/x/worktrees",
   )
 }
@@ -1012,8 +1016,7 @@ test fn witness_preflight_refuses_missing_claude() -> Bool {
     claude_on_path: false,
     home: "/home/u",
     trust_store_path: "",
-    trust_store_readable: false,
-    trust_store_text: "",
+    trust_store_read: filesystem_read_outcome(content: "", success: false, error: "permission denied"),
     trust_root: "/opt/x/worktrees",
   )) == "claude-cli"
 }
@@ -1023,8 +1026,7 @@ test fn witness_preflight_refuses_unknown_home() -> Bool {
     claude_on_path: true,
     home: "",
     trust_store_path: "",
-    trust_store_readable: false,
-    trust_store_text: "",
+    trust_store_read: filesystem_read_outcome(content: "", success: false, error: "permission denied"),
     trust_root: "/opt/x/worktrees",
   )) == "claude-trust-home"
 }
@@ -1034,8 +1036,7 @@ test fn witness_preflight_refuses_unreadable_store() -> Bool {
     claude_on_path: true,
     home: "/home/u",
     trust_store_path: "/home/u/.claude.json",
-    trust_store_readable: false,
-    trust_store_text: "",
+    trust_store_read: filesystem_read_outcome(content: "", success: false, error: "permission denied"),
     trust_root: "/opt/x/worktrees",
   )) == "claude-trust-store"
 }
@@ -1223,7 +1224,7 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
@@ -1315,7 +1316,7 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       node_id: "belt-verify-running-node",
       attempt_key: "feedfacefeedface",
       branch: "dispatch/belt-verify-running-node-afeedfacefeedface",
-      modeled_state_present: true,
+      modeled_state: WorkflowModeledStateObserved,
       worktree: AttemptWorktreePresent { path: "/wt/fixture" },
       admission_receipt_readable: true,
       admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",
@@ -1581,24 +1582,26 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
   }
 }
 
+// The absent fact is established through the owner's producers: a succeeded listing that omits
+// the receipt plus a refused read yield FilesystemFileAbsent inside filesystem_io (the absence
+// carrier is a sole_constructor and is never forged here).
 test fn belt_tick_receipt_missing_file_read_is_absent() -> Bool {
-  match belt_tick_receipt_read_from_filesystem(
-    success: false,
-    content: "",
-    error: "No such file or directory (os error 2)",
-  ) {
+  let listing = filesystem_listing_observation(directory: "/var/lib/gunbc/belt", success: true, entries: "other-state.json", error: "unused on success")
+  let observed = filesystem_file_observation(listing: listing, name: "belt-tick.json", path: "/var/lib/gunbc/belt/belt-tick.json", read: FilesystemReadRefused { error: "No such file or directory (os error 2)" })
+  match belt_tick_receipt_read_from_observation(observation: observed) {
     BeltTickReceiptAbsent => true
     BeltTickReceiptPresent { receipt: _ } => false
     BeltTickReceiptUnreadable { reason: _ } => false
   }
 }
 
+// Listed but refused: the listing NAMES the receipt, so absence is not established, and the read
+// refusal makes the fact indeterminate -- present, content unavailable. The host error rides in
+// the cause text, so the old "Permission denied" witness assertion still discriminates.
 test fn belt_tick_receipt_io_failure_read_is_unreadable() -> Bool {
-  match belt_tick_receipt_read_from_filesystem(
-    success: false,
-    content: "",
-    error: "Permission denied (os error 13)",
-  ) {
+  let listing = filesystem_listing_observation(directory: "/var/lib/gunbc/belt", success: true, entries: "belt-tick.json\nother-state.json", error: "unused on success")
+  let observed = filesystem_file_observation(listing: listing, name: "belt-tick.json", path: "/var/lib/gunbc/belt/belt-tick.json", read: FilesystemReadRefused { error: "Permission denied (os error 13)" })
+  match belt_tick_receipt_read_from_observation(observation: observed) {
     BeltTickReceiptUnreadable { reason: r } =>
       string_contains(s: r, pattern: "Permission denied")
     BeltTickReceiptPresent { receipt: _ } => false
@@ -2423,6 +2426,7 @@ fn staged_post_over_canary(graph: LaunchGraphStanding, standing: LaunchHostStand
     merged: [],
     node_id: node_id,
     request: LaunchAutonomous,
+    executor: ExecutorDefault,
   )
 }
 
@@ -3328,6 +3332,39 @@ test fn a_failed_release_after_placement_is_carried_on_every_non_spawned_arm() -
       SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
       SpawnNotAdmitted { node_id: _, refusal: _ } => false
     }
+}
+
+// The pointer standing decides the subordinate facts' standing (side chat review 5409834403, fix
+// (a)): an UNREADABLE pointer carries the non-absence variants -- the wrong state is unwritable --
+// while established ABSENCE keeps the absence-shaped facts the legacy arm means.
+test fn an_unreadable_pointer_carries_non_absence_subordinate_facts() -> Bool {
+  let denied = WorkflowModeledStatePointerUnreadable { cause: "Permission denied (os error 13)" }
+  let absent = WorkflowModeledStatePointerAbsent
+  let sel_bad = selection_standing_for_pointer(pointer_state: denied)
+  let src_bad = verification_source_standing_for_pointer(pointer_state: denied)
+  let pub_bad = publication_source_standing_for_pointer(pointer_state: denied)
+  let rev_bad = review_report_standing_for_pointer(pointer_state: denied)
+  match sel_bad {
+    SelectionUnaddressable { cause } =>
+      string_contains(s: cause, pattern: "pointer could not be read")
+        && match verification_source_standing_for_pointer(pointer_state: denied) {
+          VerificationReceiptUnreadable { detail } =>
+            string_contains(s: detail, pattern: "pointer could not be read")
+              && match publication_source_standing_for_pointer(pointer_state: denied) {
+                ReceiptSourceUnreadable { detail: pd } =>
+                  string_contains(s: pd, pattern: "pointer could not be read")
+                    && rev_bad.reconciliation.state == WorkflowSegmentRefused
+                    && string_contains(s: rev_bad.reconciliation.detail, pattern: "pointer could not be read")
+                    && match selection_standing_for_pointer(pointer_state: absent) {
+                      SelectionAbsent => true
+                      _ => false
+                    }
+                _ => false
+              }
+          _ => false
+        }
+    _ => false
+  }
 }
 
 // A REFUSED METERING WRITE FAILS THE TICK'S METERING PASS, named by its cause; an attempt not yet due
