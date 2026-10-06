@@ -37446,6 +37446,7 @@ pub fn emit_transport_call(
             rsf.clone(),
             op_node.clone(),
             source_indices.clone(),
+            env.clone(),
         ),
         BoundOperation::FileBound {
             verb: v,
@@ -38883,6 +38884,7 @@ pub fn emit_shell_call(
     result_fields: Rc<Vec<Rc<ShellResultField>>>,
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> String {
     {
         let argv = transport.children.clone();
@@ -39064,8 +39066,7 @@ pub fn emit_shell_call(
         );
         if needs_capture.clone() {
             {
-                let policy_bind =
-                    emit_shell_stderr_policy_binding(op_node.clone(), source_indices.clone());
+                let policy_bind = emit_shell_stderr_policy_binding(op_node.clone(), env.clone());
                 let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())".to_string();
                 let spawn_exec = "    .spawn()?;".to_string();
                 let stdin_thread = if has_stdin.clone() {
@@ -39392,13 +39393,10 @@ pub fn shell_error_stderr_binding(result_fields: Rc<Vec<Rc<ShellResultField>>>) 
     }
 }
 
-pub fn emit_shell_stderr_policy_binding(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+pub fn emit_shell_stderr_policy_binding(op_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
     if crate::v1_compiler_emit::operation_declares_required_stderr_capture_policy(
         op_node.clone(),
-        source_indices.clone(),
+        env.clone(),
     ) {
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let (__stderr_complete_limit, __stderr_complete_source): (Option<usize>, String) = match &*stderr_capture {\n".to_string(), "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => {\n".to_string()), "        match v1_rt::read_host_budget_bytes() {\n".to_string()), "            (Some(n), source) => (Some(n as usize), source),\n".to_string()), "            (None, source) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({})\", source).into()),\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => {\n".to_string()), "        let n = crate::std_measure::byte_size_count(bytes.clone());\n".to_string()), "        if n < 0 { return Err(\"WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative\".into()); }\n".to_string()), "        (None, String::new())\n".to_string()), "    }\n".to_string()), "};\n".to_string()), "let __stderr_tail_bytes: usize = match &*stderr_capture {\n".to_string()), "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => crate::std_measure::byte_size_count(bytes.clone()) as usize,\n".to_string()), "    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => 0,\n".to_string()), "};\n".to_string())
     } else {

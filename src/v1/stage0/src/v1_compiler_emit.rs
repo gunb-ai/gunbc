@@ -5426,34 +5426,55 @@ pub fn file_operation_has_content_input(
     )
 }
 
-pub fn param_is_required_stderr_capture_policy(
-    p: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
+pub fn required_stderr_capture_policy_declaration() -> Rc<crate::std_decl_ref::DeclarationRef> {
+    crate::std_decl_ref::decl_ref(
+        "std.shell_stream_capture".to_string(),
+        "WitnessStderrCapturePolicy".to_string(),
+    )
+}
+
+pub fn param_type_is_stderr_capture_policy_declaration(p: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    match (*crate::v1_compiler_infer_env::type_reference_declaration_reading(
+        crate::v1_std_core::param_node_type_expr(p.clone()),
+        env.source_indices.clone(),
+        env.clone(),
+    ))
+    .clone()
+    {
+        crate::v1_compiler_infer_env::TypeReferenceDeclarationReading::TypeReferenceNamesDeclaration {
+            declaration: d,
+            ..
+        } => crate::std_decl_ref::declaration_ref_eq(
+            d.clone(),
+            required_stderr_capture_policy_declaration(),
+        ),
+        _ => false,
+    }
+}
+
+pub fn param_is_required_stderr_capture_policy(p: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     {
         let ty = crate::v1_std_core::param_node_type_expr(p.clone());
-        (((((crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
+        (((((crate::v1_std_core::param_node_name_at(p.clone(), env.source_indices.clone())
             == "stderr_capture".to_string())
             && (p.return_cardinality.clone() == Cardinality::Required))
             && (ty.return_cardinality.clone() == Cardinality::Required))
             && !crate::v1_compiler_infer_types::node_is_collection(
                 ty.clone(),
-                source_indices.clone(),
+                env.source_indices.clone(),
             ))
-            && (crate::v1_std_core::qualified_last_segment(
-                crate::v1_compiler_infer::resolved_type_name(p.clone(), source_indices.clone()),
-            ) == "WitnessStderrCapturePolicy".to_string()))
+            && param_type_is_stderr_capture_policy_declaration(p.clone(), env.clone()))
     }
 }
 
 pub fn operation_declares_required_stderr_capture_policy(
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> bool {
     {
         let mut __found = false;
         for p in op_node.params.clone().iter().cloned() {
-            if param_is_required_stderr_capture_policy(p.clone(), source_indices.clone()) {
+            if param_is_required_stderr_capture_policy(p.clone(), env.clone()) {
                 __found = true;
                 break;
             }
@@ -5787,7 +5808,7 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
     span: ch.span.clone(),
 }), module_name.clone())])
             },
-    Some(c) => if ((shell_channel_is_capture_accounting(c.clone()) && target_is_rust(target.clone())) && !operation_declares_required_stderr_capture_policy(op_node.clone(), si.clone())) {
+    Some(c) => if ((shell_channel_is_capture_accounting(c.clone()) && target_is_rust(target.clone())) && !operation_declares_required_stderr_capture_policy(op_node.clone(), env.clone())) {
                 Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
     transport_kind: "shell".to_string(),
     service: service_name.clone(),

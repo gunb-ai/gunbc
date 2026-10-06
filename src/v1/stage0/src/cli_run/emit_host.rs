@@ -3449,6 +3449,8 @@ mod fixture_closure_union_tests {
 
     const STDERR_CAPTURE_COLLECTION_POLICY: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: List<WitnessStderrCapturePolicy>\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
 
+    const STDERR_CAPTURE_HOMONYM_POLICY: &str = "module efr_member\ntype WitnessStderrCapturePolicy { mark: String }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
     const GUNBC_MODULE_REACH_MEMBER: &str =
         "module efr_member\nimport extdeps.gunbc { packages }\nfn ignore() -> Int { 0 }\n";
 
@@ -3529,6 +3531,14 @@ mod fixture_closure_union_tests {
         capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
             STDERR_CAPTURE_COLLECTION_POLICY,
             "collection",
+        );
+    }
+
+    #[test]
+    fn capture_channels_with_homonym_stderr_capture_refuse_the_union() {
+        capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
+            STDERR_CAPTURE_HOMONYM_POLICY,
+            "homonym",
         );
     }
 
