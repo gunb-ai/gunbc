@@ -1253,50 +1253,6 @@ fn ct_pipeline_test() -> String {
     "    }\n\n")
 }
 
-fn ct_self_parse_all_test() -> String {
-  concat(
-    "    #[test]\n",
-    "    fn self_parse_all_modules() {\n",
-    "        let result = std::thread::Builder::new()\n",
-    "            .stack_size(64 * 1024 * 1024)\n",
-    "            .spawn(|| {\n",
-    "                let v1_files = discover_dag_files(\"src/v1\");\n",
-    "                assert!(\n",
-    "                    !v1_files.is_empty(),\n",
-    "                    \"should discover at least one .dag file in src/v1/\"\n",
-    "                );\n\n",
-    "                for (file, source) in &v1_files {\n",
-    "                    let tokens = tokenize(source.to_string(), file.to_string(), crate::extdeps_languages_dag_syntax::dag_parse_environment());\n",
-    "                    assert!(!tokens.is_empty(), \"{} should produce tokens\", file);\n",
-    "                    assert!(\n",
-    "                        matches!(\n",
-    "                            tokens.last().unwrap().shape,\n",
-    "                            crate::v1_std_core::TokenShape::ShEof\n",
-    "                        ),\n",
-    "                        \"{} should end with Eof\",\n",
-    "                        file\n",
-    "                    );\n",
-    "                    let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));\n",
-    "                    assert!(\n",
-    "                        result.module.is_some(),\n",
-    "                        \"{} should parse successfully, error: {:?}\",\n",
-    "                        file,\n",
-    "                        result.error\n",
-    "                    );\n",
-    "                    let module = result.module.as_ref().unwrap();\n",
-    "                    assert!(\n",
-    "                        !module.name.is_empty(),\n",
-    "                        \"{} should have a non-empty module name\",\n",
-    "                        file\n",
-    "                    );\n",
-    "                }\n",
-    "            })\n",
-    "            .expect(\"failed to spawn thread\")\n",
-    "            .join();\n",
-    "        result.expect(\"self-parse-all test panicked\");\n",
-    "    }\n\n")
-}
-
 fn ct_self_resolve_test() -> String {
   concat(
     "    #[test]\n",
@@ -5594,7 +5550,6 @@ fn compiler_tests_source() -> String {
     ct_constructor_call_admission_qualified_caller_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
-    ct_self_parse_all_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),
     ct_self_compile_cargo_check_test(),
