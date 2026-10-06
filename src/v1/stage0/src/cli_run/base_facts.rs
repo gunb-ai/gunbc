@@ -72,7 +72,11 @@ pub enum BaseFactRefusal {
     BaseCompilerUnavailable { revision: String, why: String },
     /// The base revision's merge-queue run is still in flight, so its compiler does not exist YET.
     /// An ordering miss, not a defect: the same change is judgeable once that run finishes.
-    BaseCompilerPending { revision: String, run: String },
+    BaseCompilerPending {
+        revision: String,
+        run: String,
+        waited: String,
+    },
     /// The floor job supplied a compiler for a revision other than the base this binary decided.
     BaseCompilerRevisionMismatch { decided: String, supplied: String },
     /// The base compiler ran and did not answer: it refused the fact, lacks the verb (a base older
@@ -99,8 +103,12 @@ pub fn base_fact_refusal_text(refusal: &BaseFactRefusal) -> String {
              revision is available ({why}); base facts are judged only by the base's own \
              compiler, never this one. Merge main in to move the base to a queue-landed revision"
         ),
-        BaseFactRefusal::BaseCompilerPending { revision, run } => format!(
-            "cause=BaseCompilerPending revision={revision} run={run} -- the base revision's \
+        BaseFactRefusal::BaseCompilerPending {
+            revision,
+            run,
+            waited,
+        } => format!(
+            "cause=BaseCompilerPending revision={revision} run={run} waited={waited} -- the base revision's \
              merge-queue run is still in flight, so its compiler does not exist yet; this is an \
              ordering miss, judgeable once that run completes"
         ),
@@ -146,6 +154,7 @@ pub enum BaseCompilerSupply {
     Pending {
         revision: String,
         run: String,
+        waited: String,
     },
     Present {
         revision: String,
@@ -170,7 +179,21 @@ pub fn base_compiler_supply_from_env() -> Result<BaseCompilerSupply, String> {
     let detail = var(BASE_COMPILER_DETAIL_ENV).unwrap_or_default();
     match standing.as_str() {
         "absent" => Ok(BaseCompilerSupply::Absent { revision, why: detail }),
-        "pending" => Ok(BaseCompilerSupply::Pending { revision, run: detail }),
+        "pending" => {
+            // The fetch step writes `run=<id> waited=<n>s`; both halves are named in the refusal.
+            let field = |k: &str| {
+                detail
+                    .split_whitespace()
+                    .find_map(|w| w.strip_prefix(k))
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("{BASE_COMPILER_DETAIL_ENV}={detail:?} names no {k}"))
+            };
+            Ok(BaseCompilerSupply::Pending {
+                run: field("run=")?,
+                waited: field("waited=")?,
+                revision,
+            })
+        }
         "present" => Ok(BaseCompilerSupply::Present {
             revision,
             executable: var(BASE_COMPILER_EXECUTABLE_ENV).map(PathBuf::from).ok_or_else(|| {
@@ -216,10 +239,11 @@ pub fn base_fact_from_base_compiler(
                 why: why.clone(),
             })
         }
-        BaseCompilerSupply::Pending { run, .. } => {
+        BaseCompilerSupply::Pending { run, waited, .. } => {
             return Err(BaseFactRefusal::BaseCompilerPending {
                 revision: revision.to_string(),
                 run: run.clone(),
+                waited: waited.clone(),
             })
         }
         BaseCompilerSupply::Present { executable, .. } => executable,
@@ -397,11 +421,13 @@ mod tests {
         assert_eq!(
             ask(&BaseCompilerSupply::Pending {
                 revision: "base".into(),
-                run: "42".into()
+                run: "42".into(),
+                waited: "1200s".into()
             }),
             BaseFactRefusal::BaseCompilerPending {
                 revision: "base".into(),
-                run: "42".into()
+                run: "42".into(),
+                waited: "1200s".into()
             }
         );
         assert!(matches!(
