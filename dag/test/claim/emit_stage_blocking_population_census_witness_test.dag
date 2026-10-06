@@ -72,7 +72,7 @@ fn killed_reading() -> CensusReading {
   }
 }
 
-test fn a_killed_run_yields_no_bound_even_with_an_empty_looking_population() -> Bool {
+test fn a_killed_run_yields_no_bound_even_with_an_empty_looking_population() -> Bool  {
   match census_population_bound(r: killed_reading()) {
     NoBound { cause: c } => !((c as String) == "")
     BoundedAbove { count: _ } => false
@@ -80,7 +80,7 @@ test fn a_killed_run_yields_no_bound_even_with_an_empty_looking_population() -> 
   }
 }
 
-test fn the_pristine_census_bounds_only_from_below_and_names_its_mask() -> Bool {
+test fn the_pristine_census_bounds_only_from_below_and_names_its_mask() -> Bool  {
   match census_population_bound(r: pristine_census) {
     LowerBoundOnly { count: n, masking_gate: g } =>
       n == 3
@@ -95,7 +95,7 @@ test fn the_pristine_census_bounds_only_from_below_and_names_its_mask() -> Bool 
   }
 }
 
-test fn a_masked_reading_is_never_complete_and_an_unmasked_one_is() -> Bool {
+test fn a_masked_reading_is_never_complete_and_an_unmasked_one_is() -> Bool  {
   match census_reading_extent(r: pristine_census) {
     EmitPopulationCompletenessUnestablished => true
     EmitPopulationComplete => false
@@ -109,7 +109,7 @@ test fn a_masked_reading_is_never_complete_and_an_unmasked_one_is() -> Bool {
 // THE PEAK IS RECORDED IN THE UNIT THE PLATFORM ANSWERS IN, and read back in bytes through the
 // cited authority rather than by a local multiplication. A Linux ru_maxrss misread as bytes
 // understates residency by three orders of magnitude, in the direction that looks comfortable.
-test fn the_peak_is_read_through_the_cited_unit_authority() -> Bool {
+test fn the_peak_is_read_through_the_cited_unit_authority() -> Bool  {
   byte_size_count(b: census_run_peak_bytes(r: pristine_census_run)) == 11960416 * 1024
 }
 
@@ -118,7 +118,7 @@ test fn the_peak_is_read_through_the_cited_unit_authority() -> Bool {
 // status to record and nothing to count. A carrier that let this render as an ordinary refusal --
 // or worse, as a clean pass with an empty population -- would be the fabricated zero one step
 // removed from the SIGKILL case above.
-test fn an_unterminated_run_carries_no_population_and_no_bound() -> Bool {
+test fn an_unterminated_run_carries_no_population_and_no_bound() -> Bool  {
   match census_population_bound(r: layer_three_census) {
     NoBound { cause: c } => !((c as String) == "")
     BoundedAbove { count: _ } => false
@@ -128,7 +128,7 @@ test fn an_unterminated_run_carries_no_population_and_no_bound() -> Bool {
 
 // AND ITS TERMINATION IS NOT AN EXIT. The discriminating check is on the arm rather than on a
 // code, because the defect being refused is a run that borrows an exit status it never produced.
-test fn the_unterminated_run_records_a_budget_rather_than_an_exit_code() -> Bool {
+test fn the_unterminated_run_records_a_budget_rather_than_an_exit_code() -> Bool  {
   match layer_three_census {
     NoPopulation { run: r, cause: _ } =>
       match r.termination {
@@ -144,7 +144,7 @@ test fn the_unterminated_run_records_a_budget_rather_than_an_exit_code() -> Bool
 // company: twenty members stand at that refusal and none of them was produced by emit. A carrier
 // that could only report the wider figure would have handed a nineteen-member import cascade and
 // a planted fixture to a row about emit-stage defects.
-test fn the_emit_produced_subset_is_narrower_than_the_refusal_population() -> Bool {
+test fn the_emit_produced_subset_is_narrower_than_the_refusal_population() -> Bool  {
   match src_v2_root_census {
     PopulationRead { run: _, stopping_gate: _, blocking: bs, advisory_total: _ } =>
       count(bs) == 20 && count(emit_produced_sites(sites: bs)) == 0
@@ -155,7 +155,7 @@ test fn the_emit_produced_subset_is_narrower_than_the_refusal_population() -> Bo
 // AND A REFUSAL OVER UPSTREAM CAUSES ESTABLISHES NOTHING ABOUT EMIT'S OWN GATES. Zero emit-produced
 // members there is an OBSERVATION OF ZERO, not a clean pass, so the reading stays incomplete and
 // bounds only from below.
-test fn an_upstream_refusal_does_not_certify_emit_as_clean() -> Bool {
+test fn an_upstream_refusal_does_not_certify_emit_as_clean() -> Bool  {
   match census_reading_extent(r: src_v2_root_census) {
     EmitPopulationCompletenessUnestablished => true
     EmitPopulationComplete => false

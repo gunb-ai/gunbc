@@ -146,7 +146,7 @@ data gitlab_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
 
 // The load-bearing claim: two providers, one Work.
 
-test fn two_bindings_project_into_one_work_identity() -> Bool {
+test fn two_bindings_project_into_one_work_identity() -> Bool  {
   fabric_identity_key(id: demand_work(d: github_binding_demand))
     == fabric_identity_key(id: demand_work(d: gitlab_binding_demand))
     && github_binding_demand.origin != gitlab_binding_demand.origin
@@ -157,7 +157,7 @@ test fn two_bindings_project_into_one_work_identity() -> Bool {
 // The derivation controls. Without these the test above is satisfied by a key
 // that ignores its inputs entirely, which is what an authored constant was.
 
-test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
+test fn one_changed_semantic_input_changes_the_work_key() -> Bool  {
   derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
 }
@@ -166,7 +166,7 @@ test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
 // a different architecture does not promise the same answer, so it must not
 // share a key with work that does.
 
-test fn changed_execution_requirements_change_the_work_key() -> Bool {
+test fn changed_execution_requirements_change_the_work_key() -> Bool  {
   derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
 }
@@ -176,7 +176,7 @@ test fn changed_execution_requirements_change_the_work_key() -> Bool {
 // deduplication the whole design rests on is a property of the function rather
 // than of two fixtures happening to be given one constant.
 
-test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
+test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool  {
   derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     == derive_work_key(
       contract: WorkContract {
@@ -197,12 +197,12 @@ test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
 // A machine that cannot run one of them is not an interchangeable executor for
 // both, so a differing shape must derive a differing key.
 
-test fn a_different_machine_shape_changes_the_work_key() -> Bool {
+test fn a_different_machine_shape_changes_the_work_key() -> Bool  {
   derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
     != derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
 }
 
-test fn cost_terms_differ_without_forking_work() -> Bool {
+test fn cost_terms_differ_without_forking_work() -> Bool  {
   money_amount_micro_count(m: demand_reservation_price(d: github_binding_demand)) == 500
     && money_amount_micro_count(m: demand_reservation_price(d: gitlab_binding_demand)) == 250
     && money_amount_micro_count(m: demand_maximum_buy_order(d: github_binding_demand)) == 1000
@@ -212,7 +212,7 @@ test fn cost_terms_differ_without_forking_work() -> Bool {
 
 // Different principals are different Work, even at an identical contract.
 
-test fn principals_do_not_share_work_identity() -> Bool {
+test fn principals_do_not_share_work_identity() -> Bool  {
   let mine = work_for_principal(p: "operator")
   let theirs = work_for_principal(p: "other-tenant")
   (mine.id.key as String) == (theirs.id.key as String)
@@ -255,7 +255,7 @@ data rented_offer: SupplierOffer<NonEmptyStr> = SupplierOffer {
   },
 }
 
-test fn owned_supply_states_zero_rather_than_absent() -> Bool {
+test fn owned_supply_states_zero_rather_than_absent() -> Bool  {
   money_amount_micro_count(m: offer_quote_amount(q: owned_offer.quote)) == 0
     && money_amount_micro_count(m: offer_quote_amount(q: rented_offer.quote)) == 900
     && offer_quote_currency(q: owned_offer.quote) == Usd
@@ -265,7 +265,7 @@ test fn owned_supply_states_zero_rather_than_absent() -> Bool {
 
 // Observed, quoted and unobserved supply are one type with three evidences.
 
-test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
+test fn observed_and_quoted_supply_share_one_offer_type() -> Bool  {
   match owned_offer.evidence {
     ObservedSupply { observed_at: _, receipt: _ } =>
       match rented_offer.evidence {
@@ -305,7 +305,7 @@ data retry_attempt: Attempt<NonEmptyStr> = Attempt {
   created_at: "2026-08-18T00:10:00Z",
 }
 
-test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
+test fn retry_is_a_new_attempt_naming_its_cause() -> Bool  {
   (first_attempt.id.key as String) != (retry_attempt.id.key as String)
     && (first_attempt.work.key as String) == (retry_attempt.work.key as String)
     && match retry_attempt.lineage {
@@ -337,12 +337,12 @@ data escalated_attempt: Attempt<NonEmptyStr> = Attempt {
   created_at: "2026-08-18T00:20:00Z",
 }
 
-test fn escalation_is_a_new_attempt_at_the_same_work() -> Bool {
+test fn escalation_is_a_new_attempt_at_the_same_work() -> Bool  {
   (escalated_attempt.id.key as String) != (first_attempt.id.key as String)
     && (escalated_attempt.work.key as String) == (first_attempt.work.key as String)
 }
 
-test fn escalation_names_the_attempt_it_escalated_from() -> Bool {
+test fn escalation_names_the_attempt_it_escalated_from() -> Bool  {
   match escalated_attempt.lineage {
     CapabilityEscalation { prior_attempt: prior, cause_receipt: _ } =>
       (prior.key as String) == (first_attempt.id.key as String)
@@ -358,7 +358,7 @@ test fn escalation_names_the_attempt_it_escalated_from() -> Bool {
 // about whether the model could carry the task, while an escalation says
 // precisely that it could not. If these ever collapse into one arm, the two
 // assertions below cannot both hold.
-test fn escalation_and_infrastructure_retry_do_not_read_as_each_other() -> Bool {
+test fn escalation_and_infrastructure_retry_do_not_read_as_each_other() -> Bool  {
   let escalation_is_not_a_retry = match escalated_attempt.lineage {
     InfrastructureRetry { prior_attempt: _, cause_receipt: _ } => false
     _ => true
@@ -495,7 +495,7 @@ fn admission_label(r: Receipt<NonEmptyStr>) -> NonEmptyStr {
 // generation alone cannot tell same-generation-different-slice from current,
 // and cannot tell a foreign attempt from a stale one.
 
-test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
+test fn acceptance_compares_lease_identity_not_only_generation() -> Bool  {
   admission_label(r: stale_receipt) == "generation-stale"
     && admission_label(r: other_slice_receipt) == "different-lease"
     && admission_label(r: foreign_attempt_receipt) == "different-attempt"
@@ -505,7 +505,7 @@ test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
 // not an attempt; a receipt carrying another principal's identically-named
 // attempt is refused rather than admitted.
 
-test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
+test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool  {
   admission_label(r: foreign_principal_receipt) == "different-attempt"
 }
 
@@ -524,7 +524,7 @@ data granted_lease_receipt: Receipt<NonEmptyStr> = Receipt {
 // The positive control. Without it every refusal above is satisfied by an
 // admission function that refuses everything.
 
-test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
+test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool  {
   match fixture_grant() {
     Absent => false
     Present { value: g } =>
@@ -553,7 +553,7 @@ fn resumability_tier_of(step: WorkStep) -> NonEmptyStr {
   }
 }
 
-test fn resumability_is_declared_not_assumed() -> Bool {
+test fn resumability_is_declared_not_assumed() -> Bool  {
   let satisfiable = resumability_tier_of(step: WorkStep {
     step_id: "build",
     resumability: ReceiptSatisfiable,

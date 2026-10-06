@@ -17,6 +17,6 @@ fn w_present_branded_scalar_cast_emits_some() -> Bool {
   )
 }
 
-test fn present_branded_scalar_cast_emits_some_not_optional_string() -> Bool {
+test fn present_branded_scalar_cast_emits_some_not_optional_string() -> Bool  {
   w_present_branded_scalar_cast_emits_some()
 }

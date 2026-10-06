@@ -16,7 +16,7 @@ import tools.fabric_control_plane_live_probe {
 
 // The held arm now asserts the CAUSE and the observed generation, not merely that the slot was
 // refused: under the previous Bool a held slot and an unreadable one were the same observation.
-test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool {
+test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool  {
   match fci1_allocation_slot_admission(prestate: AllocationSlotAbsent { path: "/fixture/store" }) {
     AllocationSlotAdmitted { path: p } => p == "/fixture/store"
     _ => false
@@ -26,14 +26,14 @@ test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool {
   }
 }
 
-test fn witness_fci1_unreadable_slot_is_never_available() -> Bool {
+test fn witness_fci1_unreadable_slot_is_never_available() -> Bool  {
   match fci1_allocation_slot_admission(prestate: AllocationSlotUnreadable { path: "/fixture/store" }) {
     AllocationSlotRefusedUnreadable { path: p } => p == "/fixture/store"
     _ => false
   }
 }
 
-test fn witness_fci1_absent_slot_exactly_returns_free_at_generation_two() -> Bool {
+test fn witness_fci1_absent_slot_exactly_returns_free_at_generation_two() -> Bool  {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotAbsent { path: "/fixture/store" },
     held_generation: 1,
@@ -45,7 +45,7 @@ test fn witness_fci1_absent_slot_exactly_returns_free_at_generation_two() -> Boo
   }
 }
 
-test fn witness_fci1_free_slot_exactly_advances_reserve_then_release() -> Bool {
+test fn witness_fci1_free_slot_exactly_advances_reserve_then_release() -> Bool  {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotFree { path: "/fixture/store", generation: 7 },
     held_generation: 8,
@@ -57,7 +57,7 @@ test fn witness_fci1_free_slot_exactly_advances_reserve_then_release() -> Bool {
   }
 }
 
-test fn witness_fci1_unexpected_extra_generation_refuses() -> Bool {
+test fn witness_fci1_unexpected_extra_generation_refuses() -> Bool  {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotFree { path: "/fixture/store", generation: 7 },
     held_generation: 8,
@@ -68,7 +68,7 @@ test fn witness_fci1_unexpected_extra_generation_refuses() -> Bool {
   }
 }
 
-test fn witness_fci1_wrong_held_generation_refuses() -> Bool {
+test fn witness_fci1_wrong_held_generation_refuses() -> Bool  {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotAbsent { path: "/fixture/store" },
     held_generation: 2,
@@ -79,16 +79,16 @@ test fn witness_fci1_wrong_held_generation_refuses() -> Bool {
   }
 }
 
-test fn witness_fci1_missing_transport_checkpoint_has_closed_identity() -> Bool {
+test fn witness_fci1_missing_transport_checkpoint_has_closed_identity() -> Bool  {
   fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterCanonicalCommitBeforeTransport)
     == "after-canonical-commit-before-transport"
 }
 
-test fn witness_fci1_already_free_checkpoint_is_distinct_from_held() -> Bool {
+test fn witness_fci1_already_free_checkpoint_is_distinct_from_held() -> Bool  {
   fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterReleaseBeforeGrading)
     != fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterCanonicalCommitBeforeTransport)
 }
 
-test fn witness_fci1_disposable_replacement_checkpoint_is_separate() -> Bool {
+test fn witness_fci1_disposable_replacement_checkpoint_is_separate() -> Bool  {
   fci1_checkpoint_token(checkpoint: Fci1CheckpointGenerationHeldTwo) == "generation-held-two"
 }

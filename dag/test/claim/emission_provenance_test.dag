@@ -9,7 +9,7 @@ import std.emission_provenance {
   emission_contribution_read, emission_contribution_source, emission_contribution_origins, emission_contribution_unobserved
 }
 
-test fn emission_nested_contributor_survives_flattening() -> Bool {
+test fn emission_nested_contributor_survives_flattening() -> Bool  {
   let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
   let leaf = decl_ref(module_path: "fixture.upstream", decl_name: "canonical_block")
   let contribution = EmissionSourceComposition {
@@ -37,7 +37,7 @@ test fn emission_nested_contributor_survives_flattening() -> Bool {
 // FreeSemigroup head access, not a lambda over a match-bound FreeMonoid — that is the
 // compile-time mask retained at test.manual.emission_provenance_specimen_red
 // emission_combined_read_preserves_content_order_and_origin_multiplicity.
-test fn emission_combined_read_matches_standalone_layers_on_all_three_arms() -> Bool {
+test fn emission_combined_read_matches_standalone_layers_on_all_three_arms() -> Bool  {
   let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
   let leaf = decl_ref(module_path: "fixture.upstream", decl_name: "canonical_block")
   let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "untraced")
@@ -71,7 +71,7 @@ test fn emission_combined_read_matches_standalone_layers_on_all_three_arms() -> 
     }
 }
 
-test fn emission_nested_unobserved_producer_remains_named() -> Bool {
+test fn emission_nested_unobserved_producer_remains_named() -> Bool  {
   let wrapper = decl_ref(module_path: "fixture.runtime", decl_name: "wrapper")
   let unknown = decl_ref(module_path: "fixture.runtime", decl_name: "untraced")
   let contribution = EmissionSourceComposition {

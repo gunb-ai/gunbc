@@ -96,13 +96,13 @@ fn did_not_answer(t: CommitTransportOutcome) -> Bool {
 }
 
 // POSITIVE CONTROL: a stored manifest is a first-generation commit of the recorded digest.
-test fn a_stored_put_is_a_first_generation_commit() -> Bool {
+test fn a_stored_put_is_a_first_generation_commit() -> Bool  {
   answered_committed_at_first_generation(t: transport_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()))
 }
 
 // A refused PUT is a store answer -- refused -- so a fruitless read afterwards establishes absence
 // one layer up rather than parking the job.
-test fn a_refused_put_is_an_answered_refusal() -> Bool {
+test fn a_refused_put_is_an_answered_refusal() -> Bool  {
   match transport_for(put: OriginPutRefused { key: the_slot, cause: "403" }, fetch: OriginObjectAbsent { key: the_slot }) {
     StoreAnswered { slot: _, outcome: o } => match o { CasStoreRefused { cause: _ } => true  other => false }
     StoreDidNotAnswer { slot: _, cause: _ } => false
@@ -110,14 +110,14 @@ test fn a_refused_put_is_an_answered_refusal() -> Bool {
 }
 
 // Discriminating RED: an unknown PUT outcome is NOT a store answer, whatever the fetch found.
-test fn an_unknown_put_outcome_is_not_an_answer() -> Bool {
+test fn an_unknown_put_outcome_is_not_an_answer() -> Bool  {
   did_not_answer(t: transport_for(put: OriginPutOutcomeUnknown { key: the_slot, cause: "curl exit 000" }, fetch: staged_fetch()))
 }
 
 // THE 412 ARM WITH THE OCCUPANT OBSERVED: precondition-failed against absence, and the occupant
 // is the FETCHED reading, not the recorded digest -- which is what lets a foreign occupant be
 // caught by the readback comparison one layer up.
-test fn a_412_with_a_staged_fetch_carries_the_fetched_occupant() -> Bool {
+test fn a_412_with_a_staged_fetch_carries_the_fetched_occupant() -> Bool  {
   match staged_fetch() {
     OriginFetchUnavailable { key: _, cause: _ } => false
     OriginObjectAbsent { key: _ } => false
@@ -142,7 +142,7 @@ test fn a_412_with_a_staged_fetch_carries_the_fetched_occupant() -> Bool {
 
 // Discriminating RED: a 412 whose fetch found nothing, or could not be taken, observed no occupant
 // and must not mint one. Both are "no store verdict about this slot".
-test fn a_412_without_an_observed_occupant_is_not_an_answer() -> Bool {
+test fn a_412_without_an_observed_occupant_is_not_an_answer() -> Bool  {
   did_not_answer(t: transport_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
     && did_not_answer(t: transport_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginFetchUnavailable { key: the_slot, cause: "curl exit 000" }))
 }
@@ -160,7 +160,7 @@ fn is_unknown(r: OriginReadback) -> Bool {
 }
 
 // POSITIVE CONTROL: a staged fetch confirms, whatever the PUT said.
-test fn a_staged_object_fetch_confirms() -> Bool {
+test fn a_staged_object_fetch_confirms() -> Bool  {
   match readback_for(put: OriginObjectStored { key: the_slot }, fetch: staged_fetch()) {
     ReadbackConfirmed { reading: _ } => true
     other => false
@@ -168,14 +168,14 @@ test fn a_staged_object_fetch_confirms() -> Bool {
 }
 
 // A 404 after a REFUSED PUT is a decided absence: the store answered, and nothing is there.
-test fn a_404_after_a_refused_put_is_absent() -> Bool {
+test fn a_404_after_a_refused_put_is_absent() -> Bool  {
   is_absent(r: readback_for(put: OriginPutRefused { key: the_slot, cause: "403" }, fetch: OriginObjectAbsent { key: the_slot }))
 }
 
 // Discriminating RED, the arm the canary used to get wrong: a 404 after an UNKNOWN PUT is not
 // absence -- the write may land after the read -- and a 404 after the store said stored or present
 // is a contradiction, also unknown.
-test fn a_404_after_an_unknown_or_contradicted_put_is_unknown_not_absent() -> Bool {
+test fn a_404_after_an_unknown_or_contradicted_put_is_unknown_not_absent() -> Bool  {
   is_unknown(r: readback_for(put: OriginPutOutcomeUnknown { key: the_slot, cause: "curl exit 000" }, fetch: OriginObjectAbsent { key: the_slot }))
     && is_unknown(r: readback_for(put: OriginObjectStored { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
     && is_unknown(r: readback_for(put: OriginObjectAlreadyPresent { key: the_slot }, fetch: OriginObjectAbsent { key: the_slot }))
@@ -213,7 +213,7 @@ fn a_successful_ending(r: OriginReading) -> JobEnding {
       )
 }
 
-test fn a_clean_successful_ending_exits_zero() -> Bool {
+test fn a_clean_successful_ending_exits_zero() -> Bool  {
   match staged_fetch() {
     OriginObjectStaged { key: _, reading: r } =>
       exit_ok(e: process_exit_with_credential_custody(ending: a_successful_ending(r: r), custodies: [WriteCredentialShredded, WriteCredentialShredded], stagings: [R2StagingRemoved, R2StagingNotCreated]))
@@ -221,7 +221,7 @@ test fn a_clean_successful_ending_exits_zero() -> Bool {
   }
 }
 
-test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool {
+test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool  {
   match staged_fetch() {
     OriginObjectStaged { key: _, reading: r } =>
       exit_ok(e: process_exit_with_credential_custody(
@@ -235,7 +235,7 @@ test fn a_successful_ending_with_credential_residue_does_not_exit_zero() -> Bool
 
 // A FETCH'S STAGING DIRECTORY LEFT ON DISK refuses the zero exit exactly as a credential residue
 // does, with every credential shredded -- so the staging list alone is what reddens it.
-test fn a_successful_ending_with_staging_residue_does_not_exit_zero() -> Bool {
+test fn a_successful_ending_with_staging_residue_does_not_exit_zero() -> Bool  {
   match staged_fetch() {
     OriginObjectStaged { key: _, reading: r } =>
       exit_ok(e: process_exit_with_credential_custody(

@@ -75,24 +75,24 @@ fn eik_total_blocking(source: String) -> Int {
   }
 }
 
-test fn a_zero_parameter_effectful_declaration_binds_its_resource() -> Bool {
+test fn a_zero_parameter_effectful_declaration_binds_its_resource() -> Bool  {
   eik_total_blocking(source: zpe_reads_resource_source) == 0
 }
 
-test fn a_zero_parameter_effectful_declaration_emits_its_resource_parameter() -> Bool {
+test fn a_zero_parameter_effectful_declaration_emits_its_resource_parameter() -> Bool  {
   compile_dag_rust_emit_check(zpe_reads_resource_source, "src/zpe_reads_resource.rs", ["net: &"], [])
 }
 
-test fn an_effectful_tail_self_call_is_lowered_to_a_loop() -> Bool {
+test fn an_effectful_tail_self_call_is_lowered_to_a_loop() -> Bool  {
   eik_total_blocking(source: efr_tail_source) == 0
     && compile_dag_rust_emit_check(efr_tail_source, "src/efr_tail.rs", ["Ok(loop", "continue;", "net: &"], [".await"])
 }
 
-test fn an_effectful_non_tail_self_call_is_refused_at_the_rust_emitter() -> Bool {
+test fn an_effectful_non_tail_self_call_is_refused_at_the_rust_emitter() -> Bool  {
   eik_blocking_count(source: efr_non_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
 }
 
-test fn an_effectful_declaration_calling_a_pure_recursive_helper_is_admitted() -> Bool {
+test fn an_effectful_declaration_calling_a_pure_recursive_helper_is_admitted() -> Bool  {
   eik_total_blocking(source: efr_control_source) == 0
     && compile_dag_rust_emit_check(efr_control_source, "src/efr_control.rs", ["net: &"], ["compile_error!"])
 }
@@ -104,11 +104,11 @@ data efr_derived_tail_source: String = "module efr_derived_tail\nimport extdeps.
 
 data efr_derived_non_tail_source: String = "module efr_derived_non_tail\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n"
 
-test fn derived_effectful_tail_calls_share_the_loop_realization() -> Bool {
+test fn derived_effectful_tail_calls_share_the_loop_realization() -> Bool  {
   eik_total_blocking(source: efr_derived_tail_source) == 0
     && compile_dag_rust_emit_check(efr_derived_tail_source, "src/efr_derived_tail.rs", ["Ok(loop", "continue;", "filesystem: &"], ["compile_error!"])
 }
 
-test fn derived_effectful_non_tail_recursion_cannot_bypass_admission() -> Bool {
+test fn derived_effectful_non_tail_recursion_cannot_bypass_admission() -> Bool  {
   eik_blocking_count(source: efr_derived_non_tail_source, wanted: "EffectfulSelfRecursionUnrealized") == 1
 }

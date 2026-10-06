@@ -39,7 +39,7 @@ fn run_entry_capturing_stderr(entry: String, function: String) -> String {
 
 data undeclared_subject_note: String = "generated_artifact_drift_fixed_point_witness_test reaches Filesystem.Read from .dag call sites that carry no `expect:` — measured 67 undeclared dispatches at the time of writing (count tracks committed artifact registry size). The COUNT is deliberately not pinned: it tracks how many artifacts the registry holds and would turn an unrelated registry edit into a red here, which is the brittle-pin failure this corpus already knows. The claim is the receipt's PRESENCE, which is the property the mechanism actually owns."
 
-test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool {
+test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool  {
   let stderr = run_entry_capturing_stderr(
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point"
@@ -49,7 +49,7 @@ test fn undeclared_effects_emit_the_frontier_receipt_holds() -> Bool {
 
 data declared_subject_note: String = "roadmap_belt_actuate's three probes (belt_program_available, belt_exec, belt_observe) all carry `expect: OutcomeIsData`, so a correct counter stays silent on this entry. NOTE THE COUPLING, because it is load-bearing exactly as the no-fake-anomalies wall's is: if those annotations are ever removed, this control goes red — which is the correct outcome and should be read as the control working, not as this witness being wrong. If the entry stops exercising effects entirely the control passes VACUOUSLY; re-point it at another fully-annotated effect entry rather than deleting it."
 
-test fn fully_declared_effects_emit_no_frontier_receipt_holds() -> Bool {
+test fn fully_declared_effects_emit_no_frontier_receipt_holds() -> Bool  {
   let stderr = run_entry_capturing_stderr(
     entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness_test.dag",
     function: "witness_exec_ok_runs_echo"

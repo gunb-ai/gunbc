@@ -42,7 +42,7 @@ fn appended(store: FabricStorageBinding, parent: HeadExpectation, at: EpochSecs,
 }
 
 // AN EMPTY PARTITION READS AS ABSENT, which is what a live partition answers after the cutover.
-test fn an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution() -> Bool {
+test fn an_empty_partition_reports_an_absent_head_and_no_events_by_real_execution() -> Bool  {
   match partition_read_report(store: FabricStorageLocalFiles { root: fresh_store() }, partition: witness_partition(), budget: 16) {
     PartitionReadReported { text: t } => t.contains("head absent") && t.contains("events 0")
     PartitionReadUnreported { detail: _ } => false
@@ -51,7 +51,7 @@ test fn an_empty_partition_reports_an_absent_head_and_no_events_by_real_executio
 
 // THE READOUT IS THE CHAIN THE STORE HOLDS: two appended events come back oldest first, each under
 // the id the append was answered with, carrying their own wire text.
-test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution() -> Bool {
+test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution() -> Bool  {
   let store = FabricStorageLocalFiles { root: fresh_store() }
   match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
     Absent => false
@@ -74,7 +74,7 @@ test fn a_two_event_partition_reports_both_events_oldest_first_by_real_execution
 // THE BOUND REFUSES RATHER THAN REPORTING THE PART THAT FIT. A readout that truncated would be a
 // fabricated answer about a live seat pool -- the reader would count fewer acquisitions than the
 // partition holds.
-test fn a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution() -> Bool {
+test fn a_chain_longer_than_the_budget_refuses_rather_than_reporting_a_prefix_by_real_execution() -> Bool  {
   let store = FabricStorageLocalFiles { root: fresh_store() }
   match appended(store: store, parent: HeadAbsent, at: 1000, reference: "first") {
     Absent => false

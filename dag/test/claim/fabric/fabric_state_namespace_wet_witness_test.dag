@@ -8,7 +8,7 @@ import gunbc.fabric_storage_address { fabric_storage_state_file_root }
 
 // Real temp-directory stores, executed by the local-repo wet lane.
 // A known private object reference still cannot be aliased through the legacy public namespace.
-test fn witness_public_head_cannot_alias_private_state_object() -> Bool {
+test fn witness_public_head_cannot_alias_private_state_object() -> Bool  {
   let directory = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_state_isolation.XXXXXX").path
   if directory == "" { false } else {
     let public_root = fabric_storage_file_root(root: directory as NonEmptyStr)

@@ -73,7 +73,7 @@ fn resolve_at_start(contract: WorkContract, work_key: WorkKey) -> OutputObligati
   )
 }
 
-test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Bool {
+test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Bool  {
   let contract = WorkContract {
     execution: MaterializedProgram { program: "gunbc.probe.output-contract", source: "source-1", runtime_closure: "runtime-1" },
     steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
@@ -96,7 +96,7 @@ test fn empty_declared_roster_resolves_as_resolved_empty_not_unreadable() -> Boo
   }
 }
 
-test fn resolved_roster_carries_declared_obligations() -> Bool {
+test fn resolved_roster_carries_declared_obligations() -> Bool  {
   let declared = declared_output_obligations_from_manifests(
     artifacts: ["artifact-a"],
     terminals: ["terminal-b"],
@@ -118,7 +118,7 @@ test fn resolved_roster_carries_declared_obligations() -> Bool {
   }
 }
 
-test fn changing_obligations_changes_work_key_without_renaming_the_contract() -> Bool {
+test fn changing_obligations_changes_work_key_without_renaming_the_contract() -> Bool  {
   let a = contract_with(obligations_ids: ["artifact-a"])
   let b = contract_with(obligations_ids: ["artifact-b"])
   (a.output_contract == b.output_contract)
@@ -128,7 +128,7 @@ test fn changing_obligations_changes_work_key_without_renaming_the_contract() ->
 
 // Concatenating artifact and terminal ids (the first required-build encoding after
 // the OutputContractRef cut) made ["a"]+["b"] and ["a","b"]+[] the same WorkKey.
-test fn artifact_versus_terminal_kind_is_work_key_identity() -> Bool {
+test fn artifact_versus_terminal_kind_is_work_key_identity() -> Bool  {
   let shared = WorkContract {
     execution: MaterializedProgram { program: "gunbc.probe.output-contract", source: "source-1", runtime_closure: "runtime-1" },
     steps: [WorkStep { step_id: "probe", resumability: ReceiptSatisfiable }],
@@ -158,7 +158,7 @@ test fn artifact_versus_terminal_kind_is_work_key_identity() -> Bool {
 
 // Same spelling as an artifact and as a terminal is two owed subjects. Sealing
 // only ids would collapse them to ["a","a"] and the #10641 gate could not tell.
-test fn same_id_artifact_and_terminal_remain_distinct_after_resolve() -> Bool {
+test fn same_id_artifact_and_terminal_remain_distinct_after_resolve() -> Bool  {
   let mixed = declared_output_obligations_from_manifests(
     artifacts: ["a"],
     terminals: ["a"],
@@ -197,7 +197,7 @@ test fn same_id_artifact_and_terminal_remain_distinct_after_resolve() -> Bool {
   }
 }
 
-test fn resolution_revision_tracks_the_declared_roster() -> Bool {
+test fn resolution_revision_tracks_the_declared_roster() -> Bool  {
   let a = contract_with(obligations_ids: ["artifact-a"])
   let b = contract_with(obligations_ids: ["artifact-b"])
   let ka = derive_work_key(contract: a, requirements: fixture_requirements())
@@ -212,7 +212,7 @@ test fn resolution_revision_tracks_the_declared_roster() -> Bool {
   }
 }
 
-test fn resolution_binds_the_work_key_it_was_resolved_against() -> Bool {
+test fn resolution_binds_the_work_key_it_was_resolved_against() -> Bool  {
   let a = contract_with(obligations_ids: ["artifact-a"])
   let b = contract_with(obligations_ids: ["artifact-a", "extra"])
   let ka = derive_work_key(contract: a, requirements: fixture_requirements())
@@ -224,7 +224,7 @@ test fn resolution_binds_the_work_key_it_was_resolved_against() -> Bool {
   }
 }
 
-test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
+test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool  {
   let contract = contract_with(obligations_ids: ["artifact-a"])
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
   match resolve_output_obligations(
@@ -244,7 +244,7 @@ test fn judgment_policy_is_stamped_on_the_sealed_result() -> Bool {
 // Discriminating producer for OutputObligationsUnreadable: a foreign work_key
 // cannot seal this contract's roster. Without this path the Unreadable arm is
 // permanently green by construction (DESIGN §4b).
-test fn foreign_work_key_is_unreadable_not_resolved() -> Bool {
+test fn foreign_work_key_is_unreadable_not_resolved() -> Bool  {
   let a = contract_with(obligations_ids: ["artifact-a"])
   let b = contract_with(obligations_ids: ["artifact-b"])
   let foreign = derive_work_key(contract: b, requirements: fixture_requirements())
@@ -276,11 +276,11 @@ fn violation_count(source: String, wanted: String) -> Int {
 
 data forged_resolved_roster_source: String = "module probe_forged_resolved_output_obligations\nimport product.fabric.work { ResolvedOutputObligations, OutputContractRef, OutputObligationsRevision, ObligationsJudgedAtJobStart }\nimport product.fabric.identity { WorkKey }\nfn forged() -> ResolvedOutputObligations {\n  ResolvedOutputObligations {\n    contract: \"forged\" as OutputContractRef,\n    revision: \"x\" as OutputObligationsRevision,\n    judgment: ObligationsJudgedAtJobStart,\n    work_key: \"k\" as WorkKey,\n    required: [],\n  }\n}\n"
 
-test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool {
+test fn forged_resolved_roster_is_sole_constructor_refused() -> Bool  {
   violation_count(source: forged_resolved_roster_source, wanted: "SoleConstructorViolation") >= 1
 }
 
-test fn resolve_is_the_sanctioned_mint() -> Bool {
+test fn resolve_is_the_sanctioned_mint() -> Bool  {
   let contract = contract_with(obligations_ids: [])
   let key = derive_work_key(contract: contract, requirements: fixture_requirements())
   match resolve_at_start(contract: contract, work_key: key) {

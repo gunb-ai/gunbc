@@ -402,7 +402,7 @@ fn w_roster_literal() -> List<String> {
   ]
 }
 
-test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
+test fn w_stock_sidebar_roster_is_verbatim() -> Bool  {
   let roster: List<String> = stock_sidebar_roster |> map(s => s as String)
   roster == w_roster_literal()
 }
@@ -411,11 +411,11 @@ test fn w_stock_sidebar_roster_is_verbatim() -> Bool {
 // additions (the version comment on the row says why); the 2026-09-24 bump carries the action
 // vocabulary, the 2026-09-25 bump the capture-verified assignee display rule. The pin keeps the
 // row from drifting back.
-test fn w_interface_version_cites_capture_date() -> Bool {
+test fn w_interface_version_cites_capture_date() -> Bool  {
   (issue_tracker_interface_version as String) == "2026-09-27"
 }
 
-test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
+test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool  {
   (issue_status_wire(status: IssueStatusNew) == "New")
     && (issue_status_wire(status: IssueStatusAssigned) == "Assigned")
     && (issue_status_wire(status: IssueStatusAccepted) == "Accepted")
@@ -424,7 +424,7 @@ test fn w_status_vocabulary_wire_labels_are_ui_spellings() -> Bool {
     && (issue_status_wire(status: IssueStatusDuplicate) == "Duplicate")
 }
 
-test fn w_priority_and_severity_wire_labels_are_ui_spellings() -> Bool {
+test fn w_priority_and_severity_wire_labels_are_ui_spellings() -> Bool  {
   (issue_priority_wire(priority: IssuePriorityP0) == "P0")
     && (issue_priority_wire(priority: IssuePriorityP1) == "P1")
     && (issue_priority_wire(priority: IssuePriorityP2) == "P2")
@@ -437,7 +437,7 @@ test fn w_priority_and_severity_wire_labels_are_ui_spellings() -> Bool {
     && (issue_severity_wire(severity: IssueSeverityS4) == "S4")
 }
 
-test fn w_open_status_class_is_the_new_assigned_accepted_arms() -> Bool {
+test fn w_open_status_class_is_the_new_assigned_accepted_arms() -> Bool  {
   issue_status_is_open(status: IssueStatusNew)
     && issue_status_is_open(status: IssueStatusAssigned)
     && issue_status_is_open(status: IssueStatusAccepted)
@@ -446,41 +446,41 @@ test fn w_open_status_class_is_the_new_assigned_accepted_arms() -> Bool {
     && !issue_status_is_open(status: IssueStatusDuplicate)
 }
 
-test fn w_assigned_to_me_derives_the_exact_subset() -> Bool {
+test fn w_assigned_to_me_derives_the_exact_subset() -> Bool  {
   issue_ids(issues: view_assigned_to_me(issues: fixture_issues, user: fixture_owner)) == [102, 105]
 }
 
-test fn w_starred_by_me_derives_the_exact_subset() -> Bool {
+test fn w_starred_by_me_derives_the_exact_subset() -> Bool  {
   issue_ids(
     issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
   ) == [103]
 }
 
-test fn w_upvoted_by_me_derives_the_exact_subset() -> Bool {
+test fn w_upvoted_by_me_derives_the_exact_subset() -> Bool  {
   issue_ids(
     issues: view_upvoted_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
   ) == [104]
 }
 
-test fn w_ccd_to_me_derives_the_exact_subset() -> Bool {
+test fn w_ccd_to_me_derives_the_exact_subset() -> Bool  {
   issue_ids(
     issues: view_ccd_to_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
   ) == [106]
 }
 
-test fn w_collaborating_derives_the_exact_subset() -> Bool {
+test fn w_collaborating_derives_the_exact_subset() -> Bool  {
   issue_ids(issues: view_collaborating(issues: fixture_issues, user: fixture_owner)) == [107]
 }
 
-test fn w_reported_by_me_derives_the_exact_subset() -> Bool {
+test fn w_reported_by_me_derives_the_exact_subset() -> Bool  {
   issue_ids(issues: view_reported_by_me(issues: fixture_issues, user: fixture_owner)) == [101]
 }
 
-test fn w_to_be_verified_derives_the_exact_subset() -> Bool {
+test fn w_to_be_verified_derives_the_exact_subset() -> Bool  {
   issue_ids(issues: view_to_be_verified(issues: fixture_issues)) == [108]
 }
 
-test fn w_views_take_the_user_as_a_parameter_not_a_hardcode() -> Bool {
+test fn w_views_take_the_user_as_a_parameter_not_a_hardcode() -> Bool  {
   (issue_ids(
     issues: view_starred_by_me(issues: fixture_issues, user: fixture_teammate, subs: fixture_subscriptions)
   ) == [101])
@@ -503,7 +503,7 @@ type CcMirrorAcc {
   ok: Bool
 }
 
-test fn w_cc_facts_mirror_issue_cc_field() -> Bool {
+test fn w_cc_facts_mirror_issue_cc_field() -> Bool  {
   let acc = fold(fixture_issues, init: CcMirrorAcc { ok: true }, f: fn(a, i) {
     CcMirrorAcc {
       ok: a.ok && (cc_subscribers(subs: fixture_subscriptions, issue_id: i.id) == i.cc),
@@ -516,7 +516,7 @@ test fn w_cc_facts_mirror_issue_cc_field() -> Bool {
 // must match exactly the open issues assigned to that user and nothing else — issue 101 is
 // reported by the owner but not assigned to her; 108 is assigned to the teammate and fixed; 109
 // is a duplicate. Each is a different way the naive reading of the query goes wrong.
-test fn w_owner_assignee_open_query_matches_exactly_the_open_assigned_subset() -> Bool {
+test fn w_owner_assignee_open_query_matches_exactly_the_open_assigned_subset() -> Bool  {
   let q = Query {
     terms: [
       QueryAssignee { email: "briansrls@gunb.ai" },
@@ -526,22 +526,22 @@ test fn w_owner_assignee_open_query_matches_exactly_the_open_assigned_subset() -
   issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [102, 105]
 }
 
-test fn w_query_standing_status_term_matches_that_status_alone() -> Bool {
+test fn w_query_standing_status_term_matches_that_status_alone() -> Bool  {
   let q = Query { terms: [QueryStatus { status: IssueStatusQueryStanding { status: IssueStatusFixed } }] }
   issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [108]
 }
 
-test fn w_query_text_term_matches_title() -> Bool {
+test fn w_query_text_term_matches_title() -> Bool  {
   let q = Query { terms: [QueryText { text: "watchdog" }] }
   issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [101]
 }
 
-test fn w_query_text_term_matches_comment_bodies() -> Bool {
+test fn w_query_text_term_matches_comment_bodies() -> Bool  {
   let q = Query { terms: [QueryText { text: "parallel" }] }
   issue_ids(issues: query_run(issues: fixture_issues, query: q)) == [107]
 }
 
-test fn w_query_text_term_with_no_match_derives_nothing() -> Bool {
+test fn w_query_text_term_with_no_match_derives_nothing() -> Bool  {
   let q = Query { terms: [QueryText { text: "zzz-no-such-text-zzz" }] }
   list_length(items: query_run(issues: fixture_issues, query: q)) == 0
 }
@@ -561,7 +561,7 @@ data fixture_subscriptions_owner_star_withdrawn: List<IssueSubscription> = [
   IssueSubscription { user: fixture_teammate, issue: IssueRef { id: 102 }, kind: IssueSubscriptionCc },
 ]
 
-test fn w_star_subscription_change_moves_issue_between_views() -> Bool {
+test fn w_star_subscription_change_moves_issue_between_views() -> Bool  {
   (issue_ids(
     issues: view_starred_by_me(
       issues: fixture_issues,
@@ -584,7 +584,7 @@ test fn w_star_subscription_change_moves_issue_between_views() -> Bool {
 // RED CONTROL: an issue outside a view's derivation can never be satisfied into it. Issue 101 is
 // not starred by the owner — not in the view — and issue 109 is a duplicate with no relation to
 // the viewer at all, so it appears in NO stock view.
-test fn w_red_unstarred_issue_never_appears_in_starred_by_me() -> Bool {
+test fn w_red_unstarred_issue_never_appears_in_starred_by_me() -> Bool  {
   !any(
     issue_ids(
       issues: view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions)
@@ -593,7 +593,7 @@ test fn w_red_unstarred_issue_never_appears_in_starred_by_me() -> Bool {
   )
 }
 
-test fn w_red_duplicate_issue_appears_in_no_stock_view() -> Bool {
+test fn w_red_duplicate_issue_appears_in_no_stock_view() -> Bool  {
   let all_view_memberships: List<List<Issue>> = [
     view_assigned_to_me(issues: fixture_issues, user: fixture_owner),
     view_starred_by_me(issues: fixture_issues, user: fixture_owner, subs: fixture_subscriptions),
@@ -609,7 +609,7 @@ test fn w_red_duplicate_issue_appears_in_no_stock_view() -> Bool {
   !any(every_membership_id, id => id == 109)
 }
 
-test fn w_blocking_edges_are_symmetric_in_the_fixture() -> Bool {
+test fn w_blocking_edges_are_symmetric_in_the_fixture() -> Bool  {
   issue_ref_list_includes(refs: fixture_issue_101.blocked_by, id: 102)
     && issue_ref_list_includes(refs: fixture_issue_102.blocking, id: 101)
     && !issue_ref_list_includes(refs: fixture_issue_103.blocked_by, id: 101)
@@ -622,18 +622,18 @@ test fn w_blocking_edges_are_symmetric_in_the_fixture() -> Bool {
 // workflow mapping, not an interface fact); Create Issue is the capture-verified shell label;
 // the contained-primary / text idioms and the disabled (never hidden) unavailability idiom are
 // the product's button language. The interface version row records the addition.
-test fn w_issue_action_wire_labels() -> Bool {
+test fn w_issue_action_wire_labels() -> Bool  {
   issue_action_wire(kind: IssueActionAssign) == "Assign"
     && issue_action_wire(kind: IssueActionCreate) == "Create Issue"
     && issue_action_wire(kind: IssueActionMarkDuplicate) == "Mark as duplicate"
 }
 
-test fn w_issue_button_idiom_wires() -> Bool {
+test fn w_issue_button_idiom_wires() -> Bool  {
   issue_button_idiom_wire(idiom: IssueButtonContainedPrimary) == "contained-primary"
     && issue_button_idiom_wire(idiom: IssueButtonText) == "text"
 }
 
-test fn w_issue_action_availability_wires() -> Bool {
+test fn w_issue_action_availability_wires() -> Bool  {
   issue_action_availability_wire(a: IssueActionEnabled) == "enabled"
     && issue_action_availability_wire(a: IssueActionDisabled) == "disabled"
 }
@@ -642,7 +642,7 @@ test fn w_issue_action_availability_wires() -> Bool {
 // group A/B arms as sub-components — group A on srv5..srv8, group B on srv9..srv12 per the fleet
 // observation's cages. The browse-components view derives its walk from the paths: parents before
 // children, each component exactly once, sub-components at their depth.
-test fn w_issue_action_start_work_wire() -> Bool {
+test fn w_issue_action_start_work_wire() -> Bool  {
   issue_action_wire(kind: IssueActionStartWork) == "Start Work"
 }
 
@@ -653,7 +653,7 @@ test fn w_issue_action_start_work_wire() -> Bool {
 // populated cells did not load in the artifact, so the pin states the placeholder and the
 // plain-text rule, not the populated spelling). RED CONTROL: an empty string is not the
 // placeholder, and the placeholder is not an email.
-test fn w_assignee_results_display_is_plain_text_with_verified_placeholder() -> Bool {
+test fn w_assignee_results_display_is_plain_text_with_verified_placeholder() -> Bool  {
   issue_results_assignee_display(assignee: Present { value: fixture_owner }) == "briansrls@gunb.ai"
     && issue_results_assignee_display(assignee: Absent) == "--"
     && (issue_assignee_unassigned_display as String) == "--"
@@ -668,7 +668,7 @@ test fn w_assignee_results_display_is_plain_text_with_verified_placeholder() -> 
 // /home/briansrls/chromium-565764076/ "test - Chromium.html", 50 live rows, verified 2026-09-24 —
 // docs/plans/buganizer-visual-contract.md §Issue-row anatomy) minus the two retired columns; the
 // TITLE cell carries the detail link now.
-test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool {
+test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling() -> Bool  {
   let wires = map(issue_results_columns, c =>
     join([issue_results_column_kind_wire(kind: c.kind), ":", c.header as String], ""))
   count(issue_results_columns) == 5
@@ -681,7 +681,7 @@ test fn w_issue_results_roster_is_the_capture_amended_by_the_title_link_ruling()
 
 // One track per served column, with no TYPE or project-only count slot. Fixed short
 // tracks keep geometry stable across filtering; TITLE retains the dominant share.
-test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
+test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool  {
   issue_results_row_tracks() == "4ch minmax(0, 2fr) 9ch minmax(0, 1fr) 12ch"
     && count(issue_results_columns) == 5
 }
@@ -691,7 +691,7 @@ test fn w_issue_results_row_tracks_derive_from_the_roster() -> Bool {
 // STRING regardless of which band population renders — the function takes no population at all,
 // so no filtered row set can re-measure a track. RED DIRECTION: reintroducing a max-content
 // track (or taking a population) moves this pin.
-test fn w_issue_results_tracks_take_no_population_and_never_re_measures() -> Bool {
+test fn w_issue_results_tracks_take_no_population_and_never_re_measures() -> Bool  {
   let all = issue_results_row_tracks()
   let active_only = issue_results_row_tracks()
   let ready_only = issue_results_row_tracks()
@@ -704,7 +704,7 @@ test fn w_issue_results_tracks_take_no_population_and_never_re_measures() -> Boo
 
 // TITLE IS THE PRIMARY COLUMN: the dominant flexible share is TITLE's and TITLE's alone — the
 // 2fr weight sits on the title track, the 1fr on status, in roster order.
-test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool {
+test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool  {
   let title_track = match (filter(issue_results_columns, c => issue_results_column_kind_wire(kind: c.kind) == "title")).first() {
     Present { value: c } => c.track as String
     Absent => ""
@@ -721,7 +721,7 @@ test fn w_title_is_the_primary_column_with_the_dominant_share() -> Bool {
 // initials — with UNREAD degraded (initials, honestly reported) and ABSENT the all-miss floor. The
 // never-blocks law: EVERY standing renders initials or an image, so assignment, comments and
 // rendering never wait on a probe.
-test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool {
+test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool  {
   let from_internal = avatar_resolve(probe_internal: AvatarProbeHit, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeMiss)
   let from_directory = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeHit, probe_cache: AvatarProbeHit)
   let from_cache = avatar_resolve(probe_internal: AvatarProbeMiss, probe_directory: AvatarProbeMiss, probe_cache: AvatarProbeHit)
@@ -745,7 +745,7 @@ test fn w_avatar_resolution_chain_order_and_the_never_blocks_law() -> Bool {
 // whitespace) is a well-formed selector; empty and malformed strings are not. (What a selector
 // RESOLVES to is the identity authority's question — gunbc.principal_projection + the A9 directory
 // — never this module's.)
-test fn w_assignee_selector_shape_validation() -> Bool {
+test fn w_assignee_selector_shape_validation() -> Bool  {
   issue_assignee_input_is_email(s: "briansrls@gunb.ai")
     && issue_assignee_input_is_email(s: "  briansrls@gunb.ai  ")
     && !issue_assignee_input_is_email(s: "")

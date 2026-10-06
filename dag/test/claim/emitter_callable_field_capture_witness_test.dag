@@ -69,18 +69,18 @@ fn w_non_callable_field_is_untouched() -> Bool {
   )
 }
 
-test fn arrow_typed_field_lambda_owns_its_captures() -> Bool {
+test fn arrow_typed_field_lambda_owns_its_captures() -> Bool  {
   w_arrow_field_lambda_owns_its_captures()
 }
 
-test fn sibling_arrow_field_captures_every_local_it_names() -> Bool {
+test fn sibling_arrow_field_captures_every_local_it_names() -> Bool  {
   w_sibling_field_captures_every_local_it_names()
 }
 
-test fn derived_capture_set_excludes_a_local_the_lambda_does_not_name() -> Bool {
+test fn derived_capture_set_excludes_a_local_the_lambda_does_not_name() -> Bool  {
   w_derived_capture_set_excludes_unnamed_local()
 }
 
-test fn non_callable_field_takes_the_unchanged_path() -> Bool {
+test fn non_callable_field_takes_the_unchanged_path() -> Bool  {
   w_non_callable_field_is_untouched()
 }

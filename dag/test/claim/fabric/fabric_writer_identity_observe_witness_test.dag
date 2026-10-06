@@ -19,7 +19,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE SUBJECT IS THE HOST THE JOB RUNS ON, OR NOTHING: the dispatch's host must equal the kernel
 // hostname; an empty dispatch, an unreadable hostname and a disagreement each refuse with the
 // reason named, so a receipt is never labelled with a host it was not taken on.
-test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() -> Bool {
+test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() -> Bool  {
   (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "srv2") { FabricWriterIdentitySubjectAdmitted { host: h } => (h as String) == "srv2"  _ => false })
     && (match fabric_writer_identity_subject(dispatched: "srv2", kernel_hostname: "srv3") { FabricWriterIdentitySubjectRefused { reason: r } => r.contains("srv2") && r.contains("srv3")  _ => false })
     && (match fabric_writer_identity_subject(dispatched: "", kernel_hostname: "srv2") { FabricWriterIdentitySubjectRefused { reason: _ } => true  _ => false })
@@ -30,7 +30,7 @@ test fn the_subject_is_admitted_only_when_the_dispatch_names_the_running_host() 
 // principal (the grain a roster at the door can name); an absent header is a principal deficit
 // that grounds a blocker, never an admitted principal; unproxied is the placed host, whose writes
 // never reach the door; unread is the transport. Only the first two are readings of the door.
-test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool {
+test fn the_receipt_renders_each_reading_and_only_a_served_reading_grounds_the_roster() -> Bool  {
   let served = FabricStorageServed { endpoint: "https://srv1.example.ts.net:10000/fabric-storage" as NonEmptyStr }
   let present = FabricWriterIdentityReceipt { host: "srv2" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetUser { login: "srv2@example.ts.net" as NonEmptyStr } }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }
   let absent = FabricWriterIdentityReceipt { host: "srv3" as HostIdentity, binding: served, read: FabricIdentityPresented { identity: TailnetIdentityAbsent }, observed_at: "2026-09-21T06:00:00Z" as NonEmptyStr }

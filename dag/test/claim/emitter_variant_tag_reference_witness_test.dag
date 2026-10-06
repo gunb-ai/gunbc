@@ -58,7 +58,7 @@ module test.claim.emitter_variant_tag_reference_witness_test
 // The must-contain half is deliberately NOT discriminating on its own -- the pre-repair
 // match arm also produced `"Fielded".to_string()`, as the arm's answer rather than as the
 // whole lowering. It is asserted so the row cannot pass by emitting nothing at all.
-test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool {
+test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool  {
   compile_dag_rust_emit_check(
     "module vtag\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Fielded { token: String }\n\nfn tag_of_fielded() -> String {\n  discriminant(v: Fielded {})\n}\n",
     "src/vtag.rs",
@@ -70,7 +70,7 @@ test fn fielded_variant_tag_reference_folds_to_its_name() -> Bool {
 // THE NEGATIVE CONTROL. A discriminant over a runtime value has no static tag, so the
 // match over the scrutinee must survive. A fold that fired here would be answering a
 // question the source does not decide.
-test fn discriminant_of_a_value_still_lowers_to_a_match() -> Bool {
+test fn discriminant_of_a_value_still_lowers_to_a_match() -> Bool  {
   compile_dag_rust_emit_check(
     "module vval\n\nimport std.types { String }\n\ntype Shape\n  = Bare\n  | Other\n\nfn tag_of(s: Shape) -> String {\n  discriminant(v: s)\n}\n",
     "src/vval.rs",

@@ -66,7 +66,7 @@ module test.claim.emitter_freemonoid_arm_chain_witness_test
 // with `skip(1)` appearing 0 times and `list_init(t` appearing 0 times. So both pins are absent
 // from the broken lowering of this shape, and both are present in the repaired emission of the
 // fixture itself. That is the check the original include never received.
-test fn nested_field_arm_and_its_successor_both_reach_the_emitted_chain() -> Bool {
+test fn nested_field_arm_and_its_successor_both_reach_the_emitted_chain() -> Bool  {
   compile_dag_rust_emit_check(
     "module fmchain\n\nimport std.types { List, Int }\n\nfn drop_last(xs: List<Int>) -> List<Int> {\n  match xs {\n    Empty => Empty\n    Cons { head: _, tail: Empty } => Empty\n    Cons { head: h, tail: t } => Cons { head: h, tail: drop_last(xs: t) }\n  }\n}\n",
     "src/fmchain.rs",
@@ -78,7 +78,7 @@ test fn nested_field_arm_and_its_successor_both_reach_the_emitted_chain() -> Boo
 // POSITIVE CONTROL. The ordinary two-arm shape must still lower to the native split and must NOT
 // refuse. Without this row the refusal arm below is satisfiable by refusing everything, which
 // would pass every must-contain-compile_error assertion while breaking all real lowering.
-test fn the_ordinary_two_arm_shape_still_lowers_natively() -> Bool {
+test fn the_ordinary_two_arm_shape_still_lowers_natively() -> Bool  {
   compile_dag_rust_emit_check(
     "module fmplain\n\nimport std.types { List, Int }\n\nfn head_or_zero(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } => h\n  }\n}\n",
     "src/fmplain.rs",
@@ -90,7 +90,7 @@ test fn the_ordinary_two_arm_shape_still_lowers_natively() -> Bool {
 // REFUSAL CONTROL ONE: a refutable HEAD sub-pattern asks a question about the ELEMENT, which this
 // lowering does not answer. Pre-repair it silently degraded to a wildcard and matched every
 // non-empty list. It must now refuse, located, rather than mis-lower.
-test fn a_refutable_head_sub_pattern_refuses_rather_than_becoming_a_wildcard() -> Bool {
+test fn a_refutable_head_sub_pattern_refuses_rather_than_becoming_a_wildcard() -> Bool  {
   compile_dag_rust_emit_check(
     "module fmhead\n\nimport std.types { List, Int }\n\ntype Box\n  = Zero\n  | One { v: Int }\n\nfn first_one(xs: List<Box>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: One { v: n }, tail: _ } => n\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
     "src/fmhead.rs",
@@ -102,7 +102,7 @@ test fn a_refutable_head_sub_pattern_refuses_rather_than_becoming_a_wildcard() -
 // REFUSAL CONTROL TWO: an arm GUARD was dropped outright by the old lowering -- no branch body ever
 // read arm_guard -- so a guarded arm silently ran unguarded. This is the third consequence of the
 // class, and it appeared in neither of the two reports that found the other two.
-test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool {
+test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool  {
   compile_dag_rust_emit_check(
     "module fmguard\n\nimport std.types { List, Int }\n\nfn big_head(xs: List<Int>) -> Int {\n  match xs {\n    Empty => 0\n    Cons { head: h, tail: _ } if h > 10 => h\n    Cons { head: _, tail: _ } => 0\n  }\n}\n",
     "src/fmguard.rs",
@@ -131,7 +131,7 @@ test fn a_guarded_arm_refuses_rather_than_running_unguarded() -> Bool {
 // Some(only.clone()) } else { None }` against a retained pre-repair emission of
 // `if __fm.is_empty() { None } else { let only = (*__fm)[0].clone(); Some(only.clone()) }`.
 // The fixture supplies the shape; the real site attests the producer emits it.
-test fn the_one_element_arm_answers_only_for_length_one() -> Bool {
+test fn the_one_element_arm_answers_only_for_length_one() -> Bool  {
   compile_dag_rust_emit_check(
     "module fmcard\n\nimport std.types { List, Int }\n\nfn exactly_one(xs: List<Int>) -> Int? {\n  match xs {\n    Empty => none\n    Cons { head: only, tail: Empty } => Present { value: only }\n    _ => none\n  }\n}\n",
     "src/fmcard.rs",

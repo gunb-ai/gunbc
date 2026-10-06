@@ -14,7 +14,7 @@ import gunbc.fabric_witness_run {
   required_witnesses_build_work,
 }
 
-test fn production_required_witnesses_build_work_is_possessed() -> Bool {
+test fn production_required_witnesses_build_work_is_possessed() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => match required_witnesses_build_work(source: source) {
@@ -62,7 +62,7 @@ fn exact_source(tree_hex: NonEmptyStr) -> RequiredBuildSource? {
   }
 }
 
-test fn mismatched_commit_tree_refuses_before_source_construction() -> Bool {
+test fn mismatched_commit_tree_refuses_before_source_construction() -> Bool  {
   match fixture_oid(hex: "e9eaa579ed0b6585a48965842b43ee09af5671a1") {
     Absent => false
     Present { value: commit } => match fixture_oid(hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
@@ -92,7 +92,7 @@ fn bound_for(source: RequiredBuildSource, command_mutated: Bool, environment_val
   )
 }
 
-test fn identical_semantic_inputs_derive_identical_work_identity() -> Bool {
+test fn identical_semantic_inputs_derive_identical_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => {
@@ -107,7 +107,7 @@ fn identity_changes(left: RequiredBuildWorkBinding, right: RequiredBuildWorkBind
   binding_key(binding: left) != binding_key(binding: right)
 }
 
-test fn one_command_word_changes_work_identity() -> Bool {
+test fn one_command_word_changes_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => identity_changes(
@@ -117,7 +117,7 @@ test fn one_command_word_changes_work_identity() -> Bool {
   }
 }
 
-test fn one_environment_entry_changes_work_identity() -> Bool {
+test fn one_environment_entry_changes_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => identity_changes(
@@ -127,7 +127,7 @@ test fn one_environment_entry_changes_work_identity() -> Bool {
   }
 }
 
-test fn separator_in_list_value_cannot_collapse_work_identity() -> Bool {
+test fn separator_in_list_value_cannot_collapse_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => {
@@ -164,7 +164,7 @@ test fn separator_in_list_value_cannot_collapse_work_identity() -> Bool {
   }
 }
 
-test fn environment_name_value_boundaries_cannot_collapse_work_identity() -> Bool {
+test fn environment_name_value_boundaries_cannot_collapse_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => {
@@ -201,7 +201,7 @@ test fn environment_name_value_boundaries_cannot_collapse_work_identity() -> Boo
   }
 }
 
-test fn verified_tree_changes_work_identity() -> Bool {
+test fn verified_tree_changes_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: left_source } => match exact_source(tree_hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
@@ -214,7 +214,7 @@ test fn verified_tree_changes_work_identity() -> Bool {
   }
 }
 
-test fn toolchain_identity_changes_work_identity() -> Bool {
+test fn toolchain_identity_changes_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => identity_changes(
@@ -224,7 +224,7 @@ test fn toolchain_identity_changes_work_identity() -> Bool {
   }
 }
 
-test fn output_declaration_changes_work_identity() -> Bool {
+test fn output_declaration_changes_work_identity() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => identity_changes(
@@ -234,7 +234,7 @@ test fn output_declaration_changes_work_identity() -> Bool {
   }
 }
 
-test fn moving_branch_refuses_before_work_construction() -> Bool {
+test fn moving_branch_refuses_before_work_construction() -> Bool  {
   match bound_for(source: MovingGitRef { ref_name: "main" }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
     RequiredBuildWorkRefused { cause: RequiredBuildMovingRefRefused { ref_name: _ } } => true
     RequiredBuildWorkRefused { cause: _ } => false
@@ -242,7 +242,7 @@ test fn moving_branch_refuses_before_work_construction() -> Bool {
   }
 }
 
-test fn working_directory_refuses_before_work_construction() -> Bool {
+test fn working_directory_refuses_before_work_construction() -> Bool  {
   match bound_for(source: WorkingDirectorySource { path: "." }, command_mutated: false, environment_value: "1.93.0", toolchain: "rust:1.93.0", output: "required-ci-summary") {
     RequiredBuildWorkRefused { cause: RequiredBuildWorkingDirectoryRefused { path: _ } } => true
     RequiredBuildWorkRefused { cause: _ } => false
@@ -250,7 +250,7 @@ test fn working_directory_refuses_before_work_construction() -> Bool {
   }
 }
 
-test fn missing_required_coordinate_refuses_instead_of_defaulting() -> Bool {
+test fn missing_required_coordinate_refuses_instead_of_defaulting() -> Bool  {
   match exact_source(tree_hex: "c8983a3d8412a5e37a309b2d90ceafc698856619") {
     Absent => false
     Present { value: source } => {

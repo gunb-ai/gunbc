@@ -39,7 +39,7 @@ import gunbc.fabric_cell_host_root {
 // on the host. Here the same shape -- desired empty, observed present -- must produce a REFUSAL and
 // zero removals. The two assertions are separate on purpose: a plan with no actions at all would
 // satisfy "no removals" while proving nothing, so the refusal count is what makes this a wall.
-test fn witness_an_undesired_host_root_refuses_teardown_rather_than_removing_it() -> Bool {
+test fn witness_an_undesired_host_root_refuses_teardown_rather_than_removing_it() -> Bool  {
   let observed = [
     FabricCellHostMember {
       host: operator_host_srv3,
@@ -53,7 +53,7 @@ test fn witness_an_undesired_host_root_refuses_teardown_rather_than_removing_it(
 // AND THE POSITIVE CONTROL, WITHOUT WHICH THE ROW ABOVE IS A BLANKET REFUSAL. An absent base
 // directory on a host that wants one must still produce exactly one write, so the family converges
 // forward even though it never converges backward.
-test fn witness_an_absent_host_root_is_still_established() -> Bool {
+test fn witness_an_absent_host_root_is_still_established() -> Bool  {
   let desired = fabric_cell_host_desired_members(host: operator_host_srv3)
   list_length(items: desired) == 1
     && fabric_cell_host_write_count(desired: desired, observed: []) == 1
@@ -66,7 +66,7 @@ test fn witness_an_absent_host_root_is_still_established() -> Bool {
 // never teardown-eligible, and EVERY fabric execution slot subject is. An edit that made the
 // projection constant in either direction goes red here rather than silently making every cell
 // resource permanent or every host root removable.
-test fn witness_teardown_eligibility_is_projected_from_the_subject_both_ways() -> Bool {
+test fn witness_teardown_eligibility_is_projected_from_the_subject_both_ways() -> Bool  {
   let host_subject = FabricCellHostScope { host: operator_host_srv3 }
   let slots = fabric_execution_slot_identities()
   let every_slot_is_owned = fold(
@@ -82,7 +82,7 @@ test fn witness_teardown_eligibility_is_projected_from_the_subject_both_ways() -
 // THE HOST IS PART OF THE MEMBER IDENTITY, so two hosts' base directories are two members rather
 // than one contested one. Without this the fleet-wide population would collapse to a single row and
 // one host's drift would read as every host's.
-test fn witness_two_hosts_have_two_distinct_base_directory_members() -> Bool {
+test fn witness_two_hosts_have_two_distinct_base_directory_members() -> Bool  {
   let a = fabric_cell_host_desired_members(host: operator_host_srv3)
   let b = fabric_cell_host_desired_members(host: operator_host_srv4)
   fabric_cell_host_member_key(member: head_member(l: a))
@@ -103,7 +103,7 @@ fn head_member(l: List<FabricCellHostMember>) -> FabricCellHostMember {
 // THE DECLARED STATE IS THE DECLARED PATH, READ FROM THE SAME AUTHORITY THE REST OF THE SUBSYSTEM
 // READS. A second spelling of /opt/fabric-cells here would make the observed side compare against a
 // string this module invented rather than against what fabric_cell_converge declares.
-test fn witness_base_directory_state_is_the_declared_path() -> Bool {
+test fn witness_base_directory_state_is_the_declared_path() -> Bool  {
   (fabric_cell_host_desired_state_digest() as String)
     == fabric_cell_base_dir
 }
@@ -136,7 +136,7 @@ test fn witness_base_directory_state_is_the_declared_path() -> Bool {
 // whose assertions never execute is a capability rather than a guard, and a green build over it
 // proves only that it compiles. This class climbs when an exhaustiveness fixture is authored AND
 // executed by a lane that reports its verdict; until then the rung is honest at mitigatable.
-test fn witness_both_cell_families_read_ownership_from_one_projection() -> Bool {
+test fn witness_both_cell_families_read_ownership_from_one_projection() -> Bool  {
   let slots = fabric_execution_slot_identities()
   let every_slot_member_is_owned = fold(
     slots,

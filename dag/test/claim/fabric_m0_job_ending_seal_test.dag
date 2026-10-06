@@ -131,15 +131,15 @@ data forged_job_ending_body: String = "if false { sanctioned_ending() } else { J
 
 data sanctioned_body: String = "sanctioned_ending()"
 
-test fn a_forged_success_beside_pending_is_refused_at_compile() -> Bool {
+test fn a_forged_success_beside_pending_is_refused_at_compile() -> Bool  {
   sole_constructor_on_job_ending(source: job_ending_probe_source(body: forged_job_ending_body)) == 1
 }
 
-test fn the_sanctioned_ending_draws_no_violation() -> Bool {
+test fn the_sanctioned_ending_draws_no_violation() -> Bool  {
   sole_constructor_on_job_ending(source: job_ending_probe_source(body: sanctioned_body)) == 0
 }
 
-test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
+test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool  {
   censuses_differ_by_exactly_the_target_key(
     red: census_rows_or_refuse(source: job_ending_probe_source(body: forged_job_ending_body)),
     green: census_rows_or_refuse(source: job_ending_probe_source(body: sanctioned_body)),
@@ -148,7 +148,7 @@ test fn the_forged_and_sanctioned_arms_differ_by_exactly_this_wall() -> Bool {
   )
 }
 
-test fn both_arms_of_the_differential_actually_compiled() -> Bool {
+test fn both_arms_of_the_differential_actually_compiled() -> Bool  {
   (census_count_at_key(rows: census_rows_or_refuse(source: job_ending_probe_source(body: forged_job_ending_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
     && (census_count_at_key(rows: census_rows_or_refuse(source: job_ending_probe_source(body: sanctioned_body)), diagnostic_class: "CENSUS-NOT-RUNNABLE", subject_name: "census", blocking: true) == 0)
 }

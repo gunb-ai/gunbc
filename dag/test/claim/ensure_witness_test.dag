@@ -71,7 +71,7 @@ fn converged(r: ReconciledEffect<String, String>) -> Bool {
   }
 }
 
-test fn ensure_satisfied_is_noop_for_every_policy() -> Bool {
+test fn ensure_satisfied_is_noop_for_every_policy() -> Bool  {
   match ensure_decide(
     policy: EnsureObserveOnly,
     observation: EnsureObserved { evidence: "cargo 1.90" },
@@ -84,7 +84,7 @@ test fn ensure_satisfied_is_noop_for_every_policy() -> Bool {
   }
 }
 
-test fn ensure_known_absence_applies_only_with_authority_and_plan() -> Bool {
+test fn ensure_known_absence_applies_only_with_authority_and_plan() -> Bool  {
   let permitted = ensure_decide(
     policy: EnsureMayApply,
     observation: EnsureAbsent { reason: "cargo absent" },
@@ -109,7 +109,7 @@ test fn ensure_known_absence_applies_only_with_authority_and_plan() -> Bool {
     }
 }
 
-test fn ensure_inaccessible_never_mutates() -> Bool {
+test fn ensure_inaccessible_never_mutates() -> Bool  {
   match ensure_decide(
     policy: EnsureMayApply,
     observation: EnsureInaccessible { reason: "probe transport refused" },
@@ -127,7 +127,7 @@ test fn ensure_inaccessible_never_mutates() -> Bool {
 // than merely dropping it. The generic witnesses in reconciled_effect_witness_test establish the
 // classifier's truth table; these establish that ensure_reconcile CONSTRUCTS and FEEDS that table
 // correctly -- that the decision it derives and the reports it forwards land on the arm they should.
-test fn ensure_reconcile_apply_applied_over_a_grounding_after_report_converges() -> Bool {
+test fn ensure_reconcile_apply_applied_over_a_grounding_after_report_converges() -> Bool  {
   converged(r: reconcile_case(
     application: Applied,
     after: EnsureObserved { evidence: "gunbc-help-identity" },
@@ -135,7 +135,7 @@ test fn ensure_reconcile_apply_applied_over_a_grounding_after_report_converges()
   ))
 }
 
-test fn ensure_reconcile_apply_applied_over_a_non_grounding_after_report_does_not_converge() -> Bool {
+test fn ensure_reconcile_apply_applied_over_a_non_grounding_after_report_does_not_converge() -> Bool  {
   !converged(r: reconcile_case(
     application: Applied,
     after: EnsureObserved { evidence: "other-program" },
@@ -143,7 +143,7 @@ test fn ensure_reconcile_apply_applied_over_a_non_grounding_after_report_does_no
   ))
 }
 
-test fn ensure_reconcile_apply_not_applied_does_not_converge_even_over_a_grounding_report() -> Bool {
+test fn ensure_reconcile_apply_not_applied_does_not_converge_even_over_a_grounding_report() -> Bool  {
   !converged(r: reconcile_case(
     application: NotApplied,
     after: EnsureObserved { evidence: "gunbc-help-identity" },
@@ -151,7 +151,7 @@ test fn ensure_reconcile_apply_not_applied_does_not_converge_even_over_a_groundi
   ))
 }
 
-test fn ensure_reconcile_noop_not_applied_over_a_grounding_report_converges() -> Bool {
+test fn ensure_reconcile_noop_not_applied_over_a_grounding_report_converges() -> Bool  {
   converged(r: reconcile_noop_case())
 }
 
@@ -166,7 +166,7 @@ test fn ensure_reconcile_noop_not_applied_over_a_grounding_report_converges() ->
 // fails this and passes every verdict witness above. This is the site the reviewer named as the one
 // where distinct before and after reports are expressible -- the capability receipt cannot express
 // it, because it passes one observation as both.
-test fn ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcome() -> Bool {
+test fn ensure_reconcile_carries_the_exact_after_mismatch_reason_onto_the_outcome() -> Bool  {
   match classify_reconciled(
     r: ensure_reconcile(
       policy: EnsureMayApply,

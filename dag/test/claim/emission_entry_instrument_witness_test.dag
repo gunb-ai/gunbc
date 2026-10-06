@@ -58,12 +58,12 @@ fn scanned_rows(lines: List<String>) -> List<String> {
   }
 }
 
-test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
+test fn cargo_population_carries_identity_and_location_per_finding() -> Bool  {
   scanned_rows(lines: [artifact_line, e0308_line, build_finished_line])
     == ["src/a.rs:12:7\tE0308\tprobe diagnostic"]
 }
 
-test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
+test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool  {
   scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
     == ["src/a.rs:12:7\tE0599\tprobe diagnostic"]
 }
@@ -71,35 +71,35 @@ test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
 // RED: an UNREADABLE primary flag is not a well-formed `false`. The pair below is the whole point:
 // the malformed flag refuses, the well-formed `false` still reads as an unlocated finding. Without
 // the second, a decode that simply refused every span would pass the first and mean nothing.
-test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() -> Bool {
+test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() -> Bool  {
   scanned_rows(lines: [e0308_line_primary_flag_malformed, build_finished_line])
     == ["REFUSED: compiler-message spans are not readable at line 1"]
 }
 
-test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool {
+test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool  {
   scanned_rows(lines: [e0308_line_no_primary_span, build_finished_line])
     == ["(no span)\tE0308\tprobe diagnostic"]
 }
 
-test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
+test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool  {
   scanned_rows(lines: [uncoded_line, build_finished_line])
     == ["(no span)\tuncoded\tprobe diagnostic"]
 }
 
-test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool {
+test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool  {
   count(scanned_rows(lines: [e0308_line, e0599_line_secondary_first, build_finished_line])) == 2
 }
 
 // RED: a stream this decode cannot read must not report an empty population. The line number is
 // asserted exactly, because a refusal that names the wrong line sends the reader to the wrong place.
-test fn an_unreadable_line_refuses_and_names_it_rather_than_reporting_zero() -> Bool {
+test fn an_unreadable_line_refuses_and_names_it_rather_than_reporting_zero() -> Bool  {
   scanned_rows(lines: [e0308_line, not_json_line, build_finished_line])
     == ["REFUSED: cargo message line unparseable at line 2"]
 }
 
 // RED: an empty stream is the shape a swallowed or never-started build produces, and reading it as
 // a clean build is the fabricated zero this whole instrument exists to end.
-test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool {
+test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool  {
   match cargo_scan_diagnostics(stdout: "") {
     CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: _, terminal_seen: _ } => false
     CargoDiagnosticStreamEmpty => true
@@ -111,14 +111,14 @@ test fn an_empty_stream_refuses_rather_than_reporting_a_clean_build() -> Bool {
 // performed with a build-finished message, so a stream that parses cleanly and simply STOPS is a
 // killed run's prefix. Reporting its messages as the population is exactly the truncated-observation
 // -reported-as-complete defect this instrument was built after, so it refuses and says how far it got.
-test fn a_stream_with_no_terminal_message_refuses_rather_than_reporting_its_prefix() -> Bool {
+test fn a_stream_with_no_terminal_message_refuses_rather_than_reporting_its_prefix() -> Bool  {
   scanned_rows(lines: [e0308_line, e0599_line_secondary_first])
     == ["REFUSED: cargo's message stream ended after 2 line(s) with no build-finished message — the run did not complete, so the messages it did emit are a prefix and not a population; reporting them would be a killed process's partial output rendered as a finished measurement"]
 }
 
 // The clean verdict is cargo's OWN, read from the terminal message rather than from a process exit
 // status observed beside the stream.
-test fn the_clean_verdict_is_read_from_cargos_terminal_message() -> Bool {
+test fn the_clean_verdict_is_read_from_cargos_terminal_message() -> Bool  {
   match scan_of(lines: [artifact_line, build_finished_ok_line]) {
     CargoDiagnosticsRead { diagnostics: ds, lines_scanned: _, build_succeeded: ok, terminal_seen: seen } =>
       ok && seen && count(ds) == 0
@@ -126,7 +126,7 @@ test fn the_clean_verdict_is_read_from_cargos_terminal_message() -> Bool {
   }
 }
 
-test fn a_failing_terminal_message_is_read_as_a_failing_build() -> Bool {
+test fn a_failing_terminal_message_is_read_as_a_failing_build() -> Bool  {
   match scan_of(lines: [e0308_line, build_finished_line]) {
     CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: ok, terminal_seen: _ } => !ok
     scan => false
@@ -228,13 +228,13 @@ fn emit_large_complete_stream() -> String {
   )
 }
 
-test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool {
+test fn a_large_complete_capture_fixture_exceeds_the_window() -> Bool  {
   emit_large_complete_stream().length() > byte_size_count(emit_capture_window)
 }
 
 // THE CONTROL ITSELF: over the window, reported complete, read in full. If the arm keyed on size
 // this would refuse; it reports all 400 members instead.
-test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool {
+test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> Bool  {
   match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: complete_capture_of(s: emit_large_complete_stream())) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: n } =>
       count(ds) == emit_large_population_count && n == emit_large_population_count
@@ -245,7 +245,7 @@ test fn a_large_but_complete_capture_is_read_and_not_refused_for_its_size() -> B
 // AND THE SAME BYTES WITH THE FLAG SET STILL REFUSE, which is what makes the pair a discriminator
 // rather than two unrelated readings: identical input, one bit different, opposite verdicts. Only
 // the host's truncation report can account for the difference, because nothing else changed.
-test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool {
+test fn the_same_large_stream_refuses_when_the_host_reports_it_truncated() -> Bool  {
   match read_emit_diagnostics(stderr: emit_large_complete_stream(), capture: truncated_capture_of(s: emit_large_complete_stream(), retained: 16384)) {
     EmitOutputTruncated { extent: _ } => true
     read => false
@@ -260,7 +260,7 @@ fn emit_rows(lines: List<String>) -> List<String> {
   }
 }
 
-test fn the_emit_population_carries_severity_location_and_message() -> Bool {
+test fn the_emit_population_carries_severity_location_and_message() -> Bool  {
   emit_rows(lines: [emit_scope_line, emit_noise_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two])
     == [
       "error\tdag/extdeps/cpu/ampere.dag:31:3\tambiguous anonymous record literal",
@@ -268,7 +268,7 @@ test fn the_emit_population_carries_severity_location_and_message() -> Bool {
     ]
 }
 
-test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
+test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_two, emit_severity_summary_two]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: _ } =>
       emit_blocking_count(ds: ds) == 1 && emitted_file_count_text(files: files) == "177"
@@ -279,7 +279,7 @@ test fn blocking_is_counted_from_the_population_not_from_the_summary() -> Bool {
 // A REFUSED COMPILE prints the rendered diagnostics and its severity summary but NO `compiled:`
 // line, because it wrote no tree. The population is still fully readable, and the file count is
 // the named absent state rather than a zero that would read as an empty emission.
-test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bool {
+test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: files, declared_total: n } =>
       count(ds) == 1 && n == 1
@@ -291,7 +291,7 @@ test fn a_refused_compile_reads_its_population_from_the_severity_summary() -> Bo
 // RED: the compiler states its total twice on a completed compile, and the two accounts must
 // agree. A disagreement is the decode's own alarm that it is reading a rendering it does not
 // understand, and it stops the line instead of picking one of the two numbers.
-test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
+test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool  {
   emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three, emit_severity_summary_two])
     == ["REFUSED: the compiler's own two totals disagree: `compiled:` says 3 and the rendered severity summary says 2"]
 }
@@ -299,21 +299,21 @@ test fn the_compilers_two_own_totals_disagreeing_refuses() -> Bool {
 // RED, AND IT IS THE ONE THAT MAKES THE PROSE DECODE ADMISSIBLE AT ALL: the compiler declares its
 // own total, so a diagnostic shape this decode does not recognise makes the two numbers disagree
 // and stops the line, instead of quietly returning a smaller population.
-test fn a_population_smaller_than_the_compilers_own_total_refuses() -> Bool {
+test fn a_population_smaller_than_the_compilers_own_total_refuses() -> Bool  {
   emit_rows(lines: [emit_scope_line, emit_error_line, emit_advisory_line, emit_summary_three])
     == ["REFUSED: decoded 2 diagnostic line(s) against a compiler-declared total of 3"]
 }
 
 // RED: no summary line means the compile never reached the point where it states its own total, so
 // there is no total to check a population against and no population may be reported.
-test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool {
+test fn output_with_no_summary_line_refuses_rather_than_reporting_zero() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_noise_line]) {
     EmitSummaryAbsent => true
     read => false
   }
 }
 
-test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool {
+test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, "compiled: some files emitted, lots diagnostics"]) {
     EmitSummaryUnreadable { line: _ } => true
     read => false
@@ -322,14 +322,14 @@ test fn a_malformed_summary_line_refuses_rather_than_defaulting_to_zero() -> Boo
 
 // RED: one population, two accounts of itself. Taking the last silently discards the first, so a
 // second anchor line refuses. Both anchors are covered because both folds had the same defect.
-test fn a_second_compiled_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+test fn a_second_compiled_summary_line_refuses_rather_than_overwriting_the_first() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_summary_one, emit_summary_one]) {
     EmitAnchorDuplicated { anchor: CompiledSummaryAnchor, count: 2 } => true
     read => false
   }
 }
 
-test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first() -> Bool {
+test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error, emit_severity_summary_one_error]) {
     EmitAnchorDuplicated { anchor: SeveritySummaryAnchor, count: 2 } => true
     read => false
@@ -341,7 +341,7 @@ test fn a_second_severity_summary_line_refuses_rather_than_overwriting_the_first
 // whole-tree handler. A compiler that accepted the flag and ignored it would print an ordinary
 // summary over the WHOLE FIRST SOURCE ROOT, and a per-entry instrument would report that as one
 // entry's population. Requiring the compiler's own scope marker refuses that substitution.
-test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
+test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool  {
   match emit_read_of(lines: [emit_whole_tree_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitScopeUnconfirmed => true
     read => false
@@ -352,7 +352,7 @@ test fn a_whole_tree_compile_is_not_read_as_an_entry_population() -> Bool {
 // entry-scoped, readable population -- the very lines the control beneath it reads normally -- and
 // the ONLY difference is the host's report that it kept a bounded tail. Without the pair, an arm
 // that simply refused everything would pass this and mean nothing.
-test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
+test fn a_truncated_capture_refuses_under_its_own_name() -> Bool  {
   match emit_read_of_truncated(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitOutputTruncated { extent: _ } => true
     read => false
@@ -365,7 +365,7 @@ test fn a_truncated_capture_refuses_under_its_own_name() -> Bool {
 // stream with no marker -- is the whole-tree substitution, and it must keep landing on
 // EmitScopeUnconfirmed. That claim is a_whole_tree_compile_is_not_read_as_an_entry_population above,
 // which is now this arm's control rather than merely its neighbour.
-test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
+test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool  {
   match emit_read_of_truncated(lines: [emit_error_line, emit_severity_summary_one_error]) {
     EmitOutputTruncated { extent: _ } => true
     read => false
@@ -377,7 +377,7 @@ test fn truncation_is_reported_ahead_of_a_missing_marker_it_explains() -> Bool {
 // wall exists and not what it would take to move it; the numbers below are the difference. The
 // fixture pins an exact discarded count, so a decode that reported the total, the retained, or a
 // sign-flipped difference in that position would fail rather than merely read oddly.
-test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() -> Bool {
+test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() -> Bool  {
   let stream = emit_large_complete_stream()
   let expected_discarded = stream.length() - 16384
   match read_emit_diagnostics(stderr: stream, capture: truncated_capture_of(s: stream, retained: 16384)) {
@@ -395,7 +395,7 @@ test fn the_truncation_refusal_carries_how_far_over_the_window_the_stream_ran() 
 // A capture whose total equals its retained is not truncated, and a decode that inferred truncation
 // from `total > retained` would agree with this one by accident -- so the discriminating case is a
 // capture the host calls truncated whose sizes are EQUAL. It must still refuse.
-test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool {
+test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool  {
   let stream = stream_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error])
   match read_emit_diagnostics(
     stderr: stream,
@@ -410,7 +410,7 @@ test fn truncation_follows_the_hosts_flag_and_not_a_size_comparison() -> Bool {
   }
 }
 
-test fn an_entry_scoped_compile_is_read_normally() -> Bool {
+test fn an_entry_scoped_compile_is_read_normally() -> Bool  {
   match emit_read_of(lines: [emit_scope_line, emit_error_line, emit_severity_summary_one_error]) {
     EmitDiagnosticsRead { diagnostics: ds, emitted_files: _, declared_total: _ } => count(ds) == 1
     read => false
@@ -455,18 +455,18 @@ data clean_specimen: EmissionMeasurement = EmissionMeasured {
 // THE WHOLE CARRIER'S REASON FOR EXISTING, asserted rather than described. A count of zero and an
 // unreached stage are different values, they render to different text, and only one of them counts
 // as a completed measurement.
-test fn an_unreached_stage_and_a_zero_population_are_not_the_same_reading() -> Bool {
+test fn an_unreached_stage_and_a_zero_population_are_not_the_same_reading() -> Bool  {
   emission_measurement_completed(m: unreached_specimen) == false
     && emission_measurement_completed(m: clean_specimen) == true
     && emission_report_text(m: unreached_specimen) != emission_report_text(m: clean_specimen)
 }
 
-test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
+test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool  {
   string_contains(s: emission_report_text(m: unreached_specimen), pattern: "outcome\tsubject-unestablished\tstage\tbinaries")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
 }
 
-test fn a_measured_report_states_both_populations() -> Bool {
+test fn a_measured_report_states_both_populations() -> Bool  {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
     && string_contains(
@@ -478,7 +478,7 @@ test fn a_measured_report_states_both_populations() -> Bool {
 // PROVENANCE, ASSERTED RATHER THAN CLAIMED IN PROSE. A population is attributable only if the
 // report says which compiler produced it; a measurement carries that binding and an unestablished
 // subject carries no population to attribute.
-test fn a_measured_report_names_the_compiler_that_produced_it() -> Bool {
+test fn a_measured_report_names_the_compiler_that_produced_it() -> Bool  {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "compiler\taa")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "source_revision\tc271b75829")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "working_tree\tclean")
@@ -494,27 +494,27 @@ data refused_specimen: EmissionMeasurement = EmissionEmitRefused {
   emitted_files: FilesNotWritten
 }
 
-test fn a_refused_emit_population_is_never_reported_as_complete() -> Bool {
+test fn a_refused_emit_population_is_never_reported_as_complete() -> Bool  {
   string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcompleteness-unestablished")
     && !string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\tcomplete (")
 }
 
 // The counterpart, so the extent is a real discriminator rather than a constant: a compile that
 // wrote a tree ran the emit body to its end, and its population is complete.
-test fn a_completed_emit_population_is_reported_as_complete() -> Bool {
+test fn a_completed_emit_population_is_reported_as_complete() -> Bool  {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\tcomplete (")
 }
 
 // AND THE COUNT NEVER TRAVELS WITHOUT IT. Both are rendered by one expression, so a report that
 // states a population size always states the standing of the set it counted.
-test fn no_report_states_an_emit_population_without_its_extent() -> Bool {
+test fn no_report_states_an_emit_population_without_its_extent() -> Bool  {
   string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: refused_specimen), pattern: "emit_population_extent\t")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population_extent\t")
 }
 
-test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool {
+test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bool  {
   !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "compiler\t")
     && !string_contains(s: emission_report_text(m: unreached_specimen), pattern: "emit_population")
 }
@@ -532,7 +532,7 @@ test fn an_unestablished_subject_carries_no_provenance_and_no_population() -> Bo
 // ASSERTED AS THE WHOLE ARGV RATHER THAN AS A PREDICATE OVER IT, because ORDER is the fact under
 // test and a membership check cannot see order at all -- an argv listing the pool first contains
 // exactly the same elements and measures a different subject.
-test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool {
+test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool  {
   emission_compile_args(
     scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
     render_target: RustRender,
@@ -542,14 +542,14 @@ test fn a_primary_root_scope_renders_the_primary_root_before_its_pools() -> Bool
 }
 
 // An entry measurement is outside whole-root admission and carries neither demand flag.
-test fn an_entry_scope_carries_no_root_demand_flags() -> Bool {
+test fn an_entry_scope_carries_no_root_demand_flags() -> Bool  {
   let args = emission_compile_args(scope: EntryScope { entry: "dag/std/node.dag" }, render_target: RustRender, out_dir: "/tmp/o")
   !any(args, a => a == "--repository") && !any(args, a => a == "--measured-root-demands")
 }
 
 // THE MIRROR OF THE ABOVE, and the pair is the point: the SAME two roots in the other order is the
 // argv that produced 2026-08-28's misreported runs, and it must render differently.
-test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool {
+test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool  {
   emission_compile_args(
     scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
     render_target: RustRender, out_dir: "/tmp/o"
@@ -560,7 +560,7 @@ test fn swapping_which_root_is_primary_renders_a_different_argv() -> Bool {
   ) |> join(separator: " "))
 }
 
-test fn a_primary_root_scope_names_no_entry() -> Bool {
+test fn a_primary_root_scope_names_no_entry() -> Bool  {
   let args = emission_compile_args(
     scope: PrimaryRootScope { primary_root: "src/v2", dependency_pools: ["dag"] },
     render_target: RustRender,
@@ -569,7 +569,7 @@ test fn a_primary_root_scope_names_no_entry() -> Bool {
   !any(args, a => a == "--entry")
 }
 
-test fn an_entry_scope_names_its_entry() -> Bool {
+test fn an_entry_scope_names_its_entry() -> Bool  {
   let args = emission_compile_args(
     scope: EntryScope { entry: "dag/std/node.dag" },
     render_target: RustRender,
@@ -580,7 +580,7 @@ test fn an_entry_scope_names_its_entry() -> Bool {
 
 // THE TARGET REACHES THE ARGV RATHER THAN BEING DESCRIBED BESIDE IT. A subject field that did not
 // render into the invocation would be free to disagree with the run it claims to describe.
-test fn the_render_target_reaches_the_invocation() -> Bool {
+test fn the_render_target_reaches_the_invocation() -> Bool  {
   let rust = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: RustRender, out_dir: "/tmp/o")
   let dag = emission_compile_args(scope: EntryScope { entry: "e" }, render_target: DagRender, out_dir: "/tmp/o")
   any(rust, a => a == "rust") && any(dag, a => a == "dag") && !any(rust, a => a == "--target-dag")
@@ -588,14 +588,14 @@ test fn the_render_target_reaches_the_invocation() -> Bool {
 
 // ASSEMBLY REFUSES RATHER THAN FABRICATING AN ENTRY. cssl_assemble takes one --entry-dag; handing
 // it the primary root would assemble a subject the measurement never named.
-test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool {
+test fn assembly_refuses_a_population_scope_instead_of_inventing_an_entry() -> Bool  {
   match emission_scope_entry(sc: PrimaryRootScope { primary_root: "src/v2", dependency_pools: [] }) {
     ScopeEntry { entry: _ } => false
     ScopeNamesNoEntry { why: w } => w != ""
   }
 }
 
-test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
+test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool  {
   match emission_scope_entry(sc: EntryScope { entry: "dag/std/node.dag" }) {
     ScopeEntry { entry: e } => e == "dag/std/node.dag"
     ScopeNamesNoEntry { why: _ } => false
@@ -604,7 +604,7 @@ test fn assembly_takes_the_entry_when_the_scope_has_one() -> Bool {
 
 // THE LABEL DISTINGUISHES THE TWO SCOPES, so a persisted receipt cannot render a partial subject
 // as a whole one -- which is exactly what the prose around those three runs did.
-test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
+test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool  {
   let e = emission_scope_label(sc: EntryScope { entry: "dag/std/node.dag" })
   let p = emission_scope_label(sc: PrimaryRootScope { primary_root: "dag", dependency_pools: ["src/v2"] })
   e != p && e != "" && p != "" && string_contains(s: p, pattern: "src/v2")
@@ -615,7 +615,7 @@ test fn the_scope_label_distinguishes_an_entry_from_a_population() -> Bool {
 // repository-relative path, so a roster join answers Absent for exactly the entry the run was
 // about. measure_scope_emission stamps this key onto its subject-unestablished arms and
 // gunbc.emit_subject_clean_frontier joins on it, so the two must agree by construction.
-test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool {
+test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool  {
   let sc = EntryScope { entry: "dag/std/node.dag" }
   emission_scope_join_key(sc: sc) == "dag/std/node.dag"
     && emission_scope_join_key(sc: sc) != emission_scope_label(sc: sc)
@@ -624,7 +624,7 @@ test fn an_entry_scopes_join_key_is_its_bare_path_and_not_its_label() -> Bool {
 // AND THE POPULATION ARM PRESENTS THE LABEL DELIBERATELY: prefixed, so it cannot collide with any
 // path and joins to nothing -- the accurate answer, rather than a false match on whichever root it
 // names. Built unkind on purpose: the primary root IS a real entry path.
-test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -> Bool {
+test fn a_population_scopes_join_key_cannot_be_mistaken_for_its_primary_root() -> Bool  {
   let sc = PrimaryRootScope { primary_root: "dag/std/node.dag", dependency_pools: [] }
   emission_scope_join_key(sc: sc) != "dag/std/node.dag"
     && emission_scope_join_key(sc: sc) == emission_scope_label(sc: sc)
@@ -657,11 +657,11 @@ fn emission_binaries_cause_names(reason: WitnessBinRefusalReason, reason_name: S
   }
 }
 
-test fn emission_binaries_refusal_carries_absent_reason() -> Bool {
+test fn emission_binaries_refusal_carries_absent_reason() -> Bool  {
   emission_binaries_cause_names(reason: WitnessBinArtifactAbsent, reason_name: "artifact-absent")
 }
 
-test fn emission_binaries_refusal_carries_build_failed_reason() -> Bool {
+test fn emission_binaries_refusal_carries_build_failed_reason() -> Bool  {
   emission_binaries_cause_names(reason: WitnessBinBuildFailed, reason_name: "build-failed")
     && !emission_binaries_cause_names(reason: WitnessBinBuildFailed, reason_name: "artifact-absent")
 }

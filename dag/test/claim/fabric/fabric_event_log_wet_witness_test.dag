@@ -49,7 +49,7 @@ fn append_id(store: FabricStorageBinding, parent: HeadExpectation, at: EpochSecs
 
 // THE INHABITANCE CLAIM: three chained appends, then one partition read walks all three, oldest
 // first, with ids equal to what each append was answered.
-test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -> Bool {
+test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -> Bool  {
   let store = FabricStorageLocalFiles { root: fresh_files() }
   match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "a")) {
     Absent => false
@@ -76,7 +76,7 @@ test fn three_chained_appends_read_back_whole_oldest_first_by_real_execution() -
 
 // A LOST RACE IS STALE, NEVER A REFUSAL: a second writer that also observed the empty partition is
 // answered with the first writer's event as the observed head.
-test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution() -> Bool {
+test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real_execution() -> Bool  {
   let store = FabricStorageLocalFiles { root: fresh_files() }
   match append_id(store: store, parent: HeadAbsent, at: 1000, payload: acquired(reference: "first")) {
     Absent => false
@@ -92,7 +92,7 @@ test fn a_second_append_against_an_absent_head_is_stale_naming_the_first_by_real
 // THE BYTES PUBLISHED ARE THE BYTES SERIALIZED: the stored object under an admitted event's id holds
 // exactly the event's wire text. The git realization once published its empty blob as a head; here
 // the object is built from the event value, and this reads it back from the file the store wrote.
-test fn an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution() -> Bool {
+test fn an_admitted_event_is_stored_as_exactly_its_wire_text_by_real_execution() -> Bool  {
   let files = fresh_files()
   let e = event(parent: HeadAbsent, at: 1000, payload: acquired(reference: "exact"))
   match event_log_append(store: FabricStorageLocalFiles { root: files }, partition: witness_partition(), event: e, expected: HeadAbsent) {

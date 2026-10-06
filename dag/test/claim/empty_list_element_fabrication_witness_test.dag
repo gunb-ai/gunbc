@@ -34,10 +34,10 @@ fn compiles_with_no_blocking_diagnostic(source: String) -> Bool {
   }
 }
 
-test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> Bool {
+test fn an_empty_list_in_both_branches_does_not_fabricate_a_unit_element() -> Bool  {
   compiles_with_no_blocking_diagnostic(source: red_both_branches_empty_source)
 }
 
-test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool {
+test fn a_typed_branch_beside_an_empty_one_still_resolves() -> Bool  {
   compiles_with_no_blocking_diagnostic(source: green_one_branch_typed_source)
 }

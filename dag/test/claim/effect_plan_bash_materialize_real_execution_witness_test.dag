@@ -99,21 +99,21 @@ fn wet_exec_fails_without_output(plan: EffectPlan<BashBoundOperationInvocation>)
   }
 }
 
-test fn effect_plan_bash_two_declared_operations_execute() -> Bool {
+test fn effect_plan_bash_two_declared_operations_execute() -> Bool  {
   wet_exec_succeeds_with_output(plan: wet_plan(steps: [
     Do { effect: wet_test_path(operation: "IsExecutable", path: "/bin/sh") },
     Do { effect: wet_id_uid() }
   ]))
 }
 
-test fn effect_plan_bash_fail_fast_prevents_later_operation_execution() -> Bool {
+test fn effect_plan_bash_fail_fast_prevents_later_operation_execution() -> Bool  {
   wet_exec_fails_without_output(plan: wet_plan(steps: [
     Do { effect: wet_test_path(operation: "IsFile", path: "/gunbc-wave-a-definitely-absent") },
     Do { effect: wet_id_uid() }
   ]))
 }
 
-test fn effect_plan_bash_metachar_and_newline_cannot_open_a_statement() -> Bool {
+test fn effect_plan_bash_metachar_and_newline_cannot_open_a_statement() -> Bool  {
   let metachar = wet_exec_fails_without_output(plan: wet_plan(steps: [
     Do { effect: wet_test_path(
       operation: "IsFile",
@@ -153,7 +153,7 @@ fn wet_exec_stdout_is(plan: EffectPlan<BashBoundOperationInvocation>, expected: 
 
 // ---- Let ----
 
-test fn effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through() -> Bool {
+test fn effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through() -> Bool  {
   let lit = wet_exec_succeeds_with_output(plan: wet_plan(steps: [
     Let { name: "TOOL", value: ExprLit { spelling: "id" } },
     Do { effect: wet_id_uid_via(env_var: "TOOL") }
@@ -170,7 +170,7 @@ test fn effect_plan_bash_let_binds_a_variable_a_later_operation_executes_through
   lit && var_ref && cmdsubst
 }
 
-test fn effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run() -> Bool {
+test fn effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_cannot_run() -> Bool  {
   let lit = wet_exec_fails_without_output(plan: wet_plan(steps: [
     Let { name: "TOOL", value: ExprLit { spelling: "id; printf PWN" } },
     Do { effect: wet_id_uid_via(env_var: "TOOL") }
@@ -188,7 +188,7 @@ test fn effect_plan_bash_RED_let_value_with_metacharacters_stays_one_word_and_ca
 
 // ---- Call ----
 
-test fn effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly() -> Bool {
+test fn effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactly() -> Bool  {
   let payload = "a'b; $(id) `id` | printf PWN > /dev/null \"x\" \\ $HOME"
   wet_exec_stdout_is(plan: wet_plan(steps: [wet_printf(text: payload)]), expected: payload)
     && wet_exec_stdout_is(
@@ -197,7 +197,7 @@ test fn effect_plan_bash_call_runs_the_callee_with_each_arg_round_tripped_exactl
     )
 }
 
-test fn effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run() -> Bool {
+test fn effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_cannot_run() -> Bool  {
   wet_exec_fails_without_output(plan: wet_plan(steps: [
     Call { callee: "true; printf PWN", args: [] }
   ]))
@@ -209,7 +209,7 @@ test fn effect_plan_bash_RED_call_callee_with_metacharacters_is_a_name_and_canno
 
 // ---- If ----
 
-test fn effect_plan_bash_if_selects_the_observed_branch() -> Bool {
+test fn effect_plan_bash_if_selects_the_observed_branch() -> Bool  {
   let then_ = wet_plan(steps: [wet_printf(text: "then")])
   let else_ = wet_plan(steps: [wet_printf(text: "else")])
   wet_exec_stdout_is(
@@ -240,7 +240,7 @@ test fn effect_plan_bash_if_selects_the_observed_branch() -> Bool {
     )
 }
 
-test fn effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word() -> Bool {
+test fn effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word() -> Bool  {
   let payload = "a; printf PWN | id -u"
   wet_exec_stdout_is(
     plan: wet_plan(steps: [
@@ -264,7 +264,7 @@ test fn effect_plan_bash_RED_if_operand_with_metacharacters_compares_as_one_word
     )
 }
 
-test fn effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan() -> Bool {
+test fn effect_plan_bash_if_branch_fail_fast_stops_the_branch_and_the_plan() -> Bool  {
   wet_exec_fails_without_output(plan: wet_plan(steps: [
     If {
       cond: StrEq { lhs: "a", rhs: "a" },

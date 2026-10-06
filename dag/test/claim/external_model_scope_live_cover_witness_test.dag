@@ -59,18 +59,18 @@ fn scope_cover_walk(path: String) -> ScopeCoverWalk {
   }
 }
 
-test fn red_cover_walker_refuses_missing_root() -> Bool {
+test fn red_cover_walker_refuses_missing_root() -> Bool  {
   let w = scope_cover_walk(path: "dag/extdeps_nonexistent_probe_root")
   w.walk_failures == 1 && (w.files |> count) == 0
 }
 
-test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool {
+test fn frontier_cover_of_live_extdeps_tree_holds() -> Bool  {
   let w = scope_cover_walk(path: "dag/extdeps")
   w.walk_failures == 0
     && scope_cover_holds(walked: w.files, union: scope_roster_union_live())
     && (w.files |> count) > 150
 }
 
-test fn manifest_rows_all_predate_freeze_sha() -> Bool {
+test fn manifest_rows_all_predate_freeze_sha() -> Bool  {
   manifest_freeze_holds(manifest: read_manifest_rows_live(), observation: scope_placement_added_paths())
 }

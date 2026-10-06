@@ -26,24 +26,24 @@ data filter_in_then_of_if_used_as_guard_source: String = "module fx.filter_then_
 
 data filter_guard_body: String = "__result.push(x)"
 
-test fn w_filter_in_branch_condition_emits_the_guard() -> Bool {
+test fn w_filter_in_branch_condition_emits_the_guard() -> Bool  {
   compile_dag_rust_emit_check(filter_in_guard_source, "src/fx_filter_guard.rs", ["fn f", filter_guard_body, "} else {"], [])
 }
 
-test fn w_supported_guarded_any_lambda_still_emits() -> Bool {
+test fn w_supported_guarded_any_lambda_still_emits() -> Bool  {
   compile_dag_rust_emit_check(any_in_guard_source, "src/fx_any_guard.rs", ["fn f"], [])
 }
 
 // Written as filter(xs, x => …) in a guard; infer rewrites it onto the method arm, so the same
 // projection renders it.
-test fn w_free_call_filter_in_branch_condition_emits_the_guard() -> Bool {
+test fn w_free_call_filter_in_branch_condition_emits_the_guard() -> Bool  {
   compile_dag_rust_emit_check(filter_free_call_in_guard_source, "src/fx_filter_call_guard.rs", ["fn f", filter_guard_body, "} else {"], [])
 }
 
-test fn w_nested_if_filter_in_guard_emits_the_guard() -> Bool {
+test fn w_nested_if_filter_in_guard_emits_the_guard() -> Bool  {
   compile_dag_rust_emit_check(nested_if_filter_in_guard_source, "src/fx_filter_nested_if_guard.rs", ["fn f", filter_guard_body, "} else {"], [])
 }
 
-test fn w_filter_in_then_of_if_used_as_guard_still_emits() -> Bool {
+test fn w_filter_in_then_of_if_used_as_guard_still_emits() -> Bool  {
   compile_dag_rust_emit_check(filter_in_then_of_if_used_as_guard_source, "src/fx_filter_then_of_guard.rs", ["fn f", filter_guard_body], [])
 }

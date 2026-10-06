@@ -65,10 +65,10 @@ fn seed_quotes(word: String) -> Bool {
   string_contains(s: mirror_impl(), pattern: "\"" + word + "\"")
 }
 
-test fn every_enrolment_standing_name_is_mirrored_in_the_seed() -> Bool {
+test fn every_enrolment_standing_name_is_mirrored_in_the_seed() -> Bool  {
   every_arm() |> all(s => seed_quotes(word: enrolment_margin_standing_name(standing: s)))
 }
 
-test fn every_enrolment_blocking_cause_is_mirrored_in_the_seed() -> Bool {
+test fn every_enrolment_blocking_cause_is_mirrored_in_the_seed() -> Bool  {
   every_arm() |> all(s => enrolment_margin_blocking_cause(standing: s) == "" || seed_quotes(word: enrolment_margin_blocking_cause(standing: s)))
 }

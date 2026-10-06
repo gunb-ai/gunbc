@@ -89,30 +89,30 @@ fn w_non_ascii_string_ordering_realizes_on_the_host_string() -> Bool {
   )
 }
 
-test fn string_ordering_realizes_on_the_host_string() -> Bool {
+test fn string_ordering_realizes_on_the_host_string() -> Bool  {
   w_string_ordering_realizes_on_the_host_string()
 }
 
-test fn host_string_order_is_code_point_order_in_the_interpreter() -> Bool {
+test fn host_string_order_is_code_point_order_in_the_interpreter() -> Bool  {
   w_host_string_order_is_code_point_order_in_the_interpreter()
 }
 
-test fn non_ascii_string_ordering_realizes_on_the_host_string() -> Bool {
+test fn non_ascii_string_ordering_realizes_on_the_host_string() -> Bool  {
   w_non_ascii_string_ordering_realizes_on_the_host_string()
 }
 
-test fn optional_string_ordering_refuses_at_emission() -> Bool {
+test fn optional_string_ordering_refuses_at_emission() -> Bool  {
   w_optional_string_ordering_refuses_at_emission()
 }
 
-test fn present_binding_in_an_ordinary_match() -> Bool {
+test fn present_binding_in_an_ordinary_match() -> Bool  {
   w_present_binding_in_an_ordinary_match()
 }
 
-test fn present_binding_in_a_tail_call_match() -> Bool {
+test fn present_binding_in_a_tail_call_match() -> Bool  {
   w_present_binding_in_a_tail_call_match()
 }
 
-test fn present_binding_in_the_string_literal_reemission() -> Bool {
+test fn present_binding_in_the_string_literal_reemission() -> Bool  {
   w_present_binding_in_the_string_literal_reemission()
 }

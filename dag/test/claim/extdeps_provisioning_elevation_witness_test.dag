@@ -27,7 +27,7 @@ fn rendered_docker_install() -> String {
   )
 }
 
-test fn witness_sccache_mv_is_non_interactive() -> Bool {
+test fn witness_sccache_mv_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_sccache_install(),
     pattern: join([
@@ -40,49 +40,49 @@ test fn witness_sccache_mv_is_non_interactive() -> Bool {
   )
 }
 
-test fn witness_sccache_chmod_is_non_interactive() -> Bool {
+test fn witness_sccache_chmod_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_sccache_install(),
     pattern: "\n'/usr/bin/sudo' '-n' 'chmod' '+x' ",
   )
 }
 
-test fn witness_docker_install_keyrings_is_non_interactive() -> Bool {
+test fn witness_docker_install_keyrings_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: "\n'/usr/bin/sudo' '-n' 'install' '-m' '0755' '-d' '/etc/apt/keyrings'\n",
   )
 }
 
-test fn witness_docker_gpg_pipeline_is_non_interactive() -> Bool {
+test fn witness_docker_gpg_pipeline_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: " | '/usr/bin/sudo' '-n' 'gpg' '--dearmor' '--yes' '-o' '/etc/apt/keyrings/docker.gpg'\n",
   )
 }
 
-test fn witness_docker_chmod_is_non_interactive() -> Bool {
+test fn witness_docker_chmod_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: "\n'/usr/bin/sudo' '-n' 'chmod' 'a+r' ",
   )
 }
 
-test fn witness_docker_tee_pipeline_is_non_interactive() -> Bool {
+test fn witness_docker_tee_pipeline_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: " | '/usr/bin/sudo' '-n' 'tee' '/etc/apt/sources.list.d/docker.list' >/dev/null\n",
   )
 }
 
-test fn witness_docker_apt_update_is_non_interactive() -> Bool {
+test fn witness_docker_apt_update_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: "\n'/usr/bin/sudo' '-n' 'apt-get' 'update' '-q'\n",
   )
 }
 
-test fn witness_docker_apt_install_is_non_interactive() -> Bool {
+test fn witness_docker_apt_install_is_non_interactive() -> Bool  {
   string_contains(
     s: rendered_docker_install(),
     pattern: "\n'/usr/bin/sudo' '-n' 'apt-get' 'install' '-y' '-q' 'docker-ce' 'docker-ce-cli' 'containerd.io' 'docker-buildx-plugin' 'docker-compose-plugin' 'docker-ce-rootless-extras'\n",

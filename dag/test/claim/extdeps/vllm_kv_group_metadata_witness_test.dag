@@ -75,7 +75,7 @@ fn fx_pinned_emission(kind: VllmKvCacheSpecKind, window: TokenCount?) -> VllmKvG
   )
 }
 
-test fn w_the_modeled_shape_binds_to_the_pinned_revision() -> Bool {
+test fn w_the_modeled_shape_binds_to_the_pinned_revision() -> Bool  {
   (kv_group_metadata_modeled_revision.repository as String) == "github.com/vllm-project/vllm"
     && (kv_group_metadata_modeled_revision.full_revision as String) == "1967a5627bc3710b680bbec24ecb99aaddedf22b"
     && (kv_group_metadata_modeled_revision.full_revision as String) != (vllm_source_revision_read.full_revision as String)
@@ -86,7 +86,7 @@ test fn w_the_modeled_shape_binds_to_the_pinned_revision() -> Bool {
     && (vllm_kv_cache_spec_kind_wire(k: VllmSpecKindUnknown) as String) == "unknown"
 }
 
-test fn w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fields() -> Bool {
+test fn w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fields() -> Bool  {
   match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindMlaAttention, window: Absent)) {
     KvGroupLayoutFromEmissionRefused { cause: c } =>
       string_contains(s: c as String, pattern: "does not vouch")
@@ -97,7 +97,7 @@ test fn w_the_pinned_emission_refuses_layout_construction_naming_the_missing_fie
   }
 }
 
-test fn w_a_complete_emission_constructs_the_layout() -> Bool {
+test fn w_a_complete_emission_constructs_the_layout() -> Bool  {
   let window = token_count(count: 131072)
   match kv_group_layout_from_emission(m: fx_emission(
     revision: kv_group_metadata_modeled_revision,
@@ -119,7 +119,7 @@ test fn w_a_complete_emission_constructs_the_layout() -> Bool {
   }
 }
 
-test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool {
+test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool  {
   (match kv_group_layout_from_emission(m: fx_emission(
     revision: kv_group_metadata_modeled_revision,
     kind: VllmSpecKindMlaAttention,
@@ -142,7 +142,7 @@ test fn w_the_full_and_mamba_kinds_map_onto_the_growth_shape() -> Bool {
     })
 }
 
-test fn w_the_revision_guard_refuses_a_foreign_capture() -> Bool {
+test fn w_the_revision_guard_refuses_a_foreign_capture() -> Bool  {
   match kv_group_layout_from_emission(m: fx_emission(
     revision: w_foreign_revision(),
     kind: VllmSpecKindSlidingWindow,
@@ -157,7 +157,7 @@ test fn w_the_revision_guard_refuses_a_foreign_capture() -> Bool {
   }
 }
 
-test fn w_unmapped_kinds_refuse_naming_the_kind() -> Bool {
+test fn w_unmapped_kinds_refuse_naming_the_kind() -> Bool  {
   (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindChunkedLocalAttention, window: Absent)) {
     KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "chunked_local_attention")
     KvGroupLayoutFromEmissionReady { layout: _ } => false
@@ -180,7 +180,7 @@ test fn w_unmapped_kinds_refuse_naming_the_kind() -> Bool {
     })
 }
 
-test fn w_window_inconsistency_refuses_in_both_directions() -> Bool {
+test fn w_window_inconsistency_refuses_in_both_directions() -> Bool  {
   (match kv_group_layout_from_emission(m: fx_pinned_emission(kind: VllmSpecKindSlidingWindow, window: Absent)) {
     KvGroupLayoutFromEmissionRefused { cause: c } => string_contains(s: c as String, pattern: "carries no window")
     KvGroupLayoutFromEmissionReady { layout: _ } => false
@@ -194,7 +194,7 @@ test fn w_window_inconsistency_refuses_in_both_directions() -> Bool {
     })
 }
 
-test fn w_zero_walls_refuse_the_same_group() -> Bool {
+test fn w_zero_walls_refuse_the_same_group() -> Bool  {
   (match kv_group_layout_from_emission(m: fx_emission(
     revision: kv_group_metadata_modeled_revision,
     kind: VllmSpecKindMlaAttention,

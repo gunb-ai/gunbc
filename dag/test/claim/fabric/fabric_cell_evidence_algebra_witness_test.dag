@@ -143,14 +143,14 @@ fn all_triples_agree(observation_wire: fn(List<FabricCellAddressObservation>) ->
 
 // IDENTITY: an empty observation list is NoEvidence, and NoEvidence is what "nobody looked" means.
 // It is not absence, and the whole population type exists downstream of that distinction.
-test fn evidence_empty_is_no_evidence() -> Bool {
+test fn evidence_empty_is_no_evidence() -> Bool  {
   full_of(observations: []) == "none"
 }
 
 // IDEMPOTENCE: one atom observed twice says exactly what it said once. A join that failed this
 // would make a duplicated readback -- the ordinary case when two probes cover one address --
 // change the answer.
-test fn evidence_join_is_idempotent() -> Bool {
+test fn evidence_join_is_idempotent() -> Bool  {
   fold(algebra_atoms(), init: true, f: (acc, x) =>
     acc && full_of(observations: [x, x]) == full_of(observations: [x]))
 }
@@ -172,17 +172,17 @@ test fn evidence_join_is_idempotent() -> Bool {
 // folds each into a running evidence value relies on it, and permutation invariance over one
 // monolithic list does not establish it. The next-step trigger is a pure binary join the list
 // fold consumes; until that exists this file states the weaker property it can measure.
-test fn evidence_class_is_order_independent_over_pairs() -> Bool {
+test fn evidence_class_is_order_independent_over_pairs() -> Bool  {
   all_pairs_agree(observation_wire: class_of)
 }
 
-test fn evidence_class_is_order_independent_over_triples() -> Bool {
+test fn evidence_class_is_order_independent_over_triples() -> Bool  {
   all_triples_agree(observation_wire: class_of)
 }
 
 // THE DOMAIN LAWS, EACH NAMING THE STATE IT SEPARATES FROM ITS NEIGHBOUR. Order-independence alone
 // is satisfied by a join that returns one constant, so a law set without these is vacuous.
-test fn evidence_domain_laws_hold() -> Bool {
+test fn evidence_domain_laws_hold() -> Bool  {
   let a = atom_observed(digest: "digest-a")
   let b = atom_observed(digest: "digest-b")
   let absent = atom_absent()
@@ -218,7 +218,7 @@ test fn evidence_domain_laws_hold() -> Bool {
 // CLASS, so the wording does not move the member-set fingerprint today, but it sits one consumer
 // away -- whoever routes on `cause` or renders it into anything content-addressed reopens the CAS
 // defect this family already fixed once.
-test fn evidence_full_value_is_order_independent() -> Bool {
+test fn evidence_full_value_is_order_independent() -> Bool  {
   full_of(observations: [atom_refused(cause: "transport reset"), atom_refused(cause: "permission denied")])
     == full_of(observations: [atom_refused(cause: "permission denied"), atom_refused(cause: "transport reset")])
 }

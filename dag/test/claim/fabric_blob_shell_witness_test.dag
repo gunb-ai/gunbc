@@ -43,38 +43,38 @@ fn put_text() -> String { text(o: bash_emit_stmts(statements: fabric_blob_put_st
 
 // ── UNMINTED CREDENTIALS: NO CACHE STEP EXISTS ─────────────────────────────────────────────────
 
-test fn the_live_cache_is_unreachable_until_its_credentials_are_pinned() -> Bool {
+test fn the_live_cache_is_unreachable_until_its_credentials_are_pinned() -> Bool  {
   !fabric_blob_shell_emittable() && match fabric_blob_shell_target() {
     FabricBlobShellUnreachable { cause: c } => string_contains(s: c as String, pattern: "NOT MINTED") || string_contains(s: c as String, pattern: "NO MINT ENTRY")
     FabricBlobShellReady { endpoint: _, bucket: _, read_key_id: _, read_token: _, write_key_id: _, write_token: _ } => false
   }
 }
 
-test fn an_unreachable_target_emits_only_a_refusal() -> Bool {
+test fn an_unreachable_target_emits_only_a_refusal() -> Bool  {
   let t = text(o: bash_emit_stmts(statements: fabric_blob_get_statements(target: FabricBlobShellUnreachable { cause: "fixture cause" }), set_e: true))
   string_contains(s: t, pattern: "CacheUnreachable") && !string_contains(s: t, pattern: "curl")
 }
 
 // ── A PINNED TARGET ────────────────────────────────────────────────────────────────────────────
 
-test fn both_scripts_emit() -> Bool {
+test fn both_scripts_emit() -> Bool  {
   get_text() != "" && put_text() != ""
 }
 
-test fn the_address_is_refused_unless_64_lower_hex() -> Bool {
+test fn the_address_is_refused_unless_64_lower_hex() -> Bool  {
   string_contains(s: get_text(), pattern: "[0-9a-f]{64}") && string_contains(s: get_text(), pattern: "AddressMalformed")
     && string_contains(s: put_text(), pattern: "AddressMalformed")
 }
 
-test fn the_object_is_named_under_the_cache_prefix_in_the_declared_bucket() -> Bool {
+test fn the_object_is_named_under_the_cache_prefix_in_the_declared_bucket() -> Bool  {
   string_contains(s: get_text(), pattern: "/fixture-cache-bucket/blobs/")
 }
 
-test fn the_put_is_create_only_and_the_get_is_not() -> Bool {
+test fn the_put_is_create_only_and_the_get_is_not() -> Bool  {
   string_contains(s: put_text(), pattern: "If-None-Match: *") && !string_contains(s: get_text(), pattern: "If-None-Match")
 }
 
-test fn credentials_are_read_by_pinned_version_and_only_through_a_netrc() -> Bool {
+test fn credentials_are_read_by_pinned_version_and_only_through_a_netrc() -> Bool  {
   string_contains(s: get_text(), pattern: "/secrets/fixture-cache-read-token/versions/3:access")
     && string_contains(s: put_text(), pattern: "/secrets/fixture-cache-write-token/versions/4:access")
     && string_contains(s: get_text(), pattern: "--netrc-file")
@@ -82,15 +82,15 @@ test fn credentials_are_read_by_pinned_version_and_only_through_a_netrc() -> Boo
     && string_contains(s: get_text(), pattern: "trap")
 }
 
-test fn a_read_that_is_neither_200_nor_404_refuses_rather_than_missing() -> Bool {
+test fn a_read_that_is_neither_200_nor_404_refuses_rather_than_missing() -> Bool  {
   string_contains(s: get_text(), pattern: "CacheReadRefused") && string_contains(s: get_text(), pattern: "standing=absent")
 }
 
-test fn an_oversized_pack_refuses_before_upload() -> Bool {
+test fn an_oversized_pack_refuses_before_upload() -> Bool  {
   string_contains(s: put_text(), pattern: "ObjectTooLarge")
 }
 
-test fn an_occupied_address_must_hold_the_same_bytes() -> Bool {
+test fn an_occupied_address_must_hold_the_same_bytes() -> Bool  {
   string_contains(s: put_text(), pattern: "CacheOccupiedByDifferentBytes") && string_contains(s: put_text(), pattern: "publication=converged")
     && string_contains(s: put_text(), pattern: "CachePublishUnreconciled")
 }

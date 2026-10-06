@@ -53,27 +53,27 @@ data ea_absent_entry_marker: String = "REFUSED: emitted crate declares no entry 
 // exclusion on every library arm rather than retired with the function it was written against.
 data ea_seed_build_identity_marker: String = "GUNBC_BUILD_IDENTITY"
 
-test fn a_pure_library_emits_the_entry_point_absent_refusal() -> Bool {
+test fn a_pure_library_emits_the_entry_point_absent_refusal() -> Bool  {
   compile_dag_rust_emit_check(ea_pure_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
-test fn a_uses_requirement_does_not_create_an_entry() -> Bool {
+test fn a_uses_requirement_does_not_create_an_entry() -> Bool  {
   compile_dag_rust_emit_check(ea_uses_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
-test fn a_service_call_does_not_create_an_entry() -> Bool {
+test fn a_service_call_does_not_create_an_entry() -> Bool  {
   compile_dag_rust_emit_check(ea_service_library_source, "src/main.rs", [ea_absent_entry_marker], ["Subcommand", ea_seed_build_identity_marker])
 }
 
-test fn one_declared_entry_is_the_sole_root_beside_an_effect() -> Bool {
+test fn one_declared_entry_is_the_sole_root_beside_an_effect() -> Bool  {
   compile_dag_rust_emit_check(ea_one_entry_source, "src/main.rs", ["compile_dag_source_to_target_text"], [ea_absent_entry_marker, "Subcommand"])
 }
 
-test fn two_declared_entries_refuse_as_ambiguous() -> Bool {
+test fn two_declared_entries_refuse_as_ambiguous() -> Bool  {
   compile_dag_rust_emit_check(ea_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["compile_dag_source_to_target_text"])
 }
 
-test fn an_unmodeled_entry_driver_refuses() -> Bool {
+test fn an_unmodeled_entry_driver_refuses() -> Bool  {
   compile_dag_rust_emit_check(ea_unknown_driver_source, "src/main.rs", ["REFUSED: the compiler pipeline entry in"], ["compile_dag_source_to_target_text"])
 }
 
@@ -84,12 +84,12 @@ test fn an_unmodeled_entry_driver_refuses() -> Bool {
 // NativeClaimTerminal, each arm to a FIXED code (0, 1, 2), and `*code as i32` is forbidden: a main
 // that passed a program-chosen code through could turn a failure spelled as 0 into held (review
 // 5311497200 of gunbc#12250).
-test fn a_native_claim_entry_renders_a_one_call_main_that_only_writes_and_exits() -> Bool {
+test fn a_native_claim_entry_renders_a_one_call_main_that_only_writes_and_exits() -> Bool  {
   compile_dag_rust_emit_check(ea_native_claim_source, "src/main.rs", ["let report = native_claim_report();", "print!(\"\{\}\", report.stdout);", "NativeClaimTerminal::NativeClaimHeld => std::process::exit(0)", "std::process::exit(1)", "std::process::exit(2)"], ["std::env::args", "read_to_string", "read_dir", "*code as i32", ea_absent_entry_marker])
 }
 
 // The exactly-one rule holds across driver kinds: a NativeClaimDriver entry beside a NativeCliDriver
 // one is the same ambiguity as two entries of one kind, and neither main is rendered.
-test fn a_native_claim_entry_beside_another_entry_refuses_as_ambiguous() -> Bool {
+test fn a_native_claim_entry_beside_another_entry_refuses_as_ambiguous() -> Bool  {
   compile_dag_rust_emit_check(ea_native_claim_two_entries_source, "src/main.rs", ["REFUSED: the corpus declares more than one compiler pipeline entry"], ["native_claim_report", "v2_cli_run"])
 }

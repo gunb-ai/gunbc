@@ -174,7 +174,7 @@ fn accepted_of(c: ProviderUseRefusal) -> List<DeclarationRef> {
 }
 
 // GREEN: the scope presents the pinned standard, the sanction requires it, the permit carries it.
-test fn w_scope_presenting_common_paper_csa_v2_1_is_admitted() -> Bool {
+test fn w_scope_presenting_common_paper_csa_v2_1_is_admitted() -> Bool  {
   match decide(agreement: common_paper_csa_v2_1_ref) {
     ProviderUseAdmitted { permit } => declaration_ref_eq(a: permit.evidence.agreement, b: common_paper_csa_v2_1_ref),
     ProviderUseDenied { decision, cause } => false,
@@ -184,7 +184,7 @@ test fn w_scope_presenting_common_paper_csa_v2_1_is_admitted() -> Bool {
 // RED: the scope presents a different agreement authority than the sanction requires. The refusal
 // must be RequiredAgreementAuthorityAbsent - not a pass and not some other arm - and its accepted
 // list must be exactly the pinned standard, so the refusal locates what would have been admitted.
-test fn w_RED_scope_presenting_other_agreement_refuses_required_agreement_authority_absent() -> Bool {
+test fn w_RED_scope_presenting_other_agreement_refuses_required_agreement_authority_absent() -> Bool  {
   match decide(agreement: here(decl_name: "bespoke_pilot_agreement")) {
     ProviderUseAdmitted { permit } => false,
     ProviderUseDenied { decision, cause } =>
@@ -197,6 +197,6 @@ test fn w_RED_scope_presenting_other_agreement_refuses_required_agreement_author
 // this repository may carry the document's facts at all is gunbc.upstream_document_carriage's
 // decision over the publication status the extdeps record declares (CC BY 4.0), and this is that
 // decision executing over that row.
-test fn w_common_paper_csa_v2_1_facts_may_be_carried() -> Bool {
+test fn w_common_paper_csa_v2_1_facts_may_be_carried() -> Bool  {
   carriage_permits_facts(carriage: upstream_fact_carriage(status: common_paper_csa_v2_1.publication_status))
 }

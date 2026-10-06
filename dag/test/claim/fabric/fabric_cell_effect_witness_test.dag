@@ -75,7 +75,7 @@ fn changed(address: FabricCellResourceAddress) -> MemberAction<FabricCellMember,
 // host mutation independently inferred from the absence of member actions. This is the direct RED
 // for review 57510: fabric_cell_realization must preserve the action-to-effect boundary even though
 // the fleet's converged-family arm normally bypasses this function for an empty plan.
-test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
+test fn witness_empty_cell_actions_realize_no_effects() -> Bool  {
   match fabric_cell_realization(actions: []) {
     CellPlanRealizable { effects: es } => list_length(items: es) == 0
     CellPlanRefused { refusals: _ } => false
@@ -91,7 +91,7 @@ test fn witness_empty_cell_actions_realize_no_effects() -> Bool {
 // realizes FOUR effects -- the host-scoped base directory, two address directories, and one slice
 // ensure carrying all six desired
 // directives -- and a regression that re-refuses the boundary goes red here.
-test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool {
+test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool  {
   let full_cell = [
     added(address: FabricCellRootAddress),
     added(address: FabricCellAttemptRootAddress),
@@ -120,7 +120,7 @@ test fn witness_a_full_cell_of_additions_realizes_all_three_addresses() -> Bool 
 // BOTH HALVES ARE ASSERTED SEPARATELY ON PURPOSE. A plan that refused and also produced no effects
 // because it produced nothing at all would satisfy the effect count while proving nothing, so the
 // realizable controls above and below are what make this a wall rather than a blanket refusal.
-test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_effects() -> Bool {
+test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_effects() -> Bool  {
   let mixed_cell = [
     added(address: FabricCellRootAddress),
     added(address: FabricCellAttemptRootAddress),
@@ -136,7 +136,7 @@ test fn witness_one_unrealizable_address_refuses_the_whole_cell_and_emits_no_eff
 // addresses alone realize their two ensures plus the shared base ensure, so the refusal above is
 // caused by the unrealizable action
 // and not by the family being unable to realize anything.
-test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
+test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool  {
   let dirs_only = [
     added(address: FabricCellRootAddress),
     added(address: FabricCellAttemptRootAddress),
@@ -153,7 +153,7 @@ test fn witness_directory_addresses_alone_realize_both_ensures() -> Bool {
 // user. A realization that classes the cell root as attempt-writer-owned hands the substrate to
 // every CI job; one that classes the attempt root as substrate leaves the executor nowhere to
 // write. Both directions go red here.
-test fn witness_substrate_is_root_owned_and_only_the_attempt_root_is_delegated() -> Bool {
+test fn witness_substrate_is_root_owned_and_only_the_attempt_root_is_delegated() -> Bool  {
   let dirs_only = [
     added(address: FabricCellRootAddress),
     added(address: FabricCellAttemptRootAddress),
@@ -180,7 +180,7 @@ test fn witness_substrate_is_root_owned_and_only_the_attempt_root_is_delegated()
 // REFUSALS ACCUMULATE RATHER THAN SHORT-CIRCUITING. An operator fixing one deficit should see the
 // others in the same report instead of rediscovering them one run at a time. Two unrealizable
 // actions must therefore produce two refusals, not one.
-test fn witness_refusals_accumulate_across_addresses() -> Bool {
+test fn witness_refusals_accumulate_across_addresses() -> Bool  {
   let two_bad = [
     changed(address: FabricCellResourceBoundaryAddress),
     MemberRemoved {
@@ -196,7 +196,7 @@ test fn witness_refusals_accumulate_across_addresses() -> Bool {
 // modeled; an unrealizable change is gunbc.change_realization's question about staged
 // intermediates. Different owners, different remedies. A single refusal type would make one message
 // answer for all of them.
-test fn witness_the_refusal_causes_are_distinguished() -> Bool {
+test fn witness_the_refusal_causes_are_distinguished() -> Bool  {
   let teardown = fabric_cell_realization(actions: [
     MemberRemoved {
       at: fabric_cell_member_key(member: member_at(address: FabricCellRootAddress)),
@@ -257,7 +257,7 @@ fn is_change_unrealizable(r: FabricCellRealization) -> Bool {
 // side is the widen this used to refuse: an implementation that dropped the line and emitted five
 // directives would leave a once-quota'd cell throttled while the desired digest says infinity.
 // Both arms are driven by fixture so neither is permanently green on the production row.
-test fn witness_boundary_add_renders_the_quota_line_under_both_arms() -> Bool {
+test fn witness_boundary_add_renders_the_quota_line_under_both_arms() -> Bool  {
   let bounded = boundary_add_directive_lines(quota: CpuQuotaResolved { threads: hardware_thread_count(count: 6) })
   let unbounded = boundary_add_directive_lines(quota: SlotCpuQuotaUnbounded)
   list_length(items: bounded) == 6

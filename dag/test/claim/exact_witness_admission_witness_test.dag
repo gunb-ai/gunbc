@@ -96,7 +96,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is where the discrimination lives. Synthetic RED controls cover the duplicate row, the
 // non-executing cadence, and the file-grain shape that does reach the sibling.
 
-test fn exact_witness_admission_walls_hold() -> Bool {
+test fn exact_witness_admission_walls_hold() -> Bool  {
   explicit_witness_admission_uniqueness_holds()
     && explicit_witness_admission_rows_well_formed_holds()
     && explicit_witness_admissions_are_scheduled_holds()
@@ -134,7 +134,7 @@ fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
   ]
 }
 
-test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool {
+test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool  {
   let rows = fixture_exact_admission_rows()
   explicit_witness_admission_covers_in(
     rows: rows,
@@ -148,7 +148,7 @@ test fn admission_reaches_the_admitted_function_and_not_its_sibling() -> Bool {
     )
 }
 
-test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Bool {
+test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Bool  {
   !explicit_witness_admission_covers_in(
     rows: fixture_exact_admission_rows(),
     entry: "dag/test/claim/synthetic_other_witness_test.dag",
@@ -156,11 +156,11 @@ test fn admission_does_not_reach_the_same_function_name_in_another_file() -> Boo
   )
 }
 
-test fn every_live_admission_is_reached_by_its_own_row() -> Bool {
+test fn every_live_admission_is_reached_by_its_own_row() -> Bool  {
   explicit_witness_admissions_each_cover_themselves()
 }
 
-test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
+test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool  {
   let corpus_rows = length(xs: known_red_probe_corpus_roster())
   let v1_envelope_rows = length(xs: known_red_probe_v1_envelope_roster())
   let execution_rows = length(xs: known_red_probe_execution_roster())
@@ -169,7 +169,7 @@ test fn every_admission_is_projected_into_exactly_one_cadence_roster() -> Bool {
   (known_red_projected + executing_projected) == length(xs: explicit_witness_admissions)
 }
 
-test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> Bool {
+test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> Bool  {
   length(xs: known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_envelope_roster()))
 }
 
@@ -184,7 +184,7 @@ fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
   )
 }
 
-test fn red_control_duplicate_admission_rows_red() -> Bool {
+test fn red_control_duplicate_admission_rows_red() -> Bool  {
   (explicit_witness_admission_duplicate_count_in(
     rows: [synthetic_admission(f: "a_holds"), synthetic_admission(f: "a_holds")]
   ) > 0)
@@ -194,7 +194,7 @@ test fn red_control_duplicate_admission_rows_red() -> Bool {
     && (explicit_witness_admission_duplicate_count() == 0)
 }
 
-test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
+test fn red_control_admission_with_non_executing_cadence_reds() -> Bool  {
   explicit_witness_admissions_well_formed_in(
     rows: [
       ExplicitWitnessAdmission {
@@ -218,7 +218,7 @@ test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
 // check — proving the wall is real and not just a rostered exemption list (DESIGN §4b(4)).
 // The entry/function pair is deliberately outside the exempted identities, so this test
 // would RED if someone adds the identity to the exception list (remove it from the probe).
-test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
+test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool  {
   explicit_witness_admissions_well_formed_in(
     rows: [
       ExplicitWitnessAdmission {
@@ -241,7 +241,7 @@ test fn red_control_synthetic_violation_on_exempted_cadence_reds() -> Bool {
 // (QuarantineProbeExpectRed) must be REFUSED by cadence_executes AND ADMITTED by the full
 // well-formed check — proving the exemption path works specifically through the bounded debt.
 // The cadence_executes check alone would refuse it; only is_transitional_admission_row saves it.
-test fn legacy_exempted_row_admitted_through_bounded_debt() -> Bool {
+test fn legacy_exempted_row_admitted_through_bounded_debt() -> Bool  {
   let legacy_row = ExplicitWitnessAdmission {
     witness: ScheduleWitnessEntry {
       entry: "dag/test/claim/method_arg_declared_contract_witness_test.dag",
@@ -260,7 +260,7 @@ test fn legacy_exempted_row_admitted_through_bounded_debt() -> Bool {
 
 // POSITIVE CONTROL: a synthetic admission row on a cadence with a live scheduled route
 // (LocalRepoWetLane) IS admitted — proving the well-formed check passes for valid rows.
-test fn synthetic_live_cadence_is_admitted() -> Bool {
+test fn synthetic_live_cadence_is_admitted() -> Bool  {
   explicit_witness_admissions_well_formed_in(
     rows: [
       ExplicitWitnessAdmission {
@@ -279,7 +279,7 @@ test fn synthetic_live_cadence_is_admitted() -> Bool {
   ) == true
 }
 
-test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool {
+test fn red_control_file_grain_admission_would_reach_the_sibling() -> Bool  {
   explicit_witness_admission_covers_in(
     rows: fixture_file_grain_admission_rows(),
     entry: fixture_entry,
@@ -343,14 +343,14 @@ fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission
   }
 }
 
-test fn expected_verdict_is_independent_of_cadence() -> Bool {
+test fn expected_verdict_is_independent_of_cadence() -> Bool  {
   explicit_witness_admission_is_known_red(row: synthetic_long_lane_cadence_but_expected_red())
     && !explicit_witness_admission_is_known_red(
       row: synthetic_quarantine_cadence_but_expected_holds()
     )
 }
 
-test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool {
+test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool  {
   explicit_witness_admission_requires_long_eval_budget(
     row: synthetic_long_lane_cadence_but_expected_red()
   )
@@ -374,7 +374,7 @@ fn long_budget_union_occurrences(w: ScheduleWitnessEntry) -> Int {
   })
 }
 
-test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool {
+test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster() -> Bool  {
   let declared = witness_long_eval_budget_roster()
   let batch = falsifier_substrate_long_lane_entries()
   (length(xs: declared) > 0)
@@ -416,7 +416,7 @@ fn planted_union_occurrences(
   )
 }
 
-test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> Bool {
+test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -> Bool  {
   let overlapping = synthetic_union_row(f: "reaches_the_ceiling_through_both_inputs")
   let batch_only = synthetic_union_row(f: "on_the_batch_roster_only")
   let declared_only = synthetic_union_row(f: "declares_its_own_budget_only")
@@ -431,7 +431,7 @@ test fn red_control_long_budget_union_collapses_a_row_present_in_both_inputs() -
     && !schedule_witness_entry_roster_contains(xs: batch, w: declared_only)
 }
 
-test fn declared_long_budget_row_is_known_red_or_executing_green() -> Bool {
+test fn declared_long_budget_row_is_known_red_or_executing_green() -> Bool  {
   fold(explicit_witness_admissions, init: true, f: fn(ok, row) {
     if explicit_witness_admission_requires_long_eval_budget(row: row) {
       ok
@@ -463,7 +463,7 @@ fn budget_partition_side_count(xs: List<ScheduleWitnessEntry>) -> Int {
   length(xs: xs)
 }
 
-test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
+test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool  {
   let fast = known_red_probe_corpus_fast_budget_roster()
   let long = known_red_probe_corpus_long_budget_roster()
   let pv_fast = known_red_probe_corpus_pre_verdict_fast_budget_roster()
@@ -483,7 +483,7 @@ test fn budget_rosters_partition_the_known_red_corpus_lane() -> Bool {
     })
 }
 
-test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool {
+test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool  {
   let pv = known_red_pre_verdict_refusal_roster()
   let assertion_false_sides = concat(
     known_red_probe_corpus_fast_budget_roster(),
@@ -502,7 +502,7 @@ test fn no_batch_mixes_a_pre_verdict_row_with_an_assertion_false_row() -> Bool {
     && (length(xs: pre_verdict_sides) > 0)
 }
 
-test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
+test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool  {
   let declared = witness_long_eval_budget_roster()
   fold(concat(
     known_red_probe_corpus_long_budget_roster(),
@@ -553,7 +553,7 @@ fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
   )
 }
 
-test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool {
+test fn both_red_expectations_are_known_red_but_only_one_expects_a_pre_verdict_refusal() -> Bool  {
   let pre_verdict_count = budget_partition_side_count(xs: known_red_pre_verdict_refusal_roster())
   let known_red_count = budget_partition_side_count(xs: known_red_probe_roster())
   explicit_witness_admission_is_known_red(row: synthetic_pre_verdict_row())

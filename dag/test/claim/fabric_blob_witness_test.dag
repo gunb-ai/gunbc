@@ -41,7 +41,7 @@ fn witness_address() -> FabricBlobAddress? {
   }
 }
 
-test fn reading_carries_the_handlers_digest_and_size() -> Bool {
+test fn reading_carries_the_handlers_digest_and_size() -> Bool  {
   match read_staged_fabric_blob(path: fixture_blob_path) {
     FabricBlobRead { reading: r } =>
       (fabric_blob_reading_digest(reading: r).hex as String) == empty_sha256_hex
@@ -52,7 +52,7 @@ test fn reading_carries_the_handlers_digest_and_size() -> Bool {
 
 // ── THE PUT PLAN: AN OBJECT OVER THE BOUND NEVER REACHES THE NETWORK ───────────────────────────
 
-test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
+test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool  {
   match read_staged_fabric_blob(path: fixture_blob_path) {
     FabricBlobReadRefused { fault: _ } => false
     FabricBlobRead { reading: r } => {
@@ -71,7 +71,7 @@ test fn the_put_plan_admits_within_the_bound_and_refuses_beyond_it() -> Bool {
   }
 }
 
-test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
+test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool  {
   match witness_address() {
     Present { value: addr } => (fabric_cache_blob_key(address: addr) as String) == concat("blobs/", key_hex)
     Absent => false
@@ -80,7 +80,7 @@ test fn the_blob_key_is_the_address_under_the_cache_prefix() -> Bool {
 
 // ── THE CACHE'S CREDENTIALS ARE UNMINTED, SO EVERY TRANSFER REFUSES BEFORE THE NETWORK ─────────
 
-test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
+test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool  {
   let read = match resolve_cache_blob_target(direction: CacheBlobRead, key: "blobs/x" as NonEmptyStr) {
     CacheBlobTargetRefused { cause: c } => string_contains(s: c as String, pattern: "cloudflare-r2-cache-blobs-read-token") && string_contains(s: c as String, pattern: "run_cache_object_read")
     CacheBlobTargetReady { target: _ } => false
@@ -94,7 +94,7 @@ test fn cache_blob_targets_refuse_naming_the_unminted_credential() -> Bool {
 
 // ── LIFECYCLE: ONLY THE CACHE EXPIRES, AND A READ IT CANNOT DESCRIBE REFUSES ───────────────────
 
-test fn only_the_cache_purpose_declares_release_by_age() -> Bool {
+test fn only_the_cache_purpose_declares_release_by_age() -> Bool  {
   bucket_purpose_lifecycle_rules(purpose: FabricDurableOrigin {}).length() == 0
     && bucket_purpose_lifecycle_rules(purpose: FabricBootOrigin {}).length() == 0
     && bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {}).length() == 0
@@ -109,7 +109,7 @@ data lifecycle_unmodeled_body: String = "{\"success\":true,\"errors\":[],\"messa
 // THE WORKSPACE NEVER INHERITS THE CACHE'S RELEASE. Its declared set is empty while the cache's is
 // not, and the classifier treats a bucket carrying the cache's seven-day rule as NOT converged on the
 // workspace's declaration -- so a workspace whose history were expiring could not read as held.
-test fn the_workspace_declares_no_release_and_the_cache_rule_is_not_its_convergence() -> Bool {
+test fn the_workspace_declares_no_release_and_the_cache_rule_is_not_its_convergence() -> Bool  {
   let workspace = bucket_purpose_lifecycle_rules(purpose: FabricWorkspace {})
   let cache_rule_differs = match classify_r2_lifecycle(desired: workspace, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
     Apply { plan: _ } => true
@@ -125,7 +125,7 @@ test fn the_workspace_declares_no_release_and_the_cache_rule_is_not_its_converge
     && empty_converges
 }
 
-test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool {
+test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool  {
   let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
   let converged = match classify_r2_lifecycle(desired: desired, read: r2_lifecycle_read_body(body: lifecycle_converged_body)).decision {
     Noop => true
@@ -138,7 +138,7 @@ test fn a_converged_rule_set_noops_and_an_empty_one_applies() -> Bool {
   converged && empty
 }
 
-test fn a_rule_this_model_cannot_describe_refuses_rather_than_being_replaced() -> Bool {
+test fn a_rule_this_model_cannot_describe_refuses_rather_than_being_replaced() -> Bool  {
   let desired = bucket_purpose_lifecycle_rules(purpose: FabricCacheBlobs {})
   let unmodeled = match r2_lifecycle_read_body(body: lifecycle_unmodeled_body) {
     R2LifecycleRulesUnmodeled { cause: _ } => true

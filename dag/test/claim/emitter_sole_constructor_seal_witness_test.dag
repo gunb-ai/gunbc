@@ -170,50 +170,50 @@ fn w_plain_data_row_is_parsed_from_json() -> Bool {
   )
 }
 
-test fn sealed_record_field_is_private() -> Bool {
+test fn sealed_record_field_is_private() -> Bool  {
   w_sealed_record_field_is_private()
 }
 
-test fn sealed_record_drops_deserialize() -> Bool {
+test fn sealed_record_drops_deserialize() -> Bool  {
   w_sealed_record_drops_deserialize()
 }
 
-test fn sealed_record_emits_public_accessor() -> Bool {
+test fn sealed_record_emits_public_accessor() -> Bool  {
   w_sealed_record_emits_public_accessor()
 }
 
-test fn sealed_field_read_routes_through_accessor() -> Bool {
+test fn sealed_field_read_routes_through_accessor() -> Bool  {
   w_sealed_field_read_routes_through_accessor()
 }
 
-test fn declaring_module_mint_still_constructs_directly() -> Bool {
+test fn declaring_module_mint_still_constructs_directly() -> Bool  {
   w_declaring_module_mint_still_constructs_directly()
 }
 
-test fn plain_record_keeps_public_field() -> Bool {
+test fn plain_record_keeps_public_field() -> Bool  {
   w_plain_record_keeps_public_field()
 }
 
-test fn plain_record_keeps_deserialize() -> Bool {
+test fn plain_record_keeps_deserialize() -> Bool  {
   w_plain_record_keeps_deserialize()
 }
 
-test fn nested_coproduct_over_a_seal_drops_deserialize() -> Bool {
+test fn nested_coproduct_over_a_seal_drops_deserialize() -> Bool  {
   w_nested_coproduct_over_a_seal_drops_deserialize()
 }
 
-test fn nested_plain_coproduct_keeps_deserialize() -> Bool {
+test fn nested_plain_coproduct_keeps_deserialize() -> Bool  {
   w_nested_plain_coproduct_keeps_deserialize()
 }
 
-test fn alias_of_a_seal_drops_deserialize() -> Bool {
+test fn alias_of_a_seal_drops_deserialize() -> Bool  {
   w_alias_of_a_seal_drops_deserialize()
 }
 
-test fn sealed_data_row_is_not_parsed_from_json() -> Bool {
+test fn sealed_data_row_is_not_parsed_from_json() -> Bool  {
   w_sealed_data_row_is_not_parsed_from_json()
 }
 
-test fn plain_data_row_is_parsed_from_json() -> Bool {
+test fn plain_data_row_is_parsed_from_json() -> Bool  {
   w_plain_data_row_is_parsed_from_json()
 }

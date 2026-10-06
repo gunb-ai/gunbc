@@ -69,14 +69,14 @@ fn accounted(s: EnrollmentAccountingStanding) -> Bool {
 }
 
 // PAIR ONE, ADMITTING HALF - an enrollment citing the real standing row is accounted.
-test fn w_enrollment_citing_a_standing_drop_is_accounted() -> Bool {
+test fn w_enrollment_citing_a_standing_drop_is_accounted() -> Bool  {
   accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: real_standing_drop())))
 }
 
 // PAIR ONE, REFUSING HALF - the SAME enrollment citing a drop that is in no roster row is
 // unaccounted. Only the reference moves. Without this the row above is satisfied by a check that
 // accounts for everything, which is the wall that stands nothing down.
-test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool {
+test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool  {
   !accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: absent_drop())))
 }
 
@@ -84,13 +84,13 @@ test fn w_enrollment_citing_an_absent_drop_is_unaccounted() -> Bool {
 // existence would get wrong: the name is in the corpus and resolves, and the suppression it would
 // authorise has already been declared over. A retired drop must take every enrollment citing it out
 // of accounting with no edit to the enrollment.
-test fn w_enrollment_citing_a_retired_drop_is_unaccounted() -> Bool {
+test fn w_enrollment_citing_a_retired_drop_is_unaccounted() -> Bool  {
   !accounted(s: enrollment_accounting(enrollment: enrollment_citing(drop: retired_drop())))
 }
 
 // The set form reports EVERY offender rather than the first, and reports the offending REFERENCE
 // rather than a count, so a reader fixing a posture is told which enrollment to go and account for.
-test fn w_unaccounted_set_names_the_offending_references() -> Bool {
+test fn w_unaccounted_set_names_the_offending_references() -> Bool  {
   count(unaccounted_enrollments(
     enrollments: [
       enrollment_citing(drop: real_standing_drop()),
@@ -109,7 +109,7 @@ test fn w_unaccounted_set_names_the_offending_references() -> Bool {
 // standing filter would be untested. So this asserts the discriminating fact directly: the retired
 // row IS in the full roster and is NOT in the standing one. That is what makes the red above a
 // statement about STANDING rather than about existence.
-test fn w_the_retired_row_is_rostered_but_not_standing() -> Bool {
+test fn w_the_retired_row_is_rostered_but_not_standing() -> Bool  {
   count(filter(rung_drop_roster, d => d.identity == "cited_symbol_census")) == 1
     && count(filter(standing_rung_drops(), d => d.identity == "cited_symbol_census")) == 0
     && count(filter(standing_rung_drops(), d => d.identity == "provider_path_jurisdiction_unread_admits")) == 1
@@ -121,6 +121,6 @@ test fn w_the_retired_row_is_rostered_but_not_standing() -> Bool {
 // the real production posture is accounted -- so the gate is enrolled against live evidence and not
 // only against fixtures, and so a later edit that retires that drop row or renames the enrollment's
 // reference goes red HERE rather than silently standing the wall down on a serving route.
-test fn w_the_production_spark_posture_is_accounted() -> Bool {
+test fn w_the_production_spark_posture_is_accounted() -> Bool  {
   count(posture_unaccounted_enrollments(posture: spark_first_party_posture)) == 0
 }

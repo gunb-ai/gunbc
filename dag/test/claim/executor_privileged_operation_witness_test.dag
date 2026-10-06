@@ -58,7 +58,7 @@ fn srv3_runner_host_sudoers() -> String {
 // srv3 could diverge from the grant constructors with nothing in the repository able to say so.
 // RED IS AUTHORABLE in three directions: drop the row from generated_artifact_registry, move its
 // commit policy to NotCommitted, or change the location, and one of these conjuncts goes false.
-test fn witness_srv3_sudoers_is_an_enrolled_generated_artifact() -> Bool {
+test fn witness_srv3_sudoers_is_an_enrolled_generated_artifact() -> Bool  {
   registry_contains(a: srv3_runner_host_sudoers_artifact())
     && artifact_path(a: srv3_runner_host_sudoers_artifact())
       == "provisioning/srv3/gunbc-ghrunner.sudoers"
@@ -68,7 +68,7 @@ test fn witness_srv3_sudoers_is_an_enrolled_generated_artifact() -> Bool {
 // THE HEADER NAMES THIS HOST'S OWN PATH, which is what the derived header buys: srv1's file cannot
 // tell a reader to reproduce it with srv3's recipe, because neither header carries an authored
 // entry-point string any more.
-test fn witness_rendered_header_names_the_hosts_own_artifact_path() -> Bool {
+test fn witness_rendered_header_names_the_hosts_own_artifact_path() -> Bool  {
   string_contains(s: srv3_runner_host_sudoers(), pattern: "provisioning/srv3/gunbc-ghrunner.sudoers")
     && !string_contains(
       s: runner_host_sudoers_bytes(host: operator_host_srv1),
@@ -82,7 +82,7 @@ test fn witness_rendered_header_names_the_hosts_own_artifact_path() -> Bool {
 // argv projection, so editing either projection alone cannot keep it green.
 // RED IS AUTHORABLE: rendering the sudoers command from anything other than the argv -- a bare
 // binary path, as the roster did before this module -- makes the two disagree and this goes false.
-test fn witness_sudoers_command_is_the_argv() -> Bool {
+test fn witness_sudoers_command_is_the_argv() -> Bool  {
   let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
   executor_privileged_operation_sudoers_command(op: op)
     == join(map(executor_privileged_operation_argv(op: op), w => w as String), " ")
@@ -90,7 +90,7 @@ test fn witness_sudoers_command_is_the_argv() -> Bool {
 
 // RUN-AS IS root, NEVER ALL. ALL=(ALL) authorizes the grantee to run the command as any user on the
 // host, including other service accounts; the executor rendered exactly that before this module.
-test fn witness_run_as_is_root_not_all() -> Bool {
+test fn witness_run_as_is_root_not_all() -> Bool  {
   string_contains(
     s: executor_privileged_operation_sudoers_line(
       grantee: "ghrunner" as NonEmptyStr,
@@ -103,7 +103,7 @@ test fn witness_run_as_is_root_not_all() -> Bool {
 // NO WILDCARD REACHES THE RENDERED FILE. A sudoers wildcard such as /opt/actions-runner/* matches
 // `..` -- fnmatch's * declines to cross `/`, and `..` contains none -- so it would authorize
 // `rm -rf /opt/actions-runner/..`. Every managed path is named in full instead.
-test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
+test fn witness_rendered_grants_carry_no_wildcard() -> Bool  {
   let body = srv3_runner_host_sudoers()
   string_contains(s: body, pattern: "ALL=(root) NOPASSWD:")
     && !string_contains(s: body, pattern: "*")
@@ -148,7 +148,7 @@ test fn witness_rendered_grants_carry_no_wildcard() -> Bool {
 // every host's population -- the job user's readbacks only, reads by construction (that module
 // states why the installs stay off this roster). The sum above omitted it, so the row was red from
 // that landing by exactly that list's length. The term is that named list's length, not a literal.
-test fn witness_population_tracks_the_slot_roster() -> Bool {
+test fn witness_population_tracks_the_slot_roster() -> Bool  {
   let ds = fabric_cell_slice_desired_directives()
   let slots = desired_runner_slot_members(deploy: wt_srv3_deploy()).length()
   let activation = runner_slot_activation_operations(deploy: wt_srv3_deploy()).length()
@@ -185,7 +185,7 @@ test fn witness_population_tracks_the_slot_roster() -> Bool {
 // sudoers(5) documents, so the file carries `CPUQuota\=` and the bare directive line can never
 // appear in it. The claim renders the assignment through that same escape rather than transcribing
 // the escaped literal, so the two sides stay one word under the grammar that joins them.
-test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool {
+test fn witness_fabric_slice_cpu_quota_grant_is_the_declared_directive() -> Bool  {
   let ds = fabric_cell_slice_desired_directives()
   let desired_lines = join(map(ds, d => systemd_slice_directive_line(directive: d)), "\n")
   match gunbc_runner_slot_cpu_quota() {
@@ -217,7 +217,7 @@ fn bound_covers(host: HostIdentity, bound: Int) -> Bool {
 // THE TEARDOWN GRANT COVERS EVERY WIDTH THE FLEET COMMITS TO, with the bound pinned above each
 // host's committed width so a width change cannot outgrow its own teardown; and it is exact paths
 // only -- the highest grammar dir is named and the one past the bound is not.
-test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool {
+test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> Bool  {
   let bound = runner_slot_teardown_grant_index_bound
   let dirs = runner_slot_grammar_dirs_to_bound(host: operator_host_srv2, bound: bound)
   bound_covers(host: operator_host_srv1, bound: bound)
@@ -236,7 +236,7 @@ test fn witness_teardown_grant_bound_covers_every_committed_width_exactly() -> B
 // "sudo " prefix and omitted -n, so a missing NOPASSWD grant would hang waiting for a tty prompt
 // rather than refusing immediately. RED IS AUTHORABLE: drop "-n" from sudo_elevate and this goes
 // false before any host waits for a deadlocked sudo.
-test fn witness_shell_command_is_non_interactive() -> Bool {
+test fn witness_shell_command_is_non_interactive() -> Bool  {
   let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
   let rendered = executor_privileged_operation_shell_command(op: op)
   string_contains(s: rendered, pattern: "'-n'")
@@ -246,7 +246,7 @@ test fn witness_shell_command_is_non_interactive() -> Bool {
 // privilege boundary (extdeps.sudo.elevation lines 29-38). The hand-spelled predecessor carried a
 // bare "sudo " prefix. RED IS AUTHORABLE: change sudo_elevate's binary path to a bare name and
 // this goes false.
-test fn witness_shell_command_cites_absolute_sudo_path() -> Bool {
+test fn witness_shell_command_cites_absolute_sudo_path() -> Bool  {
   let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
   let rendered = executor_privileged_operation_shell_command(op: op)
   string_contains(s: rendered, pattern: "'/usr/bin/sudo'")
@@ -256,7 +256,7 @@ test fn witness_shell_command_cites_absolute_sudo_path() -> Bool {
 // If the function is ever reverted to the hand-spelled "sudo " prefix (missing -n and bare binary),
 // this test goes red — proving the fix is load-bearing and the distinguishing properties above
 // are testing the authority rather than a coincidental string match.
-test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool {
+test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool  {
   let op = RemoveDirectoryTree { path: "/opt/actions-runner/srv3-09" as NonEmptyStr }
   let rendered = executor_privileged_operation_shell_command(op: op)
   let old_form = join([
@@ -278,7 +278,7 @@ test fn witness_shell_command_differs_from_hand_spelled_prefix() -> Bool {
 // disagreement was discoverable only by a wet apply on a real host.
 // RED IS AUTHORABLE: change either projection alone and the two stop matching.
 // The script runs the QUOTED argv; the sudoers file grants the SAME argv unquoted.
-test fn witness_executed_command_is_the_granted_command() -> Bool {
+test fn witness_executed_command_is_the_granted_command() -> Bool  {
   let slot = "/opt/actions-runner/srv3-09" as NonEmptyStr
   let job = "ghrunner" as NonEmptyStr
   let executed = gunbc_runner_slot_privileged_commands(slot_dir: slot, job_user: job)
@@ -292,7 +292,7 @@ test fn witness_executed_command_is_the_granted_command() -> Bool {
 
 // AND THE GRANT ACTUALLY COVERS THE SLOT THE SCRIPT TOUCHES. A population that renders correctly but
 // omits the slot the provisioner is about to mutate is the srv3 failure exactly.
-test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
+test fn witness_grant_population_covers_the_provisioned_slot() -> Bool  {
   string_contains(
     s: srv3_runner_host_sudoers(),
     pattern: "/usr/bin/rm -rf /opt/actions-runner/srv3-09",
@@ -303,7 +303,7 @@ test fn witness_grant_population_covers_the_provisioned_slot() -> Bool {
 // authorizes itself, which is the one shape the whole staged-install transaction exists to prevent.
 // RED IS AUTHORABLE: point executor_bootstrap_principal.login at the deploy row's job_user and
 // this goes false.
-test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool {
+test fn witness_bootstrap_principal_is_not_the_grantee() -> Bool  {
   bootstrap_principal_is_not_the_grantee(
     bootstrap: executor_bootstrap_principal,
     deploy: wt_srv3_deploy(),

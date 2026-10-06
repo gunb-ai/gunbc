@@ -20,7 +20,7 @@ import v2.std.algebra { any }
 // as a fact, and that the mechanism people would cite as already solving it lives on the other side
 // of a seam nothing crosses. This asserts the carrier keeps all three rather than collapsing to
 // whichever one a later reader finds most convincing.
-test fn the_finding_keeps_all_three_measurements() -> Bool {
+test fn the_finding_keeps_all_three_measurements() -> Bool  {
   let n = fabric_capacity_class_evidence |> count
   n == 3
     && any(fabric_capacity_class_evidence, e => match e {
@@ -45,7 +45,7 @@ test fn the_finding_keeps_all_three_measurements() -> Bool {
 // "No hits" is the claim someone re-running the grep will falsify, and then the whole row looks
 // careless. "One hit, in prose, here is why it does not count" survives the re-run and is the
 // stronger statement. This pins that the carrier reports the hit rather than a flattering zero.
-test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool {
+test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool  {
   match no_class_carrier {
     NoClassCarrierAnywhere { searched_modules: m, vocabulary_hits: h, hit_disposition: d } =>
       h == 1
@@ -61,7 +61,7 @@ test fn the_single_prose_hit_is_carried_not_swallowed() -> Bool {
 // "It has no reach" is unfalsifiable prose on its own. Naming the consumers it DOES have turns it
 // into something a reader can go and re-derive: these are the importers, none is under product/,
 // therefore the arrow the reader assumed does not exist.
-test fn the_protection_names_the_consumers_it_does_have() -> Bool {
+test fn the_protection_names_the_consumers_it_does_have() -> Bool  {
   match protection_has_no_reach {
     ProtectionHasNoReachAcrossSeam { protection: _, protection_consumers: c, unreached_layer: u } =>
       (c |> count) == 2 && string_contains(s: u as String, pattern: "product.fabric")
@@ -77,7 +77,7 @@ test fn the_protection_names_the_consumers_it_does_have() -> Bool {
 // worse than the current absence because a convention reads as coverage while enforcing nothing.
 // Keeping them refused-with-reason is what makes the ruling durable instead of a preference someone
 // re-litigates.
-test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool {
+test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool  {
   remedy_is_ruled_in(remedy: capacity_class_ruled_remedy)
     && (capacity_class_refused_remedies |> count) == 2
     && !any(capacity_class_refused_remedies, r => remedy_is_ruled_in(remedy: r))
@@ -89,7 +89,7 @@ test fn one_remedy_is_ruled_in_and_the_cheap_ones_stay_refused() -> Bool {
 // The trust-domain arm is refused because a branded string cannot carry the fact -- a representation
 // question. A single shared "not ruled in" would lose exactly the distinction that stops someone
 // arguing the second is fine once the first is addressed.
-test fn the_two_refused_remedies_do_not_share_one_reason() -> Bool {
+test fn the_two_refused_remedies_do_not_share_one_reason() -> Bool  {
   let reasons = map(capacity_class_refused_remedies, r => match r {
     ClassOnWorkShape { rationale: x } => x as String
     ClassOnSupplierOffer { rationale: x } => x as String

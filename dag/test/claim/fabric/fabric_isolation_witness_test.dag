@@ -20,7 +20,7 @@ import v2.std.algebra { any, filter }
 // "no" here and "no" for a host with no network namespacing at all, and those have unrelated
 // remedies -- find a microVM supplier, versus fix this host. The assertion is that the missing
 // list is exactly [DedicatedKernel], not merely non-empty.
-test fn a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee() -> Bool {
+test fn a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee() -> Bool  {
   let missing = unsatisfied_isolation_guarantees(
     required: dedicated_kernel_sandbox_profile(),
     provided: shared_kernel_sandbox_profile(),
@@ -32,7 +32,7 @@ test fn a_shared_kernel_offer_fails_only_the_dedicated_kernel_guarantee() -> Boo
 // THE SAME OFFER SATISFIES EVERYTHING A SHARED-KERNEL TENANT ASKS FOR.
 // The positive control: without it the witness above would pass against a match that refuses
 // everything.
-test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
+test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool  {
   isolation_profile_satisfies(
     required: shared_kernel_sandbox_profile(),
     provided: shared_kernel_sandbox_profile(),
@@ -55,7 +55,7 @@ test fn a_shared_kernel_offer_satisfies_a_shared_kernel_requirement() -> Bool {
 // THE FLOOR IS DELIBERATELY NOT THE SUBJECT HERE. Our own work requires none of these and runs
 // green today; measuring the fleet against the floor's requirement would report a gap that does
 // not exist. The tenant requirement is the one the fleet genuinely cannot meet.
-test fn todays_slots_could_not_host_a_tenant_workload() -> Bool {
+test fn todays_slots_could_not_host_a_tenant_workload() -> Bool  {
   let missing = unsatisfied_isolation_guarantees(
     required: tenant_workload_isolation_requirement(),
     provided: current_runner_slot_profile(),
@@ -70,7 +70,7 @@ test fn todays_slots_could_not_host_a_tenant_workload() -> Bool {
 // AND THE FLEET IS STILL ELIGIBLE FOR OUR OWN FLOOR, WHICH IS THE CONTROL THAT KEEPS THE ABOVE
 // FROM BEING A UNIVERSAL "NOTHING IS ELIGIBLE". Without it, a match that refused every pairing
 // would satisfy the gap witness and look like a working model.
-test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
+test fn todays_slots_still_satisfy_our_own_floor() -> Bool  {
   isolation_profile_satisfies(
     required: floor_isolation_requirement(),
     provided: current_runner_slot_profile(),
@@ -82,7 +82,7 @@ test fn todays_slots_still_satisfy_our_own_floor() -> Bool {
 // The discriminating half: a label function collapsing two members would still render a plausible
 // refusal, surfacing only as an operator provisioning the wrong thing. Asserted as distinctness
 // across the whole closed set rather than by spot-checking one.
-test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
+test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool  {
   let all = [
     FreshWritableRoot, PrivateProcessNamespace, PrivateNetworkNamespace,
     PrivateUserNamespace, AttemptScopedSecrets, DefaultDenyEgress, DedicatedKernel,
@@ -98,7 +98,7 @@ test fn the_seven_guarantees_do_not_share_a_wire_word() -> Bool {
 // The empty missing-list means SATISFIED and never "could not ask". The fold filters the REQUIRED
 // set, so an empty result can only mean every required guarantee was found -- if it could also
 // mean the question failed, every unsatisfiable offer in the fleet would read as fungible.
-test fn requiring_nothing_is_satisfied_rather_than_unanswerable() -> Bool {
+test fn requiring_nothing_is_satisfied_rather_than_unanswerable() -> Bool  {
   isolation_profile_satisfies(
     required: IsolationProfile { guarantees: [] },
     provided: current_runner_slot_profile(),

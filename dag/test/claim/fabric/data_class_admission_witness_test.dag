@@ -154,7 +154,7 @@ fn refused_with(a: DataEffectAdmission<BuildOutput, FilePath>, want: fn(DataEffe
 // POSITIVE CONTROL. The permit carries the revealed path -- the permit is the exit -- and every
 // fact the fold read: the row's retention and lawful basis, the map authority, the posture
 // revision, the sink, the operation.
-test fn a_build_output_is_admitted_to_the_durable_origin_under_a_row_naming_the_route() -> Bool {
+test fn a_build_output_is_admitted_to_the_durable_origin_under_a_row_naming_the_route() -> Bool  {
   match admit_output(handling_map: fx_admitting_map(), posture: fx_posture(), sink: fx_output_sink()) {
     DataEffectRefused { cause: _ } => false
     DataEffectAdmitted { permit: p } =>
@@ -172,7 +172,7 @@ test fn a_build_output_is_admitted_to_the_durable_origin_under_a_row_naming_the_
   }
 }
 
-test fn the_public_map_admits_nothing() -> Bool {
+test fn the_public_map_admits_nothing() -> Bool  {
   refused_with(a: admit_output(handling_map: public_fabric_map(), posture: public_fabric_posture(), sink: fx_output_sink()), want: fn(c) {
     match c {
       CategoryUnmapped { category: cat, map: m } =>
@@ -182,7 +182,7 @@ test fn the_public_map_admits_nothing() -> Bool {
   })
 }
 
-test fn a_category_with_rows_for_another_sink_only_is_refused_at_the_sink() -> Bool {
+test fn a_category_with_rows_for_another_sink_only_is_refused_at_the_sink() -> Bool  {
   let m = fx_map(rows: [fx_row(category: build_output_ref(), sink: LogChannel, posture: fx_posture())])
   refused_with(a: admit_output(handling_map: m, posture: fx_posture(), sink: fx_output_sink()), want: fn(c) {
     match c {
@@ -197,7 +197,7 @@ test fn a_category_with_rows_for_another_sink_only_is_refused_at_the_sink() -> B
   })
 }
 
-test fn a_durable_row_on_another_route_is_refused_at_the_route() -> Bool {
+test fn a_durable_row_on_another_route_is_refused_at_the_route() -> Bool  {
   let m = fx_map(rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fx_other_route() }, posture: fx_posture())])
   refused_with(a: admit_output(handling_map: m, posture: fx_posture(), sink: fx_output_sink()), want: fn(c) {
     match c {
@@ -208,7 +208,7 @@ test fn a_durable_row_on_another_route_is_refused_at_the_route() -> Bool {
   })
 }
 
-test fn a_row_under_a_superseded_posture_is_stale_not_admitting() -> Bool {
+test fn a_row_under_a_superseded_posture_is_stale_not_admitting() -> Bool  {
   refused_with(a: admit_output(handling_map: fx_admitting_map(), posture: fx_stale_posture(), sink: fx_output_sink()), want: fn(c) {
     match c {
       PostureRevisionStale { evaluated: e, active: a } => count(e) == 1 && a == fx_stale_posture().revision
@@ -222,7 +222,7 @@ test fn a_row_under_a_superseded_posture_is_stale_not_admitting() -> Bool {
 // identity at generic positions; the compile-time probe is enrolled as an expecting-red hole), so
 // the fold compares the runtime witnesses FIRST and refuses before consulting any map -- an
 // admitting map for both categories is handed in to show that no row rescues the disagreement.
-test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read() -> Bool {
+test fn a_personal_identity_handed_to_a_build_output_sink_is_refused_before_the_map_is_read() -> Bool  {
   let m = fx_map(rows: [
     fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
     fx_row(category: personal_identity_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture()),
@@ -251,7 +251,7 @@ fn email_length_of(claims: OidcStandardClaims) -> Nat {
   }
 }
 
-test fn a_projection_of_classified_data_keeps_its_category() -> Bool {
+test fn a_projection_of_classified_data_keeps_its_category() -> Bool  {
   match fx_pii_result() {
     VerifiedOidcProjectionRefused { cause: _ } => false
     VerifiedOidcProjectionProjected { projection: p } => {
@@ -261,7 +261,7 @@ test fn a_projection_of_classified_data_keeps_its_category() -> Bool {
   }
 }
 
-test fn a_redacted_value_keeps_the_category_and_the_basis_and_nothing_else() -> Bool {
+test fn a_redacted_value_keeps_the_category_and_the_basis_and_nothing_else() -> Bool  {
   match fx_pii_result() {
     VerifiedOidcProjectionRefused { cause: _ } => false
     VerifiedOidcProjectionProjected { projection: p } => {
@@ -289,7 +289,7 @@ fn admitted_permit_for(sink: Sink<BuildOutput>, operation: DataOperation, rows: 
   ]
   = admit_data_effect(classified: fx_output(), sink: sink, operation: operation, handling_map: fx_map(rows: rows), posture: fx_posture())
 
-test fn the_fleet_route_durable_permit_authorises_the_origin_write() -> Bool {
+test fn the_fleet_route_durable_permit_authorises_the_origin_write() -> Bool  {
   match admitted_permit_for(sink: fx_output_sink(), operation: StoreDurably, rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())]) {
     DataEffectRefused { cause: _ } => false
     DataEffectAdmitted { permit: p } =>
@@ -300,7 +300,7 @@ test fn the_fleet_route_durable_permit_authorises_the_origin_write() -> Bool {
   }
 }
 
-test fn a_log_channel_permit_for_build_output_does_not_authorise_the_origin_write() -> Bool {
+test fn a_log_channel_permit_for_build_output_does_not_authorise_the_origin_write() -> Bool  {
   let log = log_channel_sink(category: build_output_category(), purpose: fx_ref(name: "fixture_purpose"), recipient: fx_ref(name: "fixture_recipient"))
   match admitted_permit_for(sink: log, operation: Transmit, rows: [fx_row_admitting(category: build_output_ref(), sink: LogChannel, operations: [Transmit], posture: fx_posture())]) {
     DataEffectRefused { cause: _ } => false
@@ -321,7 +321,7 @@ test fn a_log_channel_permit_for_build_output_does_not_authorise_the_origin_writ
 // transport's own identity check (origin_write_permit_standing) is never the only wall. That check
 // stays for a different fact: a permit admitted for Transmit on this route by a row that does
 // admit it is still not a permit to store, which is the arm exercised here on a row admitting both.
-test fn a_transmit_permit_on_the_fleet_route_does_not_authorise_a_durable_store() -> Bool {
+test fn a_transmit_permit_on_the_fleet_route_does_not_authorise_a_durable_store() -> Bool  {
   match admitted_permit_for(sink: fx_output_sink(), operation: Transmit, rows: [fx_row_admitting(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, operations: [StoreDurably, Transmit], posture: fx_posture())]) {
     DataEffectRefused { cause: _ } => false
     DataEffectAdmitted { permit: p } =>
@@ -336,7 +336,7 @@ test fn a_transmit_permit_on_the_fleet_route_does_not_authorise_a_durable_store(
   }
 }
 
-test fn an_operation_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
+test fn an_operation_the_row_does_not_admit_is_refused_at_the_fold() -> Bool  {
   refused_with(a: admitted_permit_for(sink: fx_output_sink(), operation: Transmit, rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())]), want: fn(c) {
     match c {
       OperationNotPermittedForSink { category: cat, sink: _, operation: o } =>
@@ -350,7 +350,7 @@ test fn an_operation_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
   })
 }
 
-test fn a_purpose_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
+test fn a_purpose_the_row_does_not_admit_is_refused_at_the_fold() -> Bool  {
   let other_purpose = durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: fx_ref(name: "other_purpose"), recipient: fx_ref(name: "fixture_recipient"))
   refused_with(a: admitted_permit_for(sink: other_purpose, operation: StoreDurably, rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())]), want: fn(c) {
     match c {
@@ -360,7 +360,7 @@ test fn a_purpose_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
   })
 }
 
-test fn a_recipient_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
+test fn a_recipient_the_row_does_not_admit_is_refused_at_the_fold() -> Bool  {
   let other_recipient = durable_origin_sink(category: build_output_category(), route: fabric_durable_origin_route(), purpose: fx_ref(name: "fixture_purpose"), recipient: fx_ref(name: "other_recipient"))
   refused_with(a: admitted_permit_for(sink: other_recipient, operation: StoreDurably, rows: [fx_row(category: build_output_ref(), sink: DurableOrigin { route: fabric_durable_origin_route() }, posture: fx_posture())]), want: fn(c) {
     match c {
@@ -376,7 +376,7 @@ test fn a_recipient_the_row_does_not_admit_is_refused_at_the_fold() -> Bool {
 // PersonalIdentity to a durable origin on a fixture route, and the permit's value is compared
 // with the claims that went in. This is the assertion test.claim.principal_projection_witness
 // used to make with `retained == claims` and can no longer make there.
-test fn the_standard_claims_survive_classification_intact() -> Bool {
+test fn the_standard_claims_survive_classification_intact() -> Bool  {
   let sink = durable_origin_sink(category: personal_identity_category(), route: fx_other_route(), purpose: fx_ref(name: "fixture_purpose"), recipient: fx_ref(name: "fixture_recipient"))
   let m = fx_map(rows: [fx_row(category: personal_identity_ref(), sink: DurableOrigin { route: fx_other_route() }, posture: fx_posture())])
   match fx_pii_result() {

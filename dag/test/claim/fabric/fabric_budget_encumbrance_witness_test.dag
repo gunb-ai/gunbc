@@ -100,7 +100,7 @@ fn settle_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: N
 // counts against the budget before any money moves, so a second reservation
 // cannot be admitted against headroom the first one has already spoken for.
 
-test fn a_held_reservation_encumbers_its_full_liability() -> Bool {
+test fn a_held_reservation_encumbers_its_full_liability() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: a, tail: _ } =>
@@ -112,7 +112,7 @@ test fn a_held_reservation_encumbers_its_full_liability() -> Bool {
 // asked to hold 700000 against 600000 of headroom and received a smaller hold
 // would proceed believing it was covered for the larger amount.
 
-test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -> Bool {
+test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: a, tail: _ } => {
@@ -128,7 +128,7 @@ test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -
 // conservative maximum would permanently consume headroom it never used, and
 // callers would be pushed toward under-reserving instead.
 
-test fn settling_under_the_hold_returns_the_residue() -> Bool {
+test fn settling_under_the_hold_returns_the_residue() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -146,7 +146,7 @@ test fn settling_under_the_hold_returns_the_residue() -> Bool {
 // reserve path, which is the one place the conservation argument assumed it
 // could not be crossed.
 
-test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
+test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -159,7 +159,7 @@ test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
 // must not be honoured, and the check is decidable at settlement rather than
 // racing, because the reservation carries the generation it was made under.
 
-test fn a_superseded_holder_cannot_settle() -> Bool {
+test fn a_superseded_holder_cannot_settle() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 7, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -173,7 +173,7 @@ test fn a_superseded_holder_cannot_settle() -> Bool {
 // commitment against the appropriation two times, and the second charge would
 // be invisible in a ledger that only stored a running total.
 
-test fn a_settled_reservation_cannot_settle_again() -> Bool {
+test fn a_settled_reservation_cannot_settle_again() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -189,7 +189,7 @@ test fn a_settled_reservation_cannot_settle_again() -> Bool {
 // Releasing frees the whole hold, so the headroom it occupied becomes
 // available to a later reservation that would otherwise have been refused.
 
-test fn releasing_a_hold_frees_its_headroom() -> Bool {
+test fn releasing_a_hold_frees_its_headroom() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 900000)) {
     Empty {} => false
     Cons { head: held, tail: _ } => {
@@ -220,7 +220,7 @@ test fn releasing_a_hold_frees_its_headroom() -> Bool {
 // needs a rate, and a rate invented at an admission boundary fabricates the
 // exact fact the refusal exists to demand.
 
-test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
+test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool  {
   let foreign = reserve_money(
     a: usd_account,
     request: MoneyReservationRequest {
@@ -239,7 +239,7 @@ test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
 // were merely ordering the mismatch would surface as some other refusal, or as
 // none - which is how a silent cross-currency sum gets in.
 
-test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
+test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool  {
   let foreign = reserve_money(
     a: usd_account,
     request: MoneyReservationRequest {
@@ -266,7 +266,7 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
 // second half matters because a refusal that still appended would leave the
 // exact state the wall exists to prevent while reporting that it did not.
 
-test fn a_second_hold_under_one_reference_refuses() -> Bool {
+test fn a_second_hold_under_one_reference_refuses() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } => {
@@ -283,7 +283,7 @@ test fn a_second_hold_under_one_reference_refuses() -> Bool {
 // both - charging 500000 for one commitment. This asserts a settled reference
 // charges its amount EXACTLY ONCE, which is the property the duplicate broke.
 
-test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool {
+test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -308,7 +308,7 @@ test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool {
 // is the correct obligation anyway - a retry is a new commitment, and the
 // fabric already models it as a new attempt with its own identity.
 
-test fn a_released_reference_is_not_reusable() -> Bool {
+test fn a_released_reference_is_not_reusable() -> Bool  {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>

@@ -86,7 +86,7 @@ fn fw_admit(credential: StoreOperationCredential) -> StoreOperationAdmission {
 
 // THE POSITIVE CONTROL: a receipt the broker minted over an approved intent that states D0's scope
 // admits a D0 consent-slot write at the store.
-test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -> Bool {
+test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -> Bool  {
   match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationAdmitted { operation: _ } => true  _ => false }
@@ -95,13 +95,13 @@ test fn a_receipt_over_an_intent_stating_the_d0_scope_admits_a_consent_write() -
 
 // THE RED: the same protected write with no credential refuses -- a rostered writer holding no
 // approval for the operation is refused at the store (d0_store_operation_wall's trigger).
-test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool {
+test fn a_consent_write_with_no_approval_is_refused_at_the_store() -> Bool  {
   match fw_admit(credential: NoOperationCredential) { StoreOperationRefused { operation: _, refusal: ApprovalAbsent } => true  _ => false }
 }
 
 // A GENUINE RECEIPT DOES NOT CARRY ANOTHER OPERATION: an approved intent stating another scope is
 // refused.
-test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Bool {
+test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Bool  {
   match fw_receipt_other_scope() {
     NoReceipt => false
     HaveReceipt { credential: c } => match fw_admit(credential: c) { StoreOperationRefused { operation: _, refusal: IntentScopeNotAdmissible { stated: _, admissible: _ } } => true  _ => false }
@@ -109,7 +109,7 @@ test fn a_receipt_whose_approved_intent_states_another_scope_is_refused() -> Boo
 }
 
 // AN INTENT EDITED AFTER APPROVAL is not the approved revision and is refused.
-test fn an_intent_edited_after_approval_is_refused() -> Bool {
+test fn an_intent_edited_after_approval_is_refused() -> Bool  {
   match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } => match c {
@@ -123,7 +123,7 @@ test fn an_intent_edited_after_approval_is_refused() -> Bool {
 // THE HEADS: the three protected families are recognized and an ordinary head is not; an authority
 // write whose object is not an event is refused rather than classified by guess; no receipt key
 // refuses rather than admitting.
-test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bool {
+test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bool  {
   (match protected_head_of(name: fw_consent_head) { Present { value: ConsentClaimSlotHead } => true  _ => false })
     && (match protected_head_of(name: "cas-slot-pair-serving-d0-filing-esc-d0-1") { Present { value: ConsentFilingSlotHead } => true  _ => false })
     && (match protected_head_of(name: "pair-serving-authority-group-a") { Present { value: AuthorityPartitionHead } => true  _ => false })
@@ -132,7 +132,7 @@ test fn protected_heads_are_recognized_and_unclassifiable_objects_refuse() -> Bo
 }
 
 // NO RECEIPT KEY AT THE STORE refuses rather than admitting.
-test fn a_store_without_the_receipt_key_refuses() -> Bool {
+test fn a_store_without_the_receipt_key_refuses() -> Bool  {
   match fw_receipt_d0() {
     NoReceipt => false
     HaveReceipt { credential: c } =>

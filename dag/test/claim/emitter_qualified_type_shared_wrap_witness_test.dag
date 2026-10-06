@@ -58,14 +58,14 @@ fn w_qualified_spelling_never_reaches_emitted_rust() -> Bool {
   )
 }
 
-test fn bare_spelling_wraps_the_container_element() -> Bool {
+test fn bare_spelling_wraps_the_container_element() -> Bool  {
   w_bare_element_is_shared_wrapped()
 }
 
-test fn qualified_spelling_wraps_the_container_element_identically() -> Bool {
+test fn qualified_spelling_wraps_the_container_element_identically() -> Bool  {
   w_qualified_element_is_shared_wrapped()
 }
 
-test fn qualified_spelling_is_peeled_before_emission() -> Bool {
+test fn qualified_spelling_is_peeled_before_emission() -> Bool  {
   w_qualified_spelling_never_reaches_emitted_rust()
 }
