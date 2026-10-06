@@ -1,8 +1,10 @@
 module v2.test.claim.body_lowering.data_initializer_fn_value
 
+import v2.std.live_tree { LiveTreeDisposition }
 import v2.test.claim.body_lowering.normalize_outcome_helpers {
   body_lowering_normalize_outcome
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

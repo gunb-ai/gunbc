@@ -10,8 +10,10 @@ import extdeps.provisioning.network_boot { ClientNetworkBootMode, UefiPxe }
 // netboot delivery is possible at all: does this machine's firmware actually speak PXE. It does.
 //
 // HOW IT WAS TRIGGERED, which is what makes this an observation of the automation and not of a
-// human at a console: gunbc.machine_intake_mtcollins1_actuate mtcollins1_netboot_handoff set the
-// boot device, verified boot parameter 5 read back Force PXE, and power-cycled the unit. The DHCP
+// human at a console: the unit's netboot handoff entry of that day (mtcollins1_netboot_handoff, deleted
+// with gunbc#12101; the unit actuation module itself was dissolved into gunbc.managed_host_boot_handoff
+// by managed-host cut 4a) set the boot device, verified boot parameter 5 read back Force PXE, and
+// power-cycled the unit. The DHCP
 // exchange below is what the host did in response, captured from srv2 on the same /24.
 //
 // THE THIRD MAC IS THE POINT. An earlier capture in this lane saw DHCP from 28:c1:3c:8a:d6:4d and

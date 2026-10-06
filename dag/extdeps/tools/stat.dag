@@ -166,6 +166,9 @@ fn stat_allocated_blocks_command(path: String) -> ArgvCommand {
 // the type of its target. That is the behaviour the observer wants: a link occupying a name defeats
 // mkdir whether or not its target exists, and a caller that needed the target's type would ask with
 // -L. The default is relied on here deliberately and is part of the cited GNU authority.
+// FilesystemType: `-f` READS THE FILESYSTEM THE PATH LIVES ON (statfs(2)), and %T is its type in
+// human-readable form -- GNU stat maps the superblock magic to a word (btrfs, ext2/ext3, xfs, zfs,
+// tmpfs, ...). A nonzero exit is a failed read, never "no filesystem".
 service stat.File {
   operation FileType {
     requires none
@@ -183,6 +186,24 @@ service stat.File {
     }
     mock_response {
       0 => { file_type: "directory", success: true, stderr: "" } "hermetic coreutils stat -c %F"
+    }
+  }
+
+  operation FilesystemType {
+    requires none
+    input { path: String }
+    output {
+      type_word: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["/usr/bin/stat", "-f", "-c", "%T", "--", "{path}"] }
+    exit {
+      0 => Unit "Filesystem metadata read; stdout carries the GNU filesystem-type word"
+      nonzero => String "stat could not read the filesystem metadata"
+    }
+    mock_response {
+      0 => { type_word: "btrfs", success: true } "hermetic coreutils stat -f -c %T"
     }
   }
 }

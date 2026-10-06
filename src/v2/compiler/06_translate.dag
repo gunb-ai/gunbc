@@ -115,6 +115,10 @@ import v2.std.compilers.target_model {
   TargetTypeExprVariantSlot,
   TargetTypeExprAtom,
   TargetTypeExprInstantiation,
+  TargetTypeExprCardinality,
+  TargetTypeExprRecord,
+  TargetTypeExprSum,
+  TargetTypeExprArrow,
   TargetCollectionRealization,
   TargetTextCarrier,
   TargetRepresentationChoice,
@@ -202,6 +206,7 @@ import v2.std.algebra {
   is_empty,
   length
 }
+import v2.std.grammar { node_atom_identity_optional }
 import v2.std.text {
   String
 }
@@ -249,6 +254,7 @@ import v2.compiler.target_serialize {
   translate_apply_use_site_ownership_to_type_shell,
   translate_boundary_source_carrier_node,
   translate_conj_invalid_edge_diagnostic,
+  translate_grammar_inverse_not_realized_diagnostic,
   translate_grammar_relation_row_not_found_diagnostic,
   translate_reference_layer_tokens_from_target,
   translate_type_expression_shape_missing_diagnostic,
@@ -462,14 +468,18 @@ fn conj_optional_named_child(parent: Node, edge_name: Symbol) -> Outcome<Node?> 
         BundleChildInvalidEdge =>
           outcome_rejected(translate_conj_invalid_edge_diagnostic(parent: parent))
       }
-    _ =>
-      outcome_rejected(
-        Diagnostic {
-          reason: ^translate_grammar_inverse_not_realized,
-          at: node_locus(node: parent),
-          correction: Unavailable { reason: ExternalContractUnknown }
-        }
-      )
+    TypeNode { connective: Atom { identity: _ } } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Disj } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Arrow } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Cardinality } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: parent))
   }
 }
 fn grammar_relation_row_emitted(row: Node) -> Outcome<Node> {
@@ -1603,9 +1613,9 @@ fn translate_type_expression_project_admitted(
   }
 }
 fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
-  match node.kind {
-    TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
-    _ => type_expr_atom_binding(node: node)
+  match node_atom_identity_optional(node: node) {
+    Present { value: _ } => node_atom_identity(node: node)
+    Absent => type_expr_atom_binding(node: node)
   }
 }
 fn translate_outcome_is_catalog_lookup_miss(
@@ -1672,7 +1682,10 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
             projection: projection,
             use_site: use_site
           )
-        _ => outcome_accepted(projected)
+        TargetTypeExprCardinality => outcome_accepted(projected)
+        TargetTypeExprRecord => outcome_accepted(projected)
+        TargetTypeExprSum => outcome_accepted(projected)
+        TargetTypeExprArrow => outcome_accepted(projected)
       }
     }
   )
@@ -1883,7 +1896,12 @@ fn translate_coerced_type_shell_from_source(
           )
         }
       )
-    _ => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Atom { identity: _ } } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Conj } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Disj } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Arrow } => translate_coerced_shell_base(coerced: coerced, target: target)
+    TypeNode { connective: Cardinality } => translate_coerced_shell_base(coerced: coerced, target: target)
+    ComputationNode { behavior: _ } => translate_coerced_shell_base(coerced: coerced, target: target)
   }
 }
 
@@ -1953,7 +1971,12 @@ fn translate_shell_attach_value_expression(shell: Node, value: Node) -> Node {
           )
         )
       )
-    _ => shell
+    TypeNode { connective: Atom { identity: _ } } => shell
+    TypeNode { connective: Disj } => shell
+    TypeNode { connective: Arrow } => shell
+    TypeNode { connective: Cardinality } => shell
+    TypeNode { connective: Instantiation } => shell
+    ComputationNode { behavior: _ } => shell
   }
 }
 fn translate_apply_use_site_ownership_to_value_expression(

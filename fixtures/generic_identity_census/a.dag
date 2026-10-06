@@ -46,3 +46,7 @@ fn boxed() -> Box<Int> {
 fn unbox<Q>(b: Box<Q>) -> Q {
   b.item
 }
+
+fn same_spelling_as_a_record_parameter<Q>(b: Box<Q>, q: Q) -> Q {
+  q
+}

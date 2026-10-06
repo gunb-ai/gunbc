@@ -35,6 +35,7 @@ import v2.std.program_segment {
   partition_boundary_fail_closed,
   program_segment_whole_program
 }
+import v2.std.text { String }
 
 // FROZEN, AND REPLACED BY v2.compiler.self_host.closure_emission emit_closure_from_ingest_located
 // (gunbc#12218). Both answer "emit an entry's closure as Rust", and this one answers it wrongly for any

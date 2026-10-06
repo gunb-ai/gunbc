@@ -1,8 +1,10 @@
 module test.claim.compile_pool_ensure
 
+import v2.std.live_tree { LiveTreeDisposition }
 import gunbc.compile_pool_ensure {
   compile_pool_ensure_is_converged
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

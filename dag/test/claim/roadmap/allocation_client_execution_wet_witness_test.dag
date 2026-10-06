@@ -17,7 +17,8 @@ import gunbc.roadmap_allocation_client { allocation_live_source }
 // the text and control state it left. Each scenario is one way a create can go wrong for the
 // pending-intent contract (review 5406897918): an unreadable 200, a 200 naming another or no
 // allocation, a lost Large create followed by a reload, a matching answer that must settle exactly
-// once, a fetch that never reached the server, and a listed allocation that must settle a pending
+// once, a fetch that never reached the server, a typed unavailable that must disable the create control
+// and send nothing further, and a listed allocation that must settle a pending
 // intent without a second create. A host with no ready toolchain refuses rather than passes.
 data allocation_client_harness: String = "const vm = require('vm');
 const fs = require('fs');
@@ -112,6 +113,16 @@ const scenarios = \{
     if (p.ids['allocation-create'].disabled) return 'control left disabled';
     return intentOf(store) ? '' : 'intent dropped on fetch rejection';
   \},
+  async typed_unavailable_disables_create() \{
+    const store = new Map();
+    const p = page(store, [ok(200, []), ok(503, \{ availability: 'unavailable', reason: 'Tailnet path unverified.', cause: 'route-undeclared' \})]);
+    await settle(); choose(p, LARGE); await p.submit();
+    if (!p.ids['allocation-create'].disabled) return 'create control left enabled after a typed unavailable';
+    if (!p.ids['allocation-status'].textContent.includes('route-undeclared')) return 'cause not shown';
+    await p.submit();
+    if (p.creates().length !== 1) return 'a second create was sent after the typed unavailable';
+    return intentOf(store) ? '' : 'intent dropped on a typed unavailable';
+  \},
   async list_reconciles_recorded_intent() \{
     const store = new Map([['gunbc.allocation.pending-intent', JSON.stringify(\{ key: 'K1', profile: LARGE \})]]);
     const p = page(store, [ok(200, [snapshot('K1', LARGE)])]);
@@ -191,4 +202,8 @@ test fn client_fetch_reject_is_retryable() -> Bool {
 
 test fn client_list_reconciles_recorded_intent() -> Bool {
   allocation_client_scenario_holds(scenario: "list_reconciles_recorded_intent")
+}
+
+test fn client_typed_unavailable_disables_create() -> Bool {
+  allocation_client_scenario_holds(scenario: "typed_unavailable_disables_create")
 }

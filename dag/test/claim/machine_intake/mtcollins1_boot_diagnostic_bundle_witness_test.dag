@@ -1,6 +1,10 @@
 module test.claim.machine_intake.mtcollins1_boot_diagnostic_bundle_witness_test
 
-import gunbc.machine_intake_mtcollins1_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
+import gunbc.fleet_host_identity { operator_host_mtcollins1 }
+import gunbc.megarac_managed_host { MegaRacHostAdmitted, MegaRacHostRefused, megarac_host_admission_for, megarac_host_refusal_text }
+import gunbc.megarac_operation_standing { MegaRacSdrSocketNaming }
+import gunbc.machine_intake_megarac_sensor_observation { SdrSocketNamingBound, SdrSocketNamingRefused, megarac_sdr_socket_naming }
+import gunbc.machine_intake_megarac_kvm_still { KvmObserverRecord, kvm_observer_record_not_started }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.goal_assessment { ObservationEstablished, ObservationRefused }
@@ -16,8 +20,8 @@ import gunbc.machine_intake_sel_stimulus_listener { sel_read }
 import extdeps.bmc.ipmi_chassis_control { ChassisPowerRead, ChassisUnreadable }
 import extdeps.bmc.ipmi_boot_selection {
   ipmi_boot_expected_flag_rendering, ipmi_boot_expected_device_rendering, ipmi_boot_expected_mode_rendering, ipmi_boot_expected_persistence_rendering,
+  IpmiBootCdrom, aarch64_uefi_once_boot_selection,
 }
-import gunbc.machine_intake_mtcollins1_actuate { mtcollins1_cdrom_selection }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   MtCollins1BootRunRecord, run_record_not_taken,
   BootParam5Read, BootParam5Unread, BootParam5NotTaken, BootOverrideConsumption,
@@ -27,7 +31,7 @@ import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle {
   power_after_attempt, power_after_harness,
   MtCollins1BootDiagnosticBundle, InventoryReading, MembersRead, MembersUnread, MembersNotTaken,
   SelSnapshotRead, SelSnapshotUnread, SelSnapshotNotTaken, ConsoleNotConfigured,
-  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SmproProbed, SmproNotTaken, SmproReading,
+  SdrCacheDumped, SdrCacheUnread, SdrCacheNotTaken, SensorsRead, SensorsNotTaken, SensorReading, SmproProbed, SmproNotTaken, SmproReading,
   BmcUnreachable, BmcTimeout, BmcAuthRefused, BmcHttpRefused, BmcSessionUnestablished,
   bmc_curl_read_cause, bmc_ipmitool_read_cause, inventory_not_taken,
   mtcollins1_boot_findings, harness_finding_text, processor_anomalies, memory_anomalies, mtcollins1_boot_bundle_text, mtcollins1_boot_outcome_with_findings,
@@ -118,6 +122,20 @@ fn no_run() -> MtCollins1BootRunRecord {
   run_record_not_taken(reason: "fixture: no run record")
 }
 
+// THE NAMING THE FIXTURE'S SENSOR READING CARRIES IS THE REAL ONE: minted through the MegaRAC admission of
+// the managed host mtcollins1 (gunbc.megarac_managed_host), as mtcollins1_boot_sensors mints it before it
+// reads. A host that stopped admitting leaves the fixture with no sensor reading, and the sensor claims red.
+fn sensors_socket1_dark() -> SensorReading {
+  match megarac_host_admission_for(host: operator_host_mtcollins1 as NonEmptyStr, operation: MegaRacSdrSocketNaming) {
+    MegaRacHostRefused { cause: c } => SensorsNotTaken { reason: megarac_host_refusal_text(cause: c) }
+    MegaRacHostAdmitted { host: h } =>
+      match megarac_sdr_socket_naming(host: h) {
+        SdrSocketNamingRefused { reason: why } => SensorsNotTaken { reason: why }
+        SdrSocketNamingBound { naming: n } => SensorsRead { lines: sdr_decode_lines(stdout: sensors_socket1_dark_fixture), at: "2026-09-23T01:00:10Z", naming: n }
+      }
+  }
+}
+
 fn bundle_socket1_absent() -> MtCollins1BootDiagnosticBundle {
   MtCollins1BootDiagnosticBundle { configuration: no_receipt_configuration(),
     attempt: AttemptRunId { run_id: "35793279839" },
@@ -125,7 +143,7 @@ fn bundle_socket1_absent() -> MtCollins1BootDiagnosticBundle {
     sel_before: SelSnapshotRead { raw: sel_before_fixture, at: "2026-09-23T00:59:00Z" },
     sel_after: SelSnapshotRead { raw: sel_after_fixture, at: "2026-09-23T01:10:00Z" },
     sdr_cache: SdrCacheDumped { path: "/w/_temp/mtcollins1-bmc-credential.sdr-cache", at: "2026-09-23T00:58:50Z" },
-    sensors: SensorsRead { lines: sdr_decode_lines(stdout: sensors_socket1_dark_fixture), at: "2026-09-23T01:00:10Z" },
+    sensors: sensors_socket1_dark(),
     smpro: SmproNotTaken { reason: "t" },
     inventory: InventoryReading {
       system_id: "Self",
@@ -857,10 +875,10 @@ test fn a_cross_origin_systems_link_is_refused() -> Bool {
 // controller renders once a boot consumed the one-shot override.
 fn p5_pending() -> String {
   join([
-    ipmi_boot_expected_flag_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_persistence_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_mode_rendering(selection: mtcollins1_cdrom_selection) as String,
-    ipmi_boot_expected_device_rendering(selection: mtcollins1_cdrom_selection) as String,
+    ipmi_boot_expected_flag_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_persistence_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_mode_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
+    ipmi_boot_expected_device_rendering(selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom)) as String,
   ], "\n")
 }
 
@@ -870,7 +888,7 @@ fn consumption_with(before: String, after: String, census_ended: Bool) -> BootOv
   boot_override_consumption(
     before: BootParam5Read { readback: before, at: "t0" },
     after: BootParam5Read { readback: after, at: "t1" },
-    selection: mtcollins1_cdrom_selection,
+    selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom),
     booted_through_override_device: census_ended,
   )
 }
@@ -900,7 +918,7 @@ test fn an_override_already_pending_before_the_attempt_is_not_attributed_to_it()
 }
 
 test fn consumption_without_a_read_is_never_minted() -> Bool {
-  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: mtcollins1_cdrom_selection, booted_through_override_device: true) {
+  match boot_override_consumption(before: BootParam5Read { readback: p5_consumed, at: "t0" }, after: BootParam5NotTaken { reason: "x" }, selection: aarch64_uefi_once_boot_selection(device: IpmiBootCdrom), booted_through_override_device: true) {
     OverrideConsumptionUnread { reason: _ } => true
     _ => false
   }

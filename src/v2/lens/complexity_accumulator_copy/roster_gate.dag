@@ -1,5 +1,6 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
+import v2.lens.complexity_accumulator_copy { Finding }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
   filesystem_read_outcome,
@@ -20,6 +21,9 @@ import v2.lens.common.source_analysis_standing {
   SourceUnreadable
 }
 import std.types { List }
+import v2.std.integer { Int }
+import v2.std.node { Node }
+import v2.lens.complexity_accumulator_copy { Finding }
 
 // Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row
 // claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not

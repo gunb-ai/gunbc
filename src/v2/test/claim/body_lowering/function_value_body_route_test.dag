@@ -198,3 +198,57 @@ test fn a_fn_returning_fn_emits_impl_fn_with_a_move_closure() -> Bool {
     FvbEmitRefused { reason: _ } => false
   }
 }
+
+// NESTED FUNCTION TYPES MINT ONE ANONYMOUS LABEL PER LEVEL, AND THAT HIDES NOTHING. `fn(Bool) ->
+// fn(Bool) -> Bool` is two Arrow types, and each domain's unnamed slot is labelled by its position in
+// its OWN list (v2.std.anonymous_binder anonymous_param_label), so both levels bind
+// `<anonymous-parameter-1>`. No reference can spell that label, so the inner slot cannot hide the
+// outer one; the value-binder gate refused it as hiding all the same (v2.compiler.resolve
+// admit_one_value_binder, first bad #12506). The negative control is the wall that must stay: an
+// AUTHORED binder hiding an outer parameter still refuses.
+data fvb_typed_curried_source: String = "module v2.test.fvb_typed_curried\n\nimport std.types { Bool }\n\nfn fvb_typed_curried(p: Bool) -> fn(Bool) -> fn(Bool) -> Bool { x => y => x }\n"
+
+data fvb_named_hiding_source: String = "module v2.test.fvb_named_hiding\n\nimport std.types { Bool }\n\nfn fvb_named_hiding(x: Bool) -> fn(Bool) -> Bool { x => x }\n"
+
+type FvbHidingOutcomes
+  = FvbHidingContextRefused { reason: Symbol }
+  | FvbHidingDecided { typed_curried: FvbVerdict, named_hiding: FvbVerdict }
+
+fn fvb_hiding_outcomes() -> FvbHidingOutcomes {
+  match native_test_context_from_ingest(ingest: Cons {
+    head: fvb_read(source: fvb_typed_curried_source, id: ^fvb_typed_curried_artifact, unit: ^fvb_typed_curried_cu, path: "src/v2/test/fixture/body_lowering/fvb_typed_curried.dag"),
+    tail: Cons {
+      head: fvb_read(source: fvb_named_hiding_source, id: ^fvb_named_hiding_artifact, unit: ^fvb_named_hiding_cu, path: "src/v2/test/fixture/body_lowering/fvb_named_hiding.dag"),
+      tail: Empty
+    }
+  }) {
+    Rejected { diagnostics: d } => FvbHidingContextRefused { reason: d.head.reason }
+    Accepted { value: context, diagnostics: _ } =>
+      FvbHidingDecided {
+        typed_curried: fvb_verdict_in(context: context, module: "v2.test.fvb_typed_curried"),
+        named_hiding: fvb_verdict_in(context: context, module: "v2.test.fvb_named_hiding")
+      }
+  }
+}
+
+test fn nested_function_types_with_anonymous_slots_resolve_and_reach_infer() -> Bool {
+  match fvb_hiding_outcomes() {
+    FvbHidingDecided { typed_curried: v, named_hiding: _ } =>
+      match v {
+        FvbInferred => true
+        FvbRefused { reason: _, at_atom: _ } => false
+      }
+    FvbHidingContextRefused { reason: _ } => false
+  }
+}
+
+test fn an_authored_binder_hiding_an_outer_parameter_still_refuses_as_hiding() -> Bool {
+  match fvb_hiding_outcomes() {
+    FvbHidingDecided { typed_curried: _, named_hiding: v } =>
+      match v {
+        FvbRefused { reason: r, at_atom: _ } => r == ^resolve_reason_binder_hides_visible_value
+        FvbInferred => false
+      }
+    FvbHidingContextRefused { reason: _ } => false
+  }
+}

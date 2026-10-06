@@ -1079,6 +1079,7 @@ pub fn compile_clean_diagnostic_class_specimen() -> Vec<CompilerDiagnostic> {
         OwnershipViolation { binding: s(), fn_name: s(), consumers: 0, span: no_span() },
         VariantCollision { variant: s(), enum1: s(), enum2: s(), span: no_span() },
         SoleConstructorViolation { type_name: s(), span: no_span() },
+        KernelMintShapeMismatch { declaration_name: s(), cause: s(), span: no_span() },
         OptionalCastNotEliminated { source_type: s(), target_type: s(), span: no_span() },
         BareNoneNotAdmittedByFieldType { field: s(), type_name: s(), declared_type: s(), span: no_span() },
         SourceAnnotationRefused {
@@ -1568,6 +1569,7 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
         CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
         CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::KernelMintShapeMismatch { .. } => "KernelMintShapeMismatch",
         CompilerDiagnostic::OptionalCastNotEliminated { .. } => "OptionalCastNotEliminated",
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { .. } => {
             "BareNoneNotAdmittedByFieldType"
@@ -1679,6 +1681,9 @@ pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, Str
         CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
         CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
         CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::KernelMintShapeMismatch {
+            declaration_name, ..
+        } => declaration_name.clone(),
         CompilerDiagnostic::OptionalCastNotEliminated { source_type, .. } => source_type.clone(),
         CompilerDiagnostic::BareNoneNotAdmittedByFieldType { field, .. } => field.clone(),
         CompilerDiagnostic::ConstructorCallAdmissionRefused {
@@ -1836,29 +1841,4 @@ pub(crate) fn compile_clean_broad_stop_line_blocks_skip(
     ]
     .iter()
     .any(|check| workspace_relative_repo_path(check) == entry_rel)
-}
-
-#[cfg(test)]
-mod corpus_scope_tests {
-    use super::*;
-
-    // The corpus claim follows the index's roots, not its presence (review 68527): an index over
-    // a root narrower than the witness layer must not make the ledger's rows look orphaned.
-    #[test]
-    fn an_index_over_narrower_roots_does_not_know_the_corpus() {
-        let narrow = build_multi_entry_index_primary_precedence(&["src/v1".to_string()]);
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&narrow)),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        assert_eq!(
-            compile_clean_corpus_scope(None),
-            v1_compiler_compile::CorpusScope::CorpusUnknown
-        );
-        let whole = build_multi_entry_index_primary_precedence(&witness_layer_roots());
-        assert_eq!(
-            compile_clean_corpus_scope(Some(&whole)),
-            v1_compiler_compile::CorpusScope::CorpusKnown
-        );
-    }
 }

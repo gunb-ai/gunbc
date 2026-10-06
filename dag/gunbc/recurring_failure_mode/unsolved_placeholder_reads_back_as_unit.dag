@@ -1,0 +1,22 @@
+module gunbc.recurring_failure_mode.unsolved_placeholder_reads_back_as_unit
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data unsolved_placeholder_reads_back_as_unit: RecurringFailureMode = RecurringFailureMode {
+  identity: "unsolved_placeholder_reads_back_as_unit" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: an element whose type is an UNSOLVED inference placeholder reaches a consumer typed as the concrete kernel type Unit. v1.compiler.infer types an empty list literal with no expected type as List of type_variable_node empty_list_element. When nothing later solves that variable, an element read from the list arrives at field access as Unit, and the refusal names Unit as the type. The value's type was never established, and the diagnostic reports a type it does not have.",
+
+    "SPECIMEN, executed 2026-10-05 with gunbc built at main ed68b5573b (gunbc run, a fixture module outside the corpus): `let modules = fold_list(xs: ms(), empty: [], cons: fn(acc, m) { acc })` with ms() returning List<UMod>, then `match modules |> first { Present { value: m } => m.module  Absent => `` }`, refuses `no field 'module' on type 'Unit'`. The same read with a list built by `list_snoc_item(xs: [], item: ..)` instead refuses with the typed message that names the real state: the scrutinee's type is unresolved, give the value a declared type. One unsolved variable, two diagnostics; only the second is true.",
+
+    "HARM: fabricated plausible output in a diagnostic (DESIGN section 5). The refusal is loud and located, so no wrong program is accepted, but it names a type the program never had. It sends the reader after a Unit-producing bug that does not exist. Measured cost, 2026-10-05: on gunbc#13330 a reader spent two falsified repair rounds (child_type_node narrowing; a first-come placeholder rule) before subtraction located the real cause. That cause was an accumulator never solved because v1.compiler.infer unify_generics does not descend a callable's return.",
+
+    "PRODUCER: NOT LOCATED. The placeholder carries inferred TypeVariable empty_list_element, and v1.compiler.infer type_node_label would print that id, so the Unit is substituted somewhere between the element read and the field-access refusal. The candidates, unread: the Present arm's binding of the optional's value, the first builtin's element extraction, and the unit_type fallbacks in v1.compiler.infer and v1.compiler.method resolve_builtin_call_type. What decides it: the fixture above with each candidate replaced by a typed refusal, run until the Unit message changes.",
+
+    "RUNG FOUND AT: mitigatable (loud, located, misattributed). CEILING: 3 -- an unsolved placeholder is a modeled state (TypeVariable), so every reader can refuse it as unresolved instead of substituting a concrete type. NEXT TRIGGER: the producer above is located, and an unsolved placeholder reaching field access refuses with the same unresolved-type cause the Present-arm refusal already uses; evidence is the specimen refusing with that cause, with the declared-return form of the same fold as the accepted control.",
+  ],
+
+  evidence: [],
+}

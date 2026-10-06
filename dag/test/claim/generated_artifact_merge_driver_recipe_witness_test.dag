@@ -20,7 +20,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 //   - the author-regeneration arm's LAST command ended `claim_executor --required-regen-fixed-point`
 //     with no --source-root, and claim_executor's argument guard exits 2 on exactly that. The author
-//     reaches it after two builds and two regen passes, so the cost is paid before the refusal.
+//     reached it after two builds and two regen passes, so the cost was paid before the refusal.
+//     That mode is deleted (operator ruling 2026-10-04); the property is held for the calls left.
 //   - the heal arm's set-difference command is written between backticks, and the driver echoes its
 //     lines inside DOUBLE quotes, so bash ran the capture group as a command substitution and printed
 //     the instruction with the capture group deleted. The pasted result extracts no rows, and the
@@ -41,14 +42,17 @@ fn emitted_driver_script() -> String {
 }
 
 // claim_executor refuses every mode below its argument guard with `provide at least one
-// --source-root`, and the fixed-point call is below it. The RED is the recipe as it stood.
+// --source-root`. The recipe's surviving call must carry the roots, and must not name the deleted
+// fixed-point mode, which no longer parses as a flag. RED: the recipe as it stood before
+// 2026-10-04, whose last command was that mode.
 test fn author_regeneration_recipe_passes_source_roots_to_every_claim_executor_call() -> Bool {
   let script = emitted_driver_script()
   string_contains(
     s: script,
-    pattern: "--required-regen-fixed-point --source-root dag --source-root src/v2"
+    pattern: "target/release/claim_executor --required-regen --source-root dag --source-root src/v2"
   )
-    && string_contains(s: script, pattern: "--required-regen-fixed-point\" >&2") == false
+    && string_contains(s: script, pattern: "--required-regen\" >&2") == false
+    && string_contains(s: script, pattern: "--required-regen-fixed-point") == false
 }
 
 // The backtick must reach the reader as a backtick, which inside the emitted double quotes means
