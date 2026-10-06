@@ -274,14 +274,6 @@ fn tee_append_command(path: String) -> ArgvCommand {
   argv_command(program: tee_program(), arguments: ["-a", "--", path])
 }
 
-// THE OVERWRITE SIBLING, MINTED WHEN A CALLER NEEDED IT: tee WITHOUT -a truncates the named file
-// and writes the whole stdin payload, so the file after the run is exactly the payload (tee(1),
-// GNU coreutils). Same stdin-carried payload, same `--` option-list end, same single authority as
-// the append sibling above.
-fn tee_overwrite_command(path: String) -> ArgvCommand {
-  argv_command(program: tee_program(), arguments: ["--", path])
-}
-
 // readlink PRINTS a symlink's target and refuses on a path that is not a symlink -- which is what
 // makes it an observation rather than a read: /proc/PID/exe answers "which file is this process
 // executing", and a non-symlink there is a broken assumption, not empty output.

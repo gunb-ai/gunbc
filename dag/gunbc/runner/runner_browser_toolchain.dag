@@ -83,7 +83,7 @@ import gunbc.host_effect_realize {
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.systemd.systemctl { systemctl_daemon_reload_command }
-import extdeps.tools.gnu_coreutils { tee_overwrite_command, rm_force_command }
+import extdeps.tools.gnu_coreutils { dd_overwrite_path_command, rm_force_command }
 
 // THE DECLARED HEADLESS-BROWSER TOOLCHAIN OF A FLEET RUNNER, ITS CONVERGE, AND THE ONE PLACE A
 // CONSUMER READS IT FROM. gunbc.machine_intake_megarac_kvm_still drives the MegaRAC KVM viewer
@@ -1263,10 +1263,12 @@ type BrowserReadyLabelsPlan
 // THE PLANS ARE TYPED ARGV STEPS, NOT SCRIPT TEXT. The deleted plan rendered intents to a script
 // string and shipped it through the retained-shell wall; the steps were already modeled, so the
 // text was a lossy projection of something the type system already held. The grant is two steps:
-// the drop-in bytes reach an elevated tee on STDIN (the same overwrite the deleted
-// `printf | sudo tee >/dev/null` performed -- tee truncates by default, and the bytes cross as
-// data, never as script text, so a unit body carrying quotes or metacharacters cannot change the
-// command's meaning), then an elevated daemon-reload. The revoke is the elevated rm -f, then the
+// the drop-in bytes reach dd of=PATH status=none on STDIN (the same overwrite the deleted
+// `printf | sudo tee >/dev/null` performed -- dd over tee because tee echoes the payload to
+// stdout, which would carry the file contents into the command log; status=none carries the old
+// >/dev/null suppression, and the bytes cross as data, never as script text, so a unit body
+// carrying quotes or metacharacters cannot change the command's meaning), then an elevated
+// daemon-reload. The revoke is the elevated rm -f, then the
 // same reload. The deleted plan's leading `set -e` (stop at the first failed step) is modeled by
 // the converge's own fold: each leg runs only if the previous succeeded, and a failed leg is the
 // failed outcome. Elevation keeps the sudo -n posture through sudo_elevate_command, the same
@@ -1290,7 +1292,7 @@ fn browser_ready_labels_grant_plan(host: HostIdentity, target: BrowserReadyLabel
     RunnerUnitTextRefused { reason: r } => BrowserReadyLabelsUnrenderable { cause: r as String }
     RunnerUnitText { text: content } =>
       BrowserReadyLabelsGrantReady {
-        write: browser_ready_labels_posture_argv(posture: target.posture, command: tee_overwrite_command(path: target.dropin as String)),
+        write: browser_ready_labels_posture_argv(posture: target.posture, command: dd_overwrite_path_command(path: target.dropin as String)),
         content: content,
         reload: browser_ready_labels_reload_leg(posture: target.posture),
       }

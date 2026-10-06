@@ -116,8 +116,9 @@ fn plan_remove_words(p: BrowserReadyLabelsPlan) -> List<String> {
   }
 }
 
-// GRANT writes the template drop-in carrying the label (bytes on stdin to an elevated tee at the
-// drop-in path) and reloads; REVOKE removes the same path and carries no write step.
+// GRANT writes the template drop-in carrying the label (bytes on stdin to dd of=PATH status=none
+// at the drop-in path — dd over tee because tee would echo the payload into the command log) and
+// reloads; REVOKE removes the same path and carries no write step.
 // Discriminating: a grant without the label, a revoke whose removal misses the path, or a revoke
 // that carries a write leg, reds.
 test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
@@ -127,7 +128,8 @@ test fn grant_writes_the_label_and_revoke_removes_it() -> Bool {
   let payload = plan_payload(p: grant)
   let reload = join(plan_reload_words(p: grant), " ")
   let remove = join(plan_remove_words(p: revoke), " ")
-  string_contains(s: write, pattern: "tee")
+  string_contains(s: write, pattern: "dd of=")
+    && string_contains(s: write, pattern: "status=none")
     && string_contains(s: write, pattern: "actions-runner@.service.d/85-browser-ready-labels.conf")
     && string_contains(s: payload, pattern: "gunbc-browser-ready")
     && string_contains(s: payload, pattern: "srv3")
