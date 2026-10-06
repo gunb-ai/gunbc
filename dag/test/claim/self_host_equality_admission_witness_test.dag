@@ -182,6 +182,14 @@ data present_payload_arm_control_source: String = "module present_payload_probe\
 
 data present_payload_arm_narrow_red_source: String = "module present_payload_probe_red\nfn g(xs: List<String?>, s: String) -> String? {\n  match xs.first() {\n    Absent => none\n    Present { value: r } => s\n  }\n}\n"
 
+// The exclusion switches off ONLY the bare-versus-optional check: a payload-binding arm that is
+// genuinely disjoint from its sibling (String vs Int) still reaches the proven-disjoint wall.
+data present_payload_arm_disjoint_red_source: String = "module present_payload_probe_disjoint\nfn g(x: Int?) -> String {\n  match x {\n    Absent => \"s\"\n    Present { value: r } => r\n  }\n}\n"
+
+test fn present_payload_arm_disjoint_from_sibling_still_refuses() -> Bool {
+  eq_census_clean(source: present_payload_arm_disjoint_red_source) == false
+}
+
 test fn present_payload_binding_arm_stays_admitted() -> Bool {
   eq_admitted(source: present_payload_arm_control_source)
 }

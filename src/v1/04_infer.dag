@@ -3064,9 +3064,8 @@ fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferSc
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
-  } else if match_arm_body_is_present_payload_binding(arm: arm, scope: scope) {
-    []
-  } else if match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
+  } else if !match_arm_body_is_present_payload_binding(arm: arm, scope: scope)
+    && match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
     [make_error_node(
       diagnostic: DeclaredTypeNotInhabited {
         position: "match arm",
