@@ -125,7 +125,7 @@ data fixture_population: List<LotTaxEvidence> = [
 // inference this refuses - the statute makes it half that rate, which dates the VALUE and not
 // the version. If a later edit quietly supplies an unread date to silence the obligation, or
 // drops the read one, this reds.
-test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
+test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool  {
   match nj_statewide_sales_tax.effective {
     EffectiveFrom { date: _, instrument: _ } => true
     EffectiveDateUnread { obligation: _ } => false
@@ -150,7 +150,7 @@ test fn w_statutory_rate_versions_are_read_where_claimed() -> Bool {
 //
 // Read the named lot from the fixture itself. Citing a city or settling its residual
 // without a reading must fail; missing or repeated fixture identities also refuse.
-test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
+test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool  {
   let selected = fixture_population.filter(row => inventory_lot_identity_eq(left: row.lot, right: lot_attested_ny))
   selected.length() == 1 && match selected.first() {
     Absent => false
@@ -201,7 +201,7 @@ test fn w_state_grain_attestation_does_not_establish_a_city() -> Bool {
 // jurisdiction row and this reds, because the two referents differ. The second conjunct keeps it
 // from passing by universal equality - a New Jersey origin must NOT equal a New York City
 // destination.
-test fn w_collected_origin_joins_projected_destination() -> Bool {
+test fn w_collected_origin_joins_projected_destination() -> Bool  {
   match residual_destination_jurisdiction(residual: nyc_residual) {
     DestinationCitedByRate { jurisdiction: dest } =>
       declaration_ref_eq(
@@ -223,7 +223,7 @@ test fn w_collected_origin_joins_projected_destination() -> Bool {
   }
 }
 
-test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
+test fn w_residual_destination_is_projected_from_its_rate() -> Bool  {
   match residual_destination_jurisdiction(residual: nyc_residual) {
     DestinationCitedByRate { jurisdiction: j } =>
       declaration_ref_eq(
@@ -252,7 +252,7 @@ test fn w_residual_destination_is_projected_from_its_rate() -> Bool {
   }
 }
 
-test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
+test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool  {
   parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) == 66250
     && parts_per_million_count(m: statutory_rate_value(r: nj_uez_reduced_sales_tax)) == 33125
     && parts_per_million_count(m: statutory_rate_value(r: nyc_combined_sales_tax)) == 88750
@@ -261,7 +261,7 @@ test fn w_derived_and_transcribed_rates_are_exact_millionths() -> Bool {
     && parts_per_million_count(m: statutory_rate_value(r: nj_statewide_sales_tax)) < parts_per_million_scale_million()
 }
 
-test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
+test fn w_population_fold_refuses_a_repeated_lot() -> Bool  {
   match admit_lot_tax_population(rows: fixture_population) {
     LotTaxPopulationComplete { rows: admitted } =>
       admitted.length() == 5
@@ -286,7 +286,7 @@ test fn w_population_fold_refuses_a_repeated_lot() -> Bool {
 
 // Repeat the second lot after an intervening lot, then repeat another lot.
 // The first refusal must retain both nonzero positions and survive later rows.
-test fn w_nonadjacent_repetition_preserves_first_refusal_ordinals() -> Bool {
+test fn w_nonadjacent_repetition_preserves_first_refusal_ordinals() -> Bool  {
   match admit_lot_tax_population(rows: concat(fixture_population.take(n: 3), [
     LotTaxEvidence {
       lot: lot_spark_uez,
@@ -304,7 +304,7 @@ test fn w_nonadjacent_repetition_preserves_first_refusal_ordinals() -> Bool {
   }
 }
 
-test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
+test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool  {
   residual_owed_lots(rows: fixture_population).length() == 2
     && residual_owed_lots(rows: fixture_population.skip(n: 1)).length() == 1
     && match fixture_population.first() {
@@ -315,7 +315,7 @@ test fn w_omitting_a_residual_lot_changes_the_derived_count() -> Bool {
     }
 }
 
-test fn w_unread_residual_is_not_a_known_owe() -> Bool {
+test fn w_unread_residual_is_not_a_known_owe() -> Bool  {
   residual_owed_lots(rows: [LotTaxEvidence {
     lot: lot_mt_collins,
     standing: SalesTaxCollected {
@@ -329,7 +329,7 @@ test fn w_unread_residual_is_not_a_known_owe() -> Bool {
   }]).length() == 0
 }
 
-test fn w_equal_length_is_not_tax_coverage() -> Bool {
+test fn w_equal_length_is_not_tax_coverage() -> Bool  {
   let lots = [lot_mt_collins, lot_spark_uez, lot_marketplace]
   let tax = [
     LotTaxEvidence {

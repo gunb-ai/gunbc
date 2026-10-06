@@ -29,15 +29,15 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn witness_service_ready_unit_authority() -> Bool {
+test fn witness_service_ready_unit_authority() -> Bool  {
   live_deploy_service_ready_unit_authority == gunbc_roadmap_unit_name
 }
 
-test fn witness_service_ready_endpoint_authority() -> Bool {
+test fn witness_service_ready_endpoint_authority() -> Bool  {
   live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
 }
 
-test fn witness_service_not_ready_reason_is_located() -> Bool {
+test fn witness_service_not_ready_reason_is_located() -> Bool  {
   let reason = service_not_ready_reason(refusal: ServiceNotReady {
     unit: gunbc_roadmap_unit_name,
     endpoint: roadmap_site_health_path,
@@ -52,12 +52,12 @@ test fn witness_service_not_ready_reason_is_located() -> Bool {
     && string_contains(s: reason, pattern: "Active: failed (Result: exit-code)")
 }
 
-test fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
+test fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool  {
   live_deploy_readiness_poll_bound_is_positive()
     && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 720
 }
 
-test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
+test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool  {
   let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
   let bound = second_count(s: live_deploy_service_ready_poll_bound)
   bound > expected
@@ -67,16 +67,16 @@ test fn witness_poll_bound_strictly_exceeds_expected_startup() -> Bool {
 
 // The floor is the latest measured successful start on srv1: 219s from Started to listening on
 // 2026-09-04, which superseded the four 35-39s July observations when the corpus grew.
-test fn witness_expected_startup_covers_measured_srv1_observations() -> Bool {
+test fn witness_expected_startup_covers_measured_srv1_observations() -> Bool  {
   let expected = second_count(s: live_deploy_roadmap_unit_expected_startup)
   expected >= 219
 }
 
-test fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
+test fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool  {
   live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
 }
 
-test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
+test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool  {
   match live_deploy_service_ready_scaffold_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -89,7 +89,7 @@ test fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
   }
 }
 
-test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
+test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool  {
   match live_deploy_service_ready_scaffold {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -103,7 +103,7 @@ test fn witness_scaffold_carries_named_dissolution_trigger() -> Bool {
   }
 }
 
-test fn witness_red_control_service_ready_never_ready_refuses_at_poll_bound() -> Bool {
+test fn witness_red_control_service_ready_never_ready_refuses_at_poll_bound() -> Bool  {
   let refusal = service_not_ready_refusal_at_poll_bound(
     last_probe: "health probe never succeeded",
     unit_diagnosis: UnitDiagnosisCaptured { text: "Active: failed (Result: exit-code) Main PID: 4242 (code=exited, status=1/FAILURE)" }
@@ -117,7 +117,7 @@ test fn witness_red_control_service_ready_never_ready_refuses_at_poll_bound() ->
     && !string_contains(s: reason, pattern: "proceed anyway")
 }
 
-test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
+test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool  {
   let probe_only = service_not_ready_refusal_at_poll_bound(
     last_probe: "connection refused",
     unit_diagnosis: UnitDiagnosisUnavailable
@@ -135,7 +135,7 @@ test fn witness_refusal_locates_unit_state_distinctly_from_probe() -> Bool {
     && probe_only_reason != located_reason
 }
 
-test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
+test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool  {
   match live_deploy_host_sleep_generalization_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -148,11 +148,11 @@ test fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
   }
 }
 
-test fn witness_poll_max_attempts_is_thirty() -> Bool {
+test fn witness_poll_max_attempts_is_thirty() -> Bool  {
   live_deploy_service_ready_poll_max_attempts() == 120
 }
 
-test fn witness_poll_max_attempts_tracks_cadence() -> Bool {
+test fn witness_poll_max_attempts_tracks_cadence() -> Bool  {
   live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
 }
 

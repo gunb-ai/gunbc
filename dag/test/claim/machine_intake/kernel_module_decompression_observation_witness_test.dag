@@ -59,7 +59,7 @@ data instrumented_excerpt: List<String> = [
 ]
 
 // POSITIVE CONTROL: the census-reaching boot is not a refusal, renesas warning included.
-test fn the_census_reaching_capture_reads_as_not_refused() -> Bool {
+test fn the_census_reaching_capture_reads_as_not_refused() -> Bool  {
   let o = kernel_module_decompression_observation(lines: census_reaching_excerpt)
   match o {
       NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: us } => count(fs) == 0 && count(us) == 0
@@ -68,7 +68,7 @@ test fn the_census_reaching_capture_reads_as_not_refused() -> Bool {
 }
 
 // RED, ANONYMOUS: the failed boot is a refusal with both statuses retained, and identity UNREAD.
-test fn the_failed_capture_is_a_refusal_whose_identity_is_unread() -> Bool {
+test fn the_failed_capture_is_a_refusal_whose_identity_is_unread() -> Bool  {
   match kernel_module_decompression_observation(lines: failed_attempt_excerpt) {
     RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: RefusalIdentityUnread } =>
       count(rs) == 2 && count(urs) == 0
@@ -80,7 +80,7 @@ test fn the_failed_capture_is_a_refusal_whose_identity_is_unread() -> Bool {
   }
 }
 
-test fn the_failed_capture_text_names_no_module_and_leaves_the_request_unread_on_sol() -> Bool {
+test fn the_failed_capture_text_names_no_module_and_leaves_the_request_unread_on_sol() -> Bool  {
   let text = kernel_module_decompression_text(o: kernel_module_decompression_observation(lines: failed_attempt_excerpt))
   string_contains(s: text, pattern: "module identity UNREAD")
     && string_contains(s: text, pattern: "REFUSED 2 time(s)")
@@ -91,7 +91,7 @@ test fn the_failed_capture_text_names_no_module_and_leaves_the_request_unread_on
 // THE INSTRUMENTED CAPTURE: the EINVAL insert failure is a CANDIDATE, identity UNRESOLVED -- the
 // capture carries no invocation-level link, however close the two lines sit. Every named failure,
 // candidate or not, is retained as its own observation.
-test fn an_instrumented_capture_keeps_the_named_failure_as_an_unresolved_candidate() -> Bool {
+test fn an_instrumented_capture_keeps_the_named_failure_as_an_unresolved_candidate() -> Bool  {
   match kernel_module_decompression_observation(lines: instrumented_excerpt) {
     RefusalRecorded { refusals: rs, unparsed_refusal_records: _, insert_failures: all, unparsed_insert_records: _, identity: RefusalIdentityCandidates { candidates: cs } } =>
       count(rs) == 1 && count(all) == 2 && count(cs) == 1
@@ -100,7 +100,7 @@ test fn an_instrumented_capture_keeps_the_named_failure_as_an_unresolved_candida
   }
 }
 
-test fn the_instrumented_text_says_unresolved_not_known() -> Bool {
+test fn the_instrumented_text_says_unresolved_not_known() -> Bool  {
   let text = kernel_module_decompression_text(o: kernel_module_decompression_observation(lines: instrumented_excerpt))
   string_contains(s: text, pattern: "identity UNRESOLVED")
     && string_contains(s: text, pattern: "not established by this capture")
@@ -117,7 +117,7 @@ fn named_xhci_pci(f: ModuleInsertFailure) -> Bool {
 
 // REVIEW COUNTEREXAMPLE (eager-owl-205): an unrelated EINVAL failure BEFORE the refusal is not the
 // refusal's identity; it is at most a candidate, and the verdict never reads "known".
-test fn an_unrelated_earlier_einval_failure_is_only_a_candidate() -> Bool {
+test fn an_unrelated_earlier_einval_failure_is_only_a_candidate() -> Bool  {
   match kernel_module_decompression_observation(lines: [
     "[  9.000000] (udev-worker)[99]: Failed to insert module '/unrelated.ko.zst': Invalid argument",
     "[ 10.374590] ZSTD-decompression failed with status 20",
@@ -128,7 +128,7 @@ test fn an_unrelated_earlier_einval_failure_is_only_a_candidate() -> Bool {
 }
 
 // A loader record with no refusal line is not a decompression refusal, and is still retained.
-test fn a_loader_failure_without_a_kernel_refusal_is_not_a_refusal_but_is_kept() -> Bool {
+test fn a_loader_failure_without_a_kernel_refusal_is_not_a_refusal_but_is_kept() -> Bool  {
   match kernel_module_decompression_observation(lines: instrumented_excerpt.skip(n: 1).take(n: 1)) {
     NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: _ } => count(fs) == 1
     _ => false
@@ -137,7 +137,7 @@ test fn a_loader_failure_without_a_kernel_refusal_is_not_a_refusal_but_is_kept()
 
 // MALFORMED-ONLY: a recognised refusal record whose status cannot be read is a refusal record, never
 // "no refusal", and no status is invented for it.
-test fn a_malformed_refusal_record_alone_is_still_a_refusal_with_its_line_kept() -> Bool {
+test fn a_malformed_refusal_record_alone_is_still_a_refusal_with_its_line_kept() -> Bool  {
   match kernel_module_decompression_observation(lines: [
     "[ 10.374590] ZSTD-decompression failed with status",
     "[ 10.374590] ZSTD-decompression failed with status unreadable",
@@ -151,7 +151,7 @@ test fn a_malformed_refusal_record_alone_is_still_a_refusal_with_its_line_kept()
 
 // VALID PLUS MALFORMED: the parsed refusal is kept, the unparsed one is not dropped, and the text
 // does not state a complete count.
-test fn a_valid_plus_malformed_refusal_does_not_state_a_complete_count() -> Bool {
+test fn a_valid_plus_malformed_refusal_does_not_state_a_complete_count() -> Bool  {
   let o = kernel_module_decompression_observation(lines: [
     "[ 10.374590] ZSTD-decompression failed with status 20",
     "[ 10.380475] ZSTD-decompression failed with sta",
@@ -166,7 +166,7 @@ test fn a_valid_plus_malformed_refusal_does_not_state_a_complete_count() -> Bool
 }
 
 // An uncatalogued numeric status stays a parsed refusal carrying its integer.
-test fn an_uncatalogued_numeric_status_is_parsed_not_unread() -> Bool {
+test fn an_uncatalogued_numeric_status_is_parsed_not_unread() -> Bool  {
   match kernel_module_decompression_observation(lines: ["[ 1.0] ZSTD-decompression failed with status 42"]) {
     RefusalRecorded { refusals: rs, unparsed_refusal_records: urs, insert_failures: _, unparsed_insert_records: _, identity: _ } =>
       count(urs) == 0 && match first(rs) { Absent => false Present { value: r } => match r.status { ZstdErrorCodeOther { code: c } => c == 42 _ => false } }
@@ -176,7 +176,7 @@ test fn an_uncatalogued_numeric_status_is_parsed_not_unread() -> Bool {
 
 // INCOMPLETE LOADER RECORDS: truncated before the path end, or with no errno, are kept as unparsed
 // insert records with the field that failed -- neither dropped nor turned into a candidate.
-test fn incomplete_loader_records_are_kept_as_unparsed() -> Bool {
+test fn incomplete_loader_records_are_kept_as_unparsed() -> Bool  {
   match kernel_module_decompression_observation(lines: [
     "[ 10.374590] ZSTD-decompression failed with status 20",
     "[ 10.374801] (udev-worker)[412]: Failed to insert module '/lib/modules/6.8.0-71-generic/kernel/drivers/usb/host/xhci-pci.ko.z",
@@ -191,7 +191,7 @@ test fn incomplete_loader_records_are_kept_as_unparsed() -> Bool {
 }
 
 // UNRELATED TEXT is neither a refusal nor a loader record.
-test fn unrelated_text_is_not_a_record() -> Bool {
+test fn unrelated_text_is_not_a_record() -> Bool  {
   match kernel_module_decompression_observation(lines: ["[ 1.0] zstd: something else", "[ 1.1] Failed to allocate memory pressure watch"]) {
     NoRefusalRecorded { insert_failures: fs, unparsed_insert_records: us } => count(fs) == 0 && count(us) == 0
     _ => false
@@ -202,7 +202,7 @@ data unread_digest: Sha256FileDigest = Sha256FileDigestUnavailable { path: "witn
 
 // INHABITANCE: the attempt-bound console reading carries this observation from the capture text it
 // retains -- the real route the boot bundle renders, not a supplied observation.
-test fn the_retained_console_reading_carries_the_refusal() -> Bool {
+test fn the_retained_console_reading_carries_the_refusal() -> Bool  {
   let capture = join(failed_attempt_excerpt, "\n")
   match mtcollins1_boot_console_reading(path: "artifacts/mtcollins1-boot-sol.capture", size: byte_size(count: 10), capture: concat(capture, "\n"), read_ok: true, read_error: "", capture_digest: unread_digest, reference: ReferenceCaptureRead { text: "", ok: false, error: "not supplied", digest: unread_digest }) {
     ConsoleRetained { path: _, size: _, lines: _, firmware: _, firmware_error_lines: _, capture_digest: _, dram: _, checkpoints: _, checkpoint_relations: _, milestones: _, sockets: _, against_reference: _, loader: _, linux: _, modules: m, nvparam: _, span_readings: _ } =>

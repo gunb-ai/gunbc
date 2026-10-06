@@ -70,7 +70,7 @@ fn process_saying(hex: String, surface: Fnv1a64Structural) -> RunningReleaseIden
 }
 
 // The two hexes must decode and differ, or every witness below passes on the wrong reason.
-test fn witness_the_probe_revisions_decode_and_differ() -> Bool {
+test fn witness_the_probe_revisions_decode_and_differ() -> Bool  {
   match oid(hex: hex_a) {
     Absent => false
     Present { value: a } =>
@@ -82,7 +82,7 @@ test fn witness_the_probe_revisions_decode_and_differ() -> Bool {
   }
 }
 
-test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool {
+test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>
@@ -96,7 +96,7 @@ test fn witness_a_process_stating_the_trees_revision_is_bound() -> Bool {
 }
 
 // THE STATE NOTHING ELSE IN THE TREE CAN SEE: tree at one revision, process stating another.
-test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> Bool {
+test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>
@@ -113,7 +113,7 @@ test fn witness_a_process_stating_another_revision_is_mixed_and_names_both() -> 
 // A MODIFIED TREE DOES NOT DEFEAT THE BINDING. Binding asks which revision the process is
 // interpreting; whether that revision's bytes were since edited is the tree standing's question, and
 // answering it here would fold two orthogonal facts into one verdict.
-test fn witness_modifications_do_not_change_the_binding() -> Bool {
+test fn witness_modifications_do_not_change_the_binding() -> Bool  {
   match oid(hex: hex_a) {
     Absent => false
     Present { value: a } =>
@@ -134,7 +134,7 @@ test fn witness_modifications_do_not_change_the_binding() -> Bool {
   }
 }
 
-test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool {
+test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool  {
   match deployed_release_binding(
     observation: DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: "ssh refused" } },
     identity: process_saying(hex: hex_a, surface: probe_surface()),
@@ -148,7 +148,7 @@ test fn witness_an_unreadable_tree_makes_the_binding_undecidable() -> Bool {
 }
 
 // The migration arm: a process that predates the identity channel states no revision.
-test fn witness_a_process_stating_no_identity_makes_the_binding_undecidable() -> Bool {
+test fn witness_a_process_stating_no_identity_makes_the_binding_undecidable() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>
@@ -166,7 +166,7 @@ test fn witness_a_process_stating_no_identity_makes_the_binding_undecidable() ->
 }
 
 // EXACTLY ONE ARM HOLDS, asserted across all three. Unobserved must not admit.
-test fn witness_only_the_bound_arm_holds() -> Bool {
+test fn witness_only_the_bound_arm_holds() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>
@@ -186,7 +186,7 @@ test fn witness_only_the_bound_arm_holds() -> Bool {
   }
 }
 
-test fn witness_every_binding_arm_renders_a_distinct_label() -> Bool {
+test fn witness_every_binding_arm_renders_a_distinct_label() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } => {
@@ -209,7 +209,7 @@ test fn witness_every_binding_arm_renders_a_distinct_label() -> Bool {
 // ReleaseBoundToTree here. It is the post-restart state the module's own record names: an old
 // executable relaunched under the new unit announces the deployed tree's revision while rendering
 // something that tree does not render.
-test fn witness_a_process_rendering_another_surface_is_surface_mixed_and_names_both() -> Bool {
+test fn witness_a_process_rendering_another_surface_is_surface_mixed_and_names_both() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>
@@ -232,7 +232,7 @@ test fn witness_a_process_rendering_another_surface_is_surface_mixed_and_names_b
 // A SURFACE DISAGREEMENT DOES NOT HOLD, and it renders distinctly from the revision disagreement --
 // the two have opposite remedies, so an operator reading one label must not be able to mistake it
 // for the other.
-test fn witness_a_surface_disagreement_refuses_and_renders_distinctly() -> Bool {
+test fn witness_a_surface_disagreement_refuses_and_renders_distinctly() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } => {
@@ -257,7 +257,7 @@ test fn witness_a_surface_disagreement_refuses_and_renders_distinctly() -> Bool 
 // THE REVISION HALF STILL DOMINATES. Both conjuncts disagree; the verdict must be ReleaseMixed,
 // because the expected surface is rendered from the admitted tree and comparing surfaces across a
 // revision disagreement compares two different subjects.
-test fn witness_a_revision_disagreement_dominates_a_surface_one() -> Bool {
+test fn witness_a_revision_disagreement_dominates_a_surface_one() -> Bool  {
   match tree_at(hex: hex_a) {
     Absent => false
     Present { value: t } =>

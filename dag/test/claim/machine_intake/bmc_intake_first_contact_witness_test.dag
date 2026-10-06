@@ -27,7 +27,7 @@ import gunbc.tools.bmc_intake_first_contact {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool {
+test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool  {
   match classify_intake_probe(reached_host: true, blob: "{}\n404", transport_stderr: "") {
       RedfishHttpSurface { status: s, blob: b } => s == 404 && b == "{}\n404"
       HostUnreachable { cause: _, transport_stderr: _ } => false
@@ -41,7 +41,7 @@ test fn w_intake_probe_404_is_a_captured_surface_not_a_failed_login() -> Bool {
 // shape the operation never emits — so it stayed green while the production refusal printed
 // "\n000". The discriminating REDs are both conjuncts: refusing with the stdout blob again makes
 // the first false, and dropping the stderr binding makes the second false.
-test fn w_intake_probe_unreachable_host_is_not_a_surface() -> Bool {
+test fn w_intake_probe_unreachable_host_is_not_a_surface() -> Bool  {
   match classify_intake_probe(
     reached_host: false,
     blob: "\n000",
@@ -54,7 +54,7 @@ test fn w_intake_probe_unreachable_host_is_not_a_surface() -> Bool {
   }
 }
 
-test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool {
+test fn w_intake_probe_success_without_write_out_line_is_unreadable() -> Bool  {
   match classify_intake_probe(reached_host: true, blob: "{\"RedfishVersion\":\"1.0.0\"}", transport_stderr: "") {
     WriteOutUnreadable { blob: b, cause: _ } => string_contains(s: b, pattern: "RedfishVersion")
     RedfishHttpSurface { status: _, blob: _ } => false
@@ -91,7 +91,7 @@ fn decode_self_digested(text: String) -> RecordedManagerDecode {
   decode_recorded_manager_capture(content: text, expected_sha256: sha256_hex_of_text(text: text), network: mtjade1_bmc_observed_network)
 }
 
-test fn w_a_bound_ami_manager_is_observed_megarac() -> Bool {
+test fn w_a_bound_ami_manager_is_observed_megarac() -> Bool  {
   match recorded_manager_family_standing(decoded: decode_self_digested(text: ami_manager(board_extra: "70:E2:84:95:33:6B", model_member: "\"Model\": \"130582050\", "))) {
     FamilyObserved { family: f } => match f { AmiMegaRac => true  OpenBmc => false }
     FamilyUnobserved { discriminator: _ } => false
@@ -108,11 +108,11 @@ fn refused_as_another_link(board_extra: String) -> Bool {
 
 // The second conjunct is the same address in another spelling: it refuses too, because the
 // binding compares what the capture said, not a normalization of it.
-test fn w_a_valid_ami_manager_with_another_mac_does_not_classify_mtjade1() -> Bool {
+test fn w_a_valid_ami_manager_with_another_mac_does_not_classify_mtjade1() -> Bool  {
   refused_as_another_link(board_extra: "70:E2:84:95:33:6C") && refused_as_another_link(board_extra: "70:e2:84:95:33:6b")
 }
 
-test fn w_a_capture_whose_bytes_drifted_from_the_recorded_digest_is_refused() -> Bool {
+test fn w_a_capture_whose_bytes_drifted_from_the_recorded_digest_is_refused() -> Bool  {
   match decode_recorded_manager_capture(
     content: ami_manager(board_extra: "70:E2:84:95:33:6B", model_member: "\"Model\": \"130582050\", "),
     expected_sha256: mtjade1_redfish_manager_capture_sha256,
@@ -124,7 +124,7 @@ test fn w_a_capture_whose_bytes_drifted_from_the_recorded_digest_is_refused() ->
   }
 }
 
-test fn w_a_capture_that_is_not_one_json_document_is_refused() -> Bool {
+test fn w_a_capture_that_is_not_one_json_document_is_refused() -> Bool  {
   match decode_self_digested(text: "\{\"Id\": \"Self\"") {
     RecordedManagerRefused { gap: CaptureJsonUnreadable { gap: _ } } => true
     RecordedManagerRefused { gap: _ } => false
@@ -132,7 +132,7 @@ test fn w_a_capture_that_is_not_one_json_document_is_refused() -> Bool {
   }
 }
 
-test fn w_a_capture_missing_model_is_unobserved() -> Bool {
+test fn w_a_capture_missing_model_is_unobserved() -> Bool  {
   let decoded = decode_self_digested(text: ami_manager(board_extra: "70:E2:84:95:33:6B", model_member: ""))
   match decoded {
     RecordedManagerRefused { gap: CaptureFieldUnread { field: f, cause: _ } } => (f as String) == "Model"

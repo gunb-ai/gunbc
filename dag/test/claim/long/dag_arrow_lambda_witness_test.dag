@@ -132,59 +132,59 @@ fn pre_repair_swap_targeted_exactly_one() -> Bool {
   }
 }
 
-test fn witness_single_param_lambda_parses() -> Bool {
+test fn witness_single_param_lambda_parses() -> Bool  {
   parse_accepts(source: single_param_lambda_source)
 }
 
-test fn witness_multi_param_lambda_parses() -> Bool {
+test fn witness_multi_param_lambda_parses() -> Bool  {
   parse_accepts(source: multi_param_lambda_source)
 }
 
-test fn witness_lambda_in_pipeline_parses() -> Bool {
+test fn witness_lambda_in_pipeline_parses() -> Bool  {
   parse_accepts(source: lambda_in_pipeline_source)
 }
 
-test fn witness_authored_algebra_shape_parses() -> Bool {
+test fn witness_authored_algebra_shape_parses() -> Bool  {
   parse_accepts(source: authored_algebra_shape_source)
 }
 
-test fn witness_lambda_block_body_parses() -> Bool {
+test fn witness_lambda_block_body_parses() -> Bool  {
   parse_accepts(source: lambda_block_body_source)
 }
 
-test fn witness_match_arm_fat_arrow_unchanged() -> Bool {
+test fn witness_match_arm_fat_arrow_unchanged() -> Bool  {
   parse_accepts(source: match_arm_unchanged_source)
 }
 
-test fn witness_named_arg_unchanged() -> Bool {
+test fn witness_named_arg_unchanged() -> Bool  {
   parse_accepts(source: named_arg_unchanged_source)
 }
 
-test fn witness_paren_arithmetic_unchanged() -> Bool {
+test fn witness_paren_arithmetic_unchanged() -> Bool  {
   parse_accepts(source: paren_arithmetic_unchanged_source)
 }
 
-test fn witness_sum_decl_unchanged() -> Bool {
+test fn witness_sum_decl_unchanged() -> Bool  {
   parse_accepts(source: sum_decl_unchanged_source)
 }
 
-test fn witness_missing_body_refuses_RED() -> Bool {
+test fn witness_missing_body_refuses_RED() -> Bool  {
   parse_accepts(source: missing_body_source) == false
 }
 
-test fn witness_missing_param_refuses_RED() -> Bool {
+test fn witness_missing_param_refuses_RED() -> Bool  {
   parse_accepts(source: missing_param_source) == false
 }
 
-test fn witness_single_paren_param_refuses_RED() -> Bool {
+test fn witness_single_paren_param_refuses_RED() -> Bool  {
   parse_accepts(source: single_paren_param_source) == false
 }
 
-test fn witness_zero_param_refuses_RED() -> Bool {
+test fn witness_zero_param_refuses_RED() -> Bool  {
   parse_accepts(source: zero_param_source) == false
 }
 
-test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
+test fn witness_pre_repair_grammar_restores_the_RED() -> Bool  {
   pre_repair_swap_targeted_exactly_one()
     && (parse_accepts_with(source: single_param_lambda_source, grammar: pre_repair_grammar()) == false)
     && (parse_accepts_with(source: authored_algebra_shape_source, grammar: pre_repair_grammar()) == false)

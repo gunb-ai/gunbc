@@ -62,7 +62,7 @@ fn completed_with_exit_zero(r: HostCaptureSectionReading) -> Bool {
 
 // THE ROUTE, AT THE FRAMING: NUL fill reaches no reader, so the NUL-prefixed EXIT lines complete
 // their sections. At main (no fill removal) nproc and boot-media read as pending.
-test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
+test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool  {
   match host_capture_bind(capture: sol_nul_capture(), machine: "mtcollins1" as NonEmptyStr) {
     HostCaptureOpen { envelope: e } =>
       completed_with_exit_zero(r: host_capture_section_reading(envelope: e, name: "nproc"))
@@ -79,7 +79,7 @@ test fn sol_nul_fill_sections_complete_with_exit_zero() -> Bool {
 // absence is the discriminator: with the fill left in, nproc and boot-media pend and are named as
 // unterminated here. numa (dropped from the trimmed capture) and edac-after (never run: the workload
 // filled /dev/shm and SOL closed) are named as unobserved rather than dropped.
-test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bool {
+test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bool  {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   match mtcollins1_boot_terminal_verdict(capture: sol_nul_capture(), subject: subject, medium: medium) {
@@ -97,7 +97,7 @@ test fn sol_nul_capture_refuses_on_the_workload_and_names_the_unobserved() -> Bo
 // pending on an open envelope that refuses on workload. It must still be named, so a framing
 // regression (or any future corruption) cannot make a qualification vanish from the verdict -- and
 // named as OBSERVED BUT UNTERMINATED (its ARGV and 80 are there), never as unobserved.
-test fn open_refusal_names_a_pending_nproc() -> Bool {
+test fn open_refusal_names_a_pending_nproc() -> Bool  {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let capture = join(filter(sol_nul_capture_lines(), l => l != concat(nul(n: 16), "----EXIT nproc: 0\r\n")), "")
@@ -115,7 +115,7 @@ test fn open_refusal_names_a_pending_nproc() -> Bool {
 
 // ABSENT, NOT UNTERMINATED: with nproc's whole section removed, the same refusal names it as never
 // observed -- the two standings stay distinct at terminalization.
-test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
+test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool  {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let nproc_lines = ["----SECTION nproc----\r\n", "----ARGV nproc: nproc\r\n", concat(nul(n: 224), "80\r\n"), concat(nul(n: 16), "----EXIT nproc: 0\r\n")]
@@ -136,7 +136,7 @@ test fn open_refusal_names_an_absent_nproc_as_unobserved() -> Bool {
 // removes only the mapped CR); the composed transcript framing removes it. And NUL is removed FIRST:
 // a line whose bytes read CR NUL NL still has its mapped CR recognised -- ONLCR-then-NUL would
 // leave "a\r" and every line-start reader past it would still match, but an EXIT code would read "0\r".
-test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool {
+test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool  {
   termios_onlcr_output_lines(text: "a\x00b\r\n") == ["a\x00b", ""]
     && terminal_transcript_lines(text: "a\x00b\r\n") == ["ab", ""]
     && terminal_transcript_lines(text: "----EXIT nproc: 0\r\x00\n") == ["----EXIT nproc: 0", ""]
@@ -145,7 +145,7 @@ test fn transcript_framing_composes_nul_fill_before_onlcr() -> Bool {
 // THE COMPOSITION CHANGES EXACTLY TWO THINGS. LF-only text frames unchanged; CR LF loses only the
 // ONLCR CR (a CR elsewhere in the line stays); NUL is removed at ANY position, not only at line
 // start; and every OTHER C0 control -- ESC, BEL -- is content and reaches the reader unchanged.
-test fn transcript_framing_removes_only_nul_and_the_mapped_cr() -> Bool {
+test fn transcript_framing_removes_only_nul_and_the_mapped_cr() -> Bool  {
   terminal_transcript_lines(text: "a\nb\n") == ["a", "b", ""]
     && terminal_transcript_lines(text: "a\rb\r\n") == ["a\rb", ""]
     && terminal_transcript_lines(text: "\x00a\x00b\x00\r\n\x00") == ["ab", ""]

@@ -53,11 +53,11 @@ fn carrier_hand_authored_census_live() -> DeclarationRefResolutionCensus {
   )
 }
 
-test fn carrier_ref_hand_authored_binds_all_resolve() -> Bool {
+test fn carrier_ref_hand_authored_binds_all_resolve() -> Bool  {
   hand_authored_works_refs_all_resolve()
 }
 
-test fn carrier_ref_hand_authored_census_is_zero_refusals() -> Bool {
+test fn carrier_ref_hand_authored_census_is_zero_refusals() -> Bool  {
   let census = declaration_ref_resolution_census_live(
     refs: hand_authored_production_doc_declaration_refs(),
     pool_roots: hand_authored_works_resolution_pool_roots()
@@ -69,11 +69,11 @@ test fn carrier_ref_hand_authored_census_is_zero_refusals() -> Bool {
     && census.resolved_count == length(xs: hand_authored_production_doc_declaration_refs())
 }
 
-test fn doc_graph_works_refs_all_resolve() -> Bool {
+test fn doc_graph_works_refs_all_resolve() -> Bool  {
   hand_authored_works_refs_all_resolve()
 }
 
-test fn carrier_ref_post7688_production_census_is_zero_violations() -> Bool {
+test fn carrier_ref_post7688_production_census_is_zero_violations() -> Bool  {
   let census = carrier_hand_authored_census_live()
   census.declaration_absent_count == 0
     && census.module_absent_count == 0
@@ -82,7 +82,7 @@ test fn carrier_ref_post7688_production_census_is_zero_violations() -> Bool {
     && census.resolved_count == length(xs: hand_authored_production_doc_declaration_refs())
 }
 
-test fn carrier_ref_refusal_count_red_on_dangling_fixture() -> Bool {
+test fn carrier_ref_refusal_count_red_on_dangling_fixture() -> Bool  {
   let dangling = [
     DeclarationRef {
       module_path: "v2.std.node",
@@ -96,24 +96,24 @@ test fn carrier_ref_refusal_count_red_on_dangling_fixture() -> Bool {
   ) == 1
 }
 
-test fn carrier_ref_production_census_ambiguous_count_is_zero() -> Bool {
+test fn carrier_ref_production_census_ambiguous_count_is_zero() -> Bool  {
   carrier_hand_authored_census_live().ambiguous_count == 0
 }
 
 data roster_registry_ref_witness_note: String = "The roster registry joined this lens's production population because a registration named a deleted producer and nothing noticed (cited_symbol_roster_registry_widening_note, v2.lens.cited_symbol_resolution). These two witnesses are that widening's evidence, and they are a PAIR by DESIGN 4b(1): the green measures the live registry, and the red plants the exact defect that shipped — a ByDerivation predicate naming a declaration that does not exist — so the green cannot pass by measuring an empty population or a resolver that resolves everything. The red is constructed rather than drawn from history so it stays discriminating after the live defect is repaired; it does not retire when production goes green (4b(4))."
 
-test fn roster_registry_declaration_refs_all_resolve() -> Bool {
+test fn roster_registry_declaration_refs_all_resolve() -> Bool  {
   cited_declaration_ref_refusal_count_live(
     refs: roster_registry_declaration_refs(),
     pool_roots: hand_authored_works_resolution_pool_roots()
   ) == 0
 }
 
-test fn roster_registry_ref_population_is_not_empty() -> Bool {
+test fn roster_registry_ref_population_is_not_empty() -> Bool  {
   length(xs: roster_registry_declaration_refs()) >= length(xs: roster_registry)
 }
 
-test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool {
+test fn roster_registry_dangling_predicate_red_control_refuses() -> Bool  {
   let planted = [
     RosterRegistration {
       roster: roster_decl(module_path: "v2.std.node", decl_name: "NodeKind"),
@@ -138,14 +138,14 @@ data instance_gap_outside_index_witness_note: String = "THE OUTSIDE-INDEX DISPOS
 
 data instance_gap_carrier_ref_witness_note: String = "The instance-gap carriers joined this lens's production population because their entire content is DeclarationRefs and nothing resolved any of them: rename a cited declaration and the row goes quietly false while every required check stays green (cited_symbol_instance_gap_carrier_widening_note, v2.lens.cited_symbol_resolution). These witnesses are that widening's evidence and they are a PAIR by DESIGN 4b(1). The greens measure the live carriers; the red plants the exact defect the widening exists to catch — a site whose caller names a declaration that does not exist — so a green cannot pass by measuring an empty population or a resolver that resolves everything. The red is CONSTRUCTED rather than drawn from either carrier, so it stays discriminating after every live row resolves, and it does not retire when production goes green (4b(4)). Both carriers are enrolled together deliberately: two carriers of one shape with only one enrolled is the same one-class-enforced-adjacent-class-exempt asymmetry that motivated the generated-document widening."
 
-test fn instance_gap_carrier_declaration_refs_all_resolve() -> Bool {
+test fn instance_gap_carrier_declaration_refs_all_resolve() -> Bool  {
   cited_declaration_ref_refusal_count_live(
     refs: concat(lambda_typing_gate_declaration_refs(), list_membership_gap_declaration_refs()),
     pool_roots: hand_authored_works_resolution_pool_roots()
   ) == 0
 }
 
-test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
+test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool  {
   length(xs: lambda_typing_gate_declaration_refs()) == length(xs: lambda_typing_gate_citable_sites())
     && length(xs: list_membership_gap_declaration_refs()) == length(xs: list_membership_gap_citable_sites())
     && lambda_typing_gate_closed_population_count() >= 3
@@ -153,14 +153,14 @@ test fn instance_gap_carrier_ref_population_is_not_empty() -> Bool {
     && length(xs: list_membership_gap_declaration_refs()) >= 2
 }
 
-test fn instance_gap_outside_index_population_is_counted() -> Bool {
+test fn instance_gap_outside_index_population_is_counted() -> Bool  {
   lambda_typing_gate_outside_index_count() == 0
     && list_membership_gap_outside_index_count() == 2
     && length(xs: list_membership_gap_citable_sites()) + list_membership_gap_outside_index_count()
          == length(xs: list_membership_gap_sites)
 }
 
-test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
+test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool  {
   let pool = hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count_live(
     refs: list_membership_gap_outside_index_refs(),
@@ -181,7 +181,7 @@ test fn instance_gap_outside_index_refs_really_do_refuse() -> Bool {
 // which is the fabricated-receipt failure the carrier's own receipt field exists to prevent. The
 // fields were added when the carrier gained per-site causes and the census refused this literal;
 // that refusal is the mechanism working.
-test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
+test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool  {
   let planted = [
     LambdaTypingGateSite {
       caller: decl_ref(
@@ -202,7 +202,7 @@ test fn instance_gap_carrier_dangling_caller_red_control_refuses() -> Bool {
   ) == 1
 }
 
-test fn instance_gap_membership_dangling_producer_red_control_refuses() -> Bool {
+test fn instance_gap_membership_dangling_producer_red_control_refuses() -> Bool  {
   let planted = [
     ListMembershipGapSite {
       collection_producer: decl_ref(

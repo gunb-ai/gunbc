@@ -181,7 +181,7 @@ fn candidate_from_history(h: HistoricalRotationRouteObservation) -> BmcRotationR
 
 // mtcollins1 is grounded by its executed IPMI Set User Password on user 3, bound to its own
 // controller and build, with both receipts naming the committed transcript at its digest.
-test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
+test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool  {
   let s = mtcollins1_rotation_route_standing()
   (s.endpoint.host as String) == "192.168.1.228"
     && (s.firmware.raw_version as String) == "0.32"
@@ -203,7 +203,7 @@ test fn mtcollins1_is_grounded_by_its_executed_ipmi_request() -> Bool {
 // unit's link, discriminated), at the factory address the capture was read on and the build it
 // reports, naming the observed Manager surface and the Redfish account write. Its type is not a
 // standing; the current standing is AccessDiscover's (O1c-1).
-test fn mtjade1_has_only_a_historical_observation_at_its_factory_address() -> Bool {
+test fn mtjade1_has_only_a_historical_observation_at_its_factory_address() -> Bool  {
   match mtjade1_historical_rotation_route_observation() {
     Absent => false
     Present { value: h } =>
@@ -220,7 +220,7 @@ test fn mtjade1_has_only_a_historical_observation_at_its_factory_address() -> Bo
 // CONTROL: two AmiMegaRac controllers with different observed and executed surfaces produce
 // different route standings. Same family: mtcollins1's executed request grounds its route; the most
 // mtjade1's Manager read can justify is a candidate. A family-keyed answer cannot pass.
-test fn two_megarac_controllers_with_different_surfaces_have_different_standings() -> Bool {
+test fn two_megarac_controllers_with_different_surfaces_have_different_standings() -> Bool  {
   match mtjade1_historical_rotation_route_observation() {
     Absent => false
     Present { value: h } => {
@@ -238,7 +238,7 @@ test fn two_megarac_controllers_with_different_surfaces_have_different_standings
 // is a candidate; the rotation Apply refuses it beside an exact approval of the rotation, and the
 // qualification classifier refuses it with an exact qualification approval because no live (or even
 // modeled) account write answered.
-test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
+test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool  {
   match historical_route_observation_from_manager_read(read: read_mtjade1_recorded_manager_identity()) {
     Absent => false
     Present { value: h } => {
@@ -256,7 +256,7 @@ test fn a_manager_get_alone_cannot_construct_an_account_write_route() -> Bool {
 // CONTROL: RouteUngrounded + operator approval of the rotation + an ordinary Apply -> refused, and
 // refused for the ROUTE. Positive control on the same fold, with the one real live-execution
 // carrier: mtcollins1's committed executed route with its exact approval is admitted.
-test fn an_ungrounded_route_with_rotation_approval_is_refused_and_a_grounded_one_is_admitted() -> Bool {
+test fn an_ungrounded_route_with_rotation_approval_is_refused_and_a_grounded_one_is_admitted() -> Bool  {
   let ungrounded = rotation_route_ungrounded(endpoint: mtcollins1_endpoint, firmware: mtcollins1_firmware)
   apply_verdict(standing: ungrounded, target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: ungrounded)) == "route-not-grounded"
     && apply_verdict(standing: mtcollins1_rotation_route_standing(), target: mtcollins1_endpoint, firmware: mtcollins1_firmware, approval_value: rotation_approval_for(s: mtcollins1_rotation_route_standing())) == "admitted"
@@ -264,7 +264,7 @@ test fn an_ungrounded_route_with_rotation_approval_is_refused_and_a_grounded_one
 
 // An IPMI route grounded on mtcollins1 does not authorize mtjade1 (at the address its capture names),
 // nor mtcollins1 at another build, nor a write approved under the route-qualification authority.
-test fn mtcollins1s_grounded_route_does_not_authorize_another_controller_build_or_authority() -> Bool {
+test fn mtcollins1s_grounded_route_does_not_authorize_another_controller_build_or_authority() -> Bool  {
   match mtjade1_historical_rotation_route_observation() {
     Absent => false
     Present { value: h } => {
@@ -283,7 +283,7 @@ test fn mtcollins1s_grounded_route_does_not_authorize_another_controller_build_o
 // the classifier says the run WOULD qualify -- and that verdict carries no standing. The candidate
 // stays a candidate, the ordinary rotation Apply still refuses it, and qualify_rotation_route, the
 // only construction of an executed grounding, has no live response to read and refuses.
-test fn a_modeled_run_would_qualify_but_grounds_nothing() -> Bool {
+test fn a_modeled_run_would_qualify_but_grounds_nothing() -> Bool  {
   let request = IpmiSetUserPassword { user: 3 }
   let candidate = lab_candidate(request: request)
   let exact = qualification_approval_for(standing: candidate, request: request)
@@ -302,7 +302,7 @@ test fn a_modeled_run_would_qualify_but_grounds_nothing() -> Bool {
 // THE RESPONSE IS BOUND TO ITS SUBJECT (item 2). A response made against controller A answers A: for
 // candidate B with the same request and B's exact approval it refuses; for candidate A it would
 // qualify.
-test fn a_response_for_another_controller_is_refused() -> Bool {
+test fn a_response_for_another_controller_is_refused() -> Bool  {
   let request = IpmiSetUserPassword { user: 3 }
   let b = candidate_at(endpoint: lab_endpoint_b, request: request)
   let a = candidate_at(endpoint: lab_endpoint, request: request)
@@ -320,7 +320,7 @@ fn redfish_write(op_field: NonEmptyStr, action_field: NonEmptyStr) -> BmcAccount
   }
 }
 
-test fn requests_differing_only_in_transport_or_action_shape_are_different_requests() -> Bool {
+test fn requests_differing_only_in_transport_or_action_shape_are_different_requests() -> Bool  {
   let base = redfish_write(op_field: "SetAccountPassword" as NonEmptyStr, action_field: "SetAccountPassword" as NonEmptyStr)
   let other_transport = redfish_write(op_field: "SetAccountPasswordV2" as NonEmptyStr, action_field: "SetAccountPassword" as NonEmptyStr)
   let other_action = redfish_write(op_field: "SetAccountPassword" as NonEmptyStr, action_field: "ResetAccountPassword" as NonEmptyStr)
@@ -341,7 +341,7 @@ fn classify_names(candidate: BmcRotationRouteStanding, approval_value: Redemptio
 }
 
 // Every other way across refuses and keeps the candidate.
-test fn the_qualification_classifier_refuses_every_other_crossing() -> Bool {
+test fn the_qualification_classifier_refuses_every_other_crossing() -> Bool  {
   let ipmi = IpmiSetUserPassword { user: 3 }
   let right = qualification_approval_for(standing: lab_candidate(request: ipmi), request: ipmi)
   refusal_of(world: lab_world_with_user3(), request: ipmi, approval_value: rotation_approval_for(s: lab_candidate(request: ipmi))) == "another-authority"
@@ -354,7 +354,7 @@ test fn the_qualification_classifier_refuses_every_other_crossing() -> Bool {
 
 // THE CITED ARM: a route grounded by a source cited for this build admits an Apply on that build and
 // refuses the same controller at another build.
-test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
+test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool  {
   let s = rotation_route_from_citation(
     endpoint: lab_endpoint,
     firmware: lab_firmware(),
@@ -371,7 +371,7 @@ test fn a_cited_route_admits_apply_and_is_bound_to_its_build() -> Bool {
 // The census row for qualify_rotation_route is classified by EXECUTING select_authorization_pattern
 // over its stated characteristics: the selection returns the operator-approved capability, and the
 // row's realization (an admitted Redemption) conforms to it.
-test fn the_qualification_effect_is_classified_operator_approved_and_conforms() -> Bool {
+test fn the_qualification_effect_is_classified_operator_approved_and_conforms() -> Bool  {
   let rows = filter(privileged_effect_census, r => (r.site.module_path as String) == "gunbc.machine_intake_bmc_rotation_route" && (r.site.decl_name as String) == "qualify_rotation_route")
   length(rows) == 1
     && all(rows, r =>
@@ -386,7 +386,7 @@ test fn the_qualification_effect_is_classified_operator_approved_and_conforms() 
 // approval, reused for another controller's grounded route under the same authority, is a different
 // decision and refuses; the approval minted for that route's own identity is admitted; and a denial
 // is its own typed arm. Shown on a cited route, the grounded arm a witness may construct.
-test fn a_rotation_approval_for_one_controller_does_not_admit_another() -> Bool {
+test fn a_rotation_approval_for_one_controller_does_not_admit_another() -> Bool  {
   let request = IpmiSetUserPassword { user: 3 }
   let lab = rotation_route_from_citation(
     endpoint: lab_endpoint,

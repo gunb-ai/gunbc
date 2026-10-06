@@ -125,7 +125,7 @@ data lowered_body_source: String = "module graft_guard_probe\n\ndata d3: LiveTre
 
 data header_only_source: String = "module graft_guard_probe\n"
 
-test fn witness_type_fn_module_grafts() -> Bool {
+test fn witness_type_fn_module_grafts() -> Bool  {
   normalize_accepts(source: mixed_type_fn_source)
     && !reasons_contain(
       reasons: rejection_reasons(source: mixed_type_fn_source),
@@ -133,7 +133,7 @@ test fn witness_type_fn_module_grafts() -> Bool {
     )
 }
 
-test fn witness_type_only_module_grafts() -> Bool {
+test fn witness_type_only_module_grafts() -> Bool  {
   normalize_accepts(source: type_only_source)
     && !reasons_contain(
       reasons: rejection_reasons(source: type_only_source),
@@ -141,7 +141,7 @@ test fn witness_type_only_module_grafts() -> Bool {
     )
 }
 
-test fn witness_lowered_body_module_still_grafts() -> Bool {
+test fn witness_lowered_body_module_still_grafts() -> Bool  {
   normalize_accepts(source: lowered_body_source)
     && (match normalized_tree_optional(source: lowered_body_source) {
       Present { value: n } => tree_contains_atom(n: n, sym: ^list_append)
@@ -149,6 +149,6 @@ test fn witness_lowered_body_module_still_grafts() -> Bool {
     })
 }
 
-test fn witness_header_only_module_still_accepts() -> Bool {
+test fn witness_header_only_module_still_accepts() -> Bool  {
   normalize_accepts(source: header_only_source)
 }

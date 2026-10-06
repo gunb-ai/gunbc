@@ -23,6 +23,6 @@ fn witness_commit_witness_claim_roster_live_holds() -> Bool {
   commit_witness_claim_roster_live_unresolvable_count() == 0
 }
 
-test fn commit_witness_claim_roster_holds() -> Bool {
+test fn commit_witness_claim_roster_holds() -> Bool  {
   witness_commit_witness_claim_roster_live_holds()
 }

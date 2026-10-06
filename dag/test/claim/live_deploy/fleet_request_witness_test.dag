@@ -154,21 +154,21 @@ fn one_drift(member: ConvergedMember, observed: ObservedMember) -> List<Observed
     })
 }
 
-test fn matching_identities_derive_zero_operations() -> Bool {
+test fn matching_identities_derive_zero_operations() -> Bool  {
   match admit_obs(observed: matching_obs()) {
     LiveDeployBasisRefused { cause: _ } => false
     LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) == 0
   }
 }
 
-test fn fresh_absence_derives_creates() -> Bool {
+test fn fresh_absence_derives_creates() -> Bool  {
   match admit_obs(observed: one_drift(member: Executable, observed: MemberAbsentOnHost { member: Executable })) {
     LiveDeployBasisRefused { cause: _ } => false
     LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) > 0
   }
 }
 
-test fn stale_identities_derive_replacements() -> Bool {
+test fn stale_identities_derive_replacements() -> Bool  {
   match admit_obs(observed: one_drift(
     member: Executable,
     observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },
@@ -178,7 +178,7 @@ test fn stale_identities_derive_replacements() -> Bool {
   }
 }
 
-test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool {
+test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool  {
   match admit_obs(observed: one_drift(
     member: Executable,
     observed: MemberUnobservable { member: Executable, cause: "sha256sum refused" },
@@ -194,7 +194,7 @@ test fn unreadable_members_refuse_because_the_observation_was_unusable() -> Bool
   }
 }
 
-test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() -> Bool {
+test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() -> Bool  {
   match admit_obs(observed: [MemberObserved { identity: desired_bin() }]) {
     LiveDeployBasisAdmitted { basis: b } => plan_mutation_count(plan: b.effects) != 0
     LiveDeployBasisRefused { cause: c } => match c {
@@ -204,7 +204,7 @@ test fn incomplete_member_populations_cannot_produce_an_admitted_empty_plan() ->
   }
 }
 
-test fn a_foreign_unowned_member_cannot_derive_destructive_replacement() -> Bool {
+test fn a_foreign_unowned_member_cannot_derive_destructive_replacement() -> Bool  {
   match admit_obs(observed: one_drift(
     member: UnitFile,
     observed: MemberObserved {
@@ -224,7 +224,7 @@ test fn a_foreign_unowned_member_cannot_derive_destructive_replacement() -> Bool
   }
 }
 
-test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool {
+test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool  {
   match admit_live_deploy_member_basis(
     candidate: candidate(),
     target: target(),
@@ -245,7 +245,7 @@ test fn a_desired_identity_for_another_member_refuses_the_effect_plan() -> Bool 
   }
 }
 
-test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool {
+test fn live_deploy_is_a_decodable_fleet_converge_scope() -> Bool  {
   match fleet_converge_scope_of_wire(wire: fleet_converge_scope_wire(scope: LiveDeploy)) {
     ScopeUndecodable { cause: _ } => false
     ScopeDecoded { scope: LiveDeploy } => true
@@ -266,7 +266,7 @@ fn admit_production_live_deploy_request() -> LiveDeployFleetRequestAdmission {
   admit_live_deploy_request_for(row: srv1_production_desired_deployment())
 }
 
-test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool {
+test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool  {
   match admit_production_live_deploy_request() {
     LiveDeployFleetRequestAdmitted { desired, basis } =>
       declaration_ref_eq(a: desired.selected_identity, b: srv1_production_selected_identity())
@@ -279,7 +279,7 @@ test fn admit_binds_the_request_to_the_roster_selected_identity() -> Bool {
   }
 }
 
-test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
+test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool  {
   let live = srv1_production_desired_deployment()
   match admit_live_deploy_fleet_request(
     desired: DesiredDeployment {
@@ -303,7 +303,7 @@ test fn admit_refuses_a_selected_identity_that_is_not_the_roster_row() -> Bool {
   }
 }
 
-test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool {
+test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool  {
   let live = srv1_production_desired_deployment()
   let lab_unit = srv1_lab_desired_deployment().names.unit_name
   match admit_live_deploy_fleet_request(
@@ -321,7 +321,7 @@ test fn admit_refuses_a_desired_unit_that_is_not_the_roster_row_unit() -> Bool {
   }
 }
 
-test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_identity() -> Bool {
+test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_identity() -> Bool  {
   match admit_production_live_deploy_request() {
     LiveDeployFleetRequestAdmitted { desired, basis } => {
       let req = live_deploy_converge_request(desired: desired, basis: basis)
@@ -340,7 +340,7 @@ test fn live_deploy_converge_is_the_live_deploy_scope_and_names_the_selected_ide
   }
 }
 
-test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_differently() -> Bool {
+test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_differently() -> Bool  {
   match admit_production_live_deploy_request() {
     LiveDeployFleetRequestAdmitted { desired: prod, basis: prod_basis } =>
       match admit_live_deploy_request_for(row: srv1_lab_desired_deployment()) {
@@ -361,7 +361,7 @@ test fn production_and_lab_live_deploy_requests_on_the_same_host_fingerprint_dif
   }
 }
 
-test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effects() -> Bool {
+test fn the_plan_fold_consumes_live_deploy_converge_without_emitting_host_effects() -> Bool  {
   match admit_production_live_deploy_request() {
     LiveDeployFleetRequestAdmitted { desired, basis } => {
       let req = live_deploy_converge_request(desired: desired, basis: basis)
@@ -440,14 +440,14 @@ fn root_obs(owner: NonEmptyStr) -> ObservedMember {
   }
 }
 
-test fn live_deploy_fingerprint_moves_when_executable_digest_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_executable_digest_moves() -> Bool  {
   fingerprints_differ(
     left: matching_obs_for(unit: unit_name()),
     right: one_drift(member: Executable, observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } }),
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_tree_revision_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_tree_revision_moves() -> Bool  {
   fingerprints_differ(
     left: matching_obs_for(unit: unit_name()),
     right: one_drift(
@@ -461,7 +461,7 @@ test fn live_deploy_fingerprint_moves_when_tree_revision_moves() -> Bool {
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_tree_cleanliness_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_tree_cleanliness_moves() -> Bool  {
   fingerprints_differ(
     left: matching_obs_for(unit: unit_name()),
     right: one_drift(
@@ -475,7 +475,7 @@ test fn live_deploy_fingerprint_moves_when_tree_cleanliness_moves() -> Bool {
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_unit_document_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_unit_document_moves() -> Bool  {
   fingerprints_differ(
     left: matching_obs_for(unit: unit_name()),
     right: one_drift(
@@ -487,7 +487,7 @@ test fn live_deploy_fingerprint_moves_when_unit_document_moves() -> Bool {
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_running_release_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_running_release_moves() -> Bool  {
   fingerprints_differ(
     left: matching_obs_for(unit: unit_name()),
     right: one_drift(
@@ -497,14 +497,14 @@ test fn live_deploy_fingerprint_moves_when_running_release_moves() -> Bool {
   )
 }
 
-test fn live_deploy_fingerprint_moves_when_root_owner_moves() -> Bool {
+test fn live_deploy_fingerprint_moves_when_root_owner_moves() -> Bool  {
   fingerprints_differ(
     left: concat(matching_obs_for(unit: unit_name()), [root_obs(owner: "gunbc" as NonEmptyStr)]),
     right: concat(matching_obs_for(unit: unit_name()), [root_obs(owner: "root" as NonEmptyStr)]),
   )
 }
 
-test fn a_nonempty_live_deploy_plan_awaits_c8_and_cannot_report_fully_applied() -> Bool {
+test fn a_nonempty_live_deploy_plan_awaits_c8_and_cannot_report_fully_applied() -> Bool  {
   match admit_prod_observed(observed: one_drift(
     member: Executable,
     observed: MemberObserved { identity: ExecutableIdentity { digest: bin_b() } },

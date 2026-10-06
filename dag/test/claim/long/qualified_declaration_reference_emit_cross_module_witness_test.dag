@@ -24,6 +24,6 @@ fn w_cross_module_qualified_reference_emits_call() -> Bool {
   )
 }
 
-test fn cross_module_qualified_reference_emits_call_from_correct_module() -> Bool {
+test fn cross_module_qualified_reference_emits_call_from_correct_module() -> Bool  {
   w_cross_module_qualified_reference_emits_call()
 }

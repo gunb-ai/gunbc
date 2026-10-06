@@ -55,7 +55,7 @@ fn quoted_privileged_command(argv: List<String>) -> String {
   quoted_command(argv: sudo_elevate_argv(command: argv))
 }
 
-test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
+test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool  {
   let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -70,7 +70,7 @@ test fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
+test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool  {
   let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -85,7 +85,7 @@ test fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
+test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool  {
   let helper = systemctl_daemon_reload_argv()
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -98,7 +98,7 @@ test fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
-test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
+test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool  {
   let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
   let transport = operation_argv_tokens_or_refusal_label(
     m: shell_materialize_operation_argv(
@@ -126,22 +126,22 @@ test fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
 // fork is still in sync, never that the fork is gone. Both builders are deleted; the emitted text
 // is now derived from the declaration in one step, so what is left to pin is that step's OUTPUT
 // against the POSIX quoting authority, and its REFUSAL when the binding does not name a real row.
-test fn witness_dpkg_status_effect_emits_declared_argv() -> Bool {
+test fn witness_dpkg_status_effect_emits_declared_argv() -> Bool  {
   deploy_effect_command(inv: dpkg_status_effect(package: package_tailscale))
     == quoted_command(argv: ["dpkg", "-s", package_tailscale as String])
 }
 
-test fn witness_apt_install_effect_emits_declared_argv() -> Bool {
+test fn witness_apt_install_effect_emits_declared_argv() -> Bool  {
   deploy_effect_command(inv: apt_install_unelevated_effect(package: package_nodejs))
     == quoted_command(argv: ["apt-get", "install", "--yes", package_nodejs as String])
 }
 
-test fn witness_privileged_apt_install_effect_elevates() -> Bool {
+test fn witness_privileged_apt_install_effect_elevates() -> Bool  {
   deploy_effect_command(inv: apt_install_effect(package: package_tailscale))
     == quoted_privileged_command(argv: ["apt-get", "install", "--yes", package_tailscale as String])
 }
 
-test fn witness_systemctl_effects_emit_declared_argv() -> Bool {
+test fn witness_systemctl_effects_emit_declared_argv() -> Bool  {
   deploy_effect_command(inv: systemctl_daemon_reload_effect())
     == quoted_privileged_command(argv: ["systemctl", "daemon-reload"])
     && deploy_effect_command(inv: systemctl_enable_effect(unit: gunbc_roadmap_unit_name))
@@ -150,27 +150,27 @@ test fn witness_systemctl_effects_emit_declared_argv() -> Bool {
       == quoted_privileged_command(argv: ["systemctl", "restart", gunbc_roadmap_unit_name as String])
 }
 
-test fn witness_systemctl_restart_command_matches_transport() -> Bool {
+test fn witness_systemctl_restart_command_matches_transport() -> Bool  {
   systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true)
     == quoted_privileged_command(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name))
 }
 
-test fn witness_systemctl_enable_command_matches_transport() -> Bool {
+test fn witness_systemctl_enable_command_matches_transport() -> Bool  {
   systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true)
     == quoted_privileged_command(argv: systemctl_enable_argv(unit: gunbc_roadmap_unit_name))
 }
 
-test fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
+test fn witness_systemctl_disable_now_command_matches_transport() -> Bool  {
   systemctl_disable_now_command(unit: gunbc_roadmap_unit_name, privileged: true)
     == quoted_privileged_command(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name))
 }
 
-test fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
+test fn witness_systemctl_daemon_reload_command_privileged() -> Bool  {
   systemctl_daemon_reload_command(privileged: true)
     == quoted_privileged_command(argv: systemctl_daemon_reload_argv())
 }
 
-test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
+test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool  {
   deploy_effect_command(inv: apt_install_unelevated_effect(package: package_tailscale))
     != quoted_command(argv: ["apt-get", "install", "--yes", package_nodejs as String])
 }
@@ -180,14 +180,14 @@ test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
 // several words; both assertions fail on that spelling and pass on the modelled command.
 data spacey_package: NonEmptyStr = "tail scale"
 
-test fn operations_RED_argv_element_with_a_space_keeps_its_boundary() -> Bool {
+test fn operations_RED_argv_element_with_a_space_keeps_its_boundary() -> Bool  {
   string_contains(
     s: deploy_effect_command(inv: apt_install_unelevated_effect(package: spacey_package)),
     pattern: posix_single_quote(spelling: spacey_package as String),
   )
 }
 
-test fn operations_RED_command_is_not_a_bare_space_join() -> Bool {
+test fn operations_RED_command_is_not_a_bare_space_join() -> Bool  {
   deploy_effect_command(inv: apt_install_unelevated_effect(package: spacey_package))
     != argv_join(argv: ["apt-get", "install", "--yes", spacey_package as String])
 }
@@ -211,7 +211,7 @@ fn apt_install_ref() -> OperationRef {
   }
 }
 
-test fn live_deploy_effect_RED_undeclared_input_refuses_and_is_not_shell() -> Bool {
+test fn live_deploy_effect_RED_undeclared_input_refuses_and_is_not_shell() -> Bool  {
   let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
     at: apt_install_ref(),
     bindings: [
@@ -224,7 +224,7 @@ test fn live_deploy_effect_RED_undeclared_input_refuses_and_is_not_shell() -> Bo
     && !string_contains(s: emitted, pattern: "apt-get")
 }
 
-test fn live_deploy_effect_RED_unbound_declared_input_refuses() -> Bool {
+test fn live_deploy_effect_RED_unbound_declared_input_refuses() -> Bool  {
   let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
     at: apt_install_ref(),
     bindings: [],
@@ -233,7 +233,7 @@ test fn live_deploy_effect_RED_unbound_declared_input_refuses() -> Bool {
     && !string_contains(s: emitted, pattern: "apt-get")
 }
 
-test fn live_deploy_effect_RED_unknown_operation_row_refuses() -> Bool {
+test fn live_deploy_effect_RED_unknown_operation_row_refuses() -> Bool  {
   let emitted = deploy_effect_command(inv: bash_bind_operation_invocation(
     at: OperationRef {
       path: apt_install_path,

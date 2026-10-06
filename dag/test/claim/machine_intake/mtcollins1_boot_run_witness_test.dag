@@ -83,7 +83,7 @@ fn smpro_probed_empty() -> SmproReading {
 }
 
 // NO APPROVAL WINDOW (operator ruling 2026-09-23): the step budget is the boot's own phases only.
-test fn the_step_timeout_covers_the_boot_phases() -> Bool {
+test fn the_step_timeout_covers_the_boot_phases() -> Bool  {
   let covered = (second_count(s: mtcollins1_sol_notice_ready_allowance) as Int)
     + (second_count(s: mtcollins1_sol_notice_final_allowance) as Int)
     + (second_count(s: megarac_kvm_still_allowance()) as Int)
@@ -123,7 +123,7 @@ data recorded: String = "4242 283885975\n"
 
 // HELD IS ESTABLISHED, NOT ASSUMED: the recorded (pid, start time) is live, not a zombie, and is the
 // collector. Each negative is the same reading with one fact moved.
-test fn a_held_collector_is_the_recorded_live_process() -> Bool {
+test fn a_held_collector_is_the_recorded_live_process() -> Bool  {
   (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_ok(content: "stdbuf\x00-oL\x00ipmitool\x00-H")) { SolCollectorHeld => true  _ => false })
     && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_ok(content: "bash")) { SolCollectorHeld => false  _ => true })
     && (match sol_collector_observation_of(pid_path_set: false, pid_file: read_ok(content: recorded), stat: read_ok(content: ""), cmdline: read_ok(content: "")) { SolCollectorPathUnset => true  _ => false })
@@ -133,7 +133,7 @@ test fn a_held_collector_is_the_recorded_live_process() -> Bool {
 // AN EXIT IS ESTABLISHED ONLY BY EVIDENCE THAT A PROCESS ENDED: its /proc entry is gone (not_found),
 // the pid now carries a later start time -- even when that later process is ALSO an ipmitool, the
 // case a cmdline check alone reads as held -- or it is a zombie.
-test fn an_exit_is_established_only_by_evidence_that_the_process_ended() -> Bool {
+test fn an_exit_is_established_only_by_evidence_that_the_process_ended() -> Bool  {
   (match observe(pid_file: read_ok(content: recorded), stat: read_refused(kind: "not_found"), cmdline: read_ok(content: "")) { SolCollectorExited { evidence: SolExitPidGone } => true  _ => false })
     && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283999999")), cmdline: read_ok(content: "ipmitool\x00sol\x00activate")) { SolCollectorExited { evidence: SolExitPidReused } => true  _ => false })
     && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "Z", start_time: "283885975")), cmdline: read_ok(content: "ipmitool")) { SolCollectorExited { evidence: SolExitZombie } => true  _ => false })
@@ -144,7 +144,7 @@ test fn an_exit_is_established_only_by_evidence_that_the_process_ended() -> Bool
 // any reason but absence leaves the collector UNOBSERVABLE with that cause -- never exited -- so the
 // watch neither claims a final capture nor reports an exit it did not see. A missing or malformed
 // record (including the pre-change bare-pid format) is unrecorded.
-test fn an_unreadable_process_is_unobservable_not_exited() -> Bool {
+test fn an_unreadable_process_is_unobservable_not_exited() -> Bool  {
   (match observe(pid_file: read_ok(content: recorded), stat: read_refused(kind: "permission_denied"), cmdline: read_ok(content: "")) { SolCollectorUnobservable { cause: c } => string_contains(s: c, pattern: "permission_denied")  _ => false })
     && (match observe(pid_file: read_ok(content: recorded), stat: read_ok(content: stat_line(state: "S", start_time: "283885975")), cmdline: read_refused(kind: "other")) { SolCollectorUnobservable { cause: _ } => true  _ => false })
     && (match observe(pid_file: read_refused(kind: "permission_denied"), stat: read_ok(content: ""), cmdline: read_ok(content: "")) { SolCollectorUnobservable { cause: _ } => true  _ => false })
@@ -156,7 +156,7 @@ test fn an_unreadable_process_is_unobservable_not_exited() -> Bool {
 // THE ACQUISITION READS THE COLLECTOR THROUGH THE LEASE PROJECTION: held converges, an established
 // exit drifts (release, then start), no record is absent, and an unobservable collector is
 // inaccessible -- the acquisition refuses rather than deactivating or starting over it.
-test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool {
+test fn sol_lease_observation_is_the_collector_we_hold_not_sol_info() -> Bool  {
   held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorHeld)) == Converged
     && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorExited { evidence: SolExitPidGone })) == Drifted
     && held_lease_observed_verdict(observed: held_lease_of_collector(observation: SolCollectorUnrecorded)) == Absent
@@ -262,7 +262,7 @@ fn review_5269655400_walls(census_subject: MtCollins1BootSubject, census_medium:
 // the deadline: the envelope open, nproc complete at 80, the workload section still hashing after
 // printing a failed write. The verdict is REFUSED with both causes; the old Bool read it as "not
 // yet" until timeout.
-test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool {
+test fn boot_terminal_is_the_host_capture_not_boot_control_issued() -> Bool  {
   let subject = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let census_subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
@@ -473,7 +473,7 @@ fn milestone_capture_with_workload(nproc: String, numa: String, workload: String
 // over ByteSize, NOT taken from the host's token: a guard that printed `fits` over a 1 GiB /dev/shm
 // refuses, and a capacity that is absent or not an integer is its own typed reading, never room. An OPEN envelope whose
 // workload has printed its refusal refuses at once rather than waiting out the deadline.
-test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight() -> Bool {
+test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight() -> Bool  {
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let numa = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 15968 MB\n----EXIT numa: 0\n"
@@ -507,7 +507,7 @@ test fn the_workload_is_held_to_the_milestone_footprint_and_refuses_at_preflight
       _ => false })
 }
 
-test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool {
+test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool  {
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let socket0_whole = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 127968 MB\n----EXIT numa: 0\n"
@@ -536,7 +536,7 @@ test fn the_boot_is_held_to_the_one_socket_milestone_not_the_count() -> Bool {
 
 // THE UNIT HOLD STORE IS ON THE RUNNER HOST, so a boot anywhere else would take a hold the operator
 // cannot see: srv1 only.
-test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool {
+test fn boot_is_srv1_only_where_the_unit_hold_store_is() -> Bool  {
   mtcollins1_boot_host_must_be_srv1(host: operator_host_srv1 as String)
     && !mtcollins1_boot_host_must_be_srv1(host: operator_host_srv2 as String)
     && match mtcollins1_boot_refuses_off_srv1(host: operator_host_srv1 as String) { ExitSuccess => true  _ => false }
@@ -570,18 +570,18 @@ fn supplied_boot_steps() -> List<Step> {
   fleet_converge_mtcollins1_boot_steps_around(fleet_key_step: supplied_step(marker: supplied_fleet_key_marker), boot_step: supplied_step(marker: supplied_boot_marker))
 }
 
-test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool {
+test fn the_boot_job_takes_the_fleet_key_step_before_the_boot_step() -> Bool  {
   let runs = map(supplied_boot_steps(), s => step_run_text(s: s))
   filter(runs, r => r == supplied_fleet_key_marker || r == supplied_boot_marker) == [supplied_fleet_key_marker, supplied_boot_marker]
 }
 
-test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool {
+test fn the_fleet_key_step_materializes_the_fleet_key_and_never_names_expected_revision() -> Bool  {
   let inputs = step_inputs_text(s: ci_fleet_key_agent_step())
   string_contains(s: inputs, pattern: "fleet-automation-ssh-key")
     && !string_contains(s: inputs, pattern: "expected_revision")
 }
 
-test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool {
+test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_expected_revision() -> Bool  {
   let inputs = step_inputs_text(s: fleet_converge_mtcollins1_boot_step())
   string_contains(s: inputs, pattern: "bmc-mtcollins1-gunbc")
     && !string_contains(s: inputs, pattern: "approval-submission-mac-key")
@@ -591,14 +591,14 @@ test fn the_boot_step_reads_the_bmc_credential_and_never_the_submission_key_or_e
 // THE MEDIUM GATE REFUSES BEFORE ANY CONTROLLER WRITE. A boot that attaches the stock installer can
 // never print the census terminal, and the run says so from the row rather than after a hardware
 // run (review 69352); the census medium passes the gate and names the label the verdict binds to.
-test fn the_stock_installer_medium_refuses_the_census_boot_at_the_gate() -> Bool {
+test fn the_stock_installer_medium_refuses_the_census_boot_at_the_gate() -> Bool  {
   match mtcollins1_boot_medium_refusal(medium: MtCollins1StockInstallerMedium) {
     Present { value: why } => string_contains(s: why, pattern: "controller untouched") && string_contains(s: why, pattern: "no census program")
     Absent => false
   }
 }
 
-test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -> Bool {
+test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -> Bool  {
   let medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   match mtcollins1_boot_medium_refusal(medium: medium) {
     Present { value: _ } => false
@@ -613,7 +613,7 @@ test fn the_census_medium_passes_the_gate_and_binds_the_verdict_to_its_label() -
 // PRE-OS REFUSALS END THE BOOT BEFORE ANY ENVELOPE. Fixtures are the console lines boot 23
 // attempt 7 (run 35669747413) and the 2026-09-12 DDR-init captures actually printed. A GRUB error
 // while the loader is still trying, and the bare menu banner, stay PENDING: the boot may proceed.
-test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bool {
+test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bool  {
   let grub_failed = concat(
     "Checkpoint AD\n",
     "GNU GRUB  version 2.12\n",
@@ -658,7 +658,7 @@ test fn a_pre_os_refusal_on_the_console_is_a_typed_refusal_not_a_timeout() -> Bo
 // true for every arm is permanently green by construction (section 4b calls that a decoration), so
 // what is asserted is that converged yields the BINDING arm and that each refusing observation
 // still refuses -- which is exactly what flips if the bypass returns.
-test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> Bool {
+test fn every_acquisition_that_reads_the_capture_binds_it_to_this_attempt() -> Bool  {
   let pid = "/run/mtcollins1-sol.pid"
   let cap = "/run/mtcollins1-sol.out"
   (match sol_acquire_plan(verdict: Converged, pid_path: pid, capture_path: cap) {
@@ -708,7 +708,7 @@ fn step_inputs_text(s: Step) -> String {
 // the witness sits outside the gate closure (gunbc.recurring_failure_mode
 // witness_outside_gate_closure_falsified_by_other_file). It now asserts the mode's clause opens the
 // expression and that the clause resolves to github.sha before any dispatch input.
-test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool {
+test fn another_expected_revision_cannot_change_a_byte_the_boot_job_executes() -> Bool  {
   let inputs = join(map(supplied_boot_steps(), s => step_inputs_text(s: s)), "\n")
   fleet_converge_event_sha_checkout_ref_expr == "${{ github.sha }}"
     && !string_contains(s: inputs, pattern: "expected_revision")
@@ -739,7 +739,7 @@ fn step_id(s: Step) -> String {
   }
 }
 
-test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential() -> Bool {
+test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_credential() -> Bool  {
   let ids = map(supplied_boot_steps(), s => step_id(s: s))
   runner_labels(r: fleet_converge_mtcollins1_boot_runner()) == ["self-hosted", "linux", "arm64", "srv1"]
     && !string_contains(s: fleet_converge_mtcollins1_boot_job_if, pattern: "inputs.host")
@@ -751,7 +751,7 @@ test fn a_boot_dispatch_naming_another_host_is_refused_on_srv1_before_any_creden
 // THE RUN RECORD FOLLOWS HOW FAR THE ACTUATION GOT. An attempt that never observed power on hands
 // off nothing, so no consumption is minted and no in-run SMpro pass exists; one whose census ended
 // carries both passes and decides consumption from the two boot parameter 5 reads.
-test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool {
+test fn the_run_record_is_decided_by_the_actuation_stage() -> Bool  {
   let consumed = BootParam5Read { readback: "Boot Flag Invalid", at: "t" }
   let never = mtcollins1_boot_run_record(media: MediaAttachNotAttempted { reason: "fixture" }, handoff_media: HandoffMediaNotReached { reason: "fixture" }, end_media: EndMediaNotTaken { reason: "fixture" }, stage: ActuationNotPoweredOn { reason: "the handoff refused" }, before: consumed, after: consumed, power_after: PoweredOffAfterCensusEnd, timing: mtcollins1_boot_phase_timing_not_taken(reason: "supplied: the run-record fold, not a boot"))
   let ended = mtcollins1_boot_run_record(
@@ -795,7 +795,7 @@ fn open_verdict(subject: MtCollins1BootSubject, medium: MtCollins1BootMedium, li
   mtcollins1_boot_terminal_verdict(capture: workload_open_capture(lines: lines), subject: subject, medium: medium)
 }
 
-test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool {
+test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool  {
   let census_medium = MtCollins1CensusMedium { output_digest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as NonEmptyStr }
   let subject = mtcollins1_boot_subject_for(medium: census_medium, execution_revision: "0123456789abcdef0123456789abcdef01234567" as NonEmptyStr)
   let numa = "----SECTION numa----\n----ARGV numa: cat /sys/devices/system/node/online; numactl -H\n0\navailable: 1 nodes (0)\nnode 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79\nnode 0 size: 15968 MB\n----EXIT numa: 0\n"
@@ -814,7 +814,7 @@ test fn an_open_workload_section_refuses_only_on_what_it_has_proven() -> Bool {
 // property and is EXECUTED in test.claim.machine_intake.sol_hold_stdin_wet_witness; this claim covers
 // what only the text decides: stdout alone reaches the capture, stderr reaches the client file, and
 // the exit and pid-not-published lines the watch classifies by are the ones the launch writes.
-test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
+test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool  {
   let script = mtcollins1_sol_hold_activate_script
   string_contains(s: script, pattern: "sol activate >> \"$cap\" 2>> \"$diag\" <&3 3<&- &")
     && !string_contains(s: script, pattern: "2>&1 <&3")
@@ -828,7 +828,7 @@ test fn the_sol_launch_separates_client_words_from_host_bytes() -> Bool {
 // data row is ReleaseHeld's argv, the one the teardown executes; the boot step's EXIT trap carries the same data row
 // (gunbc.ci_spec gunbc_ci_mtcollins1_boot_trap_body). Its executed controls are in
 // test.claim.machine_intake.sol_hold_stdin_wet_witness.
-test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
+test fn the_sol_release_kills_only_the_recorded_process() -> Bool  {
   let script = mtcollins1_sol_hold_release_script
   !string_contains(s: script, pattern: "__GUNBC_INVOKE_EMIT_REFUSED__")
     && string_contains(s: script, pattern: "'kill' \"$p\"")
@@ -839,7 +839,7 @@ test fn the_sol_release_kills_only_the_recorded_process() -> Bool {
 // FAILED ESTABLISHMENT CARRIES ITS CAUSE, read from the CLIENT's diagnostics: the hold's own
 // pid-not-published record, the activation refusal, the session-setup refusal, or -- when it left
 // without any -- its last line and the lease the settle saw. Never a bare "not held".
-test fn a_failed_establishment_names_its_cause() -> Bool {
+test fn a_failed_establishment_names_its_cause() -> Bool  {
   let at = "2026-09-27T19:00:00Z" as NonEmptyStr
   (match sol_establishment_failure(collector: SolCollectorUnrecorded, client_diagnostics: concat(sol_hold_pid_not_published_line, concat("\n", concat(sol_hold_exit_record_prefix, "143\n"))), at: at) {
     SolPidNotPublished => true
@@ -875,7 +875,7 @@ fn is_channel_lost(t: WatchTick) -> Bool {
 // LOSS IS THE PROCESS, NOT A LINE. A gone collector (stale, absent, unset) under a pending capture
 // is ObservationChannelLost; a LIVE collector is live even when its client file or the host says
 // "SOL session closed" -- the line only classifies a loss the lease has already established.
-test fn a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending() -> Bool {
+test fn a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending() -> Bool  {
   let pending = TerminalPending { reason: "no begin marker for this machine yet" }
   is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: "")))
     && is_channel_lost(t: watch_tick(verdict: pending, channel: sol_channel_reading(collector: SolCollectorUnrecorded, client_diagnostics: "")))
@@ -889,7 +889,7 @@ test fn a_gone_collector_under_a_pending_capture_is_channel_lost_not_pending() -
 
 // THE CLIENT'S WORDS ARE CLASSIFIED WITHOUT A REMOTE CAUSE: its exit record, which diagnostic it
 // printed, and its last line of its own -- the hold's lines are not the client's.
-test fn a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_stronger() -> Bool {
+test fn a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_stronger() -> Bool  {
   let closed = sol_client_diagnostics(text: concat("Error sending SOL data: FAIL\nSOL session closed by BMC\n", concat(sol_hold_exit_record_prefix, "1\n")))
   let keepalive = sol_client_diagnostics(text: "Error: No response to keepalive - Terminating session\n")
   let silent = sol_client_diagnostics(text: "")
@@ -908,7 +908,7 @@ test fn a_gone_collector_is_classified_by_its_own_diagnostics_and_nothing_strong
 }
 
 // A LIVE COLLECTOR WITH NO OUTPUT IS PENDING: silence over a held channel is still waiting.
-test fn a_live_collector_with_no_output_is_pending() -> Bool {
+test fn a_live_collector_with_no_output_is_pending() -> Bool  {
   (match sol_channel_reading(collector: SolCollectorHeld, client_diagnostics: "") { SolChannelLive => true  _ => false })
     && (match watch_tick(verdict: TerminalPending { reason: "capture empty" }, channel: SolChannelLive) {
       WatchContinue { reason: r } => r == "capture empty"
@@ -918,7 +918,7 @@ test fn a_live_collector_with_no_output_is_pending() -> Bool {
 
 // THE CAPTURE'S OWN TERMINAL STANDS OVER A GONE COLLECTOR: the census powers off at END, so a
 // collector that exits after a refused or accepted envelope does not turn the verdict into a loss.
-test fn a_decided_capture_is_not_unmade_by_a_later_channel_loss() -> Bool {
+test fn a_decided_capture_is_not_unmade_by_a_later_channel_loss() -> Bool  {
   let gone = sol_channel_reading(collector: SolCollectorExited { evidence: SolExitPidGone }, client_diagnostics: concat(sol_hold_exit_record_prefix, "0\n"))
   (match watch_tick(verdict: TerminalRefused { causes: [WorkloadWriteFailed { rc: "1" }] }, channel: gone) {
     WatchRefused { causes: _ } => true
@@ -929,7 +929,7 @@ test fn a_decided_capture_is_not_unmade_by_a_later_channel_loss() -> Bool {
 // ONLY AN ESTABLISHED EXIT IS REPORTED AS ONE, AND ONLY IT CLAIMS A FINAL CAPTURE. The same loss read
 // through an unobservable collector is ObservationChannelUnobservable, carries the read's cause, and
 // says the capture is NOT known to be final.
-test fn an_unobservable_collector_is_never_reported_as_an_exit() -> Bool {
+test fn an_unobservable_collector_is_never_reported_as_an_exit() -> Bool  {
   let client = sol_client_diagnostics(text: "")
   let exited = sol_observation_loss_text(loss: SolObservationLoss { stage: SolLostDuringWatch, last_live_at: "t0", observed_gone_at: "t1" as NonEmptyStr, collector: SolCollectorExited { evidence: SolExitPidGone }, client: client, last_capture_observation: "pending" })
   let unobserved = sol_observation_loss_text(loss: SolObservationLoss { stage: SolLostDuringWatch, last_live_at: "t0", observed_gone_at: "t1" as NonEmptyStr, collector: SolCollectorUnobservable { cause: "the recorded pid's /proc stat could not be read (permission_denied: EACCES)" }, client: client, last_capture_observation: "pending" })
@@ -944,7 +944,7 @@ test fn an_unobservable_collector_is_never_reported_as_an_exit() -> Bool {
 // A LIVE PROCESS IS NOT AN ESTABLISHED SESSION: establishment needs the operational banner as the
 // capture's first line. A capture that is empty, or opens with host text that merely contains the
 // words later, has not established it.
-test fn establishment_is_the_operational_banner_first_not_a_live_pid() -> Bool {
+test fn establishment_is_the_operational_banner_first_not_a_live_pid() -> Bool  {
   sol_capture_opens_with_banner(capture: "[SOL Session operational.  Use ~? for help]\nhost\n")
     && !sol_capture_opens_with_banner(capture: "")
     && !sol_capture_opens_with_banner(capture: "host line\n[SOL Session operational.  Use ~? for help]\n")
@@ -953,7 +953,7 @@ test fn establishment_is_the_operational_banner_first_not_a_live_pid() -> Bool {
 // THE NOTICE'S ANNOTATION IS ONE WORKFLOW COMMAND, WHATEVER THE INCIDENT SAYS. A body carrying `%`, a
 // newline and a leading `::` is escaped per the runner's escapeData, so it cannot end the command early
 // or mint a second one; the incident arm is an error and the exit arm a warning.
-test fn a_sol_notice_is_one_escaped_workflow_command() -> Bool {
+test fn a_sol_notice_is_one_escaped_workflow_command() -> Bool  {
   let lost = match sol_loss_notice_of(incident: "100% gone\n::error::forged\n") { Present { value: n } => n  Absent => SolNotice { kind: SolNoticeCollectorExited, identity: "", title: "", body: "" } }
   let line = match log_annotation_message_line(annotation: sol_notice_annotation(notice: lost)) { Present { value: l } => l  Absent => "" }
   line == "::error::mtcollins1 SOL observation lost: 100%25 gone%0A::error::forged"
@@ -967,7 +967,7 @@ fn exit_body(events: String) -> String {
   match sol_exit_notices_of(client_diagnostics: "gunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n", workflow_events: SolSourceRead { content: events }).first() { Present { value: n } => n.body  Absent => "" }
 }
 
-test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool {
+test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool  {
   let before = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=2026-09-28T10:59:59Z\n")
   let after = exit_body(events: "gunbc-workflow: SOL deactivate requested by this run's teardown at=2026-09-28T11:00:01Z\n")
   let same = exit_body(events: "gunbc-workflow: collector release requested by the step exit trap at=2026-09-28T11:00:00Z\n")
@@ -984,7 +984,7 @@ test fn the_exit_notice_orders_requests_by_instant_not_by_reading() -> Bool {
 // EVERY EXIT RECORD IS ITS OWN NOTICE, including two in the same second and two with no orderable
 // instant; an unreadable request history is carried as unresolved, never as "no request was made",
 // while a genuinely absent history is.
-test fn every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved() -> Bool {
+test fn every_exit_record_is_a_distinct_notice_and_unreadable_history_is_unresolved() -> Bool  {
   let two = "gunbc-sol-hold: collector exited status=1 at=2026-09-28T11:00:00Z\ngunbc-sol-hold: collector exited status=143 at=2026-09-28T11:00:00Z\n"
   let unknown = "gunbc-sol-hold: collector exited status=1 at=unknown\ngunbc-sol-hold: collector exited status=2 at=unknown\n"
   let same = sol_exit_notices_of(client_diagnostics: two, workflow_events: SolSourceAbsent)
@@ -1003,7 +1003,7 @@ fn watcher_stat(state: String, start: String) -> String {
   concat("77 (gunbc) ", state, concat(" 1 77 77 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 ", concat(start, " 12345 67 18446744073709551615\n")))
 }
 
-test fn the_boot_requires_the_recorded_live_watcher() -> Bool {
+test fn the_boot_requires_the_recorded_live_watcher() -> Bool  {
   let record = ProcRead { content: "77 5555\n" }
   let ok = sol_observer_refusal_of(record: record, stat: ProcRead { content: watcher_stat(state: "S", start: "5555") })
   let gone = sol_observer_refusal_of(record: record, stat: ProcReadRefused { kind: "not_found", error: "No such file" })
@@ -1033,7 +1033,7 @@ fn gate_is(g: SolEstablishmentGate, want: String) -> Bool {
   gate_name(g: g) == want
 }
 
-test fn the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() -> Bool {
+test fn the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() -> Bool  {
   let start = 350735470
   let deadline = sol_establishment_deadline(start: millisecond(count: start), allowance: second(count: 10))
   let fast = map([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], i => gate_is(g: sol_establishment_gate(banner_seen: false, now: millisecond(count: start + i * 100), deadline: deadline), want: "continue"))
@@ -1049,7 +1049,7 @@ test fn the_establishment_gate_is_elapsed_time_and_refuses_a_late_banner() -> Bo
 // THE LOOP TERMINATES WITHOUT TRUSTING THE CLOCK (sol_establishment_pace): a refused pace is PaceRefused;
 // an admitted pace followed by a reading no later than the previous one is PaceClockStalled; an
 // admitted pace with an advancing clock continues.
-test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool {
+test fn a_refused_pace_or_a_stalled_clock_ends_the_establishment_wait() -> Bool  {
   let before = millisecond(count: 1000)
   (match sol_establishment_pace(paced: false, previous: before, now: millisecond(count: 2000)) { PaceRefused => true  _ => false })
     && (match sol_establishment_pace(paced: true, previous: before, now: millisecond(count: 1000)) { PaceClockStalled => true  _ => false })

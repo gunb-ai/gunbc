@@ -18,7 +18,7 @@ fn key_named(key: Int, name: String) -> Bool {
   match nvparam_key_in(index: nvparam_key_index(), key: key) { NvParamKeyDefined { key: k } => (k.name as String) == name NvParamKeyUndefined { key: _ } => false }
 }
 
-test fn the_header_keys_resolve_by_region_base_plus_eight_per_parameter() -> Bool {
+test fn the_header_keys_resolve_by_region_base_plus_eight_per_parameter() -> Bool  {
   key_named(key: 16, name: "NV_SI_FAILSAFE_RETRY")
     && key_named(key: 32800, name: "NV_SI_WDT_BIOS_EXP_MINS")
     && key_named(key: 33056, name: "NV_SI_SEC_WDT_BIOS_EXP_MINS")
@@ -28,7 +28,7 @@ test fn the_header_keys_resolve_by_region_base_plus_eight_per_parameter() -> Boo
     && count(nvparam_keys) == 513
 }
 
-test fn red_a_key_the_header_does_not_define_is_its_number() -> Bool {
+test fn red_a_key_the_header_does_not_define_is_its_number() -> Bool  {
   match nvparam_key_in(index: nvparam_key_index(), key: 32801) { NvParamKeyUndefined { key: n } => n == 32801 NvParamKeyDefined { key: _ } => false }
 }
 
@@ -50,7 +50,7 @@ fn carries(o: NvParamConsoleObservation, name: String) -> Bool {
 
 // ── the dump grammar, over supplied lines ───────────────────────────────────────────────────────
 
-test fn rows_are_read_only_inside_a_section() -> Bool {
+test fn rows_are_read_only_inside_a_section() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["    8020: 0x5 (5)\r", "User Configuration Setting:\r", "    8020: 0x5 (5)\r", "    8120: 0x12C (300)\r", "Board Configuration Setting:\r", "    C020: 0xFFFF (65535)\r", "next line\r", "    C028: 0xFFFF (65535)\r"])
   count(o.settings) == 3
     && has_value(o: o, name: "NV_SI_SEC_WDT_BIOS_EXP_MINS", v: 300)
@@ -58,52 +58,52 @@ test fn rows_are_read_only_inside_a_section() -> Bool {
 }
 
 // %d of a UINT32 prints a negative number past 2^31: that is agreement, not disagreement.
-test fn a_negative_decimal_rendering_of_a_large_value_agrees() -> Bool {
+test fn a_negative_decimal_rendering_of_a_large_value_agrees() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["Board Configuration Setting:", "    C080: 0xFFFFFF01 (-255)"])
   count(o.settings) == 1 && count(o.malformed) == 0
 }
 
-test fn red_hex_and_decimal_that_disagree_are_malformed_not_a_setting() -> Bool {
+test fn red_hex_and_decimal_that_disagree_are_malformed_not_a_setting() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["User Configuration Setting:", "    8020: 0x5 (6)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
-test fn red_a_key_outside_its_sections_region_is_malformed() -> Bool {
+test fn red_a_key_outside_its_sections_region_is_malformed() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["User Configuration Setting:", "    C020: 0xFFFF (65535)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
-test fn red_a_value_past_uint32_is_malformed() -> Bool {
+test fn red_a_value_past_uint32_is_malformed() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["User Configuration Setting:", "    8020: 0x100000000 (0)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
 // A large value printed with its UNSIGNED decimal is not what %d prints.
-test fn red_an_unsigned_decimal_for_a_large_value_is_malformed() -> Bool {
+test fn red_an_unsigned_decimal_for_a_large_value_is_malformed() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["Board Configuration Setting:", "    C080: 0xFFFFFF01 (4294967041)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
-test fn red_an_off_stride_key_is_malformed() -> Bool {
+test fn red_an_off_stride_key_is_malformed() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["User Configuration Setting:", "    8021: 0x5 (5)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
 // On the stride and inside NV_MANU_PARAM_START..MAX, but not named by the header (0x41A8 is one of
 // the header's two manufacturing gaps): kept, as an explicit unknown.
-test fn an_on_stride_unlisted_key_is_an_explicit_unknown() -> Bool {
+test fn an_on_stride_unlisted_key_is_an_explicit_unknown() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["Manufacturer Configuration Setting:", "    41A8: 0x1 (1)"])
   count(o.settings) == 1 && count(o.malformed) == 0
     && (match o.settings.first() { Present { value: st } => match st.key { NvParamKeyUndefined { key: n } => n == 16808 NvParamKeyDefined { key: _ } => false } Absent => false })
 }
 
 // RED: past NV_BOARD_PARAM_MAX (0xC7F8) the key is outside the range PrintNVRAM walks.
-test fn red_a_key_past_the_regions_param_max_is_malformed() -> Bool {
+test fn red_a_key_past_the_regions_param_max_is_malformed() -> Bool  {
   let o = ampere_nvparam_console_observation(lines: ["Board Configuration Setting:", "    C800: 0x1 (1)"])
   count(o.settings) == 0 && count(o.malformed) == 1
 }
 
-test fn a_capture_without_a_dump_says_so() -> Bool {
+test fn a_capture_without_a_dump_says_so() -> Bool  {
   ampere_nvparam_console_text(o: ampere_nvparam_console_observation(lines: ["UEFI firmware booting"])) == "NVPARAM: no Configuration Setting section in this capture"
 }
 
@@ -128,7 +128,7 @@ fn run_a_observation() -> NvParamConsoleObservation {
 
 // The inhabitance claim: the committed boot's dump reaches the real grammar, the real key table and
 // the rendering the boot bundle prints -- one parse, both readings.
-test fn run_a_dump_reads_into_named_settings_and_renders_them() -> Bool {
+test fn run_a_dump_reads_into_named_settings_and_renders_them() -> Bool  {
   let o = run_a_observation()
   let t = ampere_nvparam_console_text(o: o)
   count(o.settings) > 40 && count(o.malformed) == 0

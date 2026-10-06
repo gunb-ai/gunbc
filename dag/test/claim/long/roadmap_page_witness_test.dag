@@ -87,7 +87,7 @@ fn empty_doc_html() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_page(doc: empty, merged: []))
 }
 
-test fn witness_empty_doc_is_minimal_shell() -> Bool {
+test fn witness_empty_doc_is_minimal_shell() -> Bool  {
   let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
   match try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: empty, merged: [], launch: launch_host_unobserved_static_render(), stylesheet: site_styles(rules: []))) {
     EmitRejected { reason: _ } => false
@@ -104,7 +104,7 @@ test fn witness_empty_doc_is_minimal_shell() -> Bool {
   }
 }
 
-test fn witness_authority_differs_from_empty() -> Bool {
+test fn witness_authority_differs_from_empty() -> Bool  {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: authority } =>
@@ -115,7 +115,7 @@ test fn witness_authority_differs_from_empty() -> Bool {
   }
 }
 
-test fn witness_authority_shows_finish_line_progress() -> Bool {
+test fn witness_authority_shows_finish_line_progress() -> Bool  {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: authority } =>
@@ -139,7 +139,7 @@ test fn witness_authority_shows_finish_line_progress() -> Bool {
 
 data finish_line_variant_fixture_note: String = "The accepted variant is proven by FIXTURE, not by live-population absence (A1; the former !contains('finish-line-accepted') negative both redded on the stylesheet — which now legitimately carries the .finish-line-accepted rule — and was the live-state transcription class the operator ruled against: it would have reported 'a finish line was accepted', which is news, not a defect). Both reachable variants render from constructed inputs: the same spec accepted and not accepted, so the state class, the chip word, and their divergence are pinned independent of today's roadmap population."
 
-test fn witness_finish_line_variants_render_from_fixture() -> Bool {
+test fn witness_finish_line_variants_render_from_fixture() -> Bool  {
   let s = first(v1_exit_finish_lines()).value
   match try_serialize_html_source(node: finish_line_row(spec: s, accepted_ids: [s.node])) {
     EmitRejected { reason: _ } => false
@@ -177,7 +177,7 @@ fn bold_title_html() -> HtmlEmitResult {
     launch: gunbc.roadmap_page.page_launch_context(doc: launch_fixture_doc(nodes: [rn], edges: []), merged: [], launch: dispatch_doc_standing())))
 }
 
-test fn witness_bold_title_renders_strong() -> Bool {
+test fn witness_bold_title_renders_strong() -> Bool  {
   match bold_title_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -186,7 +186,7 @@ test fn witness_bold_title_renders_strong() -> Bool {
   }
 }
 
-test fn witness_depth_cap_fails_honest() -> Bool {
+test fn witness_depth_cap_fails_honest() -> Bool  {
   match depth_chain_html(fuel: 0) {
     EmitRejected { reason: _ } => false
     EmitOk { html: truncated } =>
@@ -288,7 +288,7 @@ data server_zero_furniture_note: String = "The attention rule's server half (A2)
 // the producer instead of spelling any of its bytes (DESIGN section 3 -- cite the symbol). Stop
 // passing roadmap_css() into the page and this reds, which is exactly what makes supplying it in
 // the sibling claims a hypothesis about a boundary rather than a hole in the evidence.
-test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
+test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool  {
   match dispatch_doc_html_for(rn: ready_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -311,7 +311,7 @@ test fn witness_ready_node_doc_emits_button_and_external_script() -> Bool {
 
 data client_reads_decided_activity_note: String = "A2 flip of the belt-B contract pins: the client consumes the DECIDED activity object (attempt.activity — arm, attention, summary, evidence) and the segment roster; the former positives provider_activity / workflow_status / remaining_obligations are now the discriminating NEGATIVES, because a client that re-derives a summary or a remaining count from the raw fields is a second projection authority. The segments receiver is pinned in its grouped spelling — (attempt.segments || []).forEach — the exact shape whose ungrouped form was the 2026-08-01 silent no-op."
 
-test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
+test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool  {
   let js = dispatch_client_js_source()
   string_contains(s: js, pattern: "fetch('/dispatch/")
     && string_contains(s: js, pattern: "fetch('/workflow.json')")
@@ -332,7 +332,7 @@ test fn witness_dispatch_asset_reads_belt_b_status_contract() -> Bool {
     && !string_contains(s: js, pattern: "j.node)")
 }
 
-test fn witness_page_script_census_clean() -> Bool {
+test fn witness_page_script_census_clean() -> Bool  {
   page_script_census(page: dispatch_doc_page(rn: ready_dispatch_node())).length() == 0
 }
 
@@ -343,7 +343,7 @@ fn hand_inline_script_page() -> Fragment {
   ] }
 }
 
-test fn witness_inline_hand_script_reds() -> Bool {
+test fn witness_inline_hand_script_reds() -> Bool  {
   let v = page_script_census(page: hand_inline_script_page())
   v.length() == 1 && all(v, x => x.kind == "inline-js" && x.detail == "alert('rogue')")
 }
@@ -355,12 +355,12 @@ fn rogue_src_script_page() -> Fragment {
   ] }
 }
 
-test fn witness_rogue_src_script_reds() -> Bool {
+test fn witness_rogue_src_script_reds() -> Bool  {
   let v = page_script_census(page: rogue_src_script_page())
   v.length() == 1 && all(v, x => x.kind == "unknown-src")
 }
 
-test fn witness_signed_off_node_doc_has_no_button() -> Bool {
+test fn witness_signed_off_node_doc_has_no_button() -> Bool  {
   match dispatch_doc_html_for(rn: signed_off_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -370,7 +370,7 @@ test fn witness_signed_off_node_doc_has_no_button() -> Bool {
 
 // RLM-1: a review row is NOT relaunchable by an ordinary click. The button renders, disabled, carrying
 // the admission's wire label -- the same word POST /dispatch answers -- and no override arm exists.
-test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
+test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool  {
   let node = launch_fixture_with_contract(rn: fx_derivable_wi(identity: "rnfx_0RXWPCEK3N82T9871CXP", id: "disp-review",
     prs: [7301],
     title: "review-me",
@@ -392,7 +392,7 @@ test fn witness_merged_pr_is_review_evidence_not_acceptance() -> Bool {
 // LaunchDispatchBindingMissing. The node refuses because it has NO DISPATCH BINDING, which is a
 // fact about its WorkItemDispatch and not about a size -- sizing is derived now and this row
 // never had a cell to be missing.
-test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> Bool {
+test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> Bool  {
   match dispatch_doc_html_supplied(rn: unsized_open_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -405,7 +405,7 @@ test fn witness_undispatchable_open_node_refused_dispatch_binding_missing() -> B
 
 data supporting_facts_disclosure_note: String = "The A1 row-reduction wall (presentation recon, operator-signed 2026-08-01): the head row carries the row's PRIMARY facts only — status, title, state badges, the dependency line — plus the actuator; owner, the repository, any derived sizing cell, and carrier links are SUPPORTING facts and render inside the disclosure's item-facts block. The pin below expects a repo fact and NO sizing fact: sizing is derived now (gunbc.roadmap_sizing) and the deriver is a stub that refuses, so the badge the fused NodeSizing used to render is absent rather than empty — a sizing span reappearing here means the deriver started answering, which is gunbc.rung_drop.roadmap_sizing_authored_to_derived retiring. Both pins are exact-shape over a constructed fixture: a supporting fact reappearing in node-mid reds the first, the facts block dropping (rather than demoting) the fact reds the second. A row with facts but no body still discloses under the 'facts' summary label, so demotion never becomes deletion."
 
-test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool {
+test fn witness_supporting_facts_live_in_disclosure_not_head() -> Bool  {
   match dispatch_doc_html_supplied(rn: ready_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -452,7 +452,7 @@ fn blocked_dispatch_workspace_html() -> HtmlEmitResult {
 // retirement: the tracker table and detail pages render no dispatch actuator at all (owner:
 // "scrap the button stuff ... just copy buganizer"), so the admission's page-render half lives on
 // the full-roadmap surface, whose taskbar rows still carry the control.
-test fn witness_blocked_node_dispatch_refused_dependencies_blocked() -> Bool {
+test fn witness_blocked_node_dispatch_refused_dependencies_blocked() -> Bool  {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -466,7 +466,7 @@ test fn witness_blocked_node_dispatch_refused_dependencies_blocked() -> Bool {
   }
 }
 
-test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
+test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool  {
   match blocked_dispatch_workspace_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -478,7 +478,7 @@ fn superseded_dispatch_node() -> RoadmapNode {
   fx_superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
 }
 
-test fn witness_superseded_node_marked_no_button() -> Bool {
+test fn witness_superseded_node_marked_no_button() -> Bool  {
   match dispatch_doc_html_for(rn: superseded_dispatch_node()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -539,7 +539,7 @@ fn is_real_structured_ticket(rn: RoadmapNode) -> Bool {
 // THE INHABITANCE CLAIM FOR THE SUPPLIED TICKET ROWS (DESIGN section 3 pairing). It selects the first
 // authored ticket carrying a displaced cost and a carrier rather than naming one, so it follows the
 // authority as tickets are accepted; an authority with no such ticket reds here, by name.
-test fn witness_real_ticket_row_renders_structured() -> Bool {
+test fn witness_real_ticket_row_renders_structured() -> Bool  {
   match filter(declared_roadmap_nodes(), rn => is_real_structured_ticket(rn: rn)).first() {
     Absent => false
     Present { value: rn } =>
@@ -581,7 +581,7 @@ fn renders_updates_block(rn: RoadmapNode) -> Bool {
   }
 }
 
-test fn witness_ticket_rows_render_structured() -> Bool {
+test fn witness_ticket_rows_render_structured() -> Bool  {
   match row_html(rn: structured_ticket_fixture()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -610,7 +610,7 @@ fn long_brief_fixture() -> RoadmapNode {
   })
 }
 
-test fn witness_ticket_brief_budget_holds_and_reds() -> Bool {
+test fn witness_ticket_brief_budget_holds_and_reds() -> Bool  {
   let planted = ticket_brief_violations(nodes: [long_brief_fixture()])
   count(roadmap_ticket_brief_violations()) == 0
     && count(planted) == 1
@@ -630,7 +630,7 @@ fn fx_rules_page_html() -> HtmlEmitResult {
   try_serialize_html_source(node: roadmap_page_launch_with_stylesheet(doc: doc, merged: [], launch: dispatch_doc_standing(), stylesheet: site_styles(rules: roadmap_rules())))
 }
 
-test fn witness_style_child_combinator_unescaped() -> Bool {
+test fn witness_style_child_combinator_unescaped() -> Bool  {
   match fx_rules_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -641,7 +641,7 @@ test fn witness_style_child_combinator_unescaped() -> Bool {
   }
 }
 
-test fn witness_raw_text_close_guard_refuses() -> Bool {
+test fn witness_raw_text_close_guard_refuses() -> Bool  {
   let bad = Element {
     tag: "style",
     attributes: [],
@@ -653,7 +653,7 @@ test fn witness_raw_text_close_guard_refuses() -> Bool {
   }
 }
 
-test fn witness_item_detail_disclosure_present() -> Bool {
+test fn witness_item_detail_disclosure_present() -> Bool  {
   let ticket = match row_html(rn: structured_ticket_fixture()) {
     EmitRejected { reason: _ } => ""
     EmitOk { html: h } => h
@@ -676,14 +676,14 @@ test fn witness_item_detail_disclosure_present() -> Bool {
 // two SUPPLIED rows of different kinds, and the real-authority inhabitance half lives in
 // witness_real_ticket_row_renders_structured.
 
-test fn witness_status_chip_min_width() -> Bool {
+test fn witness_status_chip_min_width() -> Bool  {
   match authority_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } => string_contains(s: h, pattern: "min-width: var(--w-status)")
   }
 }
 
-test fn witness_dispatch_button_carries_accent() -> Bool {
+test fn witness_dispatch_button_carries_accent() -> Bool  {
   match fx_rules_page_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -696,14 +696,14 @@ test fn witness_dispatch_button_carries_accent() -> Bool {
 // issue-tracker model — the centered measure column is retired. Containers keep their side
 // padding; no max-width cap or auto-centering survives on .roadmap / .header-inner /
 // .daily-workspace.
-test fn witness_page_containers_full_width() -> Bool {
+test fn witness_page_containers_full_width() -> Bool  {
   fx_emitted_property(selector: ".roadmap", property: "max-width", value: "100%")
     && fx_emitted_property(selector: ".roadmap", property: "min-width", value: "0")
     && fx_emitted_property(selector: ".roadmap", property: "padding", value: "var(--space-24)")
     && fx_emitted_property(selector: ".header-inner", property: "min-width", value: "0")
 }
 
-test fn witness_authority_leads_within_budget() -> Bool {
+test fn witness_authority_leads_within_budget() -> Bool  {
   roadmap_authority_lead_budget_violations().length() == 0
 }
 
@@ -715,7 +715,7 @@ fn overlong_lead_node() -> RoadmapNode {
   )
 }
 
-test fn witness_overlong_lead_reds() -> Bool {
+test fn witness_overlong_lead_reds() -> Bool  {
   let v = lead_budget_violations(nodes: [overlong_lead_node()])
   v.length() == 1
     && all(v, x => x.node == "overlong-lead" && x.lead_chars > roadmap_lead_budget_chars())
@@ -777,7 +777,7 @@ fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> HtmlEmi
   })
 }
 
-test fn witness_parity_server_realizes_decided_regions() -> Bool {
+test fn witness_parity_server_realizes_decided_regions() -> Bool  {
   let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
   match parity_row_html(activity: parity_specimen_activity()) {
     EmitRejected { reason: _ } => false
@@ -796,7 +796,7 @@ test fn witness_parity_server_realizes_decided_regions() -> Bool {
   }
 }
 
-test fn witness_parity_wire_carries_the_server_sentence() -> Bool {
+test fn witness_parity_wire_carries_the_server_sentence() -> Bool  {
   let summary = gunbc.roadmap_presentation.activity_summary_line(a: parity_specimen_activity())
   let wire = serialize_json(
     v: gunbc.roadmap_presentation.activity_view_json_value(view: parity_specimen_activity()))
@@ -856,7 +856,7 @@ fn fx_client_part_js(lo: Int, hi: Int) -> String {
 // group-scoped claims could keep passing over a group the asset no longer ships. Statement lists
 // admit no structural `==` here (their equality is unjudged), so the join is the statement count:
 // a group dropped from, added to, or grown inside the asset changes it.
-test fn witness_client_asset_is_exactly_its_statement_groups() -> Bool {
+test fn witness_client_asset_is_exactly_its_statement_groups() -> Bool  {
   count(dispatch_client_program().statements) == fold(fx_client_groups(), init: 0, f: (acc, g) => acc + count(g))
 }
 
@@ -876,29 +876,29 @@ fn fx_client_part_holds(js: String, session_fetches: Int, summary_only_marks: In
     && occurrence_count(s: js, pattern: "data-summary-only") == summary_only_marks
 }
 
-test fn witness_client_asset_part_0_negatives_hold() -> Bool {
+test fn witness_client_asset_part_0_negatives_hold() -> Bool  {
   fx_client_part_holds(js: fx_client_part_js(lo: 0, hi: 9), session_fetches: 0, summary_only_marks: 0)
 }
 
-test fn witness_client_asset_part_1_negatives_hold() -> Bool {
+test fn witness_client_asset_part_1_negatives_hold() -> Bool  {
   fx_client_part_holds(js: fx_client_part_js(lo: 9, hi: 11), session_fetches: 0, summary_only_marks: 1)
 }
 
-test fn witness_client_asset_part_2_negatives_hold() -> Bool {
+test fn witness_client_asset_part_2_negatives_hold() -> Bool  {
   fx_client_part_holds(js: fx_client_part_js(lo: 11, hi: 15), session_fetches: 0, summary_only_marks: 0)
 }
 
 // Assignment remains covered separately as the persisted multi-sort controller grows.
-test fn witness_client_asset_assignment_part_negatives_hold() -> Bool {
+test fn witness_client_asset_assignment_part_negatives_hold() -> Bool  {
   fx_client_part_holds(js: fx_client_part_js(lo: 15, hi: 16), session_fetches: 0, summary_only_marks: 0)
 }
 
 // The last part runs to the end of the group list, so a group appended to the asset is still read.
-test fn witness_client_asset_part_3_negatives_hold() -> Bool {
+test fn witness_client_asset_part_3_negatives_hold() -> Bool  {
   fx_client_part_holds(js: fx_client_part_js(lo: 16, hi: 1000), session_fetches: 0, summary_only_marks: 0)
 }
 
-test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
+test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool  {
   let js = fx_client_group_js(stmts: workflow_fetch_statements())
   string_contains(s: js, pattern: "av.summary")
     && string_contains(s: js, pattern: "av.arm")
@@ -913,7 +913,7 @@ test fn witness_parity_client_paints_verbatim_with_shared_constants() -> Bool {
 
 data parity_refused_note: String = "The refused arm's parity, post the 2026-09-20 status-surface ruling: the server realization carries the refusal's LABEL as its summary (state word plus the short reason) and keeps the located reason inside a CLOSED activity disclosure — evidence behind disclosure, not an open error dump — and the client no longer auto-opens on the refused arm (the data-auto-opened guard is deleted in both realizations). A refusal whose label or reason failed to reach the surface is the title-only world the anomaly witnesses forbid; a refusal that renders open again is the overwhelming-dump regression this ruling closed."
 
-test fn witness_parity_refused_arm_labels_and_discloses() -> Bool {
+test fn witness_parity_refused_arm_labels_and_discloses() -> Bool  {
   let refused = gunbc.roadmap_presentation.activity_view_from_parts(
     segments: [
       gunbc.roadmap_workflow_stage.WorkflowSegment { kind: gunbc.roadmap_workflow_stage.EnvironmentWorkflowSegment, state: gunbc.roadmap_workflow_stage.WorkflowSegmentComplete, detail: "" },
@@ -940,7 +940,7 @@ test fn witness_parity_refused_arm_labels_and_discloses() -> Bool {
 // the dim class and the machine-readable data-attempt-revision on its li; the same row without the
 // fact renders neither. The revision comparison that SETS the fact is witnessed in
 // test.claim.roadmap_presentation_witness (stale_attempt_nodes); this pin is the rendering half.
-test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
+test fn witness_stale_attempt_row_renders_dimmed() -> Bool  {
   let stale_view = gunbc.roadmap_presentation.WorkRowView {
     node_id: "parity-stale",
     headline: "Record which generator actually produced each result",
@@ -982,7 +982,7 @@ test fn witness_stale_attempt_row_renders_dimmed() -> Bool {
 
 data a2_hierarchy_closeout_witnesses_note: String = "The A2 hierarchy-closeout receipts (operator gap ruling 2026-08-02; S0 amendments, operator recalibration 2026-08-02), each pinning a decided fact rather than accidental composition: the selection grammar ships in the emitted client asset (selection and activation distinct — interactive elements never move selection through the click channel; Escape clears; exactly the selected row's primary action earns action-focal, the class renamed from action-live because live means sessions/observation elsewhere in this product); selection has KEYBOARD PARITY (rows carry tabindex, keyboard focus is gated on :focus-visible so pointer clicks on inner controls cannot move selection through the focus channel, Enter/Space on the focused row toggles, and every path funnels through the one gunbcSelectRow); the three observation channels join ONE impact region (each channel's located row appends into the shared disclosure and the painter no longer prepends free-standing banners to main); and the stylesheet carries the quiet-rest pair, the action-focal band restore on the family's DERIVED rest-band vars, the li.node:focus-visible outline, and the header's shared composition frame. The axis pins on the dispatch button itself (ready renders action-primary/available; review and out-of-order render action-secondary/override; done and superseded render no button at all) live with the existing per-fixture witnesses above. The action-live spellings below are DISCRIMINATING NEGATIVES: the retired name reappearing means the rename regressed or a second prominence authority stood up."
 
-test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
+test fn witness_selection_grammar_ships_in_client_asset() -> Bool  {
   let js = fx_client_group_js(stmts: row_selection_bind_statements())
   string_contains(s: js, pattern: "const gunbcClearSelection")
     && string_contains(s: js, pattern: "const gunbcSelectRow")
@@ -998,7 +998,7 @@ test fn witness_selection_grammar_ships_in_client_asset() -> Bool {
 // The channels' statement groups (the impact preamble, the observation fetch, the workflow fetch)
 // are where each of these lines is emitted; the asset-wide negative -- no channel prepends its own
 // banner -- rides the client-asset partition, which reads every group.
-test fn witness_observation_channels_join_one_impact_region() -> Bool {
+test fn witness_observation_channels_join_one_impact_region() -> Bool  {
   let js = join([
     fx_client_group_js(stmts: observe_impact_preamble_statements()),
     fx_client_group_js(stmts: observation_fetch_statements()),
@@ -1071,28 +1071,28 @@ fn fx_css_part_holds(css: String, rail_widths: Int, grid_templates: Int, token_d
     && all(fx_issue_token_names, n => occurrence_count(s: css, pattern: join(["--issue-", n, ":"], "")) == token_declarations)
 }
 
-test fn witness_css_root_part_laws_hold() -> Bool {
+test fn witness_css_root_part_laws_hold() -> Bool  {
   fx_css_part_holds(css: fx_css_root_part(), rail_widths: 0, grid_templates: 0, token_declarations: 3)
 }
 
-test fn witness_css_audition_part_0_laws_hold() -> Bool {
+test fn witness_css_audition_part_0_laws_hold() -> Bool  {
   fx_css_part_holds(css: fx_css_audition_part(index: 0), rail_widths: 0, grid_templates: 0, token_declarations: 0)
 }
 
 // The last audition part reads every remaining set, so a set appended to audition_sets is read.
-test fn witness_css_audition_part_1_laws_hold() -> Bool {
+test fn witness_css_audition_part_1_laws_hold() -> Bool  {
   fx_css_part_holds(css: join(map(audition_sets.skip(n: 1), a => audition_block_css(a: a)), "\n"), rail_widths: 0, grid_templates: 0, token_declarations: 0)
 }
 
-test fn witness_css_rule_blocks_laws_hold() -> Bool {
+test fn witness_css_rule_blocks_laws_hold() -> Bool  {
   fx_css_part_holds(css: fx_css_rule_blocks(), rail_widths: 1, grid_templates: 1, token_declarations: 0)
 }
 
-test fn witness_css_tail_part_laws_hold() -> Bool {
+test fn witness_css_tail_part_laws_hold() -> Bool  {
   fx_css_part_holds(css: fx_css_tail_part(), rail_widths: 0, grid_templates: 0, token_declarations: 0)
 }
 
-test fn witness_prominence_and_frame_rules_present_in_css() -> Bool {
+test fn witness_prominence_and_frame_rules_present_in_css() -> Bool  {
   let css = fx_css_rule_blocks()
   string_contains(s: css, pattern: ".dispatch-btn.action-primary, .dispatch-btn.action-secondary { color: var(--text-dim); background: var(--surface); border-color: var(--border) }")
     && string_contains(s: css, pattern: ".dispatch-btn.action-focal { color: var(--band-invite-ink); background: var(--band-invite); border-color: var(--band-invite) }")
@@ -1150,7 +1150,7 @@ fn occurrence_count(s: String, pattern: String) -> Int {
 
 // Uniform recursive issue rows (owner 2026-09-27): the table keeps every issue once,
 // with no project-only counter, wrapper, or dispatch control. The sandbox forest is separate.
-test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool {
+test fn witness_project_row_renders_progress_bar_and_tasks() -> Bool  {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1191,7 +1191,7 @@ fn fx_project_tree_view(auto_open: Bool) -> gunbc.roadmap_presentation.ProjectTr
   }
 }
 
-test fn witness_project_disclosure_open_attribute_is_derived() -> Bool {
+test fn witness_project_disclosure_open_attribute_is_derived() -> Bool  {
   match try_serialize_html_source(node: gunbc.roadmap_page.project_tree_li(view: fx_project_tree_view(auto_open: true), observation: gunbc.roadmap_presentation.ObservationsNominal)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: pulsing } =>
@@ -1275,7 +1275,7 @@ fn fx_chain_top_project_view() -> gunbc.roadmap_presentation.ProjectTreeView {
   }
 }
 
-test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool {
+test fn witness_project_depth_cap_renders_deeper_affordance() -> Bool  {
   match fx_page_chain_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1314,7 +1314,7 @@ fn li_of_node(html: String, node_id: String) -> String {
 // flat rows, each exactly once, and no chain line or tasks disclosure ships on this surface
 // (that rendering survives on the /sandbox exhibit's grouping path, pinned at unit level by
 // witness_project_disclosure_open_attribute_is_derived and the depth-cap machinery half).
-test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool {
+test fn witness_collapsed_chain_renders_one_row_with_chain_line() -> Bool  {
   let top = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00001", id: "page-collapse-top",
     done: false, content: "collapse top", repo: "gunbc")
   let mid = fx_authored_wi(identity: "rnfx_PAGEHIERCOLLAPSE00002", id: "page-collapse-mid",
@@ -1429,7 +1429,7 @@ fn hero_green_view(alive: Bool) -> gunbc.roadmap_presentation.WorkRowView {
     alive: alive)
 }
 
-test fn witness_hero_attempt_row_is_bar_first() -> Bool {
+test fn witness_hero_attempt_row_is_bar_first() -> Bool  {
   match hero_row_html(view: hero_green_view(alive: true)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1452,7 +1452,7 @@ test fn witness_hero_attempt_row_is_bar_first() -> Bool {
 
 // The live pulse belongs to the active segment ONLY while the worker is alive; the same attempt
 // with a dead process renders the active segment without it.
-test fn witness_stage_live_only_while_worker_alive() -> Bool {
+test fn witness_stage_live_only_while_worker_alive() -> Bool  {
   match hero_row_html(view: hero_green_view(alive: false)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1464,7 +1464,7 @@ test fn witness_stage_live_only_while_worker_alive() -> Bool {
 // The round strip moved UNDER the disclosure (bar-first face): it renders only inside the activity
 // details, and its segments carry the semantic activity-line classes — a read round, a write
 // round, and a no-tool-call (provider round-trip) round from the fixture ledger.
-test fn witness_round_strip_disclosed_and_classified() -> Bool {
+test fn witness_round_strip_disclosed_and_classified() -> Bool  {
   match hero_row_html(view: hero_green_view(alive: true)) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1523,7 +1523,7 @@ fn hero_failed_view() -> gunbc.roadmap_presentation.WorkRowView {
 // THE RED FLAG: a refused segment renders RED at its stage segment and the one-line state carries
 // error-refusal; the refused payload stays behind a disclosure that does not arrive open. The
 // failed arm flags the same way at its own segment.
-test fn witness_red_flagged_attempt_row() -> Bool {
+test fn witness_red_flagged_attempt_row() -> Bool  {
   match hero_row_html(view: hero_refused_view()) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1546,7 +1546,7 @@ test fn witness_red_flagged_attempt_row() -> Bool {
 // The project bar's red flag renders from the seam's DECIDED subtree_error: the renderer reads the
 // field, it does not re-derive. (The derivation — refused or anomalous attempt anywhere in the
 // subtree — is pinned in test.claim.roadmap_presentation_witness.)
-test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
+test fn witness_project_bar_flags_red_from_decided_field() -> Bool  {
   let base = gunbc.roadmap_presentation.ProjectTreeView {
     row: hero_green_view(alive: false),
     chain: [],
@@ -1586,7 +1586,7 @@ test fn witness_project_bar_flags_red_from_decided_field() -> Bool {
 // The client's half of the hero face (single projection authority): the emitted asset paints the
 // stage strip from the wire's decided segment state keys, the summary's decided class, and the
 // wire throughput — all verbatim, no policy.
-test fn witness_client_paints_hero_face_verbatim() -> Bool {
+test fn witness_client_paints_hero_face_verbatim() -> Bool  {
   let js = fx_client_group_js(stmts: workflow_fetch_statements())
   string_contains(s: js, pattern: "stage-strip")
     && string_contains(s: js, pattern: "stage-segment stage-")
@@ -1612,7 +1612,7 @@ test fn witness_client_paints_hero_face_verbatim() -> Bool {
 // dense line carrying data-search (headline · node id · owner), the search input, and the band
 // filter chips. THE VIEW TABS AND THEIR FOREST RETIRED with the 2026-09-25 ruling: no view chips,
 // no second container, no data-view attribute — a resurrected tab or forest reds here.
-test fn witness_default_view_is_the_searchable_issue_table() -> Bool {
+test fn witness_default_view_is_the_searchable_issue_table() -> Bool  {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1634,7 +1634,7 @@ test fn witness_default_view_is_the_searchable_issue_table() -> Bool {
 // reads the row's own decided data-search; filters retain nothing (matching is a substring read
 // over the flat table, never a tree walk). The retired view switch is the census half: no
 // [data-view-chip] binding in the emitted asset, no data-view rule in the sheet.
-test fn witness_view_switch_and_filter_contracts() -> Bool {
+test fn witness_view_switch_and_filter_contracts() -> Bool  {
   let js = fx_client_group_js(stmts: issue_filter_bind_statements())
   let css = fx_css_rule_blocks()
   !string_contains(s: js, pattern: "[data-view-chip]")
@@ -1751,7 +1751,7 @@ fn issue_detail_fixture_html() -> HtmlEmitResult {
 // THE PAGE ARCHITECTURE (owner mandate 2026-09-25, docs/plans/issue-page-architecture.md): the
 // header carries the slug + title + planning chips ONLY; the tabs read Comments (default) ·
 // Dependencies · Work · History; the body splits the panels from the right metadata rail.
-test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool {
+test fn witness_issue_detail_page_renders_header_fields_and_tabs() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1802,7 +1802,7 @@ fn ordered_work_steps(work_section: String) -> List<String> {
     }).steps
 }
 
-test fn witness_issue_work_tab_renders_history_newest_first() -> Bool {
+test fn witness_issue_work_tab_renders_history_newest_first() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1819,7 +1819,7 @@ test fn witness_issue_work_tab_renders_history_newest_first() -> Bool {
 // The tab mechanics and the stylesheet law, pinned at their contracts: a TAB chip only writes the
 // detail root's data-tab, the stylesheet decides which panel shows, and the no-JavaScript default
 // is the issue panel — the page ships data-tab="issue" and the issue chip arrives chip-on.
-test fn witness_issue_tab_switch_contracts() -> Bool {
+test fn witness_issue_tab_switch_contracts() -> Bool  {
   let js = fx_client_group_js(stmts: issue_filter_bind_statements())
   let css = fx_css_rule_blocks()
   string_contains(s: js, pattern: "[data-tab-chip]")
@@ -1864,7 +1864,7 @@ fn table_region(html: String) -> String {
   }
 }
 
-test fn witness_issue_table_is_summary_only_and_stale_attempts_preserve_current_standing() -> Bool {
+test fn witness_issue_table_is_summary_only_and_stale_attempts_preserve_current_standing() -> Bool  {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: live_h } =>
@@ -1888,7 +1888,7 @@ test fn witness_issue_table_is_summary_only_and_stale_attempts_preserve_current_
 // The Work tab is where execution history lives: a node with N supplied attempts lists all N,
 // one compact row per attempt, above the current attempt's round history. The row carries the
 // attempt's short key so the reader can tell the attempts apart.
-test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
+test fn witness_issue_work_tab_lists_every_attempt() -> Bool  {
   let attempts = [
     completed_attempt_progress(node_id: "issue-detail-specimen"),
     completed_attempt_progress(node_id: "issue-detail-specimen"),
@@ -1921,7 +1921,7 @@ test fn witness_issue_work_tab_lists_every_attempt() -> Bool {
 // fallback, in the theme machinery's own three-block grammar — one token structure, two value
 // sets. Every --issue-* var resolves in all three blocks (a token present in one scheme but
 // absent in the other fails the surface when the toggle flips).
-test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
+test fn witness_issue_tokens_resolve_in_both_themes() -> Bool  {
   let css = fx_css_root_part()
   string_contains(s: css, pattern: ":root[data-theme=\"night\"]")
     && string_contains(s: css, pattern: "@media (prefers-color-scheme: dark)")
@@ -1936,7 +1936,7 @@ test fn witness_issue_tokens_resolve_in_both_themes() -> Bool {
 
 // The issue action's two rule states, read where they are emitted -- the serialized rules, not the
 // root custom-property blocks the token claim above reads.
-test fn witness_issue_action_rules_consume_the_tokens() -> Bool {
+test fn witness_issue_action_rules_consume_the_tokens() -> Bool  {
   let rules = fx_css_rule_blocks()
   string_contains(s: rules, pattern: ".issue-action-contained { background: var(--issue-action)")
     && string_contains(s: rules, pattern: ".issue-action.is-disabled, .issue-action:disabled { background: transparent")
@@ -1950,7 +1950,7 @@ test fn witness_issue_action_rules_consume_the_tokens() -> Bool {
 // witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee). RED CONTROLS: a
 // resurrected dispatch-btn or issue-action anywhere in the table region, or a bare <button> in any
 // row, reds here.
-test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
+test fn witness_issue_table_renders_modeled_action_and_census() -> Bool  {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1964,7 +1964,7 @@ test fn witness_issue_table_renders_modeled_action_and_census() -> Bool {
 }
 
 // The workspace shows the identity beside its avatar; opening is public and committing remains session-gated.
-test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() -> Bool {
+test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() -> Bool  {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -1980,7 +1980,7 @@ test fn witness_issue_table_assignee_renders_the_avatar_chip_or_placeholder() ->
 
 // Headers derive from the model and expose keyboard-operable sort controls. TYPE and
 // the special count slot are absent under the uniform-row ruling (2026-09-27).
-test fn witness_issue_table_header_derives_from_the_model_roster() -> Bool {
+test fn witness_issue_table_header_derives_from_the_model_roster() -> Bool  {
   match fx_page_project_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2004,7 +2004,7 @@ fn marker_before(s: String, first: String, second: String) -> Bool {
 
 // Every row follows the same column roster and carries underlying sort values.
 // Empty values retain their cells; type labels and project counters add no columns.
-test fn witness_issue_table_rows_share_the_header_template() -> Bool {
+test fn witness_issue_table_rows_share_the_header_template() -> Bool  {
   match fx_summary_only_page_html(stale: false) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2031,7 +2031,7 @@ test fn witness_issue_table_rows_share_the_header_template() -> Bool {
 // max-content tracks measure per container, so every row sized its columns independently of the
 // header, and long cells ran off the page. The census counts the rendered template bytes: exactly
 // one spelling of the tracks anywhere in the sheet.
-test fn witness_issue_table_grid_template_comes_from_the_model() -> Bool {
+test fn witness_issue_table_grid_template_comes_from_the_model() -> Bool  {
   let css = fx_css_rule_blocks()
   let tracks = workspace_issue_tracks()
   string_contains(s: css, pattern: join([".issue-table { display: grid; grid-template-columns: ", tracks], ""))
@@ -2050,7 +2050,7 @@ test fn witness_issue_table_grid_template_comes_from_the_model() -> Bool {
 // (grid-column: 1 / -1) so they break the cell flow instead of displacing a column. Filtering is
 // untouched: the band-filter hide rules out-specificity the contents rules, and the search
 // filter's inline display outranks the sheet altogether.
-test fn witness_issue_table_cells_are_direct_grid_children() -> Bool {
+test fn witness_issue_table_cells_are_direct_grid_children() -> Bool  {
   let css = fx_css_rule_blocks()
   string_contains(s: css, pattern: ".issue-table ul { display: contents }")
     && string_contains(s: css, pattern: ".issue-table li { display: contents }")
@@ -2099,7 +2099,7 @@ fn fx_long_title_page_html(long: String) -> HtmlEmitResult {
     include_all: true), edges: doc_all_edges(doc: fx_long_title_doc(long: long)), memberships: fixture_nesting_relation(edges: doc_all_edges(doc: fx_long_title_doc(long: long)))))
 }
 
-test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
+test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool  {
   let long_title = "an deliberately enormous issue title that would run the row entirely off the page when its track sized to the content the way the old per-row grids did"
   let rules = filter(site_styles_rules(styles: site_styles(rules: roadmap_rules())), r => match r {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector) == ".issue-cell" || selector_subject_wire(s: selector) == ".issue-table"
@@ -2127,7 +2127,7 @@ test fn witness_issue_table_long_cells_clip_within_their_tracks() -> Bool {
 // deliberately wears NO .issue-action class (the client's bodyless action bind must not race the
 // native submit). The retired Start Work stays absent (a census control: zero dispatch-btn and
 // zero "Start Work" in the body).
-test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee() -> Bool {
+test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2158,7 +2158,7 @@ test fn witness_issue_detail_renders_enabled_modeled_action_and_attempt_assignee
 // the decomposition link in its own "parent" row, beside the dependency rows "blocking" and
 // "blocked by" — three distinct fields, never one merged list. The fixture: specimen's primary
 // parent is the parent issue; it blocks the child; the parent blocks it.
-test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
+test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2181,7 +2181,7 @@ test fn witness_issue_detail_parent_and_blocking_render_separately() -> Bool {
 // identity and never surfaces as one (the attempt evidence lives in the Work tab); with no
 // attempt it falls back to the standing's holder. The fixture view carries a claimed standing AND
 // one supplied attempt here, so the Fabric chip wins.
-test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bool {
+test fn witness_issue_detail_attempt_does_not_invent_a_workflow_assignee() -> Bool  {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
@@ -2233,7 +2233,7 @@ fn fx_event_envelope_chained(id: String, parent: String, at: String, kind: gunbc
   }
 }
 
-test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool {
+test fn witness_issue_history_tab_renders_event_history_newest_first() -> Bool  {
   let events = [
     fx_event_envelope(id: "evt-one", at: "2026-09-24T01:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_human_principal(), return_to: fixture_human_principal() }),
     fx_event_envelope_chained(id: "evt-two", parent: "evt-three", at: "2026-09-24T03:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Progress { note: "kv receipts joined" as NonEmptyStr }),
@@ -2285,7 +2285,7 @@ fn fx_comment_stream_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEve
   [c1, e1, c2, c3, d3]
 }
 
-test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_and_deep_links() -> Bool {
+test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_and_deep_links() -> Bool  {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
@@ -2322,7 +2322,7 @@ test fn witness_issue_comment_stream_renders_description_avatars_numbers_times_a
 // wire shape and its stable operation key + csrf fields are Cut 1's (the urlencoded codec owns the
 // text/plain CR-strip repair it superseded — the 2026-09-28 'CSRF mismatch' defect's full fix).
 // .issue-action class (the client's bodyless bind must not race the native submit).
-test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf() -> Bool {
+test fn witness_issue_comment_composer_posts_urlencoded_with_stable_key_and_csrf() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2355,7 +2355,7 @@ fn fx_handoff_events() -> List<gunbc.roadmap.roadmap_event_log.RoadmapEventEnvel
   [claim, pub]
 }
 
-test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() -> Bool {
+test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() -> Bool  {
   match try_serialize_html_source(node: fx_issue_detail_body(
     view: issue_detail_fixture_view(),
     panel: issue_detail_fixture_panel(),
@@ -2381,7 +2381,7 @@ test fn witness_issue_publication_handoff_renders_the_compact_automated_entry() 
 // A RESULT THAT IS NOT A PUBLICATION IS STILL RETURNED ON THE PAGE (operator ruling 2026-10-03): a
 // failed verification renders its own entry naming the head, the cause and the principal it was
 // returned to, and it does NOT read as a reassignment for merge -- the standing stays claimed.
-test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff() -> Bool {
+test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff() -> Bool  {
   let claim = fx_event_envelope(id: "rr-1", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
   let failed = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
     id: "rr-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
@@ -2418,7 +2418,7 @@ test fn witness_issue_failed_verification_result_renders_without_a_merge_handoff
 // padding as every other surface — the defect's cause was .issue-detail being a body-level flex
 // child with no padding at all — and the rail is a narrow 34ch column that cannot starve the
 // panels.
-test fn witness_issue_detail_pads_its_content_and_sized_the_rail() -> Bool {
+test fn witness_issue_detail_pads_its_content_and_sized_the_rail() -> Bool  {
   fx_emitted_property(selector: ".issue-detail", property: "padding", value: "var(--space-24)")
     && fx_emitted_property(selector: ".issue-rail", property: "flex", value: "0 1 34ch")
     && fx_emitted_property(selector: ".issue-rail", property: "max-width", value: "100%")
@@ -2473,7 +2473,7 @@ fn brief_fixture_html(lifecycle: gunbc.roadmap_presentation.WorkLifecycle, contr
 }
 
 // The 2026-10-04 reading surface supersedes the older per-section disclosure ruling.
-test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool {
+test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool  {
   match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.OpenLifecycle) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2498,7 +2498,7 @@ test fn witness_issue_authored_fields_fold_per_the_mandate() -> Bool {
 }
 
 // Supporting details remain collapsed for completed work as well.
-test fn witness_issue_current_plan_collapses_once_done() -> Bool {
+test fn witness_issue_current_plan_collapses_once_done() -> Bool  {
   match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.DoneLifecycle) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2519,7 +2519,7 @@ test fn witness_issue_current_plan_collapses_once_done() -> Bool {
 // PFP slice: the chip becomes the image's positioning context and clips it, and the
 // .issue-avatar img rule paints any image inside a chip — the projection the assignee avatar
 // slots reuse.
-test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool {
+test fn witness_header_account_static_body_carries_signin_and_hidden_target() -> Bool  {
   match issue_detail_fixture_html() {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
@@ -2537,7 +2537,7 @@ test fn witness_header_account_static_body_carries_signin_and_hidden_target() ->
 
 // The account controls' hiding and avatar-crop rules, read where they are emitted (the serialized
 // rules); the static body claim above reads the markup.
-test fn witness_header_account_rules_hide_and_crop() -> Bool {
+test fn witness_header_account_rules_hide_and_crop() -> Bool  {
   let css = fx_css_rule_blocks()
   string_contains(s: css, pattern: ".header-account-session[hidden], .header-account-signin[hidden] { display: none }")
     && string_contains(s: css, pattern: ".header-account-menu[hidden] { display: none }")
@@ -2565,7 +2565,7 @@ test fn witness_header_account_rules_hide_and_crop() -> Bool {
 // the same avatar chip and the standing flips to data-avatar="resolved" — the initials are
 // never removed, so a slow or failed image falls back to them; when the member is absent the
 // branch never runs and the initials stand alone.
-test fn witness_header_account_swap_table() -> Bool {
+test fn witness_header_account_swap_table() -> Bool  {
   let js = fx_client_group_js(stmts: concat(session_read_bind_statements(), concat(account_swap_statements(), inline_assignment_bind_statements())))
   occurrence_count(s: js, pattern: "fetch('/auth/session'") == 1
     && string_contains(s: js, pattern: "const gunbcSessionRead = fetch('/auth/session', { credentials: 'same-origin', cache: 'no-store' })")
@@ -2593,7 +2593,7 @@ test fn witness_header_account_swap_table() -> Bool {
 // the input flexes with min-width 0 — it shrinks below its default intrinsic size instead of
 // overflowing — and the form wraps as the belt-and-braces, so the input+button row's declared
 // geometry fits the 34ch rail's inner width (padding included) by construction.
-test fn witness_issue_assign_form_fits_the_rail() -> Bool {
+test fn witness_issue_assign_form_fits_the_rail() -> Bool  {
   fx_emitted_property(selector: ".site-choice-rich", property: "display", value: "block")
     && fx_emitted_property(selector: ".site-choice-rich", property: "width", value: "100%")
     && fx_emitted_property(selector: ".issue-assign-input", property: "min-width", value: "0")
@@ -2632,7 +2632,7 @@ fn fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrinc
 // UNKNOWN principal — an empty roster (the read failed or the store has no record) or a roster
 // naming a DIFFERENT principal — renders EXACTLY the pre-profile fallback: the chip alone with
 // the absent standing, the label title, no text span.
-test fn witness_assignee_chip_renders_the_profile_identity_when_known() -> Bool {
+test fn witness_assignee_chip_renders_the_profile_identity_when_known() -> Bool  {
   let known = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [fixture_human_profile()])
   let unknown = fixture_assignee_chip_html(holder: fixture_human_principal(), profiles: [])
   let stranger = fixture_assignee_chip_html(holder: gunbc.roadmap.roadmap_event_log.EventPrincipalAuthenticated { ref: fixture_stranger_ref() }, profiles: [fixture_human_profile()])
@@ -2671,7 +2671,7 @@ fn issue_detail_profiled_fixture_view() -> gunbc.roadmap_presentation.WorkRowVie
   }
 }
 
-test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> Bool {
+test fn witness_issue_detail_rail_and_comments_render_the_profile_identity() -> Bool  {
   let claim = fx_event_envelope_chained(id: "prof-ho-1", parent: "cmt-3d", at: "2026-09-25T10:00:00Z", kind: gunbc.roadmap.roadmap_event_log.Claimed { assignee: fixture_fabric_principal(), return_to: fixture_human_principal() })
   let pub = gunbc.roadmap.roadmap_event_log.RoadmapEventEnvelope {
     id: "prof-ho-2" as gunbc.roadmap.roadmap_event_log.RoadmapEventId,
@@ -2721,7 +2721,7 @@ fn picker_session_fixture() -> AuthenticatedSession {
   }
 }
 
-test fn witness_inline_assignment_context_chip_html_carries_the_profile_display() -> Bool {
+test fn witness_inline_assignment_context_chip_html_carries_the_profile_display() -> Bool  {
   let body = inline_assignment_context_body(
     session: picker_session_fixture(),
     events: [],
@@ -2741,7 +2741,7 @@ fn fixture_nesting_relation(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> Lis
   map(edges, e => gunbc.roadmap_nesting.RoadmapMembership { member: e.parent as String, project: e.child as String, contribution: "fixture contribution" })
 }
 
-test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> Bool {
+test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> Bool  {
   match brief_fixture_html(lifecycle: gunbc.roadmap_presentation.OpenLifecycle, control_label: "Independent display label") {
     EmitRejected { reason: _ } => false
     EmitOk { html } => occurrence_count(s: html, pattern: "the brief words") == 1
@@ -2754,7 +2754,7 @@ test fn renamed_field_label_keeps_its_typed_section_and_brief_renders_once() -> 
 // "claimed by principal:gunbc/workflows/fabric", an unbreakable token that ran past the 34ch rail;
 // the one ledger sentence now takes the page's display naming, so Fabric reads "Fabric" and a
 // human with a stored profile reads their name, while a principal nobody knows keeps its label.
-test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool {
+test fn witness_issue_standing_text_names_principals_by_their_display() -> Bool  {
   let fabric = issue_standing_text(s: NodeClaimed { by: fixture_fabric_principal(), since: "2026-09-30T15:15:48Z" }, profiles: [])
   let known = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [fixture_human_profile()])
   let unknown = issue_standing_text(s: NodeClaimed { by: fixture_human_principal(), since: "" }, profiles: [])

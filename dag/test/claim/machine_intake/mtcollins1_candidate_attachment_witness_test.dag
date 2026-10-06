@@ -45,7 +45,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // from Unobserved to Offered { positions: 1 } in the EVIDENCE only, with scope and fit untouched. Whether
 // an OCP admission should consult occupancy at all is a semantic question owned by the lane that built
 // this fold; it is tracked on roadmap row fleet-mtcollins1-first-host and deliberately not decided here.
-test fn real_candidates_reach_typed_verdicts() -> Bool {
+test fn real_candidates_reach_typed_verdicts() -> Bool  {
   let rows = mtcollins1_candidate_verdicts()
   let each_identity_once = fold(["mcx4411a_acan_attachment", "mcx4421a_acan_attachment", "dell_0r887v_attachment", "mcx4621a_acab_attachment", "mcx4121a_acat"], init: true, f: (acc, name) =>
     acc && fold(rows, init: 0, f: (count, row) => if row.candidate.catalog_scope.subject.declaration.decl_name == name { count + 1 } else { count }) == 1)
@@ -97,7 +97,7 @@ test fn real_candidates_reach_typed_verdicts() -> Bool {
 
 // An LFF card has the same generation as SFF, but neither obtains a physical-fit
 // claim. This catches the tempting inference OCP 3.0 => SFF in the verdict fold.
-test fn matching_generation_does_not_establish_physical_variant() -> Bool {
+test fn matching_generation_does_not_establish_physical_variant() -> Bool  {
   let result = attachment_for_unit(candidate: OcpNic3 { physical_variant: Lff }, unit: observed_unit)
   match result {
     Admitted { scope: InterfaceGenerationOnly {}, physical_fit: PhysicalFitUnresolved { candidate: OcpNic3 { physical_variant: Lff }, settled_by: settle }, unit_evidence: _ } => settle != ""
@@ -105,7 +105,7 @@ test fn matching_generation_does_not_establish_physical_variant() -> Bool {
   }
 }
 
-test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
+test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool  {
   let other = DeclarationRef { module_path: "test.claim.mtcollins1_candidate_attachment_witness_test", decl_name: "unknown_unit_never_borrows_mtcollins1_observation", field: WholeDeclaration }
   let rows = candidate_verdicts(unit: other)
   list_length(items: rows) == 5 && fold(rows, init: true, f: (acc, row) => acc && match row.verdict {
@@ -129,7 +129,7 @@ test fn unknown_unit_never_borrows_mtcollins1_observation() -> Bool {
 // unit's offered bay. That distinction is the whole reason this control is not a copy of the PCIe one,
 // and whether the OCP path SHOULD refuse on occupancy is the open semantic question tracked on roadmap
 // row fleet-mtcollins1-first-host (gunbc#11390).
-test fn an_unobserved_ocp_standing_survives_into_the_generation_only_receipt() -> Bool {
+test fn an_unobserved_ocp_standing_survives_into_the_generation_only_receipt() -> Bool  {
   let unobserved_bay = UnitExpansionEvidence {
     observation: mtcollins1_expansion_observation,
     pcie: AttachmentPointAbsent { basis: "fixture: not the subject of this control" },
@@ -146,7 +146,7 @@ test fn an_unobserved_ocp_standing_survives_into_the_generation_only_receipt() -
   }
 }
 
-test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool {
+test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool  {
   match attachment_against_evidence(candidate: OcpNic3 { physical_variant: Sff }, evidence: expansion_evidence_for_unit(unit: observed_unit), bay: NoOcpSlot) {
     Refused { cause: AttachmentPointUnavailable { basis: basis } } => basis != ""
     _ => false
@@ -155,7 +155,7 @@ test fn absent_ocp_bay_cannot_admit_a_matching_card() -> Bool {
 
 // A controlled disagreement checks that matching the present sources has not
 // coupled their authorities: changing only the bay claim cannot relabel a card.
-test fn changed_bay_generation_does_not_relabel_the_candidate() -> Bool {
+test fn changed_bay_generation_does_not_relabel_the_candidate() -> Bool  {
   let different_bay = OcpMezzanineSlotPresent {
     generation: "OCP 2.0",
     multi_host: false,
@@ -167,7 +167,7 @@ test fn changed_bay_generation_does_not_relabel_the_candidate() -> Bool {
   }
 }
 
-test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool {
+test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool  {
   fold([Type2, Type3, Type4, Type5], init: true, f: (acc, variant) => acc && match attachment_for_unit(candidate: OcpNic2 { physical_variant: variant }, unit: observed_unit) {
     Refused { cause: WrongOcpGeneration { candidate_generation: _, bay_generation: _ } } => true
     _ => false
@@ -182,7 +182,7 @@ test fn other_ocp2_physical_variants_still_refuse_wrong_generation() -> Bool {
 // left. Deleting it would retire the wall along with the gap it was watching, and the gap is permanent: a
 // unit whose interior nobody has reported must still refuse rather than be admitted on a platform
 // capacity. DESIGN section 4b(4) -- the production handling dissolves on a climb, the evidence does not.
-test fn pcie_refusals_survive_the_candidate_join() -> Bool {
+test fn pcie_refusals_survive_the_candidate_join() -> Bool  {
   let occupied = UnitExpansionEvidence {
     observation: mtcollins1_expansion_observation,
     pcie: AttachmentPointOccupied { basis: "fixture: occupied" },

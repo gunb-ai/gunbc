@@ -154,7 +154,7 @@ fn witness_the_press_specimen_is_reachable_without_a_pointer(body: String) -> Bo
     && string_contains(s: body, pattern: "impulse transient")
 }
 
-test fn instrument_sandbox_live_keystone_holds() -> Bool {
+test fn instrument_sandbox_live_keystone_holds() -> Bool  {
   let r = served()
   let body = r.body
   let markup = body_markup(r: r)

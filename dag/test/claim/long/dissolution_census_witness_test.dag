@@ -63,7 +63,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // as its display key — so a run that starts refusing says WHICH roster refs the resolver
 // could not decide instead of reporting a bare false. A count would have said the same
 // thing about a different set.
-test fn census_verdict_is_answered_over_the_live_tree() -> Bool {
+test fn census_verdict_is_answered_over_the_live_tree() -> Bool  {
   let verdict = dissolution_census_verdict()
   length(xs: dissolution_census_refused_keys(verdict: verdict)) == 0
     && match verdict {
@@ -72,7 +72,7 @@ test fn census_verdict_is_answered_over_the_live_tree() -> Bool {
     }
 }
 
-test fn census_counters_exhaustively_partition_the_rows() -> Bool {
+test fn census_counters_exhaustively_partition_the_rows() -> Bool  {
   match dissolution_census_verdict() {
     DissolutionCensusRefused { undecided: _ } => false
     DissolutionCensusAnswered { report: r } =>
@@ -81,7 +81,7 @@ test fn census_counters_exhaustively_partition_the_rows() -> Bool {
   }
 }
 
-test fn bound_and_unbound_partition_the_same_rows() -> Bool {
+test fn bound_and_unbound_partition_the_same_rows() -> Bool  {
   match dissolution_census_verdict() {
     DissolutionCensusRefused { undecided: _ } => false
     DissolutionCensusAnswered { report: r } => {
@@ -92,12 +92,12 @@ test fn bound_and_unbound_partition_the_same_rows() -> Bool {
   }
 }
 
-test fn census_holds_on_the_live_roster() -> Bool {
+test fn census_holds_on_the_live_roster() -> Bool  {
   dissolution_census_holds()
     && frontier_rows_well_formed(rows: census_closure_frontier_rows())
 }
 
-test fn nothing_is_fired_and_still_present_today() -> Bool {
+test fn nothing_is_fired_and_still_present_today() -> Bool  {
   match dissolution_census_verdict() {
     DissolutionCensusRefused { undecided: _ } => false
     DissolutionCensusAnswered { report: r } => r.fired_still_present_count == 0

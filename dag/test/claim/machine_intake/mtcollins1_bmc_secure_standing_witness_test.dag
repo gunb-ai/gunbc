@@ -40,14 +40,14 @@ import gunbc.machine_intake_mtcollins1_bmc_secure_observation {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn unit1_unit_key_is_bound_by_bind_unit_key() -> Bool {
+test fn unit1_unit_key_is_bound_by_bind_unit_key() -> Bool  {
   match mtcollins1_unit_key_standing {
     UnitKeyBound { key: _ } => true
     UnitKeyRefused { cause: _ } => false
   }
 }
 
-test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
+test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool  {
   match mtcollins1_intake_subject() {
     Absent => false
     Present { value: subject } =>
@@ -83,7 +83,7 @@ test fn unit1_channel_census_mints_bmc_secured_with_managed_secret() -> Bool {
   }
 }
 
-test fn unit1_single_address_without_census_refuses() -> Bool {
+test fn unit1_single_address_without_census_refuses() -> Bool  {
   match mtcollins1_intake_subject() {
     Absent => false
     Present { value: subject } =>
@@ -115,7 +115,7 @@ test fn unit1_single_address_without_census_refuses() -> Bool {
   }
 }
 
-test fn unit1_census_before_rotation_refuses() -> Bool {
+test fn unit1_census_before_rotation_refuses() -> Bool  {
   match mtcollins1_intake_subject() {
     Absent => false
     Present { value: subject } =>

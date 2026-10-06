@@ -56,7 +56,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data decl_ref_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
-test fn decl_ref_resolves_node_kind_authority() -> Bool {
+test fn decl_ref_resolves_node_kind_authority() -> Bool  {
   match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",
@@ -73,7 +73,7 @@ test fn decl_ref_resolves_node_kind_authority() -> Bool {
   }
 }
 
-test fn decl_ref_resolves_decl_ref_constructor() -> Bool {
+test fn decl_ref_resolves_decl_ref_constructor() -> Bool  {
   match resolve_declaration_ref_live(
     ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
     pool_roots: witness_layer_roots
@@ -86,7 +86,7 @@ test fn decl_ref_resolves_decl_ref_constructor() -> Bool {
   }
 }
 
-test fn decl_ref_refuses_module_absent() -> Bool {
+test fn decl_ref_refuses_module_absent() -> Bool  {
   match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "synthetic.g1_module_absent_RED",
@@ -103,7 +103,7 @@ test fn decl_ref_refuses_module_absent() -> Bool {
   }
 }
 
-test fn decl_ref_refuses_declaration_absent() -> Bool {
+test fn decl_ref_refuses_declaration_absent() -> Bool  {
   match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",
@@ -120,7 +120,7 @@ test fn decl_ref_refuses_declaration_absent() -> Bool {
   }
 }
 
-test fn decl_ref_refuses_ambiguous_binding() -> Bool {
+test fn decl_ref_refuses_ambiguous_binding() -> Bool  {
   let facts = [
     DeclFact {
       qualified_name: "std.node.g1_ambiguous",
@@ -154,7 +154,7 @@ test fn decl_ref_refuses_ambiguous_binding() -> Bool {
   }
 }
 
-test fn decl_ref_refuses_named_field_absent() -> Bool {
+test fn decl_ref_refuses_named_field_absent() -> Bool  {
   match resolve_declaration_ref_live(
     ref: DeclarationRef {
       module_path: "v2.std.node",

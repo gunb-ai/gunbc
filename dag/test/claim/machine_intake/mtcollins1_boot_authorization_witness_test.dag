@@ -16,7 +16,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The approval-gate claims that lived here were deleted with the approval stage (operator ruling
 // 2026-09-23); the boot subject they were signed over remains the one record the attach, the handoff
 // and the terminal verdict read, so its derivation from the medium row is still claimed.
-test fn subject_names_the_selected_medium() -> Bool {
+test fn subject_names_the_selected_medium() -> Bool  {
   let s = mtcollins1_boot_subject(execution_revision: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   s.image_name == mtcollins1_boot_medium_image_name(medium: mtcollins1_boot_medium)
     && s.image_sha256 == mtcollins1_boot_medium_image_sha256(medium: mtcollins1_boot_medium)

@@ -85,10 +85,10 @@ import std.types { Bool }
 // 1552ms ceiling. Second candidate this lane has falsified as import-closure pollution (after the
 // loop/bind witnesses), not a second exemplar; see the lane's PR description for the full delta.
 
-test fn declared_import_closure_lists_rust_import() -> Bool {
+test fn declared_import_closure_lists_rust_import() -> Bool  {
   class_b_declared_import_closure_lists_rust_import()
 }
 
-test fn ambient_pool_provider_preserves_listed_import() -> Bool {
+test fn ambient_pool_provider_preserves_listed_import() -> Bool  {
   class_b_ambient_pool_provider_preserves_listed_import()
 }

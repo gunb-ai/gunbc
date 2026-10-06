@@ -125,23 +125,23 @@ fn unused_process_body_at_admitted_revision() -> String {
   )
 }
 
-test fn witness_healthz_mock_body_groundable() -> Bool {
+test fn witness_healthz_mock_body_groundable() -> Bool  {
   healthz_body_groundable(body: "{\"status\":\"ok\"}")
 }
 
-test fn witness_healthz_trailing_lf_body_groundable() -> Bool {
+test fn witness_healthz_trailing_lf_body_groundable() -> Bool  {
   healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "\n"))
 }
 
-test fn witness_healthz_malformed_extension_not_groundable() -> Bool {
+test fn witness_healthz_malformed_extension_not_groundable() -> Bool  {
   !healthz_body_groundable(body: concat("{\"status\":\"ok\"}", "}"))
 }
 
-test fn witness_healthz_bad_body_not_groundable() -> Bool {
+test fn witness_healthz_bad_body_not_groundable() -> Bool  {
   !healthz_body_groundable(body: "")
 }
 
-test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
+test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool  {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match healthz_body_verdict(
       body: witness_ssh_mock_stdout,
@@ -164,7 +164,7 @@ fn witness_argv_join(argv: List<String>) -> String {
 
 // THE PROBE ARGV CARRIES THE DERIVED DEADLINE, NOT THE TOOL DEFAULT: this goes red if the bound
 // regresses to curl_localhost_max_time (the 5 s that refused three deploys).
-test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
+test fn witness_transport_probe_targets_localhost_healthz() -> Bool  {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let url = live_deploy_health_url_for_port(port: port)
   match live_deploy_healthz_probe_deadline(spec: deployment_spec_srv1()) {
@@ -183,7 +183,7 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
   }
 }
 
-test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
+test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool  {
   match observe_service_readiness_from_healthz(
     read: HealthzProbeRefused {
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
@@ -201,7 +201,7 @@ test fn witness_red_control_unanswered_probe_is_pending_not_refused() -> Bool {
   }
 }
 
-test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Bool {
+test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Bool  {
   let bundle = unused_surface_bundle()
   match observe_service_readiness_from_healthz(
     read: HealthzBodyRead { body: unused_process_body_at_admitted_revision() },
@@ -220,18 +220,18 @@ test fn witness_red_control_pre_restart_mismatch_is_pending_not_refused() -> Boo
   }
 }
 
-test fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool {
+test fn witness_transport_status_probe_uses_typed_systemctl_argv() -> Bool  {
   systemctl_status_operation_argv_matches_authority(
     unit: live_deploy_service_ready_unit_authority
   )
 }
 
-test fn witness_transport_status_probe_realizes_hermetically() -> Bool {
+test fn witness_transport_status_probe_realizes_hermetically() -> Bool  {
   let r = systemd.Systemctl.Status(unit: live_deploy_service_ready_unit_authority)
   r.stdout != ""
 }
 
-test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
+test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bool  {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let read = live_deploy_healthz_get_for_port(
     port: port,
@@ -250,11 +250,11 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   }
 }
 
-test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool {
+test fn witness_sleep_second_carrier_projection_paces_poll() -> Bool  {
   sleep_delay_seconds_second_carrier_projection(duration: live_deploy_service_ready_poll_cadence_seconds())
 }
 
-test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
+test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool  {
   match sleep_delay_seconds_flat_scalar_dissolution_trigger {
     Scaffold {
       dissolves_to: RealizationDispatch,
@@ -267,7 +267,7 @@ test fn witness_sleep_flat_scalar_dissolution_trigger_tracked() -> Bool {
   }
 }
 
-test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
+test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool  {
   let spec = deployment_spec_srv1()
   let probe = live_deploy_service_ready_once_for_deploy(
     spec: spec,
@@ -283,7 +283,7 @@ test fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() ->
   }
 }
 
-test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool {
+test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Bool  {
   let max_attempts = live_deploy_service_ready_poll_max_attempts()
   let r = live_deploy_poll_service_ready_after_attempts(
     spec: deployment_spec_srv1(),
@@ -304,11 +304,11 @@ test fn witness_red_control_readiness_never_ready_refuses_at_poll_bound() -> Boo
   }
 }
 
-test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
+test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool  {
   live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence_seconds())
 }
 
-test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
+test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool  {
   let reason = service_not_ready_reason(refusal: ServiceNotReady {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
@@ -325,7 +325,7 @@ test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
 // THE LOCAL PROBE DEADLINE IS THE UNIT'S WALL LIMIT DOUBLED, never the curl tool default: srv1's
 // spec declares a 120 s wall, so the probe waits 240 s; a spec with no wall limit grounds no
 // deadline and the probe refuses.
-test fn the_healthz_probe_deadline_derives_from_the_serve_wall_limit() -> Bool {
+test fn the_healthz_probe_deadline_derives_from_the_serve_wall_limit() -> Bool  {
   match live_deploy_healthz_probe_deadline(spec: deployment_spec_srv1()) {
     Present { value: d } => second_count(s: d) == 240
     Absent => false

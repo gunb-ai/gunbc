@@ -161,7 +161,7 @@ fn covers(route: MtCollins1BootRoute) -> Bool {
     })
 }
 
-test fn every_route_is_adjacent_and_covers_hold_to_its_last_phase() -> Bool {
+test fn every_route_is_adjacent_and_covers_hold_to_its_last_phase() -> Bool  {
   covers(route: completed())
     && covers(route: attach_refused())
     && covers(route: handoff_refused())
@@ -169,7 +169,7 @@ test fn every_route_is_adjacent_and_covers_hold_to_its_last_phase() -> Bool {
     && covers(route: sol_refused())
 }
 
-test fn a_completed_route_reports_offset_and_span_per_phase() -> Bool {
+test fn a_completed_route_reports_offset_and_span_per_phase() -> Bool  {
   let t = text_of(route: completed())
   contains(t, "phase sol_acquire: first_action=+0ms verified_after=2400ms")
     && contains(t, "phase handoff: first_action=+8000ms verified_after=12000ms")
@@ -181,7 +181,7 @@ test fn a_completed_route_reports_offset_and_span_per_phase() -> Bool {
 // THE ATTACH-REFUSED ROUTE: the attach prints REFUSED with its cause and never "verified"; the
 // handoff, SMpro pass and terminal watch print not reached with no number; param5_after begins where
 // the attach ended.
-test fn a_refused_attach_marks_later_phases_not_reached_and_the_next_phase_follows_it() -> Bool {
+test fn a_refused_attach_marks_later_phases_not_reached_and_the_next_phase_follows_it() -> Bool  {
   let t = text_of(route: attach_refused())
   contains(t, "phase media_attach: first_action=+3000ms REFUSED_after=5000ms (fixture: virtual media readback did not match)")
     && !contains(t, "phase media_attach: first_action=+3000ms verified_after")
@@ -192,27 +192,27 @@ test fn a_refused_attach_marks_later_phases_not_reached_and_the_next_phase_follo
     && contains(t, "phase sol_release: first_action=+14000ms verified_after=1000ms")
 }
 
-test fn a_refused_handoff_skips_the_watch_and_the_next_phase_follows_it() -> Bool {
+test fn a_refused_handoff_skips_the_watch_and_the_next_phase_follows_it() -> Bool  {
   let t = text_of(route: handoff_refused())
   contains(t, "phase handoff: first_action=+8000ms REFUSED_after=61000ms (fixture: chassis power did not transition)")
     && contains(t, "phase terminal_watch: not reached (power on was never verified)")
     && contains(t, "phase param5_after: first_action=+69000ms verified_after=1000ms")
 }
 
-test fn a_refused_terminal_watch_keeps_its_time_and_its_cause() -> Bool {
+test fn a_refused_terminal_watch_keeps_its_time_and_its_cause() -> Bool  {
   let t = text_of(route: terminal_refused())
   contains(t, "phase terminal_watch: first_action=+22000ms REFUSED_after=480000ms (fixture: deadline reached without a host-capture terminal)")
     && contains(t, "phase power_after: first_action=+503000ms verified_after=30000ms")
 }
 
-test fn a_refused_sol_acquire_holds_nothing_after_it() -> Bool {
+test fn a_refused_sol_acquire_holds_nothing_after_it() -> Bool  {
   let t = text_of(route: sol_refused())
   contains(t, "phase sol_acquire: first_action=+0ms REFUSED_after=2500ms (fixture: activate refused)")
     && contains(t, "phase media_attach: not reached (the SOL lease was not acquired, so nothing was written)")
     && contains(t, "phase sol_release: not reached (the SOL lease was not acquired, so nothing was written)")
 }
 
-test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> Bool {
+test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> Bool  {
   let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
     hold_acquired: at(ms: 5000),
     start: BootStartCold,
@@ -221,7 +221,7 @@ test fn a_clock_that_goes_back_refuses_rather_than_printing_negative_time() -> B
   contains(t, "verified_after=REFUSED: clock went back from 5000 to 4000 ms") && !contains(t, "-1000ms")
 }
 
-test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
+test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool  {
   let t = mtcollins1_boot_phase_timing_text(t: MtCollins1BootPhaseTiming {
     hold_acquired: at(ms: 5000),
     start: BootStartCold,
@@ -230,12 +230,12 @@ test fn an_unread_clock_prints_its_cause_not_a_number() -> Bool {
   contains(t, "verified_after=unread (fixture: /proc/uptime read failed)")
 }
 
-test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool {
+test fn power_up_is_cold_and_power_cycle_is_warm() -> Bool  {
   (match mtcollins1_boot_start_of(transition: PoweredOn) { BootStartCold => true  _ => false })
     && (match mtcollins1_boot_start_of(transition: PowerCycled) { BootStartWarm => true  _ => false })
 }
 
-test fn an_attempt_that_never_held_says_so() -> Bool {
+test fn an_attempt_that_never_held_says_so() -> Bool  {
   let t = mtcollins1_boot_phase_timing_text(t: mtcollins1_boot_phase_timing_not_taken(reason: "the unit hold was refused"))
   contains(t, "boot_start=unobserved (the unit hold was refused)") && contains(t, "phases: none reached")
 }
@@ -249,12 +249,12 @@ fn uptime_refused(text: String) -> Bool {
   }
 }
 
-test fn proc_uptime_accepts_exactly_the_kernel_record() -> Bool {
+test fn proc_uptime_accepts_exactly_the_kernel_record() -> Bool  {
   (match proc_uptime_parse(text: "350735.47 234388.90\n") { UptimeObserved { uptime: u } => millisecond_count(m: u) == 350735470  UptimeRefused { detail: _ } => false })
     && (match proc_uptime_parse(text: "0.00 0.00\n") { UptimeObserved { uptime: u } => millisecond_count(m: u) == 0  UptimeRefused { detail: _ } => false })
 }
 
-test fn proc_uptime_refuses_bad_framing() -> Bool {
+test fn proc_uptime_refuses_bad_framing() -> Bool  {
   uptime_refused(text: "")
     && uptime_refused(text: "350735.47 234388.90")
     && uptime_refused(text: "350735.47\n")
@@ -264,7 +264,7 @@ test fn proc_uptime_refuses_bad_framing() -> Bool {
     && uptime_refused(text: "350735.47  234388.90\n")
 }
 
-test fn proc_uptime_refuses_malformed_and_signed_fields() -> Bool {
+test fn proc_uptime_refuses_malformed_and_signed_fields() -> Bool  {
   uptime_refused(text: "350735.47 not-a-number\n")
     && uptime_refused(text: "350735 234388.90\n")
     && uptime_refused(text: "350735.4 234388.90\n")
@@ -279,7 +279,7 @@ test fn proc_uptime_refuses_malformed_and_signed_fields() -> Bool {
 
 // THE REAL CLOCK ROUTE: two readings of this machine's /proc/uptime through the procfs transport
 // the actuation uses. Both are observations and the second is not below the first.
-test fn the_real_uptime_clock_reads_and_does_not_go_back() -> Bool {
+test fn the_real_uptime_clock_reads_and_does_not_go_back() -> Bool  {
   let a = proc_uptime_read()
   let b = proc_uptime_read()
   match a {
@@ -296,7 +296,7 @@ fn smpro_raw(socket: Int, exit_code: Int, stdout: String, stderr: String) -> Smp
   SmproProbeRaw { sequence: 0, socket: socket, register: smpro_bootstage_reg.name, request: "raw 0x06 0x52 0x05 0x9e 0x02 0xb0 0x02", at: "2026-09-27T12:00:00Z", exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
 
-test fn an_smpro_pass_is_verified_only_when_a_register_answered() -> Bool {
+test fn an_smpro_pass_is_verified_only_when_a_register_answered() -> Bool  {
   let nak = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 1, stdout: "", stderr: "Unable to send RAW command (channel=0x0 netfn=0x6 lun=0x0 cmd=0x52 rsp=0x83): Unknown (0x83)"))
   let timeout = smpro_probe_outcome(raw: smpro_raw(socket: 1, exit_code: 124, stdout: "", stderr: ""))
   let word = smpro_probe_outcome(raw: smpro_raw(socket: 0, exit_code: 0, stdout: "09 02", stderr: ""))

@@ -301,23 +301,23 @@ data mutation_altered_gunbc: Outcome<String> = e(statements: repack(
   names: ci_floor_required_artifact_names(),
 ))
 
-test fn release_bins_restore_positive_promotes_verified_members() -> Bool {
+test fn release_bins_restore_positive_promotes_verified_members() -> Bool  {
   succeeded_with(script: script_restore_positive_promotes_verified_members, marker: "ReleaseBinsReuseReceipt")
 }
 
-test fn release_bins_consumer_positive_promotes_verified_members() -> Bool {
+test fn release_bins_consumer_positive_promotes_verified_members() -> Bool  {
   succeeded_with(script: script_consumer_positive_promotes_verified_members, marker: "")
 }
 
-test fn release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+test fn release_bins_RED_restore_malformed_manifest_line_with_altered_member_refuses() -> Bool  {
   refused_as(script: script_RED_restore_malformed_manifest_line_with_altered_member_refuses, refusal: "ManifestMalformed")
 }
 
-test fn release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses() -> Bool {
+test fn release_bins_RED_consumer_malformed_manifest_line_with_altered_member_refuses() -> Bool  {
   refused_as(script: script_RED_consumer_malformed_manifest_line_with_altered_member_refuses, refusal: "ManifestMalformed")
 }
 
-test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() -> Bool {
+test fn release_bins_RED_restore_altered_member_with_valid_manifest_refuses() -> Bool  {
   refused_as(script: script_RED_restore_altered_member_with_valid_manifest_refuses, refusal: "MemberDigestMismatch")
 }
 
@@ -340,27 +340,27 @@ data mutation_extra_member: Outcome<String> = e(statements: repack(
 
 data mutation_duplicate_member: Outcome<String> = e(statements: repack(edit: [], names: concat(ci_floor_required_artifact_names(), ["gunbc"])))
 
-test fn release_bins_RED_restore_symlink_member_refuses() -> Bool {
+test fn release_bins_RED_restore_symlink_member_refuses() -> Bool  {
   refused_as(script: script_RED_restore_symlink_member_refuses, refusal: "MemberNotRegularFile")
 }
 
-test fn release_bins_RED_consumer_symlink_member_refuses() -> Bool {
+test fn release_bins_RED_consumer_symlink_member_refuses() -> Bool  {
   refused_as(script: script_RED_consumer_symlink_member_refuses, refusal: "MemberNotRegularFile")
 }
 
-test fn release_bins_RED_restore_extra_member_refuses() -> Bool {
+test fn release_bins_RED_restore_extra_member_refuses() -> Bool  {
   refused_as(script: script_RED_restore_extra_member_refuses, refusal: "PackListingNotRoster")
 }
 
-test fn release_bins_RED_consumer_extra_member_refuses() -> Bool {
+test fn release_bins_RED_consumer_extra_member_refuses() -> Bool  {
   refused_as(script: script_RED_consumer_extra_member_refuses, refusal: "PackListingNotRoster")
 }
 
-test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool {
+test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool  {
   refused_as(script: script_RED_restore_duplicate_member_refuses, refusal: "PackListingNotRoster")
 }
 
-test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool {
+test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool  {
   refused_as(script: script_RED_consumer_duplicate_member_refuses, refusal: "PackListingNotRoster")
 }
 
@@ -373,31 +373,31 @@ data body_wrong_shape_row: Outcome<String> = answer_body(body: "{\"total_count\"
 data body_value_stream: Outcome<String> = answer_body(body: "\"absent\"\n\"present\"")
 data body_two_documents: Outcome<String> = answer_body(body: "{\"total_count\":0,\"actions_caches\":[]}\n{\"total_count\":0,\"actions_caches\":[]}")
 
-test fn release_bins_lookup_valid_empty_answer_is_absence() -> Bool {
+test fn release_bins_lookup_valid_empty_answer_is_absence() -> Bool  {
   succeeded_with(script: script_lookup_valid_empty_answer_is_absence, marker: "decoded standing=absent")
 }
 
-test fn release_bins_RED_lookup_count_without_rows_refuses() -> Bool {
+test fn release_bins_RED_lookup_count_without_rows_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_count_without_rows_refuses, refusal: "LookupAnswerUnusable")
 }
 
-test fn release_bins_RED_lookup_truncated_answer_refuses() -> Bool {
+test fn release_bins_RED_lookup_truncated_answer_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_truncated_answer_refuses, refusal: "LookupAnswerUnusable")
 }
 
-test fn release_bins_RED_lookup_count_disagreeing_with_rows_refuses() -> Bool {
+test fn release_bins_RED_lookup_count_disagreeing_with_rows_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_count_disagreeing_with_rows_refuses, refusal: "LookupAnswerUnusable")
 }
 
-test fn release_bins_RED_lookup_wrong_shape_row_refuses() -> Bool {
+test fn release_bins_RED_lookup_wrong_shape_row_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_wrong_shape_row_refuses, refusal: "LookupAnswerUnusable")
 }
 
-test fn release_bins_RED_lookup_value_stream_refuses() -> Bool {
+test fn release_bins_RED_lookup_value_stream_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_value_stream_refuses, refusal: "LookupAnswerUnusable")
 }
 
-test fn release_bins_RED_lookup_two_documents_refuses() -> Bool {
+test fn release_bins_RED_lookup_two_documents_refuses() -> Bool  {
   refused_as(script: script_RED_lookup_two_documents_refuses, refusal: "LookupAnswerUnusable")
 }
 
@@ -428,11 +428,11 @@ data part_decode_dispatch: Outcome<String> = e(statements: concat(
 data script_tag_dispatch_entry_is_present: TransportScript? = release_bins_transport(parts: [part_fixture_env, part_supplied_key, dispatch_answer(entry_ref: dispatch_tag_scope_ref), part_decode_dispatch])
 data script_RED_other_tag_entry_is_absence: TransportScript? = release_bins_transport(parts: [part_fixture_env, part_supplied_key, dispatch_answer(entry_ref: "refs/heads/refs/tags/deploy/another"), part_decode_dispatch])
 
-test fn release_bins_tag_dispatch_entry_is_present() -> Bool {
+test fn release_bins_tag_dispatch_entry_is_present() -> Bool  {
   succeeded_with(script: script_tag_dispatch_entry_is_present, marker: "decoded standing=present")
 }
 
-test fn release_bins_RED_other_tag_entry_is_absence() -> Bool {
+test fn release_bins_RED_other_tag_entry_is_absence() -> Bool  {
   succeeded_with(script: script_RED_other_tag_entry_is_absence, marker: "decoded standing=absent")
 }
 
@@ -452,23 +452,23 @@ data env_registry_token: Outcome<String> = exports(assignments: [join(["CARGO_RE
 data env_named_registry_token: Outcome<String> = exports(assignments: [join(["CARGO_REGISTRIES_PRIVATE_TOKEN=", release_bins_credential_sentinel], "")])
 data env_partial_print_rustc: Outcome<String> = e(statements: fake_tool(name: "rustc", lines: ["echo 'rustc 1.93.0 (partial'", "exit 1"]))
 
-test fn release_bins_unchanged_inputs_key_equally() -> Bool {
+test fn release_bins_unchanged_inputs_key_equally() -> Bool  {
   succeeded_with(script: script_unchanged_inputs_key_equally, marker: "keys equal")
 }
 
-test fn release_bins_release_opt_level_override_changes_the_key() -> Bool {
+test fn release_bins_release_opt_level_override_changes_the_key() -> Bool  {
   succeeded_with(script: script_release_opt_level_override_changes_the_key, marker: "keys differ")
 }
 
-test fn release_bins_multiline_rustflags_keys_apart_from_its_first_line() -> Bool {
+test fn release_bins_multiline_rustflags_keys_apart_from_its_first_line() -> Bool  {
   succeeded_with(script: script_multiline_rustflags_keys_apart_from_its_first_line, marker: "keys differ")
 }
 
-test fn release_bins_RED_compiler_override_refuses() -> Bool {
+test fn release_bins_RED_compiler_override_refuses() -> Bool  {
   refused_as(script: script_RED_compiler_override_refuses, refusal: "BuildOverrideNotAdmitted")
 }
 
-test fn release_bins_RED_ancestor_cargo_config_refuses() -> Bool {
+test fn release_bins_RED_ancestor_cargo_config_refuses() -> Bool  {
   refused_as(script: script_RED_ancestor_cargo_config_refuses, refusal: "AncestorCargoConfigPresent")
 }
 
@@ -479,22 +479,22 @@ fn credential_refused_unprinted(script: TransportScript?) -> Bool {
     && !string_contains(s: r.stdout, pattern: release_bins_credential_sentinel)
 }
 
-test fn release_bins_RED_registry_token_refuses_and_is_never_printed() -> Bool {
+test fn release_bins_RED_registry_token_refuses_and_is_never_printed() -> Bool  {
   credential_refused_unprinted(script: script_registry_token)
 }
 
-test fn release_bins_RED_named_registry_token_refuses_and_is_never_printed() -> Bool {
+test fn release_bins_RED_named_registry_token_refuses_and_is_never_printed() -> Bool  {
   credential_refused_unprinted(script: script_named_registry_token)
 }
 
 // ── Producer status: a producer that prints part of its output and then fails stops the key ────
-test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() -> Bool {
+test fn release_bins_RED_partial_print_then_failing_producer_publishes_no_key() -> Bool  {
   let r = run_script(script: script_partial_print_rustc)
   r.ran && !r.success && !string_contains(s: r.stdout, pattern: "release-bins request key")
 }
 
 // The candidate's retention is a duration authored in whole days; the emitted retention-days is that
 // duration converted at the GitHub boundary, and it is the one day fleet-desired needs.
-test fn the_candidate_retention_is_whole_days_and_emits_one_day() -> Bool {
+test fn the_candidate_retention_is_whole_days_and_emits_one_day() -> Bool  {
   compiler_pair_candidate_retention_is_whole_days() && compiler_pair_candidate_retention_whole_days() == 1
 }

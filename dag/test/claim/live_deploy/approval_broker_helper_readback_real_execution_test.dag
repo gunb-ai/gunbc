@@ -58,20 +58,20 @@ fn reached(stdout: String) -> Bool {
 
 // (1) THE POSITIVE CONTROL: a fully observable tree the running user owns, with nothing group- or
 // world-writable and no link, passes, and the grant step runs.
-test fn a_clean_observable_snapshot_reaches_the_grant_by_real_execution() -> Bool {
+test fn a_clean_observable_snapshot_reaches_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(command: bash_program_command(script: readback_program(setup: clean_snapshot_setup)), transport: LocalExec)
   obs.exit_code == 0 && reached(stdout: obs.stdout)
 }
 
 // (2) THE OBSERVATION FAILED: the snapshot does not exist, so find exits nonzero and prints nothing.
 // The pre-fix form read that empty output as clean and reached the grant. It must stop here.
-test fn a_missing_snapshot_stops_before_the_grant_by_real_execution() -> Bool {
+test fn a_missing_snapshot_stops_before_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(command: bash_program_command(script: readback_program(setup: "")), transport: LocalExec)
   obs.exit_code != 0 && !reached(stdout: obs.stdout)
 }
 
 // The same failure one level up: an ancestor that does not exist.
-test fn a_missing_ancestor_stops_before_the_grant_by_real_execution() -> Bool {
+test fn a_missing_ancestor_stops_before_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(
     command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "mv a/b a/moved\n"))),
     transport: LocalExec,
@@ -81,7 +81,7 @@ test fn a_missing_ancestor_stops_before_the_grant_by_real_execution() -> Bool {
 
 // (3) THE OBSERVATION FOUND A VIOLATION: a group-writable entry, a symlink inside the snapshot, and a
 // symlinked ancestor each stop the stage.
-test fn a_writable_entry_stops_before_the_grant_by_real_execution() -> Bool {
+test fn a_writable_entry_stops_before_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(
     command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "chmod 664 a/b/snap/dag/sub/f.dag\n"))),
     transport: LocalExec,
@@ -89,7 +89,7 @@ test fn a_writable_entry_stops_before_the_grant_by_real_execution() -> Bool {
   obs.exit_code != 0 && !reached(stdout: obs.stdout)
 }
 
-test fn a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution() -> Bool {
+test fn a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(
     command: bash_program_command(script: readback_program(setup: concat(clean_snapshot_setup, "ln -s /etc/passwd a/b/snap/dag/link\n"))),
     transport: LocalExec,
@@ -97,7 +97,7 @@ test fn a_symlink_in_the_snapshot_stops_before_the_grant_by_real_execution() -> 
   obs.exit_code != 0 && !reached(stdout: obs.stdout)
 }
 
-test fn a_symlinked_ancestor_stops_before_the_grant_by_real_execution() -> Bool {
+test fn a_symlinked_ancestor_stops_before_the_grant_by_real_execution() -> Bool  {
   let obs = run_shell_command_observe(
     command: bash_program_command(script: readback_program(setup: concat(
       clean_snapshot_setup,
