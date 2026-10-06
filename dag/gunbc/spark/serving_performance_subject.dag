@@ -10,10 +10,11 @@ import extdeps.vllm.engine_args {
   VllmIndexerKvDtypeRequest, vllm_indexer_kv_dtype_key, VllmSchedulerAdmissionRequest, vllm_scheduler_admission_key,
 }
 import extdeps.nvidia.nccl { NcclRealizedTransport, nccl_realized_transport_wire }
+import extdeps.docker.cli { DockerEnvAssignment }
 import gunbc.spark.serving_arm {
   ServingCheckpoint, ServingRuntime, ServingTopology,
   serving_checkpoint_wire, serving_runtime_wire, serving_topology_wire,
-  ServingLaunchProfile, serving_checkpoint_row, serving_topology_rank_count, serving_launch_profile_key,
+  ServingLaunchProfile, serving_checkpoint_row, serving_topology_rank_count, serving_launch_profile_key, serving_deployment_env_key,
   QuantizationSpelledOnArgv, QuantizationResolvedFromCheckpointConfig,
 }
 
@@ -70,6 +71,7 @@ type ServingPerformanceSubject sole_constructor {
   indexer_kv_dtype: VllmIndexerKvDtypeRequest?
   scheduler_admission: VllmSchedulerAdmissionRequest?
   launch_profile_key: String?
+  deployment_env_key: String?
 }
 
 // THE FACTORY IS THE ONLY WAY TO BUILD ONE, which is what `sole_constructor` buys and is the same
@@ -93,6 +95,7 @@ fn serving_performance_subject(
   indexer_kv_dtype: VllmIndexerKvDtypeRequest?,
   scheduler_admission: VllmSchedulerAdmissionRequest?,
   launch_profile_key: String?,
+  deployment_env_key: String?,
 ) -> ServingPerformanceSubject {
   ServingPerformanceSubject {
     checkpoint: checkpoint,
@@ -110,6 +113,7 @@ fn serving_performance_subject(
     indexer_kv_dtype: indexer_kv_dtype,
     scheduler_admission: scheduler_admission,
     launch_profile_key: launch_profile_key,
+    deployment_env_key: deployment_env_key,
   }
 }
 
@@ -135,6 +139,7 @@ fn serving_subject_for_launch(
   runtime_image_reference: NonEmptyStr,
   topology: ServingTopology,
   profile: ServingLaunchProfile,
+  deployment_env: List<DockerEnvAssignment>,
   collective_transport: NcclRealizedTransport?,
 ) -> ServingPerformanceSubject {
   serving_performance_subject(
@@ -153,6 +158,7 @@ fn serving_subject_for_launch(
     indexer_kv_dtype: Present { value: profile.indexer_kv_dtype },
     scheduler_admission: Present { value: profile.scheduler_admission },
     launch_profile_key: Present { value: serving_launch_profile_key(p: profile) },
+    deployment_env_key: Present { value: serving_deployment_env_key(env: deployment_env) },
   )
 }
 
@@ -204,6 +210,7 @@ type ServingSubjectAxis
   | AxisIndexerKvDtype
   | AxisSchedulerAdmission
   | AxisLaunchProfile
+  | AxisDeploymentEnv
 
 fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
   match a {
@@ -223,6 +230,7 @@ fn serving_subject_axis_wire(a: ServingSubjectAxis) -> NonEmptyStr {
     AxisIndexerKvDtype => "indexer kv dtype" as NonEmptyStr
     AxisSchedulerAdmission => "scheduler admission" as NonEmptyStr
     AxisLaunchProfile => "launch profile" as NonEmptyStr
+    AxisDeploymentEnv => "deployment env" as NonEmptyStr
   }
 }
 
@@ -296,6 +304,11 @@ fn serving_subject_axis_value(s: ServingPerformanceSubject, a: ServingSubjectAxi
         Absent => axis_value_unread_marker
         Present { value: k } => k as NonEmptyStr
       }
+    AxisDeploymentEnv =>
+      match s.deployment_env_key {
+        Absent => axis_value_unread_marker
+        Present { value: k } => k as NonEmptyStr
+      }
   }
 }
 
@@ -318,6 +331,7 @@ data serving_subject_axes: List<ServingSubjectAxis> = [
   AxisIndexerKvDtype,
   AxisSchedulerAdmission,
   AxisLaunchProfile,
+  AxisDeploymentEnv,
 ]
 
 fn serving_subject_axis_agrees(left: ServingPerformanceSubject, right: ServingPerformanceSubject, a: ServingSubjectAxis) -> Bool {
@@ -397,6 +411,8 @@ fn subject_axis_is_unknown(s: ServingPerformanceSubject, a: ServingSubjectAxis) 
       match s.scheduler_admission { Absent => true, Present { value: _ } => false }
     AxisLaunchProfile =>
       match s.launch_profile_key { Absent => true, Present { value: _ } => false }
+    AxisDeploymentEnv =>
+      match s.deployment_env_key { Absent => true, Present { value: _ } => false }
   }
 }
 

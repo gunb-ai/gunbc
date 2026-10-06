@@ -564,5 +564,5 @@ fn w_v41_key() -> ServingSubjectKey {
     runtime_image_reference: "fixture@sha256:0" as NonEmptyStr, topology: Absent, rank_population: Absent,
     context_ceiling: Absent, max_num_batched_tokens: token_count(count: 8192), max_num_seqs: Absent,
     kv_cache_dtype: Absent, speculative: Absent, collective_transport: Absent, indexer_kv_dtype: Absent,
-    scheduler_admission: Absent, launch_profile_key: Absent))
+    scheduler_admission: Absent, launch_profile_key: Absent, deployment_env_key: Present { value: "env=none" } ))
 }

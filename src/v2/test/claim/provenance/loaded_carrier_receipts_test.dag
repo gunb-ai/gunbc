@@ -245,99 +245,40 @@ test fn a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_hol
   length(xs: lcr_root_nodes()) == 2
 }
 
-// RECEIPT 2 -- DEFECT RECORD, ON THE INDEX PATH SPECIFICALLY: a record TYPE
-// declaration never reaches the symbol index, while a fn declaration in the same
-// module does.
-//
-// WHAT THIS IS NOT. It is NOT "record types do not resolve cross-file". On main
-// they demonstrably do: 03_resolve.dag itself imports NormalizedTree,
-// DeclarationRef and Disposition as ordinary cross-file record types, and the
-// required v2-emission phase compiles that closure green. An earlier draft of
-// this row omitted the path and therefore read as a claim about main; it was
-// wrong in the direction that gets someone dispatched at a non-problem.
-//
-// BY WHAT MECHANISM MAIN SUPPLIES THOSE NAMES IS NOT ESTABLISHED HERE, and this
-// row deliberately does not guess. What IS measured is the ordering:
-// resolve_atom asks lookup_chain first and reaches the index only on Absent, so
-// the index is a fallback rather than the primary answer. Two accounts of what
-// fills the primary layer were considered and NEITHER is confirmed -- imports at
-// a scope layer, and bindings harvested from the assembled tree -- and
-// harvest_conj_named_bindings inspects only the DIRECT children of a Conj root,
-// whose children in an assembled program are module spines rather than
-// declarations, which fits neither account cleanly. A third stage may supply
-// them. Establishing that is separate work and no claim about it is made here.
-//
-// WHAT IT IS: on the INDEX path -- inline, import-free source, resolution asked
-// of the index alone -- the type is absent and the fn is present. The asymmetry
-// is the evidence, and it locates the loss BEFORE indexing rather than in the
-// index: the type name appears as a Named EDGE zero times anywhere in the loaded
-// producer root, so symbol_index_fill is correct on the tree it is handed.
-//
-// This is the partial-drop case namespace_graft's own comment names as out of
-// scope ("partial-drop fidelity is the deeper graft repair"). Its dissolution
-// guard cannot see it: that guard fires only when the collected body is EMPTY,
-// and here the fn survived while the type did not.
-//
-// WHETHER THE LOSS ALSO DEFEATS THE BINDING LAYER IS UNMEASURED, and the obvious
-// probe is a NULL INSTRUMENT rather than an answer. Asking
-// namespace_bindings_augment_from_module_atoms of a loaded module root returns
-// zero for the record type AND zero for the fn -- and the fn demonstrably does
-// resolve in a real compilation, so an instrument that reads zero for the working
-// case cannot discriminate the broken one. The cause is structural:
-// harvest_conj_named_bindings inspects only the DIRECT children of a Conj root,
-// and after grafting a loaded root's direct children are the module spine rather
-// than declarations. Measuring the binding layer needs a real assembled-program
-// namespace, not a per-root harvest. So this row stays scoped to what was
-// actually measured; a widening to "no consumer of this tree can resolve it" is
-// plausible from the zero-Named-edge evidence and is NOT claimed here.
-//
-// WHY THE NARROWED CLAIM IS MORE LOAD-BEARING THAN THE BROAD ONE, not less: a
-// tree with no imports has no scope layer to fall back on, so the index is not a
-// fallback there -- it is the ONLY path, and every cross-file type reference goes
-// through it. This measures the namespace cut's TARGET conditions, where a main
-// corner case becomes the ordinary path. Whether it accounts for any of that
-// axis's emission errors is UNRUN and is not claimed here.
-//
-// THIS ROW GOES RED WHEN THE GRAFT REPAIR LANDS. That is a property of what it
-// asserts, not an instruction left for a future editor: DESIGN 4b(4) already
-// governs the disposition -- a climb dissolves the production machinery it
-// obsoletes while the discriminating evidence STAYS ENROLLED, and an
-// expecting-red probe that greens flips to a permanent regression control rather
-// than retiring. The obligation is carried by that clause, not by this comment.
-test fn a_record_type_declaration_does_not_reach_the_index_while_a_fn_does_holds() -> Bool {
+// RECEIPT 2 -- REGRESSION CONTROL, FLIPPED FROM A DEFECT RECORD (DESIGN 4b(4)). This row was
+// enrolled (#9597) as an expecting-red probe: on the INDEX path -- inline, import-free source,
+// resolution asked of the index alone -- a record TYPE declaration never reached the symbol index
+// while a fn in the same module did, because the type name appeared as a Named edge zero times in
+// the loaded producer root (the partial-drop case namespace_graft named as out of scope). The row
+// said it would go red when that repair landed, and it did: first-parent bisect places the flip at
+// 10e01b1169 (#12033, Pkg11c: variant and record fields lower into declared field identities on the
+// native route), whose lowering keeps the record declaration on the carrier. An expecting-red probe
+// that greens becomes a permanent regression control rather than retiring, so this row now asserts
+// the repaired state -- the type and the fn both reach the index, each named once on the loaded
+// root -- and goes red if record declarations are dropped before indexing again.
+test fn a_record_type_declaration_reaches_the_index_as_a_fn_does_holds() -> Bool {
   let fn_is_indexed = lcr_indexed(dotted: "lcr.producer.producer_anchor")
-  let type_is_not_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker") == false
+  let type_is_indexed = lcr_indexed(dotted: "lcr.producer.CrossFileMarker")
   let fn_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^producer_anchor) == 1
-  let type_is_named_never = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 0
-  fn_is_indexed && type_is_not_indexed && fn_is_named_once && type_is_named_never
+  let type_is_named_once = lcr_named_edges_in(module_qn: lcr_producer_qn, wanted: ^CrossFileMarker) == 1
+  fn_is_indexed && type_is_indexed && fn_is_named_once && type_is_named_once
 }
 
-// RECEIPT 3 -- CARRIER SHAPE, measured on the same inline load: function bodies
-// are still TOKEN-LEVEL in the normalized tree, so body references are not nodes
-// there. This one is a property of the normalized carrier itself and does not
-// depend on the index-only condition above.
-//
-// The discriminator is a raw token atom being present in the loaded consumer root
-// while the callee its body names is absent from that same root -- even though
-// the callee IS globally bound in the index built from these very roots. So the
-// absence is not "the name does not exist"; it is "the body has not been lowered
-// into references yet".
-//
-// CONSEQUENCE, and it is why this row is worth executing rather than asserting in
-// prose: ANY derivation of "which names does this module reference" that walks the
-// normalized root cannot see body references at all. It must sit at or after
-// resolution. A walk over this carrier does not fail loudly -- it silently returns
-// grammar machinery and misses the real references, which is the shape of a wrong
-// answer rather than a refusal.
-//
-// THIS ROW GOES RED WHEN BODY LOWERING MOVES AHEAD OF THIS CARRIER, for the same
-// reason as the row above and under the same clause: DESIGN 4b(4) owns what
-// happens to the evidence when the state it records changes.
-test fn function_bodies_are_token_level_in_the_normalized_carrier_holds() -> Bool {
-  let a_raw_token_is_present = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^dag_token_lbrace) > 0
-  let the_callee_is_not_a_node = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^producer_anchor) == 0
-  let but_the_callee_is_indexed = lcr_globally_bound(name: ^producer_anchor)
-  a_raw_token_is_present && the_callee_is_not_a_node && but_the_callee_is_indexed
+// RECEIPT 3 -- REGRESSION CONTROL, FLIPPED FROM A CARRIER-SHAPE RECORD (DESIGN 4b(4)). Enrolled
+// (#9597) as the measurement that function bodies were still TOKEN-LEVEL in the normalized tree: a
+// raw `{` token atom present in the loaded consumer root while the callee its body names was absent
+// from that root, though globally bound. The row said it would go red when body lowering moved ahead
+// of this carrier, and it did: first-parent bisect places the flip at 0203f8e418 (#11595, v2 lowering
+// stops dropping a call in a brace-bodied fn). The control now asserts the lowered state -- no raw
+// brace token survives in the consumer root, the callee its body names IS a node there, and that
+// callee is globally bound in the index built from these very roots -- so a walk over this carrier
+// that derives a module's body references is admissible, and the row goes red if bodies regress to
+// token level.
+test fn function_bodies_are_lowered_in_the_normalized_carrier_holds() -> Bool {
+  let no_raw_token_survives = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^dag_token_lbrace) == 0
+  let the_callee_is_a_node = lcr_atoms_in(module_qn: lcr_consumer_qn, wanted: ^producer_anchor) > 0
+  let the_callee_is_indexed = lcr_globally_bound(name: ^producer_anchor)
+  no_raw_token_survives && the_callee_is_a_node && the_callee_is_indexed
 }
 
 // A RECORD BUILT THROUGH EITHER FORMERLY RECORD-LESS DOOR IS A DECLARED PAYLOAD (adhoc-68dc5afb-a90,
@@ -346,8 +287,8 @@ test fn function_bodies_are_token_level_in_the_normalized_carrier_holds() -> Boo
 // declarations with no record carrier, so an index built through them answered Absent from
 // symbol_index_declared_payload_at for `CrossFileMarker` -- the record a resolve-style reader
 // would then take for a binder. Both claims are red on the parent of that change and green on it.
-// The index is asked by PATH, and `CrossFileMarker` is absent from `entries` on this load (the
-// receipt above), so the answer comes from the carrier captured at normalize and not from any
+// The index is asked by PATH, and `CrossFileMarker` is indexed on this load (receipt 2 above), but asked through the
+// declared-payload door, so the answer comes from the carrier captured at normalize and not from any
 // shape the grafted root still shows -- which is the route the claim exists to exercise.
 fn lcr_is_record_payload(index: SymbolIndex) -> Bool {
   match symbol_index_declared_payload_at(

@@ -25,7 +25,7 @@ import gunbc.spark.vllm_runtime_image_build { with_spark_build_host, SparkBuildH
 import gunbc.spark.serving_arm { FourSparkTp4, GunbcDeepseekV41EngramProduced, deepseek_v41_flash_row, runtime_artifact_identity, PinnedByDigest, SourceRevisionEstablished }
 import gunbc.spark.serving_arm_launch { arm_mount_plan }
 import gunbc.spark.pair_serving_realization { spark_pair_serve_port }
-import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias, v41_group_a_profile }
+import gunbc.spark.v41_group_a_launch { v41_group_a_container_name, v41_group_a_served_alias, v41_group_a_profile, v41_group_a_deployment_env }
 import gunbc.spark.v41_row_store_encode { v41_row_store_output_directory }
 import gunbc.spark.v41_runtime_image_converge { v41_production_produced_image }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_for_launch, serving_subject_standing, ServingPerformanceSubjectStanding }
@@ -127,6 +127,7 @@ fn v41_serving_load_live_subject() -> ServingPerformanceSubject? {
     runtime_image_reference: render_oci_content_digest_wire(d: image.config) as NonEmptyStr,
     topology: FourSparkTp4,
     profile: launch_profile,
+    deployment_env: v41_group_a_deployment_env(),
     collective_transport: none,
   ) }
   }
