@@ -9359,18 +9359,6 @@ pub(crate) fn unimported_bare_provider_judgment(
                     }
                     BareUseRole::HasNonCallUse => B::DeclarationOnly,
                 };
-                // A name the resolver binds in its KERNEL scope layer, which sits above every import
-                // (`v1.compiler.infer_env` `overlay_skips_kernel_name`: `Optional`, `Present`,
-                // `Absent`, `Unit` beside the kernel types), never reads a same-spelled declaration
-                // outside this file's closure, so it owes no pair. This is the gate's question only:
-                // the loader's pull edge (`is_substrate_vocabulary`) still loads the module a kernel
-                // mint stands for, which the kernel Optional's own declaration needs.
-                let binding =
-                    if crate::v1_compiler_infer_env::overlay_skips_kernel_name(name.to_string()) {
-                        B::BuiltinFunction
-                    } else {
-                        binding
-                    };
                 match binding {
                     B::EmptyCollectionConstructor | B::BuiltinFunction => {
                         suppressed_builtin += 1;

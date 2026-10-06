@@ -3,7 +3,6 @@ module gunbc.instruments.native_emission_controls
 import std.types { Bool, Int, List, Set, String }
 import v2.std.algebra { filter }
 import gunbc.instruments.native_emission_controls_homonym { ControlBoxed, narrow_slot_value, narrow_slots_equal }
-import gunbc.instruments.native_emission_controls_optional_collision { collision_wrapped_row, collision_empty_row, collision_row_value }
 import std.resource_contract { Observation, Read }
 import std.integer { UInt8, UInt8Ready, UInt8OutOfRange, uint8_of_int }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -400,18 +399,6 @@ fn fold_accumulator_formals_cases() -> List<NativeEmissionCase> {
   ]
 }
 
-// RULE: whether a type renders as the host Option is decided by the DECLARATION it names, never by
-// its leaf name (v1.compiler.emit_rust is_host_optional_carrier_type). A user coproduct named
-// Optional, in a closure that also uses the kernel optional, emits as its own enum: each row answers
-// through its own arm. The red is the other arm, so an emission that collapsed both rows to one
-// answer fails a case.
-fn optional_named_coproduct_cases() -> List<NativeEmissionCase> {
-  [
-    NativeEmissionCase { identity: "optional_named_coproduct_wrapped_row_answers_its_value", held: collision_row_value(o: collision_wrapped_row) == 7 },
-    NativeEmissionCase { identity: "optional_named_coproduct_red_empty_row_answers_zero", held: collision_row_value(o: collision_empty_row) == 0 }
-  ]
-}
-
 data native_emission_expected_identities: List<String> = [
   "set_struct_eq_same_members_in_another_order",
   "set_struct_eq_red_bare_field_differs",
@@ -445,8 +432,6 @@ data native_emission_expected_identities: List<String> = [
   "fold_constructor_init_sums_all_nonnegative",
   "fold_constructor_init_red_negative_switches_arm",
   "fold_constructor_init_red_empty_keeps_init",
-  "optional_named_coproduct_wrapped_row_answers_its_value",
-  "optional_named_coproduct_red_empty_row_answers_zero",
   "list_index_in_range_yields_the_element",
   "list_index_red_in_range_is_not_another_element",
   "list_index_red_in_range_is_not_absent",
@@ -456,7 +441,7 @@ data native_emission_expected_identities: List<String> = [
 ]
 
 fn native_emission_cases() -> List<NativeEmissionCase> {
-  concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), concat(fold_accumulator_formals_cases(), optional_named_coproduct_cases()))), list_index_cases())
+  concat(concat(same_leaf_declaration_cases(), concat(concat(concat(concat(concat(concat(header_bound_cases(), fn_value_bound_cases()), filter_in_branch_condition_cases()), claim_driver_filesystem_cases()), effectful_fold_step_cases()), capability_alias_output_cases()), fold_accumulator_formals_cases())), list_index_cases())
 }
 
 fn case_row(c: NativeEmissionCase) -> String {

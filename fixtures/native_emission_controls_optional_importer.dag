@@ -10,9 +10,9 @@ import gunbc.instruments.native_emission_controls_optional_collision { Optional,
 // binding (v1.compiler.infer_env lookup_binding) takes the import, while the type environment's copy
 // of HeldChoice, resolved by name through the overlay where the kernel layer sits above imports,
 // takes the kernel Optional mint. Emitted, the module renders HeldChoice<present_value>, the mint's
-// type variable, and does not build (measured on gunbc#13454). It is therefore outside the
-// gunbc.instruments.native_emission_controls closure until the resolver refuses or unifies the
-// collision at the import; the emitter's own order is pinned meanwhile by the unit control
+// type variable, and does not build (measured on gunbc#13454). It lives under fixtures/, not a
+// source root, beside its collision declaration: a second Optional in the accepted corpus is itself
+// a leaf-name fork. The emitter's own order is pinned meanwhile by the unit control
 // unstamped_bare_optional_follows_the_lookup_binding_order.
 type HeldChoice
   = HeldOptional { held: Optional }
