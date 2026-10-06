@@ -9,6 +9,7 @@ import std.algebra { trim }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd { SystemdUnitProperty, systemd_unit_property_wire }
 // The manager's version line has ONE spelling for the whole systemd upstream, so the major is read
@@ -197,6 +198,21 @@ fn systemd_run_option_projection_step(acc: SystemdRunOptionWordsReading, option:
       }
   }
 }
+
+// THE MANAGER-SIDE STANDING THE TYPED BUILDERS OWN, AND WHY IT IS DECLARED RATHER THAN ENROLLED.
+// The three SystemdRun service transports promise behaviour a live systemd user manager shows:
+// the retained transient stays manager-observable after a failing exit (it is still `loaded` --
+// no --collect twin removes it), the collecting transient's twin is gone (`not-found`), and the
+// waited run reports the child's exact exit code. THIS IS THE POPULATION the typed
+// SystemdRunOption builders carry on the wire. What stands today: no REQUIRED automated claim
+// exercises them -- no CI lane can run systemd units, and the one real execution that does reach
+// a user manager (the manual lifecycle receipt's wet path) is a NON-required, manual receipt, not
+// an enrolled required claim. A claim file nothing can execute would be dangling (DESIGN 3c), so
+// the standing is a declared unbound dissolution here beside the builders -- the authority that
+// owns the behaviour -- rather than a placeholder row in a lane that cannot run it. Dissolves
+// when a required-workflow lane with a usable systemd user manager exists: at that point the
+// manager-side claims are AUTHORED AND ENROLLED for this population, and this row retires.
+data systemd_run_manager_side_claim_gap: DissolutionCondition = unbound_dissolution(description: "population: the typed SystemdRun builders' manager-side contract -- a retained transient stays manager-observable (still loaded) after a failing exit, a collecting transient's unit is not-found after removal, and the waited run reports the exact child exit; current: no REQUIRED automated claim covers this population (no required lane can run systemd units, and the manual lifecycle receipt's wet path is non-required real execution); trigger: a required-workflow lane with a usable systemd user manager exists, at which point the manager-side claims for this population are authored and enrolled and this row retires.")
 
 fn systemd_run_option_words(options: List<SystemdRunOption>) -> SystemdRunOptionWordsReading {
   fold(options, init: SystemdRunOptionWordsProjected { words: [] }, f: systemd_run_option_projection_step)
