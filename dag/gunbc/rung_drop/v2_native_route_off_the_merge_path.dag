@@ -1,6 +1,6 @@
 module gunbc.rung_drop.v2_native_route_off_the_merge_path
 
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
@@ -40,6 +40,12 @@ import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 // change that rewrote it retired only the E0573 standing: `emit-build` stays hosted and announced,
 // because a blocking lane may not run hosted (operator ruling 2026-09-28) and its fleet claim awaits
 // operator sign-off. The nightly above was deleted by #12439, which rebound its own row here.
+//
+// HALF OF THE TRIGGER'S PRECONDITION LANDED 2026-10-02, AND THIS ROW STANDS. The operator signed off
+// the fleet claim: `emit-build`'s row is LaneBlocks and the job runs on the fleet runner. The lane
+// still executes only //gunbc/instruments:self-host and //gunbc/instruments:v2-native-cli, which the
+// trigger names as NOT sufficient; it does not execute //gunbc/instruments:v2-native-frontier over
+// the v2.test.* universe, so no run of it can fire this trigger yet. What remains is that step.
 
 data v2_native_route_off_the_merge_path_population: List<String> = [
   "gunbc.witness_v2_native_route native_route_admission — every receipt clause, on every merge candidate",

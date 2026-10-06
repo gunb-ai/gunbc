@@ -1,5 +1,9 @@
 module gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle
 
+import extdeps.bmc.ipmitool_hpm_check { hpm_check_table_of }
+import gunbc.host_boot_attempt_admission {
+  PrePowerFirmware, PrePowerFirmwareUnread, pre_power_firmware_observed, BootAttemptClearance,
+}
 import std.decl_ref { decl_ref }
 import std.types { Bool, Int, List, NonEmptyStr, Secret, String }
 import std.nat { Nat }
@@ -10,7 +14,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeo
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootPhaseTiming, mtcollins1_boot_phase_timing_not_taken, mtcollins1_boot_phase_timing_text }
+import gunbc.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -874,7 +878,7 @@ type MtCollins1BootRunRecord {
   override_after: BootParam5Reading
   override: BootOverrideConsumption
   power_after: PowerAfterAttempt
-  timing: MtCollins1BootPhaseTiming
+  timing: BootPhaseTiming
 }
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
@@ -889,7 +893,7 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
     override_after: BootParam5NotTaken { reason: reason },
     override: OverrideNotHandedOff { reason: reason },
     power_after: PowerAfterNotTaken { reason: reason },
-    timing: mtcollins1_boot_phase_timing_not_taken(reason: reason),
+    timing: boot_phase_timing_not_taken(reason: reason),
   }
 }
 
@@ -1016,8 +1020,8 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
     concat("end_media=", end_media_text(e: r.end_media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
-    "-- phase timing (gunbc.machine_intake_mtcollins1_boot_phase_timing) --",
-    mtcollins1_boot_phase_timing_text(t: r.timing),
+    "-- phase timing (gunbc.managed_host_boot_phase_timing) --",
+    boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
     boot_param5_text(label: "after", r: r.override_after),
     "-- smpro pass at power on --",
@@ -2546,5 +2550,24 @@ fn mtcollins1_boot_outcome_after_bundle(outcome: ProcessExit, bundle: MtCollins1
         ExitSuccess => ExitSuccess
         ExitFailure { code: c, reason: r } => ExitFailure { code: c, reason: concat(r, " | diagnostics bundle could not be written: ", e) }
       }
+  }
+}
+
+// ── THE PRE-POWER READS (gunbc.host_boot_attempt_admission attempt_configuration_with_pre_power) ──
+// Taken by the boot run after admission and before actuation. hpm check's table is parsed by
+// extdeps.bmc.ipmitool_hpm_check; a failed read carries the controller's own cause.
+fn mtcollins1_boot_hpm_check(username: NonEmptyStr, password_file: NonEmptyStr, clearance: BootAttemptClearance, run_attempt: NonEmptyStr) -> PrePowerFirmware {
+  let at = clock_now_probed_at_or_unknown()
+  let r = diagnostic.ipmi.Tool.HpmCheck(
+    bmc_host: mtcollins1_endpoint.host,
+    username: username,
+    password_file: password_file,
+    deadline: coreutils_duration_operand(d: mtcollins1_boot_ipmi_read_deadline) as NonEmptyStr,
+    kill_after: coreutils_duration_operand(d: mtcollins1_boot_ipmi_kill_after) as NonEmptyStr,
+  )
+  if r.success {
+    pre_power_firmware_observed(clearance: clearance, run_attempt: run_attempt, table: hpm_check_table_of(stdout: r.stdout), source: join(["ipmitool hpm check on ", mtcollins1_endpoint.host as String, " at ", at as String], "") as NonEmptyStr)
+  } else {
+    PrePowerFirmwareUnread { reason: concat("hpm check was not read: ", bmc_read_cause_text(cause: bmc_ipmitool_read_cause(endpoint: mtcollins1_ipmi_endpoint(), at: at, exit_code: r.exit_code, stderr: r.transport_stderr))) as NonEmptyStr }
   }
 }

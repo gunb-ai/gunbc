@@ -147,7 +147,7 @@ fn runner_name_proves_host_identity(runner_name: String, host: HostIdentity) -> 
   (runner_name == host)
     || string_contains(s: runner_name, pattern: concat("@", host, "-"))
     || string_contains(s: runner_name, pattern: concat("@", host, "."))
-    || ends_with(s: runner_name, suffix: concat("@", host))
+    || runner_name.ends_with(suffix: concat("@", host))
 }
 
 fn deploy_target_runner_identity_proves_host(
