@@ -62,13 +62,17 @@ import gunbc.site.element.node_chain { node_chain, node_chain_rules, node_chain_
 import gunbc.site.specimen {
   specimen_route_path, specimen_layout_rules, specimen_field_list_fixture,
   SpecimenSection, specimen_element_sections, specimen_section_node,
+  SpecimenMeterFixture, specimen_meter, specimen_pose_fixtures, specimen_more_fixtures,
+  SpecimenMeterToolHeavy, SpecimenMeterVerificationFailed, SpecimenMeterStale, SpecimenMeterWaiting, SpecimenMeterPublished,
+  SpecimenMeterRealRun, SpecimenMeterSingleTool, SpecimenMeterLegacy, SpecimenMeterRefused,
   SpecimenCardSection, SpecimenHeadingSection, SpecimenStatusSection, SpecimenButtonSection, SpecimenChipSection,
   SpecimenPrioritySection, SpecimenNodeRowSection, SpecimenRelationSection, SpecimenChainSection,
   SpecimenPoseSection, SpecimenMeterSection, SpecimenFieldListSection,
 }
+import gunbc.site.element.build_meter { build_meter_art }
 import gunbc.site.element.field_list {
   FieldList, FieldRow, FieldValue, FieldText, FieldLinks, FieldLink, FieldAction, FieldIdentity,
-  FieldStatusControl, FieldIdentityControl, FieldAbsent, FieldPerson, field_list, field_list_rules,
+  FieldStatusControl, FieldIdentityControl, FieldWork, FieldAbsent, FieldPerson, field_list, field_list_rules, field_value_key,
 }
 import extdeps.languages.css.selectors { RawSelector }
 import extdeps.languages.css.properties { Color, Padding, css_property_wire }
@@ -557,8 +561,35 @@ test fn specimen_draws_the_priority_mark() -> Bool { section_draws(section: Spec
 test fn specimen_draws_the_node_row() -> Bool { section_draws(section: SpecimenNodeRowSection, element: SiteNodeRow) }
 test fn specimen_draws_the_relation_table() -> Bool { section_draws(section: SpecimenRelationSection, element: SiteRelationTable) }
 test fn specimen_draws_the_node_chain() -> Bool { section_draws(section: SpecimenChainSection, element: SiteNodeChain) }
-test fn specimen_draws_the_build_meter_poses() -> Bool { section_draws(section: SpecimenPoseSection, element: SiteBuildMeter) }
-test fn specimen_draws_the_build_meters() -> Bool { section_draws(section: SpecimenMeterSection, element: SiteBuildMeter) }
+
+// The build meter's two sections are strips of named fixtures, each fixture drawn by the meter
+// element (specimen_meter_node). A whole section costs as much as its meters together, so the
+// sections are checked as the element's and non-empty, and each fixture is drawn on its own claim.
+test fn specimen_meter_sections_are_the_build_meters() -> Bool {
+  any(specimen_element_sections(element: SiteBuildMeter), s => s == SpecimenPoseSection)
+    && any(specimen_element_sections(element: SiteBuildMeter), s => s == SpecimenMeterSection)
+    && count(specimen_pose_fixtures) > 0
+    && count(specimen_more_fixtures) > 0
+}
+
+// A fixture is drawn by the meter's own drawing (build_meter_art) over the fixture's view. The
+// summary's revision is a content hash over every recorded round, the most expensive part of a
+// forty-round fixture and no part of what it draws, so it is not paid here; specimen_meter_node
+// with its summary is exercised by the field list claim and the meter's own witnesses.
+fn fixture_draws_the_meter(fixture: SpecimenMeterFixture) -> Bool {
+  has(s: html(node: build_meter_art(view: specimen_meter(fixture: fixture).view)), pattern: "class=\"el-build-meter-art\"")
+}
+
+test fn specimen_meter_tool_heavy_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterToolHeavy) }
+test fn specimen_meter_verification_failed_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterVerificationFailed) }
+test fn specimen_meter_stale_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterStale) }
+test fn specimen_meter_waiting_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterWaiting) }
+test fn specimen_meter_published_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterPublished) }
+test fn specimen_meter_real_run_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterRealRun) }
+test fn specimen_meter_single_tool_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterSingleTool) }
+test fn specimen_meter_legacy_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterLegacy) }
+test fn specimen_meter_refused_draws_the_build_meter() -> Bool { fixture_draws_the_meter(fixture: SpecimenMeterRefused) }
+
 test fn specimen_draws_the_field_list() -> Bool { section_draws(section: SpecimenFieldListSection, element: SiteFieldList) }
 
 // The reds for the per-section claims: a section that is not one of the element's is reported,
@@ -686,11 +717,23 @@ test fn field_list_is_registered_and_guarded() -> Bool {
     && !styles_have_one_owner_each(styles: [ElementStyle { class_name: "el-field-list", rules: [into_chip] }, ElementStyle { class_name: "el-status-chip", rules: [] }])
 }
 
-// The specimen's fixture holds every arm the rail uses and the long values that used to wrap.
+// The specimen's fixture holds every arm the rail uses and the long values that used to wrap. The
+// arms are read from the fixture's rows by the element's own key, so no second rendering of the
+// fixture is paid for here: specimen_draws_the_field_list renders it.
 test fn specimen_field_list_fixture_covers_the_rail_cases() -> Bool {
-  let h = html(node: field_list(input: specimen_field_list_fixture()))
-  all(["status-control", "identity-control", "work", "absent", "text", "links", "action", "identity"], k => has(s: h, pattern: join(["data-field-value=\"", k, "\""], "")))
-    && has(s: h, pattern: "iam.gserviceaccount.com")
+  let rows = specimen_field_list_fixture().rows
+  let keys = map(rows, r => field_value_key(value: r.value))
+  all(["status-control", "identity-control", "work", "absent", "text", "links", "action", "identity"], k => any(keys, have => have == k))
+    && any(rows, r => match r.value {
+      FieldIdentityControl { person, action: _, editor: _ } => has(s: person.identity, pattern: "iam.gserviceaccount.com")
+      FieldText { text: _, full: _ } => false
+      FieldLinks { links: _, unlinked: _ } => false
+      FieldAction { text: _, attributes: _ } => false
+      FieldIdentity { person: _ } => false
+      FieldStatusControl { status: _, detail: _ } => false
+      FieldWork { summary: _, link_attributes: _ } => false
+      FieldAbsent { reason: _ } => false
+    })
 }
 
 // EVERY PRIORITY IS THE SAME BOX. The one rule that sets geometry (size, padding, border width,

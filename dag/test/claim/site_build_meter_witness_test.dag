@@ -254,12 +254,15 @@ test fn the_meter_shows_no_prose_beyond_the_count_badge() -> Bool {
 }
 
 // One event draws no badge, and a meter with no failure says where it goes and what it records.
-test fn the_accessible_name_carries_every_fact() -> Bool {
+test fn the_accessible_name_of_one_failure_names_it_and_draws_no_badge() -> Bool {
   let one = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
-  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: true))
   !has(s: one, pattern: "el-build-meter-badge")
     && has(s: one, pattern: ">Verification failed. One failure event. 10 rounds recorded, the last at 2026-09-29T15:00:02Z. Attempt fixture-…: open the Verification stage failures.</span>")
-    && has(s: published, pattern: ">Agent active. 20 rounds recorded, the last at 2026-09-29T15:00:02Z. Published for review, pull request 7. Launched on an earlier revision. Open attempt fixture-… work.</span>")
+}
+
+test fn the_accessible_name_of_a_published_attempt_carries_every_fact() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: true))
+  has(s: published, pattern: ">Agent active. 20 rounds recorded, the last at 2026-09-29T15:00:02Z. Published for review, pull request 7. Launched on an earlier revision. Open attempt fixture-… work.</span>")
 }
 
 // One mark is drawn per recorded kind per round, with its evidence, and one base per round. A
@@ -294,19 +297,34 @@ test fn a_long_run_draws_the_recent_rounds_and_names_them_all() -> Bool {
 // cap; a failed verification is a seal; a spent budget is a neutral bracket with no error paint;
 // unrecorded rounds are a hollow frame and draw no round; no round yet is a dotted start; a stale
 // attempt is an outlined worker with no error paint; a published attempt has the finish rule.
-test fn each_state_is_drawn_by_its_own_mark() -> Bool {
+test fn a_stage_refused_before_any_round_is_a_stop_cap() -> Bool {
   let refused = fx_html(view: fx_view(rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, segments: fx_stages(states: [WorkflowSegmentRefused], details: [])))
-  let sealed = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
-  let budget = fx_html(view: fx_view(rounds: RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 1 }, files_changed: none)] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffAwaitingWorker, segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: [])))
-  let stale = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterWorking, failure: none, handoff: HandoffAwaitingWorker, stale: true))
-  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
-  let legacy = fx_html(view: fx_legacy_view())
   has(s: refused, pattern: "data-edge=\"stop-cap\"") && has(s: refused, pattern: "data-history=\"none-yet\"")
-    && has(s: sealed, pattern: "data-edge=\"seal\"") && !has(s: sealed, pattern: "stop-cap")
-    && has(s: budget, pattern: "data-edge=\"budget\"") && !has(s: budget, pattern: "data-paint=\"stop\"")
-    && has(s: stale, pattern: "data-worker=\"outline\"") && !has(s: stale, pattern: "data-paint=\"stop\"") && occurrences(s: stale, pattern: "data-round=") == 10
-    && has(s: published, pattern: "data-paint=\"finish\"") && has(s: published, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"")
-    && has(s: legacy, pattern: "data-history=\"not-recorded\"") && !has(s: legacy, pattern: "data-round=") && has(s: legacy, pattern: "data-edge=\"stop-cap\"")
+}
+
+test fn a_failed_verification_is_a_seal() -> Bool {
+  let sealed = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: sealed, pattern: "data-edge=\"seal\"") && !has(s: sealed, pattern: "stop-cap")
+}
+
+test fn a_spent_budget_is_a_neutral_bracket() -> Bool {
+  let budget = fx_html(view: fx_view(rounds: RoundsObserved { rounds: [fx_round(step: 1, tool_calls: Present { value: 1 }, files_changed: none)] }, provider: ProviderCompleted { activity: "" }, handoff: HandoffAwaitingWorker, segments: fx_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: [])))
+  has(s: budget, pattern: "data-edge=\"budget\"") && !has(s: budget, pattern: "data-paint=\"stop\"")
+}
+
+test fn a_stale_attempt_is_an_outlined_worker_with_no_error_paint() -> Bool {
+  let stale = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterWorking, failure: none, handoff: HandoffAwaitingWorker, stale: true))
+  has(s: stale, pattern: "data-worker=\"outline\"") && !has(s: stale, pattern: "data-paint=\"stop\"") && occurrences(s: stale, pattern: "data-round=") == 10
+}
+
+test fn a_published_attempt_has_the_finish_rule_and_a_sleeping_worker() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  has(s: published, pattern: "data-paint=\"finish\"") && has(s: published, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"")
+}
+
+test fn unrecorded_rounds_are_a_hollow_frame_and_draw_no_round() -> Bool {
+  let legacy = fx_html(view: fx_legacy_view())
+  has(s: legacy, pattern: "data-history=\"not-recorded\"") && !has(s: legacy, pattern: "data-round=") && has(s: legacy, pattern: "data-edge=\"stop-cap\"")
 }
 
 // No state yields a percentage, a progress value or a claim of stalling, and the drawing is
@@ -392,22 +410,39 @@ fn draws_the_robot(h: String) -> Bool {
     && has(s: h, pattern: "x=\"9\" y=\"-3\" width=\"2\" height=\"1\"")
 }
 
-test fn the_worker_is_the_robot_mark_in_every_pose() -> Bool {
-  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
-  let done = worker_html(pose: BuildMeterDone, stale: false)
-  let solid = concat([waiting, done], map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => worker_html(pose: p, stale: false)))
-  let outline = worker_html(pose: BuildMeterWorking, stale: true)
+fn draws_the_solid_robot(h: String) -> Bool {
+  draws_the_robot(h: h)
+    && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\"")
+}
+
+test fn the_robot_mark_paths_are_the_symbols_spelling() -> Bool {
   robot_mark_body_path == "M40,20 H80 A30,30 0 0,1 110,50 V70 A30,30 0 0,1 80,100 H40 A30,30 0 0,1 10,70 V50 A30,30 0 0,1 40,20 Z M30,41 H40 A2,2 0 0,1 42,43 V53 A2,2 0 0,1 40,55 H30 A2,2 0 0,1 28,53 V43 A2,2 0 0,1 30,41 Z M80,41 H90 A2,2 0 0,1 92,43 V53 A2,2 0 0,1 90,55 H80 A2,2 0 0,1 78,53 V43 A2,2 0 0,1 80,41 Z M54,54 H66 A2,2 0 0,1 68,56 V58 A2,2 0 0,1 66,60 H54 A2,2 0 0,1 52,58 V56 A2,2 0 0,1 54,54 Z"
     && robot_mark_antenna_path == "M58,6 H62 V12 H58 Z M55,5 A5,5 0 0,1 65,5 A5,5 0 0,1 55,5 Z"
     && robot_mark_body_transform == "translate(-12 -12) scale(1.2)"
-    && all(solid, h => draws_the_robot(h: h)
-      && has(s: h, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
-      && has(s: h, pattern: "x=\"13\" y=\"4\" width=\"3\" height=\"3\"")
-      && has(s: h, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\""))
+}
+
+test fn the_working_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterWorking, stale: false)) }
+test fn the_stopped_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterStopped, stale: false)) }
+test fn the_idle_worker_is_the_robot() -> Bool { draws_the_solid_robot(h: worker_html(pose: BuildMeterIdle, stale: false)) }
+
+test fn the_waiting_worker_is_the_robot_with_its_eyes_shut() -> Bool {
+  let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
+  draws_the_solid_robot(h: waiting)
     && has(s: waiting, pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"4\" width=\"3\" height=\"1\"")
     && has(s: waiting, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+}
+
+test fn the_published_worker_is_the_robot_with_its_eyes_shut() -> Bool {
+  let done = worker_html(pose: BuildMeterDone, stale: false)
+  draws_the_solid_robot(h: done)
     && has(s: done, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
-    && draws_the_robot(h: outline)
+}
+
+test fn the_paused_worker_is_the_outlined_robot() -> Bool {
+  let outline = worker_html(pose: BuildMeterWorking, stale: true)
+  draws_the_robot(h: outline)
     && has(s: outline, pattern: "x=\"4\" y=\"6\" width=\"3\" height=\"1\"")
     && has(s: outline, pattern: "x=\"13\" y=\"6\" width=\"3\" height=\"1\"")
 }
@@ -457,17 +492,23 @@ test fn the_tool_specimens_are_typed_producer_output() -> Bool {
 // never "the event". The element states the finer arms when a producer supplies them: a round
 // operation names its round and operation and draws its seal in that round's column, and an exact
 // event is the only arm whose words say "the event".
-test fn the_failure_target_is_stated_at_its_precision() -> Bool {
+test fn a_stage_group_failure_says_it_opens_the_stage_failures() -> Bool {
   let legacy = fx_html(view: fx_legacy_view())
-  let round = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: false, n: 1, target: FailureRoundOperation { round: 18, kind: BuildMeterRun, anchor: "/issue/node#work-round-18" }) }, handoff: HandoffAwaitingWorker, stale: false))
-  let exact = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: true, n: 2, target: FailureExactEvent { event_id: "e1", anchor: "/issue/node#work-e1" }) }, handoff: HandoffAwaitingWorker, stale: false))
   failure_words(view: fx_legacy_view()) == "refused node:0cfc18886a3d3b10 environment 5 stage-group - /issue/node#work-node:0cfc18886a3d3b10-environment"
     && !has(s: legacy, pattern: "the event")
-    && has(s: round, pattern: ">Verification failed in round 18. One failure event.")
+}
+
+test fn a_round_operation_failure_names_its_round_and_seals_its_column() -> Bool {
+  let round = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0, 1]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: false, n: 1, target: FailureRoundOperation { round: 18, kind: BuildMeterRun, anchor: "/issue/node#work-round-18" }) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: round, pattern: ">Verification failed in round 18. One failure event.")
     && has(s: round, pattern: "Attempt fixture-…: open the run in round 18.</span>")
     && has(s: round, pattern: ">Verification failed in round 18 · 1 event; open the run in round 18</span>")
     && has(s: round, pattern: "data-edge=\"seal\"")
-    && has(s: exact, pattern: "Attempt fixture-…: open the event.</span>")
+}
+
+test fn only_an_exact_event_says_it_opens_the_event() -> Bool {
+  let exact = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest_at(kind_refused: true, n: 2, target: FailureExactEvent { event_id: "e1", anchor: "/issue/node#work-e1" }) }, handoff: HandoffAwaitingWorker, stale: false))
+  has(s: exact, pattern: "Attempt fixture-…: open the event.</span>")
     && has(s: exact, pattern: "href=\"/issue/node#work-e1\"")
 }
 
@@ -481,19 +522,28 @@ fn quiet_view(pose: BuildMeterPose, stale: Bool) -> BuildMeterView {
   fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale)
 }
 
-test fn the_nap_and_the_waiting_room_belong_to_their_poses() -> Bool {
+test fn the_waiting_worker_naps_in_the_waiting_room() -> Bool {
   let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
-  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
-  let drawn_quiet = [worker_html(pose: BuildMeterWorking, stale: false), worker_html(pose: BuildMeterWaitingForSeat, stale: true)]
-  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => quiet_view(pose: p, stale: false)), map([BuildMeterWaitingForSeat, BuildMeterDone], p => quiet_view(pose: p, stale: true)))
   occurrences(s: waiting, pattern: "<g class=\"el-build-meter-z\"") == 2
-    && occurrences(s: published, pattern: "<g class=\"el-build-meter-z\"") == 2
     && has(s: waiting, pattern: "data-prop=\"chair\"") && has(s: waiting, pattern: "data-prop=\"empty-chair\"") && has(s: waiting, pattern: "data-prop=\"clock\"")
     && !has(s: waiting, pattern: "data-paint=\"finish\"")
+}
+
+test fn the_published_worker_naps_beside_the_finish_rule() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  occurrences(s: published, pattern: "<g class=\"el-build-meter-z\"") == 2
     && has(s: published, pattern: "data-paint=\"finish\"") && !has(s: published, pattern: "data-prop=")
-    && all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z") && !has(s: h, pattern: "data-prop="))
+}
+
+test fn an_awake_or_paused_worker_has_neither_the_nap_nor_the_room() -> Bool {
+  let drawn_quiet = [worker_html(pose: BuildMeterWorking, stale: false), worker_html(pose: BuildMeterWaitingForSeat, stale: true)]
+  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => quiet_view(pose: p, stale: false)), map([BuildMeterWaitingForSeat, BuildMeterDone], p => quiet_view(pose: p, stale: true)))
+  all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z") && !has(s: h, pattern: "data-prop="))
     && all(decided_quiet, v => !build_meter_naps(view: v) && !build_meter_in_room(view: v))
     && build_meter_naps(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false)) && build_meter_in_room(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false))
     && build_meter_naps(view: quiet_view(pose: BuildMeterDone, stale: false)) && !build_meter_in_room(view: quiet_view(pose: BuildMeterDone, stale: false))
-    && has(s: reduced_motion_block(rules: build_meter_rules()), pattern: ".el-build-meter .el-build-meter-z { animation: none }")
+}
+
+test fn the_nap_is_stilled_under_reduced_motion() -> Bool {
+  has(s: reduced_motion_block(rules: build_meter_rules()), pattern: ".el-build-meter .el-build-meter-z { animation: none }")
 }

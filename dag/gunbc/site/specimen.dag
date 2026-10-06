@@ -597,47 +597,64 @@ fn specimen_meter_derived(attempt_key: String, segments: List<WorkflowSegment>, 
   build_meter_view_of(node_id: specimen_meter_subject, attempt_key: attempt_key, segments: segments, rounds: rounds, provider: provider, handoff: handoff, stale: stale)
 }
 
-// The poses the actual-size strip shows, in its order: working, stopped, paused on a stale
-// revision, and the two naps side by side.
-fn specimen_pose_meters() -> List<SpecimenMeter> {
-  let agent_active = specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
-  [
-    SpecimenMeter { caption: "Tool-heavy, mixed typed operations — supplied", view: specimen_tool_heavy_view() },
-    SpecimenMeter { caption: "Verification failed after 18 rounds", view: specimen_meter_derived(
-      attempt_key: "7742b0e19c3d5a68",
-      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "", "", "3 of 41 claims red"]),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }, stale: false) },
-    SpecimenMeter { caption: "Stale: launched on an earlier revision", view: specimen_meter_derived(
-      attempt_key: "5f1c9a2e77d04b13", segments: agent_active,
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) },
-    SpecimenMeter { caption: "Waiting for a seat, no round yet", view: specimen_meter_derived(
-      attempt_key: "0bd4418ce2a75f90", segments: agent_active,
-      rounds: RoundsObserved { rounds: [] }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) },
-    SpecimenMeter { caption: "Published", view: specimen_meter_derived(
-      attempt_key: "e69a15d83f0c2b74",
-      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
-      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) },
-  ]
+// THE METER FIXTURES, NAMED, so that each can be drawn on its own (a claim draws one fixture, not a
+// section of them). The pose strip shows five of them, in its order: working, stopped, paused on a
+// stale revision, and the two naps side by side. The BuildMeter section adds the other four: a real
+// run, a single-tool stress run, a legacy attempt and a refusal before the first round.
+type SpecimenMeterFixture
+  = SpecimenMeterToolHeavy
+  | SpecimenMeterVerificationFailed
+  | SpecimenMeterStale
+  | SpecimenMeterWaiting
+  | SpecimenMeterPublished
+  | SpecimenMeterRealRun
+  | SpecimenMeterSingleTool
+  | SpecimenMeterLegacy
+  | SpecimenMeterRefused
+
+data specimen_pose_fixtures: List<SpecimenMeterFixture> = [
+  SpecimenMeterToolHeavy, SpecimenMeterVerificationFailed, SpecimenMeterStale, SpecimenMeterWaiting, SpecimenMeterPublished,
+]
+
+data specimen_more_fixtures: List<SpecimenMeterFixture> = [
+  SpecimenMeterRealRun, SpecimenMeterSingleTool, SpecimenMeterLegacy, SpecimenMeterRefused,
+]
+
+fn specimen_agent_active() -> List<WorkflowSegment> {
+  specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentActive], details: [])
 }
 
-// The attempts the BuildMeter section adds to the poses: a real run, a single-tool stress run,
-// a legacy attempt and a refusal before the first round.
-fn specimen_more_meters() -> List<SpecimenMeter> {
-  [
-    SpecimenMeter { caption: "Real run: shell-typed-invocation-a5908ed38768df111 (rounds from its log; budget spent)", view: specimen_meter_derived(
+fn specimen_meter(fixture: SpecimenMeterFixture) -> SpecimenMeter {
+  match fixture {
+    SpecimenMeterToolHeavy => SpecimenMeter { caption: "Tool-heavy, mixed typed operations — supplied", view: specimen_tool_heavy_view() }
+    SpecimenMeterVerificationFailed => SpecimenMeter { caption: "Verification failed after 18 rounds", view: specimen_meter_derived(
+      attempt_key: "7742b0e19c3d5a68",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentFailed], details: ["", "", "", "", "3 of 41 claims red"]),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 3) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffVerificationFailed { head_sha: "9c41d07", verdict_key: "failed" }, stale: false) }
+    SpecimenMeterStale => SpecimenMeter { caption: "Stale: launched on an earlier revision", view: specimen_meter_derived(
+      attempt_key: "5f1c9a2e77d04b13", segments: specimen_agent_active(),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 2) }, provider: specimen_meter_running(), handoff: HandoffAwaitingWorker, stale: true) }
+    SpecimenMeterWaiting => SpecimenMeter { caption: "Waiting for a seat, no round yet", view: specimen_meter_derived(
+      attempt_key: "0bd4418ce2a75f90", segments: specimen_agent_active(),
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderAwaitingSeat { detail: "no free seat in the serving group" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterPublished => SpecimenMeter { caption: "Published", view: specimen_meter_derived(
+      attempt_key: "e69a15d83f0c2b74",
+      segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentComplete], details: []),
+      rounds: RoundsObserved { rounds: specimen_meter_spells(spells: 4).take(n: 21) }, provider: ProviderCompleted { activity: "Agent complete" }, handoff: HandoffPublished { head_sha: "9c41d07", pr_number: 12861, url: "https://github.com/gunb-ai/gunbc/pull/12861" }, stale: false) }
+    SpecimenMeterRealRun => SpecimenMeter { caption: "Real run: shell-typed-invocation-a5908ed38768df111 (rounds from its log; budget spent)", view: specimen_meter_derived(
       attempt_key: "a5908ed38768df111",
       segments: specimen_meter_stages(states: [WorkflowSegmentComplete, WorkflowSegmentComplete, WorkflowSegmentStopped], details: ["", "", "the harness ended the turn at its 40-step budget"]),
-      rounds: RoundsObserved { rounds: specimen_real_run_rounds }, provider: ProviderBudgetSpent { activity: "Agent stopped at its step budget", detail: "40 of 40 steps taken" }, handoff: HandoffAwaitingWorker, stale: false) },
-    SpecimenMeter { caption: "Single-tool stress — 40 runs", view: specimen_single_tool_view() },
-    SpecimenMeter { caption: "Legacy: refused, rounds not recorded", view: specimen_meter_derived(
+      rounds: RoundsObserved { rounds: specimen_real_run_rounds }, provider: ProviderBudgetSpent { activity: "Agent stopped at its step budget", detail: "40 of 40 steps taken" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterSingleTool => SpecimenMeter { caption: "Single-tool stress — 40 runs", view: specimen_single_tool_view() }
+    SpecimenMeterLegacy => SpecimenMeter { caption: "Legacy: refused, rounds not recorded", view: specimen_meter_derived(
       attempt_key: "0cfc18886a3d3b10",
       segments: specimen_meter_stages(states: [WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentRefused, WorkflowSegmentPending, WorkflowSegmentRefused], details: ["environment admission receipt unavailable", "worktree marker unavailable", "attempt predates modeled admission and event capture", "no submission capture", "", "legacy branch has no modeled workspace publication receipt"]),
-      rounds: RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr }, provider: ProviderEventsRefused { activity: "legacy attempt — supersedable", detail: "attempt predates modeled admission and event capture" }, handoff: HandoffAwaitingWorker, stale: false) },
-    SpecimenMeter { caption: "Refused before the first round", view: specimen_meter_derived(
+      rounds: RoundsUnobserved { reason: "the attempt predates round capture, so its rounds were not recorded" as NonEmptyStr }, provider: ProviderEventsRefused { activity: "legacy attempt — supersedable", detail: "attempt predates modeled admission and event capture" }, handoff: HandoffAwaitingWorker, stale: false) }
+    SpecimenMeterRefused => SpecimenMeter { caption: "Refused before the first round", view: specimen_meter_derived(
       attempt_key: "c81e3f6a9d2047b5",
       segments: specimen_meter_stages(states: [WorkflowSegmentRefused], details: ["admission receipt records a refusal: no seat class admits this work"]),
-      rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, stale: false) },
-  ]
+      rounds: RoundsObserved { rounds: [] }, provider: ProviderNotStarted, handoff: HandoffAwaitingWorker, stale: false) }
+  }
 }
 
 fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
@@ -649,7 +666,8 @@ fn specimen_meter_node(row: SpecimenMeter) -> Fragment {
 
 // THE FIELD LIST, at the rail's width, over a fixture that holds every arm and the cases that
 // used to break the rail: an identity and a link title far longer than the value column, an
-// absent value with its reason, the status control and the assignee control.
+// absent value with its reason, the status control, the assignee control, and a meter whose hover
+// digest names a failure (the longest digest the rail has to keep inside the page).
 data specimen_field_rail_class: String = "specimen-field-rail"
 
 fn specimen_face(initial: String) -> Fragment {
@@ -665,7 +683,7 @@ fn specimen_field_list_fixture() -> FieldList {
       action: "Change assignee",
       editor: [specimen_note(text: "The assign form opens here, in place of the identity.")],
     } },
-    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_tool_heavy_view()), link_attributes: [] } },
+    FieldRow { label: "Work", value: FieldWork { summary: compact_work_summary_of_view(subject: "specimen-field-list", view: specimen_meter(fixture: SpecimenMeterVerificationFailed).view), link_attributes: [] } },
     FieldRow { label: "Reporter", value: FieldAbsent { reason: "Not recorded: an authored roadmap row has no creation event" } },
     FieldRow { label: "Component", value: FieldText { text: "@shell", full: none } },
     FieldRow { label: "Parent", value: FieldLinks { links: [FieldLink { text: "DP-M2: shell-to-dag batch 1 lands, then batch 2 retires the residue of the shell invocation layer", href: issue_page_path(node_id: "dp-m2-shell-residue-retired"), full: none }], unlinked: [] } },
@@ -691,13 +709,13 @@ data specimen_pose_strip_class: String = "specimen-pose-strip"
 
 fn specimen_pose_section() -> Fragment {
   specimen_section(label: "Worker poses, actual size", body: [
-    el_attrs("div", [attr(name: "class", value: specimen_pose_strip_class)], map(specimen_pose_meters(), m => specimen_meter_node(row: m))),
+    el_attrs("div", [attr(name: "class", value: specimen_pose_strip_class)], map(specimen_pose_fixtures, f => specimen_meter_node(row: specimen_meter(fixture: f)))),
   ])
 }
 
 fn specimen_meter_section() -> Fragment {
   specimen_section(label: "BuildMeter", body: [
-    el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_more_meters(), m => specimen_meter_node(row: m))),
+    el_attrs("div", [attr(name: "class", value: specimen_meters_class)], map(specimen_more_fixtures, f => specimen_meter_node(row: specimen_meter(fixture: f)))),
   ])
 }
 
