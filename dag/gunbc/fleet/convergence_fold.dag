@@ -356,6 +356,7 @@ fn convergence_receipt_projection<R>(key_of: fn(R) -> StepInstanceKey, consumed_
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
   ]
 {
   ConvergenceReceiptProjection { key_of: key_of, consumed_of: consumed_of, authorization_required_of: authorization_required_of }
@@ -375,6 +376,9 @@ fn instance_authorization(key: StepInstanceKey, principal: NonEmptyStr) -> Insta
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_without_discharge_refuses"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world"),
     decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_noop_needs_no_discharge"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "apply_fold_undischarged"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_run_refuses"),
+    decl_ref(module_path: "test.claim.machine_intake_arrival_converge_witness", decl_name: "w_bmc_secure_apply_discharge_for_another_unit_refuses"),
   ]
 {
   InstanceAuthorization { key: key, principal: principal }
