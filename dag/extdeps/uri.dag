@@ -1,6 +1,5 @@
 module extdeps.uri
 
-import v2.std.optional { Optional }
 import std.algebra { trim }
 
 import std.types { NonEmptyStr, List }
