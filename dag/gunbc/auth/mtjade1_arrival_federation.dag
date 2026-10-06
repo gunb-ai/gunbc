@@ -1,0 +1,145 @@
+module gunbc.auth.mtjade1_arrival_federation
+
+import std.types { List, Map, NonEmptyStr, String }
+import std.optional { Present }
+import extdeps.cloud.gcp.gcp {
+  ServiceAccountEmail, WifPool, WifProvider, wif_provider_resource, wif_pool_resource,
+}
+import gunbc.auth.github_gcp_federation {
+  fleet_secrets_project_id, fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member,
+}
+import gunbc.auth.gcp_secret_access { SecretAccessGrant }
+import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }
+import gunbc.auth.authorization_pattern_selection {
+  PrivilegedEffect, ApiSurface, WorkloadIdentityBindable, WorkloadIdentityStanding,
+  MintsNoCredential, MintsResourceScopedCredential, IrreversibleEffect, ReversibleByReapply,
+  NoBillingConsequence, StandingRulingUnderInterlock,
+}
+import std.human_intervention { DeviceOnce }
+import gunbc.auth.standing_operator_grant {
+  mtjade1_live_standing_grant, StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
+  standing_ruling_with_arm_interlock,
+}
+import gunbc.secret_provision { mtjade1_bmc_gunbc_secret_ref }
+
+// ── ARRIVAL FEDERATION FOR MTJADE1 (Route A) ────────────────────────────────────────────────
+// Recurring (and DeviceOnce irreversible) effects on an ARRIVAL subject cannot use
+// gunbc.auth.managed_host_boot_federation: mtjade1 is not in managed_hosts() until J4 admission, and
+// boot is a different operation than arrival. This is one dedicated pool with one provider, the same
+// construction as the boot and gcp-iam-converge jobs: never github_wif_provider (repo-wide; #10887).
+//
+// LIVE GCP OBJECTS ARE NOT CREATED HERE. Names are the pair's policy, to be provisioned through
+// gcp-iam-converge / secret_provision after operator go-ahead. The job identity the selection fold
+// binds is this service account member; an operator ssh session is a different, unbindable standing.
+
+data mtjade1_arrival_pool_id: NonEmptyStr = "github-mtjade1-arrival"
+
+data mtjade1_arrival_pool_display_name: NonEmptyStr = "Mt. Jade arrival (one job)"
+
+data mtjade1_arrival_provider_id: NonEmptyStr = "github-mtjade1-arrival-oidc"
+
+data mtjade1_arrival_service_account_id: NonEmptyStr = "mtjade1-arrival"
+
+data mtjade1_arrival_service_account: ServiceAccountEmail = "mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+
+data mtjade1_arrival_environment: NonEmptyStr = "mtjade1-arrival"
+
+data mtjade1_arrival_wif_pool: WifPool = WifPool {
+  name: mtjade1_arrival_pool_id
+  project: fleet_secrets_project_id as String
+  display_name: Present { value: mtjade1_arrival_pool_display_name }
+  disabled: false
+}
+
+fn mtjade1_arrival_claim_pins() -> List<OidcClaimPin> {
+  fleet_converge_job_claim_pins(environment: mtjade1_arrival_environment)
+}
+
+data mtjade1_arrival_wif_attribute_mapping: Map<String, String> = {
+  "google.subject": "assertion.sub",
+  "attribute.repository_id": "assertion.repository_id",
+  "attribute.workflow_ref": "assertion.workflow_ref"
+}
+
+fn mtjade1_arrival_wif_provider() -> WifProvider {
+  WifProvider {
+    name: mtjade1_arrival_provider_id
+    pool: mtjade1_arrival_pool_id
+    issuer_uri: github_wif_issuer_uri
+    attribute_mapping: Present { value: mtjade1_arrival_wif_attribute_mapping }
+    attribute_condition: Present { value: claim_pins_attribute_condition(pins: mtjade1_arrival_claim_pins()) }
+  }
+}
+
+fn mtjade1_arrival_provider_resource() -> String {
+  wif_provider_resource(project_number: fleet_secrets_project_number, provider: mtjade1_arrival_wif_provider())
+}
+
+fn mtjade1_arrival_principal_set() -> String {
+  join([
+    "principalSet://iam.googleapis.com/",
+    wif_pool_resource(project_number: fleet_secrets_project_number, pool_id: mtjade1_arrival_pool_id as String),
+    "/*"
+  ], "")
+}
+
+fn mtjade1_arrival_principal_member() -> String {
+  federated_service_account_member(email: mtjade1_arrival_service_account)
+}
+
+fn mtjade1_arrival_bindable_identity() -> WorkloadIdentityStanding {
+  WorkloadIdentityBindable { member: mtjade1_arrival_principal_member() as NonEmptyStr }
+}
+
+// CELLS. J2 (archive) reads the factory published credential, not Secret Manager. J4 may read
+// mtjade1_bmc_gunbc_secret_ref only after a version is minted and pinned; the locus is still
+// pending, so this pair holds no accessor cell yet. A cell on latest would be a moving pin.
+fn mtjade1_arrival_secret_grants() -> List<SecretAccessGrant> {
+  let _ = mtjade1_bmc_gunbc_secret_ref
+  [] as List<SecretAccessGrant>
+}
+
+fn mtjade1_arrival_archive_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "mtjade1 PriorLifeBoundary archive: content-addressed evidence of BMC carriers, cursor derived from the archive, nothing cleared" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: ReversibleByReapply,
+    surface: ApiSurface,
+    workload_identity: mtjade1_arrival_bindable_identity(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock {
+      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalArchive),
+    },
+  }
+}
+
+fn mtjade1_arrival_bmc_secure_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "mtjade1 BmcSecure: rotate the managed account to a stored generation and retire the published account over admitted routes" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "each account write replaces the value it overwrites; the published factory value is not restored by a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: mtjade1_arrival_bindable_identity(),
+    minted_reach: MintsResourceScopedCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock {
+      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalBmcSecure),
+    },
+  }
+}
+
+fn mtjade1_arrival_firmware_qualification_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "mtjade1 MegaRAC per-build operation qualification write under the arrival job principal" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "a controller write at a firmware build is not undone by a reapply of a different build's evidence" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: mtjade1_arrival_bindable_identity(),
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: StandingRulingUnderInterlock {
+      ruling: standing_ruling_with_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification),
+    },
+  }
+}

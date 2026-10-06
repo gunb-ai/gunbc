@@ -1,0 +1,75 @@
+module gunbc.machine_intake_arrival_interlock
+
+import std.types { NonEmptyStr, String }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.machine_intake_bmc_rotation_route {
+  BmcRotationRouteStanding, rotation_route_is_grounded,
+}
+import gunbc.machine_intake_arrival_subject { ArrivalSubjectAdmitted }
+
+// ── THE INTERLOCK AN MTJADE1 ARRIVAL WRITE TAKES ──────────────────────────────────────────────
+// The standing grant's words cover the class; this is the physical-safety / route-ground fact the
+// run must observe. It is not UnitHoldProof: mtjade1 has no ManagedHost unit-hold row until J4
+// admission. The store host is srv1 (the same runner the arrival job pins). A wet acquire of the
+// slot is file_hold_acquire on arrival_slot_key; this module admits the conjunction the write may
+// proceed under, and is the DeclarationRef rostered against the census sites.
+//
+// Archive (J2) needs the exclusive slot only (reads, evidence write, no account rotation).
+// BmcSecure (J4) and firmware qualification need the slot AND a grounded rotation route
+// (admit_rotation_apply's premise).
+
+data arrival_interlock_store_host: NonEmptyStr = "srv1" as NonEmptyStr
+
+fn arrival_slot_key(subject_wire: NonEmptyStr) -> NonEmptyStr {
+  join(["arrival:", subject_wire as String], "") as NonEmptyStr
+}
+
+type ArrivalSlotStanding
+  = ArrivalSlotHeld { subject: ArrivalSubjectAdmitted }
+  | ArrivalSlotNotHeld { cause: NonEmptyStr }
+
+type ArrivalArchiveInterlockStanding
+  = ArrivalArchiveInterlockAdmitted { subject: ArrivalSubjectAdmitted }
+  | ArrivalArchiveInterlockRefused { cause: NonEmptyStr }
+
+type ArrivalBmcSecureInterlockStanding
+  = ArrivalBmcSecureInterlockAdmitted { subject: ArrivalSubjectAdmitted }
+  | ArrivalBmcSecureInterlockRefused { cause: NonEmptyStr }
+
+fn admit_arrival_archive_interlock(subject: ArrivalSubjectAdmitted, slot: ArrivalSlotStanding) -> ArrivalArchiveInterlockStanding {
+  match slot {
+    ArrivalSlotHeld { subject: held } =>
+      if (held.wire as String) == (subject.wire as String) {
+        ArrivalArchiveInterlockAdmitted { subject: subject }
+      } else {
+        ArrivalArchiveInterlockRefused { cause: "arrival slot was held for a different subject" as NonEmptyStr }
+      }
+    ArrivalSlotNotHeld { cause: c } => ArrivalArchiveInterlockRefused { cause: c }
+  }
+}
+
+fn admit_arrival_bmc_secure_interlock(
+  subject: ArrivalSubjectAdmitted,
+  slot: ArrivalSlotStanding,
+  route: BmcRotationRouteStanding,
+) -> ArrivalBmcSecureInterlockStanding {
+  match admit_arrival_archive_interlock(subject: subject, slot: slot) {
+    ArrivalArchiveInterlockRefused { cause: c } => ArrivalBmcSecureInterlockRefused { cause: c }
+    ArrivalArchiveInterlockAdmitted { subject: s } =>
+      if rotation_route_is_grounded(standing: route) {
+        ArrivalBmcSecureInterlockAdmitted { subject: s }
+      } else {
+        ArrivalBmcSecureInterlockRefused { cause: "rotation route is not grounded; admit_rotation_apply refuses" as NonEmptyStr }
+      }
+  }
+}
+
+data arrival_archive_interlock_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake_arrival_interlock",
+  decl_name: "admit_arrival_archive_interlock",
+)
+
+data arrival_bmc_secure_interlock_ref: DeclarationRef = decl_ref(
+  module_path: "gunbc.machine_intake_arrival_interlock",
+  decl_name: "admit_arrival_bmc_secure_interlock",
+)

@@ -1,0 +1,108 @@
+module test.claim.machine_intake.mtjade1_arrival_principal_witness
+
+import std.logic { Bool }
+import std.types { List, NonEmptyStr, String }
+import gunbc.machine_intake_arrival_subject {
+  arrival_converge_subject_options, admit_arrival_subject, arrival_subject_admission_refuses_before_effect,
+  ArrivalSubjectInPopulation, ArrivalSubjectUnknown, ArrivalSubjectIsManagedHostExecutorConfusion,
+}
+import gunbc.machine_intake_arrival_interlock {
+  ArrivalSlotHeld, ArrivalSlotNotHeld,
+  admit_arrival_archive_interlock, admit_arrival_bmc_secure_interlock,
+  ArrivalArchiveInterlockAdmitted, ArrivalArchiveInterlockRefused,
+  ArrivalBmcSecureInterlockAdmitted, ArrivalBmcSecureInterlockRefused,
+}
+import gunbc.machine_intake_bmc_rotation_route { rotation_route_ungrounded }
+import extdeps.bmc.endpoint { AmiMegaRac, BmcControllerEndpoint }
+import extdeps.bmc.capability { bmc_firmware_release_identity_of_wire }
+import gunbc.auth.mtjade1_arrival_federation {
+  mtjade1_arrival_archive_effect, mtjade1_arrival_bmc_secure_effect, mtjade1_arrival_firmware_qualification_effect,
+  mtjade1_arrival_principal_member, mtjade1_arrival_secret_grants,
+}
+import gunbc.auth.authorization_pattern_selection {
+  FederatedScopedGrant, OperatorApprovedCapability,
+  PatternSelected, AuthorizationPatternSelection,
+  select_authorization_pattern,
+}
+import gunbc.auth.privileged_effect_census { rulings_without_a_rostered_interlock }
+import gunbc.auth.standing_operator_grant {
+  mtjade1_live_standing_grant, standing_grant_covers, StandingGrantHost,
+  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification, StandingD0ReleaseToFleet,
+}
+import gunbc.fleet_host_identity { operator_host_mtjade1, operator_host_mtcollins1 }
+
+fn selected_federated(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: FederatedScopedGrant, receipt: _ } => true
+    _ => false
+  }
+}
+
+fn selected_approved(s: AuthorizationPatternSelection) -> Bool {
+  match s {
+    PatternSelected { pattern: OperatorApprovedCapability, receipt: _ } => true
+    _ => false
+  }
+}
+
+test fn w_arrival_options_are_the_population_projection() -> Bool {
+  arrival_converge_subject_options() == ["mtjade1"]
+}
+
+test fn w_mtjade1_is_admitted_and_mtcollins1_and_outsiders_refuse_before_effect() -> Bool {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } => (s.wire as String) == "mtjade1"
+    _ => false
+  }
+    && match admit_arrival_subject(wire: operator_host_mtcollins1 as String) {
+      ArrivalSubjectIsManagedHostExecutorConfusion { wire: _ } => true
+      _ => false
+    }
+    && match admit_arrival_subject(wire: "not-a-unit") {
+      ArrivalSubjectUnknown { wire: w } => w == "not-a-unit"
+      _ => false
+    }
+    && arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: "not-a-unit"))
+    && arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: operator_host_mtcollins1 as String))
+    && !arrival_subject_admission_refuses_before_effect(admission: admit_arrival_subject(wire: "mtjade1"))
+}
+
+test fn w_grant_covers_arrival_arms_on_mtjade1_only() -> Bool {
+  standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalBmcSecure)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtcollins1 }, effect: StandingJadeArrivalBmcSecure)
+    && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
+}
+
+test fn w_ungrounded_route_refuses_bmc_secure_interlock() -> Bool {
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match admit_arrival_archive_interlock(subject: s, slot: ArrivalSlotNotHeld { cause: "slot free" as NonEmptyStr }) {
+        ArrivalArchiveInterlockRefused { cause: _ } =>
+          match admit_arrival_bmc_secure_interlock(
+            subject: s,
+            slot: ArrivalSlotHeld { subject: s },
+            route: rotation_route_ungrounded(
+              endpoint: BmcControllerEndpoint { host: "192.168.1.246" },
+              firmware: bmc_firmware_release_identity_of_wire(family: AmiMegaRac, wire: "2.11.104000" as NonEmptyStr),
+            ),
+          ) {
+            ArrivalBmcSecureInterlockRefused { cause: _ } => true
+            ArrivalBmcSecureInterlockAdmitted { subject: _ } => false
+          }
+        ArrivalArchiveInterlockAdmitted { subject: _ } => false
+      }
+    _ => false
+  }
+}
+
+test fn w_bound_principal_selects_federated_scoped_grant() -> Bool {
+  selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_archive_effect()))
+    && selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_bmc_secure_effect()))
+    && selected_federated(s: select_authorization_pattern(e: mtjade1_arrival_firmware_qualification_effect()))
+    && !selected_approved(s: select_authorization_pattern(e: mtjade1_arrival_bmc_secure_effect()))
+    && mtjade1_arrival_principal_member() == "serviceAccount:mtjade1-arrival@gunbai-secrets.iam.gserviceaccount.com"
+    && mtjade1_arrival_secret_grants().length() == 0
+    && rulings_without_a_rostered_interlock().length() == 0
+}

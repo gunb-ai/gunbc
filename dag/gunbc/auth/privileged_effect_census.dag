@@ -1,6 +1,13 @@
 module gunbc.auth.privileged_effect_census
 
-import gunbc.auth.standing_operator_grant { group_a_dev_standing_grant }
+import gunbc.auth.standing_operator_grant {
+  group_a_dev_standing_grant, mtjade1_live_standing_grant,
+  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
+  standing_grant_arm_interlock,
+}
+import gunbc.auth.mtjade1_arrival_federation {
+  mtjade1_arrival_archive_effect, mtjade1_arrival_bmc_secure_effect, mtjade1_arrival_firmware_qualification_effect,
+}
 import std.types { Bool, List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_in_list, declaration_ref_eq }
 import std.dissolution {
@@ -436,6 +443,36 @@ data privileged_effect_interlocks: List<PrivilegedEffectInterlock> = [
     premise: "host reset-return takes the same unit hold before it sets the boot device or power-cycles the unit" as NonEmptyStr,
     hold_owning_roots: mtcollins1_hold_owning_roots,
   },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
+    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalArchive) {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock")
+    },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_archive_interlock"),
+    premise: "the PriorLifeBoundary archive takes the arrival subject's exclusive slot on the store host before it writes evidence" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_bmc_secure_effect"),
+    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeArrivalBmcSecure) {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock")
+    },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
+    premise: "BmcSecure takes the arrival slot and a grounded rotation route before any account write" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
+  PrivilegedEffectInterlock {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
+    hold: match standing_grant_arm_interlock(g: mtjade1_live_standing_grant, e: StandingJadeFirmwareQualification) {
+      Present { value: i } => i
+      Absent => decl_ref(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock")
+    },
+    refusal: site(module_path: "gunbc.machine_intake_arrival_interlock", decl_name: "admit_arrival_bmc_secure_interlock"),
+    premise: "firmware qualification takes the same arrival slot and grounded route as BmcSecure" as NonEmptyStr,
+    hold_owning_roots: [] as List<InterlockRoot>,
+  },
 ]
 
 // A STANDING RULING IS HONORED ONLY BESIDE ITS INTERLOCK: for every census row whose effect carries
@@ -529,6 +566,11 @@ data eager_bootstrap_fork_declared: DivergenceReason = DivergenceReason {
 // THE DISSOLUTION IS UNBOUND ON PURPOSE. d0_store_operation_wall is not retired when the capability
 // lands -- it is flipped to StoreOperationWallRestored -- so retires_dissolution over it would fire
 // on the row's deletion, an artifact, while the capability stayed dead (§4b(3)).
+data mtjade1_arrival_job_unprovisioned: DivergenceReason = DivergenceReason {
+  statement: "the arrival job principal and its dedicated WIF pair are modeled (gunbc.auth.mtjade1_arrival_federation) but not provisioned and not a fleet-converge mode; no dispatched run yet presents the service account, so the write sites are not realized under FederatedScopedGrant" as NonEmptyStr,
+  dissolution: unbound_dissolution(description: "operator-signed arrival_converge mode in gunbc.fleet_converge_workflow plus gcp-iam-converge of the modeled pool/provider/SA and a production invoke of O1c-2/O1c-3 under that job; SUFFICIENT FOR retiring this reason when those sites realize the federated pattern the fold already selects" as NonEmptyStr),
+}
+
 data fabric_store_write_unverified: DivergenceReason = DivergenceReason {
   statement: "the fabric DB admits an advance of a pair-serving authority partition, the host-placement partition or a D0 consent slot on the writer's host access alone: the placed host writes in process (FabricStorageLocalFiles) and the served door carries no grant, so the pattern selected for this writer is not the one the store enforces" as NonEmptyStr,
   dissolution: unbound_dissolution(description: "one fabric store door every writer passes, the placed host included, that admits an advance of a protected head only under the credential this writer's selected pattern names, verified by the store for that operation -- the capability gunbc.spark.pair_serving_d0 d0_store_operation_wall names" as NonEmptyStr),
@@ -691,6 +733,24 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     effect: bmc_secure_account_rotation_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_archive_effect"),
+    effect: mtjade1_arrival_archive_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: mtjade1_arrival_job_unprovisioned },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_bmc_secure_effect"),
+    effect: mtjade1_arrival_bmc_secure_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: mtjade1_arrival_job_unprovisioned },
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.auth.mtjade1_arrival_federation", decl_name: "mtjade1_arrival_firmware_qualification_effect"),
+    effect: mtjade1_arrival_firmware_qualification_effect(),
+    realized: RealizedUnauthorized,
+    divergence_reason: Present { value: mtjade1_arrival_job_unprovisioned },
   },
   PrivilegedEffectSite {
     site: site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_boot_wet"),

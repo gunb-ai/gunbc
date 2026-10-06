@@ -14,6 +14,7 @@ import gunbc.auth.standing_operator_grant {
   standing_grant_covers, standing_grant_scope_matches, standing_grant_hosts,
   StandingGrantFabricGroup, StandingGrantHost,
   StandingD0ReleaseToFleet, StandingArmLaunch, StandingHostEffectRecover,
+  StandingJadeArrivalArchive, StandingJadeArrivalBmcSecure, StandingJadeFirmwareQualification,
 }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, ApiSurface,
@@ -118,6 +119,9 @@ test fn w_mtcollins1_is_not_covered() -> Bool {
 
 test fn w_an_effect_outside_the_mtjade1_arms_is_not_covered() -> Bool {
   standing_grant_scope_matches(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 })
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalArchive)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeArrivalBmcSecure)
+    && standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingJadeFirmwareQualification)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingD0ReleaseToFleet)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingArmLaunch)
     && !standing_grant_covers(g: mtjade1_live_standing_grant, scope: StandingGrantHost { host: operator_host_mtjade1 }, effect: StandingHostEffectRecover)
