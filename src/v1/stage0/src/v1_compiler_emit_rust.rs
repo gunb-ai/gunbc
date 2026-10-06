@@ -39200,16 +39200,6 @@ pub fn shell_needs_capture_accounting(result_fields: Rc<Vec<Rc<ShellResultField>
         .any(|f| crate::v1_compiler_emit::shell_channel_is_capture_accounting(f.channel.clone()))
 }
 
-pub fn op_has_stderr_capture_param(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    op_node.params.iter().any(|p| {
-        crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone())
-            == "stderr_capture"
-    })
-}
-
 pub fn shell_error_stderr_binding(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> String {
     if shell_needs_capture_accounting(result_fields) {
         "".to_string()
@@ -39222,7 +39212,10 @@ pub fn emit_shell_stderr_policy_binding(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if op_has_stderr_capture_param(op_node, source_indices) {
+    if crate::v1_compiler_emit::operation_declares_required_stderr_capture_policy(
+        op_node,
+        source_indices,
+    ) {
         "let (__stderr_complete_limit, __stderr_complete_source): (Option<usize>, String) = match &*stderr_capture {\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => {\n        match v1_rt::read_host_budget_bytes() {\n            (Some(n), source) => (Some(n as usize), source),\n            (None, source) => return Err(format!(\"WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active host budget authority ({})\", source).into()),\n        }\n    }\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => {\n        let n = crate::std_measure::byte_size_count(bytes.clone());\n        if n < 0 { return Err(\"WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative\".into()); }\n        (None, String::new())\n    }\n};\nlet __stderr_tail_bytes: usize = match &*stderr_capture {\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::BoundedTail { bytes } => crate::std_measure::byte_size_count(bytes.clone()) as usize,\n    crate::std_shell_stream_capture::WitnessStderrCapturePolicy::Complete => 0,\n};\n".to_string()
     } else {
         v1_rt::concat(

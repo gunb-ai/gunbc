@@ -2928,7 +2928,7 @@ pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String 
     match (*refusal.clone()).clone() {
     ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
     ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
-    ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: k, .. } => v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a capture-accounting channel and this operation declares no stderr_capture input -- answering it would apply a policy nobody declared".to_string()),
+    ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: k, .. } => v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared".to_string()),
 }
 }
 
@@ -5395,6 +5395,36 @@ pub fn file_transport_declared_verb(
     }
 }
 
+pub fn param_is_required_stderr_capture_policy(
+    p: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let ty = crate::v1_std_core::param_node_type_expr(p.clone());
+    (crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()) == "stderr_capture")
+        && (p.return_cardinality.clone() == crate::v1_std_core::Cardinality::Required)
+        && (ty.return_cardinality.clone() == crate::v1_std_core::Cardinality::Required)
+        && (!crate::v1_compiler_infer_types::node_is_collection(ty.clone(), source_indices.clone()))
+        && (crate::v1_std_core::qualified_last_segment(
+            crate::v1_compiler_infer::resolved_type_name(p.clone(), source_indices.clone()),
+        ) == "WitnessStderrCapturePolicy")
+}
+
+pub fn operation_declares_required_stderr_capture_policy(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for p in op_node.params.clone().iter().cloned() {
+            if param_is_required_stderr_capture_policy(p.clone(), source_indices.clone()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn file_operation_has_input(
     op_node: Rc<Node>,
     name: String,
@@ -5752,9 +5782,8 @@ match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
             },
     Some(c) => if shell_channel_is_capture_accounting(c.clone())
                 && target_is_rust(target.clone())
-                && !file_operation_has_input(
+                && !operation_declares_required_stderr_capture_policy(
                     op_node.clone(),
-                    "stderr_capture".to_string(),
                     si.clone(),
                 )
             {

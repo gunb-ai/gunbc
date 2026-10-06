@@ -3443,6 +3443,12 @@ mod fixture_closure_union_tests {
 
     const STDERR_CAPTURE_WITHOUT_POLICY: &str = "module efr_member\nservice Bin {\n  operation Run {\n    input { bin_path: String }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
 
+    const STDERR_CAPTURE_STRING_POLICY: &str = "module efr_member\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: String\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
+    const STDERR_CAPTURE_OPTIONAL_POLICY: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: WitnessStderrCapturePolicy?\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
+    const STDERR_CAPTURE_COLLECTION_POLICY: &str = "module efr_member\nimport std.shell_stream_capture { WitnessStderrCapturePolicy }\nservice Bin {\n  operation Run {\n    input {\n      bin_path: String\n      stderr_capture: List<WitnessStderrCapturePolicy>\n    }\n    output {\n      success: Bool from \"exit_success\"\n      stderr_truncated: Bool from \"stderr_truncated\"\n    }\n    transport shell { argv: [\"{bin_path}\"] }\n  }\n}\n";
+
     const GUNBC_MODULE_REACH_MEMBER: &str =
         "module efr_member\nimport extdeps.gunbc { packages }\nfn ignore() -> Int { 0 }\n";
 
@@ -3475,8 +3481,54 @@ mod fixture_closure_union_tests {
             .expect_err("a capture channel without stderr_capture must refuse");
         assert!(
             refusal.contains("cause=FixtureClosureUnionEmitRefused")
-                && refusal.contains("stderr_capture"),
+                && refusal.contains("stderr_capture")
+                && refusal.contains("transport emission is not modeled"),
             "{refusal}"
+        );
+    }
+
+    fn capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
+        source: &str,
+        label: &str,
+    ) {
+        let union = fixture_closure_union_control_union(source).unwrap_or_else(|e| {
+            panic!("{label} must resolve so emit can refuse the typed policy: {e}")
+        });
+        let refusal = fixture_closure_union_emit_receipt(&union)
+            .expect_err("wrong stderr_capture shape must refuse at emit, not rustc");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("transport emission is not modeled")
+                && refusal.contains("stderr_capture"),
+            "{label}: {refusal}"
+        );
+        assert!(
+            !refusal.contains("error[E") && !refusal.contains("mismatched types"),
+            "typed emission must refuse before rustc: {label}: {refusal}"
+        );
+    }
+
+    #[test]
+    fn capture_channels_with_string_stderr_capture_refuse_the_union() {
+        capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
+            STDERR_CAPTURE_STRING_POLICY,
+            "String",
+        );
+    }
+
+    #[test]
+    fn capture_channels_with_optional_stderr_capture_refuse_the_union() {
+        capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
+            STDERR_CAPTURE_OPTIONAL_POLICY,
+            "optional",
+        );
+    }
+
+    #[test]
+    fn capture_channels_with_collection_stderr_capture_refuse_the_union() {
+        capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy(
+            STDERR_CAPTURE_COLLECTION_POLICY,
+            "collection",
         );
     }
 
@@ -3545,7 +3597,7 @@ mod fixture_closure_union_tests {
             script = script.replace("{payload}", stderr_payload),
             limit = limit,
             source = if complete_limit.is_some() {
-                "\"host budget\"".to_string()
+                "\"host budget\".to_string()".to_string()
             } else {
                 "String::new()".to_string()
             },

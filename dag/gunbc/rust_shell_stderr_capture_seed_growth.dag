@@ -24,20 +24,37 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // SeedFeatureCompletion FIRES and is admitted on the ruling above. PublicSurfaceGrowth:
 // the emit_host additions are cfg(test) discriminators, not a published CLI.
 //
-// Hand items below are the emit_host executing harness. The emitter body lives in
-// src/v1/05_emit_rust.dag and its stage0 mirror; those are generated, not this roster.
+// Hand items below are the emit_host executing harness. The rust-item authority keeps
+// the inline-module path, so every citation is
+// v1_compiler.cli_run.emit_host.fixture_closure_union_tests. The emitter body lives
+// in src/v1/05_emit_rust.dag and its stage0 mirror; those are generated, not this roster.
 data rust_shell_stderr_capture_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "rustc_and_run_emitted_capture", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_bounded_tail_truncates_and_keeps_the_tail", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_bounded_tail_under_cap_is_complete", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_complete_over_budget_refuses", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_complete_under_budget_retains_all", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_stdin_and_long_stderr_does_not_deadlock", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_absent_policy_refuses_before_spawn", field: WholeDeclaration }
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_MEMBER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_UNMODELED_SIBLING", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_WITHOUT_POLICY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_STRING_POLICY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_OPTIONAL_POLICY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "STDERR_CAPTURE_COLLECTION_POLICY", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "GUNBC_MODULE_REACH_MEMBER", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "declared_stderr_capture_channels_do_not_refuse_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "an_unmodeled_shell_channel_still_refuses_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "capture_channels_without_stderr_capture_input_refuse_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "capture_channels_refuse_unless_stderr_capture_is_the_required_scalar_policy", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "capture_channels_with_string_stderr_capture_refuse_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "capture_channels_with_optional_stderr_capture_refuse_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "capture_channels_with_collection_stderr_capture_refuse_the_union", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "reaching_extdeps_gunbc_does_not_refuse_the_union_for_capture_channels", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "rustc_and_run_emitted_capture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_bounded_tail_truncates_and_keeps_the_tail", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_bounded_tail_under_cap_is_complete", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_complete_over_budget_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_complete_under_budget_retains_all", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_stdin_and_long_stderr_does_not_deadlock", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host.fixture_closure_union_tests", decl_name: "emitted_absent_policy_refuses_before_spawn", field: WholeDeclaration }
   ],
-  reason: "Operator ruling 2026-10-06 (msg_7853a1af): admit SeedFeatureCompletion, exact scope the rust shell handler realizing WitnessStderrCapturePolicy (stderr_truncated / stderr_total_bytes / stderr_retained_bytes) and its emit_host.rs tests. The rust shell handler must realize those channels so the fixture-closure union can emit WitnessBin.Run. These host tests compile and run the emitted drain against a child process; a .contains() on the drain string is not a consumer (DESIGN section 5). They stay rust because the subject is the rust realization fragment the seed emits.",
+  reason: "Operator ruling 2026-10-06 (msg_7853a1af): admit SeedFeatureCompletion, exact scope the rust shell handler realizing WitnessStderrCapturePolicy (stderr_truncated / stderr_total_bytes / stderr_retained_bytes) and its emit_host.rs tests. The rust shell handler must realize those channels so the fixture-closure union can emit WitnessBin.Run. These host tests compile and run the emitted drain against a child process, and they refuse a name-only, String, optional, or collection stderr_capture at TransportEmissionNotModeled. A .contains() on the drain string is not a consumer (DESIGN section 5). They stay rust because the subject is the rust realization fragment the seed emits.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete these items when the v2-native emitter realizes the shell transport's stderr capture, a .dag witness compiles the emitted rust crate and runs the same six discriminators without a host rustc harness, and WitnessBin.Run still emits. The union digest_hex control stays.",
-  current_boundary: "Bind and validate WitnessStderrCapturePolicy before spawn; start stdout and stderr drains immediately; write stdin concurrently; wait and join; project BoundedTail or return WitnessStderrCaptureCompleteBudgetExceeded with the measured total and admitted limit. No fallback tail length. Capture-accounting channels without the typed policy refuse at the rust emit diagnostic and, if that wall is skipped, as a pre-spawn return Err. Python and go still refuse those channels at emit. Unmodeled keys such as stderr_digest_hex still refuse."
+  trigger: "Delete these items when the v2-native emitter realizes the shell transport's stderr capture, a .dag witness compiles the emitted rust crate and runs the same six discriminators plus the typed-policy emit refusals without a host rustc harness, and WitnessBin.Run still emits. The union digest_hex control stays.",
+  current_boundary: "Bind and validate a required scalar stderr_capture: WitnessStderrCapturePolicy before spawn; start stdout and stderr drains immediately; write stdin concurrently; wait and join; project BoundedTail or return WitnessStderrCaptureCompleteBudgetExceeded with the measured total and admitted limit. No fallback tail length. Capture-accounting channels without that typed required scalar refuse at the rust emit diagnostic (one shared predicate) and, if that wall is skipped, as a pre-spawn return Err. Python and go still refuse those channels at emit. Unmodeled keys such as stderr_digest_hex still refuse."
 }
