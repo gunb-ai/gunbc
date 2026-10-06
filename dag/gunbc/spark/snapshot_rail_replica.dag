@@ -2,7 +2,7 @@ module gunbc.spark.snapshot_rail_replica
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.types { Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { sha256_hex_digest }
 import product.host_identity { HostIdentity }
 import extdeps.huggingface.hub { HubRepoId, hub_repo_cache_directory }

@@ -7,6 +7,7 @@ use self::ScopeFinding::*;
 use crate::extdeps_uri::UriScheme::File;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_optional::Optional;
 pub use crate::std_roster_frontier::declaration_ref_eq;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;

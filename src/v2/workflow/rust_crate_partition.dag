@@ -27,7 +27,7 @@ import v2.std.collection {
   map_get,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -318,6 +318,7 @@ fn stage0_std_primitive_modules() -> List<String> {
 fn stage0_std_core_modules() -> List<String> {
   stage0_std_primitive_modules()
     |> concat([
+      "std_optional",
       "std_algebra",
       "std_nat",
       "std_node",

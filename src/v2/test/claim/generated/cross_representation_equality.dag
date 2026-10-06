@@ -98,7 +98,7 @@ fn witness_cross_representation_roster_covers_bool() -> Bool {
 fn witness_cross_representation_roster_covers_optional_null() -> Bool {
   roster_covers_genuine_straddle(
     modeled_ref: DeclarationRef {
-      module_path: "v2.std.optional",
+      module_path: "std.optional",
       decl_name: "Optional",
       field: WholeDeclaration
     },

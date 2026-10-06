@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_census_qemu_toolchain_converge
 
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, exit_failure }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.hostname_read { HostnameShortCaptured }
 import gunbc.runner_microvm_host_ready {
   MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_wet, microvm_host_binding_refusal_text, executor_home_wet,

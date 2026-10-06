@@ -1,7 +1,7 @@
 module test.claim.spark.captured_stair_inspect_witness_test
 
 import std.types { Bool, String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.docker.container_inspect { ContainerInspect, ContainerInspectRead, ContainerInspectDecoded, ContainerInspectUnreadable, container_inspect_from_stdout }
 import gunbc.spark.serving_relaunch_transaction { observed_env_assignments }
 import gunbc.spark.native_serving_apply { spark_native_unplanned_assignments }

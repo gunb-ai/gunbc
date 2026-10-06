@@ -1,5 +1,5 @@
 module v2.compiler.self_host.direct_rust_door_fixture
-import v2.std.optional { optional_absent }
+import std.optional { optional_absent }
 
 import v2.compiler.refinement_discharge { infer_and_discharge }
 import extdeps.communication.medium { Lossless, Medium }
@@ -46,7 +46,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   optional_absent,
   optional_present

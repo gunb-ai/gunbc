@@ -3,7 +3,7 @@ module test.claim.spark.pair_serving_d0_release_witness
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { kibibyte, mebibyte, second }
 import std.content_hash { ContentHash, Sha256Hash, sha256_hex_digest, content_hash_equal, content_hash_of_value }
 import std.temporal_effect { HeldLease, held_lease, LeaseEpoch, LeaseRunningExpected }
