@@ -23,7 +23,7 @@ import gunbc.machine_intake_megarac_kvm_still {
   KvmJournalEstablished, KvmJournalConnectionRequested, KvmJournalConnectionRefused, KvmJournalConnectionOpen, KvmJournalConnectionError,
   KvmJournalRefused, KvmJournalFailed, KvmJournalStopRequested, KvmJournalSessionRelease, KvmJournalBrowserClose, KvmJournalStopped, KvmJournalTriggerScanFailed, KvmJournalNavigated, KvmJournalPageConsole, KvmJournalPageError,
   KvmLoginRefused, KvmNoKvmService, KvmNoFrame, KvmToolchainUnavailable, KvmCredentialUnreadable, KvmRefusedOther, KvmAcquisitionOther, kvm_observer_standing, kvm_boundary_events, kvm_still_gaps, kvm_retained_still,
-  megarac_kvm_observer_start, kvm_observer_trigger,
+  megarac_kvm_observer_start,
   KvmJournalWord, kvm_journal_event_words,
 }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { mtcollins1_boot_retained_artifact_prefix, mtcollins1_kvm_observer_dir }
@@ -213,15 +213,10 @@ fn admitted(operation: MegaRacOperation) -> AdmittedMegaRacHost? {
   }
 }
 
-test fn the_start_never_drives_a_viewer_and_names_why() -> Bool {
-  match admitted(operation: MegaRacKvmCanvasStill) {
-    Absent => false
-    Present { value: h } => {
-      let s = megarac_kvm_observer_start(host: h, dir: "artifacts/mtcollins1-boot-kvm-1", password_file: "/nonexistent", toolchain: BrowserToolchainUnresolved { cause: "witness" }, attempt: "1")
-      let named = match s { KvmObserverNotStarted { reason: r } => string_contains(s: r as String, pattern: "no public KVM client")  _ => false }
-      named && !kvm_observer_trigger(start: s, order: 1, reason: "power-on-verified")
-    }
-  }
+// No public KVM client exists and the canvas has no standing at 0.32, so the host is refused for the
+// KVM canvas still at the admission, before any start can be asked of it.
+test fn the_kvm_canvas_still_is_refused_at_admission_so_no_viewer_start_is_reachable() -> Bool {
+  match admitted(operation: MegaRacKvmCanvasStill) { Absent => true  Present { value: _ } => false }
 }
 
 test fn a_carrier_admitted_for_virtual_media_does_not_start_the_viewer() -> Bool {
