@@ -4282,62 +4282,60 @@ pub fn match_arm_join_diagnostics(
     if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
         Rc::new(vec![])
     } else {
-        if match_arm_body_is_present_payload_binding(arm.clone(), scope.clone()) {
-            Rc::new(vec![])
+        if (!match_arm_body_is_present_payload_binding(arm.clone(), scope.clone())
+            && match_arm_mixes_bare_and_optional(
+                unified_arm_type.clone(),
+                arm.body_type.clone(),
+                scope.clone(),
+            ))
+        {
+            Rc::new(vec![crate::v1_std_core::make_error_node(
+                Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
+                    position: "match arm".to_string(),
+                    expected: crate::v1_compiler_infer_types::node_type_shape(
+                        unified_arm_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                    got: crate::v1_compiler_infer_types::node_type_shape(
+                        arm.body_type.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                    span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
+                }),
+                scope.module_name.clone(),
+            )])
         } else {
-            if match_arm_mixes_bare_and_optional(
+            if match_arm_types_are_proven_disjoint(
                 unified_arm_type.clone(),
                 arm.body_type.clone(),
                 scope.clone(),
             ) {
-                Rc::new(vec![crate::v1_std_core::make_error_node(
-                    Rc::new(CompilerDiagnostic::DeclaredTypeNotInhabited {
-                        position: "match arm".to_string(),
-                        expected: crate::v1_compiler_infer_types::node_type_shape(
-                            unified_arm_type.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                Rc::new(vec![inference_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "match arms produce proven-disjoint types: ".to_string(),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    unified_arm_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                            ),
+                            " vs ".to_string(),
                         ),
-                        got: crate::v1_compiler_infer_types::node_type_shape(
+                        crate::v1_compiler_infer_types::node_type_shape(
                             arm.body_type.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         ),
-                        span: crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                            .span
-                            .clone(),
-                    }),
+                    ),
+                    crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
                     scope.module_name.clone(),
                 )])
             } else {
-                if match_arm_types_are_proven_disjoint(
-                    unified_arm_type.clone(),
-                    arm.body_type.clone(),
-                    scope.clone(),
-                ) {
-                    Rc::new(vec![inference_error(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "match arms produce proven-disjoint types: ".to_string(),
-                                    crate::v1_compiler_infer_types::node_type_shape(
-                                        unified_arm_type.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    ),
-                                ),
-                                " vs ".to_string(),
-                            ),
-                            crate::v1_compiler_infer_types::node_type_shape(
-                                arm.body_type.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ),
-                        ),
-                        crate::v1_std_core::arm_body(arm.typed_arm.clone())
-                            .span
-                            .clone(),
-                        scope.module_name.clone(),
-                    )])
-                } else {
-                    Rc::new(vec![])
-                }
+                Rc::new(vec![])
             }
         }
     }
