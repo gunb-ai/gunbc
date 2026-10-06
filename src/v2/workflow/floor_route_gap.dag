@@ -2063,12 +2063,16 @@ fn floor_route_gap_expectation_chunk_28() -> List<FloorRouteGapExpectation> {
 // The test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test identity (the BaseAdvance
 // follow-up to gunbc#13111) joins it with the same first effect and the same triple enrollment: the
 // base advance over a throwaway repository's two real commits.
+// The test.claim.roadmap.roadmap_belt_recapture_wet_witness_test identity joins them: recapture of a
+// committed attempt tree. First effect is shell.Mktemp.DirWithTemplate (no mock_response).
 fn floor_route_gap_expectation_chunk_40() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test.the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test.the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution", operation: "Dir", ground: NoMockResponse {} },
-    tail: Empty {} }
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} } }
   }
 }
 
