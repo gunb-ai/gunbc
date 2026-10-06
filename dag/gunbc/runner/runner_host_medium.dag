@@ -90,7 +90,7 @@ fn runner_host_medium_seed_artifact(artifact: ActionsRunnerBinaryArtifact) -> No
   NoCloudSeedArtifact {
     name: actions_runner_tarball_filename(artifact: artifact) as NonEmptyStr,
     source_url: actions_runner_download_url(artifact: artifact) as NonEmptyStr,
-    sha256: actions_runner_release_digest(artifact: artifact).hex,
+    digest: actions_runner_release_digest(artifact: artifact),
   }
 }
 

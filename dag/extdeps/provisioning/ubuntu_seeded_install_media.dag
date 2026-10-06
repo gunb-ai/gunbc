@@ -12,6 +12,7 @@ import std.content_hash {
 import extdeps.provisioning.ubuntu_install_media { UbuntuInstallMediaArtifactRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.crypto.hash { Digest, Sha256, Sha512 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -30,13 +31,13 @@ type NoCloudSeedFile {
 
 // A BINARY SEED MEMBER, NAMED BY ITS CONTENT DIGEST. A NoCloudSeedFile is text the caller renders;
 // an artifact is bytes someone else publishes, so the input carries where they are fetched from and
-// the sha256 they must have, and the build fetches them into the seed directory and refuses unless
+// the Digest (algorithm and hex, extdeps.crypto.hash) they must have, and the build fetches them into the seed directory and refuses unless
 // the readback digest equals it. The digest is in the build key and the URL is not: the URL is
 // transport, and two URLs serving the same bytes build the same image.
 type NoCloudSeedArtifact {
   name: NonEmptyStr
   source_url: NonEmptyStr
-  sha256: NonEmptyStr
+  digest: Digest
 }
 
 // AN ARTIFACT NAME IS ADMITTED BEFORE ANY BYTE MOVES, because the remaster writes it under the seed
@@ -53,7 +54,7 @@ type SeedArtifactBasename sole_constructor {
 type AdmittedSeedArtifact sole_constructor {
   basename: SeedArtifactBasename
   source_url: NonEmptyStr
-  sha256: NonEmptyStr
+  digest: Digest
 }
 
 type SeedArtifactAdmissionRefusal
@@ -83,7 +84,7 @@ fn seeded_install_media_seed_artifact_admission(input: UbuntuSeededInstallMediaB
   let refusals = flat_map(input.seed_artifacts, a => seed_artifact_name_refusals(input: input, artifact: a))
   if count(refusals) == 0 {
     SeedArtifactsAdmitted {
-      artifacts: map(input.seed_artifacts, a => AdmittedSeedArtifact { basename: SeedArtifactBasename { value: a.name }, source_url: a.source_url, sha256: a.sha256 }),
+      artifacts: map(input.seed_artifacts, a => AdmittedSeedArtifact { basename: SeedArtifactBasename { value: a.name }, source_url: a.source_url, digest: a.digest }),
     }
   } else {
     SeedArtifactsRefused { refusals: refusals }
@@ -173,8 +174,20 @@ fn seeded_install_media_seed_file_key(file: NoCloudSeedFile) -> Fnv1a64Structura
 fn seeded_install_media_seed_artifact_key(artifact: NoCloudSeedArtifact) -> Fnv1a64Structural {
   content_hash_combine_structural(
     content_hash_atom(value: artifact.name),
-    content_hash_atom(value: artifact.sha256),
+    content_hash_combine_structural(
+      content_hash_atom(value: seed_artifact_digest_algorithm_token(digest: artifact.digest)),
+      content_hash_atom(value: artifact.digest.hex),
+    ),
   )
+}
+
+// THE ALGORITHM IS PART OF THE PIN, so it is part of the key: the same hex under another algorithm is
+// another artifact. A closed match over extdeps.crypto.hash HashAlgorithm, no fallback arm.
+fn seed_artifact_digest_algorithm_token(digest: Digest) -> NonEmptyStr {
+  match digest.algorithm {
+    Sha256 => "sha256"
+    Sha512 => "sha512"
+  }
 }
 
 // An input with no artifacts folds to the key it had before artifacts existed, so every image built

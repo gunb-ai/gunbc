@@ -3,6 +3,7 @@ module test.claim.runner_host_medium_witness
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { kibibyte_count, hardware_thread_count_value }
 import extdeps.toolchain.types { Aarch64, X86_64 }
+import extdeps.crypto.hash { sha256_digest, sha512_digest }
 import std.process { ExitSuccess }
 import extdeps.linux.proc_uptime { UptimeRefused }
 import gunbc.machine_intake_mtcollins1_boot_diagnostic_bundle { SmproNotTaken }
@@ -10,6 +11,7 @@ import gunbc.host_boot_attempt_admission { attempt_configuration_not_recorded }
 import v2.std.optional { Present }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.github.actions_runner { actions_runner_release_2_337_0 }
+import extdeps.provisioning.ubuntu_seeded_install_media_remaster { seed_artifact_readback_holds }
 import extdeps.provisioning.ubuntu_seeded_install_media {
   NoCloudSeedArtifact, UbuntuSeededInstallMediaBuildInput, seeded_install_media_build_key,
   seeded_install_media_seed_artifact_admission, SeedArtifactsAdmitted, SeedArtifactsRefused,
@@ -106,7 +108,7 @@ test fn the_runner_image_derives_with_the_slot_runner_and_a_program_that_never_h
         && !string_contains(s: program, pattern: "set -e")
         && !string_contains(s: program, pattern: "curl")
         && count(input.seed_artifacts) == 1
-        && all(input.seed_artifacts, a => (a.sha256 as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
+        && all(input.seed_artifacts, a => (a.digest.hex as String) == (actions_runner_release_2_337_0.digest_aarch64.hex as String))
         && string_contains(s: program, pattern: "Runner.Listener")
         && !string_contains(s: program, pattern: "poweroff")
         && string_contains(s: input.grub_kernel_cmdline as String, pattern: mtcollins1_census_console_arg as String)
@@ -231,8 +233,8 @@ fn with_artifacts(input: UbuntuSeededInstallMediaBuildInput, artifacts: List<NoC
 test fn the_seed_artifact_digest_keys_the_build_and_its_url_does_not() -> Bool {
   match runner_host_medium_image(host: mtcollins1_runner_host) {
     RunnerHostMediumImageDerived { input: input, runner: _ } => {
-      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: "https://mirror.invalid/runner.tar.gz", sha256: a.sha256 })
-      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, sha256: actions_runner_release_2_337_0.digest_x86_64.hex })
+      let moved = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: "https://mirror.invalid/runner.tar.gz", digest: a.digest })
+      let other = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: actions_runner_release_2_337_0.digest_x86_64 })
       let key = seeded_install_media_build_key(input: input) as String
       key == (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: moved)) as String)
         && key != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: other)) as String)
@@ -260,7 +262,7 @@ fn admission_refuses_with(input: UbuntuSeededInstallMediaBuildInput, extra: NoCl
 }
 
 fn artifact_named(n: String) -> NoCloudSeedArtifact {
-  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", sha256: supplied_digest }
+  NoCloudSeedArtifact { name: n as NonEmptyStr, source_url: "https://example.invalid/x", digest: sha256_digest(hex: supplied_digest) }
 }
 
 test fn seed_artifact_names_are_admitted_only_as_fresh_basenames() -> Bool {
@@ -335,5 +337,22 @@ test fn an_unrecognized_machine_spelling_refuses_as_unrecognized() -> Bool {
     Present { value: RunnerHostUpRefused { refusals: rs } } =>
       any(rs, r => match r { RunnerHostMachineUnrecognized { observed: o } => o == "arm64" _ => false })
     _ => false
+  }
+}
+
+// THE PIN CARRIES ITS ALGORITHM: the same hex under Sha512 is another artifact (another build key) and
+// can never satisfy the sha256sum readback, while a Sha256 pin holds only on its own hex.
+test fn a_seed_artifact_pin_is_judged_with_its_algorithm_not_by_hex_alone() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host) {
+    RunnerHostMediumImageDerived { input: input, runner: _ } => {
+      let hex = actions_runner_release_2_337_0.digest_aarch64.hex
+      let as_512 = map(input.seed_artifacts, a => NoCloudSeedArtifact { name: a.name, source_url: a.source_url, digest: sha512_digest(hex: hex) })
+      (seeded_install_media_build_key(input: input) as String) != (seeded_install_media_build_key(input: with_artifacts(input: input, artifacts: as_512)) as String)
+        && seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha256_digest(hex: hex))
+        && !seed_artifact_readback_holds(read_back_sha256_hex: hex as String, pin: sha512_digest(hex: hex))
+        && !seed_artifact_readback_holds(read_back_sha256_hex: supplied_digest as String, pin: sha256_digest(hex: hex))
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
   }
 }
