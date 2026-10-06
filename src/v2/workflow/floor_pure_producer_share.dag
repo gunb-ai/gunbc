@@ -122,6 +122,8 @@ type CallSiteDemandCause
 type ConsumerReadCause
   = ProjectionFieldNameUnreadable
   | ProjectionFieldNameEmpty
+  | ProjectionBaseUnreadable
+  | ShareMapLookupUnreadable
 
 type ConsumerRead
   = WholeValue
@@ -375,9 +377,10 @@ fn unobserved_read_causes(reads: List<ClaimConsumerRead>) -> List<ConsumerReadCa
 // passes: the whole-value readers as a set, then per field the projecting claims that are NOT
 // whole-value readers, then each projected field whose demand -- whole readers plus those
 // projecting claims -- is exactly one. The seed emits each (claim, read) once, so a field's
-// projecting rows are distinct claims and a sole field appears once. A refused map lookup always
-// resolves TOWARD DECLINE: an unanswered membership counts the claim as a whole reader (lowering
-// every field's projection count), an unanswered count reads zero -- never toward admission.
+// projecting rows are distinct claims and a sole field appears once. A refused map lookup is
+// NEVER a count: it declines the identity as ConsumerReadUnknown { ShareMapLookupUnreadable }
+// (DESIGN section 5: a failure arm refuses, never widens). Absent is Missing (not a whole
+// reader; a missing field's count is zero).
 fn whole_value_readers(reads: List<ClaimConsumerRead>) -> Map<String, Bool> {
   reads |> fold(init: empty_map(), f: fn(acc, r) {
     match r.read {
@@ -392,7 +395,7 @@ fn reads_whole_value(wholes: Map<String, Bool>, claim: String) -> Bool {
   match map_get(wholes, claim) {
     Accepted { value: Present { value: _ }, diagnostics: _ } => true
     Accepted { value: Absent, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -402,6 +405,33 @@ fn projection_count(counts: Map<String, Int>, field: String) -> Int {
     Accepted { value: Absent, diagnostics: _ } => 0
     Rejected { diagnostics: _ } => 0
   }
+}
+
+fn map_get_unreadable(m: Map<String, Bool>, key: String) -> List<ConsumerReadCause> {
+  match map_get(m, key) {
+    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
+    Accepted { value: _, diagnostics: _ } => []
+  }
+}
+
+fn map_count_unreadable(m: Map<String, Int>, key: String) -> List<ConsumerReadCause> {
+  match map_get(m, key) {
+    Rejected { diagnostics: _ } => [ShareMapLookupUnreadable]
+    Accepted { value: _, diagnostics: _ } => []
+  }
+}
+
+fn share_map_lookup_unreadable_causes(wholes: Map<String, Bool>, counts: Map<String, Int>, reads: List<ClaimConsumerRead>) -> List<ConsumerReadCause> {
+  concat(
+    list_flat_map(xs: reads, f: fn(r) { map_get_unreadable(m: wholes, key: r.claim) }),
+    list_flat_map(xs: reads, f: fn(r) {
+      match r.read {
+        ProjectedField { field: f } => map_count_unreadable(m: counts, key: f)
+        WholeValue => []
+        ConsumerReadUnobserved { cause: _ } => []
+      }
+    })
+  )
 }
 
 fn sole_projections(reads: List<ClaimConsumerRead>) -> List<String> {
@@ -445,11 +475,29 @@ fn bundle_decline(claims: List<String>, reads: List<ClaimConsumerRead>) -> List<
     if length(xs: unobserved) > 0 {
       list_map(xs: unobserved, f: fn(k) { ConsumerReadUnknown { cause: k } })
     } else {
-      let sole = sole_projections(reads: reads)
-      if length(xs: sole) > 0 {
-        [BundleOfDisjointProjections { sole_projections: sole }]
+      let wholes = whole_value_readers(reads: reads)
+      let counts = reads |> fold(init: empty_map(), f: fn(acc, r) {
+        match r.read {
+          ProjectedField { field: f } =>
+            if reads_whole_value(wholes: wholes, claim: r.claim) {
+              acc
+            } else {
+              map_insert(acc, f, projection_count(counts: acc, field: f) + 1)
+            }
+          WholeValue => acc
+          ConsumerReadUnobserved { cause: _ } => acc
+        }
+      })
+      let lookup_unread = share_map_lookup_unreadable_causes(wholes: wholes, counts: counts, reads: reads)
+      if length(xs: lookup_unread) > 0 {
+        list_map(xs: lookup_unread, f: fn(k) { ConsumerReadUnknown { cause: k } })
       } else {
-        []
+        let sole = sole_projections(reads: reads)
+        if length(xs: sole) > 0 {
+          [BundleOfDisjointProjections { sole_projections: sole }]
+        } else {
+          []
+        }
       }
     }
   }

@@ -112,6 +112,8 @@ pub(crate) enum ConsumerRead {
 pub(crate) enum ConsumerReadCause {
     ProjectionFieldNameUnreadable,
     ProjectionFieldNameEmpty,
+    ProjectionBaseUnreadable,
+    ShareMapLookupUnreadable,
 }
 
 impl ConsumerReadCause {
@@ -119,6 +121,8 @@ impl ConsumerReadCause {
         match self {
             ConsumerReadCause::ProjectionFieldNameUnreadable => "ProjectionFieldNameUnreadable",
             ConsumerReadCause::ProjectionFieldNameEmpty => "ProjectionFieldNameEmpty",
+            ConsumerReadCause::ProjectionBaseUnreadable => "ProjectionBaseUnreadable",
+            ConsumerReadCause::ShareMapLookupUnreadable => "ShareMapLookupUnreadable",
         }
     }
 }
@@ -446,6 +450,16 @@ impl<'a> CallSiteDemandObserver<'a> {
             let Ok(base) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::v1_std_core::field_access_base(n.clone())
             })) else {
+                // Unreadable base: the call child is still a site. Mark it Unread, never
+                // default it to WholeValue at the call (DESIGN section 5: refuse, never widen).
+                for child in n.children.iter() {
+                    if matches!(child.expr_data.as_ref(), ExprData::ExprCall { .. }) {
+                        projections.insert(
+                            site_key_of(child),
+                            ConsumerRead::Unread(ConsumerReadCause::ProjectionBaseUnreadable),
+                        );
+                    }
+                }
                 continue;
             };
             if !matches!(base.expr_data.as_ref(), ExprData::ExprCall { .. }) {
