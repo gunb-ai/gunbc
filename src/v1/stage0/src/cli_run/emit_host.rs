@@ -3285,8 +3285,46 @@ pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
             .map_err(&refuse)?,
     )
     .map_err(|refusal| refuse(format!("the clean member did not hold: {refusal}")))?;
+    // THE CLOSURE CONTROLS (#13437). The fixture closure is the corpus closure of what the
+    // fixture imports, not its import edges alone. `std.syllogism` imports nothing and reaches
+    // `std.graph` by the bare names `GraphEdge` / `CallGraph`, so an import-only walk compiles
+    // it without its provider and the union refuses at `module=std.syllogism` (#13420's refusal).
+    fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER)
+            .map_err(&refuse)?,
+    )
+    .map_err(|refusal| {
+        refuse(format!(
+            "a provider reached only by reference is missing from the fixture closure: {refusal}"
+        ))
+    })?;
+    // And the closure fix closes providers without narrowing what refuses: a real error in a
+    // member of the fixture's own closure still refuses, located at that member.
+    match fixture_closure_union_emit_receipt(
+        &fixture_closure_union_control_union(FIXTURE_CLOSURE_REAL_ERROR_MEMBER).map_err(&refuse)?,
+    ) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionUncompilable")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the real-error member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "a real error in the fixture closure did not refuse the union: {observed:?}"
+            )))
+        }
+    }
     Ok((red_ms, clean_started.elapsed().as_millis()))
 }
+
+/// A member reaching `std.graph` only through `std.syllogism`'s bare references.
+const FIXTURE_CLOSURE_REFERENCE_REACH_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument, argument_is_acyclic }\nfn acyclic(a: Argument) -> Bool {\n  argument_is_acyclic(a)\n}\n";
+
+/// The same closure with a call to a function nothing declares.
+const FIXTURE_CLOSURE_REAL_ERROR_MEMBER: &str = "module efr_member\nimport std.syllogism { Argument }\nfn broken(a: Argument) -> Bool {\n  no_such_function_anywhere(a)\n}\n";
 
 #[cfg(test)]
 mod fixture_closure_union_tests {
