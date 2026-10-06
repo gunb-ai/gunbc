@@ -226,7 +226,8 @@ type SymbolIndex {
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
-  file_named_imports: Map<String, Map<String, String>>
+  file_modules: Map<String, String>
+  module_named_imports: Map<String, Map<String, String>>
 }
 
 type Scope {
@@ -234,7 +235,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_named_imports: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), file_modules: empty_map(), module_named_imports: empty_map() }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -301,20 +302,40 @@ fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node
   }
 }
 
-// A NAMED IMPORT whose module holds no such declaration in the index (a re-export this census cannot
-// follow) is Undecided and refuses; it never falls through to the kernel.
+// A NAMED IMPORT is followed the way lookup_binding follows it: a module that itself imports the name
+// by name re-exports it (v2.std.collection imports v2.std.optional { Optional }), so the chain is
+// walked to the module that DECLARES the name. A chain that ends in a module holding no such
+// declaration, or that does not end within the bound, is Undecided and refuses; it never falls
+// through to the kernel.
 fn bare_occurrence_import(index: SymbolIndex, name: String, reference: Node) -> BareOccurrenceBinding? {
-  match map_get(index.file_named_imports, reference.span.file) {
+  match map_get(index.file_modules, reference.span.file) {
     Absent => none
-    Present { value: named } =>
-      match map_get(named, name) {
+    Present { value: referencing_module } =>
+      match symbol_index_named_import_source(index: index, module_path: referencing_module, name: name) {
         Absent => none
-        Present { value: from_module } =>
-          match symbol_index_lookup(index: index, qualified_name: concat(from_module, ".", name)) {
-            Present { value: decl } => Present { value: BareOccurrenceImportedByName { module_path: from_module, declaration: decl } }
-            Absent => Present { value: BareOccurrenceUndecided }
-          }
+        Present { value: from_module } => Present { value: bare_occurrence_import_terminal(index: index, module_path: from_module, name: name, fuel: 16) }
       }
+  }
+}
+
+fn symbol_index_named_import_source(index: SymbolIndex, module_path: String, name: String) -> String? {
+  match map_get(index.module_named_imports, module_path) {
+    Absent => none
+    Present { value: named } => map_get(named, name)
+  }
+}
+
+fn bare_occurrence_import_terminal(index: SymbolIndex, module_path: String, name: String, fuel: Int) -> BareOccurrenceBinding {
+  if fuel == 0 { BareOccurrenceUndecided }
+  else {
+    match symbol_index_named_import_source(index: index, module_path: module_path, name: name) {
+      Present { value: next } => bare_occurrence_import_terminal(index: index, module_path: next, name: name, fuel: fuel - 1)
+      Absent =>
+        match symbol_index_lookup(index: index, qualified_name: concat(module_path, ".", name)) {
+          Present { value: decl } => BareOccurrenceImportedByName { module_path: module_path, declaration: decl }
+          Absent => BareOccurrenceUndecided
+        }
+    }
   }
 }
 
@@ -371,7 +392,8 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
-    file_named_imports: index.file_named_imports
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 
@@ -382,7 +404,8 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
     services: index.services,
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
-    file_named_imports: index.file_named_imports
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 
@@ -393,7 +416,8 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
     type_head_exposures: index.type_head_exposures,
-    file_named_imports: index.file_named_imports
+    file_modules: index.file_modules,
+    module_named_imports: index.module_named_imports
   }
 }
 
