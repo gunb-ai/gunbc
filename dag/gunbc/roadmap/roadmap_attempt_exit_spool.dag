@@ -1,0 +1,251 @@
+module gunbc.roadmap.roadmap_attempt_exit_spool
+
+import std.types { String, NonEmptyStr, List, Bool, Int }
+import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir }
+import extdeps.systemd.service_exec {
+  ServiceStopVariable, InvocationIdVariable, ServiceResultVariable, ExitCodeVariable, ExitStatusVariable,
+  ServiceResult, service_result_of_wire, ServiceExitCode, service_exit_code_of_wire,
+  ServiceExitCodeExited, ServiceExitCodeKilled, ServiceExitCodeDumped, ServiceExitCodeUnlisted,
+  ExecWordPart, ExecLiteral, ExecVariable, ExecWordRendered, ExecWordRefused, exec_word_render,
+  ExecCommandLineRendering, ExecCommandLineRendered, ExecCommandLineRefused, exec_command_line,
+}
+import extdeps.tools.gnu_coreutils { mkdir_create_only_command }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemListingObservation, FilesystemDirectoryListed, FilesystemDirectoryListingRefused, FilesystemDirectorySubjectRefused,
+  filesystem_listing_observation, filesystem_listing_entry_names,
+}
+
+// THE RECORD A WORKER UNIT LEAVES WHEN ITS PROCESS ENDS (dogfood interventions #4 and #6, gunbc#13124;
+// docs/plans/belt-event-driven-obligations.md). The unit's stop hook creates ONE directory in the
+// instance's exit inbox, and the directory's NAME is the record: the attempt it belongs to, the
+// manager's invocation id, and the three stop-time facts systemd hands the hook
+// (extdeps.systemd.service_exec ServiceStopVariable). There is no file to write and no shell to write
+// it with -- the hook is `mkdir -- <name>` as a typed argv, the manager substitutes the variables,
+// and mkdir(2) is atomic and create-only, so a repeated hook for one invocation fails harmlessly and
+// two invocations can never merge into one record.
+//
+// THIS RECORD REPLACES UNIT-LOADED STATE AS THE EXIT EVIDENCE. The worker unit used to set
+// RemainAfterExit=yes so that a successful exit stayed readable as `active (exited)` with its
+// ExecMainStatus (2026-09-05). That state lives in the user manager's memory: it is gone on a
+// reboot, a manager restart or a reap, and while it stands the unit never STOPS, so no stop hook can
+// run at the moment the worker exits. The entry is on disk under the instance root and is written
+// at exit, which is the event the capture obligation waits on.
+//
+// THE SEPARATOR IS "+". The name's parts are a roadmap node id (kebab-case), an attempt key (hex),
+// an invocation id (32 hex), a $SERVICE_RESULT word (lowercase, may contain "-"), an $EXIT_CODE word
+// and an $EXIT_STATUS (decimal or a signal name). None of those can contain "+", so the name splits
+// into exactly six parts or it is not a record; nothing is guessed from a partial split.
+
+data attempt_exit_entry_separator: String = "+"
+
+// THE STOP HOOK'S ARGV, as one ExecStopPost= value. Refuses rather than renders if any literal part
+// would be read as command-line syntax (extdeps.systemd.service_exec exec_word_render); a refused hook
+// is a refused spawn, because a worker started without its exit record would leave its capture with
+// nothing to fire on.
+type AttemptExitHook
+  = AttemptExitHookRendered { exec_line: NonEmptyStr }
+  | AttemptExitHookRefused { reason: NonEmptyStr }
+
+fn attempt_exit_entry_parts(inbox: String, node_id: String, attempt_key: String) -> List<ExecWordPart> {
+  [
+    ExecLiteral { text: join([inbox, "/", node_id, attempt_exit_entry_separator, attempt_key, attempt_exit_entry_separator], "") },
+    ExecVariable { variable: InvocationIdVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ServiceResultVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ExitCodeVariable },
+    ExecLiteral { text: attempt_exit_entry_separator },
+    ExecVariable { variable: ExitStatusVariable },
+  ]
+}
+
+fn attempt_exit_hook(instance_root: String, node_id: String, attempt_key: String) -> AttemptExitHook {
+  match exec_word_render(parts: attempt_exit_entry_parts(inbox: attempt_exit_inbox_dir(instance_root: instance_root), node_id: node_id, attempt_key: attempt_key)) {
+    ExecWordRefused { reason } => AttemptExitHookRefused { reason: reason }
+    ExecWordRendered { word } =>
+      match exec_command_line(command: mkdir_create_only_command(path: word as String)) {
+        ExecCommandLineRefused { reason } => AttemptExitHookRefused { reason: reason }
+        ExecCommandLineRendered { line } => AttemptExitHookRendered { exec_line: line }
+      }
+  }
+}
+
+// ONE DECODED RECORD. The process END is a closed pair: an exit with a status, or a signal. They are
+// different facts -- a process killed by SIGTERM did not exit 15 -- and the record keeps them apart.
+type AttemptProcessEnd
+  = AttemptProcessExitedWith { status: Int }
+  | AttemptProcessSignaled { signal: String }
+
+type AttemptExitRecord {
+  node_id: String
+  attempt_key: String
+  invocation_id: String
+  result: ServiceResult
+  end: AttemptProcessEnd
+  entry_name: String
+}
+
+type AttemptExitEntryDecode
+  = AttemptExitEntryDecoded { record: AttemptExitRecord }
+  | AttemptExitEntryMalformed { entry_name: String, reason: String }
+
+// THE END THE TWO STOP VARIABLES DESCRIBE, or why they describe none. "Exited" must carry a number;
+// "killed" and "dumped" carry a signal name; a word systemd.exec(5) does not document is refused
+// rather than read as either.
+type AttemptProcessEndDecode
+  = AttemptProcessEndOf { end: AttemptProcessEnd }
+  | AttemptProcessEndRefused { reason: String }
+
+fn attempt_process_end_of(code: ServiceExitCode, status: String) -> AttemptProcessEndDecode {
+  match code {
+    ServiceExitCodeExited =>
+      match parse_int(text: status) {
+        Present { value: n } => AttemptProcessEndOf { end: AttemptProcessExitedWith { status: n } }
+        Absent => AttemptProcessEndRefused { reason: join(["EXIT_CODE is exited but EXIT_STATUS is not a number: ", status], "") }
+      }
+    ServiceExitCodeKilled => AttemptProcessEndOf { end: AttemptProcessSignaled { signal: status } }
+    ServiceExitCodeDumped => AttemptProcessEndOf { end: AttemptProcessSignaled { signal: status } }
+    ServiceExitCodeUnlisted { word } => AttemptProcessEndRefused { reason: join(["EXIT_CODE is not a word systemd.exec(5) documents: ", word], "") }
+  }
+}
+
+// The decoder checks the part count before reading any part, so an absent index here is a count
+// already refused; the empty string it answers is then refused by the emptiness checks below.
+fn attempt_exit_entry_part(parts: List<String>, index: Int) -> String {
+  match parts.get(index) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+fn attempt_exit_entry_decode(entry_name: String) -> AttemptExitEntryDecode {
+  let parts = entry_name.split(delimiter: attempt_exit_entry_separator)
+  if count(parts) != 6 {
+    AttemptExitEntryMalformed { entry_name: entry_name, reason: join(["an exit record has six '+'-separated parts; this name has ", to_string(value: count(parts))], "") }
+  } else {
+    let node_id = attempt_exit_entry_part(parts: parts, index: 0)
+    let attempt_key = attempt_exit_entry_part(parts: parts, index: 1)
+    let invocation_id = attempt_exit_entry_part(parts: parts, index: 2)
+    let result_word = attempt_exit_entry_part(parts: parts, index: 3)
+    let code = service_exit_code_of_wire(word: attempt_exit_entry_part(parts: parts, index: 4))
+    let status = attempt_exit_entry_part(parts: parts, index: 5)
+    if string_length(s: node_id) == 0 || string_length(s: attempt_key) == 0 || string_length(s: invocation_id) == 0 {
+      AttemptExitEntryMalformed { entry_name: entry_name, reason: "an exit record names its node, attempt and invocation; one of them is empty" }
+    } else {
+      match attempt_process_end_of(code: code, status: status) {
+        AttemptProcessEndRefused { reason } => AttemptExitEntryMalformed { entry_name: entry_name, reason: reason }
+        AttemptProcessEndOf { end } =>
+          AttemptExitEntryDecoded {
+            record: AttemptExitRecord {
+              node_id: node_id,
+              attempt_key: attempt_key,
+              invocation_id: invocation_id,
+              result: service_result_of_wire(word: result_word),
+              end: end,
+              entry_name: entry_name,
+            },
+          }
+      }
+    }
+  }
+}
+
+fn attempt_exit_record_is_for(record: AttemptExitRecord, node_id: String, attempt_key: String) -> Bool {
+  record.node_id == node_id && record.attempt_key == attempt_key
+}
+
+// WHERE IN THE SPOOL AN ENTRY STANDS, which is responsibility, not evidence: the record means the
+// same thing in every stage. Inbox: no obligation has taken it. Queued: an obligation was started for
+// it. Done: its capture receipt exists.
+type AttemptExitSpoolStage
+  = AttemptExitInbox
+  | AttemptExitQueued
+  | AttemptExitDone
+
+fn attempt_exit_spool_stage_dir(instance_root: String, stage: AttemptExitSpoolStage) -> String {
+  match stage {
+    AttemptExitInbox => attempt_exit_inbox_dir(instance_root: instance_root)
+    AttemptExitQueued => attempt_exit_queued_dir(instance_root: instance_root)
+    AttemptExitDone => attempt_exit_done_dir(instance_root: instance_root)
+  }
+}
+
+// THE EXIT RECORD OF ONE ATTEMPT, as the process observer needs it. Three arms and only three:
+// a record was found; the spool was read in all three stages and holds none for this attempt; or a
+// stage could not be read. The third is never the second -- "I could not look" is not "there is
+// none" -- and the second is never "the worker never ran": it is the absence of a RECORD, which the
+// observer reports as exactly that (bold-bee-114 ruling, condition 1).
+type AttemptExitRecordObservation
+  = AttemptExitRecordFound { record: AttemptExitRecord }
+  | AttemptExitRecordNone
+  | AttemptExitRecordUnreadable { reason: String }
+
+type AttemptExitStageListing
+  = AttemptExitStageNames { names: List<String> }
+  | AttemptExitStageUnreadable { reason: String }
+
+fn attempt_exit_stage_listing(listing: FilesystemListingObservation) -> AttemptExitStageListing {
+  match listing {
+    FilesystemDirectoryListed(admitted) => AttemptExitStageNames { names: filesystem_listing_entry_names(listing: admitted) }
+    FilesystemDirectoryListingRefused { directory, error } =>
+      AttemptExitStageUnreadable { reason: join(["the attempt-exit spool stage ", directory as String, " could not be listed: ", error], "") }
+    FilesystemDirectorySubjectRefused { directory, cause } =>
+      AttemptExitStageUnreadable { reason: join(["the attempt-exit spool stage ", directory, " is not an admissible directory: ", cause], "") }
+  }
+}
+
+// PURE OVER THE THREE LISTINGS, so the decision is exercised on supplied listings and the wet read
+// below is only the listing. The FIRST record for the attempt wins in stage order; a unit runs once,
+// so a second record for one attempt is a second invocation of one attempt's unit, which the
+// dispatch path does not do -- it is reported, not chosen between.
+fn attempt_exit_record_from_listings(
+  node_id: String,
+  attempt_key: String,
+  listings: List<AttemptExitStageListing>,
+) -> AttemptExitRecordObservation {
+  let unreadable = listings |> flat_map(l => match l {
+    AttemptExitStageUnreadable { reason } => [reason]
+    AttemptExitStageNames { names: _ } => [] as List<String>
+  })
+  match unreadable.first() {
+    Present { value: why } => AttemptExitRecordUnreadable { reason: why }
+    Absent => {
+      let records = listings
+        |> flat_map(l => match l {
+          AttemptExitStageNames { names } => names
+          AttemptExitStageUnreadable { reason: _ } => [] as List<String>
+        })
+        |> flat_map(name => match attempt_exit_entry_decode(entry_name: name) {
+          AttemptExitEntryDecoded { record } => if attempt_exit_record_is_for(record: record, node_id: node_id, attempt_key: attempt_key) { [record] } else { [] as List<AttemptExitRecord> }
+          AttemptExitEntryMalformed { entry_name: _, reason: _ } => [] as List<AttemptExitRecord>
+        })
+      if count(records) > 1 {
+        AttemptExitRecordUnreadable { reason: join(["the attempt-exit spool holds ", to_string(value: count(records)), " exit records for one attempt, and its unit runs once: ", join(records |> map(r => r.entry_name), ", ")], "") }
+      } else {
+        match records.first() {
+          Present { value: r } => AttemptExitRecordFound { record: r }
+          Absent => AttemptExitRecordNone
+        }
+      }
+    }
+  }
+}
+
+fn attempt_exit_stage_list(instance_root: String, stage: AttemptExitSpoolStage) -> AttemptExitStageListing {
+  let dir = attempt_exit_spool_stage_dir(instance_root: instance_root, stage: stage)
+  let listed = Filesystem.List(path: dir)
+  attempt_exit_stage_listing(listing: filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error))
+}
+
+fn attempt_exit_record_observe(instance_root: String, node_id: String, attempt_key: String) -> AttemptExitRecordObservation {
+  attempt_exit_record_from_listings(
+    node_id: node_id,
+    attempt_key: attempt_key,
+    listings: [
+      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitInbox),
+      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitQueued),
+      attempt_exit_stage_list(instance_root: instance_root, stage: AttemptExitDone),
+    ],
+  )
+}

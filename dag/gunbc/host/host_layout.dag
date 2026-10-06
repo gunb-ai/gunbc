@@ -317,6 +317,38 @@ fn instance_receipts_dir(instance_root: String) -> String {
   join([instance_root, "/receipts"], "")
 }
 
+// THE ATTEMPT-EXIT SPOOL, homed here for the publication spool's reason: it has consumers on both
+// sides of a process boundary that share no code path. The worker unit's stop hook
+// (gunbc.roadmap_dispatch_actuator) creates an entry, the deployment's path unit
+// (gunbc.live_deploy.emit) watches for one, and the belt's obligation edge moves it on. One string,
+// three consumers.
+//
+// AN ENTRY IS A DIRECTORY WHOSE NAME IS THE RECORD (gunbc.roadmap.roadmap_attempt_exit_spool).
+// Three siblings, never nested, because the path unit fires on DirectoryNotEmpty of ONE of them: a
+// subdirectory inside the watched directory would keep it non-empty forever. `inbox` holds exits
+// not yet handed to an obligation; `queued` holds exits whose obligation has been started and has
+// not yet written its receipt; `done` holds exits whose capture receipt exists. Moving an entry out
+// of `inbox` when its obligation STARTS is what lets the path unit go quiet while that obligation
+// runs, rather than re-firing until systemd's trigger limit fails the unit.
+//
+// Derived from the instance root, for instance_receipts_dir's reason: two instances on one host must
+// not read each other's exits.
+fn attempt_exit_spool_root(instance_root: String) -> String {
+  join([instance_root, "/attempt-exit-spool"], "")
+}
+
+fn attempt_exit_inbox_dir(instance_root: String) -> String {
+  join([attempt_exit_spool_root(instance_root: instance_root), "/inbox"], "")
+}
+
+fn attempt_exit_queued_dir(instance_root: String) -> String {
+  join([attempt_exit_spool_root(instance_root: instance_root), "/queued"], "")
+}
+
+fn attempt_exit_done_dir(instance_root: String) -> String {
+  join([attempt_exit_spool_root(instance_root: instance_root), "/done"], "")
+}
+
 // THE PUBLICATION SPOOL, HOMED HERE FOR THE REASON THE TWO ROWS ABOVE ARE: it has two consumers on
 // opposite sides of a PRIVILEGE boundary, so neither may own the name. gunbc.roadmap_belt_actuate
 // writes a request into it as the service principal; the publication helper reads that request and

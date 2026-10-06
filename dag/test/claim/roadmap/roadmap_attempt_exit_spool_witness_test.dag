@@ -1,0 +1,76 @@
+module test.claim.roadmap.roadmap_attempt_exit_spool_witness_test
+
+import std.types { String, List, Bool }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_hook, AttemptExitHookRendered, AttemptExitHookRefused,
+  attempt_exit_entry_decode, AttemptExitEntryDecoded, AttemptExitEntryMalformed,
+  AttemptProcessExitedWith, AttemptProcessSignaled,
+  attempt_exit_record_from_listings, AttemptExitStageNames, AttemptExitStageUnreadable,
+  AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable,
+}
+import extdeps.systemd.service_exec { ServiceResultSuccess, ServiceResultSignal }
+
+// The hook is one typed mkdir argv whose single operand is the record's name, with the four stop
+// variables spelled as systemd expansions and no shell anywhere.
+test fn exit_hook_is_a_create_only_mkdir_of_the_record_name() -> Bool {
+  match attempt_exit_hook(instance_root: "/opt/gunbc-srv2", node_id: "shell-dag-live", attempt_key: "01feb0b65dee1377") {
+    AttemptExitHookRendered { exec_line } =>
+      (exec_line as String) == "mkdir -- /opt/gunbc-srv2/attempt-exit-spool/inbox/shell-dag-live+01feb0b65dee1377+$\{INVOCATION_ID}+$\{SERVICE_RESULT}+$\{EXIT_CODE}+$\{EXIT_STATUS}"
+    AttemptExitHookRefused { reason: _ } => false
+  }
+}
+
+test fn exit_hook_refuses_an_instance_root_systemd_would_reinterpret() -> Bool {
+  match attempt_exit_hook(instance_root: "/opt/gunbc %n", node_id: "a", attempt_key: "b") {
+    AttemptExitHookRefused { reason: _ } => true
+    AttemptExitHookRendered { exec_line: _ } => false
+  }
+}
+
+test fn an_exit_record_decodes_to_its_status_and_a_kill_to_its_signal() -> Bool {
+  let exited = match attempt_exit_entry_decode(entry_name: "n-1+k1+0123456789abcdef0123456789abcdef+success+exited+0") {
+    AttemptExitEntryDecoded { record } =>
+      record.node_id == "n-1" && record.attempt_key == "k1"
+        && (match record.result { ServiceResultSuccess => true _ => false })
+        && (match record.end { AttemptProcessExitedWith { status } => status == 0 AttemptProcessSignaled { signal: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  let killed = match attempt_exit_entry_decode(entry_name: "n-1+k1+0123456789abcdef0123456789abcdef+signal+killed+TERM") {
+    AttemptExitEntryDecoded { record } =>
+      (match record.result { ServiceResultSignal => true _ => false })
+        && (match record.end { AttemptProcessSignaled { signal } => signal == "TERM" AttemptProcessExitedWith { status: _ } => false })
+    AttemptExitEntryMalformed { entry_name: _, reason: _ } => false
+  }
+  exited && killed
+}
+
+test fn a_name_that_is_not_six_parts_or_whose_status_contradicts_its_code_is_malformed() -> Bool {
+  let short = match attempt_exit_entry_decode(entry_name: "n+k+inv+success+exited") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
+  let contradiction = match attempt_exit_entry_decode(entry_name: "n+k+inv+success+exited+TERM") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
+  let unlisted_code = match attempt_exit_entry_decode(entry_name: "n+k+inv+success+vanished+0") { AttemptExitEntryMalformed { entry_name: _, reason: _ } => true AttemptExitEntryDecoded { record: _ } => false }
+  short && contradiction && unlisted_code
+}
+
+// The observer's three arms over supplied listings: a record in any stage is found; every stage read
+// and none for this attempt is None (never "never ran"); a stage that could not be read is
+// Unreadable, never None.
+test fn record_found_in_any_stage_none_when_all_read_unreadable_when_one_is_not() -> Bool {
+  let other = "other+k9+inv+success+exited+0"
+  let mine = "n-1+k1+inv+exit-code+exited+3"
+  let found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", listings: [AttemptExitStageNames { names: [other] }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [mine] }]) {
+    AttemptExitRecordFound { record } => match record.end { AttemptProcessExitedWith { status } => status == 3 AttemptProcessSignaled { signal: _ } => false }
+    AttemptExitRecordNone => false
+    AttemptExitRecordUnreadable { reason: _ } => false
+  }
+  let none_found = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", listings: [AttemptExitStageNames { names: [other] }, AttemptExitStageNames { names: [] }, AttemptExitStageNames { names: [] }]) {
+    AttemptExitRecordNone => true
+    AttemptExitRecordFound { record: _ } => false
+    AttemptExitRecordUnreadable { reason: _ } => false
+  }
+  let unreadable = match attempt_exit_record_from_listings(node_id: "n-1", attempt_key: "k1", listings: [AttemptExitStageNames { names: [mine] }, AttemptExitStageUnreadable { reason: "EACCES" }, AttemptExitStageNames { names: [] }]) {
+    AttemptExitRecordUnreadable { reason: _ } => true
+    AttemptExitRecordFound { record: _ } => false
+    AttemptExitRecordNone => false
+  }
+  found && none_found && unreadable
+}
