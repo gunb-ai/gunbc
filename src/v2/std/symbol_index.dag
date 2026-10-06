@@ -15,7 +15,7 @@ import v2.std.algebra {
 import v2.std.collection {
   Map,
   empty_map,
-  map_get,
+  map_get_checked,
   map_insert,
   map_contains_key,
   map_lookup
@@ -192,7 +192,7 @@ fn empty_symbol_index() -> SymbolIndex {
 // a two-binder refusal back to one binder the first time this split was written. `entries` is where
 // a declaration is stored; `symbol_index_lookup` is what a reference is entitled to be told.
 fn symbol_index_entry_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match v2.std.collection.map_get(index.entries, qualified_path) {
+  match v2.std.collection.map_get_checked(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -232,7 +232,7 @@ fn symbol_index_track_global_bare(
   match qualified_name_last_segment(qn: qualified_path) {
     Absent => index
     Present { value: leaf } =>
-      match v2.std.collection.map_get(index.global_bare, leaf) {
+      match v2.std.collection.map_get_checked(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous { paths: paths } } =>
             SymbolIndex {
@@ -359,9 +359,9 @@ fn symbol_index_mark_declared_payload(index: SymbolIndex, qualified_path: Qualif
 }
 
 // WHAT THE PATH DENOTES, WITH NO FAILURE ARM TO WIDEN (review 70226). The first cut read this
-// through map_get, whose Outcome carries a Rejected arm, and answered binder there -- which matches
+// through map_get_checked, whose Outcome carries a Rejected arm, and answered binder there -- which matches
 // every value, so a lookup that could not answer would have widened the arm silently, the fail-open
-// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get (which is
+// shape DESIGN section 5 forbids. map_lookup is the total read underneath map_get_checked (which is
 // `outcome_accepted(map_lookup(..))`, so its refusal arm is unreachable by construction): the kind,
 // or Absent for a path that denotes no declared payload. The caller matches on it.
 fn symbol_index_declared_payload_at(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<DeclaredPayloadKind> {
@@ -462,7 +462,7 @@ fn symbol_index_declared_binders_at(index: SymbolIndex, qualified_path: Qualifie
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
-  match v2.std.collection.map_get(index.global_bare, name) {
+  match v2.std.collection.map_get_checked(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: p } } => GlobalBareHit { node: n, path: p }
       Present { value: GlobalBareAmbiguous { paths: paths } } => GlobalBareLookupAmbiguous { paths: paths }
@@ -597,7 +597,7 @@ fn symbol_index_bound_declarings(
   index: SymbolIndex,
   binding_path: QualifiedName
 ) -> FreeMonoid<QualifiedName> {
-  match v2.std.collection.map_get(index.bound_declarings, binding_path) {
+  match v2.std.collection.map_get_checked(index.bound_declarings, binding_path) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: declarings } => declarings
       Absent => Empty

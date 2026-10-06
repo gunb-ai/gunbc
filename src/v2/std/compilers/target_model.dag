@@ -38,7 +38,7 @@ import v2.std.collection {
   Map,
   empty_map,
   list_at_optional,
-  map_get,
+  map_get_checked,
   map_insert,
   map_lookup
 }
@@ -1343,7 +1343,7 @@ fn bound_spelling_from_map(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
 ) -> Outcome<String> {
-  match map_get(binding_spellings, binding) {
+  match map_get_checked(binding_spellings, binding) {
     Accepted { value: opt, diagnostics: pending } => match opt {
       Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
       Absent =>
@@ -1544,7 +1544,7 @@ fn fixed_token_spelling_from_model(
   bind_outcome(
     o: lex_rules_literal_for_class(rules: target.lex, token_class: token_class),
     f: fn(spelling) {
-      match map_get(target.token_class_emit_transforms, token_class) {
+      match map_get_checked(target.token_class_emit_transforms, token_class) {
         Accepted { value: Present { value: transform }, diagnostics: d } =>
           bind_outcome(
             o: apply_emit_spelling_transform(transform: transform, token_class: token_class, spelling: spelling),
@@ -1566,7 +1566,7 @@ fn bound_token_spelling_from_model(
   bind_outcome(
     o: target_binding_spelling_lookup(target: target, binding: binding),
     f: fn(spelling) {
-      match map_get(target.token_class_emit_transforms, token_class) {
+      match map_get_checked(target.token_class_emit_transforms, token_class) {
         Accepted { value: Present { value: transform }, diagnostics: d } =>
           bind_outcome(
             o: apply_emit_spelling_transform(transform: transform, token_class: token_class, spelling: spelling),
@@ -1581,7 +1581,7 @@ fn bound_token_spelling_from_model(
 }
 
 fn layout_or_atom_in(transforms: Map<Symbol, TokenClassEmitTransform>, token_class: Symbol, spelling: String) -> Outcome<TargetText> {
-  match map_get(transforms, token_class) {
+  match map_get_checked(transforms, token_class) {
     Accepted { value: Present { value: transform }, diagnostics: d } =>
       match transform {
         EmitLineBreaks { before: b, after: a } =>
@@ -5658,7 +5658,7 @@ fn target_value_expr_effect_apply_callee(
   shape: TargetEffectApplyShape,
   expr: TargetValueExpression
 ) -> Outcome<Symbol> {
-  match map_get(
+  match map_get_checked(
     m: fold_list(
       xs: shape.callees,
       empty: empty_map(),

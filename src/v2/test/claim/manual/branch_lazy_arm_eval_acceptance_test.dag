@@ -25,7 +25,7 @@ import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Map,
   list_at_optional,
-  map_get,
+  map_get_checked,
   map_insert
 }
 import v2.std.optional {
@@ -228,7 +228,7 @@ fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn lazy_arm_touch_from_env(env: EvaluationEnvironment) -> Int {
-  match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
+  match v2.std.collection.map_get_checked(m: env.bindings, key: lazy_arm_touch_key()) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => lazy_arm_int_from_runtime(value: v)

@@ -500,10 +500,12 @@ type TargetStandingLookup
   | StandingLookupLabelNotCanonical { target: Label, cause: LabelCanonicalityCause }
 
 // THE LOOKUP SPELLING IS `lookup`, NOT `map_get`, AND THE REASON IS RESOLUTION RATHER THAN TASTE.
-// Two declarations answer to the bare name `map_get` — the builtin, returning `Optional<V>`, and
-// `v2.std.collection.map_get`, returning `Outcome<Optional<V>>` — so in a module whose imports make
-// both visible the reference is ambiguous and refuses outright. `lookup` is the dual-dispatch
-// chokepoint, has one declaration, and already returns the `Optional` these matches read.
+// HISTORICALLY the bare name `map_get` answered to two declarations — the builtin, returning
+// `Optional<V>`, and `v2.std.collection`'s declared projection, returning `Outcome<Optional<V>>` —
+// so in a module whose imports made both visible the reference was ambiguous and refused outright.
+// The declared projection now answers to `map_get_checked` alone (the fork is dissolved), and
+// `lookup` remains the dual-dispatch chokepoint: one declaration, and it already returns the
+// `Optional` these matches read.
 fn target_standing_lookup(index: TargetStandingIndex, target: Label) -> TargetStandingLookup {
   match label_canonicality(label: target) {
     LabelNonCanonical { cause: cause } =>

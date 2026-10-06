@@ -1,7 +1,7 @@
 module v2.workflow.emitted_crate_workspace
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
-import v2.std.collection { empty_map, map_get, map_insert }
+import v2.std.collection { empty_map, map_get_checked, map_insert }
 import v2.std.optional { Absent, Optional, Present, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit {
@@ -130,7 +130,7 @@ fn emitted_workspace_crate_dir(package: String) -> String {
 }
 
 fn emitted_workspace_lookup(m: Map<String, String>, key: String) -> Optional<String> {
-  match map_get(m, key) {
+  match map_get_checked(m, key) {
     Accepted { value: found, diagnostics: _ } => found
     Rejected { diagnostics: _ } => Absent
   }
@@ -262,7 +262,7 @@ fn emitted_workspace_unit_rows(modules: List<ModuleId>, assignment: Map<ModuleId
       package_name: package,
       crate_dir: emitted_workspace_crate_dir(package: package),
       kind: Stage0LayeredCoreCrate,
-      modules: modules |> filter(m => match map_get(assignment, m) {
+      modules: modules |> filter(m => match map_get_checked(assignment, m) {
           Accepted { value: Present { value: u }, diagnostics: _ } => u == unit_id
           Accepted { value: Absent, diagnostics: _ } => false
           Rejected { diagnostics: _ } => false
@@ -319,7 +319,7 @@ fn emitted_workspace_derived_rows(unit_rows: List<Stage0PartitionCrateRow>, unit
 }
 
 fn emitted_workspace_unit_of(assignment: Map<ModuleId, CompilationUnitId>, module: String) -> Optional<CompilationUnitId> {
-  match map_get(assignment, module as ModuleId) {
+  match map_get_checked(assignment, module as ModuleId) {
     Accepted { value: owner, diagnostics: _ } => owner
     Rejected { diagnostics: _ } => Absent
   }

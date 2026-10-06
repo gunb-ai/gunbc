@@ -12,7 +12,7 @@ import v2.std.compilers.target_model {
   LexRules,
   lex_rules_literal_for_class
 }
-import v2.std.collection { map_get }
+import v2.std.collection { map_get_checked }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -262,7 +262,7 @@ fn required_bound_spelling(
   binding_spellings: Map<Symbol, String>,
   binding: Symbol
 ) -> Outcome<String> {
-  match map_get(binding_spellings, binding) {
+  match map_get_checked(binding_spellings, binding) {
     Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
     Accepted { value: found, diagnostics: pending } =>
       match found {
