@@ -105,9 +105,9 @@ test fn census_fixture_route_counts_its_members() -> Bool {
   match fixture_facts() {
     Absent => false
     Present { value: facts } =>
-      let members = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if is_census_member(f: f) { acc + 1 } else { acc } })
-      let data_decls = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if f.decl_kind == DataDecl { acc + 1 } else { acc } })
-      (members == 4) && (data_decls == 3) && (length(xs: facts) == 7)
+      (length(xs: filter(xs: facts, p => is_census_member(f: p))) == 4)
+      && (length(xs: filter(xs: facts, p => f.decl_kind == DataDecl)) == 3)
+      && (length(xs: facts) == 7)
       && match fact_named(xs: facts, want: "fixture_transient_unit_argv") {
         Absent => false
         Present { value: f } => is_census_member(f: f) && (f.counted == true)
@@ -125,9 +125,9 @@ test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
   match fixture_facts() {
     Absent => false
     Present { value: facts } =>
-      let data_facts = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if f.decl_kind == DataDecl { acc + 1 } else { acc } })
-      let data_members = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if (f.decl_kind == DataDecl) && is_census_member(f: f) { acc + 1 } else { acc } })
-      (data_facts == 3) && (data_members == 0)
+      (length(xs: filter(xs: facts, p => f.decl_kind == DataDecl)) == 3)
+      && (length(xs: facts) == 7)
+      && (length(xs: filter(xs: facts, p => (f.decl_kind == DataDecl) && is_census_member(f: p))) == 0)
       && match fact_named(xs: facts, want: "fixture_waits_quietly") {
         Absent => false
         Present { value: waits } =>
