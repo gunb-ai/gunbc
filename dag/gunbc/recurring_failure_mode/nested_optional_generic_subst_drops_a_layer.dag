@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.nested_optional_generic_subst_drops_a_layer
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_optional_generic_subst_drops_a_layer: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_optional_generic_subst_drops_a_layer" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: a generic slot T? is a CardOptional flag on the slot node. substitute_generics_apply (v1.compiler.infer) and substitute_type_slots_scoped (v1.compiler.resolve) carry that flag via preserve_outer_optional_cardinality. When the argument is already optional, the join is still one flag, so the instance is T? not T??.",
+    "CENSUS: preserve_outer_optional_cardinality at substitute_generics_apply and the type-variable / bare-slot arms of substitute_type_slots_scoped (04_infer, 04_resolve). Related: gunbc.recurring_failure_mode generic_optional_over_a_type_application_argument_loses_the_optional (lossy wholesale replace, already repaired by the same preserve_outer).",
+    "TRIGGER: substitution answers through wrap_optional_layer over the argument when the slot is optional, sufficient for T? instantiated at an already-optional argument to be T??. STAGE 2 of the nested-optional carrier, with join. C5 exclusion retires after this stage, not this PR.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.nested_optional_first_payload_witness", decl_name: "first_over_list_of_optional_binds_present_payload_as_optional", field: WholeDeclaration },
+  ],
+}

@@ -1,0 +1,19 @@
+module gunbc.recurring_failure_mode.nested_optional_join_preserves_one_flag
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_optional_join_preserves_one_flag: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_optional_join_preserves_one_flag" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: join_optional_cardinality(left, right) is CardOptional if either side is CardOptional, else right. Two optional layers become one flag. preserve_outer_optional_cardinality restores at most that one flag onto inner.",
+    "CENSUS of preserve_outer_optional_cardinality call sites: v1.std.core (definition); v1.compiler.resolve substitute_type_slots_scoped and identity/structural restore (04_resolve); v1.compiler.infer infer_item, struct-field inferred, pattern subject, type-variable slots, declaration_bound_conformance (04_infer); v1.compiler.infer_lookup resolve_scrutinee_type_node_seen. join_optional_cardinality is called only from preserve_outer_optional_cardinality.",
+    "TRIGGER: wrap_optional_layer (or a layer-count join) replaces flag-or of two optionals, sufficient for T?? surviving outer-cardinality restore. STAGE 2 of the nested-optional carrier. C5 exclusion match_arm_body_is_present_payload_binding on gunbc#13280 retires after this stage, not this PR.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.nested_optional_first_payload_witness", decl_name: "first_over_list_of_optional_binds_present_payload_as_optional", field: WholeDeclaration },
+  ],
+}

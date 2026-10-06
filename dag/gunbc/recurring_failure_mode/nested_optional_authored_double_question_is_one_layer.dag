@@ -1,0 +1,16 @@
+module gunbc.recurring_failure_mode.nested_optional_authored_double_question_is_one_layer
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode }
+
+data nested_optional_authored_double_question_is_one_layer: RecurringFailureMode = RecurringFailureMode {
+  identity: "nested_optional_authored_double_question_is_one_layer" as NonEmptyStr,
+
+  receipts: [
+    "INVALID STATE: authored T?? is not a second optional layer. v1.compiler.parse maybe_optional eats one `?` and sets return_cardinality CardOptional; a following `?` is not stacked.",
+    "CENSUS: maybe_optional in v1.compiler.parse (02_parse), called from the type-expr paths that attach `?` to a parsed type (return types, annotations). No other parser arm authors CardOptional.",
+    "TRIGGER: maybe_optional (or wrap_optional_layer at the type-expr) stacks a second layer when the type expr is already optional, sufficient for writing T?? in source. STAGE 3 of the nested-optional carrier. Not required to retire C5 (that site is first() over List<T?>, algebra OptionalOf, not an authored T?? spelling).",
+  ],
+
+  evidence: [],
+}
