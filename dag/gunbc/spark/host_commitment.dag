@@ -2,7 +2,7 @@ module gunbc.spark.host_commitment
 
 import std.types { Bool, List, String, NonEmptyStr, EpochSecs }
 import std.algebra { FreeMonoid, Empty, Cons, FreeSemigroup }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { declaration_ref_display_key }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.spark.cell_role {
@@ -638,11 +638,11 @@ fn spark_host_standings_over(store: FabricStorageBinding, at: EpochSecs) -> Curr
   let placement = placement_fold_read(store: store)
   let groups = map([FabricGroupA, FabricGroupB], g => GroupSnapshot { group: g, partition: read_group_partition(store: store, group: g) })
   let standings = map(groups, gs => group_standing_over(group: gs.group, partition: gs.partition, placement: placement, at: at))
-  let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  _ => [] as List<String> })
+  let unread = flat_map(standings, st => match st { GroupStandingUnread { cause: c } => [c]  GroupStandingEstablished { current: _ } => [] as List<String>  GroupStandingUnclaimed => [] as List<String> })
   if length(unread) != 0 {
     CurrentStandingsUnread { cause: join(["a group partition could not be read, so host commitment cannot be derived: ", join(unread, "; ")], "") as NonEmptyStr }
   } else {
-    let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  _ => [] as List<CurrentAuthority> })
+    let current = flat_map(standings, st => match st { GroupStandingEstablished { current: c } => [c]  GroupStandingUnclaimed => [] as List<CurrentAuthority>  GroupStandingUnread { cause: _ } => [] as List<CurrentAuthority> })
     match placement_read_over(placement: placement, groups: groups) {
       PlacementUnread { step: st, reason: why } => CurrentStandingsUnread { cause: join(["the host-placement partition could not be read at ", st, ", so host commitment cannot be derived: ", why], "") as NonEmptyStr }
       PlacementReadAt { head: _, effects: effs, preparations: _ } => spark_host_standings_current(current: current, host_claims: effs)

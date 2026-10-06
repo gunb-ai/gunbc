@@ -1,7 +1,9 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
 
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
+import product.host_identity { HostIdentity }
 
+import std.measure { second }
 import std.types { Bool, String, NonEmptyStr, Int }
 import gunbc.fleet_host_identity { operator_host_srv9, operator_host_srv5, operator_host_srv6, operator_host_srv7, operator_host_srv8 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -19,9 +21,13 @@ import gunbc.spark.native_serving_apply {
   SparkNativeLeftoverResolution, ResolveHadNoUnitAndNothingStands, ResolveIncumbentUnitUntouched, ResolveFenceOnly,
   spark_native_leftover_decision_of_leg,
   spark_native_leftover_resolve_script, spark_native_leftover_observe_script,
-  spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_script,
+  spark_native_preserve_script, spark_native_commit_script, spark_native_rollback_prepare_script, spark_native_rollback_finish_script,
+  spark_native_host_apply_prepare_script, spark_native_host_apply_wait_script, spark_native_transport_announcement_script, spark_native_front_door_script,
+  spark_native_transport_verdicts, spark_native_wait_leg_of, spark_native_front_door_refusals,
+  SparkNativeWaitLeg, WaitLegReturned, WaitLegOutlivedBound,
 }
 import gunbc.spark.serving_arm_launch { glm_native_container_name }
+import gunbc.spark.awaited_incarnation { AwaitedIncarnation, awaited_of, awaited_binding_refusal, awaited_header_word, awaited_poll_word, awaited_field_separator, awaited_probe_ok_word }
 
 // THE INCIDENT THESE ARE THE REDS FOR: fleet-converge run 36918167575 (2026-10-01). One ssh leg to srv7
 // timed out over Wi-Fi, the four-host arm aborted, the rollback leg to srv7 timed out too, and the next
@@ -30,12 +36,19 @@ import gunbc.spark.serving_arm_launch { glm_native_container_name }
 // interface); the leg's session result, the attempt sequence, and the observation's stdout are the
 // boundaries, and none of them needs a host.
 
+
+// The rollback's script text: its prepare and finish legs, around the typed deliberate start.
+fn w_rollback_text(unit_name: NonEmptyStr, transaction_id: String, container_name: NonEmptyStr) -> String {
+  join([spark_native_rollback_prepare_script(unit_name: unit_name, transaction_id: transaction_id, container_name: container_name),
+        spark_native_rollback_finish_script(unit_name: unit_name, transaction_id: transaction_id)], "\n")
+}
+
 fn unreached() -> SparkPairHostApplyOutcome {
   SparkPairHostUnreached { host: operator_host_srv9, cause: "management-lan ssh exit=255 stderr=ssh: connect to host 192.168.1.232 port 22: Connection timed out" }
 }
 
 fn applied(word: String) -> SparkPairHostApplyOutcome {
-  SparkPairHostApplied { host: operator_host_srv9, detail: word, standing: serving_standing(attempts: []) }
+  SparkPairHostApplied { host: operator_host_srv9, wire: "management-lan", stdout: word, standing: serving_standing(attempts: []) }
 }
 
 fn ran_and_refused() -> SparkPairHostApplyOutcome {
@@ -73,7 +86,7 @@ test fn w_a_script_that_ran_and_refused_is_failed_and_its_own_exit_is_read() -> 
   })
   match o {
     SparkPairHostApplyFailed { host: _, cause: c } => string_contains(s: c, pattern: "script-exit=1") && string_contains(s: c, pattern: "PREFLIGHT-REFUSED-image-absent")
-    SparkPairHostApplied { host: _, detail: _, standing: _ } => false
+    SparkPairHostApplied { host: _, wire: _, stdout: _, standing: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => false
   }
 }
@@ -84,8 +97,8 @@ test fn w_an_applied_leg_detail_omits_the_wrapper_lines() -> Bool {
     stdout: join([remote_leg_began_word, "\npreflight-ok\n", spark_pair_leg_exit_prefix, "0\n"], ""),
     stderr: "",
   }) {
-    SparkPairHostApplied { host: _, detail: d, standing: _ } =>
-      d == "management-lan preflight-ok"
+    SparkPairHostApplied { host: _, wire: w, stdout: out, standing: _ } =>
+      out == "preflight-ok" && w == "management-lan"
     SparkPairHostApplyFailed { host: _, cause: _ } => false
     SparkPairHostUnreached { host: _, cause: _ } => false
   }
@@ -130,7 +143,7 @@ test fn w_preserve_commit_and_rollback_read_before_they_write() -> Bool {
   let unit = "gunbc-v41-tp4-rank.service" as NonEmptyStr
   let preserve = spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
   let commit = spark_native_commit_script(unit_name: unit, transaction_id: "T")
-  let rollback = spark_native_rollback_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
+  let rollback = w_rollback_text(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name)
   string_contains(s: preserve, pattern: "preserve-noop-already-preserved-by-this-transaction")
     && string_contains(s: commit, pattern: "commit-noop-no-transaction-artifact-remains")
     && string_contains(s: rollback, pattern: "rollback-actuation-accepted-incumbent-unit-restored-and-exec-started-already")
@@ -388,4 +401,116 @@ test fn w_a_recovery_is_read_whole_or_refused() -> Bool {
   ])
   (match whole { RecoverRolledBack { holder: t } => t == "T1"  AdoptNothing => false  AdoptRefused { cause: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
     && (match partial { AdoptRefused { cause: c } => string_contains(s: c, pattern: "RECOVERY-PARTIAL")  AdoptNothing => false  RecoverRolledBack { holder: _ } => false  AdoptTransaction { holder: _, dead: _ } => false })
+}
+
+// ── THE TRANSACTION'S OWN START IS NOT REFUSED BY THE START LIMIT; NOTHING ELSE IS EXEMPTED ─────
+//
+// THE INCIDENT: run 37241423753 (2026-10-04). The nvfp4-8 bounded experiment failed readback, and the
+// rollback restored the fp8-16 unit file under the SAME unit name and ran `systemctl restart`, which
+// systemd refused on all four hosts: the bounded unit's StartLimitBurst=1 / StartLimitIntervalSec=600
+// counted the apply's start, and the limit is per unit NAME, so it outlived the unit-file replacement.
+// The repair clears the counter as a declared step IMMEDIATELY before each of the transaction's two
+// deliberate starts (apply, restore) and nowhere else, so 'one attempt per launch' stays true: the unit
+// keeps Restart=no and StartLimitBurst=1 (native_serving_realization_witness_test reads that from the
+// rendered unit), and an unrelated crash -- no transaction start -- meets the limit unchanged.
+
+// The deliberate start is one operation, claimed at its own interface and at every site by
+// dag/test/claim/spark/deliberate_unit_start_witness_test.dag.
+
+// THE CONTROL: no script that does NOT start the unit clears its start-limit state. If any of these
+// did, a crash loop between transactions could be restarted past the limit by an unrelated leg.
+test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
+  let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
+  let others = [
+    spark_native_preserve_script(unit_name: unit, transaction_id: "T", container_name: glm_native_container_name),
+    spark_native_commit_script(unit_name: unit, transaction_id: "T"),
+    spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 1800)),
+    spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name),
+  ]
+  all(others, t => !string_contains(s: t, pattern: "reset-failed"))
+}
+
+// ── THE AWAITED INCARNATION IS CAPTURED ONCE AND CARRIED (side-chat ruling on #13319 at 43cc61a0) ─────
+//
+// The decision itself is claimed on its executed path by awaited_incarnation_witness_test; these pin the
+// two producers' halves of the seam: the transport wait CAPTURES (id by name, deadline from its own
+// StartedAt) and prints both, and the front door is RENDERED FROM the carried value -- it neither resolves
+// the id nor derives a deadline.
+data w_awaited_head: AwaitedIncarnation = AwaitedIncarnation { host: operator_host_srv9, id: "0f3a9c1d2e4b" as NonEmptyStr, deadline_epoch: 1234567 }
+
+test fn w_the_transport_wait_captures_the_awaited_incarnation_and_prints_it() -> Bool {
+  let t = spark_native_transport_announcement_script(container: glm_native_container_name, ready_within: second(count: 3600))
+  string_contains(s: t, pattern: "'Using network '")
+    && string_contains(s: t, pattern: "' via NET/'")
+    && string_contains(s: t, pattern: "started_at=$(docker inspect --format '\{\{.State.StartedAt}}' \"$incarnation\"")
+    && string_contains(s: t, pattern: "deadline=$(( started + 3600 ))")
+    && string_contains(s: t, pattern: join(["echo \"", awaited_header_word, awaited_field_separator, "$incarnation", awaited_field_separator, "$deadline\""], ""))
+    && !string_contains(s: t, pattern: "start=$(date +%s)")
+}
+
+test fn w_the_front_door_is_rendered_from_the_carried_incarnation() -> Bool {
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name)
+  string_contains(s: d, pattern: "incarnation='0f3a9c1d2e4b'")
+    && string_contains(s: d, pattern: "deadline=1234567")
+    && !string_contains(s: d, pattern: "StartedAt")
+    && !string_contains(s: d, pattern: "--format '\{\{.Id}}' ")
+}
+
+// THE READBACK BINDING, from REAL leg output through the real transport verdict: the awaited id binds, a
+// replacement refuses naming both, a host with no awaited incarnation refuses.
+test fn w_the_readback_refuses_an_incarnation_other_than_the_awaited_one() -> Bool {
+  let leg = spark_native_leg_with_retry(budget: 0, attempt: fn(i) { spark_pair_leg_outcome_of(host: operator_host_srv9, wire: "management-lan", r: SshSessionExecResult {
+    exit_code: 0, success: true,
+    stdout: join([remote_leg_began_word, "\n",
+      awaited_header_word, awaited_field_separator, "aaaa1111", awaited_field_separator, "5000\n",
+      awaited_poll_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, awaited_probe_ok_word, awaited_field_separator, "aaaa1111 true 0", awaited_field_separator, "4000\n",
+      spark_pair_leg_exit_prefix, "0\n"], ""),
+    stderr: "" }) })
+  let awaited = awaited_of(verdicts: spark_native_transport_verdicts(legs: [WaitLegReturned { leg: leg }]))
+  count(awaited) == 1
+    && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "aaaa1111", awaited: awaited) { Absent => true  Present { value: _ } => false })
+    && (match awaited_binding_refusal(host: operator_host_srv9, verified_id: "bbbb2222", awaited: awaited) { Absent => false  Present { value: why } => string_contains(s: why, pattern: "replaced between the wait and the readback") })
+    && (match awaited_binding_refusal(host: "srv5" as HostIdentity, verified_id: "aaaa1111", awaited: awaited) { Absent => false  Present { value: _ } => true })
+}
+
+// THE SERVED WORDS ARE QUOTED (fleet-converge run 37304585650): the line rendered unquoted as
+// `echo served|yes`, which the shell reads as a pipe into the `yes` command -- an endless writer that kept
+// the front-door leg's ssh channel open for 87 minutes after a successful probe, until the step timeout.
+// The field separator is a shell metacharacter, so every line that prints it must quote it. RED: the
+// unquoted spelling, or any separator outside quotes in the post-probe report.
+test fn w_the_front_door_report_quotes_the_field_separator() -> Bool {
+  let d = spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name)
+  string_contains(s: d, pattern: "echo \"served|yes\"")
+    && string_contains(s: d, pattern: "echo \"served|no\"")
+    && !string_contains(s: d, pattern: "echo served|")
+}
+
+// ── A WAIT LEG MAY NOT OUTLIVE ITS BOUND (valiant-crab-775, after run 37304585650) ───────────────────
+//
+// The front-door probe succeeded at 12:27Z and the leg stayed open until the step timeout at 13:54Z. The
+// leg now runs under `timeout` bounded by the awaited deadline plus grace; these supply the session result
+// at the decision's own interface. RED: a session `timeout` ended (124, or 137 after the kill-after) with
+// no exit line reported reads as a script failure, or a bounded kill is accepted by the front door.
+fn w_bounded_session(exit_code: Int, stdout: String) -> SshSessionExecResult {
+  SshSessionExecResult { exit_code: exit_code, success: exit_code == 0, stdout: stdout, stderr: "" }
+}
+
+test fn w_a_leg_the_bound_killed_is_its_own_outcome_and_the_front_door_refuses_it() -> Bool {
+  let began_only = join([remote_leg_began_word, "\n", awaited_header_word, awaited_field_separator, "0f3a9c1d2e4b", awaited_field_separator, "1234567\n"], "")
+  let killed = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 124, stdout: began_only))
+  let killed_hard = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 137, stdout: began_only))
+  (match killed { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
+    && (match killed_hard { WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => true  WaitLegReturned { leg: _ } => false })
+    && all(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head]), r => string_contains(s: r, pattern: "outlived its bound of 441s"))
+    && count(spark_native_front_door_refusals(legs: [killed], awaited: [w_awaited_head])) == 1
+}
+
+// THE CONTROL: the script's own exit 124, REPORTED on its exit line, is the script's outcome, not the bound;
+// and a 255 with no exit line is still the transport's (unreached or failed), never the bound.
+test fn w_a_reported_124_or_an_ssh_failure_is_not_the_bound() -> Bool {
+  let reported = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441),
+    r: w_bounded_session(exit_code: 124, stdout: join([remote_leg_began_word, "\n", spark_pair_leg_exit_prefix, "124\n"], "")))
+  let ssh = spark_native_wait_leg_of(host: operator_host_srv9, wire: "management-lan", bound: second(count: 441), r: w_bounded_session(exit_code: 255, stdout: ""))
+  (match reported { WaitLegReturned { leg: _ } => true  WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => false })
+    && (match ssh { WaitLegReturned { leg: _ } => true  WaitLegOutlivedBound { host: _, bound: _, stdout: _ } => false })
 }

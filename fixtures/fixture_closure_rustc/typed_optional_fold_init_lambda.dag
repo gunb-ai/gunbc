@@ -1,6 +1,6 @@
 module fixture.closure.rustc_typed_optional_fold_init_lambda
 
-import v2.std.optional { Optional, optional_absent, optional_present }
+import std.optional { Optional, optional_absent, optional_present }
 
 // Second rustc-red for gunbc.recurring_failure_mode accepted_source_emits_uncompilable_target
 // component (vii), beside fixtures/fixture_closure_rustc/bare_absent_fold_init.dag.

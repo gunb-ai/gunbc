@@ -35,7 +35,7 @@ import v2.std.node { Node, Symbol, symbol_intern_lexeme, symbol_lexeme }
 import v2.compiler.normalized_tree { NormalizedTree }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.diagnostic { Outcome, outcome_accepted }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.provenance { SpanIndex, node_occurrence_id_optional, span_index_textual_locus_optional }
 import v2.std.text { String }
 import std.occurrence_identity {

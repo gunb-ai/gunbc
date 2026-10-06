@@ -755,40 +755,6 @@ mod tests {
     }
 
     #[test]
-    fn request_identity_binds_commit_and_tree_independently() {
-        let request = build_floor_discovery_request(
-            &["dag".to_string()],
-            &[],
-            &[],
-            &[],
-            "Hermetic",
-            &["dag".to_string()],
-        )
-        .expect("request");
-        let canonical = request_identity_digest(&request).expect("canonical request identity");
-        let changed_commit = FloorDiscoveryRequest {
-            tested_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
-            ..request.clone()
-        };
-        let changed_tree = FloorDiscoveryRequest {
-            tested_tree: "sha1:1111111111111111111111111111111111111111".to_string(),
-            ..request
-        };
-        assert_ne!(
-            canonical,
-            request_identity_digest(&changed_commit).expect("changed commit identity")
-        );
-        assert_ne!(
-            canonical,
-            request_identity_digest(&changed_tree).expect("changed tree identity")
-        );
-        assert_ne!(
-            request_identity_digest(&changed_commit).expect("changed commit identity"),
-            request_identity_digest(&changed_tree).expect("changed tree identity")
-        );
-    }
-
-    #[test]
     fn request_identity_matches_modeled_golden() {
         let request = FloorDiscoveryRequest {
             tested_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),

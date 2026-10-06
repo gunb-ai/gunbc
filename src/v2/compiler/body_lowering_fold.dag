@@ -91,7 +91,7 @@ import v2.std.collection {
 import std.types { Map, List }
 import std.resource_contract { ResourceKind, ResourceMode }
 import v2.std.resource_declaration { resource_kind_of_label, resource_mode_of_label }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -180,6 +180,11 @@ import v2.std.node {
   node_with_occurrence_id,
   symbol_intern_lexeme,
   symbol_lexeme,
+  Disj,
+  Bind,
+  Loop,
+  Match,
+  Value,
   ArrowBodyEdge,
   MatchArmBodyEdge,
   MatchArmPatternEdge,
@@ -448,7 +453,12 @@ fn body_lower_arrow_domain_named_bindings(root: Node) -> List<Symbol> {
           Positional => acc
         }
       })
-    _ => Empty
+    TypeNode { connective: Atom { identity: _ } } => Empty
+    TypeNode { connective: Disj } => Empty
+    TypeNode { connective: Arrow } => Empty
+    TypeNode { connective: Cardinality } => Empty
+    TypeNode { connective: Instantiation } => Empty
+    ComputationNode { behavior: _ } => Empty
   }
 }
 
@@ -640,17 +650,29 @@ fn body_lower_wrapper_retained_shell(shell: Node) -> Outcome<BodyLowering> {
 // or `fn f() -> Int = 606060`) stepped past the literal and returned its digit list as the body,
 // which resolve then refused as an unbound qualified name. Recognizing the literal stops every
 // search at the literal, before it reaches the payload.
+fn body_lower_is_core_substrate_leaf(node: Node) -> Bool {
+  (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+    || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
+    || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
+    || qualified_name_spine_shape_present(root: node)
+    || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
+    || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+}
+
 fn body_lower_is_core_substrate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
     ComputationNode { behavior: _ } => true
-    _ =>
-      (match body_lower_int_literal_with_magnitude_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || (match body_lower_string_literal_value_optional(node: node) { Present { value: lit } => lit == node  Absent => false })
-        || (match dag_symbol_literal_name_optional(node: node) { Present { value: _ } => true  Absent => false })
-        || qualified_name_spine_shape_present(root: node)
-        || (match construct_tag_reading(n: node) { ConstructTagAuthored { reference: _ } => true  ConstructTagElided => true  NotAConstruct => false })
-        || (match field_projection_optional(n: node) { Present { value: _ } => true  Absent => false })
+    TypeNode { connective: Atom { identity: _ } } =>
+      body_lower_is_core_substrate_leaf(node: node)
+    TypeNode { connective: Conj } =>
+      body_lower_is_core_substrate_leaf(node: node)
+    TypeNode { connective: Disj } =>
+      body_lower_is_core_substrate_leaf(node: node)
+    TypeNode { connective: Cardinality } =>
+      body_lower_is_core_substrate_leaf(node: node)
+    TypeNode { connective: Instantiation } =>
+      body_lower_is_core_substrate_leaf(node: node)
   }
 }
 
@@ -4092,7 +4114,17 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
             diagnostics: d
           )
       }
-    _ => outcome_accepted(value: body)
+    TypeNode { connective: Atom { identity: _ } } => outcome_accepted(value: body)
+    TypeNode { connective: Conj } => outcome_accepted(value: body)
+    TypeNode { connective: Disj } => outcome_accepted(value: body)
+    TypeNode { connective: Arrow } => outcome_accepted(value: body)
+    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Instantiation } => outcome_accepted(value: body)
+    ComputationNode { behavior: Value } => outcome_accepted(value: body)
+    ComputationNode { behavior: Branch } => outcome_accepted(value: body)
+    ComputationNode { behavior: Loop } => outcome_accepted(value: body)
+    ComputationNode { behavior: Bind } => outcome_accepted(value: body)
+    ComputationNode { behavior: Match } => outcome_accepted(value: body)
   }
 }
 
@@ -5260,7 +5292,12 @@ fn body_lower_position_function_value_arrow(node: Node, path: List<Int>) -> Node
       } else {
         node
       }
-    _ => node
+    TypeNode { connective: Atom { identity: _ } } => node
+    TypeNode { connective: Conj } => node
+    TypeNode { connective: Disj } => node
+    TypeNode { connective: Cardinality } => node
+    TypeNode { connective: Instantiation } => node
+    ComputationNode { behavior: _ } => node
   }
 }
 
@@ -5348,7 +5385,11 @@ fn body_lower_rename_fresh_type_variables(node: Node, renames: Map<Symbol, Symbo
           children: if body_lower_conj_carries_declared_order(node: node) { type_binder_set_children(binders: renamed_edges, source: node) } else { renamed_edges },
           occurrence_id: node.occurrence_id
         )
-      _ => node
+      TypeNode { connective: Disj } => node
+      TypeNode { connective: Arrow } => node
+      TypeNode { connective: Cardinality } => node
+      TypeNode { connective: Instantiation } => node
+      ComputationNode { behavior: _ } => node
     }
   }
 }
@@ -7180,7 +7221,17 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
             diagnostics: d
           )
       }
-    _ => outcome_accepted(value: body)
+    TypeNode { connective: Atom { identity: _ } } => outcome_accepted(value: body)
+    TypeNode { connective: Conj } => outcome_accepted(value: body)
+    TypeNode { connective: Disj } => outcome_accepted(value: body)
+    TypeNode { connective: Arrow } => outcome_accepted(value: body)
+    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Instantiation } => outcome_accepted(value: body)
+    ComputationNode { behavior: Value } => outcome_accepted(value: body)
+    ComputationNode { behavior: Transform } => outcome_accepted(value: body)
+    ComputationNode { behavior: Loop } => outcome_accepted(value: body)
+    ComputationNode { behavior: Bind } => outcome_accepted(value: body)
+    ComputationNode { behavior: Match } => outcome_accepted(value: body)
   }
 }
 
@@ -7192,7 +7243,16 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } => body_lower_reify_transform_body(body: body)
     ComputationNode { behavior: Branch } => body_lower_reify_branch_body(body: body)
-    _ => outcome_accepted(value: body)
+    TypeNode { connective: Atom { identity: _ } } => outcome_accepted(value: body)
+    TypeNode { connective: Conj } => outcome_accepted(value: body)
+    TypeNode { connective: Disj } => outcome_accepted(value: body)
+    TypeNode { connective: Arrow } => outcome_accepted(value: body)
+    TypeNode { connective: Cardinality } => outcome_accepted(value: body)
+    TypeNode { connective: Instantiation } => outcome_accepted(value: body)
+    ComputationNode { behavior: Value } => outcome_accepted(value: body)
+    ComputationNode { behavior: Loop } => outcome_accepted(value: body)
+    ComputationNode { behavior: Bind } => outcome_accepted(value: body)
+    ComputationNode { behavior: Match } => outcome_accepted(value: body)
   }
 }
 
@@ -9827,7 +9887,11 @@ fn body_lower_eq_type_decl(shell: Node, captured: Node, type_name: Symbol, type_
           } else {
             outcome_accepted(value: body_lower_type_decl_member(shell: shell, type_name: type_name, body: rhs, type_params: type_params))
           }
-        _ => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        TypeNode { connective: Atom { identity: _ } } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        TypeNode { connective: Arrow } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        TypeNode { connective: Cardinality } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        TypeNode { connective: Instantiation } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
+        ComputationNode { behavior: _ } => body_lower_alias_type_decl(shell: shell, type_name: type_name, rhs: rhs, type_params: type_params)
       }
     Absent =>
       match body_lower_find_production_shell_optional(root: captured, emitted: ^dag_surface_type_alias_rhs_lead) {
@@ -11601,6 +11665,17 @@ fn body_lower_resource_decl_declared_kind_optional(shell: Node) -> Optional<Decl
   }
 }
 
+// AN `alias` DECLARATION REFUSES, AT ITSELF, UNTIL ITS BINDING ROW IS CARRIED (operator ruling via
+// stern-bear-500, 2026-10-05). The `alias Name = a.b.C` form (dag_grammar_alias_decl_expr, keyword
+// kw_alias) is NOT a type alias `type X = Y`, which lowers as a type declaration. Lowered as metadata,
+// the declaration was grafted as a member named Name whose row nothing read from the normalized tree,
+// so Name resolved to its own grafted node instead of a.b.C: a silent wrong answer (DESIGN section 5).
+// No .dag source declares one. The carry is gunbc.recurring_failure_mode
+// alias_declaration_binding_row_not_carried; when it lands this arm is deleted.
+fn body_lower_alias_decl_refused(shell: Node) -> Outcome<Node> {
+  outcome_rejected(d: body_lower_diagnostic(reason: ^body_lowering_reason_alias_binding_row_not_carried, n: shell))
+}
+
 fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_through: Bool) -> Outcome<BodyLowering> {
   if emitted == ^dag_surface_service_decl {
     body_lower_service_decl(shell: shell, admit_set_aside: false)
@@ -11608,6 +11683,8 @@ fn body_lower_production_emitted(shell: Node, emitted: Symbol, fn_body_pass_thro
     body_lower_resource_decl(shell: shell)
   } else if emitted == ^dag_surface_type_decl {
     body_lowering_lowered(o: body_lower_type_decl(shell: shell))
+  } else if emitted == ^dag_surface_alias_decl {
+    body_lowering_lowered(o: body_lower_alias_decl_refused(shell: shell))
   } else if body_lower_is_metadata_preserved_emitted(emitted: emitted) {
     body_lowering_lowered(o: outcome_accepted(value: shell))
   } else if emitted == ^dag_surface_type_variant {
@@ -11824,10 +11901,10 @@ fn body_lower_exit_walk_children(node: Node, tail: Bool, arm_tail: Bool) -> Opti
   })
 }
 
-fn body_lower_exit_first(first: Optional<Outcome<Node>>, then: Node, tail: Bool) -> Optional<Outcome<Node>> {
+fn body_lower_exit_first(first: Optional<Outcome<Node>>, next_arm: Node, tail: Bool) -> Optional<Outcome<Node>> {
   match first {
     Present { value: _ } => first
-    Absent => body_lower_exit_walk(node: then, tail: tail, arm_tail: false)
+    Absent => body_lower_exit_walk(node: next_arm, tail: tail, arm_tail: false)
   }
 }
 
@@ -11920,11 +11997,11 @@ fn body_lower_exit_walk_if_valued(shell: Node, tail: Bool) -> Optional<Outcome<N
         Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
         Present { value: condition } =>
           let after_condition = match body_lower_if_then_arm_optional(captured: captured) {
-            Present { value: arm } => body_lower_exit_first(first: body_lower_exit_walk(node: condition, tail: false, arm_tail: false), then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Present { value: arm } => body_lower_exit_first(first: body_lower_exit_walk(node: condition, tail: false, arm_tail: false), next_arm: body_lower_if_arm_as_node(arm: arm), tail: tail)
             Absent => body_lower_exit_walk_children(node: shell, tail: false, arm_tail: false)
           }
           match body_lower_if_else_capture_optional(captured: captured) {
-            Present { value: arm } => body_lower_exit_first(first: after_condition, then: body_lower_if_arm_as_node(arm: arm), tail: tail)
+            Present { value: arm } => body_lower_exit_first(first: after_condition, next_arm: body_lower_if_arm_as_node(arm: arm), tail: tail)
             Absent => after_condition
           }
       }
@@ -11959,7 +12036,7 @@ fn body_lower_exit_walk_spine(spine: Node, tail: Bool) -> Optional<Outcome<Node>
         let here = match body_lower_admitted_guard_optional(stmt: head) {
           Present { value: guard } =>
             if tail {
-              body_lower_exit_first(first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false), then: guard.arm, tail: true)
+              body_lower_exit_first(first: body_lower_exit_walk(node: guard.condition, tail: false, arm_tail: false), next_arm: guard.arm, tail: true)
             } else {
               body_lower_exit_walk(node: head, tail: false, arm_tail: false)
             }

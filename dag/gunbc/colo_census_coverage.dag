@@ -66,7 +66,7 @@ import extdeps.colo.netrality { netrality_401_n_broad, netrality_401_n_broad_den
 import extdeps.colo.lumen { lumen_newark_165_halsey, lumen_jersey_city, lumen_weehawken, lumen_cabinet_density }
 import extdeps.colo.telehouse { telehouse_chelsea, telehouse_chelsea_density, telehouse_teleport, telehouse_teleport_density }
 import extdeps.colo.sabey { sabey_375_pearl, sabey_375_pearl_density }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 
 // WHERE WE LOOKED AND FOUND NOTHING, WHICH IS A MEASUREMENT AND NOT AN ABSENCE.
 //

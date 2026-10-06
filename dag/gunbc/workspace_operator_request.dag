@@ -9,22 +9,30 @@ import gunbc.fabric_storage_client { FabricStorageBinding }
 import gunbc.workspace_allocation { workspace_allocation_id_of }
 import gunbc.workspace_allocation_admission { WorkspaceRequestAdmission, workspace_request_compose,
   WorkspaceRequestAdmitted, WorkspaceRequestAdmissionRefused, WorkspaceRequestPolicyRefused }
-import gunbc.workspace_allocation_policy { workspace_operator_principal }
-import gunbc.workspace_artifact_policy { workspace_demo_image_identity, workspace_fleet_operator_public_key_ref }
+import gunbc.workspace_allocation_policy { workspace_operator_principal, workspace_installed_policy }
+import gunbc.workspace_allocation_admission { workspace_owner_enrollment, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
+import gunbc.workspace_artifact_policy { workspace_demo_image_identity }
 import gunbc.workspace_allocation_store { workspace_record_request_at, WorkspaceStoreWritten, WorkspaceStoreConflict, WorkspaceStoreWriteRefused }
 
 // OPERATOR-ONLY FIRST REVISION. The owner is the single enrolled operator principal, not a
 // caller-supplied identity: this producer exists so a first request can be recorded while the
 // HTTP create route stays unmounted, and it is not a multi-user admission path. Its authority is
-// the operator's own repository dispatch; the request shape passes the same compose policy the
-// HTTP route applies after authentication, so the two producers cannot disagree on a request.
+// the operator's own repository dispatch; the key reference is the operator's enrollment in the
+// admitted installed policy and the request passes the same compose policy the HTTP route applies
+// after authentication, so the two producers cannot disagree on a request.
 fn workspace_operator_request(observed_at: Timestamp, key: String, profile_wire: String,
   expires_at: Timestamp) -> WorkspaceRequestAdmission {
   match workspace_allocation_id_of(raw: key) {
     Absent => WorkspaceRequestPolicyRefused { reason: "workspace request key is not an admissible allocation id" }
-    Present { value: id } => workspace_request_compose(owner: workspace_operator_principal(),
-      observed_at: observed_at, expires_at: expires_at, idempotency_key: id, profile_wire: profile_wire,
-      pinned_image: workspace_demo_image_identity(), enrolled_public_key_ref: workspace_fleet_operator_public_key_ref())
+    Present { value: id } => match workspace_installed_policy() {
+      WorkspacePolicyRefused { reason: detail } => WorkspaceRequestPolicyRefused { reason: concat("installed workspace policy refused: ", detail) as NonEmptyStr }
+      WorkspacePolicyAdmitted { policy } => match workspace_owner_enrollment(policy: policy, owner: workspace_operator_principal()) {
+        Absent => WorkspaceRequestPolicyRefused { reason: "the operator principal is not enrolled by the installed workspace policy" }
+        Present { value: enrollment } => workspace_request_compose(owner: enrollment.principal,
+          observed_at: observed_at, expires_at: expires_at, idempotency_key: id, profile_wire: profile_wire,
+          pinned_image: workspace_demo_image_identity(), enrolled_public_key_ref: enrollment.public_key_ref)
+      }
+    }
   }
 }
 

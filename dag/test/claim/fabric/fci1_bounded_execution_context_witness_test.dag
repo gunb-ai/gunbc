@@ -11,7 +11,7 @@ import gunbc.fci1_bounded_execution_context {
   fci1_bounded_execution_context,
 }
 import gunbc.runner_slot_desired { gunbc_runner_slot_desired }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 test fn finite_byte_size_refuses_zero() -> Bool {
   match finite_byte_size_from_byte_size(size: byte_size(count: 0)) {

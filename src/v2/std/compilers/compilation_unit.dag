@@ -11,7 +11,7 @@ import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   map_get
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,
@@ -428,7 +428,12 @@ fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> Symbol {
 fn type_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 

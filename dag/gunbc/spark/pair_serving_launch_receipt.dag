@@ -1,7 +1,7 @@
 module gunbc.spark.pair_serving_launch_receipt
 
 import std.types { Bool, String, Int, NonEmptyStr, List, EpochSecs }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.nat { Nat }
 import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

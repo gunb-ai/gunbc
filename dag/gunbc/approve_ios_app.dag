@@ -2,7 +2,7 @@ module gunbc.approve_ios_app
 
 import std.types { NonEmptyStr, Timestamp, Int, List }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import extdeps.apple.xcode { XcodeRelease }
 
 // THE iOS APPROVAL APP IS SWIFT, PART PRINTED FROM MODELED SYNTAX TREES AND PART HAND-AUTHORED (operator ruling: apps/approve-ios/ in

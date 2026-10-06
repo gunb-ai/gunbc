@@ -3,7 +3,7 @@ module gunbc.spark.v41_group_a_launch
 import gunbc.spark.pair_serving_d0_door { StandingGrantRowNotOnMain }
 import std.types { String, Bool, Int, List, NonEmptyStr, Port, FilePath }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.measure { byte_size, Kibibyte }
 import std.content_hash { ContentHash, content_hash_equal, serialize_content_hash }

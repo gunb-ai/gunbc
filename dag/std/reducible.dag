@@ -57,11 +57,8 @@ fn fold_located_verdict(acc: LocatedVerdictFoldAcc, next: ReduceVerdict) -> Loca
   if acc.started {
     match acc.verdict {
       Unknown { missing: _ } => acc
-      _ =>
-        LocatedVerdictFoldAcc {
-          started: true,
-          verdict: reduce_verdict_combine(a: acc.verdict, b: next)
-        }
+      Reduced { last_parts: _ } => LocatedVerdictFoldAcc { started: true, verdict: reduce_verdict_combine(a: acc.verdict, b: next) }
+      Irreducible { witness: _ } => LocatedVerdictFoldAcc { started: true, verdict: reduce_verdict_combine(a: acc.verdict, b: next) }
     }
   } else {
     LocatedVerdictFoldAcc { started: true, verdict: next }

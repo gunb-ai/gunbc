@@ -30,7 +30,7 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 
 // WHY THIS EXISTS.
@@ -150,6 +150,7 @@ type CliSurface sole_constructor { arguments: List<CliArgument> }
 fn cli_surface_of_literal_words(words: List<String>) -> CliSurface
   admit_callers: [
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command"),
+    decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_stdin_local"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe"),
     decl_ref(module_path: "gunbc.command_runner", decl_name: "run_shell_command_observe_outcome"),
     decl_ref(

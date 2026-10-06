@@ -40,9 +40,27 @@ import gunbc.roadmap_session_placement {
 }
 import gunbc.roadmap_service_evidence {
   ServiceEvidenceReceipt, ServiceEvidenceSnapshot, SnapshotDecoded, SnapshotInvalid,
+  service_evidence_snapshot_final_metering, service_evidence_snapshot_published_result,
   service_evidence_snapshot_of_receipt, service_evidence_snapshot_decode_bound,
   ServiceEvidenceObservation, ServiceEvidenceJoined, ServiceEvidenceAttemptUnlaunched, ServiceEvidenceRefused,
   service_evidence_observe_for_attempt, service_evidence_binding_for_attempt, service_evidence_snapshot_binding_defect,
+  ServiceEvidenceInputs, MeteringRead, ResultReturnedRead,
+}
+import std.measure { TokenCount, Second }
+import gunbc.roadmap.roadmap_attempt_request_record {
+  AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
+  RequestClaimBound, RequestAutonomous, attempt_request_binding_read_for_instance,
+  attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
+}
+import gunbc.roadmap.roadmap_result_returned {
+  ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
+}
+import gunbc.roadmap.roadmap_event_log { ResultPublished, ResultVerificationFailed, ResultHandedBack }
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
+import gunbc.roadmap_attempt_metering {
+  AttemptMeteringObservation, MeteringObserved, MeteringProvisional, MeteringNotYetWritten, MeteringRefused,
+  metering_token_total, metering_seat_time_total, ComputeUsage, ComputeNotAttributable,
+  MeteringTokensObserved, MeteringTokensIncomplete, MeteringSeatTimeObserved, MeteringSeatTimeIncomplete,
 }
 import gunbc.roadmap_belt_actuate {
   BeltWorkflowAttemptEvidences, WorkflowAttemptEvidencesObserved, WorkflowAttemptEvidencesRefused,
@@ -129,6 +147,37 @@ type CleanupEvidence sole_constructor {
   reason: String
 }
 
+// THE REQUEST: the claim the attempt's create-only request record binds (G4, gunbc#13075), so the
+// attempt answers exactly the request that caused its dispatch.
+type RequestEvidence sole_constructor {
+  claim: String
+}
+
+// THE RESULT RETURNED to that requester: the ResultReturned event the production reader binds to
+// this attempt's recorded claim, publishing a pull request at a head.
+type ResultReturnedEvidence sole_constructor {
+  event: String
+  claim: String
+  head: String
+  pr: String
+  recorded_at: String
+}
+
+// THE METERING: a Final per-attempt metering record's totals (G3, gunbc#13073); a provisional record
+// is not metering of a finished attempt.
+type MeteringEvidence sole_constructor {
+  input_tokens: TokenCount
+  output_tokens: TokenCount
+  seat_time: Second
+  compute: ComputeUsage
+}
+
+fn dogfood_compute_word(c: ComputeUsage) -> String {
+  match c {
+    ComputeNotAttributable { reason: _ } => "not-attributable"
+  }
+}
+
 type StageGap
   = StageOwed { owed_by: String }
   | StageRefused { reason: String }
@@ -153,6 +202,18 @@ type CleanupReading
   = CleanupEstablished { evidence: CleanupEvidence }
   | CleanupGap { gap: StageGap }
 
+type RequestReading
+  = RequestEstablished { evidence: RequestEvidence }
+  | RequestGap { gap: StageGap }
+
+type ResultReturnedReading
+  = ResultReturnedEstablished { evidence: ResultReturnedEvidence }
+  | ResultReturnedGap { gap: StageGap }
+
+type MeteringReading
+  = MeteringEstablished { evidence: MeteringEvidence }
+  | MeteringGap { gap: StageGap }
+
 // A STAGE WITH NO PRODUCER YET HAS NO ESTABLISHED ARM AT ALL. When its producer lands it gains its
 // own evidence type and reading, exactly as the three above; until then nothing can claim it.
 type ProducerPendingReading
@@ -160,23 +221,23 @@ type ProducerPendingReading
 
 // ONE FIELD PER STAGE, each of its own reading type.
 type DogfoodStageReadings {
-  request: ProducerPendingReading
+  request: RequestReading
   immutable_subject: ProducerPendingReading
   shared_computation: ProducerPendingReading
   placement_grant: PlacementGrantReading
   isolated_execution: ProducerPendingReading
   durable_result: SubmissionReading
-  metering: ProducerPendingReading
+  metering: MeteringReading
   independent_review: ReviewReading
   candidate_published: PublicationReading
   cleanup: CleanupReading
-  result_returned: ProducerPendingReading
+  result_returned: ResultReturnedReading
 }
 
 // COMPLETE CARRIES THE EVIDENCE, NOT A FLAG. The arm is built only by dogfood_route_receipt, and only
 // when every stage is established -- which, while any stage has no producer, it cannot be.
 type DogfoodRouteReceipt
-  = DogfoodRouteComplete { node_id: String, attempt_key: String, placement: PlacementGrantEvidence, submission: SubmissionEvidence, review: ReviewEvidence, publication: PublicationEvidence, cleanup: CleanupEvidence }
+  = DogfoodRouteComplete { node_id: String, attempt_key: String, request: RequestEvidence, placement: PlacementGrantEvidence, submission: SubmissionEvidence, metering: MeteringEvidence, review: ReviewEvidence, publication: PublicationEvidence, cleanup: CleanupEvidence, result_returned: ResultReturnedEvidence }
   | DogfoodRouteIncomplete { node_id: String, attempt_key: String, owed: List<DogfoodStage>, refused: List<DogfoodStage> }
 
 type DogfoodStageGaps {
@@ -199,7 +260,10 @@ fn dogfood_pending(acc: DogfoodStageGaps, stage: DogfoodStage, r: ProducerPendin
 
 fn dogfood_route_receipt(node_id: String, attempt_key: String, r: DogfoodStageReadings) -> DogfoodRouteReceipt {
   let g0 = DogfoodStageGaps { owed: [], refused: [] }
-  let g1 = dogfood_pending(acc: g0, stage: DogfoodRequest, r: r.request)
+  let g1 = match r.request {
+    RequestEstablished { evidence: _ } => g0
+    RequestGap { gap } => dogfood_gap(acc: g0, stage: DogfoodRequest, gap: gap)
+  }
   let g2 = dogfood_pending(acc: g1, stage: DogfoodImmutableSubject, r: r.immutable_subject)
   let g3 = dogfood_pending(acc: g2, stage: DogfoodSharedComputation, r: r.shared_computation)
   let g4 = match r.placement_grant {
@@ -211,7 +275,10 @@ fn dogfood_route_receipt(node_id: String, attempt_key: String, r: DogfoodStageRe
     SubmissionEstablished { evidence: _ } => g5
     SubmissionGap { gap } => dogfood_gap(acc: g5, stage: DogfoodDurableResult, gap: gap)
   }
-  let g7 = dogfood_pending(acc: g6, stage: DogfoodMetering, r: r.metering)
+  let g7 = match r.metering {
+    MeteringEstablished { evidence: _ } => g6
+    MeteringGap { gap } => dogfood_gap(acc: g6, stage: DogfoodMetering, gap: gap)
+  }
   let g8 = match r.independent_review {
     ReviewEstablished { evidence: _ } => g7
     ReviewGap { gap } => dogfood_gap(acc: g7, stage: DogfoodIndependentReview, gap: gap)
@@ -224,7 +291,10 @@ fn dogfood_route_receipt(node_id: String, attempt_key: String, r: DogfoodStageRe
     CleanupEstablished { evidence: _ } => g9
     CleanupGap { gap } => dogfood_gap(acc: g9, stage: DogfoodCleanup, gap: gap)
   }
-  let gaps = dogfood_pending(acc: g10, stage: DogfoodResultReturned, r: r.result_returned)
+  let gaps = match r.result_returned {
+    ResultReturnedEstablished { evidence: _ } => g10
+    ResultReturnedGap { gap } => dogfood_gap(acc: g10, stage: DogfoodResultReturned, gap: gap)
+  }
   if length(gaps.owed) == 0 && length(gaps.refused) == 0 {
     match dogfood_route_carried(r: r) {
       Absent => DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: gaps.owed, refused: gaps.refused }
@@ -238,11 +308,14 @@ fn dogfood_route_receipt(node_id: String, attempt_key: String, r: DogfoodStageRe
 // THE ESTABLISHED EVIDENCE THE COMPLETE ARM CARRIES, gathered only when every produced stage holds
 // its evidence; any gap yields none.
 type DogfoodCarried {
+  request: RequestEvidence
   placement: PlacementGrantEvidence
   submission: SubmissionEvidence
+  metering: MeteringEvidence
   review: ReviewEvidence
   publication: PublicationEvidence
   cleanup: CleanupEvidence
+  result_returned: ResultReturnedEvidence
 }
 
 // CLEANUP MUST RETURN THE GRANT THAT WAS PLACED: a release of another grant or fence is a refused
@@ -250,8 +323,10 @@ type DogfoodCarried {
 fn dogfood_route_complete_of(node_id: String, attempt_key: String, c: DogfoodCarried) -> DogfoodRouteReceipt {
   if c.cleanup.grant_identity != c.placement.grant_identity || c.cleanup.fence_generation != c.placement.fence_generation {
     DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: [], refused: [DogfoodCleanup] }
+  } else if c.result_returned.claim != c.request.claim || c.result_returned.head != c.submission.head_sha || c.result_returned.pr != c.publication.url {
+    DogfoodRouteIncomplete { node_id: node_id, attempt_key: attempt_key, owed: [], refused: [DogfoodResultReturned] }
   } else {
-    DogfoodRouteComplete { node_id: node_id, attempt_key: attempt_key, placement: c.placement, submission: c.submission, review: c.review, publication: c.publication, cleanup: c.cleanup }
+    DogfoodRouteComplete { node_id: node_id, attempt_key: attempt_key, request: c.request, placement: c.placement, submission: c.submission, metering: c.metering, review: c.review, publication: c.publication, cleanup: c.cleanup, result_returned: c.result_returned }
   }
 }
 
@@ -270,7 +345,19 @@ fn dogfood_route_carried(r: DogfoodStageReadings) -> DogfoodCarried? {
                 PublicationEstablished { evidence: p } =>
                   match r.cleanup {
                     CleanupGap { gap: _ } => none
-                    CleanupEstablished { evidence: c } => Present { value: DogfoodCarried { placement: g, submission: s, review: v, publication: p, cleanup: c } }
+                    CleanupEstablished { evidence: c } =>
+                      match r.request {
+                        RequestGap { gap: _ } => none
+                        RequestEstablished { evidence: q } =>
+                          match r.metering {
+                            MeteringGap { gap: _ } => none
+                            MeteringEstablished { evidence: m } =>
+                              match r.result_returned {
+                                ResultReturnedGap { gap: _ } => none
+                                ResultReturnedEstablished { evidence: rr } => Present { value: DogfoodCarried { request: q, placement: g, submission: s, metering: m, review: v, publication: p, cleanup: c, result_returned: rr } }
+                              }
+                          }
+                      }
                   }
               }
           }
@@ -376,8 +463,6 @@ fn dogfood_cleanup_reading(p: SessionPlacementObservation) -> CleanupReading {
 }
 
 // THE STAGES WITH NO RECORD OF THEIR OWN YET, each owed by the change that will write it.
-data dogfood_owed_request: String = "G4: the Claimed event that assigned the issue, joined to this attempt with its requester (gunbc.roadmap.roadmap_result_returned carries the join)"
-
 data dogfood_owed_immutable_subject: String = "G1 cutover: the verified head's exact tree that the shared computation's request key was derived from"
 
 data dogfood_owed_shared_computation: String = "G1 cutover: belt verify runs through the materialization provider (compute request family), citing the derived request key and the outcome identity"
@@ -389,66 +474,154 @@ data dogfood_owed_shared_computation: String = "G1 cutover: belt verify runs thr
 // unit's own start or exit against the grant.
 data dogfood_owed_isolated_execution: String = "G5 execution observation: a record binding the granted unit's observed start and exit (systemd ExecMainStartTimestamp / ExecMainStatus) to this attempt's grant and fence; gunbc.roadmap_session_placement session_placement_observe_for_attempt proves the grant and its release, not that the capped unit ran"
 
-data dogfood_owed_metering: String = "G3: a per-attempt metering record totals tokens, seat seconds and compute"
-
-data dogfood_owed_result_returned: String = "G4: a typed result event on the issue returns the outcome to the requester"
-
 // THE STAGES WITH NO PRODUCER, as one constant record: the fold reads them from here, and the
 // recorder asks the same record whether completion is still structurally impossible, so no flag is
 // kept beside it. As each producer lands, its field leaves this record (and gains its own reading
 // type above), as placement_grant and cleanup did when gunbc#13074 landed the session placement
 // reader; when the record is empty the recorder's history scan begins to run.
 type DogfoodUnproduced {
-  request: ProducerPendingReading
   immutable_subject: ProducerPendingReading
   shared_computation: ProducerPendingReading
   isolated_execution: ProducerPendingReading
-  metering: ProducerPendingReading
-  result_returned: ProducerPendingReading
 }
 
 data dogfood_unproduced: DogfoodUnproduced = DogfoodUnproduced {
-  request: ProducerPending { owed_by: dogfood_owed_request },
   immutable_subject: ProducerPending { owed_by: dogfood_owed_immutable_subject },
   shared_computation: ProducerPending { owed_by: dogfood_owed_shared_computation },
   isolated_execution: ProducerPending { owed_by: dogfood_owed_isolated_execution },
-  metering: ProducerPending { owed_by: dogfood_owed_metering },
-  result_returned: ProducerPending { owed_by: dogfood_owed_result_returned },
 }
 
 fn dogfood_unproduced_stages(u: DogfoodUnproduced) -> List<DogfoodStage> {
   let g0 = DogfoodStageGaps { owed: [], refused: [] }
-  let g1 = dogfood_pending(acc: g0, stage: DogfoodRequest, r: u.request)
-  let g2 = dogfood_pending(acc: g1, stage: DogfoodImmutableSubject, r: u.immutable_subject)
-  let g3 = dogfood_pending(acc: g2, stage: DogfoodSharedComputation, r: u.shared_computation)
-  let g4 = dogfood_pending(acc: g3, stage: DogfoodIsolatedExecution, r: u.isolated_execution)
-  let g5 = dogfood_pending(acc: g4, stage: DogfoodMetering, r: u.metering)
-  dogfood_pending(acc: g5, stage: DogfoodResultReturned, r: u.result_returned).owed
+  let g1 = dogfood_pending(acc: g0, stage: DogfoodImmutableSubject, r: u.immutable_subject)
+  let g2 = dogfood_pending(acc: g1, stage: DogfoodSharedComputation, r: u.shared_computation)
+  dogfood_pending(acc: g2, stage: DogfoodIsolatedExecution, r: u.isolated_execution).owed
 }
 
-fn dogfood_route_readings(e: WorkflowAttemptEvidence) -> DogfoodStageReadings {
+// THE ATTEMPT'S RECORDS BESIDE ITS WORKFLOW EVIDENCE, GATHERED ONCE: the request record (G4's
+// create-only binding) and the attempt's joined service evidence (gunbc.roadmap_service_evidence),
+// whose inputs already carry the one G3 metering observation and the one G4 result observation with
+// its snapshot-close standing. The route's metering and result stages read those same inputs, and the
+// start pins the snapshot made from them, so each producer is read once per attempt. They ride beside
+// WorkflowAttemptEvidence because G4's reader imports the module that type lives in.
+type DogfoodAttemptRecords {
+  request: AttemptRequestBindingRead
+  service: ServiceEvidenceObservation
+}
+
+type DogfoodAttemptView {
+  evidence: WorkflowAttemptEvidence
+  records: DogfoodAttemptRecords
+}
+
+fn dogfood_attempt_records_for(instance: HostDashboardInstance, e: WorkflowAttemptEvidence) -> DogfoodAttemptRecords {
+  DogfoodAttemptRecords {
+    request: attempt_request_binding_read_for_instance(instance: instance, node_id: e.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
+    service: service_evidence_observe_for_attempt(instance: instance, node_id: e.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: e.attempt_key),
+  }
+}
+
+// A RESULT OBSERVED THROUGH A SNAPSHOT THAT DID NOT CLOSE CLEANLY IS NOT A CLEAN OBSERVATION: the
+// event may stand, but the start would claim more than is known, so the stage refuses.
+fn dogfood_result_returned_reading_of(service: ServiceEvidenceObservation) -> ResultReturnedReading {
+  match service {
+    ServiceEvidenceJoined { receipt } =>
+      match receipt.inputs.result_returned {
+        ResultReturnedRead { observation, close } =>
+          match close {
+            SnapshotNotOpened => dogfood_result_returned_reading(r: observation)
+            SnapshotClosed => dogfood_result_returned_reading(r: observation)
+            SnapshotCloseFailed { worktree, exit_code: _, stderr: _ } => ResultReturnedGap { gap: StageRefused { reason: join(["the result was read through a carrier snapshot that failed to close (", worktree as String, "), so its observation is not established clean"], "") } }
+          }
+      }
+    ServiceEvidenceAttemptUnlaunched => ResultReturnedGap { gap: StageRefused { reason: "the attempt has no launch record, so no service evidence or result can be bound to it" } }
+    ServiceEvidenceRefused { reason } => ResultReturnedGap { gap: StageRefused { reason: reason } }
+  }
+}
+
+fn dogfood_metering_reading_of(service: ServiceEvidenceObservation) -> MeteringReading {
+  match service {
+    ServiceEvidenceJoined { receipt } =>
+      match receipt.inputs.metering {
+        MeteringRead { observation } => dogfood_metering_reading(m: observation)
+      }
+    ServiceEvidenceAttemptUnlaunched => MeteringGap { gap: StageRefused { reason: "the attempt has no launch record, so no metering can be bound to it" } }
+    ServiceEvidenceRefused { reason } => MeteringGap { gap: StageRefused { reason: reason } }
+  }
+}
+
+fn dogfood_request_reading(r: AttemptRequestBindingRead) -> RequestReading {
+  match r {
+    RequestBindingRead { binding } =>
+      match binding {
+        RequestClaimBound { claim } => RequestEstablished { evidence: RequestEvidence { claim: claim as String } }
+        RequestAutonomous => RequestGap { gap: StageRefused { reason: "the attempt was launched autonomously, so no request entered the factory for it" } }
+      }
+    RequestBindingAbsent => RequestGap { gap: StageOwed { owed_by: "the attempt has no request-binding record (launched before G4, or not yet initialized)" } }
+    RequestBindingUnreadable { reason } => RequestGap { gap: StageRefused { reason: reason } }
+  }
+}
+
+fn dogfood_result_returned_reading(r: ResultReturnedObservation) -> ResultReturnedReading {
+  match r {
+    ResultReturnedObserved { node: _, attempt: _, event, claim, return_to: _, outcome, recorded_at } =>
+      match outcome {
+        ResultPublished { pr, head } => ResultReturnedEstablished { evidence: ResultReturnedEvidence { event: event as String, claim: claim as String, head: head as String, pr: pr as String, recorded_at: recorded_at } }
+        ResultVerificationFailed { head: _, cause } => ResultReturnedGap { gap: StageRefused { reason: join(["the result returned is a verification failure: ", cause as String], "") } }
+        ResultHandedBack { reason } => ResultReturnedGap { gap: StageRefused { reason: join(["the result returned hands the attempt back: ", reason as String], "") } }
+      }
+    ResultNotReturned { attempt_key: _ } => ResultReturnedGap { gap: StageOwed { owed_by: "no result has been returned to the requester yet" } }
+    ResultNotOwed { reason } => ResultReturnedGap { gap: StageRefused { reason: join(["no result is owed for this attempt: ", reason], "") } }
+    ResultReturnedUnobserved { step: _, reason } => ResultReturnedGap { gap: StageRefused { reason: reason } }
+  }
+}
+
+fn dogfood_metering_reading(m: AttemptMeteringObservation) -> MeteringReading {
+  match m {
+    MeteringObserved { record } =>
+      match metering_token_total(record: record, output: false) {
+        MeteringTokensIncomplete { cause } => MeteringGap { gap: StageRefused { reason: cause } }
+        MeteringTokensObserved { value } => {
+          let input = value
+          match metering_token_total(record: record, output: true) {
+            MeteringTokensIncomplete { cause } => MeteringGap { gap: StageRefused { reason: cause } }
+            MeteringTokensObserved { value } =>
+              match metering_seat_time_total(record: record) {
+                MeteringSeatTimeIncomplete { cause } => MeteringGap { gap: StageRefused { reason: cause } }
+                MeteringSeatTimeObserved { held } => MeteringEstablished { evidence: MeteringEvidence { input_tokens: input, output_tokens: value, seat_time: held, compute: record.compute } }
+              }
+          }
+        }
+      }
+    MeteringProvisional { record: _ } => MeteringGap { gap: StageOwed { owed_by: "the attempt's metering record is provisional: its roster is not sealed, or a launch or seat is still open" } }
+    MeteringNotYetWritten => MeteringGap { gap: StageOwed { owed_by: "no metering record has been written for the attempt" } }
+    MeteringRefused { cause } => MeteringGap { gap: StageRefused { reason: cause } }
+  }
+}
+
+fn dogfood_route_readings(e: WorkflowAttemptEvidence, records: DogfoodAttemptRecords) -> DogfoodStageReadings {
   let submission = dogfood_submission_reading(attempt_key: e.attempt_key, capture: e.submission_capture)
   let head = match submission {
     SubmissionEstablished { evidence: s } => s.head_sha
     SubmissionGap { gap: _ } => ""
   }
   DogfoodStageReadings {
-    request: dogfood_unproduced.request,
+    request: dogfood_request_reading(r: records.request),
     immutable_subject: dogfood_unproduced.immutable_subject,
     shared_computation: dogfood_unproduced.shared_computation,
     placement_grant: dogfood_placement_grant_reading(p: e.session_placement),
     isolated_execution: dogfood_unproduced.isolated_execution,
     durable_result: submission,
-    metering: dogfood_unproduced.metering,
+    metering: dogfood_metering_reading_of(service: records.service),
     independent_review: if head == "" { ReviewGap { gap: StageOwed { owed_by: "no captured submission, so no head to review" } } } else { dogfood_review_reading(node_id: e.node_id, head_sha: head, report: e.review) },
     candidate_published: if head == "" { PublicationGap { gap: StageOwed { owed_by: "no captured submission, so no head to publish" } } } else { dogfood_publication_reading(head_sha: head, subject: e.publication_subject, evidence_source: e.publication_source) },
     cleanup: dogfood_cleanup_reading(p: e.session_placement),
-    result_returned: dogfood_unproduced.result_returned,
+    result_returned: dogfood_result_returned_reading_of(service: records.service),
   }
 }
 
-fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRouteReceipt {
-  dogfood_route_receipt(node_id: e.node_id, attempt_key: e.attempt_key, r: dogfood_route_readings(e: e))
+fn dogfood_route_receipt_for(v: DogfoodAttemptView) -> DogfoodRouteReceipt {
+  dogfood_route_receipt(node_id: v.evidence.node_id, attempt_key: v.evidence.attempt_key, r: dogfood_route_readings(e: v.evidence, records: v.records))
 }
 
 // ── THE START RECEIPT: ONE MINT, VALIDATED JOINS, FIRST RECORDED ONLY ────────────────────────────
@@ -465,7 +638,7 @@ fn dogfood_route_receipt_for_evidence(e: WorkflowAttemptEvidence) -> DogfoodRout
 // valid receipt is in the slot the scan stops and the slot is never rewritten (create-only CAS).
 data dogfood_start_receipt_key: NonEmptyStr = "dogfood-start-receipt" as NonEmptyStr
 
-data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v3"
+data dogfood_start_receipt_schema: String = "dogfood-start-receipt/v6"
 
 // THE SLOT LIVES IN A ROOT THE DEPLOYMENT ALREADY CONVERGES. The file CAS store does not create its
 // root (gunbc.durable_cas_file_store), so the slot is placed in the instance's attempt-state root --
@@ -499,12 +672,42 @@ type DogfoodStartReceipt sole_constructor {
   grant_identity: String
   fence_generation: Nat
   cleanup_outcome: String
+  request_claim: String
+  request_binding_wire: String
+  result_event: String
+  result_claim: String
+  metering_compute: String
   service_evidence: ServiceEvidenceSnapshot
   established_at: Rfc3339Timestamp
 }
 
 // The joins every start receipt must satisfy, whoever built it. Absent is valid; Present names the
 // first disagreement.
+// THE PINNED SERVICE EVIDENCE MUST ESTABLISH THE G3 AND G4 STAGES, not merely decode: a Final meter
+// (both token totals and seat time observed) and a published result whose PR and head are the
+// receipt's publication. None when they hold; otherwise the first failure.
+fn dogfood_pinned_g3_g4_holds(r: DogfoodStartReceipt) -> Bool {
+  match dogfood_pinned_g3_g4_defect(r: r) { Absent => true  Present { value: _ } => false }
+}
+
+fn dogfood_pinned_g3_g4_defect(r: DogfoodStartReceipt) -> String? {
+  dogfood_pinned_g3_g4_defect_of(snapshot: r.service_evidence, pr_url: r.pr_url, head_sha: r.head_sha)
+}
+
+fn dogfood_pinned_g3_g4_defect_of(snapshot: ServiceEvidenceSnapshot, pr_url: String, head_sha: String) -> String? {
+  match service_evidence_snapshot_final_metering(snapshot: snapshot) {
+    Absent => Present { value: "the pinned service evidence does not establish a Final metering record (execution_time and billable_usage observed)" }
+    Present { value: _ } =>
+      match service_evidence_snapshot_published_result(snapshot: snapshot) {
+        Absent => Present { value: "the pinned service evidence does not establish a published result (failure_attribution and completion_time observed)" }
+        Present { value: p } =>
+          if p.pr != pr_url { Present { value: "the pinned result names another pull request than the receipt's publication" } }
+          else if p.head != head_sha { Present { value: "the pinned result names another head than the receipt's submission" } }
+          else { none }
+      }
+  }
+}
+
 fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
   if r.node_id == "" { Present { value: "node_id is empty" } }
   else if r.attempt_key == "" { Present { value: "attempt_key is empty" } }
@@ -518,6 +721,12 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
   else if r.grant_identity == "" { Present { value: "grant_identity is empty" } }
   else if r.fence_generation == 0 { Present { value: "fence_generation is not a granted fence" } }
   else if r.cleanup_outcome != "released" && r.cleanup_outcome != "nothing-to-release" { Present { value: "cleanup_outcome is not a settled release" } }
+  else if r.request_claim == "" { Present { value: "request_claim is empty" } }
+  else if r.request_binding_wire != attempt_request_binding_json(binding: RequestClaimBound { claim: r.request_claim as NonEmptyStr as gunbc.roadmap.roadmap_event_log.RoadmapEventId }) { Present { value: "request_binding_wire is not the canonical request record for request_claim" } }
+  else if r.result_event == "" { Present { value: "result_event is empty" } }
+  else if r.result_claim != r.request_claim { Present { value: "the returned result answers another claim than the pinned request" } }
+  else if r.metering_compute == "" { Present { value: "metering_compute is empty" } }
+  else if !dogfood_pinned_g3_g4_holds(r: r) { dogfood_pinned_g3_g4_defect(r: r) }
   else if r.service_evidence.node_id != r.node_id || r.service_evidence.attempt_key != r.attempt_key { Present { value: "the pinned service evidence names another node or attempt" } }
   else if !rfc3339_is_canonically_spelled(value: r.established_at) { Present { value: "established_at is not a canonical RFC 3339 UTC instant" } }
   else { none }
@@ -526,10 +735,11 @@ fn dogfood_start_receipt_defect(r: DogfoodStartReceipt) -> String? {
 // THE ONE MINT FROM EVIDENCE. It reads every stage from the single WorkflowAttemptEvidence it is
 // given and checks that the three established pieces speak of that one attempt and head. While any
 // stage is owed or refused there is no candidate.
-fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceReceipt, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
-  match dogfood_route_receipt_for_evidence(e: e) {
+fn dogfood_start_candidate(v: DogfoodAttemptView, service: ServiceEvidenceReceipt, established_at: Rfc3339Timestamp) -> DogfoodStartReceipt? {
+  let e = v.evidence
+  match dogfood_route_receipt_for(v: v) {
     DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
-    DogfoodRouteComplete { node_id: _, attempt_key: _, placement, submission, review, publication, cleanup } =>
+    DogfoodRouteComplete { node_id: _, attempt_key: _, request, placement, submission, metering, review, publication, cleanup, result_returned } =>
       if submission.attempt_key != e.attempt_key || publication.head_sha != submission.head_sha
         || (service.binding.node_id as String) != e.node_id || (service.binding.attempt_key as String) != e.attempt_key {
         none
@@ -550,6 +760,11 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceR
           grant_identity: placement.grant_identity,
           fence_generation: placement.fence_generation,
           cleanup_outcome: cleanup.outcome,
+          request_claim: request.claim,
+          request_binding_wire: attempt_request_binding_json(binding: RequestClaimBound { claim: request.claim as NonEmptyStr as gunbc.roadmap.roadmap_event_log.RoadmapEventId }),
+          result_event: result_returned.event,
+          result_claim: result_returned.claim,
+          metering_compute: dogfood_compute_word(c: metering.compute),
           service_evidence: snapshot,
           established_at: established_at,
         }
@@ -566,12 +781,12 @@ fn dogfood_start_candidate(e: WorkflowAttemptEvidence, service: ServiceEvidenceR
 // THE FIRST COMPLETE ATTEMPT in observation order, found WITHOUT a time: candidate discovery comes
 // before the clock is consulted, so an unavailable clock can only refuse timestamping a candidate
 // that exists, never a tick with nothing to record.
-fn dogfood_first_complete_evidence(evidences: List<WorkflowAttemptEvidence>) -> WorkflowAttemptEvidence? {
-  fold(evidences, init: none, f: (acc, e) => match acc {
+fn dogfood_first_complete_evidence(views: List<DogfoodAttemptView>) -> DogfoodAttemptView? {
+  fold(views, init: none, f: (acc, v) => match acc {
     Present { value: _ } => acc
     Absent =>
-      match dogfood_route_receipt_for_evidence(e: e) {
-        DogfoodRouteComplete { node_id: _, attempt_key: _, placement: _, submission: _, review: _, publication: _, cleanup: _ } => Present { value: e }
+      match dogfood_route_receipt_for(v: v) {
+        DogfoodRouteComplete { node_id: _, attempt_key: _, request: _, placement: _, submission: _, metering: _, review: _, publication: _, cleanup: _, result_returned: _ } => Present { value: v }
         DogfoodRouteIncomplete { node_id: _, attempt_key: _, owed: _, refused: _ } => none
       }
   })
@@ -618,6 +833,10 @@ fn dogfood_start_receipt_wire(r: DogfoodStartReceipt) -> String? {
         json_kv(key: "grant_identity", value: json_string(s: r.grant_identity)),
         json_kv(key: "fence_generation", value: json_int(n: r.fence_generation)),
         json_kv(key: "cleanup_outcome", value: json_string(s: r.cleanup_outcome)),
+        json_kv(key: "request_binding_wire", value: json_string(s: r.request_binding_wire)),
+        json_kv(key: "result_event", value: json_string(s: r.result_event)),
+        json_kv(key: "result_claim", value: json_string(s: r.result_claim)),
+        json_kv(key: "metering_compute", value: json_string(s: r.metering_compute)),
         json_kv(key: "service_evidence_digest", value: json_string(s: r.service_evidence.digest)),
         json_kv(key: "service_evidence_wire", value: json_string(s: r.service_evidence.wire)),
         json_kv(key: "established_at", value: json_string(s: r.established_at as String)),
@@ -645,14 +864,20 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
     JsonDocumentUnreadable { gap: _ } => StartReceiptInvalid { reason: "the start receipt is not a JSON document" }
     JsonDocumentParsed { value: v } =>
       if dogfood_decode_field(v: v, key: "schema") != dogfood_start_receipt_schema {
-        StartReceiptInvalid { reason: "the schema is missing or not dogfood-start-receipt/v3" }
+        StartReceiptInvalid { reason: "the schema is missing or not dogfood-start-receipt/v6" }
       } else {
         let when = dogfood_decode_field(v: v, key: "established_at")
         if when == "" {
           StartReceiptInvalid { reason: "established_at is missing" }
         } else {
           let ev_wire = dogfood_decode_field(v: v, key: "service_evidence_wire")
-          if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
+          let pinned_claim = match attempt_request_binding_decode(text: dogfood_decode_field(v: v, key: "request_binding_wire")) {
+            RequestBindingDecoded { binding } => match binding { RequestClaimBound { claim } => claim as String  RequestAutonomous => "" }
+            RequestBindingUndecodable { reason: _ } => ""
+          }
+          if pinned_claim == "" || dogfood_decode_field(v: v, key: "result_claim") != pinned_claim {
+            StartReceiptInvalid { reason: "the returned result does not answer the pinned request's claim" }
+          } else if ev_wire == "" || dogfood_decode_field(v: v, key: "service_evidence_digest") != wire_content_hash_to_hex(hash: content_hash_of_value(value: ev_wire as NonEmptyStr)) {
             StartReceiptInvalid { reason: "service_evidence_digest is not the digest of the pinned service evidence" }
           } else {
           match service_evidence_snapshot_decode_bound(wire: ev_wire, node_id: Present { value: dogfood_decode_field(v: v, key: "node_id") }, attempt_key: Present { value: dogfood_decode_field(v: v, key: "attempt_key") }) {
@@ -671,6 +896,14 @@ fn dogfood_start_receipt_decode(payload: String) -> DogfoodStartReceiptDecode {
             grant_identity: dogfood_decode_field(v: v, key: "grant_identity"),
             fence_generation: match json_field_nat(obj: v, key: "fence_generation") { FieldRead { value: n } => n  FieldAbsent => 0  FieldMalformed { cause: _ } => 0 },
             cleanup_outcome: dogfood_decode_field(v: v, key: "cleanup_outcome"),
+            request_claim: match attempt_request_binding_decode(text: dogfood_decode_field(v: v, key: "request_binding_wire")) {
+              RequestBindingDecoded { binding } => match binding { RequestClaimBound { claim } => claim as String  RequestAutonomous => "" }
+              RequestBindingUndecodable { reason: _ } => ""
+            },
+            request_binding_wire: dogfood_decode_field(v: v, key: "request_binding_wire"),
+            result_event: dogfood_decode_field(v: v, key: "result_event"),
+            result_claim: dogfood_decode_field(v: v, key: "result_claim"),
+            metering_compute: dogfood_decode_field(v: v, key: "metering_compute"),
             service_evidence: snapshot,
             established_at: when as Rfc3339Timestamp,
           }
@@ -699,10 +932,96 @@ type DogfoodStartRecord
 // attempt's launch record in THIS instance (gunbc.roadmap_service_evidence
 // service_evidence_snapshot_binding_defect).
 fn dogfood_receipt_binding_defect_here(instance: HostDashboardInstance, receipt: DogfoodStartReceipt) -> String? {
-  service_evidence_snapshot_binding_defect(
+  match service_evidence_snapshot_binding_defect(
     snapshot: receipt.service_evidence,
     binding: service_evidence_binding_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key),
-  )
+  ) {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      match dogfood_request_record_defect(receipt: receipt, record: attempt_request_binding_read_for_instance(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key)) {
+        Present { value: why } => Present { value: why }
+        Absent => dogfood_durable_g3_g4_defect(receipt: receipt, service: service_evidence_observe_for_attempt(instance: instance, node_id: receipt.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: receipt.attempt_key))
+      }
+  }
+}
+
+// THE PINNED G3 AND G4 FACTS AGAINST THE ATTEMPT'S DURABLE RECORDS, read once through the service
+// evidence gather: the result reader must observe exactly the pinned event and claim, published at the
+// pinned PR and head, through a cleanly closed snapshot; the metering reader must observe a Final
+// record whose totals are the pinned ones and whose compute standing is the pinned one.
+fn dogfood_durable_g3_g4_defect(receipt: DogfoodStartReceipt, service: ServiceEvidenceObservation) -> String? {
+  match service {
+    ServiceEvidenceAttemptUnlaunched => Present { value: "the attempt has no launch record to read its G3 and G4 records under" }
+    ServiceEvidenceRefused { reason } => Present { value: join(["the attempt's G3 and G4 records are unreadable: ", reason], "") }
+    ServiceEvidenceJoined { receipt: live } => {
+      let result_defect = match live.inputs.result_returned {
+        ResultReturnedRead { observation, close } =>
+          match close {
+            SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => Present { value: "the attempt's result was read through a snapshot that failed to close" }
+            SnapshotNotOpened => dogfood_durable_result_defect(receipt: receipt, observation: observation)
+            SnapshotClosed => dogfood_durable_result_defect(receipt: receipt, observation: observation)
+          }
+      }
+      let metering_defect = match live.inputs.metering {
+        MeteringRead { observation } => dogfood_durable_metering_defect(receipt: receipt, observation: observation)
+      }
+      match result_defect {
+        Present { value: why } => Present { value: why }
+        Absent => metering_defect
+      }
+    }
+  }
+}
+
+fn dogfood_durable_result_defect(receipt: DogfoodStartReceipt, observation: ResultReturnedObservation) -> String? {
+  match observation {
+    ResultReturnedObserved { node, attempt, event, claim, return_to: _, outcome, recorded_at } =>
+      if (node as String) != receipt.node_id || (attempt as String) != receipt.attempt_key { Present { value: "the attempt's returned result names another node or attempt" } }
+      else if (event as String) != receipt.result_event || (claim as String) != receipt.result_claim { Present { value: "the attempt's returned result is another event or claim than the pinned one" } }
+      else if (match service_evidence_snapshot_published_result(snapshot: receipt.service_evidence) { Absent => true  Present { value } => value.recorded_at != recorded_at }) { Present { value: "the attempt's returned result was recorded at another time than the pinned completion_time" } }
+      else {
+        match outcome {
+          ResultPublished { pr, head } => if (pr as String) != receipt.pr_url || (head as String) != receipt.head_sha { Present { value: "the attempt's returned result publishes another PR or head than the pinned one" } } else { none }
+          ResultVerificationFailed { head: _, cause: _ } => Present { value: "the attempt's returned result is a verification failure" }
+          ResultHandedBack { reason: _ } => Present { value: "the attempt's returned result hands the attempt back" }
+        }
+      }
+    ResultNotReturned { attempt_key: _ } => Present { value: "the attempt has no returned result" }
+    ResultNotOwed { reason: _ } => Present { value: "no result is owed for the attempt" }
+    ResultReturnedUnobserved { step: _, reason } => Present { value: join(["the attempt's returned result is unobserved: ", reason], "") }
+  }
+}
+
+fn dogfood_durable_metering_defect(receipt: DogfoodStartReceipt, observation: AttemptMeteringObservation) -> String? {
+  match observation {
+    MeteringObserved { record } =>
+      match dogfood_metering_reading(m: MeteringObserved { record: record }) {
+        MeteringGap { gap: _ } => Present { value: "the attempt's Final metering record has incomplete totals" }
+        MeteringEstablished { evidence: m } =>
+          match service_evidence_snapshot_final_metering(snapshot: receipt.service_evidence) {
+            Absent => Present { value: "the pinned service evidence has no Final metering" }
+            Present { value: pinned } =>
+              if m.input_tokens != pinned.input_tokens || m.output_tokens != pinned.output_tokens || m.seat_time != pinned.seat_time { Present { value: "the attempt's Final metering totals are not the pinned ones" } }
+              else if dogfood_compute_word(c: m.compute) != receipt.metering_compute { Present { value: "the attempt's metering compute standing is not the pinned one" } }
+              else { none }
+          }
+      }
+    MeteringProvisional { record: _ } => Present { value: "the attempt's metering record is provisional" }
+    MeteringNotYetWritten => Present { value: "the attempt has no metering record" }
+    MeteringRefused { cause } => Present { value: join(["the attempt's metering record is refused: ", cause], "") }
+  }
+}
+
+// THE PINNED REQUEST AGAINST THE ATTEMPT'S DURABLE REQUEST RECORD: the receipt's request record must
+// be exactly the one the attempt carries.
+fn dogfood_request_record_defect(receipt: DogfoodStartReceipt, record: AttemptRequestBindingRead) -> String? {
+  match record {
+    RequestBindingRead { binding } =>
+      if attempt_request_binding_json(binding: binding) == receipt.request_binding_wire { none }
+      else { Present { value: "the pinned request record is not the attempt's request record" } }
+    RequestBindingAbsent => Present { value: "the attempt has no request record" }
+    RequestBindingUnreadable { reason } => Present { value: join(["the attempt's request record is unreadable: ", reason], "") }
+  }
 }
 
 // What an occupied slot means for the recorder, pure over the judgment: a receipt bound here is
@@ -732,10 +1051,10 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
             match belt_workflow_attempt_history_evidences_observe_for_instance(instance: instance) {
               WorkflowAttemptEvidencesRefused { reason } => DogfoodStartRefused { reason: reason }
               WorkflowAttemptEvidencesObserved { evidences } =>
-                match dogfood_first_complete_evidence(evidences: evidences) {
+                match dogfood_first_complete_evidence(views: map(evidences, e => DogfoodAttemptView { evidence: e, records: dogfood_attempt_records_for(instance: instance, e: e) })) {
                   Absent => DogfoodStartNoCompleteAttempt
                   Present { value: found } =>
-                    match service_evidence_observe_for_attempt(instance: instance, node_id: found.node_id as gunbc.roadmap_model.RoadmapNodeId, attempt_key: found.attempt_key) {
+                    match found.records.service {
                       ServiceEvidenceAttemptUnlaunched => DogfoodStartRefused { reason: "the complete attempt has no launch record, so it has no joined service evidence" }
                       ServiceEvidenceRefused { reason } => DogfoodStartRefused { reason: join(["the complete attempt's service evidence is refused: ", reason], "") }
                       ServiceEvidenceJoined { receipt } =>
@@ -743,7 +1062,7 @@ fn dogfood_start_record_for_instance(instance: HostDashboardInstance) -> Dogfood
                           StartNoCandidate => DogfoodStartNoCompleteAttempt
                           StartClockRefused { reason } => DogfoodStartRefused { reason: reason }
                           StartTimestamp { candidate, at } =>
-                            match dogfood_start_candidate(e: candidate, service: receipt, established_at: at) {
+                            match dogfood_start_candidate(v: candidate, service: receipt, established_at: at) {
                               Absent => DogfoodStartRefused { reason: "the complete attempt failed its own join validation" }
                               Present { value: first } =>
                                 match dogfood_start_receipt_wire(r: first) {

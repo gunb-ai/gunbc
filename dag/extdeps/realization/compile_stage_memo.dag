@@ -2,7 +2,7 @@ module extdeps.realization.compile_stage_memo
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Absent }
+import std.optional { Absent }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }

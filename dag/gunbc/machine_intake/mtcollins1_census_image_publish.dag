@@ -2,7 +2,7 @@ module gunbc.machine_intake_mtcollins1_census_image_publish
 
 import std.types { Bool, NonEmptyStr, String }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_recursive_force_one_file_system_command }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, seeded_install_media_build_key }
