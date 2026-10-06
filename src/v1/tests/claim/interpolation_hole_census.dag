@@ -139,41 +139,13 @@ fn ihc_hole_starts(tokens: List<Token>) -> List<Int> {
   scan.starts
 }
 
-// THE TWO SIDES COUNT IN DIFFERENT UNITS, and the join must not mistake that for a missing hole. A
-// v1 token's span.start is a CHARACTER index (tokenize walks chars(source)), while a parsed node's
-// span.start is a BYTE offset (what byte_to_line_col reads). They agree only on ASCII text: one
-// three-byte character earlier in a file put every later lexed hole two short. So each lexed start
-// is mapped to its byte offset here, through the source's own code points.
-fn ihc_utf8_width(cp: Int) -> Int {
-  if cp < 128 { 1 } else { if cp < 2048 { 2 } else { if cp < 65536 { 3 } else { 4 } } }
-}
-
-type IhcByteTable {
-  byte: Int
-  offsets: List<Int>
-}
-
-fn ihc_char_byte_offsets(content: String) -> List<Int> {
-  let table = fold(chars(content), init: IhcByteTable { byte: 0, offsets: [] }, f: (acc, cp) =>
-    IhcByteTable { byte: acc.byte + ihc_utf8_width(cp: cp), offsets: list_push(acc.offsets, acc.byte) })
-  list_push(table.offsets, table.byte)
-}
-
-fn ihc_byte_offset(table: List<Int>, char_index: Int) -> Int {
-  match table[char_index] {
-    Present { value: b } => b
-    Absent => char_index
-  }
-}
-
 fn ihc_lexical_count(s: SourceFile) -> LexicalTemplateCount {
   let tokens = tokenize(source: s.content, file: s.path, env: dag_parse_environment)
-  let byte_table = ihc_char_byte_offsets(content: s.content)
   LexicalTemplateCount {
     file: s.path,
     templates: tokens |> filter(t => ihc_token_is_template_start(t: t)) |> count,
     holes: tokens |> filter(t => ihc_token_closes_hole(t: t)) |> count,
-    hole_starts: ihc_hole_starts(tokens: tokens) |> map(c => ihc_byte_offset(table: byte_table, char_index: c))
+    hole_starts: ihc_hole_starts(tokens: tokens)
   }
 }
 
