@@ -30,7 +30,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // every two-argument container was the literal `map` carrier, so an authored PartialFunction was
 // rendered as the Rust map inhabitant even though its declaration is the open-support structural
 // carrier below. The fixture differs from the control after it only in the carrier declaration.
-test fn w_partial_function_type_position_keeps_its_declared_structural_carrier() -> Bool {
+test fn w_partial_function_type_position_keeps_its_declared_structural_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.partial_function_type_probe\nimport std.algebra { PartialFunction }\nimport std.types { Int, String }\nfn probe(f: PartialFunction<String, Int>) -> PartialFunction<String, Int> { f }\n",
     "src/test_claim_partial_function_type_probe.rs",
@@ -42,7 +42,7 @@ test fn w_partial_function_type_position_keeps_its_declared_structural_carrier()
 // THE POSITIVE CONTROL. Map's declaration carries the finite-map algebra whose Rust inhabitant is
 // HashMap. A repair that merely stopped all two-argument containers reaching a target realization
 // makes the RED above green and this row red.
-test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool {
+test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.map_type_realization_probe\nimport std.types { Int, String, Map }\nfn probe(m: Map<String, Int>) -> Map<String, Int> { m }\n",
     "src/test_claim_map_type_realization_probe.rs",
@@ -55,7 +55,7 @@ test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool {
 // native HashMap inhabitant from an arbitrary lookup closure. Rust emission therefore retains the
 // function signature's declared host map and emits a loud refusal expression for this unreachable
 // seed fallback, instead of silently constructing the structural algebra carrier under that type.
-test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier() -> Bool {
+test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.map_record_shape_probe\nimport std.types { Int, String, Map }\nimport v2.std.optional { Present }\nfn probe(m: Map<String, Int>, key: String, value: Int) -> Map<String, Int> { Map { lookup: fn(candidate) { if candidate == key { Present { value: value } } else { m.lookup(candidate) } } } }\n",
     "src/test_claim_map_record_shape_probe.rs",
@@ -76,7 +76,7 @@ test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier
 // bool_boolean_algebra pattern). The finite-set exclusion is spelled `BTreeSet<i64` and not the
 // bare carrier name because every emitted file's preamble imports `OrdSet as BTreeSet`; the
 // applied spelling names the realization, the bare spelling names the import.
-test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bool {
+test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.pointwise_power_record_shape_probe\nimport std.algebra { PointwisePower }\nimport std.types { Int }\nfn probe(only: Int) -> PointwisePower<Int> { PointwisePower { member: fn(n) { n == only } } }\n",
     "src/test_claim_pointwise_power_record_shape_probe.rs",
@@ -92,7 +92,7 @@ test fn w_pointwise_power_record_shape_constructs_its_structural_carrier() -> Bo
 // fossil greens the panic arm and reds here. (Type position is not the discriminator: the
 // provenance-keyed renderer emits both carriers structurally today — measured 2026-09-07, the
 // type-position form of this probe renders FinitePowerSet<Int>, not BTreeSet<i64>.)
-test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> Bool {
+test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.finite_power_set_record_shape_probe\nimport std.algebra { FinitePowerSet }\nimport std.types { Int }\nfn probe(s: FinitePowerSet<Int>) -> FinitePowerSet<Int> { FinitePowerSet { member: fn(n) { s.member(n) }, union: fn(other) { s }, intersect: fn(other) { s }, diff: fn(other) { s }, contains: fn(n) { s.contains(n) }, count: fn() { s.count() }, length: fn() { s.length() } } }\n",
     "src/test_claim_finite_power_set_record_shape_probe.rs",
@@ -115,7 +115,7 @@ test fn w_finite_power_set_record_shape_still_refuses_while_its_row_stands() -> 
 // reaches rustc: since #12219 the document is realized as an escaped Rust string literal handed to
 // `serde_json::from_str` (emit_data_def_body), so its quotes arrive as `\"`. Matching the bare JSON
 // text went permanently red at that change, and its excludes went permanently vacuous.
-test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool {
+test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.fieldless_record_json_probe\ntype Marker {}\ntype Holder {\n  marker: Marker\n}\ndata probe: Holder = Holder { marker: Marker {} }\n",
     "src/test_claim_fieldless_record_json_probe.rs",
@@ -127,7 +127,7 @@ test fn w_fieldless_record_data_value_spells_null_for_the_unit_struct() -> Bool 
 // THE BOUNDARY CONTROL. The null spelling is the zero-field case ONLY: a record with fields
 // keeps the map spelling its braced struct deserializes from. A repair that emitted `null` for
 // every record literal greens the row above and reds here.
-test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
+test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.nonempty_record_json_probe\nimport std.types { String }\ntype Holder {\n  name: String\n}\ndata probe: Holder = Holder { name: \"kept\" }\n",
     "src/test_claim_nonempty_record_json_probe.rs",
@@ -150,7 +150,7 @@ test fn w_nonempty_record_data_value_keeps_the_map_spelling() -> Bool {
 // bare spelling never reaches the arm (an ExprVar routes the whole value to direct construction
 // via data_value_has_cross_refs). It reds if the tag map is lost, and if the former
 // mis-serializations (null, or the compile_error! refusal) return.
-test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool {
+test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_spelling_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: A {}, m: Marker {} }\n",
     "src/test_claim_variant_json_spelling_probe.rs",
@@ -167,7 +167,7 @@ test fn w_variant_record_lit_on_the_json_data_path_spells_the_internal_tag() -> 
 // combiner, migration_trigger } in v2.lens.cost.copied_port_citations), so this row is the
 // discriminating control for the population the index actually serves. It reds if the tag or the
 // inline fields are dropped, and if the compile_error! refusal returns.
-test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields() -> Bool {
+test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.variant_json_fielded_probe\ntype E = A | B { x: Int }\ntype Marker {}\ntype Holder {\n  e: E\n  m: Marker\n}\ndata probe: Holder = Holder { e: B { x: 3 }, m: Marker {} }\n",
     "src/test_claim_variant_json_fielded_probe.rs",
@@ -186,7 +186,7 @@ test fn w_fielded_variant_record_lit_on_the_json_data_path_spells_tag_and_fields
 // parametric opaque Compose, a foreign Compose pulled in by the MachineWidth import, and an alias
 // whose RHS applies the local one. It reds if the poison marker returns, and if the local
 // declaration stops being the resolution.
-test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool {
+test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.ambiguous_leaf_locality_probe\nimport std.machine_constraints { MachineWidth }\ntype Compose<carrier, dimension>\ntype Word = Compose<MachineWidth<8>, MachineWidth<8>>\n",
     "src/test_claim_ambiguous_leaf_locality_probe.rs",
@@ -230,7 +230,7 @@ test fn w_alias_rhs_leaf_declared_locally_shadows_foreign_declarer() -> Bool {
 // (std.types Bool against v2.std.logic Bool) was measured and resolves to the kernel Bool, so it
 // does not reach the arm either. The arm's next specimen is whichever std/v2.std homonym survives
 // the integer-family de-forks; until then this row is a control for the unambiguous route only.
-test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool {
+test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.qualified_leaf_disambiguation_probe\nimport test.fixture.nat_qualified_provider { nat_qualified_provider_touch }\nimport std.nat { nat_max }\nfn probe() -> test.fixture.structural_peano_nat.StructuralNat {\n  match test.fixture.structural_peano_nat.StructuralZero {\n    test.fixture.structural_peano_nat.StructuralZero => test.fixture.structural_peano_nat.StructuralZero\n    test.fixture.structural_peano_nat.StructuralSucc { prev: p } => test.fixture.structural_peano_nat.StructuralSucc { prev: p }\n  }\n}\n",
     "src/test_claim_qualified_leaf_disambiguation_probe.rs",
@@ -251,7 +251,7 @@ test fn w_qualified_type_reference_qualifier_disambiguates_the_leaf() -> Bool {
 // pattern); this row reds if the second hop is lost, and also pins the two boundary controls --
 // middle's one-hop bound must stand and wrap, which constructs rather than clones, must stay bare
 // (a spurious bound tightens a signature and breaks its callers).
-test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool {
+test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.clone_bound_two_hop_probe\ntype Measure<Q, S, M> { count: M }\ntype CostTimeAxis<S>\n  = CostTimeMeasured { value: Measure<S, S, Bool> }\n  | CostTimeUnestablished\n\ntype CostAccount<S> {\n  time: CostTimeAxis<S>\n}\nfn inner<S>(axis: CostTimeAxis<S>) -> Bool {\n  match axis {\n    CostTimeMeasured { value: _ } => true\n    CostTimeUnestablished => false\n  }\n}\nfn middle<S>(account: CostAccount<S>) -> Bool {\n  inner(axis: account.time)\n}\nfn wrap<S>(m: Measure<S, S, Bool>) -> CostAccount<S> {\n  CostAccount { time: CostTimeMeasured { value: m } }\n}\nfn outer<S>(wall_time: Measure<S, S, Bool>) -> Bool {\n  middle(account: wrap(m: wall_time))\n}\n",
     "src/test_claim_clone_bound_two_hop_probe.rs",
@@ -276,7 +276,7 @@ test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool {
 // -- the module prefix correct and the identifier a dotted path Rust reads as field access on an
 // undefined value `v2`. map_get is the specimen because it is also DivergentProjection, so this
 // row proves the qualified path reaches the DECLARATION and not the bridge.
-test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
+test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get(m: m, key: \"key\") }\n",
     "src/test_claim_qualified_call_probe.rs",
@@ -289,7 +289,7 @@ test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
 // primitive and rt_function_registry has no `length` row, so emission took the identity arm of
 // rust_runtime_bridge_name and wrote `v1_rt::length` -- a symbol the seed does not define -- at
 // 73 sites. The declaration has a real fold body, so it is what a call must reach.
-test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
+test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.length_projection_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, length }\nfn probe(xs: FreeMonoid<Int>) -> Int { length(xs: xs) }\n",
     "src/test_claim_length_projection_probe.rs",
@@ -303,7 +303,7 @@ test fn w_unbridged_modeled_primitive_emits_its_declaration() -> Bool {
 // registry row, so it must still lower to the bridge. A repair that had simply routed every
 // ModeledProjection to its declaration would go red here -- and would also have emitted
 // v2.std.collection map_insert's former `Map { lookup: fn .. }` body against an Rc map carrier.
-test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
+test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.bridged_empty_map_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
     "src/test_claim_bridged_empty_map_probe.rs",
@@ -317,7 +317,7 @@ test fn w_bridged_modeled_primitive_still_lowers_to_the_bridge() -> Bool {
 // fallback at the end of that arm passed runtime_bridge: true unconditionally -- emitting
 // `v1_rt::step`, and leaving emit_rust_generic_method_call's own callable-field arm, guarded on
 // runtime_bridge == false, unreachable for the exact receiver it was written for.
-test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
+test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.callable_field_probe\nimport std.types { Int }\ntype Stepper { step: fn(Int) -> Int }\nfn probe(s: Stepper, n: Int) -> Int { s.step(n) }\n",
     "src/test_claim_callable_field_probe.rs",
@@ -336,7 +336,7 @@ test fn w_callable_record_field_lowers_as_a_field_not_a_bridge() -> Bool {
 // simple-method template, so it is answered before the fallback and would have gone red while
 // testing nothing about the seam under repair -- a control passing through a codepath its
 // subject never executes.
-test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
+test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.bridge_method_probe\nimport std.types { String }\nfn probe(s: String) -> String { s |> trim }\n",
     "src/test_claim_bridge_method_probe.rs",
@@ -352,7 +352,7 @@ test fn w_registered_bridge_method_still_reaches_the_bridge() -> Bool {
 // never returns. That is why these two are absent from the E0425 census this file's other rows
 // are measured against -- they were silent, not absent. A row asserting "no error" would have
 // been green throughout the defect; this asserts the call reaches the realization.
-test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool {
+test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.symbol_lexeme_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_symbol_lexeme_probe.rs",
@@ -370,7 +370,7 @@ test fn w_symbol_lexeme_reaches_its_host_realization_not_its_self_call() -> Bool
 //
 // The discriminating pair is the declaration itself: pre-wall the emitted module carries
 // `pub fn declared_seam_without_realization`, post-wall it carries the refusal instead.
-test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> Bool {
+test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.unrealized_seam_probe\nimport std.types { String }\nfn declared_seam_without_realization(x: String) -> String { declared_seam_without_realization(x: x) }\nfn probe(x: String) -> String { declared_seam_without_realization(x: x) }\n",
     "src/test_claim_unrealized_seam_probe.rs",
@@ -386,7 +386,7 @@ test fn w_unrealized_self_call_seam_refuses_instead_of_emitting_recursion() -> B
 // the crate down under the old form. The declaration must therefore still be emitted, with its
 // parameters and return type intact, so that dependent modules resolve and only an actual call
 // fails.
-test fn w_unrealized_seam_refusal_preserves_the_declaration_signature() -> Bool {
+test fn w_unrealized_seam_refusal_preserves_the_declaration_signature() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.unrealized_seam_shape_probe\nimport std.types { String }\nfn seam_with_no_realization(x: String) -> String { seam_with_no_realization(x: x) }\n",
     "src/test_claim_unrealized_seam_shape_probe.rs",
@@ -398,7 +398,7 @@ test fn w_unrealized_seam_refusal_preserves_the_declaration_signature() -> Bool 
 // ORDINARY RECURSION IS NOT A SEAM, and this is the control that keeps the wall from refusing most
 // of the compiler. The predicate is whole-body identity, not "contains a self-call": a match, an if
 // or a let between the head and the recursive call means the body is not the call.
-test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
+test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.ordinary_recursion_probe\nimport std.types { Int }\nfn countdown(n: Int) -> Int { if n <= 0 { 0 } else { countdown(n: n - 1) } }\n",
     "src/test_claim_ordinary_recursion_probe.rs",
@@ -417,7 +417,7 @@ test fn w_ordinary_recursion_is_not_read_as_a_host_seam() -> Bool {
 // The discriminating direction is that this seam must NOT refuse while decl_facts, which genuinely
 // has no realization, must. A wall that reverted to decl-name keying flips this row red and leaves
 // the decl_facts row green, so the two cannot be satisfied by one edit.
-test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_name() -> Bool {
+test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_name() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.delegate_seam_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { empty_map }\nfn probe() -> Map<String, Int> { empty_map() }\n",
     "src/test_claim_delegate_seam_probe.rs",
@@ -433,7 +433,7 @@ test fn w_rostered_seam_resolves_realization_through_its_primitive_not_its_decl_
 // suppression, not found by it. The same reasoning that made suppression look safe is what makes
 // it unnecessary: the seam's body is a self-call, resolution routes it through the roster to the
 // bridge, and ordinary emission writes the delegation by itself.
-test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool {
+test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.realized_seam_probe\nimport std.types { String }\nimport v2.std.node { Symbol, symbol_lexeme }\nfn probe(sym: Symbol) -> String { symbol_lexeme(sym: sym) }\n",
     "src/test_claim_realized_seam_probe.rs",
@@ -452,7 +452,7 @@ test fn w_realized_seam_keeps_its_declaration_and_delegates_to_the_bridge() -> B
 // Rust realization is Vec::is_empty, exactly as count's is Vec::len -- so it belongs in
 // rust_simple_method_specs beside count, and nothing in 05_emit_rust learns a new name. The
 // negative assertion is the refusal message, because that is precisely the state this row leaves.
-test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
+test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.is_empty_probe\nimport std.types { Int, Bool }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.algebra { FreeMonoid, is_empty }\nfn probe(xs: FreeMonoid<Int>) -> Bool { xs |> is_empty }\n",
     "src/test_claim_is_empty_probe.rs",
@@ -470,7 +470,7 @@ test fn w_is_empty_lowers_to_its_rust_realization_not_a_refusal() -> Bool {
 //
 // The same hole existed for count, first, join, split, take, skip, last, chars and enumerate before
 // is_empty was ever added; this row is the one that made it executable.
-test fn w_callable_field_named_is_empty_is_not_captured_by_the_target_template() -> Bool {
+test fn w_callable_field_named_is_empty_is_not_captured_by_the_target_template() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.is_empty_field_probe\nimport std.types { Bool, Int }\ntype Probe { is_empty: fn(Int) -> Bool }\nfn probe(p: Probe, n: Int) -> Bool { p.is_empty(n) }\n",
     "src/test_claim_is_empty_field_probe.rs",
@@ -483,7 +483,7 @@ test fn w_callable_field_named_is_empty_is_not_captured_by_the_target_template()
 // before this change, so if the hole were specific to is_empty this row would be green on main and
 // green here. It is not: it is the pre-existing instance of the class, and it is enrolled so the
 // repair is measured against the whole table rather than the row that exposed it.
-test fn w_callable_field_named_count_is_not_captured_by_the_target_template() -> Bool {
+test fn w_callable_field_named_count_is_not_captured_by_the_target_template() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.count_field_probe\nimport std.types { Int }\ntype Counter { count: fn(Int) -> Int }\nfn probe(c: Counter, n: Int) -> Int { c.count(n) }\n",
     "src/test_claim_count_field_probe.rs",
@@ -501,7 +501,7 @@ test fn w_callable_field_named_count_is_not_captured_by_the_target_template() ->
 // decline it and the ordinary bridge lowering must survive. This is the discriminating red for
 // narrowing the predicate to the receiver's OWN declared record: restore the candidate sweep and
 // the must_not_contain clause fires.
-test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
+test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.map_receiver_probe\nimport std.types { Int, String }\nfn probe(m: Map<String, Int>) -> List<String> { map_keys(m) }\n",
     "src/test_claim_map_receiver_probe.rs",
@@ -521,7 +521,7 @@ test fn w_map_receiver_operation_is_not_read_as_a_callable_field() -> Bool {
 // reach emission with its produced identity erased; the turbofish then rendered the erasure itself:
 // `Witness::<compile_error!("UNRESOLVED_CompilerError")>::Holds`. The enclosing fn's declared return
 // is the carrier authority and must be what the arm falls back to.
-test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool {
+test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is_erased() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.witness_carrier_probe\nimport std.types { Int }\nimport std.algebra { Cons, Empty }\nimport v2.std.algebra { fold_list }\nimport std.algebra { list_snoc_item }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype Progress { edges: List<Int>, index: Int }\nfn step(p: Witness<Progress>, x: Int) -> Witness<Progress> { match p { Holds { value: Progress { edges: es, index: i } } => Holds { value: Progress { edges: list_snoc_item(xs: es, item: x), index: i + 1 } }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\nfn probe(xs: List<Int>) -> Witness<List<Int>> { match fold_list(xs: xs, empty: Holds { value: Progress { edges: Empty, index: 0 } }, cons: fn(p, x) { step(p: p, x: x) }) { Holds { value: Progress { edges: result, index: _ } } => Holds { value: result }  Violates { diagnostic: d } => Violates { diagnostic: d } } }\n",
     "src/test_claim_witness_carrier_probe.rs",
@@ -538,7 +538,7 @@ test fn w_witness_carrier_falls_back_to_the_fn_return_when_the_value_identity_is
 // under an explicit `import std.types { Map }` the accumulator resolves to the kernel container and
 // the defect never fires (measured: that probe emitted `rc_empty_map::<String, String>` on the
 // defective compiler). The init must decline the formals exactly as the lambda beside it does.
-test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declaration_formals() -> Bool {
+test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declaration_formals() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.fold_accumulator_probe\nimport v2.std.node { Symbol }\n\ntype Row {\n  field: Symbol\n  carrier: Symbol\n}\n\ndata rows: List<Row> = [\n  Row { field: ^a, carrier: ^b }\n]\n\nfn probe() -> Map<Symbol, Symbol> {\n  fold(rows, init: empty_map(), f: fn(acc, row) {\n    map_insert(m: acc, key: row.field, value: row.carrier)\n  })\n}\n",
     "src/test_claim_fold_accumulator_probe.rs",
@@ -550,7 +550,7 @@ test fn w_fold_empty_map_init_renders_the_resolved_accumulator_not_the_declarati
 // LAMBDA PARAMETER ANNOTATION, THE DISCRIMINATING RED. A closure parameter whose inferred type
 // carries a formal no fn generic binds (`FreeMonoid<T>`) was annotated with it verbatim, a type the
 // closure cannot name. The annotation must decline exactly as the fold element annotation does.
-test fn w_lambda_param_annotation_declines_a_spurious_generic() -> Bool {
+test fn w_lambda_param_annotation_declines_a_spurious_generic() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.lambda_annotation_probe\nimport std.types { Bool }\nimport std.algebra { Cons, Empty }\nimport v2.std.node { Symbol }\nfn has(xs: List<Symbol>, s: Symbol) -> Bool { match xs { Empty => false  Cons { head: h, tail: t } => if h == s { true } else { has(xs: t, s: s) } } }\nfn probe(hits: List<Symbol>, accepted: List<Symbol>) -> Bool { match hits { Empty => false  Cons { head: first_hit, tail: rest_hits } => fold(Cons { head: first_hit, tail: rest_hits }, init: true, f: fn(acc, a) { acc && has(xs: accepted, s: a) }) } }\n",
     "src/test_claim_lambda_annotation_probe.rs",
@@ -563,7 +563,7 @@ test fn w_lambda_param_annotation_declines_a_spurious_generic() -> Bool {
 // the return of an arrow type, rendered with the arguments of what it abbreviates:
 // `Gate = Rc<dyn Fn(..) -> Outc<Rc<Witness<..>>>>` (E0107, with the E0391 variance cycle rustc
 // reports beside it). The alias is zero-parameter and must render bare.
-test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments() -> Bool {
+test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.alias_arrow_probe\nimport std.types { Int }\nimport v2.std.witness { Witness }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.node { Node }\ntype Outc = Outcome<Witness<Node>>\ntype Gate = fn(Int) -> Outc\ntype Lens { gate: Gate }\n",
     "src/test_claim_alias_arrow_probe.rs",
@@ -576,7 +576,7 @@ test fn w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments(
 // target-generic renderer, which never reads an applied-type binding, so `fn(Int) -> Outcome<Box2<String>>`
 // dropped the inner binding: `Rc<Outcome<Rc<Box2>>>` (E0107 missing generics). The Rust renderer
 // honours the binding and must be what an arrow's positions render through.
-test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
+test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.arrow_binding_probe\nimport std.types { Int, String }\nimport v2.std.diagnostic { Outcome, Accepted }\ntype Box2<T> { v: T }\nfn probe() -> fn(Int) -> Outcome<Box2<String>> { fn(n) { Accepted { value: Box2 { v: \"x\" }, diagnostics: None } } }\n",
     "src/test_claim_arrow_binding_probe.rs",
@@ -600,7 +600,7 @@ test fn w_arrow_return_type_keeps_its_applied_binding() -> Bool {
 // function grain, red by construction on the variant arm) together with the closure count of the
 // use-line in v2_std_determinism.rs. The expected line is spelled as two substrings because a
 // `{Name}` inside a .dag string literal is read as an interpolation of that name.
-test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
+test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.qualified_type_ref_probe\nimport std.types { String }\nimport std.decl_ref { DeclField }\ntype Fact { signature: String, r: std.decl_ref.DeclarationRef }\nfn probe(f: Fact) -> std.decl_ref.DeclarationRef { f.r }\n",
     "src/test_claim_qualified_type_ref_probe.rs",
@@ -616,7 +616,7 @@ test fn w_qualified_type_reference_earns_the_leaf_use_line() -> Bool {
 // rendered the bare token `String`, which the v2_std_text use-line captured (the XL-0A E0308
 // population); under the exact path the declaration-keyed spelling is fully qualified and no
 // use-line can shadow it.
-test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
+test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.symbol_import_collision\nimport v2.std.node { Symbol }\nimport v2.std.text { String }\n\nfn takes_symbol(identity: Symbol) -> Symbol {\n  identity\n}\n\nfn takes_text(text: String) -> String {\n  text\n}\n",
     "src/test_claim_symbol_import_collision.rs",
@@ -628,7 +628,7 @@ test fn w_symbol_reference_renders_the_exact_qualified_spelling() -> Bool {
 // QUALIFIED VALUE HEAD, THE OTHER DIRECTION. `test.fixture.structural_peano_nat.StructuralSucc { prev: .. }` is a variant record
 // literal; the value route imports it through its parent enum, and this route must synthesize
 // nothing for it (E0603 `variant import is private`, sixteen sites on the first regeneration).
-test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool {
+test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.qualified_variant_head_probe\nimport test.fixture.structural_peano_nat { StructuralNat, StructuralZero }\nfn probe() -> StructuralNat { test.fixture.structural_peano_nat.StructuralSucc { prev: StructuralZero } }\n",
     "src/test_claim_qualified_variant_head_probe.rs",
@@ -641,7 +641,7 @@ test fn w_qualified_variant_head_earns_no_type_use_line() -> Bool {
 // inference -- `Rc<Outcome<compile_error!("UNRESOLVED_CompilerError")>>` (v2.std.staging
 // then_outcome, three sites) -- while the same shape in a parameter position rendered `C`. Both
 // positions now ask the fn-signature renderer.
-test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool {
+test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.generic_arrow_probe\nimport v2.std.diagnostic { Outcome, Accepted, Rejected }\nfn then2<A, B, C>(f: fn(A) -> Outcome<B>, g: fn(B) -> Outcome<C>) -> fn(A) -> Outcome<C> {\n  fn(a) { match f(a) { Accepted { value: b, diagnostics: _ } => g(b)  Rejected { diagnostics: d } => Rejected { diagnostics: d } } }\n}\n",
     "src/test_claim_generic_arrow_probe.rs",
@@ -654,7 +654,7 @@ test fn w_generic_arrow_return_renders_the_fn_scope_generic() -> Bool {
 // rendered `Some(Optional::U { .. })` (four sites in v2.std.symbol_index, E0599 no variant named U in
 // Option): the Some payload inherited the OUTER scrutinee's enum. The payload's parent is the
 // enum that declares the variant, never the Optional around it.
-test fn w_variant_nested_in_an_optional_pattern_is_qualified_by_its_own_enum() -> Bool {
+test fn w_variant_nested_in_an_optional_pattern_is_qualified_by_its_own_enum() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.optional_nested_variant_probe\nimport std.types { Int, Bool }\ntype State = Unique { n: Int } | Ambiguous\nfn probe(s: State?) -> Bool {\n  match s {\n    Present { value: Unique { n: k } } => k == 0\n    Present { value: Ambiguous } => false\n    Absent => false\n  }\n}\n",
     "src/test_claim_optional_nested_variant_probe.rs",
@@ -668,7 +668,7 @@ test fn w_variant_nested_in_an_optional_pattern_is_qualified_by_its_own_enum() -
 // needs `Clone` (E0277 `A: Clone` not satisfied, v2.std.staging then_outcome and
 // v2.compiler.materialization_carriers cached_stage_governed). The structural rules read what a
 // value is; this obligation comes from what the realization does with it.
-test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
+test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.returned_closure_clone_probe\nfn compose<A, B, C>(f: fn(A) -> B, g: fn(B) -> C) -> fn(A) -> C {\n  fn(x) { g(f(x)) }\n}\n",
     "src/test_claim_returned_closure_clone_probe.rs",
@@ -682,7 +682,7 @@ test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
 // base instead, so `type Slots = Map<Int, Slot>` became `Rc<crate::std_types::Map<..>>` -- the
 // algebra struct, a second representation of the same carrier, refused by rustc wherever a Slots
 // met a HashMap parameter. The positive control is the field position on the same fixture.
-test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
+test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.map_alias_probe\nimport v2.std.collection { Map }\ntype Slot\ntype Slots = Map<Int, Slot>\ntype Holder { slots: Slots, direct: Map<Int, Slot> }\n",
     "src/test_claim_map_alias_probe.rs",
@@ -694,7 +694,7 @@ test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
 // A GENERIC IN KEY POSITION CARRIES THE HOST KEY BOUNDS. The HashMap bridges declare
 // `K: Eq + Hash`; a fn generic over a Map key that emitted `K: Clone` alone refused at every bridge
 // call (E0277, three sites in v2_std_collection). The bound is read from the signature.
-test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
+test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport v2.std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
     "src/test_claim_map_key_bound_probe.rs",
@@ -716,7 +716,7 @@ test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
 // the realized arm's positive control, which its note recorded as not authorable until now, and it
 // still discriminates: before the repair this exact source emitted the refusal this row excludes.
 // The refusal it used to pin keeps a source-authorable input, and the next row enrolls it.
-test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter() -> Bool {
+test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service_parameter() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.service_op_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String { let read = Filesystem.Read(path: path)\n read.content }\n",
     "src/test_claim_service_op_probe.rs",
@@ -733,7 +733,7 @@ test fn w_a_service_op_through_its_bare_name_is_realized_against_a_bound_service
 // method-call arm, asking the same predicate as the signature, declines to realize it and emits the
 // refusal body -- a loud, located refusal, never an unbound `.await?`. The row asserts exactly that,
 // so an emitter that realized the call against a binding the signature never made would turn it red.
-test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding() -> Bool {
+test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_awaiting_an_unbound_binding() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.service_alias_probe\nimport std.types { String }\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn probe(path: String) -> String {\n  let fs = Filesystem\n  let read = fs.Read(path: path)\n  read.content\n}\n",
     "src/test_claim_service_alias_probe.rs",
@@ -749,7 +749,7 @@ test fn w_a_service_op_through_an_aliased_service_value_refuses_instead_of_await
 
 // A parameter declared `Optional<T>` is optional: the applied spelling carries no cardinality flag,
 // so the fail-closed unwrap fired on an argument the callee exists to inspect.
-test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool {
+test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Optional<Int>) -> Optional<Int> { inspect(opt: x) }\n",
     "src/test_claim_optional_param_probe.rs",
@@ -765,7 +765,7 @@ test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwr
 // (E0308 at std.materialization_object store_object_line_malformed_text and store_lookup_payload).
 // The `end: none` argument is the positive control in the same call: a bare type-variable
 // parameter was already declined, so the row reds only on the callable arm.
-test fn w_optional_returning_lambda_argument_is_not_unwrapped_as_an_optional_value() -> Bool {
+test fn w_optional_returning_lambda_argument_is_not_unwrapped_as_an_optional_value() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.optional_lambda_probe\nimport std.types { String, Bool }\nfn pick<T>(flag: Bool, hit: fn(String) -> T, miss: T) -> T { if flag { hit(\"x\") } else { miss } }\nfn probe(flag: Bool) -> String? { pick(flag: flag, hit: t => Present { value: t }, miss: none) }\n",
     "src/test_claim_optional_lambda_probe.rs",
@@ -776,7 +776,7 @@ test fn w_optional_returning_lambda_argument_is_not_unwrapped_as_an_optional_val
 
 // The shared-field accessor returns T by value from &self; without T: Clone on its impl rustc
 // clones the reference.
-test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool {
+test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.shared_accessor_probe\nimport std.types { Int }\ntype Pair<T> = Left { v: T, n: Int } | Right { v: T, m: Int }\nfn v_of<T>(p: Pair<T>) -> T { p.v }\n",
     "src/test_claim_shared_accessor_probe.rs",
@@ -787,7 +787,7 @@ test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bo
 
 // A record pattern over a generic call's result: the scrutinee carrier is decided by the shared set,
 // exactly as a shared enum's variant pattern is, so the pattern must meet the value, not the Rc.
-test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool {
+test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.record_pattern_probe\nimport std.types { Int, List }\ntype Rec { tag: Int, items: List<Int> }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { tag: x, items: _ } => x } }\n",
     "src/test_claim_record_pattern_probe.rs",
@@ -798,7 +798,7 @@ test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() 
 
 // A generic stored into a `dyn Fn` must outlive it: a fn returning a record whose fields are arrows
 // carries 'static on every generic, the same gate the param-side `impl Fn` already fires.
-test fn w_fn_returning_an_arrow_field_record_carries_static_on_its_generics() -> Bool {
+test fn w_fn_returning_an_arrow_field_record_carries_static_on_its_generics() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.static_generic_probe\nimport std.types { Int }\ntype Ops<T> { op: fn(T, T) -> T }\nfn ops<T>(z: T) -> Ops<T> { Ops { op: fn(a, b) { z } } }\n",
     "src/test_claim_static_generic_probe.rs",
@@ -809,7 +809,7 @@ test fn w_fn_returning_an_arrow_field_record_carries_static_on_its_generics() ->
 
 // A module declaring a nullary variant named None also emits `pub struct None;` at module scope,
 // which captures the prelude's Option::None: the null keyword row names the item by its path.
-test fn w_null_keyword_survives_a_module_declaring_a_none_variant() -> Bool {
+test fn w_null_keyword_survives_a_module_declaring_a_none_variant() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.none_capture_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\ntype PlanX { layer: Int?, scope: ScopeX }\nfn plan_x() -> PlanX { PlanX { layer: none, scope: Keyed } }\n",
     "src/test_claim_none_capture_probe.rs",
@@ -824,7 +824,7 @@ test fn w_null_keyword_survives_a_module_declaring_a_none_variant() -> Bool {
 // record on the fn-field header path; the first version of this row reached that path through
 // `v2.std.host_run.EmitHostRunReceipt`, whose closure cost the floor 30 s CPU per fill and came
 // back false through the shared-artifact path -- the condition is local, so the fixture is.
-test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool {
+test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.wf_header_probe\nimport std.types { Int }\ntype ValueDiffY<A> { expected: A, actual: A }\ntype Hook { run: fn(Int) -> Int }\ntype ReceiptX<Subj, A> { subject: Subj, expected: A, divergence: ValueDiffY<A>, hook: Hook }\n",
     "src/test_claim_wf_header_probe.rs",
@@ -837,7 +837,7 @@ test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool 
 // variant, and a bare `None` pattern in a module that emits `pub struct None;` binds the unit
 // struct instead of the variant (E0308 "`None` is interpreted as a unit struct", five arms in
 // std.cache_interface on the first regen after the keyword row was qualified).
-test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
+test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.none_pattern_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\nfn unwrap_or_zero(x: Int?) -> Int { match x { Present { value: v } => v\n Absent => 0 } }\n",
     "src/test_claim_none_pattern_probe.rs",
@@ -849,7 +849,7 @@ test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
 // Two arms of one record that disagree only on a plain binding (`target: t` beside `target: _`)
 // must still lower to one outer arm with a nested match on the Rc field: the guard form
 // (`if matches!(label.as_ref(), ..)` on every arm) is invisible to rustc's exhaustiveness check.
-test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match() -> Bool {
+test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.grouped_record_arms_probe\nimport std.types { Int, String, List }\ntype LblX = NamedX { name: String, items: List<Int> } | PositionalX\ntype EdgeX { label: LblX, target: Int }\nfn probe(e: EdgeX) -> Int { match e { EdgeX { label: NamedX { name: _, items: _ }, target: t } => t  EdgeX { label: PositionalX, target: _ } => 0 } }\n",
     "src/test_claim_grouped_record_arms_probe.rs",
@@ -861,7 +861,7 @@ test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match
 // A `Violates` literal at a record field inhabits the FIELD's declared `Witness<C>`, not the
 // enclosing fn's return: the type argument must come from the field (`Witness::<i64>`), never
 // from the fn return (`Witness::<RecW>` / `Witness::<Rc<RecW>>`).
-test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool {
+test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.witness_field_probe\nimport std.types { Bool, Int }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype RecW { inner: Witness<Int> }\nfn mk(ok: Bool, d: Diagnostic) -> RecW { RecW { inner: if ok { Holds { value: 1 } } else { Violates { diagnostic: d } } } }\n",
     "src/test_claim_witness_field_probe.rs",
@@ -874,7 +874,7 @@ test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool
 // the field's type expression carries no resolved inference, so the declaring module must be
 // read from the env binding, never from the reference's own file -- otherwise the argument
 // renders as the shared carrier `Rc<Nat>` while every signature renders it `i64`.
-test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scalar() -> Bool {
+test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scalar() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.nat_type_arg_probe\nimport std.nat { Nat }\ntype Box2<Q, M> { count: M }\ntype Holder<S> { size: Box2<S, Nat> }\nfn holder_size<S>(h: Holder<S>) -> Box2<S, Nat> { h.size }\n",
     "src/test_claim_nat_type_arg_probe.rs",
@@ -885,7 +885,7 @@ test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scal
 
 // sort_by over a list whose element type is a type variable must still compare by the authored
 // key function; the element-type-unknown arm used to drop the key and compare elements directly.
-test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
+test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.generic_sort_probe\nimport std.types { Int, List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
     "src/test_claim_generic_sort_probe.rs",
@@ -896,7 +896,7 @@ test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
 
 // An arrow type as a type ARGUMENT (a Map's value type at a record field) renders as the callable
 // carrier, never as the arrow's resolved return type.
-test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -> Bool {
+test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.arrow_map_field_probe\nimport std.types { String }\nimport v2.std.collection { Map }\nimport v2.std.node { Symbol }\ntype Xf { transforms: Map<Symbol, fn(String) -> String> }\n",
     "src/test_claim_arrow_map_field_probe.rs",
@@ -907,7 +907,7 @@ test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -
 
 // The sort comparator over a fn-scope generic element names that generic (`|a: &T, b: &T|`,
 // `|x: T|`): a `_` annotation on an immediately-applied key closure is uninferable (E0282).
-test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Bool {
+test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.generic_sort_typed_probe\nimport std.types { Int, List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
     "src/test_claim_generic_sort_typed_probe.rs",
@@ -918,7 +918,7 @@ test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Boo
 
 // A native-realized alias at a VARIANT record field renders the machine scalar bare: the shared
 // wrap must not fire on `predecessor: Nat` (it rendered `Rc<Nat>` while the constructor passed i64).
-test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare() -> Bool {
+test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.nat_variant_field_probe\nimport std.nat { Nat }\ntype PMx = PMSucc { predecessor: Nat }\nfn pm(n: Nat) -> PMx { PMSucc { predecessor: n } }\n",
     "src/test_claim_nat_variant_field_probe.rs",
@@ -936,7 +936,7 @@ test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare
 // prelude refuses it -- a fabricated panic, section 5). Refutation now lives entirely in the guard,
 // recursively (`.. { ref prev, .. } if matches!(prev.as_ref(), ..)`), and the prelude destructures
 // under that guarantee, level by level.
-test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool {
+test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.nested_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: PZero } } => 1\n    _ => 0\n  }\n}\n",
     "src/test_claim_nested_shared_refutation_probe.rs",
@@ -948,7 +948,7 @@ test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool {
 // THE BOUNDARY CONTROL: a DEPTH-ONE refutation (inner pattern binds, refutes nothing below the
 // first shared level) keeps the shape-only guard and the single-level prelude byte-for-byte -- a
 // repair that recursed unconditionally would rewrite the whole corpus's preludes to prove two sites.
-test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
+test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.depth_one_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: p } } => 1\n    _ => 0\n  }\n}\n",
     "src/test_claim_depth_one_shared_refutation_probe.rs",
@@ -963,7 +963,7 @@ test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
 // gunbc#12208 moved it from v2.std.algebra), so the body surface is src/std_algebra.rs: that
 // module has one concat call, list_append's `left |> concat(right)`, so a revert to
 // fold_list_right drops `v1_rt::concat` from that file. Not a doubling-ratio timing witness: both arms are linear.
-test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool {
+test fn w_list_append_emits_the_concat_primitive_not_a_left_fold() -> Bool  {
   let source = "module test.claim.list_append_concat_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\nimport std.algebra { FreeMonoid, list_append }\nfn probe(left: FreeMonoid<Int>, right: FreeMonoid<Int>) -> FreeMonoid<Int> { list_append(left: left, right: right) }\n"
   compile_dag_rust_emit_check(
     source,

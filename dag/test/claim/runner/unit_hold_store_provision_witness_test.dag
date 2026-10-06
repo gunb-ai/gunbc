@@ -36,13 +36,13 @@ fn store_root_is_converged_on(host: NonEmptyStr) -> Bool {
   }
 }
 
-test fn unit_hold_store_root_is_converged_on_its_store_host() -> Bool {
+test fn unit_hold_store_root_is_converged_on_its_store_host() -> Bool  {
   let stores = unit_hold_store_hosts()
   count(stores) >= 1 && stores |> all(h => store_root_is_converged_on(host: h))
 }
 
 // ONLY ON A STORE HOST: a runner host no managed host's hold names gets no store root.
-test fn unit_hold_store_root_is_absent_on_other_runner_hosts() -> Bool {
+test fn unit_hold_store_root_is_absent_on_other_runner_hosts() -> Bool  {
   let stores = unit_hold_store_hosts()
   !any(stores, h => (h as String) == (operator_host_srv3 as String))
     && !apply_lines_mention_store(host: operator_host_srv3 as NonEmptyStr)

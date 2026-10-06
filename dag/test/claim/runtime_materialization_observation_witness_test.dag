@@ -33,7 +33,7 @@ fn corrupted_under_a_correct_root() -> RuntimeMaterializationObservation {
 // by the materialization identity, so its NAME is derivable from the release alone and a directory
 // bearing it proves only that something once decided to create it. A partial tree under that name
 // is INCOMPLETE -- not absent, and not unobservable.
-test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
+test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool  {
   match corrupted_under_a_correct_root() {
     RuntimeMaterializationIncomplete { identity: _, first_defect: _, further_defects: _ } => true
     RuntimeMaterializationAbsent => false
@@ -51,7 +51,7 @@ test fn a_corrupted_extraction_under_a_correct_root_is_incomplete() -> Bool {
 // The control is two-sided on purpose: incomplete must project SOME value, absent must project NONE,
 // and the value incomplete projects must not equal the desired identity -- otherwise a corrupted root
 // would compare converged.
-test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> Bool {
+test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> Bool  {
   match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
     Absent => false
     Present { value: incomplete_digest } =>
@@ -68,7 +68,7 @@ test fn an_incomplete_runtime_projects_a_member_and_an_absent_one_does_not() -> 
 // TWO DIFFERENT DEFECTS ARE TWO DIFFERENT OBSERVED VALUES. A constant "broken" digest would satisfy
 // the claim above while making every partial state indistinguishable, so repairing one defect and
 // introducing another would read as no change at all.
-test fn distinct_defects_project_distinct_state_values() -> Bool {
+test fn distinct_defects_project_distinct_state_values() -> Bool  {
   match runtime_materialization_state_digest(observation: corrupted_under_a_correct_root()) {
     Absent => false
     Present { value: missing_digest } =>
@@ -89,7 +89,7 @@ test fn distinct_defects_project_distinct_state_values() -> Bool {
 // AND IT IS NOT A REFUSAL, which would be the worse fold: the corruption was SUCCESSFULLY OBSERVED,
 // and calling an established fact an inability to establish it is the collapse this lane has found
 // at every layer. Refusal is reserved for genuinely not knowing, and only it answers false here.
-test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool {
+test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool  {
   !runtime_materialization_was_observed(
     observation: RuntimeMaterializationObservationRefused {
       cause: "runtime root unreadable: permission denied" as NonEmptyStr,
@@ -101,7 +101,7 @@ test fn only_a_refusal_reports_the_runtime_as_unobserved() -> Bool {
 // A complete materialization is the ONLY arm that projects an identity, and it projects the one it
 // was observed to hold. Without this the three negative claims above pass on a projection that
 // simply never answers.
-test fn only_a_complete_materialization_projects_its_identity() -> Bool {
+test fn only_a_complete_materialization_projects_its_identity() -> Bool  {
   match runtime_materialization_state_digest(
     observation: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),
@@ -115,7 +115,7 @@ test fn only_a_complete_materialization_projects_its_identity() -> Bool {
 // An incomplete materialization carries at least one defect BY CONSTRUCTION -- head plus tail, so
 // "incomplete with nothing wrong" has no constructor. This pins that the accessor agrees with the
 // type rather than quietly returning an empty list the type already forbids.
-test fn an_incomplete_materialization_always_reports_a_defect() -> Bool {
+test fn an_incomplete_materialization_always_reports_a_defect() -> Bool  {
   length(runtime_materialization_defects(observation: corrupted_under_a_correct_root())) == 1
     && length(runtime_materialization_defects(
       observation: RuntimeMaterializationIncomplete {
@@ -127,7 +127,7 @@ test fn an_incomplete_materialization_always_reports_a_defect() -> Bool {
 }
 
 // The settled arms report no defects, so the accessor is not answering the same way for everything.
-test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
+test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool  {
   length(runtime_materialization_defects(observation: RuntimeMaterializationAbsent)) == 0
     && length(runtime_materialization_defects(
       observation: RuntimeMaterializationComplete {
@@ -147,7 +147,7 @@ test fn a_complete_or_absent_runtime_reports_no_defects() -> Bool {
 // The claim asserts the DIGEST DIFFERS from a complete one, not merely that the arm is Incomplete.
 // Sharing a digest with Complete is what would let the member converge, which is the actual harm --
 // an arm name that reconcile never reads would be cosmetic.
-test fn a_missing_completion_receipt_is_not_complete() -> Bool {
+test fn a_missing_completion_receipt_is_not_complete() -> Bool  {
   let ident = ollama_runtime_materialization_identity_for_required_release()
   let no_receipt = RuntimeMaterializationIncomplete {
     identity: ident,

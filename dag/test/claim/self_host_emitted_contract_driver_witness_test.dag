@@ -36,7 +36,7 @@ fn designed_main_source() -> String {
 
 // The one call the rendered driver makes is to the emitted contract, addressed by the emitted
 // file name of its module, and it passes the fault flag through.
-test fn the_rendered_driver_calls_the_emitted_contract_with_the_fault_flag() -> Bool {
+test fn the_rendered_driver_calls_the_emitted_contract_with_the_fault_flag() -> Bool  {
   string_contains(
     s: designed_main_source(),
     pattern: "v1_compiled::designed_pkg_contract::designed_contract_holds(inject_fault)"
@@ -46,7 +46,7 @@ test fn the_rendered_driver_calls_the_emitted_contract_with_the_fault_flag() -> 
 
 // Both markers the harness reads are the row's: the pass marker verbatim and its stem plus FAIL.
 // A rendered driver that printed only one of them would make every fault run undetectable.
-test fn the_rendered_driver_prints_the_rows_pass_marker_and_its_fail_marker() -> Bool {
+test fn the_rendered_driver_prints_the_rows_pass_marker_and_its_fail_marker() -> Bool  {
   string_contains(s: designed_main_source(), pattern: "println!(\"DESIGNED_RECEIPT: PASS\");")
     && string_contains(s: designed_main_source(), pattern: "println!(\"DESIGNED_RECEIPT: FAIL\");")
 }
@@ -54,7 +54,7 @@ test fn the_rendered_driver_prints_the_rows_pass_marker_and_its_fail_marker() ->
 // What a fault run of the rendered driver prints, when the emitted contract correctly does not
 // hold, is what the harness accepts as a detected fault -- and what it prints when the contract
 // wrongly holds is not.
-test fn the_fail_marker_the_driver_prints_is_the_one_the_harness_detects() -> Bool {
+test fn the_fail_marker_the_driver_prints_is_the_one_the_harness_detects() -> Bool  {
   cssl_fault_run_detected_the_planted_fault(
     fault_exit_ok: false,
     fault_stdout: "emitted contract inject_fault=true holds=false\nDESIGNED_RECEIPT: FAIL\n",
@@ -80,7 +80,7 @@ fn names_the_interpreted_contract(runs: List<CuratedSeedLinkedClaimRun>) -> Bool
 
 // A row's receipt carries the INTERPRETED realization of its contract as a claim run, ahead of
 // whatever the row already declared, so a row cannot hold on the emitted run alone.
-test fn a_row_adds_its_interpreted_contract_to_the_claim_runs() -> Bool {
+test fn a_row_adds_its_interpreted_contract_to_the_claim_runs() -> Bool  {
   let declared = [CuratedSeedLinkedClaimRun { entry_rel: "src/other_test.dag", function: "other_claim" }]
   names_the_interpreted_contract(runs: cssl_driver_claim_runs(driver: designed_contract_driver, claim_runs: declared))
     && claim_run_count(driver: designed_contract_driver, runs: declared) == 2
@@ -100,7 +100,7 @@ fn row_contract_is_under_the_contract_directory(cfg: ModuleBehavioralTransportCo
 // compared to the roster's own count, never to a headcount copied from the tree, so adding or
 // removing a row does not move the claim -- and the roster is required to be inhabited, because
 // over an empty roster both would hold vacuously.
-test fn every_roster_row_names_its_own_contract() -> Bool {
+test fn every_roster_row_names_its_own_contract() -> Bool  {
   let rows = compiler_module_behavioral_transport_roster
   (rows |> count) > 0
     && (rows |> filter(cfg => row_contract_is_under_the_contract_directory(cfg: cfg)) |> count) == (rows |> count)

@@ -61,7 +61,7 @@ fn pijul_fixture_binding() -> PijulCompatibilityBindingOutcome {
   )
 }
 
-test fn witness_pijul_r1_consumes_native_projection_and_readback() -> Bool {
+test fn witness_pijul_r1_consumes_native_projection_and_readback() -> Bool  {
   match pijul_fixture_binding() {
     PijulCompatibilityBindingRefused { cause: _ } => false
     PijulCompatibilityBound { receipt } =>
@@ -76,7 +76,7 @@ test fn witness_pijul_r1_consumes_native_projection_and_readback() -> Bool {
   }
 }
 
-test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool {
+test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
@@ -100,7 +100,7 @@ test fn witness_pijul_realization_preserves_c0_primary_behavior() -> Bool {
   }
 }
 
-test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
+test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool  {
   match pijul_fixture_binding() {
     PijulCompatibilityBindingRefused { cause: _ } => false
     PijulCompatibilityBound { receipt } => {
@@ -133,7 +133,7 @@ test fn witness_pijul_missing_advance_refuses_required_capability() -> Bool {
   }
 }
 
-test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
+test fn witness_pijul_preserves_upstream_change_evidence() -> Bool  {
   match pijul_fixture_binding() {
     PijulCompatibilityBindingRefused { cause: _ } => false
     PijulCompatibilityBound { receipt } => {
@@ -148,7 +148,7 @@ test fn witness_pijul_preserves_upstream_change_evidence() -> Bool {
   }
 }
 
-test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
+test fn witness_pijul_readback_identity_comes_from_observation() -> Bool  {
   match pijul_fixture_binding() {
     PijulCompatibilityBindingRefused { cause: _ } => false
     PijulCompatibilityBound { receipt: expected } =>
@@ -182,7 +182,7 @@ test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
   }
 }
 
-test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
+test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool  {
   match pijul_compatibility_bind(
     projection: pijul_r0_fixture_projection(),
     target: "main",
@@ -198,7 +198,7 @@ test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
   }
 }
 
-test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
+test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool  {
   let repository = pijul_r0_fixture_repository()
   let other_projection = projection_with_channels(
     projection: pijul_r0_fixture_projection(),

@@ -85,7 +85,7 @@ import gunbc.runner_slot_retirement {
 import gunbc.runner_host_deploy { runner_host_deploy_for, RunnerHostDeployFound, RunnerHostDeployUnmodeled, RunnerHostDeployRefused }
 import gunbc.fleet_host_identity { operator_host_srv4 }
 
-test fn witness_actions_runner_release_cites_github_digest() -> Bool {
+test fn witness_actions_runner_release_cites_github_digest() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Present { value: artifact } =>
       string_contains(
@@ -96,7 +96,7 @@ test fn witness_actions_runner_release_cites_github_digest() -> Bool {
   }
 }
 
-test fn witness_runner_count_not_in_installer_argv() -> Bool {
+test fn witness_runner_count_not_in_installer_argv() -> Bool  {
   let rendered = shell_command_render(
     command: runner_host_installer_command_argv(
       deploy: wt_srv3_deploy(),
@@ -120,7 +120,7 @@ test fn witness_runner_count_not_in_installer_argv() -> Bool {
 // What survives is the part a fixture can falsify independently of width: the roster is exactly as
 // long as the row says it is, it is one-based, and it is zero-padded. Width itself is asserted where
 // width is decided, not restated here.
-test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool {
+test fn witness_srv3_deploy_row_names_its_declared_slots() -> Bool  {
   let names = runner_instance_names(deploy: wt_srv3_deploy())
   list_length(items: names) == wt_srv3_deploy().runner_count
     && string_contains(s: names.first(), pattern: "srv3-01")
@@ -145,7 +145,7 @@ fn fixture_five_slot_deploy() -> RunnerHostDeploy {
   }
 }
 
-test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
+test fn witness_membership_reconcile_adds_delta_slots() -> Bool  {
   let observed: List<RunnerSlotMember> = [
     RunnerSlotMember {
       instance_name: "wfix-01" as NonEmptyStr,
@@ -165,7 +165,7 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
   membership_added_count(plan: plan) == 3
 }
 
-test fn witness_provision_plan_extracts_only_upserts() -> Bool {
+test fn witness_provision_plan_extracts_only_upserts() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Present { value: artifact } =>
       let observed: List<RunnerSlotMember> = [
@@ -189,7 +189,7 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
   }
 }
 
-test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
+test fn witness_enumeration_postcondition_red_on_under_count() -> Bool  {
   let observed: List<RunnerSlotMember> = [
     RunnerSlotMember {
       instance_name: "srv3-01" as NonEmptyStr,
@@ -211,7 +211,7 @@ test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
 // SAME CORRECTION AS srv3 ABOVE, and the same reason: this row pinned six on both sides of an `&&`,
 // so it measured the tree rather than checking a relation. The relation it was reaching for is that
 // the instance roster and the declared count cannot disagree, which holds at any width.
-test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool {
+test fn witness_srv4_instance_roster_matches_its_declared_count() -> Bool  {
   let names = runner_instance_names(deploy: wt_srv4_deploy())
   list_length(items: names) == wt_srv4_deploy().runner_count
     && roster_names_are_distinct(names: names)
@@ -257,7 +257,7 @@ data authored_three_slot_deploy: RunnerHostDeploy = RunnerHostDeploy {
   runner_count: 3,
 }
 
-test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool {
+test fn an_authored_count_enumerates_exactly_that_many_indexed_names() -> Bool  {
   let names = runner_instance_names(deploy: authored_three_slot_deploy)
   list_length(items: names) == 3
     && string_contains(s: names.first(), pattern: "fixture-host-01")
@@ -287,7 +287,7 @@ data observed_two_fixture: RunnerSlotObservation = RunnerSlotsObserved {
 // THE DISCRIMINATING RED. An unreadable host must not produce a plan, because a plan built on an
 // unread population proposes installing every desired slot onto a machine whose real state nobody
 // saw. This is the arm that turns a silent overwrite into a stop.
-test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
+test fn an_unobserved_host_refuses_instead_of_planning() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
     Present { value: artifact } =>
@@ -309,7 +309,7 @@ test fn an_unobserved_host_refuses_instead_of_planning() -> Bool {
 // Actions slot: srv1's committed width less its one shakedown fabric member (srv1-13, a committed
 // member by identity -- gunbc.runner_slot_allocation host_committed_identities_at) less the two
 // observed.
-test fn an_observed_host_plans_the_missing_slots() -> Bool {
+test fn an_observed_host_plans_the_missing_slots() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
     Present { value: artifact } =>
@@ -341,7 +341,7 @@ test fn an_observed_host_plans_the_missing_slots() -> Bool {
 // enrolled host, srv2 must REFUSE rather than produce a row, and the other three must produce a row
 // whose label is their own. An implementation that quietly gave srv2 a deploy again fails here, and so
 // does one that lets a deployable host slip into refusal.
-test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
+test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool  {
   all(
     [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4],
     h => match runner_host_deploy_for(host: h) {
@@ -354,7 +354,7 @@ test fn every_enrolled_host_resolves_and_none_is_unmodeled() -> Bool {
 
 // srv2 IS THE REFUSED ONE, NAMED. Without this the row above is satisfied by an implementation that
 // refuses every host, which would be a fleet that deploys nothing.
-test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
+test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool  {
   match runner_host_deploy_for(host: operator_host_srv2) {
     RunnerHostDeployRefused { host: _, cause: _ } =>
       all([operator_host_srv1, operator_host_srv3, operator_host_srv4],
@@ -370,7 +370,7 @@ test fn srv2_resolves_as_refused_and_the_others_as_rows() -> Bool {
 
 // AND AN UNMODELED HOST REFUSES RATHER THAN BORROWING A NEIGHBOUR'S ROW -- the arm that stops a
 // fifth machine being provisioned against srv4's ssh_target and slot count.
-test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
+test fn an_unmodeled_host_has_no_deploy_row() -> Bool  {
   match runner_host_deploy_for(host: "srv-does-not-exist" as HostIdentity) {
     RunnerHostDeployUnmodeled { host: h } => (h as String) == "srv-does-not-exist"
     RunnerHostDeployRefused { host: _, cause: _ } => false
@@ -391,7 +391,7 @@ test fn an_unmodeled_host_has_no_deploy_row() -> Bool {
 // The relation that must hold in every case is the inequality: materialization may commit fewer
 // slots than memory would admit, never more. That is falsifiable -- a deploy row raised past its
 // memory admission fails here -- and it does not collapse into f(x) == f(x).
-test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
+test fn no_deploy_row_out_commits_the_memory_budget() -> Bool  {
   all(
     fleet_runner_host_deploys,
     d => d.runner_count <= host_memory_admitted_width(host: d.host_label as HostIdentity)
@@ -416,7 +416,7 @@ test fn no_deploy_row_out_commits_the_memory_budget() -> Bool {
 // THE CONTROL IS STILL LOAD-BEARING and must not be dropped just because there are two exclusions
 // now: without an index asserted PRESENT above the excluded ones, a desired set that simply stopped
 // at srv3-05 would satisfy every other clause.
-test fn the_fabric_slots_are_not_provisioning_targets() -> Bool {
+test fn the_fabric_slots_are_not_provisioning_targets() -> Bool  {
   let names = map(
     desired_runner_slot_members(deploy: wt_srv3_deploy()),
     m => runner_slot_member_key(m: m) as String,
@@ -454,7 +454,7 @@ fn resolution_count_is(r: RunnerWidthResolution, expected: Int) -> Bool {
   }
 }
 
-test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool {
+test fn only_the_fabric_hosts_lose_provisioning_targets() -> Bool  {
   list_length(items: desired_runner_slot_members(deploy: wt_srv3_deploy()))
     == provision_width_of(host: operator_host_srv3) - 2
     && resolution_count_is(r: host_fabric_slot_count(host: operator_host_srv3), expected: 2)
@@ -493,7 +493,7 @@ fn provenance_witness_reconcile(observed: List<RunnerSlotMember>) -> MembershipP
 // withheld script that names the host and no unit. That is the fail-closed arm working, not a second
 // deletion, so the row counts the scripts naming wfix-40's unit and still requires EVERY script to be
 // withheld and none to carry -rf, which is the property this row exists for.
-test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
+test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool  {
   match actions_runner_binary_artifact_for_arch(
     binary_release: actions_runner_release_2_336_0,
     arch: altra_max_m12830_catalog.architecture,
@@ -517,7 +517,7 @@ test fn a_retired_incarnation_is_owned_and_plans_removal() -> Bool {
   }
 }
 
-test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
+test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool  {
   let live = [
     provenance_witness_member(name: "wfix-41", p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredPersistent, unit_active: false, unit_enabled: false }),
     provenance_witness_member(name: "wfix-42", p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotUnregistered, unit_active: true, unit_enabled: false }),
@@ -538,7 +538,7 @@ test fn a_registered_or_active_or_enabled_tree_still_refuses_removal() -> Bool {
 // srv2-11 and srv2-12 on 2026-09-04: `.runner` present with Ephemeral=True, unit inactive and
 // disabled since June. GitHub had already unregistered them (ephemeral registrations end after
 // one job), so the tree is a retired incarnation; a Bool registration flag refused it forever.
-test fn a_dead_ephemeral_registration_is_a_retired_incarnation() -> Bool {
+test fn a_dead_ephemeral_registration_is_a_retired_incarnation() -> Bool  {
   let ghost = provenance_witness_member(
     name: "wfix-11",
     p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredEphemeral, unit_active: false, unit_enabled: false },
@@ -550,7 +550,7 @@ test fn a_dead_ephemeral_registration_is_a_retired_incarnation() -> Bool {
 
 // RED controls on the same shape: an ACTIVE ephemeral registration is a live runner, and an
 // unreadable registration file decides nothing.
-test fn an_active_ephemeral_registration_and_an_unreadable_one_still_refuse() -> Bool {
+test fn an_active_ephemeral_registration_and_an_unreadable_one_still_refuse() -> Bool  {
   let live = provenance_witness_member(
     name: "wfix-12",
     p: SlotProvenanceObserved { in_host_grammar: true, registration: SlotRegisteredEphemeral, unit_active: true, unit_enabled: true },
@@ -565,7 +565,7 @@ test fn an_active_ephemeral_registration_and_an_unreadable_one_still_refuse() ->
 data fixture_runner_registration_ephemeral: String = "{\"AgentId\":\"1\",\"AgentName\":\"wfix-11-1-1\",\"Ephemeral\":\"True\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
 data fixture_runner_registration_persistent: String = "{\"AgentId\":\"2\",\"AgentName\":\"wfix-01\",\"PoolId\":\"1\",\"GitHubUrl\":\"https://github.com/example\"}"
 
-test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
+test fn the_registration_file_decodes_its_ephemeral_member() -> Bool  {
   let ephemeral = match actions_runner_registration_decode(raw: fixture_runner_registration_ephemeral) {
     ActionsRunnerRegistrationDecoded { registration: ActionsRunnerRegistrationEphemeral } => true
     _ => false
@@ -585,7 +585,7 @@ test fn the_registration_file_decodes_its_ephemeral_member() -> Bool {
   ephemeral && persistent && garbage && widened
 }
 
-test fn a_name_outside_the_host_grammar_refuses_even_when_dead() -> Bool {
+test fn a_name_outside_the_host_grammar_refuses_even_when_dead() -> Bool  {
   let script = provenance_witness_member(
     name: "jit-runner.sh",
     p: SlotProvenanceObserved { in_host_grammar: false, registration: SlotUnregistered, unit_active: false, unit_enabled: false },
@@ -593,7 +593,7 @@ test fn a_name_outside_the_host_grammar_refuses_even_when_dead() -> Bool {
   runner_slot_member_ownership(m: script) == Absent
 }
 
-test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool {
+test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool  {
   let host = "wfix" as HostIdentity
   runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-40" as NonEmptyStr)
     && runner_slot_name_in_host_grammar(host: host, instance_name: "wfix-01" as NonEmptyStr)
@@ -618,7 +618,7 @@ test fn host_grammar_round_trips_through_the_allocation_renderer() -> Bool {
 // `RemoveDirectoryTree` argv naming this tree -- and with no evidence, the same member emits no `-rf`
 // at all. Both halves are asserted here, so the row fails if the seam changes OR if the gate stops
 // gating.
-test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool {
+test fn the_plan_realizes_removal_through_the_privileged_seam() -> Bool  {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_336_0, arch: Aarch64) {
     Absent => false
     Present { value: artifact } => {
@@ -765,7 +765,7 @@ fn emits_mask(lines: List<String>) -> Bool {
 // 1. AN ACTIVE SURPLUS SLOT PRODUCES NO TREE REMOVAL. Ownership still refuses the incarnation, so
 // membership cannot authorize `rm -rf`. The inhibitor is a different obligation: a required retiree
 // the interruption authorization names is masked even while the unit is still serving.
-test fn an_active_surplus_slot_is_never_deleted() -> Bool {
+test fn an_active_surplus_slot_is_never_deleted() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: true, enabled: true)],
     evidence: srv4_evidence(standings: []),
@@ -776,7 +776,7 @@ test fn an_active_surplus_slot_is_never_deleted() -> Bool {
 // THE WIDTH-TRANSITION RETIREES ARE STILL SERVING WHEN THE OBLIGATION OPENS. Membership will not
 // admit their trees, so the inhibitor has to come from `transition_required_retiring`, or the cap
 // raise stays withheld after the inactive remainder is gone.
-test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Bool {
+test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Bool  {
   let lines = srv1_plan(
     observed: [srv1_surplus_member(name: "srv1-16", active: true, enabled: true)],
     evidence: srv1_evidence(standings: [
@@ -793,7 +793,7 @@ test fn an_active_authorized_required_retiree_is_masked_and_not_deleted() -> Boo
   emits_mask(lines: lines) && emits_no_tree_removal(lines: lines)
 }
 
-test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld() -> Bool {
+test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld() -> Bool  {
   let lines = srv1_plan(
     observed: [srv1_surplus_member(name: "srv1-16", active: true, enabled: true)],
     evidence: srv1_evidence(standings: [
@@ -819,7 +819,7 @@ test fn an_unobserved_required_retiree_outside_membership_is_named_as_withheld()
 // ownership admits and membership removes -- WITH WORK STILL UNDER ITS CGROUP. The old planner
 // deleted this tree. The realization must withhold, because occupancy is the fact the provenance
 // predicate cannot see.
-test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
+test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
@@ -839,7 +839,7 @@ test fn an_inactive_slot_with_a_populated_cgroup_is_not_deleted() -> Bool {
 
 // 3. FIRST PASS: A PERMITTED SURPLUS SLOT IS MASKED AND NOT DELETED. No standing exists yet, so the
 // realization actuates and defers. A pass that did both would be establishing its own postcondition.
-test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool {
+test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: []),
@@ -850,7 +850,7 @@ test fn a_permitted_surplus_slot_is_masked_and_not_deleted_on_the_first_pass() -
 // THE LIVE FIRST PASS SUPPLIES STANDINGS, NOT AN EMPTY LIST. The fleet observer always reads the
 // host, so `ReplacementPendingDrain` (unmasked) is what production sees. Treating any incomplete
 // standing as "wait, do not actuate" made mask --now unreachable on that route (plan 35232162113).
-test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
+test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool  {
   let lines = srv1_plan(
     observed: [srv1_surplus_member(name: "srv1-22", active: false, enabled: false)],
     evidence: srv1_evidence(standings: [
@@ -870,7 +870,7 @@ test fn a_pending_unmasked_standing_still_emits_the_inhibitor() -> Bool {
 // 4. THE POSITIVE CONTROL, AND WITHOUT IT EVERY ROW ABOVE IS SATISFIED BY A GATE THAT DELETES
 // NOTHING EVER. Second pass: the independently reobserved standing is complete, so this exact tree
 // is removed -- and the mask is NOT re-emitted, because the unit is already retired.
-test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
+test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
@@ -891,7 +891,7 @@ test fn a_completed_retirement_authorizes_exactly_that_tree_removal() -> Bool {
 // THE srv1 POSITIVE CONTROL THE APPLY SCRIPT MUST CARRY. Same planner, host-local authorization,
 // a completed standing for a remainder slot: the teardown argv names that tree. An apply.sh that
 // still only prints withheld lines fails this even if the srv4 row stays green.
-test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
+test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool  {
   let lines = srv1_plan(
     observed: [srv1_surplus_member(name: "srv1-22", active: false, enabled: false)],
     evidence: srv1_evidence(standings: [
@@ -910,7 +910,7 @@ test fn a_completed_srv1_surplus_retirement_emits_the_teardown_argv() -> Bool {
 }
 
 // 5. AN UNREADABLE CGROUP IS A NAMED REFUSAL, NOT A DELETION AND NOT A SILENCE.
-test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
+test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
@@ -931,7 +931,7 @@ test fn an_unobserved_cgroup_withholds_the_removal_by_name() -> Bool {
 
 // 6. A COMPLETED RECEIPT FOR A DIFFERENT SLOT CANNOT AUTHORIZE THIS ONE. The join is by exact
 // identity; a gate that checked "some retirement completed" would delete srv4-18 on srv4-19's proof.
-test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
+test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: srv4_evidence(standings: [
@@ -951,7 +951,7 @@ test fn a_completed_receipt_for_another_slot_authorizes_nothing() -> Bool {
 // 7. A UNIT THE AUTHORIZATION DOES NOT NAME IS NEITHER MASKED NOR DELETED. srv4-30 is in the host's
 // grammar and outside the operator's enumerated 13..21 scope, so permission refuses even though
 // membership and ownership would admit.
-test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted() -> Bool {
+test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_deleted() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-30", active: false, enabled: false)],
     evidence: srv4_evidence(standings: []),
@@ -961,7 +961,7 @@ test fn a_surplus_slot_outside_the_authorized_scope_is_neither_masked_nor_delete
 
 // 8. WITH NO EVIDENCE BOUND AT ALL, NOTHING DESTRUCTIVE IS EMITTED. This is the default the pure
 // planner supplies, so a route that has not been taught to observe retirement cannot delete or mask.
-test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool {
+test fn absent_evidence_emits_neither_mask_nor_removal() -> Bool  {
   let lines = srv4_plan(
     observed: [srv4_surplus_member(name: "srv4-18", active: false, enabled: false)],
     evidence: no_retirement_evidence(),

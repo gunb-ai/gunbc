@@ -17,6 +17,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // the row can be run and, when it cannot, the exact missing fact: a revoked binding is not the same
 // cause as one never established, and a cadence-grain Boolean could not tell them apart.
 
-test fn self_host_02_parse_behavioral_receipt_holds() -> Bool {
+test fn self_host_02_parse_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/02_parse.dag")
 }

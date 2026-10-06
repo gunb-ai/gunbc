@@ -27,17 +27,17 @@ fn file_contains(path: String, pattern: String) -> Bool {
   string_contains(s: src.content, pattern: pattern)
 }
 
-test fn dag_authority_declares_obs_human_elapsed() -> Bool {
+test fn dag_authority_declares_obs_human_elapsed() -> Bool  {
   file_contains(path: runtime_rust_dag_path, pattern: "pub fn obs_human_elapsed(wall_nanos: u128) -> String")
     && file_contains(path: runtime_rust_dag_path, pattern: "pub fn obs_human_duration(ms: u64) -> String")
 }
 
-test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool {
+test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool  {
   file_contains(path: runtime_rust_seed_path, pattern: "\"pub fn obs_human_elapsed(wall_nanos: u128) -> String {\\n\"")
     && file_contains(path: runtime_rust_seed_path, pattern: "\"pub fn obs_human_duration(ms: u64) -> String {\\n\"")
 }
 
-test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool {
+test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool  {
   file_contains(path: v1_rt_generated_path, pattern: "pub fn obs_human_elapsed(wall_nanos: u128) -> String")
     && file_contains(path: v1_rt_generated_path, pattern: "pub fn obs_human_duration(ms: u64) -> String")
 }
@@ -45,6 +45,6 @@ test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool {
 // The pre-fix seed had no obs_human_elapsed declaration anywhere in it — this pins the
 // doc-comment-qualified mirror marker so a future edit that drops the fn but leaves an
 // unrelated "obs_human_elapsed" substring elsewhere (e.g. in a comment) still reds.
-test fn w_RED_seed_carries_the_mirror_doc_comment_beside_the_fn() -> Bool {
+test fn w_RED_seed_carries_the_mirror_doc_comment_beside_the_fn() -> Bool  {
   file_contains(path: runtime_rust_seed_path, pattern: "\"/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.\\n\"")
 }

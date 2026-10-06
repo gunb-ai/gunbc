@@ -14,15 +14,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // is a SEPARATE mechanism this witness does not duplicate — it targets only the
 // declared-vs-effective gap in the catalog row itself.
 
-test fn witness_sccache_local_not_content_verified_on_read() -> Bool {
+test fn witness_sccache_local_not_content_verified_on_read() -> Bool  {
   !sccache_local_facts.key_derivation.content_verified_on_read
 }
 
-test fn witness_sccache_local_projected_not_content_verified_on_read() -> Bool {
+test fn witness_sccache_local_projected_not_content_verified_on_read() -> Bool  {
   !sccache_local_projected.key_derivation.content_verified_on_read
 }
 
-test fn witness_sccache_local_cites_disk_rs_read_path_evidence() -> Bool {
+test fn witness_sccache_local_cites_disk_rs_read_path_evidence() -> Bool  {
   sccache_local_facts.evidence
     |> any(row => (row.field == "content_verified_on_read") && evidence_url_contains(row: row, fragment: "disk.rs"))
 }

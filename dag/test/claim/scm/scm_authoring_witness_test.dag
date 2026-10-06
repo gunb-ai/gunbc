@@ -62,7 +62,7 @@ fn authoring_witness_value_for_role(proposal: Proposal, role: Symbol) -> String 
   })
 }
 
-test fn authoring_one_requirement_states_its_role() -> Bool {
+test fn authoring_one_requirement_states_its_role() -> Bool  {
   let p = author_requirement(
     proposal: empty_proposal(),
     requirement: RequireBinding { role: authoring_witness_role_a(), value: authoring_witness_atom(name: ^v1) },
@@ -79,7 +79,7 @@ test fn authoring_one_requirement_states_its_role() -> Bool {
 // sequence of intent. If this accumulated instead, the ordinary loop -- edit, add, notice a mistake,
 // edit, add -- would leave two requirements for one role and hand the integration a self-contest that it would
 // correctly refuse, making a staged mistake uncorrectable except by discarding the proposal.
-test fn re_authoring_a_role_replaces_rather_than_accumulating() -> Bool {
+test fn re_authoring_a_role_replaces_rather_than_accumulating() -> Bool  {
   let p1 = author_requirement(
     proposal: empty_proposal(),
     requirement: RequireBinding { role: authoring_witness_role_a(), value: authoring_witness_atom(name: ^v1) },
@@ -93,7 +93,7 @@ test fn re_authoring_a_role_replaces_rather_than_accumulating() -> Bool {
 
 // THE DISCRIMINATOR FOR THE ABOVE, and without it "replaces" is satisfied by a function that simply
 // throws the proposal away. An unrelated role must SURVIVE the revision untouched.
-test fn re_authoring_a_role_leaves_other_roles_untouched() -> Bool {
+test fn re_authoring_a_role_leaves_other_roles_untouched() -> Bool  {
   let p1 = author_requirement(
     proposal: empty_proposal(),
     requirement: RequireBinding { role: authoring_witness_role_a(), value: authoring_witness_atom(name: ^v1) },
@@ -116,7 +116,7 @@ test fn re_authoring_a_role_leaves_other_roles_untouched() -> Bool {
 // module and then removes it must end with a STATED ABSENCE, not with an empty proposal. An empty
 // proposal would be read downstream as "leave the target alone" -- the exact inversion of the
 // request, and the reason delete-by-omission is not modelled anywhere in this layer.
-test fn authoring_an_absence_supersedes_a_present_binding_for_that_role() -> Bool {
+test fn authoring_an_absence_supersedes_a_present_binding_for_that_role() -> Bool  {
   let p1 = author_requirement(
     proposal: empty_proposal(),
     requirement: RequireBinding { role: authoring_witness_role_a(), value: authoring_witness_atom(name: ^v1) },
@@ -130,7 +130,7 @@ test fn authoring_an_absence_supersedes_a_present_binding_for_that_role() -> Boo
     && proposal_states_role(proposal: p2, role: authoring_witness_role_a())
 }
 
-test fn authoring_order_of_distinct_roles_is_preserved() -> Bool {
+test fn authoring_order_of_distinct_roles_is_preserved() -> Bool  {
   let p = author_requirement(
     proposal: author_requirement(
       proposal: empty_proposal(),

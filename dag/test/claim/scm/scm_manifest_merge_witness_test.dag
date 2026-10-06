@@ -131,7 +131,7 @@ fn entries_hold(entries: List<CorpusManifestEntry>, path: String, source: Author
 //   B=-  S=y       T=y       both added the same content                    -> ADDED, no conflict
 //   B=x  S=x       T=absent  target deleted a path the source left at base  -> DELETED
 //   B=-  S=y       T=x       both added different content                   -> CONFLICT
-test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
+test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: _ } =>
@@ -190,7 +190,7 @@ test fn scm_mm_the_presence_cases_fall_out_of_the_one_law() -> Bool {
 // law has no state to compare here and must either take the deletion -- silently discarding the
 // target's edit -- or take the edit, silently resurrecting a file the source deleted on purpose. Both
 // produce a valid manifest and neither is visible to the caller.
-test fn scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent() -> Bool {
+test fn scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absent() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: _ } =>
@@ -216,7 +216,7 @@ test fn scm_mm_a_delete_against_a_modify_conflicts_and_says_which_side_was_absen
 
 // MODIFY VERSUS DELETE, the mirror. Written separately because the two are decided by the SAME absent
 // arm from opposite sides, and an implementation that special-cased one would pass the other.
-test fn scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent() -> Bool {
+test fn scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absent() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: _ } =>
@@ -252,7 +252,7 @@ test fn scm_mm_a_modify_against_a_delete_conflicts_and_says_which_side_was_absen
 //
 // The mergeable third path is not filler: it is what makes the claim distinguish "reported every
 // conflict" from "reported every path".
-test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool {
+test fn scm_mm_every_conflicting_path_is_reported_not_the_first() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: z } =>
@@ -357,7 +357,7 @@ fn resolves_to(
 // THE FIXTURE MIXES RESOLVABLE AND CONFLICTING PATHS ON PURPOSE. A symmetry claim over paths that all
 // resolve would be satisfied by a law with an asymmetric CONFLICT arm, which is the only arm where
 // asymmetry is tempting.
-test fn scm_mm_the_law_does_not_depend_on_which_side_is_source() -> Bool {
+test fn scm_mm_the_law_does_not_depend_on_which_side_is_source() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: z } =>
@@ -383,7 +383,7 @@ test fn scm_mm_the_law_does_not_depend_on_which_side_is_source() -> Bool {
 //   B=x  S=x  T=y  -> take target   only the target moved
 //   B=x  S=y  T=x  -> take source   only the source moved
 //   B=x  S=y  T=y  -> take either   both moved to the same place
-test fn scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting() -> Bool {
+test fn scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: _ } =>
@@ -399,7 +399,7 @@ test fn scm_mm_a_path_only_one_side_moved_resolves_rather_than_conflicting() -> 
 // THE UNION IS THE SUBJECT, NOT THE BASE. A path added only by the source is decided; an
 // implementation iterating the base's paths drops it silently and returns a manifest missing a file
 // the source added.
-test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool {
+test fn scm_mm_a_path_only_one_side_has_is_still_decided() -> Bool  {
   match pair() {
     TrioUnavailable => false
     Trio { x: x, y: y, z: _ } =>

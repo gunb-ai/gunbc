@@ -193,7 +193,7 @@ fn scm_ck_two_commit_repository() -> RepositoryEnvelope {
   )
 }
 
-test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
+test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool  {
   let repo = scm_ck_two_commit_repository()
   match checkout_repository_at(repo: repo, reference: scm_ck_ref(ordinal: 1)) {
     RepositoryCheckedOut { repository: r, corpus: _ } =>
@@ -215,7 +215,7 @@ test fn scm_ck_checking_out_a_commit_positions_the_repository_at_it() -> Bool {
 
 // THE ARGUMENT IS NOT MUTATED. A verb that edited its input in place would make "check out, then
 // compare against where we were" impossible, and every caller would need a copy it did not ask for.
-test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool {
+test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool  {
   let repo = scm_ck_two_commit_repository()
   match checkout_repository_at(repo: repo, reference: scm_ck_ref(ordinal: 1)) {
     RepositoryCheckedOut { repository: _, corpus: _ } =>
@@ -238,7 +238,7 @@ test fn scm_ck_checkout_leaves_its_argument_unpositioned() -> Bool {
 // A REFERENCE NAMING NO COMMIT IS THE CALLER'S FACT. It asserts the arm AND the reference, not merely
 // that something refused: a checkout that refused everything would satisfy a bare refusal claim, and
 // the positive control above is what stops that reading.
-test fn scm_ck_a_reference_naming_no_commit_is_unresolved() -> Bool {
+test fn scm_ck_a_reference_naming_no_commit_is_unresolved() -> Bool  {
   match checkout_repository_at(repo: scm_ck_two_commit_repository(), reference: scm_ck_ref(ordinal: 7)) {
     CheckoutReferenceUnresolved { reference: r } => r == scm_ck_ref(ordinal: 7)
     RepositoryCheckedOut { repository: _, corpus: _ } => false
@@ -277,7 +277,7 @@ fn scm_ck_lost_object_repository() -> RepositoryEnvelope {
 // refusals from being collapsed. The reference resolves perfectly -- the commit is right there in
 // the log -- and the failure is that the repository has lost an object it needs. Reporting "no such
 // commit" here would tell a user their commit does not exist while it sits in front of them.
-test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool {
+test fn scm_ck_a_lost_object_is_the_stores_fact_not_the_callers() -> Bool  {
   match checkout_repository_at(repo: scm_ck_lost_object_repository(), reference: scm_ck_ref(ordinal: 0)) {
     CheckoutSnapshotMissingFromStore { reference: r, root: _ } => r == scm_ck_ref(ordinal: 0)
     CheckoutReferenceUnresolved { reference: _ } => false
@@ -325,7 +325,7 @@ fn scm_ck_unrecoverable_source_repository() -> RepositoryEnvelope {
   }
 }
 
-test fn scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing() -> Bool {
+test fn scm_ck_a_held_snapshot_with_an_absent_source_is_unrecoverable_not_missing() -> Bool  {
   match checkout_repository_at(repo: scm_ck_unrecoverable_source_repository(), reference: scm_ck_ref(ordinal: 0)) {
     CheckoutCorpusUnrecoverable { reference: r, cause: cause } =>
       r == scm_ck_ref(ordinal: 0)
@@ -380,7 +380,7 @@ fn scm_ck_truncated_history_repository() -> RepositoryEnvelope {
 
 // Checkout reconstructs the selected commit's root closure, not its ancestry graph. Losing a parent
 // must not cost access to a program whose own closure remains complete.
-test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
+test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool  {
   match checkout_repository_at(
     repo: scm_ck_truncated_history_repository(),
     reference: scm_ck_ref(ordinal: 1),
@@ -400,7 +400,7 @@ test fn scm_ck_a_commit_with_a_missing_parent_still_checks_out() -> Bool {
 
 // The positive control proves that the same fixture's history really is truncated; otherwise the
 // checkout claim above could pass without demonstrating checkout's independence from ancestry.
-test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool {
+test fn scm_ck_that_same_commit_has_a_broken_ancestry() -> Bool  {
   let repo = scm_ck_truncated_history_repository()
   match ancestry_walk(
     start: scm_ck_ref(ordinal: 1),
@@ -439,7 +439,7 @@ fn scm_ck_shared_root_repository() -> RepositoryEnvelope {
 //
 // It asserts through STATUS rather than through the envelope field, because the field being right is
 // not the claim; the claim is that the user is told which commit they are on.
-test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_own_message() -> Bool  {
   match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: scm_ck_ref(ordinal: 1)) {
     RepositoryCheckedOut { repository: r, corpus: _ } =>
       match repository_status(
@@ -468,7 +468,7 @@ test fn scm_ck_checking_out_the_second_of_two_shared_root_commits_reports_its_ow
 // THE POSITIVE CONTROL, and it is what stops the claim above from being satisfied by a reader that
 // always returns the LAST row instead of always the first. Checking out the first identity must report
 // FIRST -- so the two together pin the selection to the row named, not to an end of the list.
-test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own_message() -> Bool {
+test fn scm_ck_checking_out_the_first_of_two_shared_root_commits_reports_its_own_message() -> Bool  {
   match checkout_repository_at(repo: scm_ck_shared_root_repository(), reference: scm_ck_ref(ordinal: 0)) {
     RepositoryCheckedOut { repository: r, corpus: _ } =>
       match repository_status(
@@ -559,7 +559,7 @@ fn scm_ck_recovered_text(f: RecoveredSourceFile) -> String {
 // repository holding one malformed file would become uncheckoutable, which is precisely what freezing
 // authored bytes exists to prevent. And it includes an empty file so that an EMPTY SOURCE and an
 // EMPTY CORPUS cannot be read as the same observation.
-test fn scm_ck_a_successful_checkout_recovers_every_authored_file_by_content() -> Bool {
+test fn scm_ck_a_successful_checkout_recovers_every_authored_file_by_content() -> Bool  {
   match checkout_repository_at(repo: scm_ck_mixed_repository(), reference: scm_ck_ref(ordinal: 0)) {
     RepositoryCheckedOut { repository: _, corpus: corpus } =>
       map(corpus, f => f.path as String) == ["blank.dag", "broken.dag", "ok.dag"]
@@ -647,7 +647,7 @@ fn scm_ck_decoded(repo: RepositoryEnvelope) -> RepositoryEnvelope? {
   }
 }
 
-test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives() -> Bool {
+test fn scm_ck_a_partial_snapshot_refuses_then_recovers_once_its_source_arrives() -> Bool  {
   let snapshot = scm_ck_partial_snapshot()
   match scm_ck_decoded(repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity)) {
     Absent => false
@@ -755,7 +755,7 @@ fn scm_ck_trailing_gap_snapshot() -> ScmCkSnapshot {
   }
 }
 
-test fn scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix() -> Bool {
+test fn scm_ck_a_gap_after_recoverable_entries_refuses_rather_than_returning_the_prefix() -> Bool  {
   let snapshot = scm_ck_trailing_gap_snapshot()
   match checkout_repository_at(
     repo: scm_ck_partial_repository(store: snapshot.store, root: snapshot.identity),

@@ -54,7 +54,7 @@ fn git_fixture_binding() -> GitCompatibilityBindingOutcome {
   )
 }
 
-test fn witness_git_r1_consumes_native_projection_readback_and_advance() -> Bool {
+test fn witness_git_r1_consumes_native_projection_readback_and_advance() -> Bool  {
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } =>
@@ -69,7 +69,7 @@ test fn witness_git_r1_consumes_native_projection_readback_and_advance() -> Bool
   }
 }
 
-test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool {
+test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool  {
   let original = native_scm_receipt_for(
     scenario: TwoIndependentChangesLand,
   )
@@ -94,7 +94,7 @@ test fn witness_git_realization_preserves_c0_primary_behavior() -> Bool {
   }
 }
 
-test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
+test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool  {
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } => {
@@ -142,7 +142,7 @@ test fn witness_git_modeled_advance_refuses_different_guarantee() -> Bool {
   }
 }
 
-test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
+test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool  {
   match git_fixture_binding() {
     GitCompatibilityBindingRefused { cause: _ } => false
     GitCompatibilityBound { receipt } => {
@@ -157,7 +157,7 @@ test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
   }
 }
 
-test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
+test fn witness_git_readback_mismatch_refuses_binding() -> Bool  {
   let observed = git_r0_fixture_read_back_observation()
   let wrong = GitR0ReadBackObservation {
     git_version: observed.git_version,
@@ -182,7 +182,7 @@ test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
   }
 }
 
-test fn witness_git_generation_derives_tree_from_commit() -> Bool {
+test fn witness_git_generation_derives_tree_from_commit() -> Bool  {
   match git_compatibility_bind(
     repository: git_r0_fixture_repository(),
     read_back: git_r0_fixture_read_back_observation(),
@@ -195,7 +195,7 @@ test fn witness_git_generation_derives_tree_from_commit() -> Bool {
   }
 }
 
-test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
+test fn witness_git_readback_identity_changes_with_observed_state() -> Bool  {
   let repository = git_r0_fixture_repository()
   let observation = git_r0_fixture_read_back_observation()
   let other_repository = GitRepositoryState {

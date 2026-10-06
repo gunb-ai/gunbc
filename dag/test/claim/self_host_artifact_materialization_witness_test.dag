@@ -50,14 +50,14 @@ fn reported_path_or_empty(outcome: ArtifactPathOutcome) -> String {
   }
 }
 
-test fn the_reported_path_is_the_one_the_stream_named() -> Bool {
+test fn the_reported_path_is_the_one_the_stream_named() -> Bool  {
   let reported = reported_path_or_empty(
     outcome: path_of(build_success: true, stdout: artifact_stream)
   )
   reported == "/w/target/release/gunbc"
 }
 
-test fn a_failed_build_is_its_own_arm_not_a_path_refusal() -> Bool {
+test fn a_failed_build_is_its_own_arm_not_a_path_refusal() -> Bool  {
   match path_of(build_success: false, stdout: artifact_stream) {
     ArtifactPathBuildFailed { target_name: t } => t == "gunbc"
     ArtifactPathReported { executable: _ } => false
@@ -65,7 +65,7 @@ test fn a_failed_build_is_its_own_arm_not_a_path_refusal() -> Bool {
   }
 }
 
-test fn a_failed_build_does_not_consult_the_stream_at_all() -> Bool {
+test fn a_failed_build_does_not_consult_the_stream_at_all() -> Bool  {
   match path_of(build_success: false, stdout: "not json at all") {
     ArtifactPathBuildFailed { target_name: t } => t == "gunbc"
     ArtifactPathReported { executable: _ } => false
@@ -73,7 +73,7 @@ test fn a_failed_build_does_not_consult_the_stream_at_all() -> Bool {
   }
 }
 
-test fn an_ambiguous_stream_refuses_and_carries_the_selection() -> Bool {
+test fn an_ambiguous_stream_refuses_and_carries_the_selection() -> Bool  {
   match path_of(build_success: true, stdout: ambiguous_stream) {
     ArtifactPathRefused { selection: s } =>
       match s {
@@ -98,7 +98,7 @@ test fn an_ambiguous_stream_refuses_and_carries_the_selection() -> Bool {
   }
 }
 
-test fn an_observed_digest_materializes_and_keeps_the_named_path() -> Bool {
+test fn an_observed_digest_materializes_and_keeps_the_named_path() -> Bool  {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
     observation: good_observation()
@@ -112,7 +112,7 @@ test fn an_observed_digest_materializes_and_keeps_the_named_path() -> Bool {
   }
 }
 
-test fn a_refused_digest_does_not_materialize() -> Bool {
+test fn a_refused_digest_does_not_materialize() -> Bool  {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
     observation: Sha512FileObservationRefused {
@@ -125,7 +125,7 @@ test fn a_refused_digest_does_not_materialize() -> Bool {
   }
 }
 
-test fn a_failed_build_does_not_materialize_even_with_a_good_digest() -> Bool {
+test fn a_failed_build_does_not_materialize_even_with_a_good_digest() -> Bool  {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: false, stdout: artifact_stream),
     observation: good_observation()
@@ -136,7 +136,7 @@ test fn a_failed_build_does_not_materialize_even_with_a_good_digest() -> Bool {
   }
 }
 
-test fn an_ambiguous_stream_does_not_materialize_even_with_a_good_digest() -> Bool {
+test fn an_ambiguous_stream_does_not_materialize_even_with_a_good_digest() -> Bool  {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: ambiguous_stream),
     observation: good_observation()
@@ -147,7 +147,7 @@ test fn an_ambiguous_stream_does_not_materialize_even_with_a_good_digest() -> Bo
   }
 }
 
-test fn only_an_observed_outcome_yields_an_invocable_path() -> Bool {
+test fn only_an_observed_outcome_yields_an_invocable_path() -> Bool  {
   let good = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
     observation: good_observation()
@@ -167,7 +167,7 @@ test fn only_an_observed_outcome_yields_an_invocable_path() -> Bool {
   good_path == "/w/target/release/gunbc" && bad_path == ""
 }
 
-test fn the_digested_path_and_the_invocable_path_are_one_value() -> Bool {
+test fn the_digested_path_and_the_invocable_path_are_one_value() -> Bool  {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
     observation: good_observation()

@@ -21,7 +21,7 @@ import v2.compiler.self_host.promotion_admission { behavioral_receipt_standing_h
 // discriminates; control (b) tests whether the candidate depends on the seed. Neither
 // establishes the other, and a green (a) does not cover a missing (b).
 
-test fn self_host_logic_behavioral_receipt_holds() -> Bool {
+test fn self_host_logic_behavioral_receipt_holds() -> Bool  {
   subject_evidence_establishes(
     evidence: slb_behavioral_receipt_standing(),
     licenses: fn(standing) { behavioral_receipt_standing_holds(s: standing) }

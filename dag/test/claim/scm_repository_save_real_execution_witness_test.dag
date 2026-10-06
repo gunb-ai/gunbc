@@ -38,7 +38,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // fixture's own re-encoding, the bytes it writes equal the bytes that were there, on every run.
 // The found-generation arm of the guard matches (the fixture exists), so this exercises the full
 // compare-and-set path, not the first-save path.
-test fn scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes() -> Bool {
+test fn scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes() -> Bool  {
   match scm_sv_fixture_envelope() {
     Absent => false
     Present { value: envelope } =>

@@ -21,14 +21,14 @@ fn declared_nodes_carrying_identity(identity: String) -> Int {
     |> count
 }
 
-test fn wet_receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool {
+test fn wet_receipt_subject_joins_exactly_one_declared_roadmap_node() -> Bool  {
   let receipt = scm_acceptance_wet_execution_receipt()
   return declared_nodes_carrying_identity(
     identity: receipt.partial_evidence.node as String,
   ) == 1
 }
 
-test fn a_fabricated_wet_subject_identity_joins_no_declared_node() -> Bool {
+test fn a_fabricated_wet_subject_identity_joins_no_declared_node() -> Bool  {
   return declared_nodes_carrying_identity(identity: "rn_NOT_A_DECLARED_NODE_IDENTITY") == 0
 }
 
@@ -36,7 +36,7 @@ test fn a_fabricated_wet_subject_identity_joins_no_declared_node() -> Bool {
 // The import above is what makes the claim real: if the instrument's entry is renamed or moved, the
 // import fails to resolve and this file stops compiling, which is a louder failure than a stale
 // string comparison would ever produce.
-test fn wet_receipt_cites_the_executed_instrument_symbol() -> Bool {
+test fn wet_receipt_cites_the_executed_instrument_symbol() -> Bool  {
   let receipt = scm_acceptance_wet_execution_receipt()
   let cited = receipt.partial_evidence.executed_evidence
   return cited.module_path == "tools.scm_acceptance"
@@ -55,7 +55,7 @@ test fn wet_receipt_cites_the_executed_instrument_symbol() -> Bool {
 // THE CANONICAL COMMAND IS ASSERTED INSTEAD, because the invocation identity is what the roadmap
 // row required alongside the toolchain fields, and a receipt that names the semantic entry through
 // executed_evidence still does not say how it was launched.
-test fn the_recorded_invocation_names_the_executed_entry_and_function() -> Bool {
+test fn the_recorded_invocation_names_the_executed_entry_and_function() -> Bool  {
   let receipt = scm_acceptance_wet_execution_receipt()
   let command = receipt.provenance.canonical_command as String
   return contains(haystack: command, needle: "dag/gunbc/instruments/scm_acceptance.dag")
@@ -65,7 +65,7 @@ test fn the_recorded_invocation_names_the_executed_entry_and_function() -> Bool 
 // THE RECEIPT RECORDS AN ACCEPTED RUN, and the arm carries no exit code because success has nothing
 // to compare. The refusal arm is matched here so that a later edit flipping the inhabitant to a
 // refusal cannot pass this file unnoticed.
-test fn the_recorded_wet_outcome_is_the_accepting_arm() -> Bool {
+test fn the_recorded_wet_outcome_is_the_accepting_arm() -> Bool  {
   let receipt = scm_acceptance_wet_execution_receipt()
   match receipt.provenance.outcome {
     ScmWetExecutionAccepted => true

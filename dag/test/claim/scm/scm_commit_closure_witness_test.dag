@@ -278,7 +278,7 @@ fn first_missing_is(missing: List<ObjectId>, expected: ObjectId) -> Bool {
   }
 }
 
-test fn two_uncontained_children_are_named_in_order() -> Bool {
+test fn two_uncontained_children_are_named_in_order() -> Bool  {
   let built = build_two_child_store()
   let grafted = match copy_object(
     from: built.store,
@@ -298,7 +298,7 @@ test fn two_uncontained_children_are_named_in_order() -> Bool {
 
 // CONTROL. A complete closure names nothing missing, and completeness is DERIVED from the objects
 // rather than stored beside them -- there is no flag here that could disagree with the store.
-test fn a_complete_closure_names_nothing_missing() -> Bool {
+test fn a_complete_closure_names_nothing_missing() -> Bool  {
   let full = build_full_store()
   let closure = CommitClosure { store: full.store, root: full.root }
   (list_length(items: unresolved_identities(closure: closure)) == 0)
@@ -312,7 +312,7 @@ test fn a_complete_closure_names_nothing_missing() -> Bool {
 // must be the CHILD'S OWN CONTENT ADDRESS -- not a position, not a placeholder, not merely a
 // non-empty list. Identity equality against the child id from the full store is what proves the
 // answer is fetchable: it names the object a supplier would have to produce.
-test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool {
+test fn a_grafted_root_names_exactly_the_child_it_lacks() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   let closure = CommitClosure { store: grafted, root: full.root }
@@ -330,7 +330,7 @@ fn names_exactly(missing: List<ObjectId>, expected: ObjectId) -> Bool {
 // THE ROOT IS A REFERENCE LIKE ANY OTHER. A closure whose store does not carry its own root is the
 // sharpest incompleteness there is -- a document naming a commit whose top object is absent -- and
 // the predecessor encoded the root positionally too, so this was as unnameable as the rest.
-test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
+test fn a_closure_missing_its_own_root_names_the_root() -> Bool  {
   let full = build_full_store()
   let closure = CommitClosure { store: empty_store(), root: full.root }
   let missing = unresolved_identities(closure: closure)
@@ -345,7 +345,7 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
 // be witnessed by execution; it is stated in the module header, and a negative compile probe is the
 // evidence that belongs with it. What executes here is only that the reason is carried faithfully,
 // which is the part a later refactor could silently break.
-test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
+test fn an_admission_carries_the_decision_that_produced_it() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   let closure = CommitClosure { store: grafted, root: full.root }
@@ -366,7 +366,7 @@ test fn an_admission_carries_the_decision_that_produced_it() -> Bool {
 // THE ADMISSION NAMES THE POPULATION IT ADMITS, derived from the closure rather than supplied. A
 // caller-supplied population would reintroduce the same substitution one field down: an admission
 // truthfully about closure A, carrying B's missing objects.
-test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
+test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
@@ -384,7 +384,7 @@ test fn an_admission_names_the_objects_it_admits_as_missing() -> Bool {
 //
 // This is also the claim that keeps the mint honest about DERIVING the population: a mint that
 // trusted a caller could mint this carrier over a complete closure and nothing here would object.
-test fn the_mint_refuses_a_complete_closure() -> Bool {
+test fn the_mint_refuses_a_complete_closure() -> Bool  {
   let full = build_full_store()
   match admitted_for(store: full.store, root: full.root) {
     PartialClosureAdmitted { admitted: _ } => false
@@ -431,7 +431,7 @@ fn reason_is_transfer(r: PartialClosureReason) -> Bool {
 // are the whole admission wall: the same store, the same root, differing only in whether a decision
 // token was supplied. The refusing arm is what stops a partial document being written by accident;
 // the encoding arm is what stops that refusal being a wall against the feature itself.
-test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
+test fn a_partial_closure_encodes_only_with_an_admission() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   let refused = match encode_complete_closure_document(
@@ -475,7 +475,7 @@ fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool
 // could not carry is still named, by its own content address, on the far side. Going through text
 // matters: it is the only arm that proves the identity survives in the BYTES rather than in a value
 // that never left memory. The predecessor could not have expressed this at any price.
-test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
+test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
@@ -509,7 +509,7 @@ test fn an_uncontained_object_survives_the_wire_and_is_still_named() -> Bool {
 //
 // The count is asserted, not just the refusal: `found` distinguishes both-arms from neither-arm,
 // which the previous variant could not do because it was hardcoded to 0 at its only construction.
-test fn a_target_must_carry_exactly_one_arm() -> Bool {
+test fn a_target_must_carry_exactly_one_arm() -> Bool  {
   let both = json_object(
     members: [
       json_kv(key: "at", value: json_string(s: "0")),
@@ -534,7 +534,7 @@ fn arm_count_refused(v: JsonValue, expected: Int) -> Bool {
 
 // THE POSITIVE CONTROL, without which the two refusals above are satisfied by a decoder that refuses
 // every target. One arm, well formed, resolves.
-test fn a_target_carrying_one_arm_still_decodes() -> Bool {
+test fn a_target_carrying_one_arm_still_decodes() -> Bool  {
   match decode_target_reference(
     target_value: json_object(
       members: [json_kv(key: "uncontained", value: json_string(s: "0000000000000000"))]
@@ -560,7 +560,7 @@ test fn a_target_carrying_one_arm_still_decodes() -> Bool {
 // Both claims therefore assert the CAUSE and its KEY, not the refusal. Under the previous code the
 // first reports ClosureDocMemberWrongShape("uncontained") and the second ClosureDocMemberMissing(
 // "uncontained"), so each goes red for a different wrong answer rather than by a shared accident.
-test fn a_duplicated_at_is_refused_against_at() -> Bool {
+test fn a_duplicated_at_is_refused_against_at() -> Bool  {
   match decode_target_reference(
     target_value: json_object(
       members: [
@@ -579,7 +579,7 @@ test fn a_duplicated_at_is_refused_against_at() -> Bool {
   }
 }
 
-test fn a_non_string_at_is_refused_against_at() -> Bool {
+test fn a_non_string_at_is_refused_against_at() -> Bool  {
   match decode_target_reference(
     target_value: json_object(
       members: [json_kv(key: "at", value: json_object(members: []))]
@@ -674,7 +674,7 @@ fn names_none_of(missing: List<ObjectId>, forbidden: ObjectId) -> Bool {
 // CELL A -- the discriminating red. A file occupies the child's locator, so the requirement is
 // UNSATISFIED but not ABSENT: it is wrong-kind, and no fetch can repair it. It must not appear in the
 // population every consumer reads as fetchable.
-test fn a_node_requirement_over_a_file_is_not_a_fetchable_absence() -> Bool {
+test fn a_node_requirement_over_a_file_is_not_a_fetchable_absence() -> Bool  {
   let fx = closure_over_an_occupied_locator()
   fx.ok
     && names_none_of(
@@ -686,7 +686,7 @@ test fn a_node_requirement_over_a_file_is_not_a_fetchable_absence() -> Bool {
 // CELL B -- the absent control, one fact from cell A. Nothing occupies the locator, so the
 // requirement IS a genuine absence: it stays in the unresolved population, admits as partial, and
 // survives encode, TEXT, and decode still naming the object it could not carry.
-test fn an_absent_child_is_still_a_fetchable_absence() -> Bool {
+test fn an_absent_child_is_still_a_fetchable_absence() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
@@ -714,7 +714,7 @@ test fn an_absent_child_is_still_a_fetchable_absence() -> Bool {
 // locator, so the closure is COMPLETE: it encodes the contained spelling and round-trips through text
 // to a closure that names nothing missing. This is what forbids the repair that encodes every target
 // as uncontained to dodge the contradiction.
-test fn a_present_child_round_trips_as_a_complete_closure() -> Bool {
+test fn a_present_child_round_trips_as_a_complete_closure() -> Bool  {
   let full = build_full_store()
   match encode_complete_closure_document(
     closure: CommitClosure { store: full.store, root: full.root }
@@ -793,7 +793,7 @@ fn insert_two_named(store: ObjectStore, first_label: Symbol, first: SemanticNode
 
 // THE DISCRIMINATING RED. One store, two authored orders, one canonical object. The second write must
 // be idempotent, not a collision.
-test fn re_writing_the_same_bindings_in_another_order_is_idempotent() -> Bool {
+test fn re_writing_the_same_bindings_in_another_order_is_idempotent() -> Bool  {
   let fx = permutation_fixture()
   fx.ok
     && match insert_two_named(
@@ -822,7 +822,7 @@ test fn re_writing_the_same_bindings_in_another_order_is_idempotent() -> Bool {
 // THE CONTROL, without which the claim above is satisfied by a store that never refuses. Different
 // label-to-target ASSOCIATIONS are a genuinely different object, so they derive a different locator
 // and both records stand -- this is not a permutation and must not be collapsed into one.
-test fn swapping_which_target_each_label_names_is_a_different_object() -> Bool {
+test fn swapping_which_target_each_label_names_is_a_different_object() -> Bool  {
   let fx = permutation_fixture()
   fx.ok
     && match insert_two_named(
@@ -903,7 +903,7 @@ fn build_grafted_then_completed_store() -> ObjectStore {
 // authority grants, since insertion history still decides tie order among INDEPENDENT components.
 // External review named the overreach. A claim whose name promises more than its body executes is the
 // same inflation as a rung reported above its evidence.
-test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool {
+test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool  {
   let full = build_full_store()
   let completed = build_grafted_then_completed_store()
   let closure = CommitClosure { store: completed, root: full.root }
@@ -926,7 +926,7 @@ test fn a_completed_parent_first_graft_has_the_naturally_built_image() -> Bool {
 // THE CONTROL. Without it the claim above is satisfied by an encoder that never spells a target
 // uncontained at all -- which would delete the partial-closure format this branch exists to add. The
 // parent alone genuinely does not carry its child, so its image must differ from the complete one.
-test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool {
+test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
@@ -989,7 +989,7 @@ fn document_objects(v: JsonValue) -> List<JsonValue> {
 }
 
 // A COMPLETE CLOSURE SPELLS ITS CHILD CONTAINED, whichever order its store was assembled in.
-test fn a_complete_closure_spells_its_child_contained() -> Bool {
+test fn a_complete_closure_spells_its_child_contained() -> Bool  {
   let full = build_full_store()
   let completed = build_grafted_then_completed_store()
   match encode_complete_closure_document(
@@ -1013,7 +1013,7 @@ test fn a_complete_closure_spells_its_child_contained() -> Bool {
 // THE CONTROL. A genuinely partial closure must still spell its missing child UNCONTAINED -- without
 // this, the claim above is satisfied by an encoder that never emits the uncontained arm, which would
 // delete the partial-closure format outright.
-test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
+test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   match admitted_for(store: grafted, root: full.root) {
@@ -1046,7 +1046,7 @@ test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
 // The canonicalizer already answers correctly, because it dispatches on kind_edge_discipline and
 // returns positional items untouched. Nothing here executed that, so the rule was true and unwitnessed
 // -- and an unwitnessed rule is one a later local sort can quietly replace.
-test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
+test fn positional_children_are_not_reordered_by_canonicalization() -> Bool  {
   let fx = permutation_fixture()
   fx.ok
     && match insert_from_structure(
@@ -1085,7 +1085,7 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
 // encode_closure_document now takes a WellKindedClosure, which is sole_constructor and mintable only
 // through admit_well_kinded_closure. There is no argument a caller can build that carries this state,
 // so the refusal is by construction rather than by a judgment the front door happens to run.
-test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool {
+test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool  {
   let fx = closure_over_an_occupied_locator()
   fx.ok
     && match encode_complete_closure_document(
@@ -1108,7 +1108,7 @@ test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool 
 
 // THE CONTROL. Without it the claim above is satisfied by a writer that refuses everything, which
 // would delete the format. A genuinely complete closure still encodes.
-test fn the_complete_writer_still_encodes_a_complete_closure() -> Bool {
+test fn the_complete_writer_still_encodes_a_complete_closure() -> Bool  {
   let full = build_full_store()
   match encode_complete_closure_document(
     closure: CommitClosure { store: full.store, root: full.root }
@@ -1220,7 +1220,7 @@ fn nodes_hold(nodes: List<ObjectRecord>, identity: ObjectId) -> Bool {
 //
 // It also pins the POPULATION, not merely the outcome. Asserting only that admission succeeded would
 // go green for a carrier that still held the whole store.
-test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool {
+test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool  {
   let fx = a_store_holding_a_manifest_and_an_unrelated_program()
   fx.ok
     && match admit_well_kinded_closure(
@@ -1250,7 +1250,7 @@ test fn an_unrelated_manifest_does_not_enter_the_closure_or_refuse_it() -> Bool 
 // two travelled by different routes: the manifest was never encodable at all, while the source WAS
 // emitted by every predecessor of this writer. This is the one that would have gone red before the
 // cut, and it is the evidence that the format's narrowing actually happened.
-test fn an_unreachable_authored_source_is_not_part_of_the_semantic_closure() -> Bool {
+test fn an_unreachable_authored_source_is_not_part_of_the_semantic_closure() -> Bool  {
   let fx = a_store_holding_a_manifest_and_an_unrelated_program()
   fx.ok
     && match admit_well_kinded_closure(
@@ -1293,7 +1293,7 @@ fn closure_over_a_manifest_locator() -> OccupiedFixture {
 // fetch; or fold it into `source_occupied`, which reports a manifest as a file. Both are answers of
 // the right type and the wrong meaning. So this asserts the manifest population names it AND the
 // other two are empty, which is what makes it a discrimination rather than a non-emptiness check.
-test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
+test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool  {
   let fx = closure_over_a_manifest_locator()
   fx.ok
     && match admit_well_kinded_closure(
@@ -1322,7 +1322,7 @@ test fn a_manifest_at_a_required_node_refuses_as_a_manifest() -> Bool {
 // IT ASSERTS THE POPULATION, NOT MERELY THAT BOTH ARE NONEMPTY. Two independent walks of the same
 // closure agree on a count far more readily than on membership, so a count-only assertion would let
 // exactly the divergence this exists to catch pass.
-test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_population() -> Bool {
+test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_population() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store()
   let closure = CommitClosure { store: grafted, root: full.root }
@@ -1348,7 +1348,7 @@ test fn the_admitted_arm_and_the_partial_admission_report_one_unresolved_populat
 // is the root" over a store that holds nothing else is satisfied identically by the correct
 // implementation and by one that ships every semantic node the supplied store happens to contain --
 // which is exactly the regression this exists to catch, and was the shape it shipped in.
-test fn both_admission_routes_derive_the_same_population() -> Bool {
+test fn both_admission_routes_derive_the_same_population() -> Bool  {
   let full = build_full_store()
   let grafted = build_grafted_store_with_unrelated()
   let closure = CommitClosure { store: grafted.store, root: full.root }

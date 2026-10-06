@@ -201,22 +201,22 @@ fn rows_homed_in(path: String) -> Int {
   })
 }
 
-test fn seed_mirror_lens_can_read_both_seed_files() -> Bool {
+test fn seed_mirror_lens_can_read_both_seed_files() -> Bool  {
   string_length(s: seed_text(path: cli_run_seed_path)) > 0
     && string_length(s: seed_text(path: memory_governor_seed_path)) > 0
 }
 
-test fn every_seed_mirror_row_matches_its_authority() -> Bool {
+test fn every_seed_mirror_row_matches_its_authority() -> Bool  {
   fold(seed_mirror_constant_rows(), init: true, f: fn(acc, r) { acc && row_value_matches(row: r) })
 }
 
-test fn every_seed_mirror_row_cites_its_authority_symbol() -> Bool {
+test fn every_seed_mirror_row_cites_its_authority_symbol() -> Bool  {
   fold(seed_mirror_constant_rows(), init: true, f: fn(acc, r) {
     acc && string_contains(s: seed_text(path: r.seed_path), pattern: r.authority_symbol)
   })
 }
 
-test fn no_marked_seed_constant_is_missing_from_the_roster() -> Bool {
+test fn no_marked_seed_constant_is_missing_from_the_roster() -> Bool  {
   seed_marker_occurrences(path: cli_run_seed_path) == rows_homed_in(path: cli_run_seed_path)
     && seed_marker_occurrences(path: memory_governor_seed_path)
       == rows_homed_in(path: memory_governor_seed_path)

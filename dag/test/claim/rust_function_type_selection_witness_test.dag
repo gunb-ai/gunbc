@@ -91,7 +91,7 @@ fn pinned(
 
 // At a function item's return both forms are admitted and neither dominates (impl: no allocation,
 // static dispatch; Box: nameable), so the front is BOTH and the stated policy chooses impl.
-test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool {
+test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool  {
   pinned(
     result: select_rust_function_type(position: RustFnItemReturn),
     expected: SelectionReceipt {
@@ -107,7 +107,7 @@ test fn rust_item_return_row_is_the_selected_impl_trait() -> Bool {
 // At an Fn bound's return E0562 excludes impl BEFORE Pareto: impl would dominate Box on allocation
 // and dispatch, yet the survivors are Box alone, so the exclusion is the hard constraint and not a
 // ranking. Box is selected by construction under a unique-survivor policy.
-test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool {
+test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool  {
   pinned(
     result: select_rust_function_type(position: RustFnBoundReturn),
     expected: SelectionReceipt {
@@ -122,7 +122,7 @@ test fn rust_fn_bound_return_row_is_box_because_e0562_excludes_impl() -> Bool {
 
 // A missing fact is answered as missing: with impl's nameability withheld the item-return decision
 // is SelectionNeedsEvidence, not a guess in either direction.
-test fn rust_fn_type_selection_with_a_withheld_fact_needs_evidence() -> Bool {
+test fn rust_fn_type_selection_with_a_withheld_fact_needs_evidence() -> Bool  {
   match select_rust_function_type_with_withheld_nameability(position: RustFnItemReturn) {
     SelectionNeedsEvidence { needs: _ } => true
     _ => false

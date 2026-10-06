@@ -66,38 +66,38 @@ data structural_record_eq_green_source: String = "module eq_probe_structural_rec
 
 data presence_test_green_source: String = "module eq_probe_presence\nfn has(x: Int?) -> Bool { x != none }\n"
 
-test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
+test fn interpretation_algebra_equality_refuses_blocking() -> Bool  {
   eq_wall_refusal_count(source: interpretation_algebra_eq_red_source) >= 1
 }
 
-test fn runtime_value_equality_admits_on_the_finite_map_model() -> Bool {
+test fn runtime_value_equality_admits_on_the_finite_map_model() -> Bool  {
   eq_admitted(source: runtime_value_eq_model_derived_source)
 }
 
-test fn fn_member_record_equality_refuses_blocking() -> Bool {
+test fn fn_member_record_equality_refuses_blocking() -> Bool  {
   eq_blocking_count(source: fn_member_record_eq_red_source, wanted: "EqualityOnFunctionMember") >= 1
 }
 
-test fn fn_member_coproduct_equality_refuses_blocking() -> Bool {
+test fn fn_member_coproduct_equality_refuses_blocking() -> Bool  {
   eq_blocking_count(source: fn_member_coproduct_eq_red_source, wanted: "EqualityOnFunctionMember") >= 1
 }
 
-test fn partial_function_equality_refuses_blocking() -> Bool {
+test fn partial_function_equality_refuses_blocking() -> Bool  {
   eq_blocking_count(source: partial_function_eq_red_source, wanted: "EqualityOnFunctionMember") >= 1
 }
 
-test fn peano_nat_equality_stays_admitted() -> Bool {
+test fn peano_nat_equality_stays_admitted() -> Bool  {
   eq_admitted(source: peano_nat_eq_green_source)
 }
 
-test fn local_recursive_coproduct_equality_stays_admitted() -> Bool {
+test fn local_recursive_coproduct_equality_stays_admitted() -> Bool  {
   eq_census_clean(source: local_recursive_coproduct_eq_green_source)
 }
 
-test fn structural_record_equality_stays_admitted() -> Bool {
+test fn structural_record_equality_stays_admitted() -> Bool  {
   eq_admitted(source: structural_record_eq_green_source)
 }
 
-test fn presence_test_stays_admitted() -> Bool {
+test fn presence_test_stays_admitted() -> Bool  {
   eq_census_clean(source: presence_test_green_source)
 }

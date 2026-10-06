@@ -74,21 +74,21 @@ fn measured(rows: List<AuditRow>) -> AuditPartition {
 // unmeasured partition must never read as a measured-empty one. If someone later flips the
 // production row to PartitionMeasured without rows, the second conjunct of the refusal test below
 // is the red that meets them.
-test fn production_partition_is_declared_unmeasured_not_measured_empty() -> Bool {
+test fn production_partition_is_declared_unmeasured_not_measured_empty() -> Bool  {
   !partition_is_measured(p: v2_test_claim_expected_value_partition)
 }
 
-test fn an_unmeasured_partition_carries_no_refusal_causes() -> Bool {
+test fn an_unmeasured_partition_carries_no_refusal_causes() -> Bool  {
   list_length(items: audit_partition_refusal_causes(p: v2_test_claim_expected_value_partition)) == 0
 }
 
 // A measured partition with zero rows is a completeness claim over a universe nobody enumerated,
 // and it is refused rather than passing as vacuously clean -- the empty-roster-vacuous-guard class.
-test fn a_measured_partition_with_no_rows_is_refused() -> Bool {
+test fn a_measured_partition_with_no_rows_is_refused() -> Bool  {
   list_length(items: audit_partition_refusal_causes(p: measured(rows: []))) == 1
 }
 
-test fn a_clean_measured_partition_is_admitted_and_counts_both_sides() -> Bool {
+test fn a_clean_measured_partition_is_admitted_and_counts_both_sides() -> Bool  {
   list_length(
     items: audit_partition_refusal_causes(
       p: measured(rows: [independent_row(name: "claim_a"), derived_row(name: "claim_b")])
@@ -106,7 +106,7 @@ test fn a_clean_measured_partition_is_admitted_and_counts_both_sides() -> Bool {
 
 // A row asserting an independent origin with no basis behind it is the audit lying about its own
 // instrument, and it is refused by identity rather than absorbed into unmeasured.
-test fn an_origin_claim_without_a_basis_is_refused_by_identity() -> Bool {
+test fn an_origin_claim_without_a_basis_is_refused_by_identity() -> Bool  {
   list_length(
     items: audit_partition_refusal_causes(
       p: measured(rows: [independent_row(name: "claim_a"), baseless_claiming_row(name: "claim_b")])
@@ -114,7 +114,7 @@ test fn an_origin_claim_without_a_basis_is_refused_by_identity() -> Bool {
   ) == 1
 }
 
-test fn a_duplicated_claim_identity_is_refused() -> Bool {
+test fn a_duplicated_claim_identity_is_refused() -> Bool  {
   list_length(
     items: audit_partition_refusal_causes(
       p: measured(rows: [independent_row(name: "claim_a"), independent_row(name: "claim_a")])

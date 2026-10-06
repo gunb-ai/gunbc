@@ -308,7 +308,7 @@ fn scm_image_refused(loaded: ClosureDocLoadOutcome) -> Bool {
 // The round trip.
 // ------------------------------------------------------------------------------------------------
 
-test fn scm_image_round_trips_to_the_same_program() -> Bool {
+test fn scm_image_round_trips_to_the_same_program() -> Bool  {
   scm_image_loads_as(
     loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
     expected: closure_doc_program(),
@@ -316,7 +316,7 @@ test fn scm_image_round_trips_to_the_same_program() -> Bool {
 }
 
 // CONTROL for the claim above. Without this, a comparison that always answered true would pass.
-test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
+test fn scm_image_round_trip_comparison_can_say_no() -> Bool  {
   !scm_image_loads_as(
     loaded: decode_closure_document(v: scm_image_encoded(n: closure_doc_program())),
     expected: scm_image_other_program(),
@@ -325,7 +325,7 @@ test fn scm_image_round_trip_comparison_can_say_no() -> Bool {
 
 // THE TEXT IS THE POINT. Comparing JsonValue to JsonValue would never exercise serialize_json or
 // parse_json, so the durable artifact -- the bytes that actually reach a file -- would be untested.
-test fn scm_image_survives_serialization_to_text_and_back() -> Bool {
+test fn scm_image_survives_serialization_to_text_and_back() -> Bool  {
   let text = serialize_json(v: scm_image_encoded(n: closure_doc_program()))
   match parse_json_document(s: text) {
     JsonDocumentUnreadable { gap: _ } => false
@@ -364,14 +364,14 @@ fn scm_image_encoded_object_count(v: JsonValue) -> Int {
   scm_image_count_objects_member(members: scm_image_members(v: v))
 }
 
-test fn scm_image_preserves_sharing_rather_than_expanding_it() -> Bool {
+test fn scm_image_preserves_sharing_rather_than_expanding_it() -> Bool  {
   scm_image_encoded_object_count(v: scm_image_encoded(n: scm_image_shared_program())) == 2
 }
 
 // CONTROL for the claim above: the counter must be able to report something other than 2, or the
 // assertion above is satisfied by a function that always answers 2. The two-atom program has three
 // distinct objects -- two unequal atoms and the root -- so this pins the counter to the encoding.
-test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool {
+test fn scm_image_the_object_counter_distinguishes_a_larger_program() -> Bool  {
   scm_image_encoded_object_count(v: scm_image_encoded(n: closure_doc_program())) == 3
 }
 
@@ -418,7 +418,7 @@ fn scm_image_with(v: JsonValue, key: String, value: JsonValue) -> JsonValue {
   )
 }
 
-test fn scm_image_an_unrecognized_format_refuses() -> Bool {
+test fn scm_image_an_unrecognized_format_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: scm_image_with(
@@ -458,13 +458,13 @@ fn scm_image_legacy_v2_document() -> JsonValue {
   )
 }
 
-test fn scm_image_a_frozen_predecessor_document_refuses_as_its_format() -> Bool {
+test fn scm_image_a_frozen_predecessor_document_refuses_as_its_format() -> Bool  {
   scm_image_cause_tag(loaded: decode_closure_document(v: scm_image_legacy_v2_document())) == "format"
 }
 
 // AND THE STANDING IS THE PROTOCOL ONE. The claim above pins the cause; this pins what a consumer
 // deciding whether to overwrite is told, which is the half that actually carries the consequence.
-test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -> Bool {
+test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -> Bool  {
   match decode_closure_document(v: scm_image_legacy_v2_document()) {
     ClosureDocLoaded { store: _, root: _ } => false
     ClosureDocRefused { cause: c } =>
@@ -481,7 +481,7 @@ test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -
 
 // CONTROL, one fact apart: the identical document under THIS build's tag loads. Without it, a
 // decoder that refused every hand-authored document would satisfy both claims above.
-test fn scm_image_the_same_document_under_the_current_tag_loads() -> Bool {
+test fn scm_image_the_same_document_under_the_current_tag_loads() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: json_object(
@@ -498,13 +498,13 @@ test fn scm_image_the_same_document_under_the_current_tag_loads() -> Bool {
   ) == "loaded"
 }
 
-test fn scm_image_a_missing_format_refuses() -> Bool {
+test fn scm_image_a_missing_format_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "format"))
   )
 }
 
-test fn scm_image_a_missing_objects_member_refuses() -> Bool {
+test fn scm_image_a_missing_objects_member_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(v: scm_image_without(v: scm_image_encoded(n: closure_doc_program()), key: "objects"))
   )
@@ -512,7 +512,7 @@ test fn scm_image_a_missing_objects_member_refuses() -> Bool {
 
 // A DUPLICATED key is its own refusal and not a last-wins read. This is the arm a naive decoder
 // silently accepts while the file carries two different answers.
-test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
+test fn scm_image_a_duplicated_root_member_refuses() -> Bool  {
   let encoded = scm_image_encoded(n: closure_doc_program())
   scm_image_refused(
     loaded: decode_closure_document(
@@ -528,7 +528,7 @@ test fn scm_image_a_duplicated_root_member_refuses() -> Bool {
 // read before root resolution is ever reached -- so a claim named for "a root naming no object" was
 // green without executing the operation it names, and would have stayed green under any routing of
 // unresolved positions whatsoever. The object shape is what reaches the resolver.
-test fn scm_image_a_root_naming_no_object_refuses_as_the_roots_own_cause() -> Bool {
+test fn scm_image_a_root_naming_no_object_refuses_as_the_roots_own_cause() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: scm_image_with(
@@ -543,7 +543,7 @@ test fn scm_image_a_root_naming_no_object_refuses_as_the_roots_own_cause() -> Bo
 // THE BARE-STRING ROOT KEPT AS ITS OWN CLAIM, because the repair above would otherwise DELETE a real
 // distinction: a root that is not an object at all is a member-read defect, not an unresolved
 // position, and the two must not collapse into one another.
-test fn scm_image_a_bare_string_root_is_a_member_read_refusal() -> Bool {
+test fn scm_image_a_bare_string_root_is_a_member_read_refusal() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: scm_image_with(
@@ -557,7 +557,7 @@ test fn scm_image_a_bare_string_root_is_a_member_read_refusal() -> Bool {
 
 // An edge naming a position that has not been decoded yet. Only earlier positions are in scope, so
 // this is the arm that makes back-references safe rather than merely conventional.
-test fn scm_image_an_edge_naming_a_later_position_refuses_as_the_edges_own_cause() -> Bool {
+test fn scm_image_an_edge_naming_a_later_position_refuses_as_the_edges_own_cause() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: json_object(
@@ -604,7 +604,7 @@ test fn scm_image_an_edge_naming_a_later_position_refuses_as_the_edges_own_cause
   ) == "edge_target"
 }
 
-test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
+test fn scm_image_an_unknown_connective_tag_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: json_object(
@@ -642,7 +642,7 @@ test fn scm_image_an_unknown_connective_tag_refuses() -> Bool {
 // must LOAD. Without this, a decoder that refused every hand-built object would pass the two
 // hand-authored refusal claims for the wrong reason -- they would be measuring "hand-authored"
 // rather than "malformed".
-test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool {
+test fn scm_image_the_hand_authored_shape_itself_loads() -> Bool  {
   scm_image_loads_as(
     loaded: decode_closure_document(
       v: json_object(
@@ -710,14 +710,14 @@ fn scm_image_orphan_parent_store() -> ScmImagePut {
   }
 }
 
-test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool {
+test fn scm_image_a_root_absent_from_the_store_refuses_to_encode() -> Bool  {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   scm_image_encode_refused(
     outcome: encode_complete_closure_document(closure: CommitClosure { store: empty_store(), root: full.identity })
   )
 }
 
-test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
+test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool  {
   let orphan = scm_image_orphan_parent_store()
   scm_image_encode_refused(
     outcome: encode_complete_closure_document(closure: CommitClosure { store: orphan.store, root: orphan.identity })
@@ -726,7 +726,7 @@ test fn scm_image_a_root_whose_child_is_absent_refuses_to_encode() -> Bool {
 
 // THE POSITIVE CONTROL. Without it the two refusals above are satisfied by an encoder that refuses
 // everything, and DESIGN section 4b requires the accepted arm alongside the discriminating red.
-test fn scm_image_a_complete_closure_encodes() -> Bool {
+test fn scm_image_a_complete_closure_encodes() -> Bool  {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
     ClosureDocEncoded { value: v } =>
@@ -794,7 +794,7 @@ fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
 // NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
 // the assembled node derives -- asserting the two inserts merely agree with EACH OTHER would be
 // satisfied by any consistent wrong rule, including one that hashes wire order on both sides.
-test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool {
+test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -> Bool  {
   let atoms = scm_image_two_atoms()
   let canonical = content_hash(n: closure_doc_program())
   let forward = scm_image_insert_children(
@@ -818,7 +818,7 @@ test fn scm_image_permuted_named_children_reconstruct_the_canonical_identity() -
 
 // POSITIONAL children permuted: a DIFFERENT identity. Under a positional discipline the order is the
 // content, so a canonicalizer that sorted here would fuse `f(x, y)` with `f(y, x)`.
-test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool {
+test fn scm_image_permuted_positional_children_are_a_different_identity() -> Bool  {
   let atoms = scm_image_two_atoms()
   let forward = scm_image_insert_children(
     kind: TypeNode { connective: Cardinality },
@@ -883,7 +883,7 @@ fn scm_image_atom_object_members(kind_members: List<JsonKeyValue>, extra: List<J
   )
 }
 
-test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
+test fn scm_image_an_unknown_envelope_member_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: scm_image_one_object_image(
@@ -894,7 +894,7 @@ test fn scm_image_an_unknown_envelope_member_refuses() -> Bool {
   )
 }
 
-test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
+test fn scm_image_an_unknown_object_record_member_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: scm_image_one_object_image(
@@ -911,7 +911,7 @@ test fn scm_image_an_unknown_object_record_member_refuses() -> Bool {
 // `identity` is REQUIRED on an atom and forbidden on every other connective, so this is the claim
 // that the member set is closed PER VARIANT rather than closed over the union of every variant's
 // members -- a union-shaped check would accept this document.
-test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
+test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: scm_image_one_object_image(
@@ -929,7 +929,7 @@ test fn scm_image_identity_on_a_non_atom_kind_refuses() -> Bool {
   )
 }
 
-test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
+test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool  {
   scm_image_refused(
     loaded: decode_closure_document(
       v: scm_image_one_object_image(
@@ -949,7 +949,7 @@ test fn scm_image_behavior_on_a_type_kind_refuses() -> Bool {
 // THE ORDER CONTROL. Closed member population is not positional parsing: the same members in a
 // different order must still load. Without this, a check that accidentally depended on member order
 // would satisfy every refusal claim above.
-test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
+test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool  {
   scm_image_loads_as(
     loaded: decode_closure_document(
       v: json_object(
@@ -984,7 +984,7 @@ test fn scm_image_the_same_members_in_a_different_order_still_load() -> Bool {
 
 // THE POSITIVE CONTROL FOR THE ATOM VARIANT: `identity` is not merely tolerated on an atom, it is
 // required, so the refusals above cannot be satisfied by a rule that rejects `identity` everywhere.
-test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
+test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool  {
   scm_image_loads_as(
     loaded: decode_closure_document(
       v: scm_image_one_object_image(
@@ -1130,7 +1130,7 @@ fn scm_image_program_over_a_node_document() -> JsonValue {
   )
 }
 
-test fn scm_image_the_same_document_shape_checks_out_over_a_node() -> Bool {
+test fn scm_image_the_same_document_shape_checks_out_over_a_node() -> Bool  {
   scm_image_checkout_cause_tag(
     loaded: decode_closure_document(v: scm_image_program_over_a_node_document())
   ) == "checked_out"
@@ -1283,7 +1283,7 @@ fn scm_image_integration_tag_for(document: JsonValue) -> String {
   }
 }
 
-test fn scm_image_a_role_whose_value_is_a_file_refuses_the_document() -> Bool {
+test fn scm_image_a_role_whose_value_is_a_file_refuses_the_document() -> Bool  {
   scm_image_integration_tag_for(document: scm_image_role_over_a_file_document()) == "document_refused"
 }
 
@@ -1323,7 +1323,7 @@ fn scm_image_role_over_a_node_document() -> JsonValue {
   )
 }
 
-test fn scm_image_a_role_whose_value_is_a_node_integrates() -> Bool {
+test fn scm_image_a_role_whose_value_is_a_node_integrates() -> Bool  {
   scm_image_integration_tag_for(document: scm_image_role_over_a_node_document()) == "integrated"
 }
 
@@ -1516,7 +1516,7 @@ fn scm_image_standing_of(v: JsonValue) -> LoadStanding {
 }
 
 // CONTROL ONE, one fact apart: nothing at that locator. A genuine absence IS partial, and IS loaded.
-test fn scm_image_a_requirement_over_nothing_is_partial_and_loaded() -> Bool {
+test fn scm_image_a_requirement_over_nothing_is_partial_and_loaded() -> Bool  {
   let doc = scm_image_two_object_document(
     first: scm_image_empty_node_entry(),
     second: scm_image_node_over_uncontained(digest: "0000000000000000"),
@@ -1560,7 +1560,7 @@ fn scm_image_leaf_digest(tag: Symbol) -> String {
   }
 }
 
-test fn scm_image_a_requirement_over_a_carried_node_is_complete_and_loaded() -> Bool {
+test fn scm_image_a_requirement_over_a_carried_node_is_complete_and_loaded() -> Bool  {
   let doc = scm_image_two_object_document(
     first: scm_image_leaf_entry(tag: "carried_leaf"),
     second: scm_image_node_over_uncontained(digest: scm_image_leaf_digest(tag: ^carried_leaf)),
@@ -1626,7 +1626,7 @@ fn scm_image_document_with_entries_and_root(entries: List<JsonValue>, at: String
 // safe rather than lucky: a `{source}` entry never becomes a decoded position at all, so root
 // resolution is never handed one to be wrong about. The cause is the node entry's own member set --
 // `source` is not in {kind, children} -- and NOT a root cause, which is the whole point.
-test fn scm_image_a_source_entry_refuses_before_root_resolution() -> Bool {
+test fn scm_image_a_source_entry_refuses_before_root_resolution() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: scm_image_document_with_entries_and_root(
@@ -1640,7 +1640,7 @@ test fn scm_image_a_source_entry_refuses_before_root_resolution() -> Bool {
 // TWO, THE CONTROL. An ordinary node entry at position 0 with a root naming it still loads. Without
 // this the claim above and the one below are satisfied by a decoder that refuses every document, and
 // the deletion would have been measured against nothing.
-test fn scm_image_a_node_position_is_a_valid_contained_root() -> Bool {
+test fn scm_image_a_node_position_is_a_valid_contained_root() -> Bool  {
   scm_image_loads_as(
     loaded: decode_closure_document(
       v: scm_image_document_with_entries_and_root(
@@ -1656,7 +1656,7 @@ test fn scm_image_a_node_position_is_a_valid_contained_root() -> Bool {
 // the collapse this branch keeps re-committing would merge them: reporting a wrong-kind position as
 // unresolved reads exactly like this. With the wrong-kind state unconstructible, "unresolved" now
 // means only what it says -- no position, rather than the wrong thing at one.
-test fn scm_image_a_root_naming_no_position_is_unresolved() -> Bool {
+test fn scm_image_a_root_naming_no_position_is_unresolved() -> Bool  {
   scm_image_cause_tag(
     loaded: decode_closure_document(
       v: scm_image_document_with_entries_and_root(

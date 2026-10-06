@@ -285,7 +285,7 @@ fn stg_bound_path_count(repository: RepositoryEnvelope) -> Int {
 // would change: "A0" and "B0" are literals here, so a candidate that dropped or replaced either
 // cannot agree with them. The production function under test is `staged_entries`, reached with no
 // fixture step after the override is dropped.
-test fn scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() -> Bool {
+test fn scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() -> Bool  {
   match stg_without_override(
     build: stg_commit(
       build: stg_stage(
@@ -308,7 +308,7 @@ test fn scm_stg_no_override_over_a_commit_inherits_that_commits_corpus() -> Bool
 // function over the same state: an absent override denotes the selected commit's own snapshot, so
 // the derived difference is empty -- and a candidate answering the empty corpus there would report
 // every tracked path as staged for deletion.
-test fn scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() -> Bool {
+test fn scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() -> Bool  {
   match stg_without_override(
     build: stg_commit(
       build: stg_stage(build: stg_start(), path: "a.dag", text: "A0"),
@@ -349,7 +349,7 @@ test fn scm_stg_no_override_over_a_commit_reads_as_clean_not_empty() -> Bool {
 // from comparing it with the base. That reports a difference on a repository that has none, and a
 // commit verb reading it would mint a row whose root equals its parent's -- a history entry freezing
 // nothing, indistinguishable to a later reader from a real one.
-test fn scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference() -> Bool {
+test fn scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference() -> Bool  {
   match stg_commit(
     build: stg_stage(build: stg_start(), path: "a.dag", text: "A0"),
     message: "first",
@@ -366,7 +366,7 @@ test fn scm_stg_a_repository_standing_on_its_last_commit_reports_no_difference()
 // AN EMPTY REPOSITORY REACHES "no difference" THROUGH A DIFFERENT STANDING than the one above.
 // Folding the two would lose which of them an operator is in: one has a base and matches it, the
 // other has neither a candidate nor a base, and the remedies are not the same.
-test fn scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() -> Bool {
+test fn scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() -> Bool  {
   match stage_standing(repository: stg_empty_repository()) {
     NoCandidateAndNoBase => true
     _ => false
@@ -375,7 +375,7 @@ test fn scm_stg_an_empty_repository_has_neither_a_candidate_nor_a_base() -> Bool
 
 // A CANDIDATE OVER NO HISTORY IS ITS OWN STANDING, and must not be confused with the empty case
 // above: there IS something to freeze here, and there is nothing to compare it against.
-test fn scm_stg_a_candidate_over_no_history_stands_with_no_base() -> Bool {
+test fn scm_stg_a_candidate_over_no_history_stands_with_no_base() -> Bool  {
   match stg_stage(build: stg_start(), path: "a.dag", text: "A0") {
     StgSetupFailed => false
     StgBuilt { repository: staged } =>
@@ -388,7 +388,7 @@ test fn scm_stg_a_candidate_over_no_history_stands_with_no_base() -> Bool {
 
 // AN EDIT AFTER A COMMIT IS REPORTED AS A DIFFERENCE, which is the positive control for the standing
 // that every "nothing to commit" claim above depends on being distinguishable.
-test fn scm_stg_an_edit_after_a_commit_differs_from_its_base() -> Bool {
+test fn scm_stg_an_edit_after_a_commit_differs_from_its_base() -> Bool  {
   match stg_stage(
     build: stg_commit(
       build: stg_stage(build: stg_start(), path: "a.dag", text: "A0"),
@@ -416,7 +416,7 @@ test fn scm_stg_an_edit_after_a_commit_differs_from_its_base() -> Bool {
 // MUTATION IT IS AIMED AT: answering `[]` when the base cannot be read. That reintroduces the
 // deletion through the failure arm -- the absorbing fallback -- and it does it on exactly the
 // repository least able to survive it.
-test fn scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() -> Bool {
+test fn scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() -> Bool  {
   let dangling = RepositoryEnvelope {
     store: empty_store(),
     commits: [],
@@ -436,7 +436,7 @@ test fn scm_stg_an_unresolvable_base_refuses_rather_than_inheriting_nothing() ->
 
 // AN EMPTY FILE IS STAGEABLE AND IS NOT THE SAME AS NO FILE. AuthoredSourceEmpty is a real content
 // with its own identity, so a path bound to it is bound.
-test fn scm_stg_an_empty_file_stages_as_itself() -> Bool {
+test fn scm_stg_an_empty_file_stages_as_itself() -> Bool  {
   match stg_stage(build: stg_start(), path: "a.dag", text: "") {
     StgSetupFailed => false
     StgBuilt { repository: staged } =>
@@ -514,7 +514,7 @@ fn stg_roots_differ(
 // the checkout succeeds and the author's uncommitted candidate is gone, with no refusal and no
 // report. The refusal names both manifests, which is what makes it actionable rather than merely
 // loud.
-test fn scm_stg_a_checkout_that_would_discard_staged_work_refuses() -> Bool {
+test fn scm_stg_a_checkout_that_would_discard_staged_work_refuses() -> Bool  {
   match stg_two_commits() {
     StgTwoCommitsUnavailable => false
     StgTwoCommitsBuilt { repository: two, first: first, second: _ } =>
@@ -542,7 +542,7 @@ test fn scm_stg_a_checkout_that_would_discard_staged_work_refuses() -> Bool {
 // unchanged would also be standing clean on a corpus it can read -- it would simply be standing on
 // the WRONG commit. So the claim requires that the selection moved to the requested reference, and
 // then that the candidate binds `a.dag` and does NOT bind `b.dag`.
-test fn scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() -> Bool {
+test fn scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() -> Bool  {
   match stg_two_commits() {
     StgTwoCommitsUnavailable => false
     StgTwoCommitsBuilt { repository: two, first: first, second: _ } =>
@@ -573,7 +573,7 @@ test fn scm_stg_a_clean_checkout_re_derives_the_candidate_from_the_new_base() ->
 //
 // THE SELECTION IS ASSERTED HERE TOO, for the reason the claim above gives: `StageMatchesBase` plus a
 // commit count is satisfied by a checkout that did nothing at all.
-test fn scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() -> Bool {
+test fn scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() -> Bool  {
   match stg_two_commits() {
     StgTwoCommitsUnavailable => false
     StgTwoCommitsBuilt { repository: two, first: first, second: _ } =>
@@ -604,7 +604,7 @@ test fn scm_stg_the_standing_after_moving_the_base_does_not_report_a_revert() ->
 //
 // THE ASSERTION IS ON THE DECODED VALUE, not on the encoder's input -- comparing the envelope to
 // itself would pass under any codec at all.
-test fn scm_stg_a_staged_candidate_survives_a_document_round_trip() -> Bool {
+test fn scm_stg_a_staged_candidate_survives_a_document_round_trip() -> Bool  {
   match stg_stage(
     build: stg_stage(build: stg_start(), path: "a.dag", text: "A0"),
     path: "b.dag",
@@ -638,7 +638,7 @@ test fn scm_stg_a_staged_candidate_survives_a_document_round_trip() -> Bool {
 // AN ABSENT CANDIDATE SURVIVES AS ABSENT, which is the control that the round trip above is reading a
 // member rather than reconstructing one. A codec that always produced a candidate would pass the
 // previous claim and fail this one.
-test fn scm_stg_an_absent_candidate_survives_as_absent() -> Bool {
+test fn scm_stg_an_absent_candidate_survives_as_absent() -> Bool  {
   match encode_repository_checked(repo: stg_empty_repository()) {
     RepositoryEncodeRefused { cause: _ } => false
     RepositoryEncoded { value: wire } =>
@@ -656,7 +656,7 @@ test fn scm_stg_an_absent_candidate_survives_as_absent() -> Bool {
 // A COMMITTED REPOSITORY ROUND-TRIPS WITH ITS SELECTION AND ITS CANDIDATE STILL AGREEING, which is
 // the persisted form of the no-clear rule: the clean answer must survive the document, not merely
 // hold in the envelope that produced it.
-test fn scm_stg_a_committed_repository_reads_back_clean() -> Bool {
+test fn scm_stg_a_committed_repository_reads_back_clean() -> Bool  {
   match stg_commit(
     build: stg_stage(build: stg_start(), path: "a.dag", text: "A0"),
     message: "first",

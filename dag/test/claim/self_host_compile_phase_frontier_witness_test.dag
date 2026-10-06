@@ -78,7 +78,7 @@ import extdeps.cargo_diagnostic {
 }
 import tools.emission_entry_instrument { RustfmtParseObservation }
 
-test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool {
+test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool  {
   match regression_comparison_predecessor(
     previous_epoch: "rustc-old" as NonEmptyStr,
     current_epoch: "rustc-new" as NonEmptyStr,
@@ -91,7 +91,7 @@ test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regre
   }
 }
 
-test fn an_epoch_change_compares_identity_transitions_to_the_reclassified_predecessor() -> Bool {
+test fn an_epoch_change_compares_identity_transitions_to_the_reclassified_predecessor() -> Bool  {
   let raw_old = fixture_board(resolve_ids: [], typeck_ids: ["old-policy-spelling"])
   let reclassified = fixture_board(resolve_ids: [], typeck_ids: ["new-policy-spelling"])
   match regression_comparison_predecessor(
@@ -124,7 +124,7 @@ fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
   }
 }
 
-test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
+test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool  {
   let malformed = RustcPhaseBoard {
     rows: [
       row_parse(n: 0, identities: []),
@@ -211,14 +211,14 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
 // That is decidable without the cache and is not a statement about serving at all. Its removal is
 // an ordinary loss of a discriminating red -- which is a real loss -- and not a silent conversion of
 // a verified share into an unverified one.
-test fn current_persisted_compile_phase_frontier_holds() -> Bool {
+test fn current_persisted_compile_phase_frontier_holds() -> Bool  {
   match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: _ } => true
     standing => false
   }
 }
 
-test fn an_open_unadmitted_regression_keeps_the_series_red_and_names_the_identity() -> Bool {
+test fn an_open_unadmitted_regression_keeps_the_series_red_and_names_the_identity() -> Bool  {
   match complete_open_unadmitted_series(open: [
     OpenUnadmittedRegression {
       identity: "src/a.rs:1:1\tE0308\tmismatched types",
@@ -231,7 +231,7 @@ test fn an_open_unadmitted_regression_keeps_the_series_red_and_names_the_identit
   }
 }
 
-test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression() -> Bool {
+test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression() -> Bool  {
   let introduced = OpenUnadmittedRegression {
     identity: "src/a.rs:1:1\tE0308\tmismatched types",
     introduced_by: "1111111111111111111111111111111111111111" as CommitSha
@@ -268,7 +268,7 @@ test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression(
   }
 }
 
-test fn a_line_relocation_cannot_close_an_open_regression() -> Bool {
+test fn a_line_relocation_cannot_close_an_open_regression() -> Bool  {
   let opened = OpenUnadmittedRegression {
     identity: "src/a.rs:1:1\tE0308\tmismatched types",
     introduced_by: "1111111111111111111111111111111111111111" as CommitSha
@@ -294,7 +294,7 @@ test fn a_line_relocation_cannot_close_an_open_regression() -> Bool {
 
 // FALSIFIER 1: a phase already closed at zero cannot regain an identity. The refusal names both
 // the phase and the exact identity so a red never degrades into an unexplained Bool.
-test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
+test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool  {
   match phase_ratchet(
     previous: fixture_board(resolve_ids: [], typeck_ids: ["E0308\tsrc/a.rs:1:1\tmismatch"]),
     current: fixture_board(resolve_ids: ["E0425\tsrc/a.rs:1:1\tmissing name"], typeck_ids: [])
@@ -307,7 +307,7 @@ test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
 
 // FALSIFIER 2: new identities inside the currently reached phase are a regression even when no
 // earlier phase reopens.
-test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> Bool {
+test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> Bool  {
   match phase_ratchet(
     previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
     current: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"])
@@ -318,7 +318,7 @@ test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> 
   }
 }
 
-test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool {
+test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool  {
   match phase_ratchet(
     previous: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]),
     current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
@@ -330,7 +330,7 @@ test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool {
 
 // A count-only ratchet would accept this swap. Identity grain must refuse the newly introduced
 // diagnostic even though the reached-phase count did not change.
-test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool {
+test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool  {
   match phase_ratchet(
     previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
     current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
@@ -341,7 +341,7 @@ test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool {
   }
 }
 
-test fn a_phase_advance_requires_and_accepts_a_typed_newly_exposed_disposition() -> Bool {
+test fn a_phase_advance_requires_and_accepts_a_typed_newly_exposed_disposition() -> Bool  {
   match phase_ratchet_with_dispositions(
     previous: fixture_board(resolve_ids: [], typeck_ids: ["masking-typeck"]),
     current: fixture_borrow_board(borrow_ids: ["new-borrowck"]),
@@ -357,7 +357,7 @@ test fn a_phase_advance_requires_and_accepts_a_typed_newly_exposed_disposition()
   }
 }
 
-test fn milestone_render_never_calls_an_unreached_phase_zero() -> Bool {
+test fn milestone_render_never_calls_an_unreached_phase_zero() -> Bool  {
   render_phase_board(board: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]))
     == "parse PASSES / expand PASSES / resolve PASSES / typeck 2 remaining / borrowck not yet reached"
 }
@@ -394,7 +394,7 @@ fn census_fold(raw: List<String>) -> PersistedPhaseBoardFold {
 // THE DISCRIMINATING RED. A census carrying one typeck identity must attribute it to typeck, and
 // the rendered milestone line must not call that phase passed. Reading any other field of the row
 // as the error code makes this identity unattributable, which renders "typeck PASSES".
-test fn a_typeck_census_identity_is_attributed_to_typeck_and_never_renders_passes() -> Bool {
+test fn a_typeck_census_identity_is_attributed_to_typeck_and_never_renders_passes() -> Bool  {
   let fold = census_fold(raw: [census_probe_row(code: "E0308", message: "mismatched types")])
   render_phase_board(board: fold.board)
     == "parse PASSES / expand PASSES / resolve PASSES / typeck 1 remaining / borrowck not yet reached"
@@ -404,7 +404,7 @@ test fn a_typeck_census_identity_is_attributed_to_typeck_and_never_renders_passe
 
 // The accepted positive control: a census with nothing in it is the one state in which every phase
 // may honestly say PASSES, so the wall above is not simply "never say PASSES".
-test fn an_empty_census_still_renders_every_phase_as_passing() -> Bool {
+test fn an_empty_census_still_renders_every_phase_as_passing() -> Bool  {
   let fold = census_fold(raw: [])
   render_phase_board(board: fold.board)
     == "parse PASSES / expand PASSES / resolve PASSES / typeck PASSES / borrowck PASSES"
@@ -414,7 +414,7 @@ test fn an_empty_census_still_renders_every_phase_as_passing() -> Bool {
 // The second arm of the same defect: an identity the error index does not place is not evidence
 // that the phases are clean. While any identity is unattributed, a zero count establishes nothing
 // about the phase and must not be rendered as a pass.
-test fn an_unattributed_census_identity_forbids_every_phase_from_claiming_passes() -> Bool {
+test fn an_unattributed_census_identity_forbids_every_phase_from_claiming_passes() -> Bool  {
   let fold = census_fold(raw: [census_probe_row(code: "E9999", message: "not in the error index")])
   !fold.board.partition_complete
     && count(fold.unplaced_identities) == 1
@@ -425,7 +425,7 @@ test fn an_unattributed_census_identity_forbids_every_phase_from_claiming_passes
 // The published board itself, over the persisted genesis census rather than a fixture. Its whole
 // population is attributed, and the count is joined to the persisted identity list rather than
 // compared to a number copied out of a run.
-test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool {
+test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool  {
   let fold = census_fold(raw: genesis_5006ddc6_raw_error_diagnostic_identities)
   match board_row(board: fold.board, phase: Typeck) {
     Present { value: typeck } => match typeck.standing {
@@ -448,7 +448,7 @@ test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool
 // per DESIGN 4b(4) the guard flips to its permanent regression control: the rendered standing must
 // now claim typeck and borrowck passed, and any future receipt whose census re-enters either phase
 // renders "N remaining" here and reds this row.
-test fn the_published_frontier_standing_claims_typeck_and_borrowck_passed() -> Bool {
+test fn the_published_frontier_standing_claims_typeck_and_borrowck_passed() -> Bool  {
   match current_compile_phase_frontier_standing() {
     CompilePhaseFrontierValidated { latest: latest } => {
       let rendered = render_phase_board(board: latest.board)
@@ -464,7 +464,7 @@ test fn the_published_frontier_standing_claims_typeck_and_borrowck_passed() -> B
 // The digest is named an IDENTITY of the census, and a census is a set: cargo's diagnostic stream
 // and rustfmt's refusal list carry no ordering guarantee, so a reordered-but-identical census must
 // fold to the same digest or receipt_population_coherent refuses a receipt that in fact agrees.
-test fn the_census_digest_is_invariant_under_reordering_of_either_population() -> Bool {
+test fn the_census_digest_is_invariant_under_reordering_of_either_population() -> Bool  {
   let forward = phase_census_digest(
     parse_refused_files: ["src/a.rs", "src/b.rs"],
     raw_identities: ["src/a.rs:1:1\tE0308\tmismatch", "src/b.rs:2:2\tE0425\tunresolved"]
@@ -480,7 +480,7 @@ test fn the_census_digest_is_invariant_under_reordering_of_either_population() -
 // pair, so the load-bearing case is substitution at equal cardinality: one identity swapped, count
 // unchanged. Alongside it, a value moved between the two populations must still separate, which is
 // what makes the segments separate rather than one canonicalized pool.
-test fn the_census_digest_separates_added_removed_and_substituted_identities() -> Bool {
+test fn the_census_digest_separates_added_removed_and_substituted_identities() -> Bool  {
   let base = phase_census_digest(
     parse_refused_files: ["src/a.rs"],
     raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved"]
@@ -514,7 +514,7 @@ test fn the_census_digest_separates_added_removed_and_substituted_identities() -
 // digest therefore separates them, and phase_board_from_census_identities refuses the duplicated
 // population by folding a deduplicated total that no longer equals the raw count -- which is the
 // exact equality receipt_population_coherent checks.
-test fn a_duplicated_census_population_is_not_silently_collapsed_to_a_set() -> Bool {
+test fn a_duplicated_census_population_is_not_silently_collapsed_to_a_set() -> Bool  {
   let clean = phase_census_digest(
     parse_refused_files: [],
     raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
@@ -532,7 +532,7 @@ test fn a_duplicated_census_population_is_not_silently_collapsed_to_a_set() -> B
 
 // The digest carries its own algorithm identity, so a value folded under the retired emission-order
 // procedure and one folded over the canonical set can never be compared as bare hashes.
-test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
+test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool  {
   let produced = phase_census_digest(parse_refused_files: [], raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"])
   produced.algorithm == CanonicalIdentitySetV1
     && census_identity_domain_separator(algorithm: EmissionOrderedV1)
@@ -561,7 +561,7 @@ test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
 // `canonical_identity_set` sorts the result and `census_population_is_duplicate_free` reads only the
 // count -- so pinning the output ORDER would assert a property no caller can distinguish. What IS
 // observable through both is whether a duplicate survives, and that is what this holds.
-test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacent_one() -> Bool {
+test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacent_one() -> Bool  {
   count(deduplicate_identities(identities: ["b", "a", "b"])) == 2
     && count(deduplicate_identities(identities: ["b", "b", "a"])) == 2
     && count(deduplicate_identities(identities: ["a", "a", "a"])) == 1
@@ -569,7 +569,7 @@ test fn deduplication_collapses_a_non_adjacent_duplicate_and_not_only_an_adjacen
     && count(deduplicate_identities(identities: ["b", "a", "c"])) == 3
 }
 
-test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
+test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool  {
   !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
     && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
     && census_population_is_duplicate_free(identities: [])
@@ -578,7 +578,7 @@ test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
 // Board identity is the phase-partitioned SET, not the order cargo or rustfmt emitted it. This is
 // stronger than digest invariance: the rows themselves compare equal, so receipt coherence and any
 // future structural board consumer cannot accidentally recover encounter order as semantics.
-test fn phase_boards_are_invariant_under_population_reordering() -> Bool {
+test fn phase_boards_are_invariant_under_population_reordering() -> Bool  {
   let a = census_probe_row(code: "E0308", message: "alpha")
   let b = census_probe_row(code: "E0599", message: "beta")
   let parse_forward = phase_board_from_census_identities(
@@ -604,7 +604,7 @@ test fn phase_boards_are_invariant_under_population_reordering() -> Bool {
 
 // Positive control: canonicalization preserves identity content rather than reducing a board to
 // phase cardinalities. Substituting one identity at equal cardinality must still change the board.
-test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool {
+test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool  {
   let a = census_probe_row(code: "E0308", message: "alpha")
   let b = census_probe_row(code: "E0599", message: "beta")
   let substituted = census_probe_row(code: "E0308", message: "substituted")
@@ -614,7 +614,7 @@ test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool
 // A module that enters the emitted closure between receipts carries diagnostics that are neither
 // relocations nor regressions. The cause is admitted only when the predecessor board holds NO
 // identity in that file: the claim is checkable against the persisted census, not taken on faith.
-test fn a_new_emitted_module_disposition_is_admitted_only_for_a_file_the_predecessor_never_saw() -> Bool {
+test fn a_new_emitted_module_disposition_is_admitted_only_for_a_file_the_predecessor_never_saw() -> Bool  {
   let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
   let current = fixture_board(resolve_ids: [], typeck_ids: ["src/new_module.rs:4:7\tE0308\tmismatch"])
   newly_exposed_identity_admitted(
@@ -633,7 +633,7 @@ test fn a_new_emitted_module_disposition_is_admitted_only_for_a_file_the_predece
 // The RED control on the same plant: claiming new-module exposure for a file the predecessor
 // already had an identity in must refuse -- otherwise the cause would launder ordinary
 // regressions in existing modules as corpus growth.
-test fn a_new_emitted_module_disposition_refuses_a_file_the_predecessor_already_reported() -> Bool {
+test fn a_new_emitted_module_disposition_refuses_a_file_the_predecessor_already_reported() -> Bool  {
   let previous = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:1:1\tE0308\tmismatch"])
   let current = fixture_board(resolve_ids: [], typeck_ids: ["src/old.rs:9:9\tE0599\tno method"])
   !newly_exposed_identity_admitted(
@@ -702,7 +702,7 @@ fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
-test fn a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence() -> Bool {
+test fn a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence() -> Bool  {
   !receipt_population_coherent(receipt: duplicated_refusal_receipt())
 }
 
@@ -750,7 +750,7 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
-test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool {
+test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool  {
   receipt_population_coherent(receipt: clean_refusal_receipt())
 }
 
@@ -766,7 +766,7 @@ fn fixture_tree_at(hex: String) -> FloorDiscoveryTreeId {
 // apart into agreeing for a reason other than the one under test.
 fn fixture_receipt_tree_hex() -> String { "2222222222222222222222222222222222222222" }
 
-test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool {
+test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool  {
   match compile_phase_frontier_coverage(
     series: [clean_refusal_receipt()],
     subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
@@ -779,7 +779,7 @@ test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool {
 // THE DISCRIMINATING RED. Same validated series, a different tree under judgment -- which is the
 // ordinary state of every merge, since the live tree moves and receipts are authored rarely. If
 // this answered Covered the judgment would be a decoration that reports coverage it never checked.
-test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgment() -> Bool {
+test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgment() -> Bool  {
   match compile_phase_frontier_coverage(
     series: [clean_refusal_receipt()],
     subject_tree: Present { value: fixture_tree_at(hex: "7777777777777777777777777777777777777777") }
@@ -794,7 +794,7 @@ test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgme
 // THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller with no tree identity gets a typed
 // refusal; answering Covered there is the absorbing fallback, and answering Stale would be a
 // fabricated comparison against a subject nobody observed.
-test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool {
+test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool  {
   match compile_phase_frontier_coverage(series: [clean_refusal_receipt()], subject_tree: none) {
     FrontierCoverageRefused { reason: _ } => true
     _ => false
@@ -805,7 +805,7 @@ test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool
 // names the SAME tree as the clean one and is refused by receipt_population_coherent, so a
 // coverage judgment that compared tree identities before validating the series would answer
 // Covered here. This is the probe that pins the ordering.
-test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool {
+test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool  {
   match compile_phase_frontier_coverage(
     series: [duplicated_refusal_receipt()],
     subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
@@ -815,7 +815,7 @@ test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool {
   }
 }
 
-test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> Bool {
+test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> Bool  {
   match compile_phase_frontier_coverage(
     series: [],
     subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
@@ -840,7 +840,7 @@ test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> 
 // layer above it and it is the only executing place the two spellings are compared. Rebind the
 // accessor to `self_host_compile_phase_frontier_receipts |> skip(n: 1)` -- the perturbation this
 // module's sibling live-gate witnesses already use -- and this reds while nothing else does.
-test fn the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series() -> Bool {
+test fn the_persisted_standing_accessor_agrees_with_the_general_fold_on_the_named_series() -> Bool  {
   current_compile_phase_frontier_standing()
     == compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts)
 }

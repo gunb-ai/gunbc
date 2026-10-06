@@ -97,7 +97,7 @@ fn mentions(xs: List<String>, needle: String) -> Bool {
   xs |> any(x => string_contains(s: x, pattern: needle))
 }
 
-test fn an_empty_series_is_its_own_standing() -> Bool {
+test fn an_empty_series_is_its_own_standing() -> Bool  {
   match standing(series: []) {
     BehavioralEquivalenceSeriesEmpty => true
     BehavioralEquivalenceLatest { latest: _, outstanding: _ } => false
@@ -106,18 +106,18 @@ test fn an_empty_series_is_its_own_standing() -> Bool {
 }
 
 // Positive control: exactly the roster, every row held, reads Clear (no outstanding).
-test fn a_complete_all_held_receipt_has_nothing_outstanding() -> Bool {
+test fn a_complete_all_held_receipt_has_nothing_outstanding() -> Bool  {
   let s = standing(series: [all_held(sequence: 1)])
   is_latest(s: s) && count(outstanding_of(s: s)) == 0
 }
 
 // The discriminating red: one refuted row is outstanding, and names its module.
-test fn a_refuted_row_is_outstanding_and_named() -> Bool {
+test fn a_refuted_row_is_outstanding_and_named() -> Bool  {
   let o = outstanding_of(s: standing(series: [b_refuted(sequence: 1)]))
   count(o) == 1 && mentions(xs: o, needle: "b.dag") && !mentions(xs: o, needle: "a.dag")
 }
 
-test fn a_row_with_no_verdict_is_outstanding_not_held() -> Bool {
+test fn a_row_with_no_verdict_is_outstanding_not_held() -> Bool  {
   let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowNoVerdict { cause: "never ran" })])
   let o = outstanding_of(s: standing(series: [r]))
   count(o) == 1 && mentions(xs: o, needle: "never ran")
@@ -125,24 +125,24 @@ test fn a_row_with_no_verdict_is_outstanding_not_held() -> Bool {
 
 // Completeness is an identity join: a missing roster module, and a row naming no roster module,
 // are each outstanding even when every present row held.
-test fn a_missing_and_an_unrostered_row_are_each_outstanding() -> Bool {
+test fn a_missing_and_an_unrostered_row_are_each_outstanding() -> Bool  {
   let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "z.dag", verdict: BehavioralRowHeld)])
   let o = outstanding_of(s: standing(series: [r]))
   count(o) == 2 && mentions(xs: o, needle: "b.dag") && mentions(xs: o, needle: "z.dag")
 }
 
-test fn a_duplicated_row_is_outstanding() -> Bool {
+test fn a_duplicated_row_is_outstanding() -> Bool  {
   let r = receipt(sequence: 1, rows: [row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "a.dag", verdict: BehavioralRowHeld), row(module_path: "b.dag", verdict: BehavioralRowHeld)])
   count(outstanding_of(s: standing(series: [r]))) == 1
 }
 
 // Only the latest receipt speaks: a repair clears, and a later failure is not masked by an earlier pass.
-test fn the_latest_receipt_decides_in_both_directions() -> Bool {
+test fn the_latest_receipt_decides_in_both_directions() -> Bool  {
   count(outstanding_of(s: standing(series: [b_refuted(sequence: 1), all_held(sequence: 2)]))) == 0
     && count(outstanding_of(s: standing(series: [all_held(sequence: 1), b_refuted(sequence: 2)]))) == 1
 }
 
-test fn a_non_increasing_sequence_refuses_the_series() -> Bool {
+test fn a_non_increasing_sequence_refuses_the_series() -> Bool  {
   match standing(series: [all_held(sequence: 2), b_refuted(sequence: 2)]) {
     BehavioralEquivalenceSeriesInvalid { reason: _ } => true
     BehavioralEquivalenceSeriesEmpty => false
@@ -161,7 +161,7 @@ fn foreign_instrument(sequence: Int) -> BehavioralEquivalenceReceipt {
 }
 
 // The red is a receipt whose rows all hold: without the instrument check it would read Clear.
-test fn a_receipt_from_another_instrument_refuses_the_series() -> Bool {
+test fn a_receipt_from_another_instrument_refuses_the_series() -> Bool  {
   let forged = match standing(series: [foreign_instrument(sequence: 1)]) {
     BehavioralEquivalenceSeriesInvalid { reason: _ } => true
     BehavioralEquivalenceSeriesEmpty => false
@@ -188,7 +188,7 @@ fn class_of_series(s: BehavioralEquivalenceStanding) -> String {
   }
 }
 
-test fn the_milestone_derives_from_the_persisted_series() -> Bool {
+test fn the_milestone_derives_from_the_persisted_series() -> Bool  {
   standing_class_label(c: standing_class(s: milestone_status(m: SelfHostEmittedContractsHeld)))
     == class_of_series(s: current_behavioral_equivalence_standing())
 }
@@ -207,7 +207,7 @@ fn outcome_word(o: CsslReceiptOutcome) -> String {
   }
 }
 
-test fn an_absent_witness_artifact_is_a_setup_refusal_not_a_divergence() -> Bool {
+test fn an_absent_witness_artifact_is_a_setup_refusal_not_a_divergence() -> Bool  {
   let refusal = cssl_readiness_refusal(readiness: WitnessBinRefused { bin_name: "witness", path: "/tmp/x/target/release/witness", reason: WitnessBinArtifactAbsent })
   let o = cssl_classify_receipt(setup_refusal: refusal, pass_ok: false, fault_detected: false, claim_ok: true)
   outcome_word(o: o) == "setup-refused"
@@ -215,7 +215,7 @@ test fn an_absent_witness_artifact_is_a_setup_refusal_not_a_divergence() -> Bool
     && string_contains(s: refusal, pattern: "/tmp/x/target/release/witness")
 }
 
-test fn a_failed_build_names_itself_and_outranks_the_failed_drive() -> Bool {
+test fn a_failed_build_names_itself_and_outranks_the_failed_drive() -> Bool  {
   let refusal = cssl_readiness_refusal(readiness: WitnessBinRefused { bin_name: "gunbc", path: "/r/target/release/gunbc", reason: WitnessBinBuildFailed })
   match cssl_classify_receipt(setup_refusal: refusal, pass_ok: false, fault_detected: false, claim_ok: false) {
     CsslSetupRefused { step: refused_step } => string_contains(s: refused_step, pattern: "build failed")
@@ -226,7 +226,7 @@ test fn a_failed_build_names_itself_and_outranks_the_failed_drive() -> Bool {
 
 // The discriminating pair: with setup clean, the same failed drive IS a divergence, and a clean
 // drive holds -- so the setup arm is not simply swallowing every failure.
-test fn with_setup_clean_a_failed_drive_diverges_and_a_clean_one_holds() -> Bool {
+test fn with_setup_clean_a_failed_drive_diverges_and_a_clean_one_holds() -> Bool  {
   cssl_readiness_refusal(readiness: WitnessBinReady { path: "/r/w" }) == ""
     && outcome_word(o: cssl_classify_receipt(setup_refusal: "", pass_ok: false, fault_detected: true, claim_ok: true)) == "diverged"
     && outcome_word(o: cssl_classify_receipt(setup_refusal: "", pass_ok: true, fault_detected: false, claim_ok: true)) == "diverged"
@@ -234,7 +234,7 @@ test fn with_setup_clean_a_failed_drive_diverges_and_a_clean_one_holds() -> Bool
 }
 
 // The taker renders the located setup step into the row's NoVerdict cause rather than dropping it.
-test fn the_taker_carries_the_setup_step_into_the_no_verdict_cause() -> Bool {
+test fn the_taker_carries_the_setup_step_into_the_no_verdict_cause() -> Bool  {
   no_verdict_cause(cause: BehavioralReceiptSetupRefused { module_path: "m.dag", step: "binary witness: artifact absent at /p" })
     == "setup refused: binary witness: artifact absent at /p"
 }

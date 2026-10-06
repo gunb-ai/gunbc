@@ -97,7 +97,7 @@ data planted_live_regression_identity: String = "src/v2_std_compilers_target_mod
 // here is the latest receipt's own raw identity rows, folded by the frontier's fold rather than
 // copied from the receipt's board — so a green also establishes that the live path and the
 // persisted path derive the SAME board from one census. A fold that disagreed would red here.
-test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool {
+test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool  {
   match latest_receipt() {
     Absent => false
     Present { value: latest } =>
@@ -118,7 +118,7 @@ test fn a_live_census_equal_to_the_latest_receipt_holds() -> Bool {
 // A GAINED IDENTITY THAT WAS NOT IN THE LATEST RECEIPT REFUSES AND NAMES IT. The identity must be
 // named so that the actuator can cite what it found; giving one "unable to reproduce" diagnostic
 // for a population of non-reproducible errors and listing none is a wall to say without saying.
-test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
+test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: [latest]),
@@ -136,7 +136,7 @@ test fn a_live_tree_that_gained_an_identity_refuses_and_names_it() -> Bool {
 // A COUNT-ONLY GATE WOULD ACCEPT THIS. One identity removed and one added, cardinality unchanged:
 // the join must refuse at identity grain. This is the probe that would go green if anyone replaced
 // the join with a population-size comparison.
-test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> Bool {
+test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: [latest]),
@@ -157,7 +157,7 @@ test fn a_live_tree_that_swapped_an_identity_at_equal_cardinality_refuses() -> B
 // PROGRESS IS NOT A REGRESSION. A ratchet that refused a strictly smaller population would make
 // every repair unlandable, which is the failure direction opposite to the one above and is just as
 // disqualifying.
-test fn a_live_tree_that_removed_an_identity_holds() -> Bool {
+test fn a_live_tree_that_removed_an_identity_holds() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: [latest]),
@@ -179,7 +179,7 @@ test fn a_live_tree_that_removed_an_identity_holds() -> Bool {
 // A POPULATION AT ALL. The arm must be Unmeasured rather than Held: this is the one the CI runner
 // architecture makes live, because the persisted receipts were measured on x86_64 and a host that
 // is not that host would otherwise silently compare two different censuses and call it a pass.
-test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> Bool {
+test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   let foreign = LiveCompilePhaseObservation {
     parse_observation: match latest.parse_evidence { ParseReached { evidence: parse } => parse },
@@ -212,7 +212,7 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
 // one measured under another and call the agreement a pass. The RED is authorable only because the
 // distinction is a constructor rather than a note: with `target` a bare String there is nothing here
 // to perturb.
-test fn a_pinned_live_invocation_is_incomparable_to_a_defaulted_receipt() -> Bool {
+test fn a_pinned_live_invocation_is_incomparable_to_a_defaulted_receipt() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   let pinned = LiveToolchainReading {
     cargo_identity: latest.subject.cargo_identity,
@@ -235,7 +235,7 @@ test fn a_pinned_live_invocation_is_incomparable_to_a_defaulted_receipt() -> Boo
 
 // The comparability predicate's own accepted control, so the probe above is not simply "this
 // predicate always refuses".
-test fn a_live_observation_on_the_receipts_own_toolchain_is_comparable() -> Bool {
+test fn a_live_observation_on_the_receipts_own_toolchain_is_comparable() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_comparability(latest: latest, live: toolchain_of(receipt: latest)) {
     LiveComparable => true
@@ -246,7 +246,7 @@ test fn a_live_observation_on_the_receipts_own_toolchain_is_comparable() -> Bool
 // AN EMPTY FRONTIER IS NOT A CLEAN ONE. With no persisted receipt there is nothing for the live
 // tree to be ratcheted against, and the honest answer is that no comparison was made — the arm a
 // gate is most tempted to render as a pass.
-test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held() -> Bool {
+test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: []),
@@ -261,7 +261,7 @@ test fn an_empty_receipt_series_leaves_the_live_tree_unmeasured_rather_than_held
 // ROW. Dropping the genesis leaves a series whose first row is typed as a successor, which the
 // frontier's own fold already refuses; the live gate must inherit that refusal rather than reach
 // past it to a board.
-test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
+test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: [synthetic_successor_receipt()]),
@@ -280,7 +280,7 @@ test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
 // is what this is. The perturbation is authorable here even though it is unreachable in production,
 // because a reading is a value a fixture may build; the frontier's own duplicate-population wall
 // carries the same shape and the same justification.
-test fn a_live_observation_folded_under_another_classification_policy_is_unmeasured() -> Bool {
+test fn a_live_observation_folded_under_another_classification_policy_is_unmeasured() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   let reading = toolchain_of(receipt: latest)
   let foreign = LiveToolchainReading {
@@ -318,7 +318,7 @@ data unreached_measurement: EmissionMeasurement = EmissionSubjectUnestablished {
   cause: "planted: the instrument never reached cargo"
 }
 
-test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() -> Bool {
+test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_verdict_for_measurement(
     standing: compile_phase_frontier_standing(series: [latest]),
@@ -333,7 +333,7 @@ test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() ->
 // The same fact one level down, so the wall is pinned at the constructor rather than only at the
 // verdict: no observation is produced at all, which is what makes the empty-census spelling
 // unwritable rather than merely unwritten.
-test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool {
+test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_observation_from_measurement(
     m: unreached_measurement,
@@ -354,7 +354,7 @@ test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool {
 // finally compiling -- and it must hold rather than refuse. So the distinction being enforced is
 // measurement-ABSENT versus census-EMPTY, exactly as claimed, and not a blanket suspicion of small
 // populations. Without this probe, "always answer Unmeasured" would pass every test above.
-test fn an_empty_census_from_a_completed_measurement_still_holds() -> Bool {
+test fn an_empty_census_from_a_completed_measurement_still_holds() -> Bool  {
   let latest = synthetic_compile_phase_receipt()
   match live_tree_frontier_verdict(
     standing: compile_phase_frontier_standing(series: [latest]),

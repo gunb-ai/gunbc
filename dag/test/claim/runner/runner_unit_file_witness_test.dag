@@ -112,13 +112,13 @@ fn as_installed_intent() -> RunnerUnitLifecycleIntent {
 
 // ── The teardown fix, and the control that shows the check can fail ─────────────────────────────
 
-test fn the_rendered_unit_carries_the_declared_teardown_pair() -> Bool {
+test fn the_rendered_unit_carries_the_declared_teardown_pair() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nExitType=main\n")
     && string_contains(s: text, pattern: "\nKillMode=control-group\n")
 }
 
-test fn the_as_installed_teardown_renders_differently_and_cannot_be_mistaken_for_the_fix() -> Bool {
+test fn the_as_installed_teardown_renders_differently_and_cannot_be_mistaken_for_the_fix() -> Bool  {
   let live = rendered_text(intent: as_installed_intent())
   string_contains(s: live, pattern: "\nKillMode=process\n")
     && !string_contains(s: live, pattern: "control-group")
@@ -129,7 +129,7 @@ test fn the_as_installed_teardown_renders_differently_and_cannot_be_mistaken_for
 // intent this module renders satisfies it on this fleet, and the pair the fleet ran before any
 // teardown drop-in does not. Both arms are needed -- without the second, an intent that guaranteed
 // nothing would pass.
-test fn the_rendered_intent_is_the_one_that_stops_a_finished_incarnation() -> Bool {
+test fn the_rendered_intent_is_the_one_that_stops_a_finished_incarnation() -> Bool  {
   lifecycle_intent_stops_finished_incarnation(
     intent: gunbc_runner_lifecycle_intent,
     main_exits_when_incarnation_ends: gunbc_runner_main_exits_when_incarnation_ends,
@@ -145,7 +145,7 @@ test fn the_rendered_intent_is_the_one_that_stops_a_finished_incarnation() -> Bo
 // The ordering dependency was found ABSENT from the live srv1 unit, so this is not a directive
 // asserted for completeness: it is the one whose absence makes a runner's first cargo invocation
 // fail against a FIFO nobody is serving.
-test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool {
+test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nAfter=fixture-other.service\n")
     && string_contains(s: text, pattern: "\nWants=fixture-other.service\n")
@@ -154,14 +154,14 @@ test fn the_jobserver_ordering_dependency_survives_the_redesign() -> Bool {
 
 // An ephemeral runner exits after every job; systemd's default start rate limiter would leave a busy
 // slot FAILED. Dropping this line would look like tidying and would stop the fleet under load.
-test fn the_start_rate_limiter_is_disabled_for_a_restart_per_job_unit() -> Bool {
+test fn the_start_rate_limiter_is_disabled_for_a_restart_per_job_unit() -> Bool  {
   string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "\nStartLimitIntervalSec=0\n")
 }
 
 // Both jobserver lines are derived from one path, so they cannot name different FIFOs -- the
 // silent-misconfig boundary ctrl's own template warned about, made unwritable rather than warned
 // about again.
-test fn both_jobserver_lines_name_the_same_fifo() -> Bool {
+test fn both_jobserver_lines_name_the_same_fifo() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nEnvironment=CTRL_JOBSERVER_FIFO=/fixture/other.fifo\n")
     && string_contains(s: text, pattern: "\nEnvironment=MAKEFLAGS=--jobserver-auth=fifo:/fixture/other.fifo\n")
@@ -171,20 +171,20 @@ test fn both_jobserver_lines_name_the_same_fifo() -> Bool {
 // it as a drop-in and reads it back; a copy in the unit would be the silent loser of a disagreement,
 // because a drop-in wins. An author restoring it out of caution would be reopening that fork, so the
 // absence is pinned.
-test fn the_unit_does_not_restate_the_converged_task_ceiling() -> Bool {
+test fn the_unit_does_not_restate_the_converged_task_ceiling() -> Bool  {
   !string_contains(s: rendered_text(intent: gunbc_runner_lifecycle_intent), pattern: "TasksMax")
 }
 
 // ── Identity, registration and placement ────────────────────────────────────────────────────────
 
-test fn the_advertised_labels_are_the_selector_workflows_pin_against() -> Bool {
+test fn the_advertised_labels_are_the_selector_workflows_pin_against() -> Bool  {
   string_contains(
     s: rendered_text(intent: gunbc_runner_lifecycle_intent),
     pattern: "\nEnvironment='LABELS_JSON=[\"self-hosted\", \"linux\", \"arm64\", \"srv1\"]'\n",
   )
 }
 
-test fn the_app_identity_reaches_the_wrapper_from_its_own_authority() -> Bool {
+test fn the_app_identity_reaches_the_wrapper_from_its_own_authority() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nEnvironment=APP_ID=2653532\n")
     && string_contains(s: text, pattern: "\nEnvironment=INSTALLATION_ID=104134109\n")
@@ -194,7 +194,7 @@ test fn the_app_identity_reaches_the_wrapper_from_its_own_authority() -> Bool {
 
 // The instance specifier is systemd's, and every per-slot path in the unit is a template rather than
 // a fixed slot -- a unit that named one slot would install one runner on a host that carries twenty.
-test fn every_per_slot_path_is_written_as_a_template_instance() -> Bool {
+test fn every_per_slot_path_is_written_as_a_template_instance() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nWorkingDirectory=/opt/actions-runner/%i\n")
     && string_contains(s: text, pattern: "\nEnvironment=RUNNER_DIR=/opt/actions-runner/%i\n")
@@ -202,7 +202,7 @@ test fn every_per_slot_path_is_written_as_a_template_instance() -> Bool {
     && string_contains(s: text, pattern: "Description=Ephemeral GitHub Actions Runner (%i)\n")
 }
 
-test fn the_unit_is_installed_where_the_drop_in_directory_hangs_off() -> Bool {
+test fn the_unit_is_installed_where_the_drop_in_directory_hangs_off() -> Bool  {
   runner_unit_system_path == "/etc/systemd/system/actions-runner@.service"
 }
 
@@ -220,7 +220,7 @@ test fn the_unit_is_installed_where_the_drop_in_directory_hangs_off() -> Bool {
 // installed falls back to whatever the base unit says, and a base unit saying root would run
 // untrusted approved-fork-PR code as root with read on the GitHub App private key. Rendering root
 // here would also defeat the reversibility that made de-privilege a drop-in in the first place.
-test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool {
+test fn the_base_unit_leaves_the_privilege_drop_to_its_drop_in() -> Bool  {
   let text = rendered_text(intent: gunbc_runner_lifecycle_intent)
   string_contains(s: text, pattern: "\nUser=briansrls\n")
     && !string_contains(s: text, pattern: "\nUser=root\n")
@@ -240,7 +240,7 @@ fn fixture_cited_job_user_uid() -> RunnerJobUserRuntimeUidFigure {
   }
 }
 
-test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool {
+test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_docker() -> Bool  {
   match gunbc_runner_unit_depriv_dropin_text_from_figure(
     deploy: wt_srv1_deploy(),
     host: operator_host_srv3,
@@ -259,7 +259,7 @@ test fn the_depriv_dropin_carries_root_the_job_user_the_ci_cache_and_rootless_do
   }
 }
 
-test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
+test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool  {
   let poisoned = RunnerHostDeploy {
     host_label: wt_srv1_deploy().host_label,
     ssh_target: wt_srv1_deploy().ssh_target,
@@ -281,14 +281,14 @@ test fn the_depriv_user_is_the_deploy_unit_user_not_a_neighbour_row() -> Bool {
   }
 }
 
-test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool {
+test fn production_depriv_refuses_transcribed_uncited_docker_host() -> Bool  {
   match gunbc_runner_unit_depriv_dropin_text(deploy: wt_srv1_deploy(), host: operator_host_srv3) {
     RunnerUnitTextRefused { reason: r } => string_contains(s: r as String, pattern: "TranscribedUncited")
     RunnerUnitText { text: _ } => false
   }
 }
 
-test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool {
+test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> Bool  {
   match runner_job_user_xdg_runtime_uid().evidence {
     TranscribedUncited { read_obligation: o } =>
       (runner_job_user_xdg_runtime_uid().uid == fleet_ci_runner_reported_contradiction().reported_uid)
@@ -298,7 +298,7 @@ test fn the_job_user_uid_is_transcribed_uncited_not_the_modeled_posix_row() -> B
   }
 }
 
-test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv() -> Bool {
+test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv() -> Bool  {
   match gunbc_runner_unit_fragment_from_deploy(deploy: wt_srv3_deploy(), host: operator_host_srv3) {
     RunnerUnitTextRefused { reason: _ } => false
     RunnerUnitText { text: t } =>
@@ -309,7 +309,7 @@ test fn the_fragment_for_a_host_pins_that_host_and_still_leaves_root_to_depriv()
   }
 }
 
-test fn the_fragment_from_deploy_uses_the_passed_row_not_a_second_lookup() -> Bool {
+test fn the_fragment_from_deploy_uses_the_passed_row_not_a_second_lookup() -> Bool  {
   let poisoned = RunnerHostDeploy {
     host_label: wt_srv1_deploy().host_label,
     ssh_target: wt_srv1_deploy().ssh_target,
@@ -340,13 +340,13 @@ fn refusal_reason(spec: RunnerSpec) -> String {
   }
 }
 
-test fn a_hosted_runner_spec_refuses_rather_than_rendering_an_empty_label_set() -> Bool {
+test fn a_hosted_runner_spec_refuses_rather_than_rendering_an_empty_label_set() -> Bool  {
   let reason = refusal_reason(spec: HostedRunner { label: UbuntuLatest })
   string_contains(s: reason, pattern: "GitHub-hosted")
     && string_contains(s: reason, pattern: "wrong host")
 }
 
-test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> Bool {
+test fn an_unresolved_runs_on_expression_refuses_as_unknown_not_as_absent() -> Bool  {
   let reason = refusal_reason(spec: RunsOnExpression { expression: "${{ matrix.runner }}" })
   string_contains(s: reason, pattern: "unknown rather than empty")
     && string_contains(s: reason, pattern: "matrix.runner")
@@ -381,7 +381,7 @@ fn invocation_local_text() -> String {
   }
 }
 
-test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool {
+test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Bool  {
   match borrower_death_capacity_disposition(realization: live_realization()) {
     CapacityLostUntilPoolRestart => true
     CapacityPreservedByInvocationLifetime => false
@@ -389,7 +389,7 @@ test fn w_a_cooperative_host_fifo_loses_capacity_when_its_borrower_dies() -> Boo
   }
 }
 
-test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool {
+test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool  {
   match borrower_death_capacity_disposition(
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   ) {
@@ -402,7 +402,7 @@ test fn w_invocation_local_parallelism_preserves_capacity_by_lifetime() -> Bool 
 // THE MAKEFLAGS CLAUSE IS GONE UNDER THE CUTOVER ARM, not merely repointed. Handing cargo an auth
 // clause for a FIFO nobody serves is the silent-misconfig boundary extdeps.jobserver warns about:
 // cargo does not refuse an unrecognised clause, it builds unbounded.
-test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
+test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool  {
   let text = invocation_local_text()
   !string_contains(s: text, pattern: "MAKEFLAGS")
     && !string_contains(s: text, pattern: "CTRL_JOBSERVER_FIFO")
@@ -411,7 +411,7 @@ test fn w_the_cutover_arm_advertises_no_shared_pool() -> Bool {
 
 // AND THE ORDERING DEPENDENCY LEAVES WITH IT. A unit ordering itself After a service the cutover
 // deleted is a fresh failure introduced by the fix.
-test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool {
+test fn w_the_cutover_arm_drops_the_daemon_ordering() -> Bool  {
   !string_contains(s: invocation_local_text(), pattern: "fixture-other.service")
 }
 
@@ -507,7 +507,7 @@ fn production_realization() -> CompileParallelismRealization {
   }
 }
 
-test fn w_the_production_live_arm_is_byte_identical_to_the_parent_shape() -> Bool {
+test fn w_the_production_live_arm_is_byte_identical_to_the_parent_shape() -> Bool  {
   rendered_or_refused(realization: production_realization())
     == serialize_systemd_unit_file(
       file: expected_live_unit_file(
@@ -521,7 +521,7 @@ test fn w_the_production_live_arm_is_byte_identical_to_the_parent_shape() -> Boo
 // hardcoded today's production FIFO and service would pass the witness above perfectly; the expected
 // object here places the fixture path twice and the fixture service twice, so a hardcoded or dropped
 // occurrence fails equality. One independently authored shape, two orthogonal propositions.
-test fn w_the_live_arm_renders_its_argument_rather_than_the_production_constants() -> Bool {
+test fn w_the_live_arm_renders_its_argument_rather_than_the_production_constants() -> Bool  {
   rendered_or_refused(realization: live_realization())
     == serialize_systemd_unit_file(
       file: expected_live_unit_file(
@@ -570,7 +570,7 @@ fn expected_invocation_local_unit_file(jobs: String) -> SystemdUnitFile {
   }
 }
 
-test fn w_the_cutover_arm_has_exactly_its_intended_complete_shape() -> Bool {
+test fn w_the_cutover_arm_has_exactly_its_intended_complete_shape() -> Bool  {
   rendered_or_refused(
     realization: InvocationLocalCargo { jobs_per_slot: hardware_thread_count(count: 8) },
   ) == serialize_systemd_unit_file(file: expected_invocation_local_unit_file(jobs: "8"))

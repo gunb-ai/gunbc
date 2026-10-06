@@ -19,7 +19,7 @@ import gunbc.semantic_conformance_subjects {
 // The subject expects a REFUSAL under the v2 non-exhaustiveness identity, on the refusal facet.
 // This is the shape check on the authored row: an authored subject silently flipped to expecting a
 // value, or re-keyed off the refusal facet, is a different claim wearing this one's name.
-test fn exhaustiveness_subject_expects_the_named_refusal() -> Bool {
+test fn exhaustiveness_subject_expects_the_named_refusal() -> Bool  {
   match cross_module_exhaustiveness_subject.expected {
     ExpectsRefusal { diagnostic_identity: id } =>
       id == ("infer_match_non_exhaustive" as NonEmptyStr)
@@ -39,7 +39,7 @@ test fn exhaustiveness_subject_expects_the_named_refusal() -> Bool {
 // no catch-all; the complete control does match Gamma; the widened provider declares Delta and the
 // complete control does not. Mutating any fixture toward vacuity -- adding the Gamma arm to the
 // incomplete consumer, or dropping Delta from the widened provider -- goes red here.
-test fn exhaustiveness_fixtures_discriminate() -> Bool {
+test fn exhaustiveness_fixtures_discriminate() -> Bool  {
   contains(cross_module_exhaustiveness_provider_fixture, "| Gamma")
     && contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "Alpha => true")
     && contains(cross_module_exhaustiveness_incomplete_consumer_fixture, "Beta => false")
@@ -53,7 +53,7 @@ test fn exhaustiveness_fixtures_discriminate() -> Bool {
 // The authority is AUTHORED -- the arm check is what a reviewer would otherwise eyeball, and it
 // goes red if the subject is ever re-based on an observation-shaped authority smuggled through a
 // refactor of the coproduct.
-test fn exhaustiveness_authority_is_authored() -> Bool {
+test fn exhaustiveness_authority_is_authored() -> Bool  {
   match cross_module_exhaustiveness_subject.authority {
     AuthoredExpectedOutcome { statement: _ } => true
     AlgebraicLaw { law: _, structure: _ } => false

@@ -91,16 +91,16 @@ fn materialized(built: BuiltFixture) -> Bool {
   }
 }
 
-test fn a_real_cargo_build_materializes_through_the_real_digest() -> Bool {
+test fn a_real_cargo_build_materializes_through_the_real_digest() -> Bool  {
   materialized(built: build_fixture_once(target_name: fixture_target_name))
 }
 
-test fn the_materialized_path_is_the_one_the_real_cargo_stream_named() -> Bool {
+test fn the_materialized_path_is_the_one_the_real_cargo_stream_named() -> Bool  {
   let path = observed_path_or_empty(built: build_fixture_once(target_name: fixture_target_name))
   string_contains(path, fixture_target_name) && string_contains(path, "/target/")
 }
 
-test fn a_target_the_build_never_produced_refuses_and_does_not_materialize() -> Bool {
+test fn a_target_the_build_never_produced_refuses_and_does_not_materialize() -> Bool  {
   let built = build_fixture_once(target_name: "a-target-this-crate-does-not-define")
   match built {
     FixtureSetupRefused { cause: _ } => false
@@ -132,7 +132,7 @@ test fn a_target_the_build_never_produced_refuses_and_does_not_materialize() -> 
 }
 
 
-test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> Bool {
+test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> Bool  {
   match build_fixture_once(target_name: fixture_target_name) {
     FixtureSetupRefused { cause: _ } => false
     BuiltFixture { outcome: o } =>
@@ -258,7 +258,7 @@ fn moved_axis_count(both: TwoBuilds) -> Int {
   }
 }
 
-test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool {
+test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool  {
   let both = build_twice_in_one_dir(
     first_source: crate_main,
     second_source: crate_main_variant
@@ -282,7 +282,7 @@ test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool
   }
 }
 
-test fn rebuilding_identical_source_in_place_moves_no_axis() -> Bool {
+test fn rebuilding_identical_source_in_place_moves_no_axis() -> Bool  {
   let both = build_twice_in_one_dir(
     first_source: crate_main,
     second_source: crate_main

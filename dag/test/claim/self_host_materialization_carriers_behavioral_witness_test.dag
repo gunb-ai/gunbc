@@ -11,6 +11,6 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // standing is derived at row grain by v2.compiler.self_host.wet_receipt_route_standing
 // wet_receipt_route_standings.
 
-test fn self_host_materialization_carriers_behavioral_receipt_holds() -> Bool {
+test fn self_host_materialization_carriers_behavioral_receipt_holds() -> Bool  {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/materialization_carriers.dag")
 }
