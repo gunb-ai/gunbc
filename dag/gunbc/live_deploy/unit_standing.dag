@@ -200,7 +200,33 @@ fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> St
     Present { value: v } => Present { value: v }
     Absent => match d {
       ExecStart { command: c } => Present { value: c as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
@@ -210,7 +236,33 @@ fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? 
     Present { value: v } => Present { value: v }
     Absent => match d {
       ServiceUser { name: n } => Present { value: n as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      WorkingDirectory { path: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
@@ -220,7 +272,33 @@ fn service_directive_working_directory(directives: List<SystemdServiceDirective>
     Present { value: v } => Present { value: v }
     Absent => match d {
       WorkingDirectory { path: p } => Present { value: p as String }
-      _ => none
+      RuntimeMaxSec { duration: _ } => none
+      ServiceType { mode: _ } => none
+      RemainAfterExit { active: _ } => none
+      ExecStartPre { command: _ } => none
+      ExecStart { command: _ } => none
+      ExecStartPost { command: _ } => none
+      ExecStop { command: _ } => none
+      ExecStopPost { command: _ } => none
+      ExecStopPostIgnoringFailure { command: _ } => none
+      ServiceStandardOutput { stream: _ } => none
+      ServiceStandardError { stream: _ } => none
+      Restart { policy: _ } => none
+      Environment { assignment: _ } => none
+      LoadCredential { identifier: _, source: _ } => none
+      EnvironmentFile { path: _ } => none
+      EnvironmentFileIfPresent { path: _ } => none
+      ServiceUser { name: _ } => none
+      ServiceGroup { name: _ } => none
+      ServiceSlice { name: _ } => none
+      ServiceNice { priority: _ } => none
+      ServiceIoSchedulingClass { scheduling_class: _ } => none
+      TimeoutStartSec { duration: _ } => none
+      ServiceExitType { exit_type: _ } => none
+      ServiceKillMode { mode: _ } => none
+      RestartSec { duration: _ } => none
+      ServiceTasksMax { count: _ } => none
+      TimeoutStopSec { duration: _ } => none
     }
   })
 }
