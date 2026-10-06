@@ -39060,9 +39060,11 @@ pub fn emit_shell_call(
             source_indices.clone(),
         );
         if needs_capture.clone() {
+            let policy_bind =
+                emit_shell_stderr_policy_binding(op_node.clone(), source_indices.clone());
             let spawn_line = "    .stdin(std::process::Stdio::piped())\n    .stdout(std::process::Stdio::piped())\n    .stderr(std::process::Stdio::piped())".to_string();
             let spawn_exec = "    .spawn()?;".to_string();
-            let write_block = if has_stdin.clone() {
+            let stdin_thread = if has_stdin.clone() {
                 let stdin_expr =
                     crate::v1_std_core::transport_stdin(transport.clone(), source_indices.clone())
                         .clone()
@@ -39085,25 +39087,30 @@ pub fn emit_shell_call(
                 };
                 v1_rt::concat(
                     v1_rt::concat(
-                        "{\n    use std::io::Write;\n    if let Some(mut stdin) = output.stdin.take() {\n        stdin.write_all(".to_string(),
+                        "let mut stdin_pipe = output.stdin.take();\nlet __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {\n    use std::io::Write;\n    if let Some(mut stdin) = stdin_pipe {\n        stdin.write_all(".to_string(),
                         stdin_var.clone(),
                     ),
-                    ".as_bytes())?;\n    }\n}".to_string(),
+                    ".as_bytes())?;\n    }\n    Ok(())\n});\n".to_string(),
                 )
             } else {
-                "if let Some(mut stdin) = output.stdin.take() { drop(stdin); }".to_string()
+                "let mut stdin_pipe = output.stdin.take();\nlet __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {\n    drop(stdin_pipe);\n    Ok(())\n});\n".to_string()
             };
-            let capture_lines = emit_shell_capture_wait(op_node.clone(), source_indices.clone());
+            let capture_lines = v1_rt::concat(
+                v1_rt::concat(shell_capture_drain_start(), stdin_thread),
+                shell_capture_join_project(),
+            );
             let all_lines = v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                    v1_rt::concat(
+                        Rc::new(vec![policy_bind, cmd_line.clone()]),
+                        arg_lines.clone(),
+                    ),
                     env_lines.clone(),
                 ),
                 Rc::new(vec![
                     wd_line.clone(),
                     spawn_line,
                     spawn_exec,
-                    write_block,
                     capture_lines,
                     return_line.clone(),
                 ]),
@@ -39217,13 +39224,10 @@ pub fn shell_error_stderr_binding(result_fields: Rc<Vec<Rc<ShellResultField>>>) 
 }
 
 pub fn emit_shell_capture_wait(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    _op_node: Rc<Node>,
+    _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    v1_rt::concat(
-        emit_shell_stderr_policy_binding(op_node, source_indices),
-        shell_capture_drain_body(),
-    )
+    v1_rt::concat(shell_capture_drain_start(), shell_capture_join_project())
 }
 
 pub fn emit_shell_stderr_policy_binding(
@@ -39247,8 +39251,22 @@ pub fn emit_shell_stderr_policy_binding(
     }
 }
 
+pub fn shell_capture_drain_start() -> String {
+    "let mut stdout_pipe = output.stdout.take();\nlet mut stderr_pipe = output.stderr.take();\nlet stdout_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {\n    let mut buf = Vec::new();\n    if let Some(ref mut reader) = stdout_pipe {\n        std::io::Read::read_to_end(reader, &mut buf)?;\n    }\n    Ok(buf)\n});\nlet stderr_thread = std::thread::spawn(move || -> std::io::Result<(Vec<u8>, u64, bool)> {\n    let mut reader = match stderr_pipe {\n        Some(r) => r,\n        None => return Ok((Vec::new(), 0, false)),\n    };\n    let mut chunk = [0u8; 65536];\n    let mut total: u64 = 0;\n    if let Some(max_bytes) = __stderr_complete_limit {\n        let mut retained = Vec::new();\n        loop {\n            let n = std::io::Read::read(&mut reader, &mut chunk)?;\n            if n == 0 { break; }\n            total += n as u64;\n            if total <= max_bytes as u64 { retained.extend_from_slice(&chunk[..n]); }\n        }\n        let truncated = total > max_bytes as u64;\n        return Ok((if truncated { Vec::new() } else { retained }, total, truncated));\n    }\n    let cap = __stderr_tail_bytes;\n    let mut ring = Vec::with_capacity(cap);\n    let mut start = 0usize;\n    loop {\n        let n = std::io::Read::read(&mut reader, &mut chunk)?;\n        if n == 0 { break; }\n        total += n as u64;\n        for &b in &chunk[..n] {\n            if cap == 0 { continue; }\n            if ring.len() < cap {\n                ring.push(b);\n            } else {\n                ring[start] = b;\n                start = (start + 1) % cap;\n            }\n        }\n    }\n    let retained = if ring.len() < cap || cap == 0 {\n        ring\n    } else {\n        let mut out = Vec::with_capacity(cap);\n        for i in 0..cap { out.push(ring[(start + i) % cap]); }\n        out\n    };\n    let retained_len = retained.len() as u64;\n    Ok((retained, total, total > retained_len))\n});\n".to_string()
+}
+
+pub fn shell_capture_join_project() -> String {
+    "let status = output.wait()?;\n__stdin_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdin write thread panicked\"))??;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nif let Some(max_bytes) = __stderr_complete_limit {\n    if stderr_total_u64 > max_bytes as u64 {\n        return Err(format!(\"WitnessStderrCaptureCompleteBudgetExceeded: stderr total {} exceeds GUNBC_MEMORY_BUDGET_BYTES {}\", stderr_total_u64, max_bytes).into());\n    }\n}\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n".to_string()
+}
+
 pub fn shell_capture_drain_body() -> String {
-    "let mut stdout_pipe = output.stdout.take();\nlet mut stderr_pipe = output.stderr.take();\nlet stdout_thread = std::thread::spawn(move || -> std::io::Result<Vec<u8>> {\n    let mut buf = Vec::new();\n    if let Some(ref mut reader) = stdout_pipe {\n        std::io::Read::read_to_end(reader, &mut buf)?;\n    }\n    Ok(buf)\n});\nlet stderr_thread = std::thread::spawn(move || -> std::io::Result<(Vec<u8>, u64, bool)> {\n    let mut reader = match stderr_pipe {\n        Some(r) => r,\n        None => return Ok((Vec::new(), 0, false)),\n    };\n    let mut chunk = [0u8; 65536];\n    let mut total: u64 = 0;\n    if let Some(max_bytes) = __stderr_complete_limit {\n        let mut retained = Vec::new();\n        loop {\n            let n = std::io::Read::read(&mut reader, &mut chunk)?;\n            if n == 0 { break; }\n            total += n as u64;\n            if total <= max_bytes as u64 { retained.extend_from_slice(&chunk[..n]); }\n        }\n        let truncated = total > max_bytes as u64;\n        return Ok((if truncated { Vec::new() } else { retained }, total, truncated));\n    }\n    let cap = __stderr_tail_bytes;\n    let mut ring = Vec::with_capacity(cap);\n    let mut start = 0usize;\n    loop {\n        let n = std::io::Read::read(&mut reader, &mut chunk)?;\n        if n == 0 { break; }\n        total += n as u64;\n        for &b in &chunk[..n] {\n            if cap == 0 { continue; }\n            if ring.len() < cap {\n                ring.push(b);\n            } else {\n                ring[start] = b;\n                start = (start + 1) % cap;\n            }\n        }\n    }\n    let retained = if ring.len() < cap || cap == 0 {\n        ring\n    } else {\n        let mut out = Vec::with_capacity(cap);\n        for i in 0..cap { out.push(ring[(start + i) % cap]); }\n        out\n    };\n    let retained_len = retained.len() as u64;\n    Ok((retained, total, total > retained_len))\n});\nlet status = output.wait()?;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nif let Some(max_bytes) = __stderr_complete_limit {\n    if stderr_total_u64 > max_bytes as u64 {\n        return Err(format!(\"WitnessStderrCaptureCompleteBudgetExceeded: stderr total {} exceeds GUNBC_MEMORY_BUDGET_BYTES {}\", stderr_total_u64, max_bytes).into());\n    }\n}\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n".to_string()
+    v1_rt::concat(
+        v1_rt::concat(
+            shell_capture_drain_start(),
+            "let mut stdin_pipe = output.stdin.take();\nlet __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {\n    drop(stdin_pipe);\n    Ok(())\n});\n".to_string(),
+        ),
+        shell_capture_join_project(),
+    )
 }
 
 pub fn shell_argv_param_is_word_list(

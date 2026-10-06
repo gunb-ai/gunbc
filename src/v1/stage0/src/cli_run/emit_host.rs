@@ -3485,29 +3485,63 @@ mod fixture_closure_union_tests {
         complete_limit: Option<usize>,
         tail_bytes: usize,
         stderr_payload: &str,
+        stdin_payload: Option<&str>,
     ) -> std::process::Output {
         let body = crate::v1_compiler_emit_rust::shell_capture_drain_body();
         let limit = match complete_limit {
             Some(n) => format!("Some({n})"),
             None => "None".to_string(),
         };
+        let (script, stdin_prelude) = match stdin_payload {
+            Some(stdin) => {
+                let n = stderr_payload.len();
+                let combined = format!("{}{}", stderr_payload, stdin);
+                (
+                    format!("head -c {n} 1>&2; cat >/dev/null"),
+                    format!(
+                        "let __stdin_bytes: Vec<u8> = ({:?}).as_bytes().to_vec();\n\
+                         let mut stdin_pipe = output.stdin.take();\n\
+                         let __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {{\n\
+                             use std::io::Write;\n\
+                             if let Some(mut stdin) = stdin_pipe {{\n\
+                                 stdin.write_all(&__stdin_bytes)?;\n\
+                             }}\n\
+                             Ok(())\n\
+                         }});\n",
+                        combined
+                    ),
+                )
+            }
+            None => ("printf %s '{payload}' 1>&2".to_string(), String::new()),
+        };
+        let drain = if stdin_payload.is_some() {
+            format!(
+                "{}{}{}",
+                crate::v1_compiler_emit_rust::shell_capture_drain_start(),
+                stdin_prelude,
+                crate::v1_compiler_emit_rust::shell_capture_join_project()
+            )
+        } else {
+            body
+        };
         let program = format!(
             "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
+             let __stderr_complete_limit: Option<usize> = {limit};\n\
+             let __stderr_tail_bytes: usize = {tail};\n\
              let mut output = std::process::Command::new(\"sh\")\n\
-             .args([\"-c\", \"printf %s '{payload}' 1>&2\"])\n\
+             .args([\"-c\", \"{script}\"])\n\
+             .stdin(std::process::Stdio::piped())\n\
              .stdout(std::process::Stdio::piped())\n\
              .stderr(std::process::Stdio::piped())\n\
              .spawn()?;\n\
-             let __stderr_complete_limit: Option<usize> = {limit};\n\
-             let __stderr_tail_bytes: usize = {tail};\n\
-             {body}\n\
+             {drain}\n\
              print!(\"{{stderr_truncated}}|{{stderr_total_bytes}}|{{stderr_retained_bytes}}|{{stderr}}\");\n\
              Ok(())\n\
              }}\n",
-            payload = stderr_payload,
+            script = script.replace("{payload}", stderr_payload),
             limit = limit,
             tail = tail_bytes,
-            body = body,
+            drain = drain,
         );
         let root = std::env::temp_dir().join(format!(
             "gunbc-emitted-capture-{}-{}-{}",
@@ -3547,6 +3581,7 @@ mod fixture_closure_union_tests {
             None,
             16,
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            None,
         );
         assert!(
             run.status.success(),
@@ -3561,7 +3596,7 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn emitted_bounded_tail_under_cap_is_complete() {
-        let run = rustc_and_run_emitted_capture("under-cap", None, 16, "abcdefghij");
+        let run = rustc_and_run_emitted_capture("under-cap", None, 16, "abcdefghij", None);
         assert!(
             run.status.success(),
             "under-cap specimen failed: {}",
@@ -3575,7 +3610,8 @@ mod fixture_closure_union_tests {
 
     #[test]
     fn emitted_complete_over_budget_refuses() {
-        let run = rustc_and_run_emitted_capture("complete-over", Some(8), 0, "abcdefghijklmnop");
+        let run =
+            rustc_and_run_emitted_capture("complete-over", Some(8), 0, "abcdefghijklmnop", None);
         assert!(
             !run.status.success(),
             "Complete overflow must refuse, got stdout {:?}",
@@ -3583,8 +3619,98 @@ mod fixture_closure_union_tests {
         );
         let err = String::from_utf8_lossy(&run.stderr);
         assert!(
-            err.contains("WitnessStderrCaptureCompleteBudgetExceeded"),
+            err.contains("WitnessStderrCaptureCompleteBudgetExceeded")
+                && err.contains("16")
+                && err.contains("8"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn emitted_complete_under_budget_retains_all() {
+        let run = rustc_and_run_emitted_capture("complete-under", Some(64), 0, "abcdefghij", None);
+        assert!(
+            run.status.success(),
+            "under-budget Complete failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            "false|10|10|abcdefghij"
+        );
+    }
+
+    #[test]
+    fn emitted_stdin_and_long_stderr_does_not_deadlock() {
+        let stderr = "Y".repeat(80_000);
+        let stdin = "X".repeat(80_000);
+        let run =
+            rustc_and_run_emitted_capture("stdin-long-stderr", None, 16, &stderr, Some(&stdin));
+        assert!(
+            run.status.success(),
+            "stdin+stderr specimen deadlocked or failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            format!("true|80000|16|{}", "Y".repeat(16))
+        );
+    }
+
+    #[test]
+    fn emitted_absent_policy_refuses_before_spawn() {
+        let refusal = crate::v1_compiler_emit::shell_emission_refusal_fact(std::rc::Rc::new(
+            crate::v1_compiler_emit::ShellEmissionRefusal::ShellCapturePolicyInputAbsent {
+                key: "stderr_truncated".to_string(),
+            },
+        ));
+        let marker = std::env::temp_dir().join(format!(
+            "gunbc-absent-policy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let program = format!(
+            "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
+             return Err(\"{refusal}\".into());\n\
+             let _ = std::process::Command::new(\"sh\")\n\
+             .args([\"-c\", \"printf ran > {marker}\"])\n\
+             .status()?;\n\
+             Ok(())\n\
+             }}\n",
+            refusal = refusal.replace('\\', "\\\\").replace('"', "\\\""),
+            marker = marker.display(),
+        );
+        let root =
+            std::env::temp_dir().join(format!("gunbc-absent-policy-src-{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("scratch");
+        let src = root.join("main.rs");
+        let exe = root.join("specimen");
+        std::fs::write(&src, program).expect("write");
+        let compiled = std::process::Command::new("rustc")
+            .args(["--edition=2021", "-o"])
+            .arg(&exe)
+            .arg(&src)
+            .output()
+            .expect("rustc");
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        let run = std::process::Command::new(&exe).output().expect("run");
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(!run.status.success(), "absent policy must refuse");
+        assert!(
+            String::from_utf8_lossy(&run.stderr).contains("stderr_capture"),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert!(
+            !marker.exists(),
+            "the child command ran; policy must refuse before spawn"
         );
     }
 

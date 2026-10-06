@@ -1,0 +1,40 @@
+module gunbc.rust_shell_stderr_capture_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// Seed-growth obligation for the rust shell stderr-capture realization (bright-tern-639 / #13472).
+// Prepared beside the obligation it declares. SeedFeatureCompletion FIRES: the rust emitter
+// gains a concurrent drain that binds WitnessStderrCapturePolicy and projects the capture
+// channels. That class needs an exact-scope operator ruling, as
+// gunbc.modeled_operation_realization_seed_growth modeled_operation_realization_seed_growth_justification
+// did. This row does not mint the ruling; it states the items, the model authority, the
+// boundary, the owner and the deletion trigger so a ruling has a subject.
+//
+// PURPOSE PASSES (gunbc.v1_maintenance_standing v1_seed_standing): the fixture-closure union
+// must emit extdeps.gunbc WitnessBin.Run or the required floor stays red after #13437, which
+// blocks the D2 self-host lane. The seed is the only rust shell emitter.
+//
+// THE FIVE REFUSED CLASSES. NewLanguageBehavior: no. NewCompatibilityObligation: no.
+// NewEscapeHatchOrAdmissionRow: no — absent policy and Complete overflow refuse.
+// SeedFeatureCompletion FIRES (ruling outstanding). PublicSurfaceGrowth: the emit_host
+// additions are cfg(test) discriminators, not a published CLI.
+//
+// Hand items below are the emit_host executing harness. The emitter body lives in
+// src/v1/05_emit_rust.dag and its stage0 mirror; those are generated, not this roster.
+data rust_shell_stderr_capture_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "rustc_and_run_emitted_capture", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_bounded_tail_truncates_and_keeps_the_tail", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_bounded_tail_under_cap_is_complete", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_complete_over_budget_refuses", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_complete_under_budget_retains_all", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_stdin_and_long_stderr_does_not_deadlock", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.emit_host", decl_name: "emitted_absent_policy_refuses_before_spawn", field: WholeDeclaration }
+  ],
+  reason: "The rust shell handler must realize stderr_truncated / stderr_total_bytes / stderr_retained_bytes under the authored WitnessStderrCapturePolicy so the fixture-closure union can emit WitnessBin.Run. These host tests compile and run the emitted drain against a child process; a .contains() on the drain string is not a consumer (DESIGN section 5). They stay rust because the subject is the rust realization fragment the seed emits.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these items when a .dag witness compiles the emitted rust crate and runs the same six discriminators without a host rustc harness, and WitnessBin.Run still emits. The union digest_hex control stays.",
+  current_boundary: "Bind and validate WitnessStderrCapturePolicy before spawn; start stdout and stderr drains immediately; write stdin concurrently; wait and join; project BoundedTail or return WitnessStderrCaptureCompleteBudgetExceeded with the measured total and admitted limit. No fallback tail length. Capture-accounting channels without the typed policy refuse at the rust emit diagnostic and, if that wall is skipped, as a pre-spawn return Err. Python and go still refuse those channels at emit. Unmodeled keys such as stderr_digest_hex still refuse."
+}
