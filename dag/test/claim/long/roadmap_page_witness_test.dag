@@ -2332,6 +2332,17 @@ test fn witness_workflow_wire_carries_the_revision_the_rail_draws() -> Bool {
     && !string_contains(s: wire, pattern: "el-build-meter")
 }
 
+// THE PAGE HANDS THE METER ITS NEWER RENDERING. The workflow observation takes a rendering only
+// when its revision is the one still wanted, and then dispatches it to the meter instead of
+// swapping it in, so when the drawing changes is the meter's own decision
+// (gunbc.site.build_meter_client).
+test fn witness_workflow_observation_hands_the_meter_its_rendering() -> Bool {
+  let js = extdeps.languages.typescript.program.serialize_ts_stmts_indented(stmts: gunbc.roadmap_component.workflow_meter_swap_stmts(), indent: "")
+  string_contains(s: js, pattern: join(["bm.dispatchEvent(new CustomEvent('", gunbc.site.build_meter_client.build_meter_fresh_event, "', { detail: fresh }))"], ""))
+    && string_contains(s: js, pattern: "getAttribute('data-attempt-view-revision') === bm.getAttribute('data-meter-wanted')")
+    && !string_contains(s: js, pattern: "innerHTML")
+}
+
 // THE HISTORY TAB'S EVENT LEDGER (owner ruling 2026-09-24, moved to the History tab by the
 // 2026-09-25 page architecture): the issue's durable event history renders one row per envelope,
 // NEWEST FIRST by recorded_at — the envelope written at 03:00 heads the 02:00 and the 01:00, each

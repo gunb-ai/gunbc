@@ -14,7 +14,7 @@ import gunbc.site.robot_mark { robot_mark_body, robot_mark_left_eye, robot_mark_
 import gunbc.site.element.palette {
   PaletteSlot, palette_var, SlotAction, SlotBorder, SlotError, SlotHover, SlotSurface, SlotTextDim,
   SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
-  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
+  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish, SlotMeterSuccess,
 }
 import gunbc.site.element.text { element_text_decls, ElementLabel }
 import gunbc.site.element.touch_target { touch_target_rule, TouchTargetCentredLink }
@@ -29,8 +29,9 @@ import gunbc.roadmap.roadmap_submission {
 }
 import extdeps.languages.css.selectors { ClassSelector, RawSelector }
 import extdeps.languages.css.properties {
-  AlignItems, AnimationDelay, AnimationDuration, Background, BorderRadius, BoxShadow, Display, Fill, Gap, Height,
-  Margin, MaxWidth, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width, RawProperty,
+  AlignItems, Animation, AnimationDelay, AnimationDuration, Background, BorderRadius, BoxShadow, ClipPath, Display, Fill, Gap,
+  GridArea, Height, Margin, MaxWidth, Opacity, Outline, Overflow, Padding, Position, TextDecoration, Transform, WhiteSpace, Width,
+  RawProperty,
 }
 
 // BuildMeter: one attempt's recorded work as a quiet visual link. It draws a strip of the recent
@@ -175,6 +176,31 @@ fn build_meter_pose_key(pose: BuildMeterPose) -> String {
   }
 }
 
+// WHEN A CLIENT DRAWS A NEW SCENE. A stopped or published attempt has ended, so its drawing is
+// drawn as soon as it is observed and is never held back. Any other scene is drawn only once it has
+// held for the client's dwell (gunbc.site.build_meter_client), so activity that flaps between
+// observations is never drawn as a flicker. A stale attempt's paused worker waits like any other.
+type BuildMeterSettle
+  = BuildMeterSettleAtOnce
+  | BuildMeterSettleAfterDwell
+
+fn build_meter_settle_key(settle: BuildMeterSettle) -> String {
+  match settle {
+    BuildMeterSettleAtOnce => "at-once"
+    BuildMeterSettleAfterDwell => "after-dwell"
+  }
+}
+
+fn build_meter_pose_settle(pose: BuildMeterPose) -> BuildMeterSettle {
+  match pose {
+    BuildMeterWorking => BuildMeterSettleAfterDwell
+    BuildMeterWaitingForSeat => BuildMeterSettleAfterDwell
+    BuildMeterStopped => BuildMeterSettleAtOnce
+    BuildMeterDone => BuildMeterSettleAtOnce
+    BuildMeterIdle => BuildMeterSettleAfterDwell
+  }
+}
+
 // HOW AN ATTEMPT FAILED, as the producer classifies its failure events. A refusal is a stage that
 // declined to proceed on the evidence it had; a verification failure is a candidate the
 // verification stage judged; an activity failure is any other stage that ended failed; a spent
@@ -304,7 +330,6 @@ data build_meter_droop_class: String = "el-build-meter-droop"
 // and the target the link opens, which can be longer than the strip.
 data build_meter_digest_measure: String = "24ch"
 data build_meter_sleep_class: String = "el-build-meter-sleep"
-data build_meter_room_class: String = "el-build-meter-room"
 data build_meter_snooze_class: String = "el-build-meter-snooze"
 data build_meter_z_class: String = "el-build-meter-z"
 data build_meter_blink_class: String = "el-build-meter-blink"
@@ -312,15 +337,35 @@ data build_meter_name_class: String = "el-build-meter-name"
 data build_meter_badge_class: String = "el-build-meter-badge"
 data build_meter_digest_class: String = "el-build-meter-digest"
 
+// The parts of a drawing a change moves (build_meter_cues). The canvas holds the drawing, and two
+// drawings while a change plays; the figure places the worker, the gait carries its walk and the
+// worker group its bob.
+data build_meter_canvas_class: String = "el-build-meter-canvas"
+data build_meter_strip_class: String = "el-build-meter-strip"
+data build_meter_figure_class: String = "el-build-meter-figure"
+data build_meter_gait_class: String = "el-build-meter-gait"
+data build_meter_finish_class: String = "el-build-meter-finish"
+data build_meter_edge_class: String = "el-build-meter-edge"
+data build_meter_fault_class: String = "el-build-meter-fault"
+
 // State classes a client may set on the element. They change decoration only.
 data build_meter_drowsy_class: String = "el-build-meter-drowsy"
 data build_meter_asleep_class: String = "el-build-meter-asleep"
 data build_meter_waking_class: String = "el-build-meter-waking"
 data build_meter_beat_class: String = "el-build-meter-beat"
+// Set on the canvas while a change plays.
+data build_meter_changing_class: String = "el-build-meter-changing"
 
 data build_meter_subject_attribute: String = "data-build-meter"
 data build_meter_revision_attribute: String = "data-attempt-view-revision"
 data build_meter_rounds_attribute: String = "data-meter-rounds"
+data build_meter_scene_attribute: String = "data-meter-scene"
+data build_meter_settle_attribute: String = "data-meter-settle"
+data build_meter_stance_attribute: String = "data-meter-stance"
+data build_meter_worker_x_attribute: String = "data-meter-worker-x"
+data build_meter_side_attribute: String = "data-meter-side"
+data build_meter_from_attribute: String = "data-meter-from"
+data build_meter_to_attribute: String = "data-meter-to"
 data build_meter_pose_attribute: String = "data-meter-pose"
 data build_meter_coverage_attribute: String = "data-meter-coverage"
 data build_meter_outcome_attribute: String = "data-meter-outcome"
@@ -332,7 +377,6 @@ data build_meter_lid_attribute: String = "data-lid"
 data build_meter_worker_attribute: String = "data-worker"
 data build_meter_edge_attribute: String = "data-edge"
 data build_meter_history_attribute: String = "data-history"
-data build_meter_prop_attribute: String = "data-prop"
 data build_meter_z_attribute: String = "data-z"
 data build_meter_look_left: String = "left"
 data build_meter_look_right: String = "right"
@@ -575,9 +619,9 @@ fn build_meter_round_failure_nodes(view: BuildMeterView, round: BuildMeterRound)
     Present { value: d } => match failure_target_round(target: d.target) {
       Absent => []
       Present { value: step } => if step != round.step { [] } else { match d.kind {
-        FailureVerificationFailed => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "seal"), build_meter_translate(x: 0 - 2, y: 0)], children: [build_meter_seal_node()])]
-        FailureRefused => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
-        FailureActivityFailed => [build_meter_svg(tag: "g", attributes: [attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
+        FailureVerificationFailed => [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_fault_class), attr(name: build_meter_edge_attribute, value: "seal"), build_meter_translate(x: 0 - 2, y: 0)], children: [build_meter_seal_node()])]
+        FailureRefused => [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_fault_class), attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
+        FailureActivityFailed => [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_fault_class), attr(name: build_meter_edge_attribute, value: "broken")], children: build_meter_broken_mark_nodes())]
         FailureBudgetSpent => []
         FailureHandoffBlocked => []
       } }
@@ -701,9 +745,9 @@ fn build_meter_edge_mark_width(view: BuildMeterView) -> Int {
 // unit of the drawing is one CSS pixel, so each value is rounded to the nearest unit. Three
 // quantisations are deliberate and named here. The right eye is the left eye mirrored, as the mark
 // is symmetric, so rounding cannot set the eyes off centre. The mouth is widened to an even width
-// so it centres on the even body. The antenna, two units tall at this scale, is drawn three units
-// tall (a two-unit stem under a ball two units tall and four wide) so the ball reads as a ball
-// above its stem. The feet are the worker's own: the mark has none.
+// so it centres on the even body. The antenna, two units tall at this scale, is drawn five units
+// tall (a one-unit stem under a ball six units across with its corners cut) so the ball reads as a
+// ball above its stem; the narrower balls tried before read as a cross. The feet are the worker's own: the mark has none.
 type BuildMeterBox {
   x: Int
   y: Int
@@ -778,11 +822,17 @@ fn build_meter_body_row(y: Int) -> BuildMeterBox {
 data build_meter_body_rows: List<BuildMeterBox> = map(build_meter_body_ys(y: 0), y => build_meter_body_row(y: y))
 
 // The antenna above the body's top row: a two-unit stem centred on the body, under a ball.
-data build_meter_antenna_rows: List<BuildMeterBox> = [
+data build_meter_antenna_stem_rows: List<BuildMeterBox> = [
   build_meter_box(x: build_meter_worker_width / 2 - 1, y: 0 - 1, w: 2, h: 1),
-  build_meter_box(x: build_meter_worker_width / 2 - 2, y: 0 - 2, w: 4, h: 1),
-  build_meter_box(x: build_meter_worker_width / 2 - 1, y: 0 - 3, w: 2, h: 1),
 ]
+// The ball is six units across and four tall with its corners cut, wider than its two-unit
+// stalk, so it reads as a round ball; any ball four units across is a plus sign at this size.
+data build_meter_antenna_ball_rows: List<BuildMeterBox> = [
+  build_meter_box(x: build_meter_worker_width / 2 - 2, y: 0 - 2, w: 4, h: 1),
+  build_meter_box(x: build_meter_worker_width / 2 - 3, y: 0 - 4, w: 6, h: 2),
+  build_meter_box(x: build_meter_worker_width / 2 - 2, y: 0 - 5, w: 4, h: 1),
+]
+data build_meter_antenna_rows: List<BuildMeterBox> = concat(build_meter_antenna_stem_rows, build_meter_antenna_ball_rows)
 
 // The outline of the same body, for a paused (stale) worker: each row's edge pixels (the whole row
 // at the top and bottom, and on the corners as far as the next row steps in), hollow feet, the
@@ -841,26 +891,25 @@ fn build_meter_pose_droops(pose: BuildMeterPose) -> Bool {
     BuildMeterWorking => false
     BuildMeterWaitingForSeat => true
     BuildMeterStopped => true
-    BuildMeterDone => true
+    BuildMeterDone => false
     BuildMeterIdle => true
   }
 }
 
-// Where the worker rests. On its feet it works, idles or stands stopped. Sitting, it has no feet
-// and its eyes are shut, and it naps: on the floor beside a published attempt's finish rule its
-// body is two units lower, and on a chair in the waiting room (waiting for a serving seat) the seat
-// holds it at its standing height.
+
+// Where the worker rests. On its feet it works, idles, stands stopped, or stands beside a
+// published attempt's finish rule. Waiting for a serving seat it sits on the floor, two units
+// lower, with no feet and its eyes shut, and naps.
 type BuildMeterRest
   = BuildMeterOnFeet
   | BuildMeterOnFloor
-  | BuildMeterOnChair
 
 fn build_meter_pose_rest(pose: BuildMeterPose) -> BuildMeterRest {
   match pose {
     BuildMeterWorking => BuildMeterOnFeet
-    BuildMeterWaitingForSeat => BuildMeterOnChair
+    BuildMeterWaitingForSeat => BuildMeterOnFloor
     BuildMeterStopped => BuildMeterOnFeet
-    BuildMeterDone => BuildMeterOnFloor
+    BuildMeterDone => BuildMeterOnFeet
     BuildMeterIdle => BuildMeterOnFeet
   }
 }
@@ -869,7 +918,6 @@ fn build_meter_rest_sits(rest: BuildMeterRest) -> Bool {
   match rest {
     BuildMeterOnFeet => false
     BuildMeterOnFloor => true
-    BuildMeterOnChair => true
   }
 }
 
@@ -877,7 +925,6 @@ fn build_meter_rest_drop(rest: BuildMeterRest) -> Int {
   match rest {
     BuildMeterOnFeet => 0
     BuildMeterOnFloor => 2
-    BuildMeterOnChair => 0
   }
 }
 
@@ -895,30 +942,105 @@ fn build_meter_eye_node(x: Int) -> Fragment {
   build_meter_rect(x: x, y: build_meter_eye_top, w: build_meter_eye_size, h: build_meter_eye_size, attributes: [])
 }
 
-// Standing: feet under the body. Sitting: no feet and eyes shut, on the floor or on a chair
-// (build_meter_pose_rest).
-fn build_meter_worker_node(pose: BuildMeterPose, stale: Bool, x: Int) -> Fragment {
-  if stale { build_meter_paused_worker_node(x: x) } else { build_meter_solid_worker_node(pose: pose, x: x) }
+// Standing: feet under the body. Sitting: no feet and eyes shut, on the floor
+// (build_meter_pose_rest). The face follows the outcome (build_meter_expression).
+fn build_meter_worker_node(pose: BuildMeterPose, expression: BuildMeterExpression, stale: Bool, x: Int) -> Fragment {
+  if stale { build_meter_paused_worker_node(x: x) } else { build_meter_solid_worker_node(pose: pose, expression: expression, x: x) }
+}
+
+// HOW THE WORKER FEELS ABOUT THE OUTCOME, from the outcome alone. Deadpan is the character, and it
+// stays deadpan while it works, waits, idles, or stops at its step budget (which is not a failure).
+// A published attempt accomplished something, so its worker is mildly content: its eyes close in
+// two small arcs over a small smile, and its antenna lights green. An attempt that failed
+// leaves it mildly sad: its lids droop over a small frown, and its antenna lights red.
+type BuildMeterExpression
+  = BuildMeterDeadpan
+  | BuildMeterContent
+  | BuildMeterSad
+
+fn build_meter_expression(view: BuildMeterView) -> BuildMeterExpression {
+  match view.failure {
+    Present { value: d } => match d.kind {
+      FailureBudgetSpent => BuildMeterDeadpan
+      FailureVerificationFailed => BuildMeterSad
+      FailureRefused => BuildMeterSad
+      FailureActivityFailed => BuildMeterSad
+      FailureHandoffBlocked => BuildMeterSad
+    }
+    Absent => if build_meter_is_published(handoff: view.handoff) { BuildMeterContent } else { BuildMeterDeadpan }
+  }
+}
+
+fn build_meter_px(x: Int, y: Int) -> BuildMeterBox {
+  build_meter_box(x: x, y: y, w: 1, h: 1)
+}
+
+// A content eye: the square's top middle and its two lower corners, an arc closed upward.
+fn build_meter_arc_eye_rows(x: Int) -> List<BuildMeterBox> {
+  [build_meter_px(x: x + build_meter_eye_size / 2, y: build_meter_eye_top), build_meter_px(x: x, y: build_meter_eye_top + 1), build_meter_px(x: x + build_meter_eye_size - 1, y: build_meter_eye_top + 1)]
+}
+
+// The mouth bent one unit at its ends: up for a smile, down for a frown, its middle on the mouth's row.
+fn build_meter_bent_mouth_rows(up: Bool) -> List<BuildMeterBox> {
+  let corner_y = if up { build_meter_mouth.y - 1 } else { build_meter_mouth.y + 1 }
+  [
+    build_meter_px(x: build_meter_mouth.x, y: corner_y),
+    build_meter_box(x: build_meter_mouth.x + 1, y: build_meter_mouth.y, w: build_meter_mouth.w - 2, h: 1),
+    build_meter_px(x: build_meter_mouth.x + build_meter_mouth.w - 1, y: corner_y),
+  ]
+}
+
+fn build_meter_face_nodes(pose: BuildMeterPose, expression: BuildMeterExpression, sits: Bool) -> List<Fragment> {
+  match expression {
+    BuildMeterContent => [build_meter_painted(paint: "feature", children: build_meter_rows(rows: concat(flat_map(build_meter_eye_lefts, x => build_meter_arc_eye_rows(x: x)), build_meter_bent_mouth_rows(up: true))))]
+    BuildMeterSad => [
+      build_meter_painted(paint: "feature", children: concat(map(build_meter_eye_lefts, x => build_meter_eye_node(x: x)), build_meter_rows(rows: build_meter_bent_mouth_rows(up: false)))),
+      build_meter_lid_group(class_name: build_meter_droop_class, rows: build_meter_upper_lid_rows, on: true),
+      build_meter_lid_group(class_name: build_meter_sleep_class, rows: build_meter_lower_lid_rows, on: false),
+      build_meter_lid_group(class_name: build_meter_blink_class, rows: concat(build_meter_upper_lid_rows, build_meter_lower_lid_rows), on: false),
+    ]
+    BuildMeterDeadpan => [
+      build_meter_painted(paint: "feature", children: concat(map(build_meter_eye_lefts, x => build_meter_eye_node(x: x)), build_meter_rows(rows: [build_meter_mouth]))),
+      build_meter_lid_group(class_name: build_meter_droop_class, rows: build_meter_upper_lid_rows, on: build_meter_pose_droops(pose: pose)),
+      build_meter_lid_group(class_name: build_meter_sleep_class, rows: build_meter_lower_lid_rows, on: sits),
+      build_meter_lid_group(class_name: build_meter_blink_class, rows: concat(build_meter_upper_lid_rows, build_meter_lower_lid_rows), on: false),
+    ]
+  }
+}
+
+// The antenna ball lights with the outcome: green for a published attempt, the error red for a
+// failed one, and the body's own paint otherwise.
+fn build_meter_antenna_paint(expression: BuildMeterExpression) -> String {
+  match expression {
+    BuildMeterContent => "success"
+    BuildMeterSad => "stop"
+    BuildMeterDeadpan => "body"
+  }
+}
+
+// Where the worker stands, as three nested groups: the figure at its place, the gait a change
+// walks, and the worker itself. A CSS transform replaces an SVG transform attribute on the same
+// element, so each motion has a group of its own.
+fn build_meter_figure_node(x: Int, y: Int, worker: Fragment) -> Fragment {
+  build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_figure_class), build_meter_translate(x: x, y: y)], children: [
+    build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_gait_class)], children: [worker]),
+  ])
 }
 
 // Paused: the attempt was launched on a revision the deployed tree has moved past, so its worker
 // stands as an outline. It neither works nor sleeps, and it carries no colour of its own.
 fn build_meter_paused_worker_node(x: Int) -> Fragment {
-  build_meter_svg(tag: "g", attributes: [build_meter_translate(x: x, y: build_meter_worker_top)], children: [
-    build_meter_svg(tag: "g", attributes: [
-      attr(name: "class", value: build_meter_worker_class),
-      attr(name: build_meter_worker_attribute, value: "outline"),
-    ], children: [build_meter_painted(paint: "edge", children: build_meter_rows(rows: build_meter_edge_rows))]),
-  ])
+  build_meter_figure_node(x: x, y: build_meter_worker_top, worker: build_meter_svg(tag: "g", attributes: [
+    attr(name: "class", value: build_meter_worker_class),
+    attr(name: build_meter_worker_attribute, value: "outline"),
+  ], children: [build_meter_painted(paint: "edge", children: build_meter_rows(rows: build_meter_edge_rows))]))
 }
 
-fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
+fn build_meter_solid_worker_node(pose: BuildMeterPose, expression: BuildMeterExpression, x: Int) -> Fragment {
   let rest = build_meter_pose_rest(pose: pose)
   let sits = build_meter_rest_sits(rest: rest)
   let reaches = build_meter_pose_reaches(pose: pose)
-  build_meter_svg(tag: "g", attributes: [
-    build_meter_translate(x: x, y: build_meter_worker_top + build_meter_rest_drop(rest: rest)),
-  ], children: [build_meter_svg(tag: "g", attributes: [
+  build_meter_figure_node(x: x, y: build_meter_worker_top + build_meter_rest_drop(rest: rest), worker: build_meter_svg(tag: "g", attributes: [
     attr(name: "class", value: build_meter_worker_class),
     attr(name: build_meter_worker_attribute, value: "solid"),
   ], children: concat(
@@ -928,75 +1050,18 @@ fn build_meter_solid_worker_node(pose: BuildMeterPose, x: Int) -> Fragment {
         [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_arm_class), attr(name: build_meter_paint_attribute, value: "body")], children: [build_meter_rect(x: 0 - 2, y: 8, w: 3, h: 3, attributes: [])])]
       } else { [] }),
     [
-      build_meter_painted(paint: "body", children: build_meter_rows(rows: concat(build_meter_body_rows, build_meter_antenna_rows))),
+      build_meter_painted(paint: "body", children: build_meter_rows(rows: concat(build_meter_body_rows, build_meter_antenna_stem_rows))),
+      build_meter_painted(paint: build_meter_antenna_paint(expression: expression), children: build_meter_rows(rows: build_meter_antenna_ball_rows)),
       build_meter_painted(paint: "light", children: build_meter_rows(rows: build_meter_light_rows)),
       build_meter_painted(paint: "shade", children: build_meter_rows(rows: build_meter_shade_rows)),
-      build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_face_class)], children: [
-        build_meter_painted(paint: "feature", children: concat(
-          map(build_meter_eye_lefts, x => build_meter_eye_node(x: x)),
-          build_meter_rows(rows: [build_meter_mouth]))),
-        build_meter_lid_group(class_name: build_meter_droop_class, rows: build_meter_upper_lid_rows, on: build_meter_pose_droops(pose: pose)),
-        build_meter_lid_group(class_name: build_meter_sleep_class, rows: build_meter_lower_lid_rows, on: sits),
-        build_meter_lid_group(class_name: build_meter_blink_class, rows: concat(build_meter_upper_lid_rows, build_meter_lower_lid_rows), on: false),
-      ]),
-    ]))])
-}
-
-// THE WAITING ROOM. A worker waiting for a serving seat naps on a chair beside an empty one, under
-// a wall clock. The room says nothing the accessible name does not, and it has no number: the view
-// carries no place in a queue, so no ticket or count is drawn. Every prop is in the prop paint and
-// is drawn before the worker, which sits in front of its own chair's seat.
-//
-// A chair is seen from the side, backrest to the left: a post two units wide that is the backrest
-// and the back leg, a seat two units thick, and a one-unit front leg, all standing on the floor. The
-// empty chair is eight units deep; the worker's own chair runs under the worker, so only its post,
-// the seat beside the worker and the front leg under it show. The clock is a five-unit ring with
-// two hands, on the wall above the empty chair. The room puts the worker eighteen units further
-// along the strip.
-data build_meter_room_width: Int = 18
-data build_meter_chair_post_top: Int = 8
-data build_meter_chair_seat_y: Int = build_meter_floor - 4
-data build_meter_empty_chair_depth: Int = 8
-data build_meter_worker_chair_depth: Int = 19
-
-data build_meter_clock_rows: List<BuildMeterBox> = [
-  build_meter_box(x: 1, y: 0, w: 3, h: 1),
-  build_meter_box(x: 0, y: 1, w: 1, h: 3),
-  build_meter_box(x: 4, y: 1, w: 1, h: 3),
-  build_meter_box(x: 1, y: 4, w: 3, h: 1),
-  build_meter_box(x: 2, y: 1, w: 1, h: 2),
-  build_meter_box(x: 3, y: 2, w: 1, h: 1),
-]
-
-fn build_meter_chair_rows(x: Int, depth: Int) -> List<BuildMeterBox> {
-  [
-    build_meter_box(x: x, y: build_meter_chair_post_top, w: 2, h: build_meter_floor - build_meter_chair_post_top),
-    build_meter_box(x: x, y: build_meter_chair_seat_y, w: depth, h: 2),
-    build_meter_box(x: x + depth - 1, y: build_meter_chair_seat_y + 2, w: 1, h: build_meter_floor - build_meter_chair_seat_y - 2),
-  ]
-}
-
-fn build_meter_prop_node(prop: String, x: Int, y: Int, rows: List<BuildMeterBox>) -> Fragment {
-  build_meter_svg(tag: "g", attributes: [
-    attr(name: build_meter_prop_attribute, value: prop),
-    attr(name: build_meter_paint_attribute, value: "prop"),
-    build_meter_translate(x: x, y: y),
-  ], children: build_meter_rows(rows: rows))
-}
-
-// The room for a worker drawn at worker_x.
-fn build_meter_waiting_room_node(worker_x: Int) -> Fragment {
-  build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_room_class)], children: [
-    build_meter_prop_node(prop: "empty-chair", x: worker_x - 15, y: 0, rows: build_meter_chair_rows(x: 0, depth: build_meter_empty_chair_depth)),
-    build_meter_prop_node(prop: "clock", x: worker_x - 12, y: 1, rows: build_meter_clock_rows),
-    build_meter_prop_node(prop: "chair", x: worker_x - 4, y: 0, rows: build_meter_chair_rows(x: 0, depth: build_meter_worker_chair_depth)),
-  ])
+      build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_face_class)], children: build_meter_face_nodes(pose: pose, expression: expression, sits: sits)),
+    ])))
 }
 
 // THE NAP: two z glyphs beside a sitting worker's head, the small one (three units wide, so its
 // diagonal needs four rows to read as a z rather than an I) lower and nearer, in the prop paint. It
-// is the one drawing of sleep, shared by the worker on a chair and the worker on the floor, and
-// placed from the worker's own top so it rides with either. At rest both glyphs show; decoration
+// is the one drawing of sleep, the worker waiting for a serving seat on the floor, and
+// placed from the worker's own top. At rest both glyphs show; decoration
 // drifts each up and away in turn (build_meter_drift_cycle), seeded per attempt like the blink and
 // removed under reduced motion by the shared rule, which leaves both showing. The glyph that moves
 // is an inner group, because a CSS transform replaces an SVG transform attribute on the same
@@ -1050,34 +1115,73 @@ fn build_meter_history_nodes(view: BuildMeterView) -> List<Fragment> {
   }
 }
 
-// A paused (stale) worker has no scene: it neither waits nor sleeps.
-fn build_meter_in_room(view: BuildMeterView) -> Bool {
-  !view.stale && match build_meter_pose_rest(pose: view.pose) {
-    BuildMeterOnChair => true
-    BuildMeterOnFeet => false
-    BuildMeterOnFloor => false
+// A paused (stale) worker neither waits nor sleeps.
+fn build_meter_naps(view: BuildMeterView) -> Bool {
+  !view.stale && build_meter_rest_sits(rest: build_meter_pose_rest(pose: view.pose))
+}
+
+// WHAT THE DRAWING SHOWS THE WORKER DOING: its pose, or paused for a stale attempt, whose worker is
+// the outline whatever the pose. A client compares scenes to tell a new drawing from a grown one,
+// and reads from the scene when to draw it and how the worker rests.
+type BuildMeterScene
+  = BuildMeterPoseScene { pose: BuildMeterPose }
+  | BuildMeterPausedScene
+
+type BuildMeterStance
+  = BuildMeterStanding
+  | BuildMeterSitting
+  | BuildMeterOutline
+
+fn build_meter_scene(view: BuildMeterView) -> BuildMeterScene {
+  if view.stale { BuildMeterPausedScene } else { BuildMeterPoseScene { pose: view.pose } }
+}
+
+fn build_meter_scene_key(scene: BuildMeterScene) -> String {
+  match scene {
+    BuildMeterPoseScene { pose } => build_meter_pose_key(pose: pose)
+    BuildMeterPausedScene => "paused"
   }
 }
 
-fn build_meter_naps(view: BuildMeterView) -> Bool {
-  !view.stale && build_meter_rest_sits(rest: build_meter_pose_rest(pose: view.pose))
+fn build_meter_scene_settle(scene: BuildMeterScene) -> BuildMeterSettle {
+  match scene {
+    BuildMeterPoseScene { pose } => build_meter_pose_settle(pose: pose)
+    BuildMeterPausedScene => BuildMeterSettleAfterDwell
+  }
+}
+
+fn build_meter_scene_stance(scene: BuildMeterScene) -> BuildMeterStance {
+  match scene {
+    BuildMeterPoseScene { pose } => if build_meter_rest_sits(rest: build_meter_pose_rest(pose: pose)) { BuildMeterSitting } else { BuildMeterStanding }
+    BuildMeterPausedScene => BuildMeterOutline
+  }
+}
+
+fn build_meter_stance_key(stance: BuildMeterStance) -> String {
+  match stance {
+    BuildMeterStanding => "standing"
+    BuildMeterSitting => "sitting"
+    BuildMeterOutline => "outline"
+  }
 }
 
 fn build_meter_art(view: BuildMeterView) -> Fragment {
   let history = build_meter_history_width(view: view)
   let edge_x = history + 3
-  let in_room = build_meter_in_room(view: view)
   let naps = build_meter_naps(view: view)
-  let worker_x = edge_x + build_meter_edge_mark_width(view: view) + (if build_meter_pose_reaches(pose: view.pose) && !view.stale { 2 } else { 0 }) + (if in_room { build_meter_room_width } else { 0 })
+  let worker_x = edge_x + build_meter_edge_mark_width(view: view) + (if build_meter_pose_reaches(pose: view.pose) && !view.stale { 2 } else { 0 })
   let worker_top = build_meter_worker_top + build_meter_rest_drop(rest: build_meter_pose_rest(pose: view.pose))
   let width = worker_x + build_meter_worker_width + (if naps { build_meter_snooze_width } else { 1 })
   let finish = if build_meter_is_published(handoff: view.handoff) && history > 0 {
-    [build_meter_rect(x: 0, y: build_meter_floor, w: history, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")])]
+    [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_finish_class)], children: [
+      build_meter_rect(x: 0, y: build_meter_floor, w: history, h: 1, attributes: [attr(name: build_meter_paint_attribute, value: "finish")]),
+    ])]
   } else { [] }
   let edge = match build_meter_edge_mark(view: view) {
-    Present { value: mark } => [build_meter_svg(tag: "g", attributes: [build_meter_translate(x: edge_x, y: 0)], children: [mark])]
+    Present { value: mark } => [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_edge_class), build_meter_translate(x: edge_x, y: 0)], children: [mark])]
     Absent => []
   }
+  let scene = build_meter_scene(view: view)
   build_meter_svg(tag: "svg", attributes: [
     attr(name: "class", value: build_meter_art_class),
     attr(name: "aria-hidden", value: "true"),
@@ -1086,13 +1190,16 @@ fn build_meter_art(view: BuildMeterView) -> Fragment {
     attr(name: "height", value: to_string(build_meter_art_height)),
     attr(name: "viewBox", value: join(["0 0 ", to_string(width), " ", to_string(build_meter_art_height)], "")),
     attr(name: "shape-rendering", value: "crispEdges"),
+    attr(name: build_meter_scene_attribute, value: build_meter_scene_key(scene: scene)),
+    attr(name: build_meter_settle_attribute, value: build_meter_settle_key(settle: build_meter_scene_settle(scene: scene))),
+    attr(name: build_meter_stance_attribute, value: build_meter_stance_key(stance: build_meter_scene_stance(scene: scene))),
+    attr(name: build_meter_worker_x_attribute, value: to_string(worker_x)),
+    attr(name: build_meter_rounds_attribute, value: to_string(build_meter_round_count(view: view))),
   ], children: concat(
-    build_meter_history_nodes(view: view),
+    [build_meter_svg(tag: "g", attributes: [attr(name: "class", value: build_meter_strip_class)], children: build_meter_history_nodes(view: view))],
     concat(finish, concat(edge, concat(
-      if in_room { [build_meter_waiting_room_node(worker_x: worker_x)] } else { [] },
-      concat(
-        [build_meter_worker_node(pose: view.pose, stale: view.stale, x: worker_x)],
-        if naps { [build_meter_snooze_node(worker_x: worker_x, top: worker_top)] } else { [] }))))))
+        [build_meter_worker_node(pose: view.pose, expression: build_meter_expression(view: view), stale: view.stale, x: worker_x)],
+        if naps { [build_meter_snooze_node(worker_x: worker_x, top: worker_top)] } else { [] })))))
 }
 
 fn build_meter_outcome_key(view: BuildMeterView) -> String {
@@ -1117,20 +1224,21 @@ fn build_meter_seed_style(attempt_key: String) -> String {
   ], "")
 }
 
-// The body is everything that changes with the summary. A client that receives a newer body swaps
-// it whole, and takes the newer link destination with it.
+// The body is everything that changes with the summary. A client that receives a newer body takes
+// its facts at once (its attributes, the badge, the accessible name, the digest and the link
+// destination) and draws its drawing, held in the canvas, when the drawing's scene settles
+// (gunbc.site.build_meter_client).
 fn build_meter_body(summary: CompactWorkSummary) -> Fragment {
   let view = summary.view
   el_attrs("span", [
     attr(name: "class", value: build_meter_body_class),
     attr(name: build_meter_revision_attribute, value: summary.revision),
-    attr(name: build_meter_rounds_attribute, value: to_string(build_meter_round_count(view: view))),
     attr(name: build_meter_pose_attribute, value: build_meter_pose_key(pose: view.pose)),
     attr(name: build_meter_coverage_attribute, value: build_meter_coverage_key(coverage: view.coverage)),
     attr(name: build_meter_outcome_attribute, value: build_meter_outcome_key(view: view)),
     attr(name: "style", value: build_meter_seed_style(attempt_key: view.attempt_key)),
   ], concat(concat(
-    [build_meter_art(view: view)],
+    [el_attrs("span", [attr(name: "class", value: build_meter_canvas_class)], [build_meter_art(view: view)])],
     match view.failure {
       Present { value: d } => if d.event_count > 1 {
         [el_attrs("span", [attr(name: "class", value: build_meter_badge_class), attr(name: "aria-hidden", value: "true")], [txt(join(["×", to_string(d.event_count)], ""))])]
@@ -1212,6 +1320,262 @@ data build_meter_long_blink_cycle: MotionCycle = MotionCycle { name: "meter-long
   build_meter_opacity_frame(offset_percent: 84, value: "0"),
   build_meter_opacity_frame(offset_percent: 100, value: "0"),
 ] }
+
+// A CHANGE OF SCENE, AS ROWS. A client that draws a new scene puts the arriving drawing in the
+// canvas under the drawn one, marks each drawing with its side, copies both stances onto the canvas,
+// sets the walk (the arriving worker's x less the leaving worker's, in units) and the two widths,
+// and keeps the changing class on the canvas for build_meter_change_ms before it removes the
+// leaving drawing. These rows are everything that moves meanwhile. The record does not animate: the
+// leaving strip is hidden and the arriving one drawn from the start, so only the scene changes.
+type BuildMeterSide
+  = BuildMeterLeaving
+  | BuildMeterArriving
+
+fn build_meter_side_key(side: BuildMeterSide) -> String {
+  match side {
+    BuildMeterLeaving => "leaving"
+    BuildMeterArriving => "arriving"
+  }
+}
+
+type BuildMeterPart
+  = BuildMeterStripPart
+  | BuildMeterFigurePart
+  | BuildMeterGaitPart
+  | BuildMeterWorkerPart
+  | BuildMeterSnoozePart
+  | BuildMeterFinishPart
+  | BuildMeterEdgePart
+  | BuildMeterFaultPart
+
+fn build_meter_part_class(part: BuildMeterPart) -> String {
+  match part {
+    BuildMeterStripPart => build_meter_strip_class
+    BuildMeterFigurePart => build_meter_figure_class
+    BuildMeterGaitPart => build_meter_gait_class
+    BuildMeterWorkerPart => build_meter_worker_class
+    BuildMeterSnoozePart => build_meter_snooze_class
+    BuildMeterFinishPart => build_meter_finish_class
+    BuildMeterEdgePart => build_meter_edge_class
+    BuildMeterFaultPart => build_meter_fault_class
+  }
+}
+
+// Which changes a row applies to, read from the two stances on the canvas. Every change takes the
+// rows for any change; a narrower row matches more of the canvas and comes later, so it replaces a
+// wider row for the same part. A sitting worker does not walk off: it is gone when the rouse ends
+// and the arriving worker is there. Rising is getting up from the floor: the arriving
+// worker stands where the leaving one sat and walks to its place. When either worker is the paused
+// outline nobody walks: the two fade across.
+type BuildMeterChange
+  = BuildMeterAnyChange
+  | BuildMeterFromSitting
+  | BuildMeterRising
+  | BuildMeterCrossfade
+
+fn build_meter_stance_selector(attribute: String, stance: BuildMeterStance) -> String {
+  build_meter_attribute_selector(target: "", attribute: attribute, value: build_meter_stance_key(stance: stance))
+}
+
+fn build_meter_change_selectors(change: BuildMeterChange) -> List<String> {
+  let canvas = join([".", build_meter_canvas_class, ".", build_meter_changing_class], "")
+  match change {
+    BuildMeterAnyChange => [canvas]
+    BuildMeterFromSitting => [join([canvas, build_meter_stance_selector(attribute: build_meter_from_attribute, stance: BuildMeterSitting)], "")]
+    BuildMeterRising => [join([canvas, build_meter_stance_selector(attribute: build_meter_from_attribute, stance: BuildMeterSitting), build_meter_stance_selector(attribute: build_meter_to_attribute, stance: BuildMeterStanding)], "")]
+    BuildMeterCrossfade => [
+      join([canvas, build_meter_stance_selector(attribute: build_meter_from_attribute, stance: BuildMeterOutline)], ""),
+      join([canvas, build_meter_stance_selector(attribute: build_meter_to_attribute, stance: BuildMeterOutline)], ""),
+    ]
+  }
+}
+
+// What a part does. Appear and vanish are cuts at the row's start, for a worker taking another
+// pose; keep is no motion at all, and replaces a wider row's.
+type BuildMeterMotion
+  = BuildMeterHide
+  | BuildMeterKeep
+  | BuildMeterFadeIn
+  | BuildMeterFadeOut
+  | BuildMeterAppear
+  | BuildMeterVanish
+  | BuildMeterWalkOut
+  | BuildMeterWalkIn
+  | BuildMeterBob
+  | BuildMeterWipeUp
+  | BuildMeterWipeRight
+
+type BuildMeterCue {
+  change: BuildMeterChange
+  side: BuildMeterSide
+  part: BuildMeterPart
+  motion: BuildMeterMotion
+  start_ms: Int
+  duration_ms: Int
+}
+
+fn build_meter_cue(change: BuildMeterChange, side: BuildMeterSide, part: BuildMeterPart, motion: BuildMeterMotion, start_ms: Int, duration_ms: Int) -> BuildMeterCue {
+  BuildMeterCue { change: change, side: side, part: part, motion: motion, start_ms: start_ms, duration_ms: duration_ms }
+}
+
+// The change's three beats, under a second together. The rouse: the leaving scene's z's, marks and
+// gold rule fade. The walk: a standing worker walks
+// in two-unit steps with a bob, and a gold rule draws in from the
+// left. The arrival: the arriving pose takes the walker's place, a stop cap, seal or bracket draws
+// up from its foot as the walk ends, and the arriving z's drift in last.
+data build_meter_rouse_ms: Int = 240
+data build_meter_walk_ms: Int = 320
+data build_meter_arrival_ms: Int = 240
+data build_meter_walk_at: Int = build_meter_rouse_ms
+data build_meter_arrive_at: Int = build_meter_rouse_ms + build_meter_walk_ms
+data build_meter_change_ms: Int = build_meter_arrive_at + build_meter_arrival_ms
+data build_meter_mark_at: Int = build_meter_walk_at + build_meter_walk_ms / 2
+data build_meter_doze_at: Int = build_meter_arrive_at + build_meter_arrival_ms / 3
+
+data build_meter_cues: List<BuildMeterCue> = [
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterStripPart, motion: BuildMeterHide, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterSnoozePart, motion: BuildMeterFadeOut, start_ms: 0, duration_ms: build_meter_rouse_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterFinishPart, motion: BuildMeterFadeOut, start_ms: 0, duration_ms: build_meter_rouse_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterEdgePart, motion: BuildMeterFadeOut, start_ms: 0, duration_ms: build_meter_rouse_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterGaitPart, motion: BuildMeterWalkOut, start_ms: build_meter_walk_at, duration_ms: build_meter_walk_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterWorkerPart, motion: BuildMeterBob, start_ms: build_meter_walk_at, duration_ms: build_meter_walk_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterArriving, part: BuildMeterFinishPart, motion: BuildMeterWipeRight, start_ms: build_meter_walk_at, duration_ms: build_meter_walk_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterLeaving, part: BuildMeterFigurePart, motion: BuildMeterVanish, start_ms: build_meter_arrive_at, duration_ms: 0),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterArriving, part: BuildMeterFigurePart, motion: BuildMeterAppear, start_ms: build_meter_arrive_at, duration_ms: 0),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterArriving, part: BuildMeterEdgePart, motion: BuildMeterWipeUp, start_ms: build_meter_mark_at, duration_ms: build_meter_arrival_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterArriving, part: BuildMeterFaultPart, motion: BuildMeterWipeUp, start_ms: build_meter_mark_at, duration_ms: build_meter_arrival_ms),
+  build_meter_cue(change: BuildMeterAnyChange, side: BuildMeterArriving, part: BuildMeterSnoozePart, motion: BuildMeterFadeIn, start_ms: build_meter_doze_at, duration_ms: build_meter_change_ms - build_meter_doze_at),
+  build_meter_cue(change: BuildMeterFromSitting, side: BuildMeterLeaving, part: BuildMeterGaitPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterFromSitting, side: BuildMeterLeaving, part: BuildMeterWorkerPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterFromSitting, side: BuildMeterLeaving, part: BuildMeterFigurePart, motion: BuildMeterVanish, start_ms: build_meter_walk_at, duration_ms: 0),
+  build_meter_cue(change: BuildMeterFromSitting, side: BuildMeterArriving, part: BuildMeterFigurePart, motion: BuildMeterAppear, start_ms: build_meter_walk_at, duration_ms: 0),
+  build_meter_cue(change: BuildMeterRising, side: BuildMeterArriving, part: BuildMeterGaitPart, motion: BuildMeterWalkIn, start_ms: build_meter_walk_at, duration_ms: build_meter_walk_ms),
+  build_meter_cue(change: BuildMeterRising, side: BuildMeterArriving, part: BuildMeterWorkerPart, motion: BuildMeterBob, start_ms: build_meter_walk_at, duration_ms: build_meter_walk_ms),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterLeaving, part: BuildMeterGaitPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterLeaving, part: BuildMeterWorkerPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterLeaving, part: BuildMeterFigurePart, motion: BuildMeterFadeOut, start_ms: 0, duration_ms: build_meter_arrive_at),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterArriving, part: BuildMeterGaitPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterArriving, part: BuildMeterWorkerPart, motion: BuildMeterKeep, start_ms: 0, duration_ms: 0),
+  build_meter_cue(change: BuildMeterCrossfade, side: BuildMeterArriving, part: BuildMeterFigurePart, motion: BuildMeterFadeIn, start_ms: 0, duration_ms: build_meter_arrive_at),
+]
+
+// The walk and the canvas width read the client's numbers: the walk in units, its steps (one per
+// two units, at least one), and the leaving and arriving widths.
+data build_meter_walk_property: String = "meter-walk"
+data build_meter_walk_steps_property: String = "meter-walk-steps"
+data build_meter_from_width_property: String = "meter-from-width"
+data build_meter_to_width_property: String = "meter-to-width"
+
+fn build_meter_var(property: String) -> String {
+  join(["var(--", property, ")"], "")
+}
+
+fn build_meter_clip_frame(offset_percent: Int, inset: String) -> Keyframe {
+  Keyframe { offset_percent: offset_percent, decls: [decl(prop: ClipPath, value: join(["inset(", inset, ")"], ""))] }
+}
+
+fn build_meter_shift_frame(offset_percent: Int, x: String, y: String) -> Keyframe {
+  Keyframe { offset_percent: offset_percent, decls: [decl(prop: Transform, value: build_meter_shift(x: x, y: y))] }
+}
+
+data build_meter_fade_in_cycle: MotionCycle = MotionCycle { name: "meter-fade-in", frames: [
+  build_meter_opacity_frame(offset_percent: 0, value: "0"),
+  build_meter_opacity_frame(offset_percent: 100, value: "1"),
+] }
+
+data build_meter_fade_out_cycle: MotionCycle = MotionCycle { name: "meter-fade-out", frames: [
+  build_meter_opacity_frame(offset_percent: 0, value: "1"),
+  build_meter_opacity_frame(offset_percent: 100, value: "0"),
+] }
+
+data build_meter_walk_out_cycle: MotionCycle = MotionCycle { name: "meter-walk-out", frames: [
+  build_meter_shift_frame(offset_percent: 0, x: "0", y: "0"),
+  build_meter_shift_frame(offset_percent: 100, x: build_meter_var(property: build_meter_walk_property), y: "0"),
+] }
+
+data build_meter_walk_in_cycle: MotionCycle = MotionCycle { name: "meter-walk-in", frames: [
+  build_meter_shift_frame(offset_percent: 0, x: build_meter_negative(length: build_meter_var(property: build_meter_walk_property)), y: "0"),
+  build_meter_shift_frame(offset_percent: 100, x: "0", y: "0"),
+] }
+
+data build_meter_bob_cycle: MotionCycle = MotionCycle { name: "meter-bob", frames: [
+  build_meter_shift_frame(offset_percent: 0, x: "0", y: "0"),
+  build_meter_shift_frame(offset_percent: 25, x: "0", y: build_meter_negative(length: scale_var(t: space_1))),
+  build_meter_shift_frame(offset_percent: 50, x: "0", y: "0"),
+  build_meter_shift_frame(offset_percent: 75, x: "0", y: build_meter_negative(length: scale_var(t: space_1))),
+  build_meter_shift_frame(offset_percent: 100, x: "0", y: "0"),
+] }
+
+data build_meter_wipe_up_cycle: MotionCycle = MotionCycle { name: "meter-wipe-up", frames: [
+  build_meter_clip_frame(offset_percent: 0, inset: "100% 0 0 0"),
+  build_meter_clip_frame(offset_percent: 100, inset: "0 0 0 0"),
+] }
+
+data build_meter_wipe_right_cycle: MotionCycle = MotionCycle { name: "meter-wipe-right", frames: [
+  build_meter_clip_frame(offset_percent: 0, inset: "0 100% 0 0"),
+  build_meter_clip_frame(offset_percent: 100, inset: "0 0 0 0"),
+] }
+
+data build_meter_resize_cycle: MotionCycle = MotionCycle { name: "meter-resize", frames: [
+  Keyframe { offset_percent: 0, decls: [decl(prop: Width, value: build_meter_var(property: build_meter_from_width_property))] },
+  Keyframe { offset_percent: 100, decls: [decl(prop: Width, value: build_meter_var(property: build_meter_to_width_property))] },
+] }
+
+// Every motion moves in whole units, as the drawing does: fades in four steps, wipes in six, the
+// walk one step per two units.
+data build_meter_walk_easing: String = join(["steps(", build_meter_var(property: build_meter_walk_steps_property), ", jump-end)"], "")
+
+type BuildMeterMotionRule
+  = BuildMeterStillRule { decls: List<CssDecl> }
+  | BuildMeterCycleRule { cycle: MotionCycle, easing: String }
+
+fn build_meter_motion_rule(motion: BuildMeterMotion) -> BuildMeterMotionRule {
+  match motion {
+    BuildMeterHide => BuildMeterStillRule { decls: [decl(prop: Opacity, value: "0")] }
+    BuildMeterKeep => BuildMeterStillRule { decls: [decl(prop: Animation, value: "none")] }
+    BuildMeterFadeIn => BuildMeterCycleRule { cycle: build_meter_fade_in_cycle, easing: "steps(4, jump-end)" }
+    BuildMeterFadeOut => BuildMeterCycleRule { cycle: build_meter_fade_out_cycle, easing: "steps(4, jump-end)" }
+    BuildMeterAppear => BuildMeterCycleRule { cycle: build_meter_fade_in_cycle, easing: "step-end" }
+    BuildMeterVanish => BuildMeterCycleRule { cycle: build_meter_fade_out_cycle, easing: "step-end" }
+    BuildMeterWalkOut => BuildMeterCycleRule { cycle: build_meter_walk_out_cycle, easing: build_meter_walk_easing }
+    BuildMeterWalkIn => BuildMeterCycleRule { cycle: build_meter_walk_in_cycle, easing: build_meter_walk_easing }
+    BuildMeterBob => BuildMeterCycleRule { cycle: build_meter_bob_cycle, easing: "step-end" }
+    BuildMeterWipeUp => BuildMeterCycleRule { cycle: build_meter_wipe_up_cycle, easing: "steps(6, jump-end)" }
+    BuildMeterWipeRight => BuildMeterCycleRule { cycle: build_meter_wipe_right_cycle, easing: "steps(6, jump-end)" }
+  }
+}
+
+fn build_meter_cue_selector(cue: BuildMeterCue) -> String {
+  let drawing = build_meter_attribute_selector(target: join([".", build_meter_art_class], ""), attribute: build_meter_side_attribute, value: build_meter_side_key(side: cue.side))
+  join(map(build_meter_change_selectors(change: cue.change), c => join([c, " ", drawing, " .", build_meter_part_class(part: cue.part)], "")), ", ")
+}
+
+fn build_meter_delay_decl(start_ms: Int) -> CssDecl {
+  decl(prop: AnimationDelay, value: join([to_string(start_ms), "ms"], ""))
+}
+
+fn build_meter_cue_rules(cue: BuildMeterCue) -> List<BuildRule> {
+  let selector = RawSelector { text: build_meter_cue_selector(cue: cue) }
+  match build_meter_motion_rule(motion: cue.motion) {
+    BuildMeterStillRule { decls } => [StaticRule { selector: selector, decls: decls }]
+    BuildMeterCycleRule { cycle, easing } => [
+      AmbientRule { selector: selector, cycle: cycle, timing: TimingToken { name: cycle.name, duration_ms: cue.duration_ms, easing: easing }, repeat: RunOnce },
+      StaticRule { selector: selector, decls: [build_meter_delay_decl(start_ms: cue.start_ms)] },
+    ]
+  }
+}
+
+// The canvas stacks its drawings in one cell, and while a change plays its width walks from the
+// leaving drawing's to the arriving one's with the worker, so nothing beside the meter jumps.
+fn build_meter_canvas_rules() -> List<BuildRule> {
+  let changing = RawSelector { text: join([".", build_meter_canvas_class, ".", build_meter_changing_class], "") }
+  [
+    StaticRule { selector: ClassSelector { name: build_meter_canvas_class }, decls: [decl(prop: Display, value: "grid")] },
+    StaticRule { selector: RawSelector { text: join([".", build_meter_canvas_class, " > .", build_meter_art_class], "") }, decls: [decl(prop: GridArea, value: "1 / 1")] },
+    AmbientRule { selector: changing, cycle: build_meter_resize_cycle, timing: TimingToken { name: build_meter_resize_cycle.name, duration_ms: build_meter_walk_ms, easing: "steps(8, jump-end)" }, repeat: RunOnce },
+    StaticRule { selector: changing, decls: [build_meter_delay_decl(start_ms: build_meter_walk_at)] },
+  ]
+}
 
 fn build_meter_within(target: String) -> String {
   join([".", build_meter_class, " .", target], "")
@@ -1333,10 +1697,11 @@ fn build_meter_rules() -> List<BuildRule> {
     build_meter_paint_rule(paint: "prop", value: palette_var(slot: SlotTextDim)),
     build_meter_paint_rule(paint: "stop", value: palette_var(slot: SlotError)),
     build_meter_paint_rule(paint: "finish", value: palette_var(slot: SlotMeterFinish)),
+    build_meter_paint_rule(paint: "success", value: palette_var(slot: SlotMeterSuccess)),
     build_meter_paint_rule(paint: "lit", value: palette_var(slot: SlotSurface)),
   ], concat(
     map(build_meter_kinds, k => build_meter_kind_rule(kind: k)),
-    [
+    concat([
       build_meter_lid_rest_rule(class_name: build_meter_droop_class),
       build_meter_lid_rest_rule(class_name: build_meter_sleep_class),
       build_meter_lid_rest_rule(class_name: build_meter_blink_class),
@@ -1376,5 +1741,6 @@ fn build_meter_rules() -> List<BuildRule> {
       AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_worker_class) }, cycle: build_meter_nudge_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
       AmbientRule { selector: RawSelector { text: build_meter_in_state(state_class: build_meter_beat_class, target: build_meter_blink_class) }, cycle: build_meter_long_blink_cycle, timing: build_meter_beat_timing, repeat: RunOnce },
       touch_target_rule(selector: ClassSelector { name: build_meter_class }, shape: TouchTargetCentredLink),
-    ]))
+    ],
+    concat(build_meter_canvas_rules(), flat_map(build_meter_cues, c => build_meter_cue_rules(cue: c))))))
 }

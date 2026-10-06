@@ -50,13 +50,14 @@ type PaletteSlot
   | SlotMeterWorkerShade
   | SlotMeterWorkerFeature
   | SlotMeterFinish
+  | SlotMeterSuccess
 
 data palette_slots: List<PaletteSlot> = [
   SlotText, SlotTextDim, SlotBorder, SlotHover, SlotSubtle, SlotHighlight, SlotAction,
   SlotActionHover, SlotError, SlotGround, SlotSurface, SlotLink, SlotOnAction, SlotCodeInk,
   SlotLeadingBar, SlotClosedRow, SlotStatusReady, SlotStatusAssigned, SlotStatusBlocked,
   SlotMeterReason, SlotMeterRead, SlotMeterWrite, SlotMeterEdit, SlotMeterRun, SlotMeterSearch, SlotMeterReport,
-  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish,
+  SlotMeterWorker, SlotMeterWorkerLight, SlotMeterWorkerShade, SlotMeterWorkerFeature, SlotMeterFinish, SlotMeterSuccess,
 ]
 
 fn palette_slot_name(slot: PaletteSlot) -> String {
@@ -92,6 +93,7 @@ fn palette_slot_name(slot: PaletteSlot) -> String {
     SlotMeterWorkerShade => "meter-worker-shade"
     SlotMeterWorkerFeature => "meter-worker-feature"
     SlotMeterFinish => "meter-finish"
+    SlotMeterSuccess => "meter-success"
   }
 }
 
@@ -146,6 +148,7 @@ fn palette_day(slot: PaletteSlot) -> Srgb8 {
     SlotMeterWorkerShade => Srgb8 { r: 0, g: 0, b: 0 }
     SlotMeterWorkerFeature => Srgb8 { r: 244, g: 241, b: 236 }
     SlotMeterFinish => Srgb8 { r: 184, g: 134, b: 46 }
+    SlotMeterSuccess => Srgb8 { r: 52, g: 168, b: 83 }
   }
 }
 
@@ -189,6 +192,7 @@ fn palette_night(slot: PaletteSlot) -> Srgb8 {
     SlotMeterWorkerShade => Srgb8 { r: 156, g: 146, b: 130 }
     SlotMeterWorkerFeature => Srgb8 { r: 21, g: 21, b: 20 }
     SlotMeterFinish => Srgb8 { r: 217, g: 178, b: 95 }
+    SlotMeterSuccess => Srgb8 { r: 129, g: 201, b: 149 }
   }
 }
 

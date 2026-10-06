@@ -29,9 +29,19 @@ import gunbc.site.element.build_meter {
   FailureTarget, FailureExactEvent, FailureRoundOperation, FailureStageGroup, failure_target_key, failure_target_round, failure_target_anchor,
   build_meter, build_meter_rules, build_meter_class, build_meter_kind_key, build_meter_evidence_key, build_meter_pose_key,
   build_meter_coverage_key, failure_kind_key, build_meter_visible_rounds, build_meter_blink_class, build_meter_name_class,
-  build_meter_digest_class, build_meter_naps, build_meter_in_room,
+  build_meter_digest_class, build_meter_naps,
+  build_meter_scene_attribute, build_meter_settle_attribute, build_meter_stance_attribute, build_meter_worker_x_attribute,
+  build_meter_figure_class, build_meter_cues, build_meter_change_ms, build_meter_part_class, build_meter_side_key,
+  BuildMeterCue, BuildMeterSide, BuildMeterLeaving, BuildMeterArriving,
+  BuildMeterPart, BuildMeterStripPart, BuildMeterFigurePart, BuildMeterSnoozePart, BuildMeterFinishPart,
+  BuildMeterEdgePart, BuildMeterFaultPart,
+  BuildMeterChange, BuildMeterAnyChange, BuildMeterFromSitting, BuildMeterRising, BuildMeterCrossfade,
+  BuildMeterMotion, BuildMeterHide, BuildMeterKeep, BuildMeterFadeIn, BuildMeterFadeOut, BuildMeterAppear, BuildMeterVanish,
+  BuildMeterWalkOut, BuildMeterWalkIn, BuildMeterBob, BuildMeterWipeUp, BuildMeterWipeRight,
 }
 import gunbc.workflow_reconcile { WorkflowFactKey }
+import gunbc.site.build_meter_client { build_meter_bind_statements, build_meter_fresh_event, build_meter_dwell_ms }
+import extdeps.languages.typescript.program { serialize_ts_stmts_indented }
 import gunbc.site.robot_mark { robot_mark_body_path, robot_mark_antenna_path, robot_mark_body_transform }
 import gunbc.site.element.styles { element_styles }
 import gunbc.roadmap_surface_style { roadmap_surface_rules }
@@ -239,15 +249,15 @@ fn fx_digest_at(kind_refused: Bool, n: Int, target: FailureTarget) -> FailureDig
   }
 }
 
-// THE RAIL SHOWS NO PROSE. After the drawing, the body holds at most the ×N badge, then the
-// visually hidden name and the hover digest, and nothing else; the drawing itself holds no text
+// THE RAIL SHOWS NO PROSE. After the drawing's canvas, the body holds at most the ×N badge, then
+// the visually hidden name and the hover digest, and nothing else; the drawing itself holds no text
 // element. The name class is visually hidden and the digest is transparent until hover or focus.
 test fn the_meter_shows_no_prose_beyond_the_count_badge() -> Bool {
   let h = fx_html(view: fx_legacy_view())
   let tail = after(s: h, pattern: "</svg>")
   let css = serialize_rules(rules: build_meter_rules())
   !has(s: h, pattern: "<text")
-    && tail == "<span class=\"el-build-meter-badge\" aria-hidden=\"true\">×5</span><span class=\"el-build-meter-name\">Environment refused. 5 failure events. Rounds not recorded for this attempt. Attempt 0cfc1888…: open the Environment stage failures.</span><span class=\"el-build-meter-digest\" aria-hidden=\"true\">Environment refused · 5 events; open the Environment stage failures</span></span></a>"
+    && tail == "</span><span class=\"el-build-meter-badge\" aria-hidden=\"true\">×5</span><span class=\"el-build-meter-name\">Environment refused. 5 failure events. Rounds not recorded for this attempt. Attempt 0cfc1888…: open the Environment stage failures.</span><span class=\"el-build-meter-digest\" aria-hidden=\"true\">Environment refused · 5 events; open the Environment stage failures</span></span></a>"
     && has(s: css, pattern: ".el-build-meter-name { position: absolute; width: var(--space-1); height: var(--space-1)")
     && has(s: css, pattern: "opacity: 0; pointer-events: none }")
     && has(s: h, pattern: "<a class=\"el-build-meter\" href=\"/issue/node#work-node:0cfc18886a3d3b10-environment\" data-build-meter=\"node\">")
@@ -317,9 +327,9 @@ test fn a_stale_attempt_is_an_outlined_worker_with_no_error_paint() -> Bool {
   has(s: stale, pattern: "data-worker=\"outline\"") && !has(s: stale, pattern: "data-paint=\"stop\"") && occurrences(s: stale, pattern: "data-round=") == 10
 }
 
-test fn a_published_attempt_has_the_finish_rule_and_a_sleeping_worker() -> Bool {
+test fn a_published_attempt_has_the_finish_rule_and_no_nap() -> Bool {
   let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
-  has(s: published, pattern: "data-paint=\"finish\"") && has(s: published, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"")
+  has(s: published, pattern: "data-paint=\"finish\"") && !has(s: published, pattern: "el-build-meter-z")
 }
 
 test fn unrecorded_rounds_are_a_hollow_frame_and_draw_no_round() -> Bool {
@@ -407,7 +417,8 @@ fn draws_the_robot(h: String) -> Bool {
   !has(s: h, pattern: "<circle")
     && has(s: h, pattern: "x=\"9\" y=\"-1\" width=\"2\" height=\"1\"")
     && has(s: h, pattern: "x=\"8\" y=\"-2\" width=\"4\" height=\"1\"")
-    && has(s: h, pattern: "x=\"9\" y=\"-3\" width=\"2\" height=\"1\"")
+    && has(s: h, pattern: "x=\"7\" y=\"-4\" width=\"6\" height=\"2\"")
+    && has(s: h, pattern: "x=\"8\" y=\"-5\" width=\"4\" height=\"1\"")
 }
 
 fn draws_the_solid_robot(h: String) -> Bool {
@@ -434,10 +445,10 @@ test fn the_waiting_worker_is_the_robot_with_its_eyes_shut() -> Bool {
     && has(s: waiting, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
 }
 
-test fn the_published_worker_is_the_robot_with_its_eyes_shut() -> Bool {
+test fn the_done_worker_stands_with_open_eyes() -> Bool {
   let done = worker_html(pose: BuildMeterDone, stale: false)
   draws_the_solid_robot(h: done)
-    && has(s: done, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"on\"><rect x=\"4\" y=\"5\" width=\"3\" height=\"1\"")
+    && has(s: done, pattern: "class=\"el-build-meter-sleep\" data-paint=\"lid\" data-lid=\"off\"")
 }
 
 test fn the_paused_worker_is_the_outlined_robot() -> Bool {
@@ -512,38 +523,190 @@ test fn only_an_exact_event_says_it_opens_the_event() -> Bool {
     && has(s: exact, pattern: "href=\"/issue/node#work-e1\"")
 }
 
-// THE NAP AND THE WAITING ROOM ARE PROPS OF THEIR POSES. Both sitting workers nap with the one z
-// drawing. The worker waiting for a serving seat sits in the waiting room: its own chair, an empty
-// chair and a wall clock, and no finish rule. The published worker sits on the floor beside the
-// finish rule, with no chair and no clock. A working, stopped or idle worker, and a paused (stale)
-// one in any pose, draws neither the nap nor the room. The z cycle is one the shared reduced-motion
-// rule stills, which leaves both glyphs showing.
+// THE NAP IS WAITING'S, AND THE FACE FOLLOWS THE OUTCOME. Only a worker waiting for a serving seat
+// naps: it sits on the floor with the one z drawing, and draws no finish rule. A working, stopped,
+// idle or published worker, and a paused (stale) one in any pose, does not nap. The z cycle is one
+// the shared reduced-motion rule stills, which leaves both glyphs showing.
 fn quiet_view(pose: BuildMeterPose, stale: Bool) -> BuildMeterView {
   fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: pose, failure: none, handoff: HandoffAwaitingWorker, stale: stale)
 }
 
-test fn the_waiting_worker_naps_in_the_waiting_room() -> Bool {
+test fn the_waiting_worker_naps_on_the_floor() -> Bool {
   let waiting = worker_html(pose: BuildMeterWaitingForSeat, stale: false)
   occurrences(s: waiting, pattern: "<g class=\"el-build-meter-z\"") == 2
-    && has(s: waiting, pattern: "data-prop=\"chair\"") && has(s: waiting, pattern: "data-prop=\"empty-chair\"") && has(s: waiting, pattern: "data-prop=\"clock\"")
     && !has(s: waiting, pattern: "data-paint=\"finish\"")
+    && !has(s: waiting, pattern: "data-prop=")
 }
 
-test fn the_published_worker_naps_beside_the_finish_rule() -> Bool {
+test fn the_published_worker_does_not_nap() -> Bool {
   let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
-  occurrences(s: published, pattern: "<g class=\"el-build-meter-z\"") == 2
-    && has(s: published, pattern: "data-paint=\"finish\"") && !has(s: published, pattern: "data-prop=")
+  !has(s: published, pattern: "el-build-meter-z") && has(s: published, pattern: "data-paint=\"finish\"")
 }
 
-test fn an_awake_or_paused_worker_has_neither_the_nap_nor_the_room() -> Bool {
+test fn an_awake_or_paused_worker_does_not_nap() -> Bool {
   let drawn_quiet = [worker_html(pose: BuildMeterWorking, stale: false), worker_html(pose: BuildMeterWaitingForSeat, stale: true)]
-  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle], p => quiet_view(pose: p, stale: false)), map([BuildMeterWaitingForSeat, BuildMeterDone], p => quiet_view(pose: p, stale: true)))
-  all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z") && !has(s: h, pattern: "data-prop="))
-    && all(decided_quiet, v => !build_meter_naps(view: v) && !build_meter_in_room(view: v))
-    && build_meter_naps(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false)) && build_meter_in_room(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false))
-    && build_meter_naps(view: quiet_view(pose: BuildMeterDone, stale: false)) && !build_meter_in_room(view: quiet_view(pose: BuildMeterDone, stale: false))
+  let decided_quiet = concat(map([BuildMeterWorking, BuildMeterStopped, BuildMeterIdle, BuildMeterDone], p => quiet_view(pose: p, stale: false)), [quiet_view(pose: BuildMeterWaitingForSeat, stale: true)])
+  all(drawn_quiet, h => !has(s: h, pattern: "el-build-meter-z"))
+    && all(decided_quiet, v => !build_meter_naps(view: v))
+    && build_meter_naps(view: quiet_view(pose: BuildMeterWaitingForSeat, stale: false))
 }
 
 test fn the_nap_is_stilled_under_reduced_motion() -> Bool {
   has(s: reduced_motion_block(rules: build_meter_rules()), pattern: ".el-build-meter .el-build-meter-z { animation: none }")
+}
+
+// A PUBLISHED WORKER IS CONTENT AND A FAILED ONE SAD. Published: eyes closed in two arcs, a smile
+// bent up at its ends, the antenna ball green, on its feet beside the finish rule.
+// Failed verification: square eyes under drooped lids, a frown bent down, the antenna ball red. A run that stopped at its
+// step budget did not fail, so its worker stays deadpan, as does a working one.
+test fn the_face_follows_the_outcome() -> Bool {
+  let published = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterDone, failure: none, handoff: HandoffPublished { head_sha: "abc", pr_number: 7, url: "u" }, stale: false))
+  let failed = fx_html(view: fx_drawn_view(coverage: fx_recorded(n_tens: [0]), pose: BuildMeterStopped, failure: Present { value: fx_digest(kind_refused: false, n: 1) }, handoff: HandoffAwaitingWorker, stale: false))
+  let working = worker_html(pose: BuildMeterWorking, stale: false)
+  has(s: published, pattern: "<g data-paint=\"feature\"><rect x=\"5\" y=\"4\" width=\"1\" height=\"1\"></rect><rect x=\"4\" y=\"5\" width=\"1\" height=\"1\"></rect><rect x=\"6\" y=\"5\" width=\"1\" height=\"1\"></rect>")
+    && has(s: published, pattern: "<rect x=\"8\" y=\"6\" width=\"1\" height=\"1\"></rect><rect x=\"9\" y=\"7\" width=\"2\" height=\"1\"></rect><rect x=\"11\" y=\"6\" width=\"1\" height=\"1\"></rect>")
+    && has(s: published, pattern: "<g data-paint=\"success\"><rect x=\"8\" y=\"-2\" width=\"4\" height=\"1\">")
+    && !has(s: published, pattern: "el-build-meter-z") && !has(s: published, pattern: "x=\"4\" y=\"4\" width=\"3\" height=\"3\"")
+    && has(s: failed, pattern: "<rect x=\"8\" y=\"8\" width=\"1\" height=\"1\"></rect><rect x=\"9\" y=\"7\" width=\"2\" height=\"1\"></rect><rect x=\"11\" y=\"8\" width=\"1\" height=\"1\"></rect>")
+    && has(s: failed, pattern: "class=\"el-build-meter-droop\" data-paint=\"lid\" data-lid=\"on\"")
+    && has(s: working, pattern: "x=\"8\" y=\"7\" width=\"4\" height=\"1\"") && !has(s: working, pattern: "<g data-paint=\"success\"><rect x=\"8\" y=\"-2\"") && has(s: failed, pattern: "<g data-paint=\"stop\"><rect x=\"8\" y=\"-2\" width=\"4\" height=\"1\">")
+}
+
+// A DRAWING STATES WHAT A CHANGE NEEDS, from the match that draws it: its scene, when a client
+// draws a new one, how the worker rests and where it stands. A stopped or published attempt is
+// drawn at once and any other scene waits out the dwell; a stale attempt is paused, outlined and
+// waits. The worker's stated place is the figure's own.
+fn drawing_says(h: String, attribute: String, value: String) -> Bool {
+  has(s: h, pattern: join([attribute, "=\"", value, "\""], ""))
+}
+
+fn drawing_value(h: String, attribute: String) -> String {
+  match split(s: after(s: h, pattern: join([attribute, "=\""], "")), delimiter: "\"").first() { Present { value: v } => v  Absent => "" }
+}
+
+fn drawing_states(h: String, scene: String, settle: String, stance: String) -> Bool {
+  let x = drawing_value(h: h, attribute: build_meter_worker_x_attribute)
+  drawing_says(h: h, attribute: build_meter_scene_attribute, value: scene)
+    && drawing_says(h: h, attribute: build_meter_settle_attribute, value: settle)
+    && drawing_says(h: h, attribute: build_meter_stance_attribute, value: stance)
+    && x != ""
+    && has(s: h, pattern: join(["<g class=\"", build_meter_figure_class, "\" transform=\"translate(", x, " "], ""))
+}
+
+test fn a_drawing_states_its_scene_and_when_it_is_drawn() -> Bool {
+  drawing_states(h: worker_html(pose: BuildMeterWorking, stale: false), scene: "working", settle: "after-dwell", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterIdle, stale: false), scene: "idle", settle: "after-dwell", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterWaitingForSeat, stale: false), scene: "waiting", settle: "after-dwell", stance: "sitting")
+    && drawing_states(h: worker_html(pose: BuildMeterStopped, stale: false), scene: "stopped", settle: "at-once", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterDone, stale: false), scene: "done", settle: "at-once", stance: "standing")
+    && drawing_states(h: worker_html(pose: BuildMeterDone, stale: true), scene: "paused", settle: "after-dwell", stance: "outline")
+}
+
+// A CHANGE OF SCENE IS UNDER A SECOND AND LEAVES NOTHING OF THE LEAVING DRAWING. Every row ends
+// within the change. For any change, each part of the leaving drawing has a row that removes it
+// (strip, z's, finish rule, marks and worker) and each part of the arriving drawing a row
+// that brings it in; every narrower row for either worker still removes the leaving one and brings
+// in the arriving one. A table without the leaving worker's exit is refused.
+fn motion_removes(m: BuildMeterMotion) -> Bool {
+  match m {
+    BuildMeterHide => true
+    BuildMeterFadeOut => true
+    BuildMeterVanish => true
+    BuildMeterKeep => false
+    BuildMeterFadeIn => false
+    BuildMeterAppear => false
+    BuildMeterWalkOut => false
+    BuildMeterWalkIn => false
+    BuildMeterBob => false
+    BuildMeterWipeUp => false
+    BuildMeterWipeRight => false
+  }
+}
+
+fn motion_enters(m: BuildMeterMotion) -> Bool {
+  match m {
+    BuildMeterFadeIn => true
+    BuildMeterAppear => true
+    BuildMeterWipeUp => true
+    BuildMeterWipeRight => true
+    BuildMeterHide => false
+    BuildMeterKeep => false
+    BuildMeterFadeOut => false
+    BuildMeterVanish => false
+    BuildMeterWalkOut => false
+    BuildMeterWalkIn => false
+    BuildMeterBob => false
+  }
+}
+
+fn change_is_any(change: BuildMeterChange) -> Bool {
+  match change {
+    BuildMeterAnyChange => true
+    BuildMeterFromSitting => false
+    BuildMeterRising => false
+    BuildMeterCrossfade => false
+  }
+}
+
+fn cue_on(c: BuildMeterCue, side: BuildMeterSide, part: BuildMeterPart) -> Bool {
+  build_meter_side_key(side: c.side) == build_meter_side_key(side: side) && build_meter_part_class(part: c.part) == build_meter_part_class(part: part)
+}
+
+fn leaving_parts_leave(cues: List<BuildMeterCue>) -> Bool {
+  all([BuildMeterStripPart, BuildMeterSnoozePart, BuildMeterFinishPart, BuildMeterEdgePart, BuildMeterFigurePart], p =>
+    any(cues, c => change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterLeaving, part: p) && motion_removes(m: c.motion)))
+    && all(filter(cues, c => cue_on(c: c, side: BuildMeterLeaving, part: BuildMeterFigurePart)), c => motion_removes(m: c.motion))
+}
+
+fn arriving_parts_arrive(cues: List<BuildMeterCue>) -> Bool {
+  all([BuildMeterFinishPart, BuildMeterEdgePart, BuildMeterFaultPart, BuildMeterFigurePart, BuildMeterSnoozePart], p =>
+    any(cues, c => change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterArriving, part: p) && motion_enters(m: c.motion)))
+    && all(filter(cues, c => cue_on(c: c, side: BuildMeterArriving, part: BuildMeterFigurePart)), c => motion_enters(m: c.motion))
+}
+
+test fn a_change_of_scene_is_under_a_second_and_leaves_nothing_behind() -> Bool {
+  build_meter_change_ms < 1000
+    && all(build_meter_cues, c => c.start_ms + c.duration_ms <= build_meter_change_ms)
+    && leaving_parts_leave(cues: build_meter_cues)
+    && arriving_parts_arrive(cues: build_meter_cues)
+    && !leaving_parts_leave(cues: filter(build_meter_cues, c => !(change_is_any(change: c.change) && cue_on(c: c, side: BuildMeterLeaving, part: BuildMeterFigurePart))))
+}
+
+// THE CHOREOGRAPHY RUNS ONLY WHILE THE CANVAS CHANGES. Every cue's selector starts at the canvas
+// with the changing class, so a drawing at rest never moves; the walk reads the client's distance
+// and steps; getting up matches both stances; a paused worker on either side matches either arm;
+// and the shared reduced-motion rule stills every cue.
+test fn the_choreography_runs_only_while_the_canvas_changes() -> Bool {
+  let css = serialize_rules(rules: build_meter_rules())
+  let still = reduced_motion_block(rules: build_meter_rules())
+  let canvas = ".el-build-meter-canvas.el-build-meter-changing"
+  has(s: css, pattern: "@keyframes meter-walk-out { 0% { transform: translate(0, 0) } 100% { transform: translate(var(--meter-walk), 0) } }")
+    && has(s: css, pattern: join([canvas, "[data-meter-from=\"sitting\"][data-meter-to=\"standing\"] .el-build-meter-art[data-meter-side=\"arriving\"] .el-build-meter-gait { animation: meter-walk-in 320ms steps(var(--meter-walk-steps), jump-end) 1 both }"], ""))
+    && has(s: css, pattern: join([canvas, "[data-meter-from=\"outline\"] .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure, ", canvas, "[data-meter-to=\"outline\"] .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure { animation: meter-fade-out 560ms"], ""))
+    && has(s: css, pattern: join([canvas, " .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-figure { animation-delay: 560ms }"], ""))
+    && has(s: still, pattern: join([canvas, " .el-build-meter-art[data-meter-side=\"leaving\"] .el-build-meter-gait { animation: none }"], ""))
+}
+
+// THE METER SETTLES ON A SCENE BEFORE IT DRAWS IT. Its client takes a newer rendering by one event
+// and every fact at once; it redraws the scene already drawn at once; it holds a new scene for the
+// dwell from when that scene was first seen, or not at all when the drawing settles at once; a
+// rendering that arrives during a change waits for it; the change lasts exactly the rows' length;
+// and under reduced motion the drawing is replaced without the change.
+fn before(s: String, pattern: String) -> String {
+  match split(s: s, delimiter: pattern).first() { Present { value: head } => head  Absent => "" }
+}
+
+test fn the_meter_holds_a_new_scene_for_the_dwell() -> Bool {
+  let js = serialize_ts_stmts_indented(stmts: build_meter_bind_statements(), indent: "")
+  let change = before(s: after(s: js, pattern: "const change = "), pattern: "changing = true")
+  has(s: js, pattern: join(["meter.addEventListener('", build_meter_fresh_event, "', (event) =>"], ""))
+    && has(s: js, pattern: "body.setAttribute(name, freshBody.getAttribute(name))")
+    && has(s: js, pattern: "meter.setAttribute('href', fresh.getAttribute('href'))")
+    && has(s: js, pattern: "art.getAttribute('data-meter-scene') === drawn.getAttribute('data-meter-scene')")
+    && has(s: js, pattern: "held.getAttribute('data-meter-scene') !== art.getAttribute('data-meter-scene')")
+    && has(s: js, pattern: join(["art.getAttribute('data-meter-settle') === 'at-once' ? 0 : Math.max(0, heldSince + ", to_string(build_meter_dwell_ms), " - Date.now())"], ""))
+    && has(s: js, pattern: "queued = art")
+    && has(s: js, pattern: join(["}, ", to_string(build_meter_change_ms), ")"], ""))
+    && has(s: change, pattern: "window.matchMedia('(prefers-reduced-motion: reduce)').matches")
+    && has(s: change, pattern: "canvas.replaceChild(art, drawn)")
 }
