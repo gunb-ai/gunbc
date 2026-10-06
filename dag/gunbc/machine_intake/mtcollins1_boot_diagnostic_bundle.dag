@@ -14,7 +14,7 @@ import extdeps.tools.gnu_coreutils { coreutils_duration_operand, coreutils_timeo
 import extdeps.tools.coreutils_stat
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
-import gunbc.machine_intake_mtcollins1_boot_phase_timing { MtCollins1BootPhaseTiming, mtcollins1_boot_phase_timing_not_taken, mtcollins1_boot_phase_timing_text }
+import gunbc.managed_host_boot_phase_timing { BootPhaseTiming, boot_phase_timing_not_taken, boot_phase_timing_text }
 import v2.std.optional { Present }
 import extdeps.bmc.ipmi
 import extdeps.bmc.ipmi_boot_selection { IpmiBootSelection }
@@ -878,7 +878,7 @@ type MtCollins1BootRunRecord {
   override_after: BootParam5Reading
   override: BootOverrideConsumption
   power_after: PowerAfterAttempt
-  timing: MtCollins1BootPhaseTiming
+  timing: BootPhaseTiming
 }
 
 fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
@@ -893,7 +893,7 @@ fn run_record_not_taken(reason: NonEmptyStr) -> MtCollins1BootRunRecord {
     override_after: BootParam5NotTaken { reason: reason },
     override: OverrideNotHandedOff { reason: reason },
     power_after: PowerAfterNotTaken { reason: reason },
-    timing: mtcollins1_boot_phase_timing_not_taken(reason: reason),
+    timing: boot_phase_timing_not_taken(reason: reason),
   }
 }
 
@@ -1020,8 +1020,8 @@ fn run_record_text(r: MtCollins1BootRunRecord) -> String {
     concat("end_media=", end_media_text(e: r.end_media)),
     concat("override=", override_consumption_text(c: r.override)),
     concat("power_after=", power_after_text(p: r.power_after)),
-    "-- phase timing (gunbc.machine_intake_mtcollins1_boot_phase_timing) --",
-    mtcollins1_boot_phase_timing_text(t: r.timing),
+    "-- phase timing (gunbc.managed_host_boot_phase_timing) --",
+    boot_phase_timing_text(t: r.timing),
     boot_param5_text(label: "before", r: r.override_before),
     boot_param5_text(label: "after", r: r.override_after),
     "-- smpro pass at power on --",

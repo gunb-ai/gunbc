@@ -2,7 +2,7 @@ module gunbc.runner_registration_labels
 
 import std.types { String, NonEmptyStr, List }
 import product.host_identity { HostIdentity }
-import extdeps.github.actions { SelfHosted }
+import extdeps.github.actions { SelfHosted, HostedRunner, RunsOnExpression }
 import gunbc.ci_fleet { fleet_compute_offer_for }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.runner_slot_allocation { runner_host_label, runner_label_set_union, runner_label_sets_equal }
@@ -42,11 +42,8 @@ fn runner_registration_labels(host: HostIdentity) -> RunnerRegistrationLabelsRes
               b: [runner_host_label(host: host)],
             ),
           }
-        _ =>
-          RegistrationLabelsRefused {
-            host: host,
-            cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
-          }
+        HostedRunner { label: _ } => registration_labels_refused_not_self_hosted(host: host)
+        RunsOnExpression { expression: _ } => registration_labels_refused_not_self_hosted(host: host)
       }
   }
 }
@@ -90,5 +87,12 @@ fn runner_slot_labels_conform(slot: RunnerSlotIdentity, observed: List<String>) 
       } else {
         RegistrationLabelsDiverge
       }
+  }
+}
+
+fn registration_labels_refused_not_self_hosted(host: HostIdentity) -> RunnerRegistrationLabelsResolution {
+  RegistrationLabelsRefused {
+    host: host,
+    cause: "the host's compute offer did not project to a self-hosted runner spec, so it has no self-hosted registration label set" as NonEmptyStr,
   }
 }
