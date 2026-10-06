@@ -298,12 +298,25 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // effects as the contract-epoch members (temp repository, local git plumbing, recursive removal) and
 // the same negative half: no network, no cargo, no remote host. Measured wet before enrollment: held,
 // and a mutation dropping git_pathspec_literal turned it false.
+//
+// ONE BASE-ADVANCE MEMBER (the BaseAdvance follow-up to gunbc#13111).
+// test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test commits two real revisions S0 and S1
+// into a throwaway repository and runs gunbc.roadmap_belt_actuate belt_scm_base_advance over an SCM
+// repository based at S0: git observes both revisions, diffs them and reads S1's changed paths, and
+// the advanced manifest must equal S1's tree with an advance to an unobservable revision refused by
+// name. Same effects and the same negative half as the publish-realizer member.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_publish_realization_wet_witness_test", function: "the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_publish_realization_wet_witness_test.dag",
       function: "the_publish_realizer_reaches_the_heads_tree_in_a_real_repository_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_base_advance_wet_witness_test", function: "the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_base_advance_wet_witness_test.dag",
+      function: "the_base_advance_reaches_the_target_revisions_tree_in_a_real_repository_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
@@ -505,9 +518,9 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
-      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted" },
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_dogfood_route_wet_witness", function: "a_pinned_valid_receipt_without_live_g3_g4_records_is_refused" },
       entry: "dag/test/claim/roadmap/roadmap_dogfood_route_wet_witness_test.dag",
-      function: "a_valid_receipt_in_the_slot_reads_as_recorded_and_accepted",
+      function: "a_pinned_valid_receipt_without_live_g3_g4_records_is_refused",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
