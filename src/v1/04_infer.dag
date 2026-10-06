@@ -3024,11 +3024,9 @@ fn match_arm_types_are_proven_disjoint(unified_arm_type: Node, arm_type: Node, s
 // lift the declared-return wall refuses, reached through the join instead: the join keeps ONE arm's
 // type, so which arm was listed first decided whether the declared-return seam ever saw the bare T.
 // `if` already refuses the same mix through node_type_compatible; a match is judged the same way.
-fn match_arm_type_is_optional(t: Node, scope: InferScope) -> Bool {
-  t.return_cardinality == CardOptional
-    || qualified_last_segment(name: authored_name_at(source_indices: scope.type_env.source_indices, node: t)) == "Optional"
-}
-
+// Optionality is decided by declared_type_carries_optional, the one authority, so the leaf-name
+// identity debt it names (2K) is carried there and not re-spelled here. It is a source type error,
+// carried as DeclaredTypeNotInhabited at the offending arm.
 fn match_arm_type_is_bare_concrete(t: Node, scope: InferScope) -> Bool {
   let name = authored_name_at(source_indices: scope.type_env.source_indices, node: t)
   let generic = (t.params |> count) > 0
@@ -3037,26 +3035,25 @@ fn match_arm_type_is_bare_concrete(t: Node, scope: InferScope) -> Bool {
       Present { value: TypeVariable { id: _ } } => true
       _ => false
     }
-  name != "" && !generic && !match_arm_type_is_optional(t: t, scope: scope)
+  name != "" && !generic && !declared_type_carries_optional(declared: t, scope: scope)
 }
 
 fn match_arm_mixes_bare_and_optional(unified_arm_type: Node, arm_type: Node, scope: InferScope) -> Bool {
-  (match_arm_type_is_optional(t: unified_arm_type, scope: scope) && match_arm_type_is_bare_concrete(t: arm_type, scope: scope))
-    || (match_arm_type_is_bare_concrete(t: unified_arm_type, scope: scope) && match_arm_type_is_optional(t: arm_type, scope: scope))
+  (declared_type_carries_optional(declared: unified_arm_type, scope: scope) && match_arm_type_is_bare_concrete(t: arm_type, scope: scope))
+    || (match_arm_type_is_bare_concrete(t: unified_arm_type, scope: scope) && declared_type_carries_optional(declared: arm_type, scope: scope))
 }
 
 fn match_arm_join_diagnostics(unified_arm_type: Node, arm: ArmInferResult, scope: InferScope) -> List<ErrorNode> {
   if arm_body_diverges(body: arm_body(n: arm.typed_arm)) {
     []
   } else if match_arm_mixes_bare_and_optional(unified_arm_type: unified_arm_type, arm_type: arm.body_type, scope: scope) {
-    [inference_error(
-      message: concat(
-        "match arms mix a required and an optional type: ",
-        node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
-        " vs ",
-        node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices)
-      ),
-      span: arm_body(n: arm.typed_arm).span,
+    [make_error_node(
+      diagnostic: DeclaredTypeNotInhabited {
+        position: "match arm",
+        expected: node_type_shape(n: unified_arm_type, source_indices: scope.type_env.source_indices),
+        got: node_type_shape(n: arm.body_type, source_indices: scope.type_env.source_indices),
+        span: arm_body(n: arm.typed_arm).span
+      },
       module_name: scope.module_name
     )]
   } else if match_arm_types_are_proven_disjoint(

@@ -171,7 +171,7 @@ test fn required_arm_at_optional_return_refuses_blocking() -> Bool {
 data return_lift_match_arm_swapped_red_source: String = "module ret_probe_arm_swapped\nfn g(s: String) -> String? {\n  match s {\n    \"b\" => none\n    _ => s\n  }\n}\n"
 
 test fn required_arm_after_none_arm_refuses_blocking() -> Bool {
-  eq_blocking_count(source: return_lift_match_arm_swapped_red_source, wanted: "InternalError") >= 1
+  eq_blocking_count(source: return_lift_match_arm_swapped_red_source, wanted: "DeclaredTypeNotInhabited") >= 1
 }
 
 // THE SAME CLASS AT A DATA INITIALIZER (ruling A on gunbc#13202). A `data r: T? = <bare T>` row was
