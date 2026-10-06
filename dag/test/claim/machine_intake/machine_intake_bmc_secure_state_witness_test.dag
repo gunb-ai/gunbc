@@ -301,10 +301,29 @@ fn world_reflash_restored() -> BmcWorld {
   world(users: [BmcIpmiUser { id: 3, password: "" }, BmcIpmiUser { id: 2, password: factory_password }])
 }
 
-fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation {
+fn read(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, closed: Bool, at: EpochMs) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_route_for_a_build_the_controller_no_longer_runs_cannot_be_admitted"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_already_secured_controller_is_a_noop"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_ungrounded_route_with_approval_refuses_the_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "applied_with"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "decision_on"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "managed_and_factory_both_accepted_is_not_a_noop_and_converges_through_apply"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_plan_refuses_a_stale_or_foreign_generation_and_a_foreign_reading"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_post_read_is_independent_of_the_reading_that_diverged"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_published_replacement_must_be_the_goal_bound_break_glass_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_secret_order_is_carried_by_the_plan"),
+  ]
+{
   read_with(w: w, subject: subject, managed: managed, managed_password: managed_password, census_value: census(published_lan_privilege_closed: closed), account: PublishedAccountRetired, at: at)
 }
 
+// THE READ HELPERS ARE CONFINED. read_in, read_with, read and secured_read each return a sealed
+// BmcAccountStateObservation, so each admits only the claims that consume it (returning Bool), the
+// text-returning helpers applied_with and decision_on, and the next helper in this chain -- no outside
+// caller obtains a sealed observation, reading or instant through them. The forged probe pins an
+// outside call's refusal at each.
+//
 // THE WORLD HOLDS THE CHANNEL ACCESS, AND THE READ TAKES IT FROM THERE. seeded adds the supplied census's
 // Get User Access rows to the world only for (channel, user) pairs the world does not already hold, so a
 // row a channel-access write set is kept, and a read after the write reports the write -- never the
@@ -316,11 +335,22 @@ fn seeded(w: BmcWorld, census_value: IpmiControllerChannelCensus) -> BmcWorld {
   )
 }
 
-fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, at: EpochMs) -> BmcAccountStateObservation {
+fn read_with(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, at: EpochMs) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "secured_read"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+  ]
+{
   read_in(w: seeded(w: w, census_value: census_value), subject: subject, managed: managed, managed_password: managed_password, census_value: census_value, account: account, attempt: "attempt-1", at: at)
 }
 
-fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, attempt: String, at: EpochMs) -> BmcAccountStateObservation {
+fn read_in(w: BmcWorld, subject: MachineIntakeSubject, managed: ManagedCredentialReference, managed_password: String, census_value: IpmiControllerChannelCensus, account: PublishedAccountKind, attempt: String, at: EpochMs) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "read_with"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_planned_channel_close_is_applied_read_back_and_converges"),
+  ]
+{
   dry_read_bmc_account_state(
     world: w,
     subject: subject,
@@ -904,7 +934,15 @@ fn census_with(serial_privilege_open: Bool, unaddressed_lan_open: Bool) -> IpmiC
   )
 }
 
-fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAccountKind) -> BmcAccountStateObservation {
+fn secured_read(census_value: IpmiControllerChannelCensus, account: PublishedAccountKind) -> BmcAccountStateObservation
+  admit_callers: [
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_goal_bound_retention_refuses_a_prod_risk_admitting_goal_and_a_closed_account_satisfies_it"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "a_retained_credential_must_be_the_goal_bound_generation"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_a_deviation_and_the_plan_refuses_without_a_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "an_open_channel_is_closed_only_over_a_grounded_channel_access_route"),
+    decl_ref(module_path: "test.claim.machine_intake_bmc_secure_state_witness", decl_name: "the_channel_close_readback_is_bound_to_the_observed_run_and_account"),
+  ]
+{
   read_with(w: world_secured(), subject: lab_subject(), managed: managed_ref(version: "1", epoch: 1), managed_password: managed_password_v1, census_value: census_value, account: account, at: t_read)
 }
 
