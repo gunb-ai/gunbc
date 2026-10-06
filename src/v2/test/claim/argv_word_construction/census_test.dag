@@ -95,47 +95,52 @@ fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> 
   })
 }
 
+// THE MEMBER POPULATION THIS FIXTURE CARRIES, AS THE LENS RENDERS IT TODAY (verified through the
+// instrument's fixture_facts_dump, not a hand-maintained list): four members -- the three counted
+// argv-returning builders (transient, run_with_properties, label_rows) plus one candidate fn
+// (waits_quietly, which spells flag literals and returns a scalar: candidates, not counted). The
+// three data decls render as UNNAMED facts (fact_name falls back to "<unnamed data>") and none of
+// them is a member. The lens is the authority for what a member is; the claim pins its output.
 test fn census_fixture_route_counts_its_members() -> Bool {
   match fixture_facts() {
     Absent => false
     Present { value: facts } =>
       let members = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if is_census_member(f: f) { acc + 1 } else { acc } })
-      (members == 6)
-      && match fact_named(xs: facts, want: "fixture_layout_rows") {
+      let data_decls = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if f.decl_kind == DataDecl { acc + 1 } else { acc } })
+      (members == 4) && (data_decls == 3) && (length(xs: facts) == 7)
+      && match fact_named(xs: facts, want: "fixture_transient_unit_argv") {
         Absent => false
-        Present { value: f } => !is_census_member(f: f)
+        Present { value: f } => is_census_member(f: f) && (f.counted == true)
       }
   }
 }
 
-// The data-decl classes the lens reports on this fixture: wait_flags carries flag vocabulary
-// unreached by any argv-typed body (candidates, not counted); commit_args is reached BY NAME
-// (fixture_transient_unit_argv's tail), so it is counted while its flag words stay empty (the
-// reach is a reference, not a body literal); layout_rows has no vocabulary and no reach, so it is
-// not a census member at all.
+// THE CLASSES THE LENS RENDERS ON THIS FIXTURE TODAY: data decls come back UNNAMED ("<unnamed
+// data>" fallback), counted false, no candidates, no flag words -- the lens attributes vocabulary
+// to FUNCTIONS, not to data. So the candidate class is now the FN that spells flag literals and
+// returns a scalar (fixture_waits_quietly: candidates, not counted); commit_args's vocabulary is
+// reached BY NAME through fixture_transient_unit_argv's tail, which is why the reach shows up on
+// that fn (counted, two flag words) and not on the data decl.
 test fn census_fixture_route_classifies_data_decls_at_their_own_kind() -> Bool {
   match fixture_facts() {
     Absent => false
     Present { value: facts } =>
-      match fact_named(xs: facts, want: "fixture_wait_flags") {
+      let data_facts = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if f.decl_kind == DataDecl { acc + 1 } else { acc } })
+      let data_members = fold_list(xs: facts, empty: 0, cons: fn(acc, f) { if (f.decl_kind == DataDecl) && is_census_member(f: f) { acc + 1 } else { acc } })
+      (data_facts == 3) && (data_members == 0)
+      && match fact_named(xs: facts, want: "fixture_waits_quietly") {
         Absent => false
-        Present { value: wait_flags } =>
-          match fact_named(xs: facts, want: "fixture_commit_args") {
-            Absent => false
-            Present { value: commit_args } =>
-              match fact_named(xs: facts, want: "fixture_layout_rows") {
-                Absent => false
-                Present { value: layout_rows } =>
-                  (wait_flags.decl_kind == DataDecl) && (wait_flags.counted == false)
-                  && (length(xs: wait_flags.candidates) == 3) && (length(xs: wait_flags.flag_words) == 0)
-                  && (wait_flags.list_string_data == true)
-                  && (commit_args.decl_kind == DataDecl) && (commit_args.counted == true)
-                  && (length(xs: commit_args.candidates) == 0) && (length(xs: commit_args.flag_words) == 0)
-                  && (commit_args.list_string_data == true)
-                  && (layout_rows.counted == false) && (length(xs: layout_rows.candidates) == 0)
-                  && (layout_rows.list_string_data == true)
-              }
-          }
+        Present { value: waits } =>
+          (waits.decl_kind == FnDecl) && (waits.counted == false)
+          && (length(xs: waits.candidates) == 2) && (length(xs: waits.flag_words) == 0)
+          && (waits.returns_argv_words == false) && (waits.list_string_params == 0)
+      }
+      && match fact_named(xs: facts, want: "fixture_transient_unit_argv") {
+        Absent => false
+        Present { value: transient } =>
+          (transient.decl_kind == FnDecl) && (transient.counted == true)
+          && (length(xs: transient.flag_words) == 2) && (length(xs: transient.candidates) == 0)
+          && (transient.returns_argv_words == true) && (transient.list_string_params == 0)
       }
   }
 }
