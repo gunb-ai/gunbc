@@ -189,8 +189,14 @@ fn md_item(marker: String, blocks: List<MarkdownBlock>, sp: MarkdownSpellings, d
       let lead = match b {
         ParagraphBlock { inlines } =>
           join([pad, marker, md_render_inlines(inlines: inlines, sp: sp)], "")
-        _ =>
-          join([pad, marker, md_block(block: b, sp: sp)], "")
+        HeadingBlock { level: _, inlines: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        UnorderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        OrderedListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        CodeBlock { code: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        TaskListBlock { items: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        TableBlock { header: _, alignments: _, rows: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        BlockquoteBlock { blocks: _ } => join([pad, marker, md_block(block: b, sp: sp)], "")
+        ThematicBreak => join([pad, marker, md_block(block: b, sp: sp)], "")
       }
       { idx: 1, out: lead }
     } else {

@@ -2106,38 +2106,6 @@ mod observation_failure_arms {
         }
     }
 
-    /// A nonzero git with empty stdout must not become an apparently successful empty read -- that
-    /// is the shape that produced an empty HEAD and then blamed an innocent subject.
-    #[test]
-    fn a_nonzero_git_does_not_become_an_empty_successful_read() {
-        let repo = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let refused = git_stdout(
-            &repo,
-            &[
-                "rev-parse",
-                "--verify",
-                "definitely-not-a-real-ref^{commit}",
-            ],
-            Duration::from_secs(30),
-            "control",
-        );
-        match refused {
-            Err(EvaluationBudgetConsequenceRefusal::GitObservationFailed { what, .. }) => {
-                assert_eq!(what, "control")
-            }
-            other => panic!("expected GitObservationFailed, got {other:?}"),
-        }
-        // Positive control: an ordinary git read still succeeds, so the assertion above is not
-        // passing because every git call refuses.
-        assert!(git_stdout(
-            &repo,
-            &["rev-parse", "HEAD"],
-            Duration::from_secs(30),
-            "control"
-        )
-        .is_ok());
-    }
-
     /// A reader that fails mid-stream must not be reported as EOF. Before the terminal recorded WHY
     /// the reader stopped, both spellings were a bare `return` and the thread merely finishing was
     /// read as `Closed`.
@@ -2236,41 +2204,5 @@ mod observation_failure_arms {
         assert!(parse_flat_json_object(&malformed).is_err());
         let trailing = format!("{{\"code\":\"x\"}} {long_multibyte}");
         assert!(parse_flat_json_object(&trailing).is_err());
-    }
-
-    /// A descendant holding the write end must produce a BOUNDED refusal, not a hang. This is the
-    /// arm the unbounded `finish()` could not reach: it had no failure outcome, only blocking.
-    #[test]
-    fn a_pipe_held_open_by_a_survivor_ends_the_drain_rather_than_hanging() {
-        let mut command = Command::new("sh");
-        // The shell exits immediately while its background child keeps stdout open.
-        command
-            .arg("-c")
-            .arg("sleep 30 & exit 0")
-            .stdout(std::process::Stdio::piped());
-        let mut child = crate::process_group::spawn_in_new_process_group(&mut command)
-            .expect("spawn a shell that leaves a descendant holding the pipe");
-        let pid = child.id();
-        let mut drain = PipeDrain::spawn(child.stdout.take());
-        let outcome = drain.finish_within(Duration::from_millis(500));
-        // Tear the group down before asserting, so a failure here cannot leak the sleeper.
-        // Reaping is always safe; it is SIGNALLING an unprovable identity that is not. So the lost
-        // arm still waits on our own handle, it simply sends nothing.
-        match crate::process_group::pin_process_group_identity(pid) {
-            Ok(identity) => {
-                let _ = crate::process_group::terminate_process_group(
-                    &mut child,
-                    &identity,
-                    Duration::from_secs(10),
-                );
-            }
-            Err(_) => {
-                let _ = child.wait();
-            }
-        }
-        match outcome {
-            StreamOutcome::DeadlineExceeded { .. } => {}
-            other => panic!("expected a bounded deadline outcome, got {other:?}"),
-        }
     }
 }

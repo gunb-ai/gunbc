@@ -1,5 +1,6 @@
 module extdeps.llm.openai_rest
 
+import extdeps.ietf.http_semantics { POST }
 import extdeps.llm.openai {
   OpenAiChatMessage,
   OpenAiChatCompletion200Body,

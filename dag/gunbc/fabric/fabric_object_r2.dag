@@ -1,0 +1,185 @@
+module gunbc.fabric.fabric_object_r2
+
+import std.types { String, NonEmptyStr, Bool, FilePath }
+import v2.std.optional { Present, Absent }
+import std.durable_compare_and_set { CasGenerationPublicationRefused }
+import std.fabric_storage {
+  FabricObject, FabricObjectRef, fabric_object_addressed,
+  fabric_object_preimage, fabric_object_ref_wire, fabric_object_decode, fabric_object_verified, fabric_storage_fault_wire,
+  FabricObjectVerified, FabricObjectVerificationFailed,
+  FabricObjectGet, FabricObjectFetched, FabricObjectGetRefused,
+  FabricStorageFault, FabricStoreUnreachable, FabricStoreRefused, FabricObjectMissing, FabricObjectCorrupt, FabricReplyUndecodable,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.shell
+import gunbc.auth.access_token_source { AccessTokenSource }
+import gunbc.cloudflare.r2_origin { BucketPurpose }
+import gunbc.cloudflare.r2_staged_transfer {
+  WriteCredentialCustody, WriteCredentialShredded,
+  R2PutVerdict, R2ObjectStored, R2ObjectAlreadyPresent, R2ObjectTagMoved, R2PutRefused, R2PutOutcomeUnknown,
+  R2FetchStaged, R2FetchObjectAbsent, R2FetchStoreRefused, R2FetchTransportUnanswered, R2FetchLocalFailure,
+  R2StagingNotCreated, r2_release_staging, r2_put_staged_file, r2_fetch_into_staging,
+}
+import gunbc.fabric_storage_r2_head { R2HeadStagingCustody, r2_head_staging_of, r2_head_staging_join }
+import gunbc.fabric.fabric_blob_r2 {
+  FabricBlobReadDirection, FabricBlobWriteDirection, FabricBlobTargetReady, FabricBlobTargetRefused, resolve_fabric_blob_target,
+}
+
+// std.fabric_storage OBJECTS OVER R2: THE OBJECT HALF THE R2 HEAD (gunbc.fabric_storage_r2_head) SAYS
+// THE COMPOSED REALIZATION OWES. An object is stored as its canonical preimage
+// (std.fabric_storage fabric_object_preimage) under a key derived from its ref, create-only by the
+// bucket purpose's admission. A get decodes the preimage and routes it through
+// fabric_object_verified, so a store answering other bytes is corrupt, never trusted.
+//
+// THE KEY IS A LOCATOR, NOT AN IDENTITY. The ref is std.fabric_storage's sixty-four-bit structural
+// family (gunbc.recurring_failure_mode fabric_object_identity_is_a_structural_locator), so an
+// occupant under the key is NOT thereby these bytes. A create-only put answered "already present",
+// or a put whose outcome is unknown, is classified only by READING THE KEY BACK and requiring the
+// occupant's preimage to equal this object's: matching bytes are stored, other bytes are a corrupt
+// occupant, and an absent or unresolved readback leaves the outcome unknown -- never stored, and
+// never "store unreachable", because the store may hold the object.
+//
+// CUSTODY RIDES BESIDE THE VERDICT AND NEVER CHANGES IT (gunbc.cloudflare.r2_staged_transfer
+// WriteCredentialCustody): the write credential's custody, and every staging directory left behind
+// -- the staged preimage and the readback's -- as the head's own concatenated list of residue paths.
+
+data fabric_object_r2_prefix: NonEmptyStr = "objects/"
+
+fn fabric_object_r2_key(object: FabricObjectRef) -> NonEmptyStr {
+  concat(fabric_object_r2_prefix as String, fabric_object_ref_wire(object: object) as String) as NonEmptyStr
+}
+
+// ── THE GET ────────────────────────────────────────────────────────────────────────────────────
+
+type FabricObjectR2Get {
+  get: FabricObjectGet
+  staging: R2HeadStagingCustody
+}
+
+// THE STAGED BYTES, CLASSIFIED. Pure, so every arm is reachable from a supplied preimage.
+fn fabric_object_r2_read_of(object: FabricObjectRef, preimage: String?) -> FabricObjectGet {
+  match preimage {
+    Absent => FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: concat("the staged object could not be read: ", fabric_object_ref_wire(object: object) as String) as NonEmptyStr } }
+    Present { value: text } =>
+      match fabric_object_decode(preimage: text) {
+        Absent => FabricObjectGetRefused { fault: FabricReplyUndecodable { detail: concat("the stored bytes are not a fabric object preimage: ", fabric_object_ref_wire(object: object) as String) as NonEmptyStr } }
+        Present { value: content } =>
+          match fabric_object_verified(asked: object, content: content) {
+            FabricObjectVerificationFailed { fault: f } => FabricObjectGetRefused { fault: f }
+            FabricObjectVerified { stored: st } => FabricObjectFetched { stored: st }
+          }
+      }
+  }
+}
+
+fn get_fabric_object_r2(object: FabricObjectRef, purpose: BucketPurpose, token_source: AccessTokenSource) -> FabricObjectR2Get {
+  match resolve_fabric_blob_target(direction: FabricBlobReadDirection, key: fabric_object_r2_key(object: object), purpose: purpose) {
+    FabricBlobTargetRefused { cause: c } =>
+      FabricObjectR2Get { get: FabricObjectGetRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }, staging: r2_head_staging_of(custody: R2StagingNotCreated) }
+    FabricBlobTargetReady { target: target } =>
+      match r2_fetch_into_staging(target: target, token_source: token_source) {
+        R2FetchObjectAbsent { staging: s } => FabricObjectR2Get { get: FabricObjectGetRefused { fault: FabricObjectMissing { object: object } }, staging: r2_head_staging_of(custody: s) }
+        R2FetchStoreRefused { cause: c, staging: s } => FabricObjectR2Get { get: FabricObjectGetRefused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }, staging: r2_head_staging_of(custody: s) }
+        R2FetchTransportUnanswered { cause: c, staging: s } => FabricObjectR2Get { get: FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: c } }, staging: r2_head_staging_of(custody: s) }
+        R2FetchLocalFailure { cause: c, staging: s } => FabricObjectR2Get { get: FabricObjectGetRefused { fault: FabricStoreUnreachable { detail: concat("the object could not be staged locally: ", c as String) as NonEmptyStr } }, staging: r2_head_staging_of(custody: s) }
+        R2FetchStaged { staged_path: p, staging_dir: d, tag: _ } => {
+          let read = Filesystem.Read(path: p as String)
+          let released = r2_release_staging(dir: d)
+          FabricObjectR2Get {
+            get: fabric_object_r2_read_of(object: object, preimage: if read.success { Present { value: read.content } } else { none }),
+            staging: r2_head_staging_of(custody: released),
+          }
+        }
+      }
+  }
+}
+
+// ── THE PUT ────────────────────────────────────────────────────────────────────────────────────
+
+type FabricObjectR2PutVerdict
+  = FabricObjectR2Stored { object: FabricObjectRef }
+  | FabricObjectR2PresentVerified { object: FabricObjectRef }
+  | FabricObjectR2OccupiedByOther { object: FabricObjectRef, fault: FabricStorageFault }
+  | FabricObjectR2Refused { fault: FabricStorageFault }
+  | FabricObjectR2OutcomeUnknown { object: FabricObjectRef, cause: NonEmptyStr }
+
+type FabricObjectR2Put {
+  verdict: FabricObjectR2PutVerdict
+  credential: WriteCredentialCustody
+  staging: R2HeadStagingCustody
+}
+
+// THE READBACK DECIDES AN AMBIGUOUS PUT, AND ONLY MATCHING BYTES DECIDE IT STORED: the occupant must
+// verify against the ref (inside the read) AND carry this object's own preimage, because the ref is
+// a locator and verification alone is not identity.
+fn fabric_object_r2_readback_verdict(object: FabricObject, readback: FabricObjectGet?, cause: NonEmptyStr) -> FabricObjectR2PutVerdict {
+  let addressed = fabric_object_addressed(object: object)
+  match readback {
+    Absent => FabricObjectR2OutcomeUnknown { object: addressed.ref, cause: join([cause as String, "; no readback was taken"], "") as NonEmptyStr }
+    Present { value: FabricObjectGetRefused { fault: FabricObjectCorrupt { object: o, detail: d } } } =>
+      FabricObjectR2OccupiedByOther { object: addressed.ref, fault: FabricObjectCorrupt { object: o, detail: d } }
+    Present { value: FabricObjectGetRefused { fault: f } } =>
+      FabricObjectR2OutcomeUnknown { object: addressed.ref, cause: join([cause as String, "; the readback did not resolve: ", fabric_storage_fault_wire(fault: f)], "") as NonEmptyStr }
+    Present { value: FabricObjectFetched { stored: st } } =>
+      if (fabric_object_preimage(object: st.content) as String) == (fabric_object_preimage(object: object) as String) {
+        FabricObjectR2PresentVerified { object: addressed.ref }
+      } else {
+        FabricObjectR2OccupiedByOther { object: addressed.ref, fault: FabricObjectCorrupt { object: addressed.ref, detail: "the key holds an object whose preimage differs from the one put (a structural-locator collision)" } }
+      }
+  }
+}
+
+// THE PUT VERDICT, PURE OVER THE STORE'S ANSWER AND THE READBACK THAT ANSWER REQUIRED.
+fn fabric_object_r2_put_verdict(object: FabricObject, verdict: R2PutVerdict, readback: FabricObjectGet?) -> FabricObjectR2PutVerdict {
+  let addressed = fabric_object_addressed(object: object)
+  match verdict {
+    R2ObjectStored { tag: _ } => FabricObjectR2Stored { object: addressed.ref }
+    R2ObjectAlreadyPresent => fabric_object_r2_readback_verdict(object: object, readback: readback, cause: "the create-only put found the key occupied")
+    R2PutOutcomeUnknown { cause: c } => fabric_object_r2_readback_verdict(object: object, readback: readback, cause: c)
+    R2ObjectTagMoved => FabricObjectR2Refused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: "the store answered an If-Match failure to a create-only object put" } } }
+    R2PutRefused { cause: c } => FabricObjectR2Refused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: c } } }
+  }
+}
+
+fn fabric_object_r2_needs_readback(verdict: R2PutVerdict) -> Bool {
+  match verdict {
+    R2ObjectAlreadyPresent => true
+    R2PutOutcomeUnknown { cause: _ } => true
+    R2ObjectStored { tag: _ } => false
+    R2ObjectTagMoved => false
+    R2PutRefused { cause: _ } => false
+  }
+}
+
+fn fabric_object_r2_unput(cause: NonEmptyStr, staging: R2HeadStagingCustody) -> FabricObjectR2Put {
+  FabricObjectR2Put { verdict: FabricObjectR2Refused { fault: FabricStoreRefused { cause: CasGenerationPublicationRefused { detail: cause } } }, credential: WriteCredentialShredded, staging: staging }
+}
+
+fn put_fabric_object_r2(object: FabricObject, purpose: BucketPurpose, token_source: AccessTokenSource) -> FabricObjectR2Put {
+  let addressed = fabric_object_addressed(object: object)
+  match resolve_fabric_blob_target(direction: FabricBlobWriteDirection, key: fabric_object_r2_key(object: addressed.ref), purpose: purpose) {
+    FabricBlobTargetRefused { cause: c } => fabric_object_r2_unput(cause: c, staging: r2_head_staging_of(custody: R2StagingNotCreated))
+    FabricBlobTargetReady { target: target } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        fabric_object_r2_unput(cause: "no private directory could be minted to stage the object; nothing was put", staging: r2_head_staging_of(custody: R2StagingNotCreated))
+      } else {
+        let dir = staging.path as NonEmptyStr
+        let path = join([dir as String, "/object"], "")
+        let w = Filesystem.Write(path: path, content: fabric_object_preimage(object: object) as String)
+        if w.success == false {
+          fabric_object_r2_unput(cause: concat("the object could not be staged: ", w.error) as NonEmptyStr, staging: r2_head_staging_of(custody: r2_release_staging(dir: dir)))
+        } else {
+          let put = r2_put_staged_file(target: target, local_path: path as FilePath, token_source: token_source)
+          let staged = r2_head_staging_of(custody: r2_release_staging(dir: dir))
+          if fabric_object_r2_needs_readback(verdict: put.verdict) {
+            let back = get_fabric_object_r2(object: addressed.ref, purpose: purpose, token_source: token_source)
+            FabricObjectR2Put { verdict: fabric_object_r2_put_verdict(object: object, verdict: put.verdict, readback: Present { value: back.get }), credential: put.credential, staging: r2_head_staging_join(a: staged, b: back.staging) }
+          } else {
+            FabricObjectR2Put { verdict: fabric_object_r2_put_verdict(object: object, verdict: put.verdict, readback: none), credential: put.credential, staging: staged }
+          }
+        }
+      }
+    }
+  }
+}

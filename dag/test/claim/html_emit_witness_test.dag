@@ -1,5 +1,6 @@
 module test.claim.html_emit_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.markup { Fragment, Element, FragmentText, attr }
 import extdeps.languages.html {
   try_serialize_html_source,
@@ -7,6 +8,7 @@ import extdeps.languages.html {
   EmitOk,
   EmitRejected,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
