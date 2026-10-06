@@ -9,9 +9,9 @@ fn semver_constraint_one() -> SemVerConstraint { "1" }
 
 fn semver_1_0_0() -> SemVerVersion {
   SemVerVersion {
-    major: 1,
-    minor: 0,
-    patch: 0,
+    major: [1],
+    minor: [0],
+    patch: [0],
     pre_release: [],
     build: []
   }
@@ -19,9 +19,9 @@ fn semver_1_0_0() -> SemVerVersion {
 
 fn semver_1_0_0_alpha() -> SemVerVersion {
   SemVerVersion {
-    major: 1,
-    minor: 0,
-    patch: 0,
+    major: [1],
+    minor: [0],
+    patch: [0],
     pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }],
     build: []
   }
@@ -29,31 +29,31 @@ fn semver_1_0_0_alpha() -> SemVerVersion {
 
 fn semver_1_0_0_alpha_1() -> SemVerVersion {
   SemVerVersion {
-    major: 1,
-    minor: 0,
-    patch: 0,
-    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { value: 1 }],
+    major: [1],
+    minor: [0],
+    patch: [0],
+    pre_release: [SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { digits: [1] }],
     build: []
   }
 }
 
 fn semver_1_0_0_alpha_0() -> SemVerVersion {
   SemVerVersion {
-    major: 1,
-    minor: 0,
-    patch: 0,
-    pre_release: [SemVerNumericIdentifier { value: 0 }, SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { value: 1 }],
+    major: [1],
+    minor: [0],
+    patch: [0],
+    pre_release: [SemVerNumericIdentifier { digits: [0] }, SemVerAlphanumericIdentifier { label: "alpha" }, SemVerNumericIdentifier { digits: [1] }],
     build: []
   }
 }
 
 fn semver_1_0_0_build_1() -> SemVerVersion {
   SemVerVersion {
-    major: 1,
-    minor: 0,
-    patch: 0,
+    major: [1],
+    minor: [0],
+    patch: [0],
     pre_release: [],
-    build: [SemVerNumericIdentifier { value: 1 }]
+    build: [SemVerNumericIdentifier { digits: [1] }]
   }
 }
 
@@ -85,7 +85,7 @@ test fn w_semver_scheme_wire_label_ordering() -> Bool {
 
 test fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
   match semver_compare_identifier(
-    a: SemVerNumericIdentifier { value: 1 },
+    a: SemVerNumericIdentifier { digits: [1] },
     b: SemVerAlphanumericIdentifier { label: "alpha" }
   ) {
     Less => true
@@ -125,8 +125,8 @@ test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
 }
 
 test fn w_semver_compare_major_minor_patch() -> Bool {
-  let older = SemVerVersion { major: 1, minor: 2, patch: 3, pre_release: [], build: [] }
-  let newer = SemVerVersion { major: 1, minor: 2, patch: 4, pre_release: [], build: [] }
+  let older = SemVerVersion { major: [1], minor: [2], patch: [3], pre_release: [], build: [] }
+  let newer = SemVerVersion { major: [1], minor: [2], patch: [4], pre_release: [], build: [] }
   match semver_compare(a: older, b: newer) {
     Less =>
       match semver_compare(a: newer, b: older) {
@@ -279,10 +279,32 @@ test fn w_semver_core_refuses_trailing_delimiter_label() -> Bool {
 // old unchecked accumulation wrapped 20 nines into a small positive Int that passed
 // checked_int_to_nat and minted a wrong precedence (review 76945); under the repair this
 // label refuses, so no ordering can be fabricated from it.
-test fn w_semver_core_refuses_numeric_field_overflowing_int() -> Bool {
+// A numeric component has NO size limit in section 2 or 9, so a 20-nines field is a valid
+// label, not an out-of-grammar one: it must compare by its digits, at any width (side chat
+// review 5427723272). The comparison path carries digits as code points — length is the
+// magnitude, then ASCII digit order — so no machine-integer conversion can refuse or wrap it.
+test fn w_semver_core_wide_numeric_field_compares_numerically() -> Bool {
   match semver_scheme.compare("1.99999999999999999999.0", "1.2.0") {
-    VersionComparisonRefused { side: side, identity: i, cause: _ } =>
-      side == LeftOperand && i == "1.99999999999999999999.0"
-    VersionCompared { ordering: _ } => false
+    VersionCompared { ordering: Greater } => true
+    _ => false
+  }
+}
+
+// The same no-limit rule for numeric pre-release identifiers: 99999999999999999999 is a valid
+// numeric identifier and must rank above 1.0.0-2.
+test fn w_pre_release_wide_numeric_identifier_compares_numerically() -> Bool {
+  match semver_scheme.compare("1.0.0-99999999999999999999", "1.0.0-2") {
+    VersionCompared { ordering: Greater } => true
+    _ => false
+  }
+}
+
+// Build metadata is validated text with no numeric conversion on any path: a 20-nines build
+// identifier parses, and since section 10 is ignored by the precedence, the label compares
+// Equal to the bare version.
+test fn w_build_wide_numeric_identifier_is_valid_and_ignored() -> Bool {
+  match semver_scheme.compare("1.0.0+99999999999999999999", "1.0.0") {
+    VersionCompared { ordering: Equal } => true
+    _ => false
   }
 }

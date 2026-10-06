@@ -3,9 +3,8 @@ module extdeps.git.versioning
 import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
-import std.nat { nat_compare }
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
-import extdeps.version.semver { semver_core_parse }
+import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, SemVerNumericField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -17,9 +16,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitReleaseVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: SemVerNumericField
+  minor: SemVerNumericField
+  patch: SemVerNumericField
 }
 
 type GitVersionPlatformSuffix
@@ -32,9 +31,9 @@ type GitCliReportedVersion {
 }
 
 data git_2_0_release: GitReleaseVersion = {
-  major: 2,
-  minor: 0,
-  patch: 0
+  major: [2],
+  minor: [0],
+  patch: [0]
 }
 
 data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
@@ -45,8 +44,8 @@ data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
 fn git_release_version_label(v: GitReleaseVersion) -> String {
   concat(
-    to_string(v.major),
-    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+    semver_label_from_code_points(cps: v.major),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor), concat(".", semver_label_from_code_points(cps: v.patch))))
   )
 }
 
@@ -55,9 +54,9 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
-  match nat_compare(a: a.major, b: b.major) {
-    Equal => match nat_compare(a: a.minor, b: b.minor) {
-      Equal => nat_compare(a: a.patch, b: b.patch)
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
+    Equal => match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
+      Equal => semver_compare_numeric_digits(a: a.patch, b: b.patch)
       other => other
     }
     other => other

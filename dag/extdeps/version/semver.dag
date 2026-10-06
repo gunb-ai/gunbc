@@ -3,16 +3,7 @@ module extdeps.version.semver
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
-import std.checked_arithmetic {
-  checked_int_add,
-  checked_int_multiply,
-  checked_int_to_nat,
-  CheckedInt,
-  CheckedIntOverflow,
-  CheckedIntReady,
-}
 import std.types { List }
-import std.nat { nat_compare }
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -28,31 +19,62 @@ type SemVerIdentity = VersionIdentity
 
 type SemVerConstraint = VersionConstraint
 
+// A numeric component carries its code points, not a machine integer: SemVer 2.0.0 puts no
+// size limit on X.Y.Z (§2) or on numeric identifiers (§9), so an Int conversion on the
+// comparison path would invent a grammar failure the spec does not have. A field is admitted
+// with no leading zero unless it is the single digit 0 (§2, §9); build metadata (§10) admits
+// leading zeroes and stays validated text (ignored by the precedence entirely).
+type SemVerNumericField = List<Int>
+
 type SemVerIdentifier
-  = SemVerNumericIdentifier { value: NonNegativeInt }
+  = SemVerNumericIdentifier { digits: SemVerNumericField }
   | SemVerAlphanumericIdentifier { label: NonEmptyStr }
 
 type SemVerVersion {
-  major: NonNegativeInt
-  minor: NonNegativeInt
-  patch: NonNegativeInt
+  major: SemVerNumericField
+  minor: SemVerNumericField
+  patch: SemVerNumericField
   pre_release: List<SemVerIdentifier>
   build: List<SemVerIdentifier>
 }
 
-fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
-  nat_compare(a: a, b: b)
+// §11 decides major, then minor, then patch "as numbers". With admission refusing leading
+// zeroes, a digit run's LENGTH is its magnitude and equal lengths compare digit-wise in ASCII
+// order — section 11's numeric comparison at any width.
+fn semver_compare_numeric_digits(a: SemVerNumericField, b: SemVerNumericField) -> Ordering {
+  if a.count() < b.count() { Less } else if a.count() > b.count() { Greater } else { semver_compare_digits_lexical(a: a, b: b) }
+}
+
+fn semver_compare_digits_lexical(a: List<Int>, b: List<Int>) -> Ordering {
+  if a.count() == 0 {
+    Equal
+  } else {
+    match a.first() {
+      Present { value: ac } => match b.first() {
+        Present { value: bc } =>
+          if ac < bc {
+            Less
+          } else if ac > bc {
+            Greater
+          } else {
+            semver_compare_digits_lexical(a: a.skip(n: 1), b: b.skip(n: 1))
+          }
+        Absent => Greater
+      }
+      Absent => Less
+    }
+  }
 }
 
 fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Ordering {
   match a {
-    SemVerNumericIdentifier { value: av } => match b {
-      SemVerNumericIdentifier { value: bv } =>
-        semver_compare_non_negative_int(a: av, b: bv)
+    SemVerNumericIdentifier { digits: ad } => match b {
+      SemVerNumericIdentifier { digits: bd } =>
+        semver_compare_numeric_digits(a: ad, b: bd)
       SemVerAlphanumericIdentifier { label: _ } => Less
     }
     SemVerAlphanumericIdentifier { label: al } => match b {
-      SemVerNumericIdentifier { value: _ } => Greater
+      SemVerNumericIdentifier { digits: _ } => Greater
       SemVerAlphanumericIdentifier { label: bl } =>
         if al < bl { Less } else { if al > bl { Greater } else { Equal } }
     }
@@ -91,11 +113,11 @@ fn semver_compare_pre_release(a: List<SemVerIdentifier>, b: List<SemVerIdentifie
 }
 
 fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
-  match semver_compare_non_negative_int(a: a.major, b: b.major) {
+  match semver_compare_numeric_digits(a: a.major, b: b.major) {
     Equal =>
-      match semver_compare_non_negative_int(a: a.minor, b: b.minor) {
+      match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
         Equal =>
-          match semver_compare_non_negative_int(a: a.patch, b: b.patch) {
+          match semver_compare_numeric_digits(a: a.patch, b: b.patch) {
             Equal => semver_compare_pre_release(a: a.pre_release, b: b.pre_release)
             other => other
           }
@@ -107,7 +129,7 @@ fn semver_compare(a: SemVerVersion, b: SemVerVersion) -> Ordering {
 
 fn semver_identifier_label(id: SemVerIdentifier) -> String {
   match id {
-    SemVerNumericIdentifier { value: v } => "{v}"
+    SemVerNumericIdentifier { digits: d } => semver_label_from_code_points(cps: d)
     SemVerAlphanumericIdentifier { label: s } => s
   }
 }
@@ -118,8 +140,8 @@ fn semver_identifiers_label(ids: List<SemVerIdentifier>) -> String {
 
 fn semver_version_label(v: SemVerVersion) -> String {
   let core = concat(
-    to_string(v.major),
-    concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+    semver_label_from_code_points(cps: v.major),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor), concat(".", semver_label_from_code_points(cps: v.patch))))
   )
   let with_pre = if v.pre_release.count() == 0 {
     core
@@ -221,38 +243,15 @@ fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
   }
 }
 
-// EACH STEP GOES THROUGH std.checked_arithmetic's authority, never an unchecked
-// multiply inspected after the fact: the step that crosses the bound refuses with
-// none, instead of wrapping into a plausible-looking number that a later Nat check
-// would happily accept.
-fn semver_digits_to_int(cps: List<Int>, acc: Int) -> Int? {
-  if cps.count() == 0 {
-    Present { value: acc }
-  } else {
-    match cps.first() {
-      Present { value: h } =>
-        match checked_int_multiply(a: acc, b: 10) {
-          CheckedIntReady { value: times } =>
-            match checked_int_add(a: times, b: h - 48) {
-              CheckedIntReady { value: next } =>
-                semver_digits_to_int(cps: cps.skip(n: 1), acc: next)
-              CheckedIntOverflow { cause: _ } => none
-            }
-          CheckedIntOverflow { cause: _ } => none
-        }
-      Absent => Present { value: acc }
-    }
-  }
-}
-
-fn semver_nat_field(cps: List<Int>) -> NonNegativeInt? {
+// THE FIELD IS ITS DIGIT SEQUENCE, admitted by the no-leading-zero check and carried as code
+// points: section 2 and section 9 numerics have no size limit, so converting to a machine
+// integer here would turn a valid label into a refusal the spec does not describe, or wrap it
+// into a wrong precedence. The comparison path never converts.
+fn semver_digits_field(cps: List<Int>) -> SemVerNumericField? {
   if !semver_numeric_run_without_leading_zero(cps: cps) {
     none
   } else {
-    match semver_digits_to_int(cps: cps, acc: 0) {
-      Absent => none
-      Present { value: digits } => checked_int_to_nat(n: digits)
-    }
+    Present { value: cps }
   }
 }
 
@@ -269,14 +268,14 @@ fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeI
   if remaining == 0 {
     if cps.count() == 0 { Present { value: [] } } else { none }
   } else if remaining == 1 {
-    match semver_nat_field(cps: cps) {
+    match semver_digits_field(cps: cps) {
       Absent => none
       Present { value: v } => Present { value: [v] }
     }
   } else {
     match semver_index_of(cp: 46, cps: cps) {
       Present { value: i } =>
-        match semver_nat_field(cps: cps.take(n: i)) {
+        match semver_digits_field(cps: cps.take(n: i)) {
           Absent => none
           Present { value: v } =>
             match semver_core_fields_parse(cps: cps.skip(n: i + 1), remaining: remaining - 1) {
@@ -321,21 +320,16 @@ fn semver_core_parse(cps: List<Int>) -> SemVerVersion? {
 // neither numeric ("Numeric identifiers MUST NOT include leading zeroes", §9) nor alphanumeric
 // (the §2 grammar requires an alphanumeric identifier to contain a non-digit), so it refuses.
 // §10 permits leading zeroes in build metadata ("1.0.0+0130"), so permissive mode keeps such a
-// run as an alphanumeric identifier.
+// run as an alphanumeric identifier. An admitted numeric identifier carries its digits as code
+// points: section 9 numerics have no size limit, so no machine-integer conversion happens on
+// the comparison path.
 fn semver_identifier_parse(cps: List<Int>, strict_numeric: Bool) -> SemVerIdentifier? {
   if cps.count() == 0 {
     none
   } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
     none
   } else if semver_numeric_run_without_leading_zero(cps: cps) {
-    match semver_digits_to_int(cps: cps, acc: 0) {
-      Absent => none
-      Present { value: digits } =>
-        match checked_int_to_nat(n: digits) {
-          Absent => none
-          Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
-        }
-    }
+    Present { value: SemVerNumericIdentifier { digits: cps } }
   } else if strict_numeric && semver_all_digits(cps: cps) {
     none
   } else {
