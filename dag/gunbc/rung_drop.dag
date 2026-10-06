@@ -249,6 +249,7 @@ type LegacyProseIdentity
   | EmitCopyQualificationWithoutAConsumer
   | FloorCostHighCpuWithheld
   | DeterminismTransitiveReachability
+  | BrowserReadyLabelsFleetRouteStall
 
 fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
   match l {
@@ -283,6 +284,7 @@ fn legacy_prose_identity(l: LegacyProseIdentity) -> String {
     FloorCutRegenSecondGenerationAgreement => "floor_cut_regen_second_generation_agreement"
     FloorCutReceiptDiscriminatingArms => "floor_cut_receipt_discriminating_arms"
     FloorCutBehaviouralRegressionDifferential => "floor_cut_behavioural_regression_differential"
+    BrowserReadyLabelsFleetRouteStall => "browser_ready_labels_fleet_route_stall"
   }
 }
 
