@@ -21,7 +21,7 @@ fn margin() -> Micrometer { micrometer(count: 8000) }
 fn thickness() -> Micrometer { micrometer(count: 3000) }
 
 // POSITIVE CONTROL. The shipping gauge admits on the real population and the real envelope.
-test fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool {
+test fn w_the_declared_altrad8ud_gauge_is_admitted() -> Bool  {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } => true
     GaugeLocationNotEnumerated { requested: r } => false
@@ -65,7 +65,7 @@ fn spec_read_span_depth() -> Nat {
 // The live population must match the independent transcription, coordinate by coordinate. This is
 // the arm that would go red if micro_atx_mounting_locations were corrupted, and it is the reason the
 // span comparison below is not circular.
-test fn w_the_live_population_matches_an_independent_reading_of_the_spec() -> Bool {
+test fn w_the_live_population_matches_an_independent_reading_of_the_spec() -> Bool  {
   match location_scan(rows: micro_atx_mounting_locations, id: LocF) {
     LocationFound { location: f } => match location_scan(rows: micro_atx_mounting_locations, id: LocC) {
       LocationFound { location: c } =>
@@ -81,7 +81,7 @@ test fn w_the_live_population_matches_an_independent_reading_of_the_spec() -> Bo
   }
 }
 
-test fn w_the_span_is_the_standards_own_separation() -> Bool {
+test fn w_the_span_is_the_standards_own_separation() -> Bool  {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } =>
       micrometer_count(m: g.span_along_rear_edge) == spec_read_span_along() &&
@@ -95,7 +95,7 @@ test fn w_the_span_is_the_standards_own_separation() -> Bool {
 
 // DISCRIMINATING RED FOR DERIVATION. A foreign population with different coordinates must move the
 // part. A gauge carrying its own literals would ignore this and stay at 157480.
-test fn w_a_foreign_population_moves_the_gauge() -> Bool {
+test fn w_a_foreign_population_moves_the_gauge() -> Bool  {
   let shifted = [
     mounting_location(id: LocF, along_rear_edge: micrometer(count: 10000),
                       depth_from_rear_edge: micrometer(count: 20000)),
@@ -117,7 +117,7 @@ test fn w_a_foreign_population_moves_the_gauge() -> Bool {
 // THE LOAD-BEARING RED. A location the standard does not enumerate refuses, and does NOT fall back to
 // the first row or to the origin. Either fallback would emit a printable part asserting a coordinate
 // no document states -- fabricated plausible output with a physical mass.
-test fn w_a_location_the_standard_does_not_enumerate_refuses() -> Bool {
+test fn w_a_location_the_standard_does_not_enumerate_refuses() -> Bool  {
   let only_f = [
     mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350),
                       depth_from_rear_edge: micrometer(count: 33020)),
@@ -134,7 +134,7 @@ test fn w_a_location_the_standard_does_not_enumerate_refuses() -> Bool {
 
 // AN EMPTY POPULATION REFUSES RATHER THAN PRODUCING A DEGENERATE PART. A fixture at an absorbing
 // extreme would otherwise clear every downstream check by having nothing to check.
-test fn w_an_empty_population_refuses() -> Bool {
+test fn w_an_empty_population_refuses() -> Bool  {
   match admit_standoff_gauge(rows: [], envelope: a1_mini_build_envelope, a: LocF, b: LocC,
                              margin: margin(), thickness: thickness()) {
     GaugeLocationNotEnumerated { requested: r } => true
@@ -153,7 +153,7 @@ test fn w_an_empty_population_refuses() -> Bool {
 // keeping in view: it ratified a diagnostic that told the reader the standard does not define LocF
 // while the fixture defines it twice. A witness that checks only THAT a refusal fired will happily
 // hold a refusal that misnames its own cause.
-test fn w_a_duplicated_location_refuses_rather_than_picking_one() -> Bool {
+test fn w_a_duplicated_location_refuses_rather_than_picking_one() -> Bool  {
   let dup = [
     mounting_location(id: LocF, along_rear_edge: micrometer(count: 6350),
                       depth_from_rear_edge: micrometer(count: 33020)),
@@ -174,7 +174,7 @@ test fn w_a_duplicated_location_refuses_rather_than_picking_one() -> Bool {
 
 // ASKING FOR ONE LOCATION TWICE gives no span, and a zero-span bar is not a gauge. It refuses instead
 // of emitting a square of margin with two coincident holes.
-test fn w_one_location_asked_for_twice_refuses() -> Bool {
+test fn w_one_location_asked_for_twice_refuses() -> Bool  {
   match admit_standoff_gauge(rows: micro_atx_mounting_locations, envelope: a1_mini_build_envelope,
                              a: LocF, b: LocF, margin: margin(), thickness: thickness()) {
     GaugeLocationsCoincide { requested: r } => true
@@ -188,7 +188,7 @@ test fn w_one_location_asked_for_twice_refuses() -> Bool {
 // THE BED IS A REAL WALL. The board is 244 x 267 mm and the A1 mini's bed is 180 x 180, so a part
 // spanning the full board cannot be printed in one piece. A 60 mm envelope is not the A1 mini's, but
 // it is the same refusal this gauge would hit on a full-board part, enrolled where it is authorable.
-test fn w_a_gauge_too_long_for_the_bed_refuses() -> Bool {
+test fn w_a_gauge_too_long_for_the_bed_refuses() -> Bool  {
   match admit_standoff_gauge(rows: micro_atx_mounting_locations,
                              envelope: build_envelope(x: millimeter(count: 60),
                                                       y: millimeter(count: 60),
@@ -213,7 +213,7 @@ test fn w_a_gauge_too_long_for_the_bed_refuses() -> Bool {
 // red for a reason that has nothing to do with the gauge. Naming the instrument is the whole point;
 // what this proves is that the gauge PASSES THE AUTHORITY THROUGH rather than substituting a
 // diameter of its own, and that is exactly the property at issue.
-test fn w_the_holes_carry_the_standards_diameter() -> Bool {
+test fn w_the_holes_carry_the_standards_diameter() -> Bool  {
   match altrad8ud_standoff_gauge {
     GaugeAdmitted { geometry: g } => match g.holes.first() {
       Present { value: h } => match h {

@@ -25,7 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // inhabitance claim beneath them is `the_repository_config_is_rendered_by_this_serializer`, which
 // runs the real projection end to end.
 
-test fn every_modeled_value_kind_renders() -> Bool {
+test fn every_modeled_value_kind_renders() -> Bool  {
   (toml_render_value(v: TomlString { value: "warnings" }) == "\"warnings\"")
     && (toml_render_value(v: TomlInteger { value: 2 }) == "2")
     && (toml_render_value(v: TomlBool { value: false }) == "false")
@@ -42,14 +42,14 @@ test fn every_modeled_value_kind_renders() -> Bool {
 // second turns `"` into `\\"` -- a backslash followed by an unescaped terminator -- so a string
 // carrying both characters is the input that discriminates a correct implementation from the
 // plausible wrong one. A test over a quote alone passes under either order and establishes nothing.
-test fn basic_string_escaping_handles_quote_and_backslash_together() -> Bool {
+test fn basic_string_escaping_handles_quote_and_backslash_together() -> Bool  {
   (toml_escape_basic_string(s: "a\"b") == "a\\\"b")
     && (toml_escape_basic_string(s: "a\\b") == "a\\\\b")
     && (toml_escape_basic_string(s: "a\\\"b") == "a\\\\\\\"b")
     && (toml_render_value(v: TomlString { value: "a\"b" }) == "\"a\\\"b\"")
 }
 
-test fn comments_and_tables_render_at_their_declared_positions() -> Bool {
+test fn comments_and_tables_render_at_their_declared_positions() -> Bool  {
   let doc = TomlDocument {
     preamble_comments: ["top"],
     tables: [
@@ -74,7 +74,7 @@ test fn comments_and_tables_render_at_their_declared_positions() -> Bool {
 
 // A document with no preamble must not open on a blank line: the separator is emitted BECAUSE a
 // preamble exists, not unconditionally.
-test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool {
+test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool  {
   serialize_toml(doc: TomlDocument {
     preamble_comments: [],
     tables: [TomlTable {
@@ -91,7 +91,7 @@ test fn a_document_without_a_preamble_opens_on_its_first_table() -> Bool {
 // renders as an integer. The mis-paired document is not merely absent from this claim -- it has no
 // constructor, because `CargoBuildConfig` takes the job count as an `Int` and the flags as a
 // `List<String>` and the caller never names a key at all.
-test fn cargo_binds_each_key_to_its_own_value_shape() -> Bool {
+test fn cargo_binds_each_key_to_its_own_value_shape() -> Bool  {
   serialize_toml(doc: cargo_config_document(
     preamble_comments: [],
     build: CargoBuildConfig { jobs: Present { value: 4 }, rustflags: ["-D", "warnings"] },
@@ -102,7 +102,7 @@ test fn cargo_binds_each_key_to_its_own_value_shape() -> Bool {
 
 // An absent job count is cargo's own default and must not be written as a fabricated zero, and an
 // empty flag list must not emit an empty array that overrides an inherited value with nothing.
-test fn absent_build_facts_omit_their_keys() -> Bool {
+test fn absent_build_facts_omit_their_keys() -> Bool  {
   serialize_toml(doc: cargo_config_document(
     preamble_comments: [],
     build: CargoBuildConfig { jobs: none, rustflags: [] },
@@ -113,7 +113,7 @@ test fn absent_build_facts_omit_their_keys() -> Bool {
 
 // An env row is an inline table carrying value and force, and it lands in `[env]` -- a table a
 // caller cannot choose, because `cargo_config_document` takes env rows as their own argument.
-test fn env_rows_render_as_cargos_inline_table_in_the_env_section() -> Bool {
+test fn env_rows_render_as_cargos_inline_table_in_the_env_section() -> Bool  {
   (toml_render_value(v: cargo_config_env_value(var: CargoConfigEnvVar {
      name: "RUST_MIN_STACK", value: "16777216", force: false
    })) == "{ value = \"16777216\", force = false }")
@@ -132,7 +132,7 @@ test fn env_rows_render_as_cargos_inline_table_in_the_env_section() -> Bool {
 // THE RUSTFLAGS VALUE FOLLOWS ITS INPUT rather than being a constant that happens to agree with the
 // policy row today. A renderer that ignored its argument and returned the repository's own denial
 // would pass every claim above; this is the one it fails.
-test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool {
+test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool  {
   serialize_toml(doc: cargo_config_document(
     preamble_comments: [],
     build: CargoBuildConfig { jobs: none, rustflags: ["-A", "dead_code"] },
@@ -144,7 +144,7 @@ test fn the_rustflags_value_follows_the_flags_it_is_given() -> Bool {
 // THE ADMITTED INPUT DOMAIN, closed rather than assumed. The model accepts any `String` for a
 // value, a key, a table name or a comment line, so each of these is a document the type system
 // permits and a serializer that rendered it verbatim would emit invalid or DIFFERENT TOML.
-test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool {
+test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool  {
   (toml_render_value(v: TomlString { value: "a\nb" }) == "\"a\\nb\"")
     && (toml_render_value(v: TomlString { value: "a\rb" }) == "\"a\\rb\"")
     && (toml_render_value(v: TomlString { value: "a\tb" }) == "\"a\\tb\"")
@@ -157,7 +157,7 @@ test fn control_bearing_strings_stay_inside_their_basic_string() -> Bool {
 // witness that stops at U+001F passes over exactly that character. The quoted-key case is here
 // because keys, table names and values share one escaping route, and a claim over values alone
 // would not establish the other two.
-test fn delete_is_escaped_on_every_route_that_shares_the_escaper() -> Bool {
+test fn delete_is_escaped_on_every_route_that_shares_the_escaper() -> Bool  {
   (toml_render_value(v: TomlString { value: "a\u{7f}b" }) == "\"a\\u007Fb\"")
     && (toml_escape_basic_string(s: "\u{7f}") == "\\u007F")
     && (toml_render_key(key: "a\u{7f}b") == "\"a\\u007Fb\"")
@@ -174,7 +174,7 @@ test fn delete_is_escaped_on_every_route_that_shares_the_escaper() -> Bool {
 // A key that is not a BARE key must be quoted, and `a.b` is the case that matters most: written
 // bare it is a dotted path naming a nested table, so quoting is what preserves the caller's
 // meaning rather than a cosmetic choice.
-test fn non_bare_keys_are_quoted_rather_than_written_as_paths() -> Bool {
+test fn non_bare_keys_are_quoted_rather_than_written_as_paths() -> Bool  {
   (toml_render_key(key: "jobs") == "jobs")
     && (toml_render_key(key: "RUST_MIN_STACK") == "RUST_MIN_STACK")
     && (toml_render_key(key: "a-b") == "a-b")
@@ -185,7 +185,7 @@ test fn non_bare_keys_are_quoted_rather_than_written_as_paths() -> Bool {
 }
 
 // A comment carrying a newline would otherwise be prefixed ONCE, leaving its second line live TOML.
-test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
+test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool  {
   (toml_render_comment(text: "one\ntwo") == "# one\n# two\n")
     && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
     && (toml_render_comment(text: "plain") == "# plain\n")
@@ -197,7 +197,7 @@ test fn a_multi_line_comment_cannot_escape_into_live_toml() -> Bool {
 // passes every other comment claim while silently DELETING authored content, so the discriminating
 // pair is the two cases side by side: the CRLF splits, the lone CR survives as visible text. The
 // trailing case is here for the route discipline that caught the injection defect.
-test fn a_standalone_carriage_return_survives_as_text_rather_than_vanishing() -> Bool {
+test fn a_standalone_carriage_return_survives_as_text_rather_than_vanishing() -> Bool  {
   (toml_render_comment(text: "one\rtwo") == "# one\\u000Dtwo\n")
     && (toml_render_comment(text: "one\r\ntwo") == "# one\n# two\n")
     && (toml_render_entry(e: toml_entry_trailing(
@@ -209,7 +209,7 @@ test fn a_standalone_carriage_return_survives_as_text_rather_than_vanishing() ->
 // that follows a value on the same line, and an earlier revision appended it raw -- so a newline in
 // it rendered its second line as a real assignment. Asserting `toml_render_comment` alone never
 // touches this path, which is why this claim goes through a whole ENTRY.
-test fn a_trailing_comment_cannot_inject_an_assignment() -> Bool {
+test fn a_trailing_comment_cannot_inject_an_assignment() -> Bool  {
   (toml_render_entry(e: toml_entry_trailing(
      key: "jobs", value: TomlInteger { value: 2 }, trailing_comment: "one\ninjected = 2"
    )) == "jobs = 2  # one\n# injected = 2\n")
@@ -221,7 +221,7 @@ test fn a_trailing_comment_cannot_inject_an_assignment() -> Bool {
 // TOML admits only TAB among the controls inside a comment; the rest of C0 and U+007F are
 // prohibited. A comment carries no escape sequences -- its content is raw -- so a prohibited
 // character is rendered as its `\uXXXX` TEXT rather than carried through as an invalid byte.
-test fn comment_content_carries_no_prohibited_control() -> Bool {
+test fn comment_content_carries_no_prohibited_control() -> Bool  {
   (toml_render_comment(text: "a\u{1}b") == "# a\\u0001b\n")
     && (toml_render_comment(text: "a\u{7f}b") == "# a\\u007Fb\n")
     && (toml_render_comment(text: "a\tb") == "# a\tb\n")
@@ -235,7 +235,7 @@ test fn comment_content_carries_no_prohibited_control() -> Bool {
 // produced by THIS serializer from THAT row, so deleting the derivation cannot leave them green.
 // Byte identity against the committed file is adjudicated by the generated-artifact drift gate,
 // which owns comparing an emitted projection to its committed bytes; this claim owns the ROUTE.
-test fn the_repository_config_is_rendered_by_this_serializer() -> Bool {
+test fn the_repository_config_is_rendered_by_this_serializer() -> Bool  {
   let rendered = expected_cargo_config_toml()
   let denial_line = concat(
     concat(cargo_config_rustflags_key, " = "),

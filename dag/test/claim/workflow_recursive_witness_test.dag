@@ -178,6 +178,6 @@ fn workflow_kernel_all_verified(w: WorkflowKernelWitnessed) -> Bool {
   )
 }
 
-test fn workflow_recursive_witnesses() -> Bool {
+test fn workflow_recursive_witnesses() -> Bool  {
   workflow_kernel_all_verified(w: workflow_kernel_witnessed())
 }

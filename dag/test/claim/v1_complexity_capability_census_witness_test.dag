@@ -212,7 +212,7 @@ fn fixture_kind_present(kind: CapabilityWorkKind) -> Bool {
     acc || capability_work_kind(c: c) == kind)
 }
 
-test fn w_fixture_set_covers_every_work_kind() -> Bool {
+test fn w_fixture_set_covers_every_work_kind() -> Bool  {
   fixture_kind_present(kind: NoWorkOwed) &&
   fixture_kind_present(kind: IntegrationWork) &&
   fixture_kind_present(kind: MigrationWork) &&
@@ -220,7 +220,7 @@ test fn w_fixture_set_covers_every_work_kind() -> Bool {
   length(xs: all_disposition_fixtures()) == 6
 }
 
-test fn w_every_disposition_arm_has_a_fixture_and_one_work_kind() -> Bool {
+test fn w_every_disposition_arm_has_a_fixture_and_one_work_kind() -> Bool  {
   capability_work_kind(c: fixture_complete()) == NoWorkOwed &&
   capability_work_kind(c: fixture_superseded()) == NoWorkOwed &&
   capability_work_kind(c: fixture_retired()) == NoWorkOwed &&
@@ -229,7 +229,7 @@ test fn w_every_disposition_arm_has_a_fixture_and_one_work_kind() -> Bool {
   capability_work_kind(c: fixture_retirement_owed()) == RetirementWork
 }
 
-test fn w_work_owed_partitions_every_fixture_arm() -> Bool {
+test fn w_work_owed_partitions_every_fixture_arm() -> Bool  {
   !capability_work_owed(c: fixture_complete()) &&
   !capability_work_owed(c: fixture_superseded()) &&
   !capability_work_owed(c: fixture_retired()) &&
@@ -239,7 +239,7 @@ test fn w_work_owed_partitions_every_fixture_arm() -> Bool {
 }
 
 // The operator's correction, pinned as its own control. AvailableInSharedSubstrate previously projected as discharged, which understated C4: v2 has not consumed std.graph, so the work changed from migration to integration but did not disappear. If a future edit routes IntegrationOwed back into the no-work-owed partition, this reds.
-test fn w_integration_owed_is_not_discharged() -> Bool {
+test fn w_integration_owed_is_not_discharged() -> Bool  {
   capability_work_owed(c: call_graph_and_scc) &&
   capability_work_kind(c: call_graph_and_scc) == IntegrationWork &&
   capability_work_kind(c: call_graph_and_scc) != NoWorkOwed
@@ -247,7 +247,7 @@ test fn w_integration_owed_is_not_discharged() -> Bool {
 
 data w_retirement_is_owed_until_replacement_note: String = "The parser-progress ruling, pinned. The semantic capability survives as a migration row; the v1 walker realization is retirement-owed, NOT retired, because retiring before the replacement executes would delete a live capability. The trigger names the capability whose execution discharges it, so the edge is checkable rather than prose."
 
-test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool {
+test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool  {
   capability_work_kind(c: parser_progress_fact_production) == MigrationWork &&
   capability_work_kind(c: parser_progress_v1_walker) == RetirementWork &&
   capability_work_owed(c: parser_progress_v1_walker) &&
@@ -261,7 +261,7 @@ test fn w_parser_progress_ruling_is_modeled_as_two_rows() -> Bool {
   }
 }
 
-test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
+test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool  {
   fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
     let k = capability_work_kind(c: c)
     acc && (
@@ -271,7 +271,7 @@ test fn w_every_roster_row_lands_in_exactly_one_work_kind() -> Bool {
 }
 
 // An internal consistency join, not a tree-copied count: the four work-kind populations must exhaust the roster. No literal expected count appears — the assertion is that the parts sum to the whole, which stays true as rows are added and breaks if a kind is dropped from the projection.
-test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
+test fn w_work_kind_counts_exhaust_the_roster() -> Bool  {
   let n = length(xs: v1_complexity_inventory_roster)
   let none_owed = capability_work_count(rows: v1_complexity_inventory_roster, kind: NoWorkOwed)
   let integration = capability_work_count(rows: v1_complexity_inventory_roster, kind: IntegrationWork)
@@ -291,7 +291,7 @@ test fn w_work_kind_counts_exhaust_the_roster() -> Bool {
 // writable. This control asserts each axis maps to exactly the module paths its own axis is allowed
 // to name.
 
-test fn w_role_and_destination_are_separate_axes() -> Bool {
+test fn w_role_and_destination_are_separate_axes() -> Bool  {
   cost_program_role_module_path(r: RoleMigrationAuthority) == "v2.lens.cost" &&
   cost_program_role_module_path(r: RoleAsymptoticProjection) == "v2.lens.complexity" &&
   cost_program_role_module_path(r: RoleRealizationAccounts) == "std.realization_schedule" &&
@@ -309,7 +309,7 @@ test fn w_role_and_destination_are_separate_axes() -> Bool {
 // asserts the two axes actually differ on that row — if a future edit re-fuses them, the inequality
 // reds.
 
-test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
+test fn w_parser_progress_producer_differs_from_its_destination() -> Bool  {
   match parser_progress_fact_production.disposition {
     MigrationOwed { destination: d, producer: p, phase: _, note: _ } =>
       d == MigrateToV2LensCost && p == FactsFromV2Parser && p != FactsFromCostLens
@@ -327,7 +327,7 @@ test fn w_parser_progress_producer_differs_from_its_destination() -> Bool {
 // change detector. The identity-grained half — WHICH rows are residues and which capability each
 // belongs to — is asserted separately below, where naming them is the point rather than a count.
 
-test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
+test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool  {
   let rows = length(xs: v1_complexity_inventory_roster)
   let semantic = inventory_semantic_capability_count()
   let residues = inventory_residue_count()
@@ -351,12 +351,12 @@ test fn w_legacy_residues_are_not_semantic_capabilities() -> Bool {
 // and the paired control proves the fold is discriminating — a list with a planted duplicate must
 // come back false, otherwise the green above would mean nothing.
 
-test fn w_roster_identities_are_distinct() -> Bool {
+test fn w_roster_identities_are_distinct() -> Bool  {
   inventory_identity_keys_distinct() &&
   length(xs: inventory_identity_keys()) == length(xs: v1_complexity_inventory_roster)
 }
 
-test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
+test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool  {
   let planted = [
     inventory_item_key(item: SemanticCapabilityItem { capability: CallGraphAndScc }),
     inventory_item_key(item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance }),
@@ -376,12 +376,12 @@ test fn w_distinctness_fold_reds_on_a_planted_duplicate() -> Bool {
 // the cheap structural half of citation hygiene; that the referenced declaration actually EXISTS is
 // the long-lane resolution census's job, because deciding it requires the decl_facts scan.
 
-test fn w_every_v1_carrier_targets_the_seed_module() -> Bool {
+test fn w_every_v1_carrier_targets_the_seed_module() -> Bool  {
   fold(v1_complexity_inventory_roster, init: true, f: (acc, c) =>
     acc && (c.v1_carrier.module_path as String) == "v1.compiler.complexity")
 }
 
-test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
+test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool  {
   match capability_cited_carrier(c: fixture_retired()) {
     Present { value: _ } => false
     Absent => true

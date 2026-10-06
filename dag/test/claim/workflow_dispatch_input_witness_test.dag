@@ -91,7 +91,7 @@ fn value_is_expected_input(v: YamlValue) -> Bool {
   }
 }
 
-test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
+test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool  {
   let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
     inputs: [DispatchInput {
       name: "expected_healed_sha",
@@ -104,7 +104,7 @@ test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
   entry.key == "workflow_dispatch" && value_is_expected_input(v: entry.value)
 }
 
-test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
+test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool  {
   match workflow_trigger_entry(trigger: WorkflowDispatch { inputs: [] }).value {
     YamlNull => true
     YamlBool { value: _ } => false
@@ -197,7 +197,7 @@ fn mode_input_has_choice_options(v: YamlValue, expected: List<String>) -> Bool {
 // PAIRING OBLIGATION -- that the real producer emits this shape -- is discharged by
 // fleet_converge_workflow_has_build_job_needs_release_bins and by the rendered-yaml claims below,
 // which run the real workflow end to end; deleting them would leave this input unpaired.
-test fn workflow_dispatch_choice_input_projects_options_list() -> Bool {
+test fn workflow_dispatch_choice_input_projects_options_list() -> Bool  {
   let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
     inputs: [DispatchInput {
       name: "mode",
@@ -291,25 +291,25 @@ fn fleet_converge_job_edges_hold(edges: List<FleetConvergeJobEdge>, expected: Li
     })
 }
 
-test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool {
+test fn fleet_converge_workflow_has_build_job_needs_release_bins() -> Bool  {
   fleet_converge_job_edges_hold(edges: fleet_converge_job_edges, expected: fleet_converge_expected_job_ids())
 }
 
 // CONTROLS: the join must name the identity that breaks it, in each direction.
-test fn fleet_converge_job_roster_red_names_a_job_with_no_rostered_mode() -> Bool {
+test fn fleet_converge_job_roster_red_names_a_job_with_no_rostered_mode() -> Bool  {
   let edges = concat(fleet_converge_job_edges,
     [FleetConvergeJobEdge { id: "orphan-job" as NonEmptyStr, needs: [fleet_converge_release_bins_job_id as String] }])
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
     && fleet_converge_job_roster_extra(edges: edges, expected: fleet_converge_expected_job_ids()) == ["orphan-job"]
 }
 
-test fn fleet_converge_job_roster_red_names_a_rostered_mode_job_with_no_edge() -> Bool {
+test fn fleet_converge_job_roster_red_names_a_rostered_mode_job_with_no_edge() -> Bool  {
   let edges = filter(fleet_converge_job_edges, e => (e.id as String) != "namecheap-observe")
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
     && fleet_converge_job_roster_missing(edges: edges, expected: fleet_converge_expected_job_ids()) == ["namecheap-observe"]
 }
 
-test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
+test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool  {
   let edges = concat(fleet_converge_job_edges,
     [FleetConvergeJobEdge { id: "namecheap-observe" as NonEmptyStr, needs: [] }])
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
@@ -319,7 +319,7 @@ test fn fleet_converge_job_roster_red_names_a_duplicated_edge_row() -> Bool {
 // A JOB ROSTERED AS BUILDING ITS OWN PAIR IS HELD TO DOING SO: its edge needs nothing, and the step
 // it builds with is the compiler pair product's own build line. The red: a rostered job that still
 // waits on `build` (two binary sources, one of them unread) breaks the edge property.
-test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> Bool {
+test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> Bool  {
   fleet_converge_in_job_compiler_pair_jobs != []
     && all(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) { e.needs == [] } else { true })
     && match fleet_converge_mtcollins1_boot_pair_build_step() {
@@ -329,14 +329,14 @@ test fn fleet_converge_in_job_pair_jobs_build_the_pair_and_wait_on_nothing() -> 
     }
 }
 
-test fn fleet_converge_job_roster_red_on_a_pair_job_that_still_waits_on_build() -> Bool {
+test fn fleet_converge_job_roster_red_on_a_pair_job_that_still_waits_on_build() -> Bool  {
   let edges = map(fleet_converge_job_edges, e => if any(fleet_converge_in_job_compiler_pair_jobs, j => j == (e.id as String)) {
     FleetConvergeJobEdge { id: e.id, needs: [fleet_converge_release_bins_job_id as String] }
   } else { e })
   !fleet_converge_job_edges_hold(edges: edges, expected: fleet_converge_expected_job_ids())
 }
 
-test fn fleet_converge_job_roster_red_on_an_edge_that_skips_build() -> Bool {
+test fn fleet_converge_job_roster_red_on_an_edge_that_skips_build() -> Bool  {
   let edges = map(fleet_converge_job_edges, e => if (e.id as String) == "namecheap-observe" {
     FleetConvergeJobEdge { id: e.id, needs: [] }
   } else { e })
@@ -370,7 +370,7 @@ fn expected_fleet_converge_yml_content() -> String {
 // 500ms line is not a target they can meet, it is the threshold above which a claim must be ENROLLED
 // as declared debt, after which the cost is observed and published rather than gating. The enrollment
 // is keyed by the witness's fully qualified name, so a rename is a silent de-enrollment.
-test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool {
+test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool  {
   let yml = expected_fleet_converge_yml_content()
   !string_contains(s: yml, pattern: "expected_healed_sha")
     && !string_contains(s: yml, pattern: "secrets.GUNBC_ORG_ADMIN_TOKEN")
@@ -379,7 +379,7 @@ test fn fleet_converge_workflow_has_no_heal_revalidation_paste_through() -> Bool
 // ONE EMISSION, READ TWICE. Both conjuncts ask about the same rendered workflow, so emitting it
 // once and binding it is not a cache but the removal of an authored duplicate (DESIGN section 2):
 // the two demands share this frame as their least common ancestor, so the first value is carried.
-test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool {
+test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> Bool  {
   let yml = expected_fleet_converge_yml_content()
   string_contains(
     s: yml,
@@ -397,7 +397,7 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
 // repository secret for it (the interim PAT design was superseded before it was ever taken).
 // The bootstrap mode is the runner-side shape of the workstation apply: same prelude as the grant
 // install (fleet key agent, per-target administrator credential file), one target per run.
-test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_its_entry() -> Bool {
+test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_its_entry() -> Bool  {
   let invoke = gunbc_ci_spark_bootstrap_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/managed_access_apply.dag --function spark_managed_access_bootstrap_ci_wet")
     && string_contains(s: invoke, pattern: "GUNBC_SPARK_BOOTSTRAP_CREDENTIAL_FILE")
@@ -409,7 +409,7 @@ test fn fleet_converge_spark_bootstrap_mode_reuses_the_grant_prelude_and_names_i
 // the path, which named a file the entry never writes, so every converged apply (runs 34776045365,
 // 34782197491, 34783266345) ended red on `cat: No such file` after the units had landed. The step
 // now reads the entry's own declaration; the second assertion fails on the old spelling.
-test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool {
+test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes() -> Bool  {
   let invoke = gunbc_ci_spark_serving_apply_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/spark/pair_serving_apply.dag --function spark_pair_serving_apply_wet")
     && string_contains(s: invoke, pattern: join(["cat \"$ROOT/", spark_pair_apply_receipt_path, "\""], ""))
@@ -438,7 +438,7 @@ test fn fleet_converge_spark_serving_apply_prints_the_receipt_its_entry_writes()
 // information and would be cited as coverage it does not provide. The door is closed by the
 // deletion, which is DESIGN section 5's construction over validation -- guarding a door that no
 // longer exists is the weaker half of the pair, not an addition to it.
-test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
+test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool  {
   let invoke = gunbc_ci_approval_broker_dark_install_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/live_deploy/apply.dag --function approval_broker_dark_install_srv1_wet")
     && !string_contains(s: invoke, pattern: "apply_dispatch")
@@ -448,14 +448,14 @@ test fn the_dark_install_step_invokes_the_runner_principal_fold() -> Bool {
 // different mode renders a dispatch option that runs nothing -- green by every vocabulary claim
 // above, because those join options to wires and never reach a job. This joins the job's own
 // condition to the same derivation, so the two cannot drift apart silently.
-test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool {
+test fn the_dark_install_job_guards_on_its_own_dispatch_mode() -> Bool  {
   fleet_converge_approval_broker_dark_install_step_if
     == fleet_converge_mode_step_if(mode: ApprovalBrokerDarkInstall)
     && fleet_converge_approval_broker_dark_install_step_if
       == "github.event.inputs.mode == 'approval_broker_dark_install'"
 }
 
-test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
+test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool  {
   let invoke = gunbc_ci_org_actions_inspect_invoke()
   string_contains(s: invoke, pattern: "--entry dag/gunbc/fleet/org_actions_inspection.dag --function org_actions_inspect_wet")
     && string_contains(s: invoke, pattern: "app/installations/104134109/access_tokens")
@@ -479,7 +479,7 @@ test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -
 // THE DISCRIMINATING CONJUNCTS ARE THE LAST TWO: an admission that refused on the mode alone would
 // reject every correctly-dispatched reset, and one that ignored the mode would reject every OTHER
 // mode's dispatch. Both would satisfy a witness that only checked the unnamed case refuses.
-test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Bool {
+test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Bool  {
   match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "") {
     ResetDispatchObserverUnnamed { mode: _ } =>
       match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "srv1") {
@@ -500,7 +500,7 @@ test fn an_unnamed_reset_observer_refuses_in_the_always_schedulable_job() -> Boo
 // A WHITESPACE-ONLY OBSERVER IS UNNAMED TOO, which the shell `-z` test caught for free and a modeled
 // comparison does not unless it trims. GitHub hands an omitted input over as an empty string, but a
 // form field carrying a space is the same dispatch with the same silent stall behind it.
-test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
+test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool  {
   match admit_reset_dispatch(mode: "host_reset_return", reset_observer: "   ") {
     ResetDispatchObserverUnnamed { mode: _ } => true
     ResetDispatchAdmitted { mode: _ } => false
@@ -530,7 +530,7 @@ test fn a_whitespace_only_observer_is_refused_as_unnamed() -> Bool {
 // observer refusal is skipped where it applies. Content, membership and the job's gate are three
 // claims because they are three producers; joined in one, the claim built the whole job list and the
 // whole host-reset-return job to read one step and one field.
-test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs() -> Bool {
+test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_inputs() -> Bool  {
   match fleet_converge_reset_observer_dispatch_admission_step() {
     RunStep { name: _, id: i, run: r, shell: _, env: e, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
       (match i { Present { value: v } => v == "reset_observer_dispatch_admission"  Absent => false })
@@ -553,14 +553,14 @@ test fn the_reset_observer_dispatch_admission_step_carries_its_gate_entry_and_in
 // the declared drop gunbc.rung_drop fleet_build_job_membership_new_witness_eval_step_cost, because
 // demanding the list constructs every sibling release-bins step. Control: dropping the admission
 // step from the own list turns this red.
-test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool {
+test fn the_build_job_carries_the_reset_observer_dispatch_admission() -> Bool  {
   any(fleet_converge_build_job_own_steps(), st => st == fleet_converge_reset_observer_dispatch_admission_step())
 }
 
 // THE JOB'S SIDE OF THE SAME GATE, from the real job producer: the host-reset-return job is gated by
 // fleet_converge_host_reset_return_step_if, the gate the dispatch admission step carries. Control:
 // gating the job by any other condition, or ungating it, turns this red.
-test fn the_host_reset_return_job_is_gated_by_the_admissions_gate() -> Bool {
+test fn the_host_reset_return_job_is_gated_by_the_admissions_gate() -> Bool  {
   match fleet_converge_host_reset_return_job().if_condition {
     Present { value: jg } => jg == fleet_converge_host_reset_return_step_if
     Absent => false
@@ -584,7 +584,7 @@ fn step_env_binds(env: List<YamlKeyValue>?, key: String, input: String) -> Bool 
 // and still admit exactly the collision, because the observers differ and the subject does not; this
 // holds that the emitted group is the same gunbc-host-mutation- domain every other host-touching job
 // uses, resolved through the modeled assignment rather than through the dispatch input directly.
-test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool {
+test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool  {
   string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "gunbc-host-mutation-")
     && string_contains(s: fleet_converge_reset_subject_mutation_concurrency_group_expression, pattern: "github.event.inputs.reset_observer")
     && string_contains(s: fleet_converge_reset_subject_map_json(), pattern: "mtcollins1")
@@ -602,7 +602,7 @@ test fn the_reset_job_shares_the_mutation_domain_of_its_subject() -> Bool {
 // only witness available would have restated what the emitter does and been green by construction.
 // Handing it a pairing whose observer carries a quote is a red that the concat form fails and the
 // emitted form passes, which is the difference between a check and a decoration.
-test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool {
+test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool  {
   let rendered = match reset_dispatch_pairings(
     subject_roster: ["mtcollins1"],
     peer_roster: ["srv\"1"],
@@ -625,13 +625,13 @@ test fn a_reset_subject_map_escapes_a_label_that_would_break_the_json() -> Bool 
 // a literal does not substitute for it. What it CAN join is identities: the mode this lane added
 // is on the roster, every dispatch option is some rostered mode's wire, and every rostered wire is
 // a dispatch option.
-test fn the_password_session_tool_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+test fn the_password_session_tool_mode_is_on_the_roster_with_distinct_wires() -> Bool  {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
   any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerPasswordSessionToolConverge))
     && unique(xs: wires, eq: (a, b) => a == b)
 }
 
-test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool {
+test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Bool  {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
   any(wires, w => w == fleet_converge_workflow_mode_wire(mode: RunnerBrowserToolchainConverge))
     && unique(xs: wires, eq: (a, b) => a == b)
@@ -640,7 +640,7 @@ test fn the_browser_toolchain_mode_is_on_the_roster_with_distinct_wires() -> Boo
 // EVERY DISPATCH OPTION IS A WIRE VALUE, tying the menu GitHub renders to the vocabulary rather than
 // to a hand-kept list that merely happens to agree with it today. The join is both directions, so
 // a roster row with no option and an option with no row are both red.
-test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
+test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool  {
   let wires = map(fleet_converge_workflow_modes, m => fleet_converge_workflow_mode_wire(mode: m))
   all(fleet_converge_mode_options, o => any(wires, w => w == o))
     && all(wires, w => any(fleet_converge_mode_options, o => o == w))
@@ -649,7 +649,7 @@ test fn every_dispatch_option_is_a_wire_value_of_the_vocabulary() -> Bool {
 // THE STEP CONDITION IS DERIVED, not spelled beside the option. The discriminating half is the
 // second conjunct: a projection that returned a constant, or ignored its argument, would satisfy the
 // first and fail this.
-test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
+test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool  {
   fleet_converge_mode_step_if(mode: DashboardDeploy) == "github.event.inputs.mode == 'dashboard_deploy'"
     && fleet_converge_mode_step_if(mode: FullHostPlan) != fleet_converge_mode_step_if(mode: DashboardDeploy)
 }
@@ -658,7 +658,7 @@ test fn a_step_condition_is_the_wire_value_of_the_mode_it_selects() -> Bool {
 // changing it is a deliberate act with a red here rather than a quiet consequence of adding a member
 // to FleetConvergeScope. The three modes that DO name a scope are asserted beside it, so a projection
 // that answered `none` for everything cannot pass.
-test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool {
+test fn dashboard_deploy_selects_live_deploy_scope_while_the_plan_modes_do() -> Bool  {
   let deploy_live = match fleet_converge_mode_scope(mode: DashboardDeploy) {
     Absent => false
     Present { value: s } => match s {
@@ -757,7 +757,7 @@ fn microvm_network_step_env_text() -> String {
 // The two env conjuncts were also WEAKER than the line they stood beside: asserting the name and the
 // expression separately admits a step that carries both in DIFFERENT pairs. Reading the one rendered
 // pair keeps what the yml line established, and the step id comes off the step rather than the render.
-test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool {
+test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment() -> Bool  {
   let env = microvm_network_step_env_text()
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
     && step_id_text(step: fleet_converge_microvm_network_observe_step()) == "microvm_network_observe"
@@ -769,7 +769,7 @@ test fn the_microvm_network_step_binds_the_dispatched_host_into_its_environment(
 // over the fleet SSH edge in gunbc.runner_microvm_network_observe read_privileged_over_admin_edge,
 // because the job user is granted none of them (operator decision 2026-09-22). The key's consumer is
 // that fold, so the demand follows it rather than a preference.
-test fn the_microvm_network_observe_mode_claims_the_fleet_ssh_key_its_admin_reads_consume() -> Bool {
+test fn the_microvm_network_observe_mode_claims_the_fleet_ssh_key_its_admin_reads_consume() -> Bool  {
   match fleet_converge_mode_fleet_ssh_key_demand(mode: MicrovmNetworkObserve) {
     FleetSshKeyConsumed => true
     FleetSshKeyNotConsumed => false
@@ -780,7 +780,7 @@ test fn the_microvm_network_observe_mode_claims_the_fleet_ssh_key_its_admin_read
 // function is implicitly success(), and the observer exits failure for exactly the reading whose
 // receipt matters most (the placed host's unproxied one), so the upload's condition carries
 // always() beside the mode test, while the observation step's own condition is the bare mode test.
-test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation() -> Bool {
+test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation() -> Bool  {
   fleet_converge_fabric_writer_identity_observe_receipt_if.starts_with("always() && ")
     && fleet_converge_fabric_writer_identity_observe_receipt_if.contains("github.event.inputs.mode == 'fabric_writer_identity_observe'")
     && !fleet_converge_fabric_writer_identity_observe_step_if.contains("always()")
@@ -794,7 +794,7 @@ test fn the_fabric_writer_identity_receipt_upload_survives_a_failed_observation(
 // pair-serving apply on any executor and with every srv1 control-plane mutation (fleet apply,
 // keyring converge, dashboard deploy, broker install), distinct from Group B's native arm and from
 // other executors' domains.
-test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool {
+test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_before_credentials() -> Bool  {
   let env = step_env_text(step: fleet_converge_pair_serving_d0_step())
   let admit_env = step_env_text(step: fleet_converge_pair_serving_d0_admit_step())
   string_contains(s: env, pattern: "FLEET_CONVERGE_EXPECTED_HOST=$\{\{ github.event.inputs.host \}\}")
@@ -811,7 +811,7 @@ test fn the_pair_serving_d0_mode_binds_host_consent_and_revision_and_admits_befo
 
 // THE SAME MODE'S ADMISSION ORDER, split out for the same reason as its concurrency domain: the
 // credential prelude is the whole job's step roster, a different subject from the step's environment.
-test fn the_pair_serving_d0_admission_runs_before_any_credential_step() -> Bool {
+test fn the_pair_serving_d0_admission_runs_before_any_credential_step() -> Bool  {
   let ids = fleet_converge_credential_prelude_ids()
   step_index(ids: ids, id: "pair_serving_d0_admit") >= 0
     && step_index(ids: ids, id: "pair_serving_d0_admit") < step_index(ids: ids, id: "wif_auth")
@@ -821,7 +821,7 @@ test fn the_pair_serving_d0_admission_runs_before_any_credential_step() -> Bool 
 // THE SAME MODE'S CONCURRENCY DOMAIN, split from the environment claim above (DESIGN section 3: a
 // conjunction of independent cases is split when splitting loses no coverage -- the domain and the
 // environment are different subjects, and together they crossed the new-witness step budget).
-test fn the_pair_serving_d0_mode_shares_group_as_arm_domain_with_srv1_control_plane() -> Bool {
+test fn the_pair_serving_d0_mode_shares_group_as_arm_domain_with_srv1_control_plane() -> Bool  {
   let group = fleet_converge_mutation_concurrency_group_expression
   fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2", target: "srv5", run_id: "1")
     && fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: FleetApply, host: "srv1", target: "srv5", run_id: "1")
@@ -837,7 +837,7 @@ test fn the_pair_serving_d0_mode_shares_group_as_arm_domain_with_srv1_control_pl
 // THE CHECKPOINT MATERIALIZE MODE IS IN GROUP A'S ARM DOMAIN, NOT ITS EXECUTOR'S: whichever executor a
 // dispatch names, it queues behind D0 and the pair apply, and two dispatches for two Group A hosts
 // queue behind each other. The emitted step reads the target and runs the modeled entry.
-test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
+test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool  {
   let step = fleet_converge_spark_v41_checkpoint_materialize_step()
   fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv3", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1")
     && fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv2", target: "srv5", run_id: "1") == fleet_converge_mutation_group_for(mode: SparkServingApply, host: "srv2", target: "srv5", run_id: "1")
@@ -852,7 +852,7 @@ test fn the_v41_checkpoint_materialize_mode_serializes_on_group_a() -> Bool {
 // or the shared Group A key the launch and D0 hold -- the per-host claim inside each mode is the fence.
 // The probe stays keyed to its executor. The read-only observe is keyed by its own run, so no other
 // dispatch can supersede it, and the launch keeps the shared key.
-test fn the_produce_and_materialize_key_by_target_and_the_observe_by_its_own_run() -> Bool {
+test fn the_produce_and_materialize_key_by_target_and_the_observe_by_its_own_run() -> Bool  {
   let expression = fleet_converge_mutation_concurrency_group_expression
   let d0 = fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv5", run_id: "1")
   fleet_converge_mutation_group_for(mode: SparkRuntimeImageProduce, host: "srv1", target: "srv7", run_id: "1") == "gunbc-host-mutation-srv7"
@@ -879,7 +879,7 @@ test fn the_produce_and_materialize_key_by_target_and_the_observe_by_its_own_run
 // changed witness -- it is in neither the floor_cost_debt roster nor the grandfathered one. DESIGN
 // section 3: a claim reaches too far the moment its subject stops being ONE interface, and the d0
 // door's own bounds and the shared producer's reach are two subjects, not one.
-test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool {
+test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_declared_sum() -> Bool  {
   let inv = gunbc_ci_pair_serving_d0_invoke()
   let secs = (second_count(s: d0_approval_window()) as Int) + (second_count(s: d0_transaction_allowance) as Int) + (second_count(s: d0_prelude_allowance) as Int)
   string_contains(s: inv, pattern: join(["--connect-timeout ", to_string(second_count(s: gunbc_ci_sm_connect_timeout))], ""))
@@ -897,7 +897,7 @@ test fn the_pair_serving_d0_invocation_is_bounded_and_the_step_timeout_is_the_de
 // three-invocation claim it is 81,123 eval steps, still over the 72,300 new-witness budget. Each sibling
 // renders its own invocation in full, so the cost is the producer count and splitting by subject is the
 // only thing that moves it. Each claim now also fails under the name of the prelude that regressed.
-test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -> Bool {
+test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -> Bool  {
   string_contains(s: gunbc_ci_approval_keyring_converge_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
@@ -905,11 +905,11 @@ test fn the_approval_keyring_converge_prelude_carries_the_shared_total_bound() -
 // every literal word, so the bound is read as the two quoted words that render emits -- the same
 // argv pair the committed fleet-converge.yml boot step carries -- not as the space-joined spelling
 // the hand-composed preludes above print. A prelude that drops or rebinds the bound still goes red.
-test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool {
+test fn the_mtcollins1_boot_prelude_carries_the_shared_total_bound() -> Bool  {
   string_contains(s: gunbc_ci_mtcollins1_boot_invoke(), pattern: join(["'--max-time' '", to_string(second_count(s: gunbc_ci_sm_max_time)), "'"], ""))
 }
 
-test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool {
+test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> Bool  {
   string_contains(s: gunbc_ci_mtcollins1_fan_observe_invoke(), pattern: join(["--max-time ", to_string(second_count(s: gunbc_ci_sm_max_time))], ""))
 }
 
@@ -918,7 +918,7 @@ test fn the_mtcollins1_fan_observe_prelude_carries_the_shared_total_bound() -> B
 // longer supersede a pending enrolment; two issues still share one group; and the keyring converge,
 // which D0 must serialise with, still shares D0's group. Reverting the mode's row to the executor
 // domain turns the first conjunct red.
-test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool {
+test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_with_d0() -> Bool  {
   let issue = fleet_converge_mutation_group_for(mode: ApprovalDeviceEnrolmentCodeIssue, host: "srv1", target: "srv1", run_id: "0")
   issue != fleet_converge_mutation_group_for(mode: PairServingD0, host: "srv1", target: "srv1", run_id: "0")
     && issue != fleet_converge_mutation_group_for(mode: SparkV41CheckpointMaterialize, host: "srv1", target: "srv1", run_id: "0")
@@ -930,7 +930,7 @@ test fn the_enrolment_code_issue_is_keyed_to_its_store_and_the_keyring_stays_wit
 
 // The plan choice must reach the commissioning-only entry with both admission bindings,
 // and participate in the shared plan artifact upload rather than silently losing its receipt.
-test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool {
+test fn workspace_commissioning_plan_is_bound_and_uploaded() -> Bool  {
   let step = fleet_converge_workspace_commissioning_plan_step()
   let env = step_env_text(step: step)
   let scope_matches = match fleet_converge_mode_scope(mode: WorkspaceCommissioningPlan) {

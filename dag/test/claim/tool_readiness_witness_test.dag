@@ -116,7 +116,7 @@ fn tool_invocation(tool: CliTool) -> String {
   tool.program.invocation as String
 }
 
-test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
+test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool  {
   match tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
@@ -133,7 +133,7 @@ test fn matching_pinned_tool_is_admitted_with_zero_hunks() -> Bool {
   }
 }
 
-test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
+test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool  {
   let readiness = tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
@@ -168,7 +168,7 @@ test fn digest_mismatch_refuses_and_frontier_cannot_bypass_it() -> Bool {
   }
 }
 
-test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
+test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool  {
   match tool_readiness(
     request: PinnedToolReadinessRequest { pin: tracked_rustfmt_pin },
     frontier: [witness_unpinned_frontier_row],
@@ -196,7 +196,7 @@ test fn unchanged_tracked_pin_still_refuses_integrity() -> Bool {
   }
 }
 
-test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
+test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool  {
   let before = tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
@@ -225,7 +225,7 @@ test fn unrelated_tool_identity_does_not_change_rustfmt_readiness() -> Bool {
   }
 }
 
-test fn ensured_system_tool_teardown_refuses_through_shared_spine() -> Bool {
+test fn ensured_system_tool_teardown_refuses_through_shared_spine() -> Bool  {
   let plan = tool_pin_reconcile(desired: [], observed: [rustfmt_pin])
   membership_refusal_count(plan: plan) == 1
 }
@@ -234,7 +234,7 @@ test fn ensured_system_tool_teardown_refuses_through_shared_spine() -> Bool {
 // Each upstream observed_tool_identity arm maps to its own located readiness refusal and the
 // refusal list makes the occurrence count explicit.
 
-test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
+test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool  {
   let readiness = tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
@@ -256,7 +256,7 @@ test fn missing_observed_tool_identity_refuses_located_and_counted() -> Bool {
   }
 }
 
-test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
+test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool  {
   let readiness = tool_readiness(
     request: PinnedToolReadinessRequest { pin: rustfmt_pin },
     frontier: [],
@@ -287,7 +287,7 @@ test fn duplicate_observed_tool_identity_refuses_located_and_counted() -> Bool {
 // an unlisted unpinned tool refuses, duplicate declarations refuse, and providing a pin selects the
 // pinned path even when a frontier row exists (the mismatch witness above).
 
-test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
+test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool  {
   match tool_readiness(
     request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [witness_unpinned_frontier_row],
@@ -304,7 +304,7 @@ test fn declared_unpinned_rustfmt_frontier_is_explicit() -> Bool {
   }
 }
 
-test fn unlisted_unpinned_tool_refuses() -> Bool {
+test fn unlisted_unpinned_tool_refuses() -> Bool  {
   match tool_readiness(
     request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [],
@@ -325,7 +325,7 @@ test fn unlisted_unpinned_tool_refuses() -> Bool {
   }
 }
 
-test fn duplicate_unpinned_frontier_rows_refuse() -> Bool {
+test fn duplicate_unpinned_frontier_rows_refuse() -> Bool  {
   match tool_readiness(
     request: UnpinnedToolReadinessRequest { tool: rustfmt_cli_tool },
     frontier: [

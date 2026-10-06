@@ -19,7 +19,7 @@ import extdeps.vllm.runtime_defaults {
 // THE SUBJECT IS THE CANONICAL REQUEST VOCABULARY: every main-KV request round-trips through its
 // upstream wire, the former selector "fp4" is upstream's nvfp4, and the sparse indexer's K-cache dtype
 // is a separate axis whose support each revision states for itself.
-test fn w_every_kv_request_round_trips_through_its_wire() -> Bool {
+test fn w_every_kv_request_round_trips_through_its_wire() -> Bool  {
   all(vllm_kv_cache_dtype_requests, k =>
     match vllm_kv_cache_dtype_request_matching_wire(wire: vllm_kv_cache_dtype_wire(request: k)) {
       Present { value: back } => (vllm_kv_cache_dtype_wire(request: back) as String) == (vllm_kv_cache_dtype_wire(request: k) as String)
@@ -28,13 +28,13 @@ test fn w_every_kv_request_round_trips_through_its_wire() -> Bool {
 }
 
 // THE SPELLING NO RUNTIME ACCEPTS HAS NO REQUEST: "fp4" was the deleted selector vocabulary's wire.
-test fn w_the_retired_fp4_spelling_names_no_request_and_nvfp4_does() -> Bool {
+test fn w_the_retired_fp4_spelling_names_no_request_and_nvfp4_does() -> Bool  {
   (match vllm_kv_cache_dtype_request_matching_wire(wire: "fp4" as NonEmptyStr) { Present { value: _ } => false Absent => true })
     && (vllm_kv_cache_dtype_wire(request: KvNvfp4) as String) == "nvfp4"
     && (vllm_kv_cache_dtype_wire(request: KvNvfp4DsMla) as String) == "nvfp4_ds_mla"
 }
 
-test fn w_the_indexer_dtype_renders_and_reads_back() -> Bool {
+test fn w_the_indexer_dtype_renders_and_reads_back() -> Bool  {
   let argv = vllm_indexer_kv_dtype_argv(r: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 })
   argv == ["--attention-config.indexer_kv_dtype", "fp8"]
     && (match vllm_argv_indexer_kv_dtype(argv: argv) {
@@ -51,7 +51,7 @@ test fn w_the_indexer_dtype_renders_and_reads_back() -> Bool {
 }
 
 // ── EACH REVISION ANSWERS FOR ITSELF, AND THE THREE ANSWERS DIFFER ───────────────────────────────
-test fn w_the_deployed_revision_defaults_the_indexer_to_auto_from_source() -> Bool {
+test fn w_the_deployed_revision_defaults_the_indexer_to_auto_from_source() -> Bool  {
   match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeOmitted, defaults: VllmDefaultsKnown { revision: Vllm8d09804 }) {
     IndexerKvDtypeResolved { dtype: d, origin: o } =>
       (vllm_indexer_kv_dtype_wire(d: d) as String) == "auto"
@@ -65,7 +65,7 @@ test fn w_the_deployed_revision_defaults_the_indexer_to_auto_from_source() -> Bo
   }
 }
 
-test fn w_the_older_revision_defaults_to_bf16_and_refuses_auto() -> Bool {
+test fn w_the_older_revision_defaults_to_bf16_and_refuses_auto() -> Bool  {
   (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeOmitted, defaults: VllmDefaultsKnown { revision: Vllm487ecf187 }) {
     IndexerKvDtypeResolved { dtype: d, origin: _ } => (vllm_indexer_kv_dtype_wire(d: d) as String) == "bf16"
     IndexerKvDtypeNotARevisionField { origin: _ } => false
@@ -78,7 +78,7 @@ test fn w_the_older_revision_defaults_to_bf16_and_refuses_auto() -> Bool {
   })
 }
 
-test fn w_a_revision_without_the_field_refuses_an_explicit_indexer_dtype() -> Bool {
+test fn w_a_revision_without_the_field_refuses_an_explicit_indexer_dtype() -> Bool  {
   (match resolve_vllm_indexer_kv_dtype(request: IndexerKvDtypeExplicit { dtype: IndexerKvMxfp4 }, defaults: VllmDefaultsKnown { revision: Vllm1967a5627 }) {
     IndexerKvDtypeUnresolvable { cause: _ } => true
     IndexerKvDtypeResolved { dtype: _, origin: _ } => false

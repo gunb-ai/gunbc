@@ -184,7 +184,7 @@ fn t_denied_with(a: ProviderUseAdmission<NonEmptyStr>, tag: String, located: Dec
   }
 }
 
-test fn the_durable_origin_has_no_admissible_facts() -> Bool {
+test fn the_durable_origin_has_no_admissible_facts() -> Bool  {
   match cloudflare_r2_durable_origin_route_standing() {
     ProviderRouteObserved { route } => false,
     ProviderRouteRegionUnobserved { obligation } => declaration_ref_eq(
@@ -198,7 +198,7 @@ test fn the_durable_origin_has_no_admissible_facts() -> Bool {
   }
 }
 
-test fn the_durable_storage_path_is_unread_with_the_location_obligation() -> Bool {
+test fn the_durable_storage_path_is_unread_with_the_location_obligation() -> Bool  {
   match cloudflare_r2_data_paths().durable_storage {
     ProviderPathLocated { operator, jurisdiction, evidence } => false,
     ProviderPathAbsent { evidence } => false,
@@ -212,7 +212,7 @@ test fn the_durable_storage_path_is_unread_with_the_location_obligation() -> Boo
   }
 }
 
-test fn every_production_path_is_unread() -> Bool {
+test fn every_production_path_is_unread() -> Bool  {
   let c = cloudflare_r2_data_paths()
   let paths = [
     c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,
@@ -256,7 +256,7 @@ fn t_facts_with_durable_storage(route: ProviderRoute, storage: ProviderPathStand
   }
 }
 
-test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool {
+test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> Bool  {
   match cloudflare_r2_route(region: t_read_region()) {
     ProviderRouteRegionUnobserved { obligation } => false,
     ProviderRouteObserved { route } => t_denied_with(
@@ -273,7 +273,7 @@ test fn one_unread_durable_storage_path_refuses_with_that_paths_obligation() -> 
   }
 }
 
-test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
+test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool  {
   match cloudflare_r2_route(region: t_read_region()) {
     ProviderRouteRegionUnobserved { obligation } => false,
     ProviderRouteObserved { route } => match t_decide(
@@ -302,7 +302,7 @@ test fn a_read_region_route_admits_once_that_path_is_resolved() -> Bool {
   }
 }
 
-test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool {
+test fn production_unread_paths_on_a_read_region_route_still_refuse() -> Bool  {
   match cloudflare_r2_route(region: t_read_region()) {
     ProviderRouteRegionUnobserved { obligation } => false,
     ProviderRouteObserved { route } => t_denied_with(
@@ -341,7 +341,7 @@ fn t_region_unread(r: ProviderRegionObservation) -> Bool {
   }
 }
 
-test fn a_converged_read_reporting_enam_reads_the_enam_location() -> Bool {
+test fn a_converged_read_reporting_enam_reads_the_enam_location() -> Bool  {
   t_region_is(
     r: cloudflare_r2_region_from_read(
       purpose: FabricDurableOrigin {},
@@ -351,40 +351,40 @@ test fn a_converged_read_reporting_enam_reads_the_enam_location() -> Bool {
   )
 }
 
-test fn a_converged_read_without_a_location_stays_unread() -> Bool {
+test fn a_converged_read_without_a_location_stays_unread() -> Bool  {
   t_region_unread(r: cloudflare_r2_region_from_read(
     purpose: FabricDurableOrigin {},
     read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: none),
   ))
 }
 
-test fn an_unpublished_location_token_stays_unread() -> Bool {
+test fn an_unpublished_location_token_stays_unread() -> Bool  {
   t_region_unread(r: cloudflare_r2_region_from_read(
     purpose: FabricDurableOrigin {},
     read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "default", location: Present { value: "ENAM" }),
   ))
 }
 
-test fn a_read_under_another_jurisdiction_lends_no_region() -> Bool {
+test fn a_read_under_another_jurisdiction_lends_no_region() -> Bool  {
   t_region_unread(r: cloudflare_r2_region_from_read(
     purpose: FabricDurableOrigin {},
     read: t_origin_read(name: "gunbai-fabric-origin", jurisdiction: "eu", location: Present { value: "weur" }),
   ))
 }
 
-test fn a_read_of_another_bucket_lends_no_region() -> Bool {
+test fn a_read_of_another_bucket_lends_no_region() -> Bool  {
   t_region_unread(r: cloudflare_r2_region_from_read(
     purpose: FabricDurableOrigin {},
     read: t_origin_read(name: "gunbai-fabric-boot", jurisdiction: "default", location: Present { value: "enam" }),
   ))
 }
 
-test fn an_absent_bucket_lends_no_region() -> Bool {
+test fn an_absent_bucket_lends_no_region() -> Bool  {
   t_region_unread(r: cloudflare_r2_region_from_read(purpose: FabricDurableOrigin {}, read: R2BucketAbsent))
 }
 
 // The observation is keyed by purpose, so a boot-origin row cannot place the durable origin.
-test fn an_observation_of_another_purpose_does_not_place_the_durable_origin() -> Bool {
+test fn an_observation_of_another_purpose_does_not_place_the_durable_origin() -> Bool  {
   let boot = CloudflareR2BucketLocationObservation {
     purpose: FabricBootOrigin {},
     read: t_origin_read(name: "gunbai-fabric-boot", jurisdiction: "default", location: Present { value: "enam" }),
@@ -424,7 +424,7 @@ fn t_region_ambiguous(r: ProviderRegionObservation) -> Bool {
 }
 
 // Two valid, conflicting same-purpose reads refuse in BOTH orders: neither enam nor weur by position.
-test fn conflicting_same_purpose_observations_refuse_in_either_order() -> Bool {
+test fn conflicting_same_purpose_observations_refuse_in_either_order() -> Bool  {
   let enam = t_durable_observation(location: "enam")
   let weur = t_durable_observation(location: "weur")
   t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, weur]))
@@ -432,12 +432,12 @@ test fn conflicting_same_purpose_observations_refuse_in_either_order() -> Bool {
 }
 
 // A stale row beside a fresh one is the same ambiguity: agreement does not clear it either.
-test fn a_duplicated_observation_refuses_even_when_the_rows_agree() -> Bool {
+test fn a_duplicated_observation_refuses_even_when_the_rows_agree() -> Bool  {
   let enam = t_durable_observation(location: "enam")
   t_region_ambiguous(r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [enam, enam]))
 }
 
-test fn a_single_observation_is_read() -> Bool {
+test fn a_single_observation_is_read() -> Bool  {
   t_region_is(
     r: cloudflare_r2_region_from_observations(purpose: FabricDurableOrigin {}, observations: [t_durable_observation(location: "enam")]),
     decl: "r2_location_enam",
@@ -446,7 +446,7 @@ test fn a_single_observation_is_read() -> Bool {
 
 // THE CONSULTED CITATIONS ARE THE READINGS THE OBLIGATION NAMES, so durable storage is
 // researched-and-unanswered rather than never-looked.
-test fn durable_storage_cites_the_get_bucket_location_reading_as_consulted() -> Bool {
+test fn durable_storage_cites_the_get_bucket_location_reading_as_consulted() -> Bool  {
   match cloudflare_r2_data_paths().durable_storage {
     ProviderPathLocated { operator, jurisdiction, evidence } => false,
     ProviderPathAbsent { evidence } => false,
@@ -458,7 +458,7 @@ test fn durable_storage_cites_the_get_bucket_location_reading_as_consulted() -> 
   }
 }
 
-test fn no_production_path_is_never_looked() -> Bool {
+test fn no_production_path_is_never_looked() -> Bool  {
   let c = cloudflare_r2_data_paths()
   let paths = [
     c.execution, c.durable_storage, c.backups, c.logs, c.telemetry,

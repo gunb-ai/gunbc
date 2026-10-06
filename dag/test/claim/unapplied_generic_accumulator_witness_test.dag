@@ -22,7 +22,7 @@ data annotated_accumulator_source: String = "module test.claim.annotated_accumul
 // DISCRIMINATING RED, in the repaired direction: on the parent of this change the unannotated
 // fold raises the advisory once and refuses `t.v` once; with the accumulator refined from the
 // step's return it raises neither. It goes red if the refinement stops firing.
-test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> Bool {
+test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> Bool  {
   any_class_count_for(source: unannotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
     && any_class_count_for(source: unannotated_accumulator_source, wanted_class: "InternalError") == 0
 }
@@ -30,7 +30,7 @@ test fn unannotated_empty_accumulator_is_refined_from_the_step_return() -> Bool 
 // ACCEPTED POSITIVE CONTROL: the annotated twin was clean before the change and must stay clean,
 // which is what makes the cell above mean "the argument was present and dropped" rather than
 // "this fold cannot be typed".
-test fn annotated_accumulator_twin_stays_clean() -> Bool {
+test fn annotated_accumulator_twin_stays_clean() -> Bool  {
   any_class_count_for(source: annotated_accumulator_source, wanted_class: "AlgebraApplicationEvidenceUnavailable") == 0
     && any_class_count_for(source: annotated_accumulator_source, wanted_class: "InternalError") == 0
 }

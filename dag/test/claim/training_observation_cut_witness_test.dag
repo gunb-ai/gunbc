@@ -204,7 +204,7 @@ fn relation_name(r: CrossAxisTemporalRelation) -> NonEmptyStr {
 // WITHOUT A CUT THE ANSWER IS NEITHER YES NOR NO. This is the whole point of the third value: a
 // missing sweep must not read as evidence that two reads were unordered, because a reconciler would
 // take that as licence to ignore a conflict it cannot actually rule out.
-test fn with_no_cut_the_relation_is_unobserved_not_negative() -> Bool {
+test fn with_no_cut_the_relation_is_unobserved_not_negative() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -217,7 +217,7 @@ test fn with_no_cut_the_relation_is_unobserved_not_negative() -> Bool {
 // A SWEEP LICENSES THE TWO CONCLUSIONS IT WAS BUILT TO LICENSE. Outputs are enumerated after
 // terminals, and processes after everything -- so an empty output population beside a success, and
 // a process still running beside a terminal, are both interpretable rather than ambiguous.
-test fn a_completed_sweep_orders_outputs_and_processes_after_terminals() -> Bool {
+test fn a_completed_sweep_orders_outputs_and_processes_after_terminals() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -231,7 +231,7 @@ test fn a_completed_sweep_orders_outputs_and_processes_after_terminals() -> Bool
 // THE ORDER IS READ OFF THE TRAVERSED SEQUENCE, so the reverse pair must come back out-of-order. A
 // comparison that answered "in-order" for every pair would pass the witness above and establish
 // nothing; this is what makes that one load-bearing.
-test fn the_reverse_pair_is_reported_out_of_order() -> Bool {
+test fn the_reverse_pair_is_reported_out_of_order() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -250,7 +250,7 @@ test fn the_reverse_pair_is_reported_out_of_order() -> Bool {
 // ordering is real -- for a different run. Borrowing it to order this run's reads is the
 // authority-substitution failure: every half checks out and only the relation between them is
 // invented.
-test fn a_cut_belonging_to_another_run_does_not_order_this_ones_reads() -> Bool {
+test fn a_cut_belonging_to_another_run_does_not_order_this_ones_reads() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -268,7 +268,7 @@ test fn a_cut_belonging_to_another_run_does_not_order_this_ones_reads() -> Bool 
 // THE SWEPT SEQUENCE IS THE LADDER'S OUTPUT, not a table someone maintained beside it. Every axis
 // appears exactly once and in the order the stage functions ran, which is the property that makes
 // axis_precedes an observation rather than a convention.
-test fn the_cut_records_every_axis_exactly_once_in_stage_order() -> Bool {
+test fn the_cut_records_every_axis_exactly_once_in_stage_order() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {

@@ -566,7 +566,7 @@ fn other_control() -> TrainingRunExecutionControl<NonEmptyStr>? {
 // required" for one run and each chooses its own attempt identity. They claim the SAME semantic
 // transition, so the second compare-and-set finds the slot occupied and receives the first pass's
 // claim -- ONE attempt is committed, not two.
-test fn two_passes_claiming_one_transition_commit_one_attempt() -> Bool {
+test fn two_passes_claiming_one_transition_commit_one_attempt() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -612,7 +612,7 @@ test fn two_passes_claiming_one_transition_commit_one_attempt() -> Bool {
 // The two passes chose DIFFERENT attempt identities, so a uniqueness constraint keyed on the
 // attempt would have admitted both mints. The transition slots are equal, which is what excludes
 // the second. Without this control the witness above is satisfied by any key at all.
-test fn an_attempt_identity_key_would_not_have_excluded_the_second_pass() -> Bool {
+test fn an_attempt_identity_key_would_not_have_excluded_the_second_pass() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -627,7 +627,7 @@ test fn an_attempt_identity_key_would_not_have_excluded_the_second_pass() -> Boo
 // attempt is not the same semantic step, so the slot is unoccupied and the retry commits. A key
 // that excluded it would have made every run single-attempt and destroyed the escalation history
 // the readback lane exists to keep.
-test fn a_retry_is_a_different_transition_and_commits_beside_the_initial_claim() -> Bool {
+test fn a_retry_is_a_different_transition_and_commits_beside_the_initial_claim() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -666,7 +666,7 @@ test fn a_retry_is_a_different_transition_and_commits_beside_the_initial_claim()
 // everything the caller believes about occupancy was read from a world that no longer exists;
 // answering "already committed" would hand it a claim it has no basis to dispatch, and answering
 // "committed" would mint against a stale read.
-test fn a_stale_snapshot_is_neither_committed_nor_already_committed() -> Bool {
+test fn a_stale_snapshot_is_neither_committed_nor_already_committed() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -688,7 +688,7 @@ test fn a_stale_snapshot_is_neither_committed_nor_already_committed() -> Bool {
 
 // THE GRANT MUST NAME THE ATTEMPT BEING CLAIMED. A claim carrying someone else's authorization
 // would let a run execute under a lease and liability that were never issued for it.
-test fn a_grant_naming_another_attempt_refuses_the_claim() -> Bool {
+test fn a_grant_naming_another_attempt_refuses_the_claim() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -708,7 +708,7 @@ test fn a_grant_naming_another_attempt_refuses_the_claim() -> Bool {
 
 // AND THE DEMAND, for the same reason one axis apart: a grant issued against another demand carries
 // another budget account's liability.
-test fn a_grant_naming_another_demand_refuses_the_claim() -> Bool {
+test fn a_grant_naming_another_demand_refuses_the_claim() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -729,7 +729,7 @@ test fn a_grant_naming_another_demand_refuses_the_claim() -> Bool {
 // TWO ACTIVE CLAIMS ON ONE SLOT IS THE STATE THE COMPARE-AND-SET IS SUPPOSED TO MAKE UNREACHABLE.
 // If it is ever observed the exclusion did not hold, so the composition refuses rather than letting
 // a downstream fold pick one and report a confident disposition over a broken control plane.
-test fn two_active_claims_on_one_transition_slot_refuse_the_control_composition() -> Bool {
+test fn two_active_claims_on_one_transition_slot_refuse_the_control_composition() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -779,7 +779,7 @@ test fn two_active_claims_on_one_transition_slot_refuse_the_control_composition(
 
 // A CLAIM WHOSE ATTEMPT THE GRAPH DOES NOT HOLD IS A CONTROL DEFECT. The claim commits an attempt;
 // if the graph never received it, the two authorities disagree about what was started.
-test fn a_claim_for_an_attempt_outside_the_graph_is_refused() -> Bool {
+test fn a_claim_for_an_attempt_outside_the_graph_is_refused() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -815,7 +815,7 @@ test fn a_claim_for_an_attempt_outside_the_graph_is_refused() -> Bool {
 // INDEPENDENT CONTROL DEFECTS ARE ALL REPORTED. An out-of-graph attempt and a duplicated slot are
 // different facts with different remedies, and a first-wins fold would send a reader to fix one and
 // call the control plane repaired.
-test fn independent_control_defects_are_all_reported() -> Bool {
+test fn independent_control_defects_are_all_reported() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } =>
@@ -884,7 +884,7 @@ test fn independent_control_defects_are_all_reported() -> Bool {
 // A DISPATCH RECEIPT CANNOT PRECEDE THE CLAIM. The only route to a dispatched claim is recording it
 // ON a committed one, so the ordering the module rests on is a property of the constructor surface
 // rather than an ordering someone remembered to preserve.
-test fn a_dispatch_receipt_is_recorded_on_an_already_committed_claim() -> Bool {
+test fn a_dispatch_receipt_is_recorded_on_an_already_committed_claim() -> Bool  {
   match subject_fixture() {
     none => false
     Present { value: s } => {
@@ -922,7 +922,7 @@ test fn a_dispatch_receipt_is_recorded_on_an_already_committed_claim() -> Bool {
 
 // CONTROL STATE ABOUT ANOTHER RUN DOES NOT JOIN THIS RUN'S EVIDENCE. Without this the convergence
 // input is exactly the beside-each-other pairing this lane has removed three times already.
-test fn control_over_another_subject_does_not_join_the_evidence() -> Bool {
+test fn control_over_another_subject_does_not_join_the_evidence() -> Bool  {
   match desired_fixture() {
     none => false
     Present { value: d } => {
@@ -953,7 +953,7 @@ test fn control_over_another_subject_does_not_join_the_evidence() -> Bool {
 }
 
 // THE POSITIVE CONTROL FOR THE PAIR ABOVE: one subject, both compositions, admitted.
-test fn evidence_and_control_over_one_subject_admit_as_a_convergence_input() -> Bool {
+test fn evidence_and_control_over_one_subject_admit_as_a_convergence_input() -> Bool  {
   match desired_fixture() {
     none => false
     Present { value: d } => {

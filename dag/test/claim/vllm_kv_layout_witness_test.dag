@@ -93,7 +93,7 @@ fn w_layout(groups: List<KvGroupLayout>) -> ResolvedKvLayout {
 // 1,048,576 context / 11,767,856 tokens = 4,854 blocks for one full-context request. That figure is
 // the engine's own group-aware arithmetic recovered, not re-derived from fields whose reductions
 // differ, and it is the only per-request cost today's evidence yields.
-test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines() -> Bool {
+test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines() -> Bool  {
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
@@ -117,7 +117,7 @@ test fn the_engines_per_request_block_cost_is_recoverable_from_its_printed_lines
 // The recovered per-request cost DOES move with the inventory (4,854 against group A's 54,475
 // blocks, 4,930 against group B's 55,328), which is what makes the cost a function of the launch
 // while the agreement check is not.
-test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool {
+test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt_is_still_needed() -> Bool  {
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
@@ -146,7 +146,7 @@ test fn the_printed_line_check_does_not_see_the_inventory_which_is_why_a_receipt
 
 // AND THE CHECK IS NOT VACUOUS: a mistranscribed concurrency line breaks it. Without this row the
 // one above could be satisfied by a function that returns Agree unconditionally.
-test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool {
+test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Bool  {
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
@@ -163,7 +163,7 @@ test fn a_mistranscribed_concurrency_line_breaks_the_printed_line_check() -> Boo
 
 // THE ENGINE ROUNDS THE PRINTED Nx; INTEGER TRUNCATION OF pool*100/context IS NOT THE PRINT.
 // 4,429 tokens / 1,000 context truncates to 442 hundredths; the engine would print 4.43x.
-test fn a_printed_concurrency_rounded_up_one_hundredth_still_agrees() -> Bool {
+test fn a_printed_concurrency_rounded_up_one_hundredth_still_agrees() -> Bool  {
   match vllm_observed_kv_pool_from_reading(
     tokens: token_count(count: 4429),
     reading: vllm_startup_reading(
@@ -203,7 +203,7 @@ test fn a_printed_concurrency_rounded_up_one_hundredth_still_agrees() -> Bool {
   }
 }
 
-test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool {
+test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool  {
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
@@ -225,7 +225,7 @@ test fn a_concurrency_figure_bound_to_the_pool_line_is_refused() -> Bool {
 // A CONCURRENCY READING FROM ANOTHER BUILD IS NOT THE POOL LINE'S REVISION. Stamping the pool's
 // revision onto the capacity discarded the reading's own observation, so layout_reproduces_reported
 // gated on a revision that never described the concurrency line.
-test fn a_concurrency_reading_from_another_revision_is_refused() -> Bool {
+test fn a_concurrency_reading_from_another_revision_is_refused() -> Bool  {
   match w_admitted_pool() {
     Absent => false
     Present { value: p } =>
@@ -262,7 +262,7 @@ fn w_window(layers: Nat, block: Nat, window: Int) -> KvGroupLayout {
 // model that reduces capacity to those two fields answers identically for both and is wrong for at
 // least one. The windowed group stops growing at 128 tokens while the full-attention group grows
 // with the sequence, which is exactly the asymmetry `num_gpu_blocks * block_size` erases.
-test fn one_inventory_and_one_block_size_do_not_determine_the_admission_cost() -> Bool {
+test fn one_inventory_and_one_block_size_do_not_determine_the_admission_cost() -> Bool  {
   let mostly_full = w_layout(groups: [w_full(layers: 40, block: 16), w_window(layers: 21, block: 16, window: 128)])
   let mostly_windowed = w_layout(groups: [w_full(layers: 4, block: 16), w_window(layers: 57, block: 16, window: 128)])
   let budget = token_count(count: 500000)
@@ -282,7 +282,7 @@ test fn one_inventory_and_one_block_size_do_not_determine_the_admission_cost() -
 // AND WITH NO GROUPS OBSERVED THERE IS NO COST, WHICH IS TODAY'S REAL STATE. Every incarnation this
 // repository can currently observe lands here: the engine does not emit layer count or page size, so
 // the layout is inventory-only and the admission cost refuses rather than guessing one.
-test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool {
+test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool  {
   (match cold_admission_blocks(layout: w_layout(groups: []), sequence_budget: token_count(count: 500000)) {
      AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "unobserved")
      AdmissionCostBlocks { blocks: _ } => false
@@ -297,7 +297,7 @@ test fn an_unobserved_group_layout_refuses_the_admission_cost() -> Bool {
 // either. The usage gauge is likewise not occupancy: it counts retained prefix-cache blocks, which
 // is why the group B head read a majority-used pool with nothing running. There is no occupancy
 // predicate to cite; the conversion's absence is the coverage.
-test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> Bool {
+test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> Bool  {
   !vllm_pool_reconstruction_is_authoritative(r: BlockCountTimesBlockSize)
     && !vllm_pool_reconstruction_is_authoritative(r: UtilizationTimesTotalMemory)
     && (match allocator_usage(layout: w_layout(groups: []), free_blocks: allocator_block_count(count: 545)) {
@@ -310,7 +310,7 @@ test fn neither_reconstruction_is_authoritative_and_usage_is_not_occupancy() -> 
 // alarming answer available and reached by fabrication -- an impossible reading rendered as a
 // saturated engine, indistinguishable from a real one. The two numbers came from different launches
 // and the only honest output says so.
-test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_saturated() -> Bool {
+test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_saturated() -> Bool  {
   match allocator_usage(layout: w_layout(groups: []), free_blocks: allocator_block_count(count: 99999)) {
     FreeCountImpossible { free_blocks: f, allocator_blocks: a } =>
       allocator_block_count_value(c: f) == 99999 && allocator_block_count_value(c: a) == 54475
@@ -322,21 +322,21 @@ test fn a_free_count_exceeding_the_inventory_refuses_rather_than_reading_as_satu
 // optional field, so that state typechecked and the cost function charged it as full attention --
 // a malformed layout yielding a plausible number instead of a refusal. The constructor below is the
 // only way to build a windowed group, and it demands the window.
-test fn a_windowed_group_carries_its_window_by_construction() -> Bool {
+test fn a_windowed_group_carries_its_window_by_construction() -> Bool  {
   let g = w_window(layers: 1, block: 16, window: 128)
   (match g.kind { SlidingWindowAttention { window: w } => token_count_value(t: w) == 128  _ => false })
     && (match group_blocks_for(group: g, sequence: token_count(count: 1048576)) { Present { value: n } => n == 8  Absent => false })
     && (match group_blocks_for(group: w_full(layers: 1, block: 16), sequence: token_count(count: 1048576)) { Present { value: n } => n == 65536  Absent => false })
 }
 
-test fn a_zero_block_size_group_refuses_rather_than_dividing() -> Bool {
+test fn a_zero_block_size_group_refuses_rather_than_dividing() -> Bool  {
   match cold_admission_blocks(layout: w_layout(groups: [w_full(layers: 40, block: 0)]), sequence_budget: token_count(count: 500000)) {
     AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero block size")
     AdmissionCostBlocks { blocks: _ } => false
   }
 }
 
-test fn a_zero_layer_group_refuses_rather_than_looking_free() -> Bool {
+test fn a_zero_layer_group_refuses_rather_than_looking_free() -> Bool  {
   match cold_admission_blocks(layout: w_layout(groups: [w_full(layers: 0, block: 16)]), sequence_budget: token_count(count: 500000)) {
     AdmissionCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "zero layer count")
     AdmissionCostBlocks { blocks: _ } => false
@@ -352,14 +352,14 @@ test fn a_zero_layer_group_refuses_rather_than_looking_free() -> Bool {
 // population, an empty budget, a budget past the cap, a zero block size. page_size_bytes was
 // removed while nothing read it; it returns here WITH this fold, which is the only shape a
 // restored field should return in.
-test fn a_groups_byte_cost_is_its_block_cost_times_its_page() -> Bool {
+test fn a_groups_byte_cost_is_its_block_cost_times_its_page() -> Bool  {
   match cold_admission_bytes(layout: w_layout(groups: [w_full(layers: 40, block: 16)]), sequence_budget: token_count(count: 500000)) {
     AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 81920000000
     AdmissionByteCostUnestablished { cause: _ } => false
   }
 }
 
-test fn a_windowed_groups_bytes_cap_at_its_window() -> Bool {
+test fn a_windowed_groups_bytes_cap_at_its_window() -> Bool  {
   (match cold_admission_bytes(layout: w_layout(groups: [w_window(layers: 4, block: 16, window: 128)]), sequence_budget: token_count(count: 500000)) {
     AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 2097152
     AdmissionByteCostUnestablished { cause: _ } => false
@@ -370,7 +370,7 @@ test fn a_windowed_groups_bytes_cap_at_its_window() -> Bool {
     })
 }
 
-test fn a_mamba_groups_bytes_are_one_state_per_sequence_at_any_length() -> Bool {
+test fn a_mamba_groups_bytes_are_one_state_per_sequence_at_any_length() -> Bool  {
   let mamba = KvGroupLayout { kind: MambaState, layer_count: attention_layer_count(count: 3), block_size: token_count(count: 16), page_size_bytes: w_page_bytes }
   (match cold_admission_bytes(layout: w_layout(groups: [mamba]), sequence_budget: token_count(count: 500000)) {
     AdmissionByteCostBytes { bytes: b } => byte_size_count(b: b) == 196608
@@ -382,7 +382,7 @@ test fn a_mamba_groups_bytes_are_one_state_per_sequence_at_any_length() -> Bool 
     })
 }
 
-test fn a_hybrid_layout_sums_each_groups_own_page_cost() -> Bool {
+test fn a_hybrid_layout_sums_each_groups_own_page_cost() -> Bool  {
   let hybrid = [
     w_full(layers: 2, block: 16),
     w_window(layers: 2, block: 16, window: 128),
@@ -394,7 +394,7 @@ test fn a_hybrid_layout_sums_each_groups_own_page_cost() -> Bool {
   }
 }
 
-test fn the_byte_fold_refuses_where_the_block_fold_refuses() -> Bool {
+test fn the_byte_fold_refuses_where_the_block_fold_refuses() -> Bool  {
   (match cold_admission_bytes(layout: w_layout(groups: []), sequence_budget: token_count(count: 500000)) {
     AdmissionByteCostBytes { bytes: _ } => false
     AdmissionByteCostUnestablished { cause: c } => string_contains(s: c as String, pattern: "unobserved")
@@ -491,7 +491,7 @@ fn wp_reported(tokens: Nat, hundredths: Nat) -> VllmReportedCapacity? {
 // request, an inventory of 65,536 blocks, and a printed 1.00x -- the plan reproduces the printed
 // capacity from the emission's own figures, and the grouping/padding decision travels with the
 // plan as a vouched field, not an inference.
-test fn a_complete_plan_reproduces_the_printed_capacity_as_the_independent_control() -> Bool {
+test fn a_complete_plan_reproduces_the_printed_capacity_as_the_independent_control() -> Bool  {
   let capture = wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536),
   ])
@@ -524,7 +524,7 @@ test fn a_complete_plan_reproduces_the_printed_capacity_as_the_independent_contr
 // THE MISSING-FIELD WALLS: a group row missing its page bytes refuses naming page_size_bytes; a
 // capture missing the grouping/padding decision refuses naming it; the refusal is the mint's, not
 // a downstream parse.
-test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
+test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool  {
   let no_page = wp_capture(groups: [
     KvAllocationPlanCaptureGroup {
       identity: Present { value: "sparse-mla" as NonEmptyStr },
@@ -561,7 +561,7 @@ test fn an_incomplete_capture_refuses_naming_the_unvouched_fields() -> Bool {
 
 // THE REVISION WALL: the capture's field set is a property of the upstream revision that emitted
 // it; an unread revision is not trusted.
-test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> Bool {
+test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> Bool  {
   let foreign = vllm_source_revision(
     repository: "github.com/vllm-project/vllm" as NonEmptyStr,
     full_revision: "0000000000000000000000000000000000000000" as NonEmptyStr,
@@ -594,7 +594,7 @@ test fn a_capture_from_an_unread_revision_refuses_instead_of_being_trusted() -> 
 // this arm exists to refuse. THE REVISION-SPLIT PLAN IS CONSTRUCTED DIRECTLY because the mint
 // refuses foreign revisions by design: the only way to hold such a plan is to build it, which is
 // the supplied value this claim discriminates against.
-test fn the_control_contradicts_a_wrong_printed_line_and_refuses_a_revision_split() -> Bool {
+test fn the_control_contradicts_a_wrong_printed_line_and_refuses_a_revision_split() -> Bool  {
   let capture = wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 65536, tokens_per_state: 16, max_use: 4294967296, blocks_at: 65536),
   ])
@@ -653,7 +653,7 @@ fn wp_pre_patch_revision_plan() -> ResolvedKvAllocationPlan {
 // at 500,000 tokens -- the full group at 16-token blocks, the mamba states at their tokens-per-
 // state width regardless of length, and the KPool group at one entry per four tokens with blocks
 // counted in entries.
-test fn the_consumer_fold_rederives_blocks_at_another_length_from_the_growth_parameters() -> Bool {
+test fn the_consumer_fold_rederives_blocks_at_another_length_from_the_growth_parameters() -> Bool  {
   let capture = wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 11, block: 16, page: 8192, tokens_per_state: 16, max_use: 5905580032, blocks_at: 720896),
     wp_group(identity: "kda-state" as NonEmptyStr, kind: MambaState, layers: 3, block: 16, page: 1048576, tokens_per_state: 1, max_use: 3145728, blocks_at: 3),
@@ -672,7 +672,7 @@ test fn the_consumer_fold_rederives_blocks_at_another_length_from_the_growth_par
 // THE LAYOUT PROJECTION: the arm-side folds consume ResolvedKvLayout, and the plan projects onto
 // it by construction -- the groups carry the same growth taxonomy, the layer counts come from the
 // emission's own layer identities, and the layout's revision is the plan's runtime.
-test fn the_layout_projection_feeds_the_arm_side_folds_without_a_second_taxonomy() -> Bool {
+test fn the_layout_projection_feeds_the_arm_side_folds_without_a_second_taxonomy() -> Bool  {
   let capture = wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 11, block: 16, page: 8192, tokens_per_state: 16, max_use: 5905580032, blocks_at: 720896),
     wp_group(identity: "kda-state" as NonEmptyStr, kind: MambaState, layers: 3, block: 16, page: 1048576, tokens_per_state: 1, max_use: 3145728, blocks_at: 3),
@@ -692,7 +692,7 @@ test fn the_layout_projection_feeds_the_arm_side_folds_without_a_second_taxonomy
 
 // THE ZERO WALLS TRAVEL WITH THE PLAN: a complete capture of a group with a zero-byte page is a
 // complete capture of a broken engine, and the mint refuses rather than pricing it.
-test fn a_zero_wall_in_a_group_refuses_the_plan() -> Bool {
+test fn a_zero_wall_in_a_group_refuses_the_plan() -> Bool  {
   match resolved_kv_allocation_plan_from_capture(capture: wp_capture(groups: [
     wp_group(identity: "sparse-mla" as NonEmptyStr, kind: FullAttention, layers: 1, block: 16, page: 0, tokens_per_state: 16, max_use: 0, blocks_at: 65536),
   ])) {

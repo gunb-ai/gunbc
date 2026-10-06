@@ -123,7 +123,7 @@ fn fleet_runner_slot_desired_budget() -> HostBudgetResolution {
 // comparison, and the source that carries it today is the operator's declaration -- so the
 // assertion says something sharper than it did: even 4.9 GiB DECLARED by an operator is refused,
 // and the refusal still names where the number came from rather than reporting a bare figure.
-test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
+test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool  {
   match admit_public_root(budget: observed_doomed_budget()) {
     WholeCorpusCompileRefusedBudgetBelowMeasuredDemand {
       budget: b,
@@ -151,7 +151,7 @@ test fn the_budget_that_was_sigkilled_refuses_and_names_its_source() -> Bool {
 // the value the old authority admitted is now refused. It is progress-safe because a demand
 // figure does not shrink with corpus growth -- the row says so and the re-measure trigger only
 // fires upward -- so no legitimate future measurement makes this arm red.
-test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
+test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool  {
   whole_corpus_compile_admits(
     a: admit_public_root(
       budget: host_budget_resolved_observation(
@@ -185,7 +185,7 @@ test fn the_budget_the_superseded_figure_admitted_is_now_refused() -> Bool {
 // THE LIVE SLOT IS STILL REFUSED, and this row is unchanged in substance: 15 GiB sits below the
 // completing peak demand, so a whole-corpus compile on a real runner refuses. The 2026-09-12 sizing
 // change does not touch it, which is the point of keeping it separate from the desired row below.
-test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool {
+test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -> Bool  {
   whole_corpus_compile_admits(a: admit_public_root(budget: fleet_runner_slot_effective_budget())) == false
 }
 
@@ -197,11 +197,11 @@ test fn the_runner_ci_actually_uses_is_refused_at_the_completing_peak_demand() -
 // run admitted on this basis would still meet the effective ceiling asserted above. Whether
 // admission can outrun effective configuration is a separate open question and this fixture is
 // deliberately not evidence either way.
-test fn the_desired_row_admits_and_is_not_an_observation_of_any_host() -> Bool {
+test fn the_desired_row_admits_and_is_not_an_observation_of_any_host() -> Bool  {
   whole_corpus_compile_admits(a: admit_public_root(budget: fleet_runner_slot_desired_budget()))
 }
 
-test fn admission_is_tight_at_the_measured_demand() -> Bool {
+test fn admission_is_tight_at_the_measured_demand() -> Bool  {
   let demand = public_root_peak()
   whole_corpus_compile_admits(
     a: admit_public_root(
@@ -221,7 +221,7 @@ test fn admission_is_tight_at_the_measured_demand() -> Bool {
     )
 }
 
-test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> Bool {
+test fn an_unreadable_budget_refuses_rather_than_admitting_the_widest_cap() -> Bool  {
   match admit_public_root(
     budget: HostBudgetUnreadable {
       reason: "no modeled host memory source answered on this platform" as NonEmptyStr,
@@ -263,11 +263,11 @@ fn refuses_as_unmeasured(a: WholeCorpusCompileAdmission, root: WholeCorpusCompil
 
 // POSITIVE CONTROL for the arms below: the same ample budget admits the public root, so the
 // harness produces an admission and the refusals are findings rather than a rig that never admits.
-test fn the_public_root_admits_at_an_ample_budget() -> Bool {
+test fn the_public_root_admits_at_an_ample_budget() -> Bool  {
   whole_corpus_compile_admits(a: admit_public_root(budget: ample_budget()))
 }
 
-test fn an_unmeasured_root_refuses_naming_its_measurement_recipe() -> Bool {
+test fn an_unmeasured_root_refuses_naming_its_measurement_recipe() -> Bool  {
   let private_root = WholeCorpusCompileRootIdentity {
     repository: "gunbc" as RepositoryIdentity,
     primary_root: "strategy" as SourceRootIdentity,
@@ -298,7 +298,7 @@ fn refuses_as_another_repository(a: WholeCorpusCompileAdmission, expect_projecte
   }
 }
 
-test fn the_same_root_spelling_in_another_repository_does_not_join_the_public_row() -> Bool {
+test fn the_same_root_spelling_in_another_repository_does_not_join_the_public_row() -> Bool  {
   let same_spelling = WholeCorpusCompileRootIdentity {
     repository: "gunbc-private" as RepositoryIdentity,
     primary_root: "dag" as SourceRootIdentity,
@@ -316,7 +316,7 @@ test fn the_same_root_spelling_in_another_repository_does_not_join_the_public_ro
 
 // The pools are part of the key: the public primary root with a different pool set is a different
 // subject, including the empty pool set, which a name-census-tracking resident set prices differently.
-test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
+test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool  {
   let no_pools = WholeCorpusCompileRootIdentity {
     repository: "gunbc" as RepositoryIdentity,
     primary_root: "dag" as SourceRootIdentity,
@@ -340,7 +340,7 @@ test fn the_public_primary_root_with_different_pools_is_unmeasured() -> Bool {
 // A MeasuredForRoot row for a DIFFERENT root does not admit this one at any budget: the roster here
 // holds ONLY a row for another root, with a peak far below the budget, and the public root still
 // refuses as unmeasured. Root identity is the join, not a label on a number.
-test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
+test fn a_row_for_a_different_root_never_admits_this_one() -> Bool  {
   let other_root_row = MeasuredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc" as RepositoryIdentity,
@@ -363,7 +363,7 @@ test fn a_row_for_a_different_root_never_admits_this_one() -> Bool {
 
 // Pinned by the join and not by position: with the other root's row FIRST, the public root still
 // resolves to its own row.
-test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool {
+test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool  {
   let other = MeasuredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc" as RepositoryIdentity,
@@ -385,7 +385,7 @@ test fn the_public_root_resolves_to_its_own_row_past_another_roots_row() -> Bool
 
 // The pool comparison is ordered and element-wise: reversed pools, and one pool whose spelling
 // joins two, are both different subjects from the public root's.
-test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool {
+test fn pool_order_and_element_boundaries_are_part_of_the_key() -> Bool  {
   let reversed = WholeCorpusCompileRootIdentity {
     repository: "gunbc" as RepositoryIdentity,
     primary_root: "dag" as SourceRootIdentity,
@@ -430,7 +430,7 @@ fn unmeasured_cause_is(a: WholeCorpusCompileAdmission, expect: String) -> Bool {
 }
 
 // No location handed: refused as unmeasured -- never the public row by default.
-test fn no_declared_projection_refuses_rather_than_defaulting_to_the_public_row() -> Bool {
+test fn no_declared_projection_refuses_rather_than_defaulting_to_the_public_row() -> Bool  {
   unmeasured_cause_is(
     a: whole_corpus_compile_admission(budget: ample_budget(), root: whole_corpus_compile_public_root, read: DemandsProjectionNotDeclared),
     expect: "not-declared",
@@ -438,7 +438,7 @@ test fn no_declared_projection_refuses_rather_than_defaulting_to_the_public_row(
 }
 
 // A location that does not read carries its location and reason: a missing file is not a missing row.
-test fn an_unreadable_projection_refuses_naming_its_location() -> Bool {
+test fn an_unreadable_projection_refuses_naming_its_location() -> Bool  {
   unmeasured_cause_is(
     a: whole_corpus_compile_admission(
       budget: ample_budget(),
@@ -451,7 +451,7 @@ test fn an_unreadable_projection_refuses_naming_its_location() -> Bool {
 
 // A projection that read and holds rows of this repository but none for this root: unmeasured,
 // with the location it looked in.
-test fn a_read_projection_with_no_row_for_the_root_names_where_it_looked() -> Bool {
+test fn a_read_projection_with_no_row_for_the_root_names_where_it_looked() -> Bool  {
   let v2_primary = WholeCorpusCompileRootIdentity {
     repository: "gunbc" as RepositoryIdentity,
     primary_root: "src/v2" as SourceRootIdentity,
@@ -466,7 +466,7 @@ test fn a_read_projection_with_no_row_for_the_root_names_where_it_looked() -> Bo
 // ANOTHER REPOSITORY'S PROJECTION handed to this compile: a row whose identity key is the public
 // root's in every coordinate but the repository, with a peak far below the budget, refuses with
 // the repository it carried rather than admitting or reading as merely unmeasured.
-test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool {
+test fn another_repositorys_projection_refuses_with_a_typed_mismatch() -> Bool  {
   let private_row = MeasuredForRoot {
     root: WholeCorpusCompileRootIdentity {
       repository: "gunbc-private" as RepositoryIdentity,

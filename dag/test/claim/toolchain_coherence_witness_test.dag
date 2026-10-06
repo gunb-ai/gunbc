@@ -41,7 +41,7 @@ fn spawn_at(pass: String, bytes: String, exe: String) -> ToolchainSpawn {
 // list nobody populated must fold to NotEvaluated by construction, never to agreement -- if this arm
 // ever returns Single, absence of evidence has started rendering as a pass and the carrier is worse
 // than absent, because it would then be cited as coverage.
-test fn no_observation_is_not_evaluated() -> Bool {
+test fn no_observation_is_not_evaluated() -> Bool  {
   match toolchain_coherence_of(spawns: []) {
     ToolchainCoherenceNotEvaluated { cause: c } =>
       match c {
@@ -54,7 +54,7 @@ test fn no_observation_is_not_evaluated() -> Bool {
   }
 }
 
-test fn same_bytes_across_passes_is_single() -> Bool {
+test fn same_bytes_across_passes_is_single() -> Bool  {
   match toolchain_coherence_of(spawns: [
     spawn_of(pass: "fmt-pass-1", bytes: "rustup-bytes-A"),
     spawn_of(pass: "fmt-pass-2", bytes: "rustup-bytes-A"),
@@ -69,7 +69,7 @@ test fn same_bytes_across_passes_is_single() -> Bool {
 // THE DISCRIMINATING RED. One pass in the middle reaches different bytes -- exactly what a shared
 // rustup binary replaced mid-job produces -- and it must be a FINDING rather than a NotEvaluated,
 // because "we checked and they differed" and "we could not tell" have opposite remedies.
-test fn differing_bytes_mid_run_is_a_finding() -> Bool {
+test fn differing_bytes_mid_run_is_a_finding() -> Bool  {
   match toolchain_coherence_of(spawns: [
     spawn_of(pass: "fmt-pass-1", bytes: "rustup-bytes-A"),
     spawn_of(pass: "fmt-pass-2", bytes: "rustup-bytes-B"),
@@ -84,7 +84,7 @@ test fn differing_bytes_mid_run_is_a_finding() -> Bool {
 // A SINGLE SPAWN IS NOT COHERENCE EVIDENCE OF A POPULATION, but it is honestly Single: one spawn
 // cannot disagree with itself. Recorded so the per-PASS grain is visible -- the carrier reports what
 // it observed, and a job that spawned once has established coherence over exactly one spawn.
-test fn one_spawn_is_single() -> Bool {
+test fn one_spawn_is_single() -> Bool  {
   match toolchain_coherence_of(spawns: [spawn_of(pass: "only", bytes: "rustup-bytes-A")]) {
     ToolchainIdentitySingle { tool_name: _ } => true
     ToolchainIdentitiesDiffered { tool_name: _, baseline: _, divergent: _ } => false
@@ -97,7 +97,7 @@ test fn one_spawn_is_single() -> Bool {
 // tempted to report the empty fold, rendering its own absence as "we checked and found no pair".
 // The fold cannot RETURN ProducerAbsent -- it speaks only about the list it was handed -- so this
 // arm is authored directly, exactly how a real observation transaction would raise it.
-test fn producer_absent_is_not_never_observed() -> Bool {
+test fn producer_absent_is_not_never_observed() -> Bool  {
   let absent = ToolchainCoherenceNotEvaluated {
     cause: SpawnObservationProducerAbsent { cause: "nothing observes spawns" }
   }
@@ -128,7 +128,7 @@ test fn producer_absent_is_not_never_observed() -> Bool {
 // path means the binary was replaced under us; at DIFFERENT paths, we ran two different binaries.
 // Opposite repairs, so a finding reporting only "differed" is a verdict the consumer cannot act on.
 // Both directions are asserted so the evidence does the work rather than the arm's name.
-test fn divergence_carries_the_paths_that_pick_the_remedy() -> Bool {
+test fn divergence_carries_the_paths_that_pick_the_remedy() -> Bool  {
   let one_path = toolchain_coherence_of(spawns: [
     spawn_at(pass: "p1", bytes: "A", exe: "/usr/local/bin/rustfmt"),
     spawn_at(pass: "p2", bytes: "B", exe: "/usr/local/bin/rustfmt")

@@ -3,7 +3,7 @@ module test.claim.unicode_ident_xid_grounding
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-test fn unicode_ident_xid_grounding_holds() -> Bool {
+test fn unicode_ident_xid_grounding_holds() -> Bool  {
   let e_acute_start = is_xid_start(cp: 233)
   let alpha_start = is_xid_start(cp: 945)
   let digit_not_start = is_xid_start(cp: 48) == false

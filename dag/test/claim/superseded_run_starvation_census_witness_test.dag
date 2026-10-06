@@ -28,7 +28,7 @@ import extdeps.github.workflow_runs {
   TimedOut,
 }
 
-test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
+test fn dead_start_before_registered_live_job_is_starvation() -> Bool  {
   match dead_head_start_standing(
     dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
     live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
@@ -39,7 +39,7 @@ test fn dead_start_before_registered_live_job_is_starvation() -> Bool {
   }
 }
 
-test fn started_dead_job_precedes_live_job_that_has_not_registered() -> Bool {
+test fn started_dead_job_precedes_live_job_that_has_not_registered() -> Bool  {
   match dead_head_start_standing(
     dead_first_job_started_at: Present { value: "2026-09-04T00:00:10Z" },
     live_first_job_created_at: none
@@ -50,7 +50,7 @@ test fn started_dead_job_precedes_live_job_that_has_not_registered() -> Bool {
   }
 }
 
-test fn registered_live_job_precedes_dead_job_that_has_not_started() -> Bool {
+test fn registered_live_job_precedes_dead_job_that_has_not_started() -> Bool  {
   match dead_head_start_standing(
     dead_first_job_started_at: none,
     live_first_job_created_at: Present { value: "2026-09-04T00:00:20Z" }
@@ -61,7 +61,7 @@ test fn registered_live_job_precedes_dead_job_that_has_not_started() -> Bool {
   }
 }
 
-test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool {
+test fn absent_job_rosters_remain_a_coverage_obligation() -> Bool  {
   match dead_head_start_standing(
     dead_first_job_started_at: none,
     live_first_job_created_at: none
@@ -123,14 +123,14 @@ data run_without_pull_request: WorkflowRun = WorkflowRun {
   pull_requests: [],
 }
 
-test fn pr_number_for_run_with_pr_returns_number() -> Bool {
+test fn pr_number_for_run_with_pr_returns_number() -> Bool  {
   match pr_number_for_run(run: run_with_pull_request) {
     Present { value: n } => n == 42
     Absent => false
   }
 }
 
-test fn pr_number_for_run_without_pr_returns_none() -> Bool {
+test fn pr_number_for_run_without_pr_returns_none() -> Bool  {
   match pr_number_for_run(run: run_without_pull_request) {
     Present { value: _ } => false
     Absent => true
@@ -177,28 +177,28 @@ data run_sha_def: WorkflowRun = WorkflowRun {
   pull_requests: [WorkflowRunPullRequest { number: 42 }],
 }
 
-test fn first_run_with_different_head_finds_differing_sha() -> Bool {
+test fn first_run_with_different_head_finds_differing_sha() -> Bool  {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_def]) {
     Present { value: r } => r.id == 4
     Absent => false
   }
 }
 
-test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool {
+test fn first_run_with_different_head_skips_matching_and_finds_differing() -> Bool  {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_def]) {
     Present { value: r } => r.id == 4
     Absent => false
   }
 }
 
-test fn first_run_with_different_head_returns_none_when_no_differing() -> Bool {
+test fn first_run_with_different_head_returns_none_when_no_differing() -> Bool  {
   match first_run_with_different_head(head_sha: "abc123", runs: [run_sha_abc, run_sha_abc]) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn first_run_with_different_head_returns_none_when_empty() -> Bool {
+test fn first_run_with_different_head_returns_none_when_empty() -> Bool  {
   match first_run_with_different_head(head_sha: "abc123", runs: []) {
     Present { value: _ } => false
     Absent => true
@@ -270,67 +270,67 @@ data job_in_progress: WorkflowJobRun = WorkflowJobRun {
   completed_at: none,
 }
 
-test fn count_jobs_counts_all_jobs() -> Bool {
+test fn count_jobs_counts_all_jobs() -> Bool  {
   count_jobs(jobs: [job_cancelled, job_failed, job_success]) == 3
 }
 
-test fn count_jobs_empty_returns_zero() -> Bool {
+test fn count_jobs_empty_returns_zero() -> Bool  {
   count_jobs(jobs: []) == 0
 }
 
-test fn count_jobs_with_conclusion_counts_exact_match() -> Bool {
+test fn count_jobs_with_conclusion_counts_exact_match() -> Bool  {
   count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: Cancelled) == 1
 }
 
-test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool {
+test fn count_jobs_with_conclusion_counts_no_match_as_zero() -> Bool  {
   count_jobs_with_conclusion(jobs: [job_cancelled, job_failed, job_success], conclusion: TimedOut) == 0
 }
 
-test fn count_jobs_with_status_count_queued() -> Bool {
+test fn count_jobs_with_status_count_queued() -> Bool  {
   count_jobs_with_status(jobs: [job_cancelled, job_queued, job_in_progress], status: Queued) == 1
 }
 
-test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool {
+test fn filter_completed_jobs_only_returns_completed_jobs() -> Bool  {
   let completed = filter_completed_jobs(jobs: [job_cancelled, job_queued, job_success, job_in_progress])
   count_jobs(jobs: completed) == 2
 }
 
-test fn earliest_started_at_finds_min_timestamp() -> Bool {
+test fn earliest_started_at_finds_min_timestamp() -> Bool  {
   match earliest_started_at(jobs: [job_success, job_cancelled, job_failed]) {
     Present { value: ts } => ts == "2026-09-01T00:00:00Z"
     Absent => false
   }
 }
 
-test fn earliest_started_at_returns_none_when_no_jobs() -> Bool {
+test fn earliest_started_at_returns_none_when_no_jobs() -> Bool  {
   match earliest_started_at(jobs: []) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn earliest_started_at_skips_jobs_without_started_at() -> Bool {
+test fn earliest_started_at_skips_jobs_without_started_at() -> Bool  {
   match earliest_started_at(jobs: [job_queued, job_success]) {
     Present { value: ts } => ts == "2026-09-01T00:05:00Z"
     Absent => false
   }
 }
 
-test fn earliest_created_at_finds_min_timestamp() -> Bool {
+test fn earliest_created_at_finds_min_timestamp() -> Bool  {
   match earliest_created_at(jobs: [job_success, job_cancelled, job_failed]) {
     Present { value: ts } => ts == "2026-09-01T00:00:00Z"
     Absent => false
   }
 }
 
-test fn earliest_created_at_returns_none_when_no_jobs() -> Bool {
+test fn earliest_created_at_returns_none_when_no_jobs() -> Bool  {
   match earliest_created_at(jobs: []) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-test fn earliest_created_at_returns_none_when_no_created_at() -> Bool {
+test fn earliest_created_at_returns_none_when_no_created_at() -> Bool  {
   let job_no_created = WorkflowJobRun {
     id: 200,
     run_id: 1,

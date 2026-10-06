@@ -79,14 +79,14 @@ fn w_red_b_deleted_free_minter() -> Bool {
   )
 }
 
-test fn wall_control_clean_shell_service_compiles() -> Bool {
+test fn wall_control_clean_shell_service_compiles() -> Bool  {
   w_control_clean_shell_service()
 }
 
-test fn wall_red_string_join_into_retained_record_refuses() -> Bool {
+test fn wall_red_string_join_into_retained_record_refuses() -> Bool  {
   !w_red_a_string_join_into_retained_record()
 }
 
-test fn wall_red_deleted_free_minter_refuses() -> Bool {
+test fn wall_red_deleted_free_minter_refuses() -> Bool  {
   !w_red_b_deleted_free_minter()
 }

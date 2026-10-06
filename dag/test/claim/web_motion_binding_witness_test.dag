@@ -497,7 +497,7 @@ fn witness_the_reduced_values_are_the_cited_frozen_tokens() -> Bool {
 
 data keystone_conjunction_note: String = "ONE RETURNED EXPRESSION, after the same defect was found here as in the bob witness (review finding, 2026-08-06). The frozen-identity control sat on its own line above the conjunction — evaluated, discarded, and with no bearing on whether the keystone was green. Two files carried this shape, which is what makes it a class rather than a typo: a claim that is called but not joined looks exactly like a claim that is enforced."
 
-test fn web_motion_binding_keystone_holds() -> Bool {
+test fn web_motion_binding_keystone_holds() -> Bool  {
   witness_the_reduced_values_are_the_cited_frozen_tokens()
     && witness_the_discredited_probe_resolves_nothing()
     && witness_the_probe_left_six_axes_unread_and_no_window()

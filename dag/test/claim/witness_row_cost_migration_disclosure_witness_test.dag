@@ -87,7 +87,7 @@ fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
   witness_row_cost_mandatory_migration_count(rows: rows) == 0
 }
 
-test fn witness_row_cost_migration_disclosure_holds() -> Bool {
+test fn witness_row_cost_migration_disclosure_holds() -> Bool  {
   derived_threshold_is_500ms_holds()
     && at_threshold_is_mandatory_migration_holds()
     && just_below_threshold_is_not_mandatory_holds()

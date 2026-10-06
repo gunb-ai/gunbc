@@ -24,12 +24,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // execution. The scope loss is declared in the module authority note on gunbc.test_module_hygiene
 // rather than implied here. WHAT SURVIVES BELOW is the file-grain expand half plus the
 // failure-receipt companion convention, both of which have live consumers in claim_executor.
-test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
+test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool  {
   is_file_grain_function(function: "")
     && (is_file_grain_function(function: "alpha_holds") == false)
 }
 
-test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool {
+test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool  {
   match expand_explicit_pairs_or_refuse(inputs: [
     ExplicitExpandInput {
       entry: "empty_grain_test.dag",
@@ -44,7 +44,7 @@ test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool
   }
 }
 
-test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool {
+test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool  {
   failure_receipt_companion(function: "witness_holds") == "witness_failure_receipt"
     && failure_receipt_companion(function: "witness_passes") == "witness_failure_receipt"
 }
@@ -55,12 +55,12 @@ test fn test_module_hygiene_failure_receipt_companion_derives_suffix() -> Bool {
 // was the false predicate enshrined as a test. It is kept, inverted, as the permanent
 // regression control that the projection stays total (DESIGN section 4b, meta-obligation 4:
 // a climb deletes the production machinery it obsoletes, never the evidence).
-test fn test_module_hygiene_failure_receipt_companion_is_total() -> Bool {
+test fn test_module_hygiene_failure_receipt_companion_is_total() -> Bool  {
   failure_receipt_companion(function: "ordinary_fn") == "ordinary_fn_failure_receipt"
     && failure_receipt_companion(function: "") == "_failure_receipt"
 }
 
-test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool {
+test fn codex_wet_enrolled_witnesses_resolve_failure_receipt_companion() -> Bool  {
   failure_receipt_companion(
     function: "materialize_codex_runtime_bundle_produces_native_executable_holds",
   ) == "materialize_codex_runtime_bundle_produces_native_executable_failure_receipt"

@@ -94,7 +94,7 @@ fn unrecognised_form_refuses_rather_than_defaulting() -> Bool {
     && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
 }
 
-test fn v1_interpreter_primitive_roster_acceptance_contract_holds() -> Bool {
+test fn v1_interpreter_primitive_roster_acceptance_contract_holds() -> Bool  {
   known_dispatch_sites_contribute_rows()
     && duplicate_row_keys_refuse()
     && shadows_are_exactly_the_known_named_set()

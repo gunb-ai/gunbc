@@ -40,14 +40,14 @@ fn w_admitted(backend: VllmKvBackend, major: Nat, main: VllmKvCacheDtypeRequest,
 }
 
 // THE TWO MAJORS DISAGREE IN BOTH DIRECTIONS, which is what makes the major part of the key.
-test fn w_the_v41_backend_admits_by_device_major() -> Bool {
+test fn w_the_v41_backend_admits_by_device_major() -> Bool  {
   w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvFp8DsMla, indexer: IndexerKvDtypeOmitted)
     && !w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvAuto, indexer: IndexerKvDtypeOmitted)
     && w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 10, main: KvAuto, indexer: IndexerKvDtypeOmitted)
     && !w_admitted(backend: DeepseekV4FlashInferMlaSparse, major: 10, main: KvFp8DsMla, indexer: IndexerKvDtypeOmitted)
 }
 
-test fn w_a_refusal_cites_the_upstream_row() -> Bool {
+test fn w_a_refusal_cites_the_upstream_row() -> Bool  {
   match kv_capability_verdict(subject: w_subject(backend: DeepseekV4FlashInferMlaSparse, major: 12, main: KvBf16, indexer: IndexerKvDtypeOmitted), rows: upstream_kv_main_dtype_rows) {
     KvCombinationRefused { cause: _, basis: b } =>
       match b {
@@ -60,7 +60,7 @@ test fn w_a_refusal_cites_the_upstream_row() -> Bool {
 }
 
 // ABSENCE IS NOT ADMISSION: a backend/major with no row, and a key with two rows, both stay unanswered.
-test fn w_no_row_and_two_rows_are_both_unanswered() -> Bool {
+test fn w_no_row_and_two_rows_are_both_unanswered() -> Bool  {
   (match kv_capability_verdict(subject: w_subject(backend: DeepseekV4FlashInferMlaSparse, major: 9, main: KvFp8, indexer: IndexerKvDtypeOmitted), rows: upstream_kv_main_dtype_rows) {
     KvCombinationUnanswered { obligation: _ } => true
     KvCombinationAdmitted { bases: _ } => false
@@ -86,7 +86,7 @@ fn w_glm_indexer_admitted(indexer: VllmIndexerKvDtypeRequest) -> Bool {
   }
 }
 
-test fn w_the_indexer_dtype_is_judged_on_its_own_rule() -> Bool {
+test fn w_the_indexer_dtype_is_judged_on_its_own_rule() -> Bool  {
   w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvFp8 })
     && !w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvMxfp4 })
     && !w_glm_indexer_admitted(indexer: IndexerKvDtypeExplicit { dtype: IndexerKvBf16 })
@@ -94,7 +94,7 @@ test fn w_the_indexer_dtype_is_judged_on_its_own_rule() -> Bool {
 
 // A ROW ANSWERS ONLY FOR ITS OWN RUNTIME: the V4.1 rows (read at the sm12 revision) do not answer for the
 // same backend at another revision, and the GLM observed row does not answer for another image.
-test fn w_a_row_answers_only_for_its_own_runtime() -> Bool {
+test fn w_a_row_answers_only_for_its_own_runtime() -> Bool  {
   (match kv_capability_verdict(
     subject: KvCapabilitySubject { backend: DeepseekV4FlashInferMlaSparse, runtime: kv_runtime(image: none, source: vllm_source_revision_read), device_major: 12, main: KvFp8DsMla, indexer_kind: Absent, indexer: IndexerKvDtypeOmitted },
     rows: upstream_kv_main_dtype_rows) {
@@ -113,14 +113,14 @@ test fn w_a_row_answers_only_for_its_own_runtime() -> Bool {
 
 
 // THE V4.1 WIRE LISTS ARE THE ROW'S PROJECTION, and they say what they said before the table existed.
-test fn w_the_v41_wire_lists_project_the_rows_unchanged() -> Bool {
+test fn w_the_v41_wire_lists_project_the_rows_unchanged() -> Bool  {
   v41_sm12_admitted_kv_cache_dtypes == ["fp8" as NonEmptyStr, "fp8_e4m3" as NonEmptyStr, "fp8_ds_mla" as NonEmptyStr]
     && v41_sm10_admitted_kv_cache_dtypes == ["auto" as NonEmptyStr, "bfloat16" as NonEmptyStr, "fp8" as NonEmptyStr, "fp8_e4m3" as NonEmptyStr]
 }
 
 // THE GLM ARM IS ANSWERED BY THE SAME JOIN, through its observed row: the same admissions as the
 // per-build table it replaced, and the observation is the basis.
-test fn w_the_glm_derived_build_is_answered_by_the_shared_join() -> Bool {
+test fn w_the_glm_derived_build_is_answered_by_the_shared_join() -> Bool  {
   (match glm_native_kv_cache_dtype_admission(build: GlmNativeEngineDerived8d09804, dtype: KvFp8) {
     GlmNativeKvCacheDtypeAdmitted { dtype: _ } => true
     GlmNativeKvCacheDtypeRefused { dtype: _, cause: _ } => false

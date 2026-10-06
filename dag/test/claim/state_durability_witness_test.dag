@@ -285,7 +285,7 @@ fn durable_verdict(
   )
 }
 
-test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> Bool {
+test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> Bool  {
   let requirements = state_durability_boundary_requirements(
     first: fixture_boundary,
     additional: [fixture_boundary, fixture_wrong_boundary, fixture_wrong_boundary],
@@ -298,7 +298,7 @@ test fn boundary_requirements_are_nonempty_and_deduplicate_by_construction() -> 
     && any(boundaries, boundary => boundary == fixture_wrong_boundary)
 }
 
-test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool {
+test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Bool  {
   let duplicated = StateDurabilityBoundaryRequirements {
     first: fixture_boundary,
     additional_unique: [fixture_boundary, fixture_boundary],
@@ -319,7 +319,7 @@ test fn direct_duplicate_boundary_literal_reaches_typed_counted_refusal() -> Boo
   }
 }
 
-test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
+test fn receipt_order_is_derived_from_positive_deltas() -> Bool  {
   let evidence = matching_evidence()
   match evidence.outcome {
     StatePreserved {
@@ -348,7 +348,7 @@ test fn receipt_order_is_derived_from_positive_deltas() -> Bool {
   }
 }
 
-test fn non_positive_measure_counts_are_typed_refusals() -> Bool {
+test fn non_positive_measure_counts_are_typed_refusals() -> Bool  {
   match positive_measure_count_from_int(count: 0) {
     PositiveMeasureCountRefused { cause: zero } =>
       match positive_measure_count_from_int(count: 0 - 5) {
@@ -360,7 +360,7 @@ test fn non_positive_measure_counts_are_typed_refusals() -> Bool {
   }
 }
 
-test fn positive_measure_count_build_executes_positive_arm() -> Bool {
+test fn positive_measure_count_build_executes_positive_arm() -> Bool  {
   match positive_measure_count_from_int(count: 3) {
     PositiveMeasureCountBuilt { count: count } =>
       positive_measure_count_value(count: count) == 3
@@ -368,7 +368,7 @@ test fn positive_measure_count_build_executes_positive_arm() -> Bool {
   }
 }
 
-test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
+test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool  {
   match durable_verdict(evidence: [matching_evidence()]) {
     StateDurabilityRefused {
       cause: DurabilityDefinitionLinkageUnavailable {
@@ -386,7 +386,7 @@ test fn caller_asserted_definitions_cannot_buy_durable_qualification() -> Bool {
   }
 }
 
-test fn realization_identity_change_invalidates_old_receipt() -> Bool {
+test fn realization_identity_change_invalidates_old_receipt() -> Bool  {
   match state_durability_verdict(
     intent: DurableAcross {
       boundaries: state_durability_boundary_requirements(
@@ -415,7 +415,7 @@ test fn realization_identity_change_invalidates_old_receipt() -> Bool {
   }
 }
 
-test fn capability_definition_change_invalidates_old_receipt() -> Bool {
+test fn capability_definition_change_invalidates_old_receipt() -> Bool  {
   match state_durability_verdict(
     intent: DurableAcross {
       boundaries: state_durability_boundary_requirements(
@@ -444,7 +444,7 @@ test fn capability_definition_change_invalidates_old_receipt() -> Bool {
   }
 }
 
-test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
+test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool  {
   let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_wrong_boundary,
@@ -471,7 +471,7 @@ test fn wrong_boundary_receipt_reaches_typed_mismatch_arm() -> Bool {
   }
 }
 
-test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
+test fn readbacks_must_link_the_perturbation_receipt() -> Bool  {
   let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
@@ -499,7 +499,7 @@ test fn readbacks_must_link_the_perturbation_receipt() -> Bool {
   }
 }
 
-test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
+test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool  {
   let stale = fixture_admission(
     realization: fixture_realization,
     capability_version: fixture_capability_version,
@@ -531,7 +531,7 @@ test fn activation_receipt_is_scoped_to_the_admitted_digest() -> Bool {
   }
 }
 
-test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
+test fn semantically_similar_but_digest_different_state_refuses() -> Bool  {
   let wrong = fixture_evidence(
     admission: current_admission(),
     boundary: fixture_boundary,
@@ -562,7 +562,7 @@ test fn semantically_similar_but_digest_different_state_refuses() -> Bool {
   }
 }
 
-test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
+test fn duplicate_exact_receipts_are_ambiguous() -> Bool  {
   match state_durability_admission_evidence_cardinality(
     evidence: [matching_evidence(), matching_evidence()],
     admission: current_admission(),
@@ -572,7 +572,7 @@ test fn duplicate_exact_receipts_are_ambiguous() -> Bool {
   }
 }
 
-test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
+test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool  {
   match state_durability_boundaries_evidence_verdict(
     required: state_durability_boundary_requirements(
       first: fixture_boundary,
@@ -588,7 +588,7 @@ test fn boundary_fold_accepts_evidence_without_qualifying_durability() -> Bool {
   }
 }
 
-test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bool {
+test fn boundary_fold_refuses_duplicate_evidence_behind_linkage_frontier() -> Bool  {
   match state_durability_boundaries_evidence_verdict(
     required: state_durability_boundary_requirements(
       first: fixture_boundary,

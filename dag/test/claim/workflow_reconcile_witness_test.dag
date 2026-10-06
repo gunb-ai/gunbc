@@ -101,7 +101,7 @@ fn desired_feature_tree() -> List<WorkflowFactTree> {
   ]
 }
 
-test fn recursive_reconcile_all_satisfied_is_noop() -> Bool {
+test fn recursive_reconcile_all_satisfied_is_noop() -> Bool  {
   let desired = desired_feature_tree()
   let report = workflow_reconcile_report(
     desired: desired,
@@ -121,7 +121,7 @@ test fn recursive_reconcile_all_satisfied_is_noop() -> Bool {
     }
 }
 
-test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
+test fn missing_nested_child_derives_one_reconcile_action() -> Bool  {
   let observed = [
     workflow_decomposed_fixture(
       obligation_id: "deliver-feature",
@@ -163,7 +163,7 @@ test fn missing_nested_child_derives_one_reconcile_action() -> Bool {
     }
 }
 
-test fn goal_revision_change_is_modified_not_delete_add() -> Bool {
+test fn goal_revision_change_is_modified_not_delete_add() -> Bool  {
   let desired = [
     workflow_leaf_fixture(
       obligation_id: "frontend",
@@ -198,7 +198,7 @@ test fn goal_revision_change_is_modified_not_delete_add() -> Bool {
     })
 }
 
-test fn reparented_child_is_one_member_changed() -> Bool {
+test fn reparented_child_is_one_member_changed() -> Bool  {
   let observed = [
     workflow_decomposed_fixture(
       obligation_id: "deliver-feature",
@@ -252,7 +252,7 @@ test fn reparented_child_is_one_member_changed() -> Bool {
     })
 }
 
-test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool {
+test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool  {
   let desired = [
     workflow_leaf_fixture(
       obligation_id: "frontend",
@@ -291,7 +291,7 @@ test fn silent_goal_shrink_refuses_evidence_deletion() -> Bool {
     && workflow_reconcile_status_key(report: report) == "refused"
 }
 
-test fn explicit_waiver_is_a_fact_not_deletion() -> Bool {
+test fn explicit_waiver_is_a_fact_not_deletion() -> Bool  {
   let desired = [
     workflow_leaf_fixture(
       obligation_id: "backend",
@@ -310,7 +310,7 @@ test fn explicit_waiver_is_a_fact_not_deletion() -> Bool {
     && workflow_reconcile_status_key(report: report) == "converged"
 }
 
-test fn deep_failure_blocks_green_parent_and_siblings() -> Bool {
+test fn deep_failure_blocks_green_parent_and_siblings() -> Bool  {
   let observed = [
     workflow_decomposed_fixture(
       obligation_id: "deliver-feature",
@@ -351,7 +351,7 @@ test fn deep_failure_blocks_green_parent_and_siblings() -> Bool {
     }
 }
 
-test fn observed_refusal_is_not_generic_non_convergence() -> Bool {
+test fn observed_refusal_is_not_generic_non_convergence() -> Bool  {
   let desired = [
     workflow_leaf_fixture(
       obligation_id: "provider-auth",
@@ -377,7 +377,7 @@ test fn observed_refusal_is_not_generic_non_convergence() -> Bool {
     && workflow_reconcile_status_key(report: report) == "refused"
 }
 
-test fn green_children_do_not_complete_pending_parent() -> Bool {
+test fn green_children_do_not_complete_pending_parent() -> Bool  {
   let observed = [
     workflow_decomposed_fixture(
       obligation_id: "deliver-feature",

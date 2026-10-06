@@ -30,16 +30,16 @@ fn agreement_three() -> Nat { Succ { prev: Succ { prev: Succ { prev: Zero } } } 
 
 fn agreement_seventeen() -> Nat { nat_add(a: nat_mul(a: agreement_three(), b: 5), b: 2) }
 
-test fn w_the_eliminator_applies_its_step_once_per_successor() -> Bool {
+test fn w_the_eliminator_applies_its_step_once_per_successor() -> Bool  {
   nat_cata(n: agreement_three(), zero: 10, succ: fn(acc) { acc + 7 }) == 31
     && nat_cata(n: Zero, zero: 10, succ: fn(acc) { acc + 7 }) == 10
 }
 
-test fn w_numerals_and_arithmetic_are_the_integers_they_denote() -> Bool {
+test fn w_numerals_and_arithmetic_are_the_integers_they_denote() -> Bool  {
   agreement_three() == 3 && agreement_seventeen() == 17 && Zero == 0 && agreement_three() != 0
 }
 
-test fn w_subtraction_answers_a_difference_or_its_underflow() -> Bool {
+test fn w_subtraction_answers_a_difference_or_its_underflow() -> Bool  {
   let difference_holds = match nat_sub(a: agreement_seventeen(), b: agreement_three()) {
     NatDifference { value: d } => d == 14
     NatSubtrahendExceedsMinuend => false
@@ -51,7 +51,7 @@ test fn w_subtraction_answers_a_difference_or_its_underflow() -> Bool {
   difference_holds && underflow_holds
 }
 
-test fn w_division_matches_its_divisor_by_constructor() -> Bool {
+test fn w_division_matches_its_divisor_by_constructor() -> Bool  {
   let divides = match nat_div_rem(a: agreement_seventeen(), b: 5) {
     NatQuotientRemainder { quotient: q, remainder: r } => q == 3 && r == 2
     NatDivisionByZero => false

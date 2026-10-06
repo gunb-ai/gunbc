@@ -42,38 +42,38 @@ fn admitted(source: String) -> Bool {
 // THE SHAPE std.string_type HAD: a local `type String = FreeMonoid<Char>` whose own body hands the
 // value to a kernel host-text primitive. The checker admitted it and rustc refused the emission
 // (eight E0308 in the since-deleted string_lex_compare).
-test fn r_local_string_alias_into_kernel_primitive_refuses() -> Bool {
+test fn r_local_string_alias_into_kernel_primitive_refuses() -> Bool  {
   refuses(source: "module probe_local_string_alias\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\ntype String = FreeMonoid<Char>\nfn text_len(t: String) -> Int { string_length(s: t) }\n")
 }
 
 // The same module with the alias renamed, so no kernel spelling is in the module at all: the
 // refusal is about the representation, not the name String.
-test fn r_renamed_text_alias_into_kernel_primitive_refuses() -> Bool {
+test fn r_renamed_text_alias_into_kernel_primitive_refuses() -> Bool  {
   refuses(source: "module probe_renamed_text_alias\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\ntype Text = FreeMonoid<Char>\nfn text_len(t: Text) -> Int { string_length(s: t) }\n")
 }
 
-test fn r_qualified_structural_value_into_kernel_primitive_refuses() -> Bool {
+test fn r_qualified_structural_value_into_kernel_primitive_refuses() -> Bool  {
   refuses(source: "module probe_qualified_into_kernel\nimport v2.std.text { string_is_empty }\nfn text_len(t: v2.std.text.String) -> Int { string_length(s: t) }\n")
 }
 
 // THE DISCRIMINATING RED THE DROP NAMES: a non-literal kernel String at a structural position
 // that carries no unfold. A declared return is such a position (only a call argument unfolds).
-test fn r_kernel_value_at_qualified_text_return_refuses() -> Bool {
+test fn r_kernel_value_at_qualified_text_return_refuses() -> Bool  {
   refuses(source: "module probe_kernel_return_qualified\nimport v2.std.text { string_is_empty }\nfn back(s: String) -> v2.std.text.String { s }\n")
 }
 
 // ALIASING: the destination names the guarded declaration through a local alias.
-test fn r_kernel_value_at_alias_of_text_return_refuses() -> Bool {
+test fn r_kernel_value_at_alias_of_text_return_refuses() -> Bool  {
   refuses(source: "module probe_kernel_return_alias\nimport v2.std.text { string_is_empty }\ntype LocalText = v2.std.text.String\nfn back(s: String) -> LocalText { s }\n")
 }
 
 // ALIASING, STRUCTURE-IDENTICAL: a locally authored FreeMonoid<Char> that never names v2.std.text.
-test fn r_kernel_value_at_structure_identical_alias_return_refuses() -> Bool {
+test fn r_kernel_value_at_structure_identical_alias_return_refuses() -> Bool  {
   refuses(source: "module probe_kernel_return_wrapped\nimport std.algebra { FreeMonoid }\nimport std.types { Char }\ntype Wrapped = FreeMonoid<Char>\nfn back(s: String) -> Wrapped { s }\n")
 }
 
 // A data initializer is the other declared position without an unfold.
-test fn r_kernel_value_at_text_data_initializer_refuses() -> Bool {
+test fn r_kernel_value_at_text_data_initializer_refuses() -> Bool  {
   refuses(source: "module probe_kernel_data_qualified\nimport v2.std.text { string_is_empty }\ndata host: String = \"hi\"\ndata seq: v2.std.text.String = host\n")
 }
 
@@ -81,7 +81,7 @@ test fn r_kernel_value_at_text_data_initializer_refuses() -> Bool {
 // value at a code-point-sequence formal is admitted BECAUSE the typed tree carries the Unicode
 // scalar unfold (the scalar-string `chars` method), which the emitted Rust shows; the must_not_contain
 // is the bare pass-through that rustc refused as E0308.
-test fn u_kernel_value_at_qualified_text_parameter_unfolds() -> Bool {
+test fn u_kernel_value_at_qualified_text_parameter_unfolds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_qualified_probe\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_qualified_probe.rs",
@@ -91,7 +91,7 @@ test fn u_kernel_value_at_qualified_text_parameter_unfolds() -> Bool {
 }
 
 // ALIASING at a call argument: the formal names the guarded declaration through a local alias.
-test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool {
+test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_alias_probe\nimport v2.std.text { string_is_empty }\ntype LocalText = v2.std.text.String\nfn take(t: LocalText) -> Int { 0 }\nfn host_into(s: String) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_alias_probe.rs",
@@ -103,7 +103,7 @@ test fn u_kernel_value_at_alias_of_text_parameter_unfolds() -> Bool {
 // CALLER RE-RESOLUTION: v2.std.text string_is_empty spells its parameter with the bare String, which
 // is structural in its declaring module. A foreign caller's kernel value is unfolded against the
 // DECLARATION-BOUND formal, not passed through as the caller's reading of the spelling.
-test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
+test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_caller_probe\nimport v2.std.text { string_is_empty }\nfn host_empty(s: String) -> Bool { string_is_empty(s: s) }\n",
     "src/test_claim_text_unfold_caller_probe.rs",
@@ -114,7 +114,7 @@ test fn u_kernel_value_at_foreign_bare_structural_parameter_unfolds() -> Bool {
 
 // And a LITERAL at that same foreign bare formal takes the literal homomorphism (scalars 104, 105),
 // which it did not while the formal was re-resolved in the caller as host text.
-test fn u_kernel_literal_at_foreign_bare_structural_parameter_unfolds() -> Bool {
+test fn u_kernel_literal_at_foreign_bare_structural_parameter_unfolds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_caller_literal_probe\nimport v2.std.text { string_is_empty }\nfn probe() -> Bool { string_is_empty(s: \"hi\") }\n",
     "src/test_claim_text_unfold_caller_literal_probe.rs",
@@ -125,28 +125,28 @@ test fn u_kernel_literal_at_foreign_bare_structural_parameter_unfolds() -> Bool 
 
 // CONTROLS -- the same shapes with no crossing.
 
-test fn c_kernel_value_into_kernel_primitive_is_admitted() -> Bool {
+test fn c_kernel_value_into_kernel_primitive_is_admitted() -> Bool  {
   admitted(source: "module probe_kernel_into_kernel\nfn host_len(s: String) -> Int { string_length(s: s) }\n")
 }
 
-test fn c_structural_value_at_structural_parameter_is_admitted() -> Bool {
+test fn c_structural_value_at_structural_parameter_is_admitted() -> Bool  {
   admitted(source: "module probe_structural_into_structural\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn pass(u: v2.std.text.String) -> Int { take(t: u) }\n")
 }
 
-test fn c_structural_value_at_foreign_structural_parameter_is_admitted() -> Bool {
+test fn c_structural_value_at_foreign_structural_parameter_is_admitted() -> Bool  {
   admitted(source: "module probe_structural_into_foreign\nimport v2.std.text { string_is_empty }\nfn probe(t: v2.std.text.String) -> Bool { string_is_empty(s: t) }\n")
 }
 
 // The literal half stays on its homomorphism: a kernel LITERAL at a structural position is the
 // declared unfold, not a crossing.
-test fn c_kernel_literal_at_qualified_text_parameter_is_admitted() -> Bool {
+test fn c_kernel_literal_at_qualified_text_parameter_is_admitted() -> Bool  {
   admitted(source: "module probe_literal_into_qualified\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn probe() -> Int { take(t: \"hi\") }\n")
 }
 
 // THE roadmap_page script_src_attr JOIN, through the REAL std.markup Attribute: a field value
 // joined with a kernel "" accumulator in an if. Admitted because std.markup's value is the kernel
 // String now that its std.string_type import is deleted -- the crossing is gone, not exempted.
-test fn c_markup_attribute_value_if_join_is_admitted() -> Bool {
+test fn c_markup_attribute_value_if_join_is_admitted() -> Bool  {
   admitted(source: "module probe_script_src_attr\nimport std.markup { Attribute }\nfn script_src_attr(attributes: List<Attribute>) -> String {\n  fold(attributes, init: \"\", f: (acc, a) => if a.name == \"src\" { a.value } else { acc })\n}\n")
 }
 
@@ -154,7 +154,7 @@ test fn c_markup_attribute_value_if_join_is_admitted() -> Bool {
 // the emitted self-host compiler, v2_compiler_tokenize.rs). A QUALIFIED `v2.std.text.String` field is
 // the code-point carrier, not host text: taking the last segment of the qualified spelling made the
 // renderer emit `String` for it.
-test fn e_qualified_text_field_renders_the_code_point_carrier() -> Bool {
+test fn e_qualified_text_field_renders_the_code_point_carrier() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_qualified_field_probe\nimport v2.std.text { string_is_empty }\ntype Carrier { t: v2.std.text.String }\nfn probe(c: Carrier) -> Int { 0 }\n",
     "src/test_claim_text_qualified_field_probe.rs",
@@ -166,7 +166,7 @@ test fn e_qualified_text_field_renders_the_code_point_carrier() -> Bool {
 // A BARE String parameter in a module that imports v2.std.text { String } is the KERNEL String
 // (kernel precedence), so a literal handed to it stays host text. The by-name peel in that module
 // finds the imported structural alias; letting that view win unfolded the literal into a host field.
-test fn e_bare_string_parameter_beside_a_text_import_takes_a_host_literal() -> Bool {
+test fn e_bare_string_parameter_beside_a_text_import_takes_a_host_literal() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_bare_param_probe\nimport v2.std.text { String }\nfn takes(text: String) -> Int { 0 }\nfn probe() -> Int { takes(text: \".\") }\n",
     "src/test_claim_text_bare_param_probe.rs",
@@ -179,11 +179,11 @@ test fn e_bare_string_parameter_beside_a_text_import_takes_a_host_literal() -> B
 // spelling is not text (review 72252). Each fixture declares its own `type Char { c: Int }`; a
 // spelling-keyed classifier read `List<Char>` as a code-point sequence and unfolded host text into
 // a list of user records, ADMITTING what the base compiler refused.
-test fn x_host_value_at_a_list_of_a_user_char_refuses() -> Bool {
+test fn x_host_value_at_a_list_of_a_user_char_refuses() -> Bool  {
   refuses(source: "module probe_collision_a\ntype Char { c: Int }\nfn take(xs: List<Char>) -> Int { 0 }\nfn f(s: String) -> Int { take(xs: s) }\n")
 }
 
-test fn x_host_literal_at_a_list_of_a_user_char_refuses() -> Bool {
+test fn x_host_literal_at_a_list_of_a_user_char_refuses() -> Bool  {
   refuses(source: "module probe_collision_b\ntype Char { c: Int }\nfn take(xs: List<Char>) -> Int { 0 }\nfn f() -> Int { take(xs: \"hi\") }\n")
 }
 
@@ -191,7 +191,7 @@ test fn x_host_literal_at_a_list_of_a_user_char_refuses() -> Bool {
 // REFINEMENT PEELING (v1.compiler.infer_env is_where_refinement_node): a refinement has its base's
 // representation, so std.types NonEmptyStr (`String where non_empty`) at a code-point formal
 // unfolds exactly as a String does.
-test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool {
+test fn u_refined_host_value_at_qualified_text_parameter_unfolds() -> Bool  {
   compile_dag_rust_emit_check(
     "module test.claim.text_unfold_refined_probe\nimport std.types { NonEmptyStr }\nimport v2.std.text { string_is_empty }\nfn take(t: v2.std.text.String) -> Int { 0 }\nfn host_into(s: NonEmptyStr) -> Int { take(t: s) }\n",
     "src/test_claim_text_unfold_refined_probe.rs",
@@ -215,15 +215,15 @@ fn names_route(source: String, route: String) -> Bool {
   }
 }
 
-test fn n_host_value_at_code_point_return_names_the_unfold() -> Bool {
+test fn n_host_value_at_code_point_return_names_the_unfold() -> Bool  {
   names_route(source: "module probe_route_unfold\nimport v2.std.text { string_is_empty }\nfn f(t: String) -> v2.std.text.String { t }\n", route: "unicode_scalar_unfold")
 }
 
-test fn n_code_point_value_at_host_return_names_the_fold() -> Bool {
+test fn n_code_point_value_at_host_return_names_the_fold() -> Bool  {
   names_route(source: "module probe_route_fold\nimport v2.std.text { string_is_empty }\nfn f(t: v2.std.text.String) -> String { t }\n", route: "unicode_scalar_fold")
 }
 
-test fn p_the_named_route_call_raises_no_crossing() -> Bool {
+test fn p_the_named_route_call_raises_no_crossing() -> Bool  {
   census_runs(source: route_called_source()) && !names_route(source: route_called_source(), route: "unicode_scalar_unfold")
 }
 
@@ -250,11 +250,11 @@ fn census_runs(source: String) -> Bool {
 // not text to the classifier; std.effect_grant's call to v2.std.algebra length reached rustc. The r_
 // row must refuse at the crossing; the c_ row hands the same formal a code-point sequence and must stay
 // admitted, so the wall refuses by representation and not by the formal's shape.
-test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool {
+test fn r_host_string_into_generic_free_monoid_formal_refuses() -> Bool  {
   refuses(source: "module probe_generic_free_monoid_host\nimport std.types { String, Int }\nimport v2.std.algebra { length }\nfn n(t: String) -> Int { length(xs: t) }\n")
 }
 
-test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool {
+test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool  {
   admitted(source: "module probe_generic_free_monoid_structural\nimport v2.std.algebra { length }\nimport v2.std.text { string_is_empty }\nfn n(t: v2.std.text.String) -> Int { length(xs: t) }\n")
 }
 
@@ -262,6 +262,6 @@ test fn c_code_point_sequence_into_generic_free_monoid_formal_admitted() -> Bool
 // where a qualified v2.std.text String is the empty value of a generic fold. The first version of the
 // generic-formal check refused it (emit-build), so this accepted control keeps that false refusal from
 // coming back however the host-text reading is tuned.
-test fn c_qualified_text_as_generic_fold_empty_admitted() -> Bool {
+test fn c_qualified_text_as_generic_fold_empty_admitted() -> Bool  {
   admitted(source: "module probe_fold_qualified_empty\nimport std.types { List }\nimport v2.std.algebra { fold_list }\nimport v2.std.text { string_is_empty }\nfn f(spelling: v2.std.text.String, xs: List<Int>) -> v2.std.text.String { fold_list(xs: xs, empty: spelling, cons: fn(acc, x) { acc }) }\n")
 }

@@ -42,7 +42,7 @@ fn instrument_label() -> Label {
 
 // THE SAME TARGET MAY BE JOINED TO A DIFFERENT PRODUCER WITHOUT CHANGING ITS IDENTITY OR EDGES.
 // The BuildTarget construction has no producer-shaped field; the relation carries that fact.
-test fn target_binding_is_peer_to_build_target() -> Bool {
+test fn target_binding_is_peer_to_build_target() -> Bool  {
   let target = BuildTarget {
     label: instrument_label()
     kind: TestRule {}
@@ -66,7 +66,7 @@ fn one_target_index(bindings: List<TargetBinding>) -> TargetBindingIndexBuild {
 // LOOKUP DISTINGUISHES A TARGET THE REGISTRY DOES NOT KNOW FROM A KNOWN TARGET WHOSE PRODUCER
 // BINDING IS MISSING. Removing one binding therefore refuses that exact target; it cannot turn
 // into an absent target or an empty successful run.
-test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
+test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool  {
   let binding = TargetBinding {
     target: instrument_label()
     producer: HeadsReadingDifferentialProducer {}
@@ -107,7 +107,7 @@ test fn keyed_lookup_distinguishes_bound_missing_and_unknown() -> Bool {
 
 // UNIQUENESS IS AN INDEX-CONSTRUCTION WALL, not whichever row a first-match scan happened to
 // reach. Two producers for one label refuse with the duplicated target named.
-test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
+test fn duplicate_target_binding_refuses_before_lookup() -> Bool  {
   let a = TargetBinding { target: instrument_label(), producer: HeadsReadingDifferentialProducer {} }
   let b = TargetBinding { target: instrument_label(), producer: BehavioralReceiptPlanProducer {} }
   match one_target_index(bindings: [a, b]) {
@@ -123,7 +123,7 @@ test fn duplicate_target_binding_refuses_before_lookup() -> Bool {
 // BindingNamesUnknownTarget is defeated and the unknown label is admitted as the known target.
 // The same forged label used as a QUERY must refuse too, rather than resolving the canonical
 // target's producer through their shared rendered key.
-test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool {
+test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool  {
   let known = Label {
     package: PackagePath { segments: ["a", "b"] }
     target: TargetName { name: "c" }
@@ -182,7 +182,7 @@ test fn rendered_key_collision_refuses_as_noncanonical_before_indexing() -> Bool
 
 // COMPLETED NEGATIVE, NO-SUBJECT, AND PRODUCER REFUSAL ARE SEPARATE STATES. A bool-shaped result
 // could not distinguish them: all currently make the CLI nonzero, for three different remedies.
-test fn behavioral_receipt_plan_keeps_completion_subject_and_observation_apart() -> Bool {
+test fn behavioral_receipt_plan_keeps_completion_subject_and_observation_apart() -> Bool  {
   let negative: BehavioralReceiptPlanStanding = BehavioralReceiptPlanCompleted {
     observation: BehavioralReceiptDiverged {}
   }
@@ -206,7 +206,7 @@ fn differential_observation(divergent: List<String>) -> HeadsReadingDifferential
 // A COMPLETED MEASUREMENT THAT FOUND DIVERGENCE IS NOT A MEASUREMENT THAT NEVER REACHED ITS
 // SUBJECT. The completed arm retains every reported population rather than collapsing them into
 // the CLI's exit status.
-test fn heads_reading_completion_is_distinct_from_divergence_and_refusal() -> Bool {
+test fn heads_reading_completion_is_distinct_from_divergence_and_refusal() -> Bool  {
   let agreement: HeadsReadingDifferentialStanding = HeadsReadingDifferentialCompleted {
     observation: differential_observation(divergent: [])
   }
@@ -246,7 +246,7 @@ fn refuses_as_outside_required(v: StandingVerdict) -> Bool {
 // //:required HAS NO POLICY FOR THIS INSTRUMENT. Both completed observations and a producer
 // refusal stop with the same typed scope cause; the aggregate does not silently turn divergence
 // into a generic failed test or agreement into a pass.
-test fn required_policy_does_not_interpret_heads_reading_observations() -> Bool {
+test fn required_policy_does_not_interpret_heads_reading_observations() -> Bool  {
   refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialCompleted {
     observation: differential_observation(divergent: [])
   })) && refuses_as_outside_required(v: required_verdict_for(s: HeadsReadingDifferentialCompleted {

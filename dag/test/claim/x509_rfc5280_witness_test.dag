@@ -94,7 +94,7 @@ fn sample_root() -> X509Certificate? {
 // 01772f29f748, Issuer CN=Apple App Attestation CA 1, notBefore 210122121335Z, notAfter
 // 210125121335Z; the SPKI point is 65 octets and IS the credential public key the authData
 // carries as a COSE key (Apple's step 4 reads the key from this certificate).
-test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool {
+test fn the_sample_leaf_reads_as_openssl_reads_it() -> Bool  {
   match sample_leaf() {
     Absent => false
     Present { value: leaf } => {
@@ -153,7 +153,7 @@ fn nonce_of(leaf: X509Certificate) -> List<Int> {
   }
 }
 
-test fn the_sample_nonce_extension_is_sha256_of_auth_data_and_client_data_hash() -> Bool {
+test fn the_sample_nonce_extension_is_sha256_of_auth_data_and_client_data_hash() -> Bool  {
   match sample_leaf() {
     Absent => false
     Present { value: leaf } => {
@@ -171,7 +171,7 @@ test fn the_sample_nonce_extension_is_sha256_of_auth_data_and_client_data_hash()
 // openssl on x5c[1]: Signature Algorithm ecdsa-with-SHA384, ASN1 OID secp384r1, Subject
 // CN=Apple App Attestation CA 1. Its subject Name is byte-equal to the leaf's issuer Name -- the
 // chain join RFC 5280 §7.1 admits by exact DER match -- and its key is a 97-octet P-384 point.
-test fn the_sample_ca_chains_from_the_leaf() -> Bool {
+test fn the_sample_ca_chains_from_the_leaf() -> Bool  {
   match sample_leaf() {
     Absent => false
     Present { value: leaf } =>
@@ -194,7 +194,7 @@ test fn the_sample_ca_chains_from_the_leaf() -> Bool {
 // 0bf3be0ef1cdd2e0fb8c6e721f621798, secp384r1, ecdsa-with-SHA384, notAfter 450315000000Z -- a
 // UTCTime whose YY=45 reads 2045 under §4.1.2.5.1, which the carried arm makes checkable rather
 // than guessed -- and it is the CA's issuer, which is what step 1's chain terminates on.
-test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
+test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool  {
   match sample_root() {
     Absent => false
     Present { value: root } =>
@@ -219,7 +219,7 @@ test fn the_pinned_root_is_the_sample_cas_issuer() -> Bool {
 
 // THE PINNED ROOT'S IDENTITY IS COMPUTED, NOT READ FROM PROSE: SHA-256 over the DER the PEM rows
 // decode to equals the digest row beside them, so an edited row reds here.
-test fn the_pinned_root_der_hashes_to_its_digest_row() -> Bool {
+test fn the_pinned_root_der_hashes_to_its_digest_row() -> Bool  {
   match pem_decode(text: apple_app_attestation_root_ca_pem(), label: pem_certificate_label) {
     PemRefused { cause: _ } => false
     PemDecoded { der: der } => sha256_hex(message: der) == (apple_app_attestation_root_ca_sha256_hex as String)
@@ -230,7 +230,7 @@ test fn the_pinned_root_der_hashes_to_its_digest_row() -> Bool {
 // the outer length), and an AlgorithmIdentifier with a third child, refuse rather than being read
 // positionally: the outer length octets are 0x82 0x02 0xf5 = 757, rewritten to 759 for the two
 // appended octets.
-test fn extra_children_refuse() -> Bool {
+test fn extra_children_refuse() -> Bool  {
   let leaf = sample_x5c(i: 0)
   let with_null = concat(concat(leaf |> take(2), [2, 247]), concat(leaf |> skip(4), [5, 0]))
   match decode_certificate(octets: with_null) {
@@ -244,7 +244,7 @@ test fn extra_children_refuse() -> Bool {
 // and the extensions SEQUENCE 0x81fc -> 0x82010c (each header one octet wider), TBS 0x027b ->
 // 0x028d, outer 0x02f5 -> 0x0307 -- decodes as DER and refuses X509ExtensionDuplicated for
 // 2.5.29.15 when that extension is looked up.
-test fn a_duplicated_extension_refuses_on_lookup() -> Bool {
+test fn a_duplicated_extension_refuses_on_lookup() -> Bool  {
   let leaf = sample_x5c(i: 0)
   let key_usage = leaf |> skip(405) |> take(16)
   let mutated = concat(
@@ -264,7 +264,7 @@ test fn a_duplicated_extension_refuses_on_lookup() -> Bool {
 // ECDSA-Sig-Value: the assertion's 70-octet DER signature renders as 64 fixed octets at width
 // 32; the leaf's signature (a P-384 CA signed it) renders as 96 at width 48; the same assertion
 // signature at width 16 refuses as too wide rather than truncating a component.
-test fn ecdsa_sig_values_render_fixed_width_or_refuse() -> Bool {
+test fn ecdsa_sig_values_render_fixed_width_or_refuse() -> Bool  {
   let assertion_sig = match cbor_decode_document(octets: sample_assertion_octets) {
     CborDocumentDecoded { value: v } => x5_member_octets(v: v, key: "signature")
     CborDocumentRefused { cause: _ } => []
@@ -290,7 +290,7 @@ test fn ecdsa_sig_values_render_fixed_width_or_refuse() -> Bool {
 
 // CONTROL over real bytes: the leaf with its last octet dropped refuses (a truncated signature
 // BIT STRING), and with one appended refuses as trailing.
-test fn a_cut_or_extended_leaf_refuses() -> Bool {
+test fn a_cut_or_extended_leaf_refuses() -> Bool  {
   let leaf = sample_x5c(i: 0)
   match decode_certificate(octets: leaf |> take(count(leaf) - 1)) {
     X509Decoded { certificate: _ } => false
@@ -307,7 +307,7 @@ test fn a_cut_or_extended_leaf_refuses() -> Bool {
 // long form carrying 5 (not minimal); a high tag number; a BIT STRING with 3 unused bits; an
 // INTEGER with a redundant leading zero; an INTEGER with the sign bit set (negative, not
 // admitted); a BIT STRING with no contents octet at all.
-test fn der_walls_refuse_by_name() -> Bool {
+test fn der_walls_refuse_by_name() -> Bool  {
   let indefinite = match der_read_element(octets: [48, 128, 0, 0], at: 0) {
     DerRefused { cause: DerIndefiniteLengthRefused { at: 1 } } => true
     _ => false
@@ -354,7 +354,7 @@ test fn der_walls_refuse_by_name() -> Bool {
 // POSITIONAL READS ASSERT THEIR TYPE: the real leaf with its serialNumber's INTEGER tag (0x02,
 // at offset 13: outer header 4, TBS header 4, [0] version 5) rewritten to OCTET STRING refuses
 // as a tag mismatch at that offset rather than reading the octets as a serial.
-test fn a_tbs_field_of_the_wrong_type_refuses_by_position() -> Bool {
+test fn a_tbs_field_of_the_wrong_type_refuses_by_position() -> Bool  {
   let leaf = sample_x5c(i: 0)
   let mutated = concat(leaf |> take(13), concat([4], leaf |> skip(14)))
   match decode_certificate(octets: mutated) {
@@ -366,7 +366,7 @@ test fn a_tbs_field_of_the_wrong_type_refuses_by_position() -> Bool {
 // The OID decoder on Apple's nonce OID as DER (06 09 2a 86 48 86 f7 63 64 08 02); the same OID
 // with its 0x86 0x48 subidentifier padded to 0x80 0x86 0x48 (one value, a second encoding,
 // X.690 §8.19.2) REFUSES as malformed rather than decoding to the same dotted string.
-test fn oid_decoding_renders_dotted_and_refuses_a_padded_subidentifier() -> Bool {
+test fn oid_decoding_renders_dotted_and_refuses_a_padded_subidentifier() -> Bool  {
   let octets = [6, 9, 42, 134, 72, 134, 247, 99, 100, 8, 2]
   let padded = [6, 10, 42, 128, 134, 72, 134, 247, 99, 100, 8, 2]
   match der_read_element(octets: octets, at: 0) {
@@ -388,7 +388,7 @@ test fn oid_decoding_renders_dotted_and_refuses_a_padded_subidentifier() -> Bool
 
 // A certificate whose outer signatureAlgorithm disagrees with the TBS's refuses by name: built by
 // swapping the outer OID's last octet in the real leaf (ecdsa-with-SHA256 .2 -> ecdsa-with-SHA384 .3).
-test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool {
+test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool  {
   let leaf = sample_x5c(i: 0)
   match der_read_document(octets: leaf) {
     DerDocumentRefused { cause: _ } => false
@@ -414,7 +414,7 @@ test fn an_outer_algorithm_disagreeing_with_the_tbs_refuses() -> Bool {
 // DER ADMITS ONE ENCODING OF A DEFAULTED COMPONENT (X.690 §11.5): the real leaf with its
 // basicConstraints `critical TRUE` octet (0xff at offset 400) rewritten to 0x00 -- an explicit
 // FALSE, which DER must omit -- refuses as X509ExtensionDefaultEncoded at that octet's element.
-test fn an_explicit_default_critical_refuses() -> Bool {
+test fn an_explicit_default_critical_refuses() -> Bool  {
   let leaf = sample_x5c(i: 0)
   let mutated = concat(leaf |> take(400), concat([0], leaf |> skip(401)))
   match decode_certificate(octets: mutated) {
@@ -426,7 +426,7 @@ test fn an_explicit_default_critical_refuses() -> Bool {
 // The PEM reader refuses a text without the BEGIN line; two concatenated certificate blocks; a
 // private-key block before the certificate (text outside the block, at its line); and an END
 // before its BEGIN.
-test fn pem_refuses_anything_but_exactly_one_block() -> Bool {
+test fn pem_refuses_anything_but_exactly_one_block() -> Bool  {
   let root = apple_app_attestation_root_ca_pem()
   match pem_decode(text: "MIIC\n-----END CERTIFICATE-----\n", label: pem_certificate_label) {
     PemRefused { cause: PemBeginLineAbsent { expected_label: "CERTIFICATE" } } =>

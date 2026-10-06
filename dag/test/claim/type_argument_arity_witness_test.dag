@@ -71,7 +71,7 @@ fn completed_with_no_diagnostics(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // DISCRIMINATING RED, DIRECTION ONE: more type arguments than the declaration has parameters.
 // The class name is asserted, not merely "something refused" -- a typo in the fixture source
 // would satisfy the weaker reading.
-test fn surplus_type_argument_refuses() -> Bool {
+test fn surplus_type_argument_refuses() -> Bool  {
   refused_with_class(arity_run(surplus_source), "TypeArgumentArityMismatch")
 }
 
@@ -79,14 +79,14 @@ test fn surplus_type_argument_refuses() -> Bool {
 // from the surplus arm because the two absorbed through DIFFERENT mechanisms -- the surplus
 // argument was never read, the missing one left a parameter unsubstituted -- so one arm is not
 // evidence about the other.
-test fn deficit_type_argument_refuses() -> Bool {
+test fn deficit_type_argument_refuses() -> Bool  {
   refused_with_class(arity_run(deficit_source), "TypeArgumentArityMismatch")
 }
 
 // THE POSITIVE CONTROL. The same declarations applied at their declared arity compile clean --
 // zero diagnostics of ANY severity. Without this the REDs above are satisfied by a wall that
 // refuses every generic application.
-test fn matched_type_argument_arity_compiles_clean() -> Bool {
+test fn matched_type_argument_arity_compiles_clean() -> Bool  {
   completed_with_no_diagnostics(arity_run(green_source))
     && !refused_with_class(arity_run(green_source), "TypeArgumentArityMismatch")
 }

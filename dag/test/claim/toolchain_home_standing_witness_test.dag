@@ -90,7 +90,7 @@ fn classification_is(c: ToolchainHomeClassification, standing_is_private: Bool) 
 
 // ═══ THE RED. This is the shape that took the fleet down: a self-hosted job that installs a
 // toolchain with no isolation ahead of it. It must not classify.
-test fn a_self_hosted_install_into_the_shared_home_is_unclassified() -> Bool {
+test fn a_self_hosted_install_into_the_shared_home_is_unclassified() -> Bool  {
   match classify_job_toolchain_home(job: fixture_job(
     job_id: "admit",
     steps: [fixture_checkout_step(), fixture_install_step()]
@@ -107,7 +107,7 @@ test fn a_self_hosted_install_into_the_shared_home_is_unclassified() -> Bool {
 
 // ═══ THE POSITIVE CONTROL, and without it the red above is worthless: a classifier that refused
 // every job would pass it. The same job with the isolation step ahead of the install is admitted.
-test fn a_self_hosted_install_behind_isolation_is_private_mutable_home() -> Bool {
+test fn a_self_hosted_install_behind_isolation_is_private_mutable_home() -> Bool  {
   classification_is(
     c: classify_job_toolchain_home(job: fixture_job(
       job_id: "admit",
@@ -120,7 +120,7 @@ test fn a_self_hosted_install_behind_isolation_is_private_mutable_home() -> Bool
 // ═══ THE ORDERING DISCRIMINATOR. A check asking only "does this job contain an isolation step
 // anywhere" passes this job, and this job is broken exactly as the unisolated one is: the install
 // wrote into the shared home before anything rebound it. Order is the content of the claim.
-test fn isolation_after_the_install_does_not_classify() -> Bool {
+test fn isolation_after_the_install_does_not_classify() -> Bool  {
   match classify_job_toolchain_home(job: fixture_job(
     job_id: "admit",
     steps: [fixture_checkout_step(), fixture_install_step(), toolchain_home_isolation_step()]
@@ -138,7 +138,7 @@ test fn isolation_after_the_install_does_not_classify() -> Bool {
 // ═══ THE OTHER STANDING. A job that installs nothing mutates no toolchain, so it inherits the
 // host's and needs no isolation. Without this witness the classifier could be "refuse unless
 // isolated" and every arm above would still pass.
-test fn a_job_that_installs_nothing_is_immutable_toolchain() -> Bool {
+test fn a_job_that_installs_nothing_is_immutable_toolchain() -> Bool  {
   classification_is(
     c: classify_job_toolchain_home(job: fixture_job(
       job_id: "fleet-converge",
@@ -152,7 +152,7 @@ test fn a_job_that_installs_nothing_is_immutable_toolchain() -> Bool {
 // homes for a job that puts nothing in them; either the install was dropped and the job is about to
 // resolve a toolchain out of an empty directory, or the step is dead. Both are worth stopping for,
 // and they are not the same repair as the outage above -- hence a separate cause.
-test fn isolation_without_an_install_is_unclassified() -> Bool {
+test fn isolation_without_an_install_is_unclassified() -> Bool  {
   match classify_job_toolchain_home(job: fixture_job(
     job_id: "admit",
     steps: [fixture_checkout_step(), toolchain_home_isolation_step()]
@@ -169,7 +169,7 @@ test fn isolation_without_an_install_is_unclassified() -> Bool {
 
 // ═══ AN EXPRESSION RUNNER FAILS CLOSED. Its labels resolve at dispatch, so this layer cannot know
 // whether the home persists between runs; unknown is refused rather than assumed ephemeral.
-test fn an_expression_runner_installing_unisolated_fails_closed() -> Bool {
+test fn an_expression_runner_installing_unisolated_fails_closed() -> Bool  {
   match classify_job_toolchain_home(job: Job {
     id: "fleet-converge",
     name: none,
@@ -198,7 +198,7 @@ test fn an_expression_runner_installing_unisolated_fails_closed() -> Bool {
 // ═══ A HOSTED RUNNER NEEDS NO STEP. GitHub destroys the machine after the run, so the home is
 // private by construction of the runner. Demanding an isolation step there would be ceremony, and
 // this witness is what keeps someone from "tightening" the rule into one.
-test fn a_hosted_runner_install_is_private_by_construction() -> Bool {
+test fn a_hosted_runner_install_is_private_by_construction() -> Bool  {
   classification_is(
     c: classify_job_toolchain_home(job: Job {
       id: "hosted",
@@ -237,14 +237,14 @@ fn workflow_is_admitted(workflow: Workflow) -> Bool {
   }
 }
 
-test fn every_witnesses_yml_job_carries_a_toolchain_home_standing() -> Bool {
+test fn every_witnesses_yml_job_carries_a_toolchain_home_standing() -> Bool  {
   workflow_is_admitted(workflow: witness_floor_workflow)
 }
 
-test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool {
+test fn every_fleet_converge_yml_job_carries_a_toolchain_home_standing() -> Bool  {
   workflow_is_admitted(workflow: fleet_converge_workflow)
 }
 
-test fn every_fleet_desired_yml_job_carries_a_toolchain_home_standing() -> Bool {
+test fn every_fleet_desired_yml_job_carries_a_toolchain_home_standing() -> Bool  {
   workflow_is_admitted(workflow: fleet_desired_admission_workflow)
 }

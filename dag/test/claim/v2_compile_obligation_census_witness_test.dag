@@ -160,7 +160,7 @@ fn guarantee_rung_is(r: GuaranteeRung, expected: String) -> Bool {
 // everything fails the first. The two inner arms additionally separate WHICH authority decided,
 // because a derivation that had silently lost the freeze lookup would still get the mandatory-tag
 // answer right through the exclusion pattern alone and nobody would notice the missing half.
-test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_holds() -> Bool {
+test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_holds() -> Bool  {
   !witness_subject_survives_every_subtraction(w: frozen_and_excluded_subject())
     && witness_subject_survives_every_subtraction(w: gate_admitted_subject())
     && witness_subject_is_frozen(w: frozen_and_excluded_subject())
@@ -178,7 +178,7 @@ test fn v2_compile_obligation_per_pr_standing_is_derived_from_the_live_rosters_h
 //
 // claimed_rung is absent from all four cases on purpose: the law must not read it, and the way to
 // show that is to never give it one to read.
-test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_holds() -> Bool {
+test fn v2_compile_obligation_route_coverage_rung_reads_the_paths_holds() -> Bool  {
   guarantee_rung_is(
     r: route_coverage_rung_of(interpreted: an_executing_arm(), native: an_executing_arm()),
     expected: "MechanicallyPreventable"
@@ -207,7 +207,7 @@ fn an_executing_arm() -> PathExecution {
 // THE SEED-ESCAPE ARMS ARE DISTINGUISHED BY THE ARM, NOT BY PROSE. Every row in the live roster is
 // currently open, so a constant-true reader would be indistinguishable from a correct one when read
 // over the roster alone. The closed fixture is what separates them.
-test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool {
+test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool  {
   obligation_seed_escape_is_open(
     o: fixture_row(subject: discovered_subject())
   )
@@ -226,7 +226,7 @@ test fn v2_compile_obligation_seed_escape_arms_are_distinguished_holds() -> Bool
 // already covered by the gate-closure arm and because the excluded half is where the first cut of
 // this derivation was wrong: asking the lane's prefix predicate alone reported two carved-out
 // obligations as natively executing.
-test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bool {
+test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bool  {
   witness_subject_in_native_lane(w: discovered_subject())
     && !witness_subject_in_native_lane(w: frozen_and_excluded_subject())
     && !witness_subject_in_native_lane(w: this_witnesss_own_subject())
@@ -242,7 +242,7 @@ test fn v2_compile_obligation_native_standing_intersects_discovery_holds() -> Bo
 // reading a fixed gap. Claimed EQUAL to coverage is not, which is what stops it from being "claim is
 // high". And claimed BELOW coverage is not either -- under-claiming is honesty, not a defect, and
 // that arm is what makes this a strict inequality rather than a disagreement.
-test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool {
+test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> Bool  {
   rung_is_inflated_of(claimed: StructurallyGuaranteed, coverage: Mitigatable)
     && rung_is_inflated_of(claimed: MechanicallyPreventable, coverage: Mitigatable)
     && !rung_is_inflated_of(claimed: Mitigatable, coverage: Mitigatable)
@@ -253,7 +253,7 @@ test fn v2_compile_obligation_rung_inflation_is_a_strict_inequality_holds() -> B
 // A CLAIM ABOVE THE ROW'S OWN CEILING IS INCOHERENT, and unlike the emptiness checks this module
 // deleted, this RED is authorable — the ceiling and the claim are independent fields and a fixture
 // can set them in either order.
-test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() -> Bool {
+test fn v2_compile_obligation_claim_above_its_own_ceiling_is_detected_holds() -> Bool  {
   obligation_claim_exceeds_its_ceiling(o: over_ceiling_fixture_row())
     && !obligation_claim_exceeds_its_ceiling(
       o: fixture_row(subject: discovered_subject())
@@ -288,7 +288,7 @@ fn over_ceiling_fixture_row() -> V2CompileObligation {
 // covered at exactly the moment the derivation stopped being able to decide. The arm is now
 // separate, loud and counted, and its dissolution is bound to
 // gunbc.v2_compile_obligation_census entry_existence_verification_trigger.
-test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
+test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool  {
   obligation_executes_on_an_unverified_entry(
     o: fixture_row(subject: gate_admitted_subject())
   )
@@ -313,7 +313,7 @@ test fn v2_compile_obligation_unverified_entry_debt_is_counted_holds() -> Bool {
 // uncomfortable thing for a witness to prove about itself and it is the honest pair: a predicate
 // that answered "inside" to everything would pass the first conjunct and fail the second, and using
 // any other module as the control would have let this file avoid stating its own standing.
-test fn v2_compile_obligation_gate_closure_subtraction_is_asked_holds() -> Bool {
+test fn v2_compile_obligation_gate_closure_subtraction_is_asked_holds() -> Bool  {
   witness_subject_is_inside_gate_closure(w: gate_admitted_subject())
     && !witness_subject_is_inside_gate_closure(w: frozen_and_excluded_subject())
     && !witness_subject_is_inside_gate_closure(w: this_witnesss_own_subject())
@@ -335,7 +335,7 @@ fn this_witnesss_own_subject() -> WitnessSubject {
 // remaining count could drift onto any premise at all. So the absent side is now an arbitrary real
 // reference that no standing carries, which tests the same property without inventing a second
 // production premise to keep a test company.
-test fn v2_compile_obligation_premise_fold_reads_its_argument_holds() -> Bool {
+test fn v2_compile_obligation_premise_fold_reads_its_argument_holds() -> Bool  {
   standing_carries_premise(p: entry_only_pending_standing(), premise: unverified_entry_premise)
     && !standing_carries_premise(p: entry_only_pending_standing(), premise: a_premise_no_standing_carries())
     && !standing_carries_premise(p: non_executing_arm(), premise: unverified_entry_premise)

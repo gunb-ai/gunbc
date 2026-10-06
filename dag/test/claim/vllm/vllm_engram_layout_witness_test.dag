@@ -58,7 +58,7 @@ test fn draw_order_5_is_the_real_producer() -> Bool { w_order_is_drawn(start: w_
 
 // THE DERIVATION AGAINST THE PUBLISHER'S INDEPENDENT FACT: cut into layers, each layer's heads sum to
 // exactly that layer's published table rows (config.json unpadded_embeddings).
-test fn the_derived_head_sizes_sum_to_the_published_table_rows() -> Bool {
+test fn the_derived_head_sizes_sum_to_the_published_table_rows() -> Bool  {
   let sizes = w_published_head_sizes()
   length(sizes) == 2
     && all(sizes, l => length(l) == 24)
@@ -67,7 +67,7 @@ test fn the_derived_head_sizes_sum_to_the_published_table_rows() -> Bool {
 
 // RED: a draw that restarts per layer (reusing primes across layers, a plausible misreading of
 // upstream's `seen`) gives layer 14 layer 1's primes, whose sum is not layer 14's published rows.
-test fn a_draw_that_reuses_primes_across_layers_misses_the_published_rows() -> Bool {
+test fn a_draw_that_reuses_primes_across_layers_misses_the_published_rows() -> Bool  {
   match first(w_published_head_sizes()) {
     Absent => false
     Present { value: layer1 } => match get(xs: deepseek_v4_1_flash_engram.unpadded_embeddings, index: 1) {
@@ -78,7 +78,7 @@ test fn a_draw_that_reuses_primes_across_layers_misses_the_published_rows() -> B
 }
 
 // TP4: each rank owns six contiguous hash heads; the ranges tile the table with no gap or overlap.
-test fn tp4_rank_ranges_tile_each_layer_contiguously() -> Bool {
+test fn tp4_rank_ranges_tile_each_layer_contiguously() -> Bool  {
   all(w_published_head_sizes(), l => {
     let rows = vllm_engram_rank_rows(head_sizes: l, tp_size: 4)
     length(rows) == 4
@@ -90,7 +90,7 @@ test fn tp4_rank_ranges_tile_each_layer_contiguously() -> Bool {
     && !vllm_engram_every_rank_has_heads(n_hash_cols: 3, tp_size: 4)
 }
 
-test fn the_primality_test_agrees_with_small_cases() -> Bool {
+test fn the_primality_test_agrees_with_small_cases() -> Bool  {
   vllm_engram_is_prime(n: 2) && vllm_engram_is_prime(n: 37) && vllm_engram_is_prime(n: 16000057)
     && !vllm_engram_is_prime(n: 1) && !vllm_engram_is_prime(n: 16000000) && !vllm_engram_is_prime(n: 25326001)
 }

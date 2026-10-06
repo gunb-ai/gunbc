@@ -31,10 +31,10 @@ fn w_single_authority_at_mechanism_field_green() -> Bool {
   )
 }
 
-test fn structured_missing_variant_terminal_at_mechanism_field_refuses() -> Bool {
+test fn structured_missing_variant_terminal_at_mechanism_field_refuses() -> Bool  {
   !w_missing_variant_terminal_at_mechanism_field_red()
 }
 
-test fn structured_single_authority_at_mechanism_field_accepts() -> Bool {
+test fn structured_single_authority_at_mechanism_field_accepts() -> Bool  {
   w_single_authority_at_mechanism_field_green()
 }

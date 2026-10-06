@@ -36,12 +36,12 @@ fn blocking_for(c: CompileDiagnosticCensus, class: String, subject: String) -> I
 }
 
 // THE SPECIMEN: a source that imports std.measure and nothing else is clean under the measure.
-test fn a_source_importing_only_std_measure_is_clean_under_the_measured_compile() -> Bool {
+test fn a_source_importing_only_std_measure_is_clean_under_the_measured_compile() -> Bool  {
   blocking_total(c: compile_dag_diagnostic_census("module probe_measure_only\nimport std.measure { bit_width }\nfn f() -> Int { 0 }\n")) == 0
 }
 
 // POSITIVE CONTROL: the parent coproduct is imported, so its variant is bound as a type argument.
-test fn a_variant_of_an_imported_coproduct_is_bound_as_a_type_argument() -> Bool {
+test fn a_variant_of_an_imported_coproduct_is_bound_as_a_type_argument() -> Bool  {
   blocking_total(c: compile_dag_diagnostic_census("module probe_parent_bound\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n")) == 0
 }
 
@@ -54,7 +54,7 @@ test fn a_variant_of_an_imported_coproduct_is_bound_as_a_type_argument() -> Bool
 // is in fact stricter.
 data unbound_relay_source_prefix: String = "module probe_parent_unbound\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_relay { relay }\ntype Box<M> { n: Int }\n"
 
-test fn a_variant_whose_parent_is_not_bound_is_still_charged_by_the_measure() -> Bool {
+test fn a_variant_whose_parent_is_not_bound_is_still_charged_by_the_measure() -> Bool  {
   blocking_for(
     c: compile_dag_diagnostic_census(unbound_relay_source_prefix + "fn f(b: Box<Alpha>) -> Int { 0 }\n"),
     class: "UnresolvedType",
@@ -74,7 +74,7 @@ test fn a_variant_whose_parent_is_not_bound_is_still_charged_by_the_measure() ->
 // not because a divergence was observed.
 
 // Two visible coproducts both declare Alpha: many contributions, ambiguous, refused.
-test fn a_variant_declared_by_two_visible_coproducts_is_refused_as_ambiguous() -> Bool {
+test fn a_variant_declared_by_two_visible_coproducts_is_refused_as_ambiguous() -> Bool  {
   blocking_for(
     c: compile_dag_diagnostic_census("module probe_two_parents\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\nimport test.fixture.unit_variant_binding.second_provider { Other }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n"),
     class: "UnresolvedType",
@@ -83,7 +83,7 @@ test fn a_variant_declared_by_two_visible_coproducts_is_refused_as_ambiguous() -
 }
 
 // One coproduct declares the same unit arm twice: two contributions from one parent, refused.
-test fn a_variant_declared_twice_by_one_coproduct_is_refused() -> Bool {
+test fn a_variant_declared_twice_by_one_coproduct_is_refused() -> Bool  {
   blocking_for(
     c: compile_dag_diagnostic_census("module probe_duplicate_arm\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Holder }\nimport test.fixture.unit_variant_binding.duplicate_arm_provider { Twice }\nfn f(h: Holder<Delta>) -> Int { 0 }\n"),
     class: "UnresolvedType",
@@ -93,7 +93,7 @@ test fn a_variant_declared_twice_by_one_coproduct_is_refused() -> Bool {
 
 // A local declaration shadows the imported coproduct, so its contribution is removed and Alpha's outer
 // key is left with no contributions: zero, refused.
-test fn a_variant_whose_only_parent_is_shadowed_is_refused() -> Bool {
+test fn a_variant_whose_only_parent_is_shadowed_is_refused() -> Bool  {
   blocking_for(
     c: compile_dag_diagnostic_census("module probe_shadowed\nimport std.types { Int }\nimport test.fixture.unit_variant_binding.marker_provider { Marker, Holder }\ntype Marker { n: Int }\nfn f(h: Holder<Alpha>) -> Int { 0 }\n"),
     class: "UnresolvedType",

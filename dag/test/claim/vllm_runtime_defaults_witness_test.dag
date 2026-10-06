@@ -49,7 +49,7 @@ data w_device_unread: DeviceMemoryObservation = NvmlDeviceMemoryUnsupportedOnUni
 // This is the witness that would have answered the question that started this program. The canary's
 // serve line carries neither memory flag, and until this module existed nothing could say what its
 // effective policy was.
-test fn an_omitted_memory_request_resolves_to_the_revisions_own_default() -> Bool {
+test fn an_omitted_memory_request_resolves_to_the_revisions_own_default() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
     device_total: w_device_observation,
@@ -86,7 +86,7 @@ fn w_origin_is_explicit(o: VllmResolutionOrigin) -> Bool {
 // The DeepSeek pair route's 82% must not be overwritten by the revision default it shares a runtime
 // family with. The discriminating part is that the SAME defaults are supplied here as in the witness
 // above, so only the request can account for the difference.
-test fn an_explicit_utilization_overrides_the_revision_default() -> Bool {
+test fn an_explicit_utilization_overrides_the_revision_default() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 8200) }, kv_cache_bytes: none },
     device_total: w_device_observation,
@@ -103,7 +103,7 @@ test fn an_explicit_utilization_overrides_the_revision_default() -> Bool {
 //
 // Upstream's precedence, and the arm carries no fraction AT ALL rather than one nothing reads -- so a
 // reader cannot find two numbers here and have to guess which the engine uses.
-test fn explicit_kv_bytes_supersede_utilization_entirely() -> Bool {
+test fn explicit_kv_bytes_supersede_utilization_entirely() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: none, kv_cache_bytes: Present { value: byte_size(count: 26572776960) } },
     device_total: w_device_observation,
@@ -122,7 +122,7 @@ test fn explicit_kv_bytes_supersede_utilization_entirely() -> Bool {
 // that answered 9200 unconditionally passes every witness above. This is the one that fails it. The
 // coincidence is real and it is exactly the shape that let one model's reasoning-field alias answer
 // for another's earlier on this branch.
-test fn an_omission_against_an_unmodelled_revision_refuses() -> Bool {
+test fn an_omission_against_an_unmodelled_revision_refuses() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
     device_total: w_device_observation,
@@ -139,7 +139,7 @@ test fn an_omission_against_an_unmodelled_revision_refuses() -> Bool {
 
 // AND THE MODELLED ONES ARE FOUND, without which the refusal above is satisfied by a lookup that
 // never finds anything.
-test fn both_modelled_revisions_resolve_to_their_own_row() -> Bool {
+test fn both_modelled_revisions_resolve_to_their_own_row() -> Bool  {
   w_resolves_known(r: Vllm487ecf187) && w_resolves_known(r: Vllm1967a5627)
 }
 
@@ -154,7 +154,7 @@ fn w_resolves_known(r: ModelledVllmDefaultsRevision) -> Bool {
 // EACH REVISION CITES ITS OWN SOURCE FILE, and this is the witness for the defect where one authority
 // answered for both: a row whose value named 1967a562 while its evidence named 487ecf187. The values
 // agree, so only the citation can distinguish them.
-test fn each_revision_cites_its_own_source_file() -> Bool {
+test fn each_revision_cites_its_own_source_file() -> Bool  {
   w_authority_names_own_revision(r: Vllm487ecf187) && w_authority_names_own_revision(r: Vllm1967a5627)
 }
 
@@ -167,7 +167,7 @@ fn w_authority_names_own_revision(r: ModelledVllmDefaultsRevision) -> Bool {
 // THE TWO REVISIONS AGREE TODAY AND THAT AGREEMENT IS DERIVED, NOT SHARED. Asserting it here records
 // the fact the module refuses to make an authority: if a future edit moves one arm, this witness
 // reports the divergence rather than the two silently staying equal through a common constant.
-test fn the_two_revisions_agree_on_utilisation_by_comparison_not_by_sharing() -> Bool {
+test fn the_two_revisions_agree_on_utilisation_by_comparison_not_by_sharing() -> Bool  {
   basis_point_count(bp: defaults_gpu_utilization(r: Vllm487ecf187))
     == basis_point_count(bp: defaults_gpu_utilization(r: Vllm1967a5627))
 }
@@ -187,7 +187,7 @@ test fn the_two_revisions_agree_on_utilisation_by_comparison_not_by_sharing() ->
 // AND THE ENGINE'S LOG CANNOT ARBITRATE THIS. Both values render as 111.95 GiB, so the "verified
 // against the reported envelope" check that accompanied the original witness could not have detected
 // the defect at all. A rounded projection is not an oracle for the byte it rounds away.
-test fn the_requested_envelope_ceils_as_upstream_does() -> Bool {
+test fn the_requested_envelope_ceils_as_upstream_does() -> Bool  {
   byte_size_count(b: vllm_requested_envelope_bytes(
     device_total: byte_size(count: w_spark_total_bytes_count),
     utilization: basis_point(count: 9200),
@@ -198,7 +198,7 @@ test fn the_requested_envelope_ceils_as_upstream_does() -> Bool {
 // byte apart in a twelve-digit number. 7 x 0.92 = 6.44: truncation says 6, ceiling says 7. A
 // truncating implementation passes every large-value witness above by a margin invisible in GiB and
 // fails this one outright.
-test fn a_non_divisible_product_rounds_up_not_down() -> Bool {
+test fn a_non_divisible_product_rounds_up_not_down() -> Bool  {
   byte_size_count(b: vllm_requested_envelope_bytes(
     device_total: byte_size(count: 7),
     utilization: basis_point(count: 9200),
@@ -209,7 +209,7 @@ test fn a_non_divisible_product_rounds_up_not_down() -> Bool {
 //
 // KV bytes win and the fraction is RETAINED as noncausal, so an observed argv carrying both survives
 // ingestion. A model that dropped the ignored argument could not reproduce the launch it came from.
-test fn both_explicit_arguments_resolve_to_kv_bytes_with_the_fraction_retained() -> Bool {
+test fn both_explicit_arguments_resolve_to_kv_bytes_with_the_fraction_retained() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest {
       utilization: Present { value: basis_point(count: 8200) },
@@ -233,7 +233,7 @@ fn w_retained_fraction_is(nc: BasisPoint?, expected: Nat) -> Bool {
 }
 
 // AND IT MOVES WITH THE FRACTION, without which the row above passes against a constant.
-test fn a_different_fraction_yields_a_different_envelope() -> Bool {
+test fn a_different_fraction_yields_a_different_envelope() -> Bool  {
   byte_size_count(b: vllm_requested_envelope_bytes(
     device_total: byte_size(count: w_spark_total_bytes_count),
     utilization: basis_point(count: 8200),
@@ -248,7 +248,7 @@ test fn a_different_fraction_yields_a_different_envelope() -> Bool {
 // The canary omits this flag and therefore enables it. Recording that as a resolved value with a
 // runtime-default origin is what lets a tenancy policy disagree with it; an unmodelled revision
 // leaves whether requesters share a cache domain UNESTABLISHED rather than assuming either answer.
-test fn omitted_prefix_caching_resolves_enabled_from_the_revision() -> Bool {
+test fn omitted_prefix_caching_resolves_enabled_from_the_revision() -> Bool  {
   match resolve_vllm_prefix_caching(
     request: PrefixCachingOmitted,
     defaults: VllmDefaultsKnown { revision: Vllm487ecf187 },
@@ -266,7 +266,7 @@ fn w_origin_is_runtime_default_named(o: VllmResolutionOrigin) -> Bool {
   }
 }
 
-test fn prefix_caching_against_an_unmodelled_revision_is_unresolvable() -> Bool {
+test fn prefix_caching_against_an_unmodelled_revision_is_unresolvable() -> Bool  {
   match resolve_vllm_prefix_caching(
     request: PrefixCachingOmitted,
     defaults: vllm_runtime_defaults_for(revision: vllm_source_revision(
@@ -296,7 +296,7 @@ fn w_is_refused(p: ResolvedVllmMemoryPolicy) -> Bool {
 
 // A ZERO FRACTION RESERVES NOTHING AND CANNOT SERVE, and it used to resolve to an AutoProfiledMode
 // with a zero-byte envelope -- a positively resolved answer describing an engine that cannot start.
-test fn a_zero_utilization_is_refused() -> Bool {
+test fn a_zero_utilization_is_refused() -> Bool  {
   w_is_refused(p: resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 0) }, kv_cache_bytes: none },
     device_total: w_device_observation,
@@ -306,7 +306,7 @@ test fn a_zero_utilization_is_refused() -> Bool {
 
 // A FRACTION ABOVE THE WHOLE DEVICE IS AN ARITHMETIC ERROR, not a bold setting. 15000 basis points
 // claims 150% of the pool.
-test fn a_utilization_above_the_whole_device_is_refused() -> Bool {
+test fn a_utilization_above_the_whole_device_is_refused() -> Bool  {
   w_is_refused(p: resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 15000) }, kv_cache_bytes: none },
     device_total: w_device_observation,
@@ -318,7 +318,7 @@ test fn a_utilization_above_the_whole_device_is_refused() -> Bool {
 // NONCAUSAL -- explicit KV bytes supersede it for sizing -- so the previous resolver never looked at
 // it and answered KvBytesMode, carrying the invalid value along in `noncausal_utilization` as though
 // being ignored made it well-formed. The engine would refuse this launch at configuration time.
-test fn an_invalid_utilization_beside_valid_kv_bytes_is_still_refused() -> Bool {
+test fn an_invalid_utilization_beside_valid_kv_bytes_is_still_refused() -> Bool  {
   w_is_refused(p: resolve_vllm_memory_policy(
     request: VllmMemoryRequest {
       utilization: Present { value: basis_point(count: 15000) },
@@ -335,7 +335,7 @@ test fn an_invalid_utilization_beside_valid_kv_bytes_is_still_refused() -> Bool 
 // to profiling; it does not configure a zero-byte cache. Modelling presence as the discriminator --
 // which is what the option type invites -- made `--kv-cache-memory=0` resolve to a KV mode with a
 // zero-byte pool, a state the engine never enters.
-test fn zero_kv_bytes_falls_through_to_profiling_rather_than_configuring_an_empty_cache() -> Bool {
+test fn zero_kv_bytes_falls_through_to_profiling_rather_than_configuring_an_empty_cache() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest {
       utilization: Present { value: basis_point(count: 9200) },
@@ -352,7 +352,7 @@ test fn zero_kv_bytes_falls_through_to_profiling_rather_than_configuring_an_empt
 
 // AND A POSITIVE KV BYTE COUNT STILL TAKES THE EXPLICIT ARM. Without this control the test above is
 // satisfied by a resolver that never selects KV-byte mode at all.
-test fn positive_kv_bytes_still_take_the_explicit_arm() -> Bool {
+test fn positive_kv_bytes_still_take_the_explicit_arm() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest {
       utilization: none,
@@ -372,7 +372,7 @@ test fn positive_kv_bytes_still_take_the_explicit_arm() -> Bool {
 // The resolver took a bare ByteSize, so there was no way to hand it "the device was not read" -- a
 // caller had to invent a number to ask the question at all. On a GB10 that arm is the one NVML
 // actually returns, so this is the fleet's own state rather than a defensive case.
-test fn an_unread_device_refuses_rather_than_sizing_against_a_guess() -> Bool {
+test fn an_unread_device_refuses_rather_than_sizing_against_a_guess() -> Bool  {
   w_is_refused(p: resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: none, kv_cache_bytes: none },
     device_total: w_device_unread,
@@ -383,7 +383,7 @@ test fn an_unread_device_refuses_rather_than_sizing_against_a_guess() -> Bool {
 // AN EXPLICIT REQUEST AGAINST AN UNMODELLED REVISION STILL RESOLVES, because the revision's default
 // is noncausal when the launch names its own value. A resolver that refused here would be refusing
 // the wrong thing -- the unmodelled revision matters only for what an OMISSION inherits.
-test fn an_explicit_utilization_against_an_unmodelled_revision_resolves() -> Bool {
+test fn an_explicit_utilization_against_an_unmodelled_revision_resolves() -> Bool  {
   match resolve_vllm_memory_policy(
     request: VllmMemoryRequest { utilization: Present { value: basis_point(count: 9200) }, kv_cache_bytes: none },
     device_total: w_device_observation,

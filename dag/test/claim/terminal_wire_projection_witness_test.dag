@@ -136,7 +136,7 @@ fn line_feed_on_open_line_refuses() -> Bool {
   }
 }
 
-test fn w_multiline_diagnostic_is_admitted_on_a_closing_write() -> Bool {
+test fn w_multiline_diagnostic_is_admitted_on_a_closing_write() -> Bool  {
   admissible_control_is_projected(
     rendered: concat("ServiceNotReady unit=gunbc-roadmap.service", concat(ansi_line_feed, "   Active: active (running)"))
   ) &&
@@ -146,12 +146,12 @@ test fn w_multiline_diagnostic_is_admitted_on_a_closing_write() -> Bool {
   )
 }
 
-test fn w_line_feed_refused_only_where_the_line_stays_open() -> Bool {
+test fn w_line_feed_refused_only_where_the_line_stays_open() -> Bool  {
   line_feed_on_open_line_refuses() &&
   admissible_control_is_projected(rendered: concat("closed", concat(ansi_line_feed, "write")))
 }
 
-test fn w_tab_admitted_even_on_an_open_line() -> Bool {
+test fn w_tab_admitted_even_on_an_open_line() -> Bool  {
   match project_terminal_write(
     prior: DynamicLineClosed,
     requested: Overwrite,
@@ -163,7 +163,7 @@ test fn w_tab_admitted_even_on_an_open_line() -> Bool {
   }
 }
 
-test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
+test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool  {
   projected_is(
     p: project_terminal_write(
       prior: DynamicLineClosed,
@@ -186,7 +186,7 @@ test fn w_overwrite_projects_exact_bytes_and_opens_line() -> Bool {
   )
 }
 
-test fn w_append_from_open_erases_then_closes() -> Bool {
+test fn w_append_from_open_erases_then_closes() -> Bool  {
   projected_is(
     p: project_terminal_write(
       prior: DynamicLineOpen,
@@ -202,7 +202,7 @@ test fn w_append_from_open_erases_then_closes() -> Bool {
   )
 }
 
-test fn w_append_from_closed_is_plain_line() -> Bool {
+test fn w_append_from_closed_is_plain_line() -> Bool  {
   projected_is(
     p: project_terminal_write(
       prior: DynamicLineClosed,
@@ -215,7 +215,7 @@ test fn w_append_from_closed_is_plain_line() -> Bool {
   )
 }
 
-test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool {
+test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool  {
   projected_is(
     p: project_terminal_write(
       prior: DynamicLineOpen,
@@ -238,7 +238,7 @@ test fn w_clear_open_erases_and_clear_closed_is_noop() -> Bool {
   )
 }
 
-test fn w_clear_with_text_refuses() -> Bool {
+test fn w_clear_with_text_refuses() -> Bool  {
   match project_terminal_write(
     prior: DynamicLineClosed,
     requested: Clear,
@@ -250,7 +250,7 @@ test fn w_clear_with_text_refuses() -> Bool {
   }
 }
 
-test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
+test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool  {
   let scan = terminal_control_scan()
   scan.carriage_return_refuses &&
   !scan.line_feed_refuses &&
@@ -264,7 +264,7 @@ test fn w_rendered_text_cannot_smuggle_cursor_control_bytes() -> Bool {
     && !ansi_text_contains_cursor_control(text: "\\u{0080}")
 }
 
-test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
+test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool  {
   projected_is(
     p: project_terminal_write(
       prior: DynamicLineClosed,
@@ -287,7 +287,7 @@ test fn w_nonaddressable_overwrite_downgrades_and_clear_noops() -> Bool {
   )
 }
 
-test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool {
+test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool  {
   match project_terminal_write(
     prior: DynamicLineOpen,
     requested: Append,
@@ -300,7 +300,7 @@ test fn w_nonaddressable_open_state_refuses_as_contradictory() -> Bool {
   }
 }
 
-test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool {
+test fn w_ecma48_csi_perturbation_changes_wire_bytes() -> Bool  {
   let authoritative = concat(ansi_carriage_return, concat(ansi_erase_entire_line(), "working"))
   let perturbed = concat(ansi_carriage_return, concat(ansi_escape, concat("]2K", "working")))
   perturbation_consistent(

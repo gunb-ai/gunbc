@@ -108,7 +108,7 @@ fn ubtr_completed_clean(o: MultiModuleCompileFixtureOutcome) -> Bool {
 // floor run, the supplied definer remains in the manifest pool, global uniqueness resolves the
 // bare name, and the missing edge is classified as UnlistedImportUse. UnresolvedType would mean
 // the declaration itself was unavailable, a different mechanism that must not satisfy this claim.
-test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
+test fn bare_type_reference_without_import_is_diagnosed() -> Bool  {
   ubtr_diagnosed_as(ubtr_run(ubtr_user_without_import_source), "UnlistedImportUse")
 }
 
@@ -116,7 +116,7 @@ test fn bare_type_reference_without_import_is_diagnosed() -> Bool {
 // satisfied by a fixture that never compiled at all, by a harness that refuses every manifest, and
 // by a definer whose own declaration is malformed -- three failures that look identical from the
 // red side.
-test fn the_same_source_with_the_import_line_compiles_clean() -> Bool {
+test fn the_same_source_with_the_import_line_compiles_clean() -> Bool  {
   ubtr_completed_clean(ubtr_run(ubtr_user_with_import_source))
     && !ubtr_diagnosed_as(ubtr_run(ubtr_user_with_import_source), "UnlistedImportUse")
 }
@@ -158,7 +158,7 @@ fn ubtr_generic_run() -> MultiModuleCompileFixtureOutcome {
 // name the user's text references is listed or kernel, so zero UnlistedImportUse rows of any name
 // is the correct post-fix state, and a future regression charging a DIFFERENT synthetic name is
 // caught here too.
-test fn imported_generic_call_charges_no_unlisted_import_use_on_the_formal() -> Bool {
+test fn imported_generic_call_charges_no_unlisted_import_use_on_the_formal() -> Bool  {
   match ubtr_generic_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
@@ -198,7 +198,7 @@ fn ubtr_alias_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-test fn constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion() -> Bool {
+test fn constructing_through_an_imported_alias_charges_no_unlisted_import_use_on_the_expansion() -> Bool  {
   match ubtr_alias_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
@@ -242,7 +242,7 @@ fn ubtr_qualified_run(user_source: String) -> MultiModuleCompileFixtureOutcome {
 // THE DISCRIMINATING RED, pre-fix: the user lists UbtrQualified from ubtr.qdef and references it
 // as ubtr.qdef.UbtrQualified -- the most explicit spelling of the same declaration -- and the
 // emitter still charges it. Post-fix the row is gone.
-test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Bool {
+test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Bool  {
   match ubtr_qualified_run(ubtr_qualified_user_listed_source) {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       count(fixture_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) == 0,
@@ -255,7 +255,7 @@ test fn qualified_use_of_a_listed_import_charges_no_unlisted_import_use() -> Boo
 // class -- the dependency is real and undeclared -- and must keep firing after the fix. This is
 // the control that keeps the visibility-map change from widening into "qualified names are always
 // fine", which would be the absorbing-fallback arm (DESIGN 5) wearing a repair's clothes.
-test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool {
+test fn qualified_use_without_any_import_still_charges_unlisted_import_use() -> Bool  {
   ubtr_diagnosed_as(ubtr_qualified_run(ubtr_qualified_user_unlisted_source), "UnlistedImportUse")
 }
 
@@ -306,7 +306,7 @@ fn ubtr_kernel_collision_run() -> MultiModuleCompileFixtureOutcome {
 // The FixtureCompileRefused arm satisfies the control as well as the counted charge: a terminal
 // unresolved/ambiguous refusal is an honest outcome. What must not happen is the authored
 // occurrence passing SILENTLY (the widened-exclusion state).
-test fn authored_reference_spelled_like_a_kernel_formal_still_charges_unlisted_import_use() -> Bool {
+test fn authored_reference_spelled_like_a_kernel_formal_still_charges_unlisted_import_use() -> Bool  {
   match ubtr_kernel_collision_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "N") == 1,
@@ -342,7 +342,7 @@ fn ubtr_palias_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-test fn use_site_type_argument_through_an_imported_alias_still_charges_unlisted_import_use() -> Bool {
+test fn use_site_type_argument_through_an_imported_alias_still_charges_unlisted_import_use() -> Bool  {
   match ubtr_palias_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>
       ubtr_subject_count(rows: rows, wanted: "UnlistedImportUse", subject: "UbtrKey") == 1
@@ -392,7 +392,7 @@ fn ubtr_broken_alias_run() -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-test fn diagnostics_from_the_alias_expansion_still_propagate() -> Bool {
+test fn diagnostics_from_the_alias_expansion_still_propagate() -> Bool  {
   match ubtr_broken_alias_run() {
     FixtureCompileCompleted { module_count: n, emitted_files: files, resolved_rust_functions: _, diagnostics: rows, source_digest: sd, compiler_digest: cd } => false,
     FixtureCompileRefused { module_count: n, diagnostics: rows, source_digest: sd, compiler_digest: cd } =>

@@ -58,16 +58,16 @@ fn cap_entries_or(c: TypedModuleCacheCap, fallback: Int) -> Int {
   }
 }
 
-test fn ordinary_budget_derives_the_quotient() -> Bool {
+test fn ordinary_budget_derives_the_quotient() -> Bool  {
   cap_entries_or(c: typed_module_cache_entry_cap(r: ordinary_budget()), fallback: 0) == 300
 }
 
-test fn a_tiny_budget_clamps_up_to_the_floor() -> Bool {
+test fn a_tiny_budget_clamps_up_to_the_floor() -> Bool  {
   let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: tiny_budget()), fallback: 0)
   derived == typed_module_cache_entries_floor
 }
 
-test fn a_huge_budget_clamps_down_to_the_ceiling() -> Bool {
+test fn a_huge_budget_clamps_down_to_the_ceiling() -> Bool  {
   let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: huge_budget()), fallback: 0)
   derived == typed_module_cache_entries_ceiling
 }
@@ -75,19 +75,19 @@ test fn a_huge_budget_clamps_down_to_the_ceiling() -> Bool {
 // THE CONTROL THIS FILE EXISTS FOR. An unreadable budget must refuse. The
 // specific wrong answer -- the one with a receipt -- is the ceiling, so this
 // asserts refusal AND that the value is not the most permissive cap.
-test fn unreadable_budget_refuses_rather_than_defaulting() -> Bool {
+test fn unreadable_budget_refuses_rather_than_defaulting() -> Bool  {
   match typed_module_cache_entry_cap(r: unreadable_budget()) {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true
   }
 }
 
-test fn unreadable_budget_does_not_yield_the_ceiling() -> Bool {
+test fn unreadable_budget_does_not_yield_the_ceiling() -> Bool  {
   let derived = cap_entries_or(c: typed_module_cache_entry_cap(r: unreadable_budget()), fallback: 0)
   derived != typed_module_cache_entries_ceiling
 }
 
-test fn a_positive_override_is_still_clamped_to_the_ceiling() -> Bool {
+test fn a_positive_override_is_still_clamped_to_the_ceiling() -> Bool  {
   let capped = cap_entries_or(
     c: typed_module_cache_entry_cap_with_override(override_entries: 999999, r: ordinary_budget()),
     fallback: 0
@@ -95,7 +95,7 @@ test fn a_positive_override_is_still_clamped_to_the_ceiling() -> Bool {
   capped == typed_module_cache_entries_ceiling
 }
 
-test fn a_zero_override_falls_through_to_the_derived_cap() -> Bool {
+test fn a_zero_override_falls_through_to_the_derived_cap() -> Bool  {
   let fell_through = cap_entries_or(
     c: typed_module_cache_entry_cap_with_override(override_entries: 0, r: ordinary_budget()),
     fallback: 0
@@ -105,7 +105,7 @@ test fn a_zero_override_falls_through_to_the_derived_cap() -> Bool {
 
 // A zero override on an UNREADABLE budget must still refuse: falling through
 // must reach the derivation, not a number.
-test fn a_zero_override_on_an_unreadable_budget_still_refuses() -> Bool {
+test fn a_zero_override_on_an_unreadable_budget_still_refuses() -> Bool  {
   match typed_module_cache_entry_cap_with_override(override_entries: 0, r: unreadable_budget()) {
     CapEntries { entries: _ } => false
     CapEntryRefused { reason: _ } => true

@@ -83,14 +83,14 @@ fn tool_invocation(tool: CliTool) -> String {
   tool.program.invocation as String
 }
 
-test fn exact_pin_currency_is_an_unfilled_gap() -> Bool {
+test fn exact_pin_currency_is_an_unfilled_gap() -> Bool  {
   match pin_currency_gap(pin: authored_pin) {
     AuthoredPinHasNoReviewDate => true
     TrackedPinHasNoResolutionDate { channel: _ } => false
   }
 }
 
-test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
+test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool  {
   match pin_currency_gap(pin: tracked_pin) {
     TrackedPinHasNoResolutionDate { channel: c } => (c as String) == "latest"
     AuthoredPinHasNoReviewDate => false
@@ -106,14 +106,14 @@ test fn tracked_pin_currency_is_an_unfilled_gap() -> Bool {
 // because its expected_identity was resolved from a moving reference with no record of that
 // resolution.
 
-test fn matching_identity_admits_integrity() -> Bool {
+test fn matching_identity_admits_integrity() -> Bool  {
   match admit_pin_integrity(pin: authored_pin, observed_identity: cargo_identity) {
     PinIntegrityAdmitted { pin: p } => tool_invocation(tool: p.subject) == "cargo"
     PinRefused { subject: _, cause: _ } => false
   }
 }
 
-test fn mismatched_identity_refuses() -> Bool {
+test fn mismatched_identity_refuses() -> Bool  {
   match admit_pin_integrity(pin: authored_pin, observed_identity: other_identity) {
     PinRefused { subject: subj, cause: c } =>
       (tool_invocation(tool: subj) == "cargo") && match c {
@@ -129,7 +129,7 @@ test fn mismatched_identity_refuses() -> Bool {
   }
 }
 
-test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
+test fn tracked_pin_refuses_even_when_identity_matches() -> Bool  {
   match admit_pin_integrity(pin: tracked_pin, observed_identity: cargo_identity) {
     PinRefused { subject: subj, cause: c } =>
       (tool_invocation(tool: subj) == "jq") && match c {
@@ -165,7 +165,7 @@ data legacy_unversioned_tool: CliTool = CliTool {
 // range stated'; collapsing the two would be a state-space conflation and would hide which deficit
 // a given row actually has.
 
-test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
+test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool  {
   match admit_legacy_cli_tool(tool: legacy_ranged_tool) {
     PinRefused { subject: subj, cause: c } =>
       (tool_invocation(tool: subj) == "curl") && match c {
@@ -180,7 +180,7 @@ test fn ranged_legacy_tool_refuses_as_not_an_identity() -> Bool {
   }
 }
 
-test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
+test fn unversioned_legacy_tool_refuses_as_absent() -> Bool  {
   match admit_legacy_cli_tool(tool: legacy_unversioned_tool) {
     PinRefused { subject: subj, cause: c } =>
       (tool_invocation(tool: subj) == "jq") && match c {
@@ -196,7 +196,7 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
 }
 
 // The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close.
-test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
+test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool  {
   let bumped = Pin {
     subject: cargo_tool,
     version: "1.94.0" as VersionIdentity,
@@ -207,7 +207,7 @@ test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
     && !pin_value_eq(a: authored_pin, b: bumped)
 }
 
-test fn value_eq_covers_digest_not_only_version() -> Bool {
+test fn value_eq_covers_digest_not_only_version() -> Bool  {
   let same_version_new_binary = Pin {
     subject: cargo_tool,
     version: "1.93.0" as VersionIdentity,
@@ -225,7 +225,7 @@ test fn value_eq_covers_digest_not_only_version() -> Bool {
 // so omitting it from equality silently exempted the feature from reconciliation. RED CONTROLS
 // below cover all three shapes of that change; each fails if value_eq ignores selection again.
 
-test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
+test fn value_eq_detects_exact_to_tracked_flip() -> Bool  {
   let flipped = Pin {
     subject: cargo_tool,
     version: "1.93.0" as VersionIdentity,
@@ -235,7 +235,7 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
   !pin_value_eq(a: authored_pin, b: flipped)
 }
 
-test fn value_eq_detects_channel_change() -> Bool {
+test fn value_eq_detects_channel_change() -> Bool  {
   let other_channel = Pin {
     subject: jq_tool,
     version: "1.7.1" as VersionIdentity,
@@ -245,7 +245,7 @@ test fn value_eq_detects_channel_change() -> Bool {
   !pin_value_eq(a: tracked_pin, b: other_channel)
 }
 
-test fn value_eq_detects_refresh_window_change() -> Bool {
+test fn value_eq_detects_refresh_window_change() -> Bool  {
   let wider_window = Pin {
     subject: jq_tool,
     version: "1.7.1" as VersionIdentity,
@@ -255,7 +255,7 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
   !pin_value_eq(a: tracked_pin, b: wider_window)
 }
 
-test fn value_eq_still_holds_for_identical_pins() -> Bool {
+test fn value_eq_still_holds_for_identical_pins() -> Bool  {
   let same = Pin {
     subject: jq_tool,
     version: "1.7.1" as VersionIdentity,
@@ -388,7 +388,7 @@ data checkout_pin_disagreeing: Pin<ActionTagCoordinate> = Pin {
   selection: ExactPin,
 }
 
-test fn pin_composes_over_a_structurally_different_subject() -> Bool {
+test fn pin_composes_over_a_structurally_different_subject() -> Bool  {
   match admit_pin_integrity(
     pin: checkout_pin,
     observed_identity: action_ref_pinned_identity,
@@ -399,7 +399,7 @@ test fn pin_composes_over_a_structurally_different_subject() -> Bool {
   }
 }
 
-test fn second_subject_identity_is_the_pins_own_fact_not_the_subjects() -> Bool {
+test fn second_subject_identity_is_the_pins_own_fact_not_the_subjects() -> Bool  {
   ((checkout_pin.subject.ref as String) == (checkout_pin_disagreeing.subject.ref as String))
     && (pin_value_eq(a: checkout_pin, b: checkout_pin_disagreeing) == false)
     && match admit_pin_integrity(
@@ -424,7 +424,7 @@ test fn second_subject_identity_is_the_pins_own_fact_not_the_subjects() -> Bool 
 // from pin_value_eq, or make admission read a subject field, and it fails), which the original
 // could not.
 
-test fn second_subject_refuses_on_identity_mismatch_too() -> Bool {
+test fn second_subject_refuses_on_identity_mismatch_too() -> Bool  {
   match admit_pin_integrity(pin: checkout_pin, observed_identity: action_ref_other_identity) {
     PinIntegrityAdmitted { pin: _ } => false
     PinRefused { subject: subj, cause: c } =>
