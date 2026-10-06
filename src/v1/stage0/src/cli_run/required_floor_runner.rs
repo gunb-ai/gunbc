@@ -2745,13 +2745,31 @@ const FLOOR_COST_DEBT_VERDICT: &str = "src/v2/workflow/floor_cost_debt_verdict.d
 /// cannot change the base population (review on gunbc#13332). A roster this change modifies must
 /// exist and evaluate at the base; anything else refuses rather than reading as carried.
 fn cost_debt_admitted_identities(base_tree: &FloorBaseTree) -> Result<Vec<String>, String> {
-    let workspace = process_workspace_root();
-    let base_commit = base_tree.commit()?;
-    let tree = cost_debt_scratch_dir("base")?;
-    let read = cost_debt_base_tree_extract(&workspace, base_commit, &tree)
-        .and_then(|()| cost_debt_roster_in_tree(&tree));
-    std::fs::remove_dir_all(&tree).ok();
-    cost_debt_admitted_by_fold(&read?, None)
+    cost_debt_admitted_at_base_tree(
+        base_tree,
+        |base_commit| {
+            let workspace = process_workspace_root();
+            let tree = cost_debt_scratch_dir("base")?;
+            let read = cost_debt_base_tree_extract(&workspace, base_commit, &tree)
+                .and_then(|()| cost_debt_roster_in_tree(&tree));
+            std::fs::remove_dir_all(&tree).ok();
+            read
+        },
+        |base_rows| cost_debt_admitted_by_fold(base_rows, None),
+    )
+}
+
+/// THE BASE SIDE OF ADMISSION: the base roster is read at the run's base-tree commit and nowhere
+/// else, then folded against head. The read and the fold are parameters so the stale-base RED
+/// drives THIS selection with supplied values inside the unit budget (gunbc#13452); production
+/// supplies the base-tree extraction and the `.dag` fold above.
+fn cost_debt_admitted_at_base_tree(
+    base_tree: &FloorBaseTree,
+    read_base_rows: impl FnOnce(&comparison_window::BaseTreeCommit) -> Result<Vec<String>, String>,
+    fold: impl FnOnce(&[String]) -> Result<Vec<String>, String>,
+) -> Result<Vec<String>, String> {
+    let base_rows = read_base_rows(base_tree.commit()?)?;
+    fold(&base_rows)
 }
 
 /// A fresh scratch directory under the ignored build tree, one per read.
@@ -18560,6 +18578,88 @@ mod floor_base_tree_tests {
             tree(false, &orphan).commit().is_ok(),
             "two-dot needs no ancestor"
         );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// RED (gunbc#13344, input (c)): a cost-debt row main retired after the branch point is NOT
+    /// admitted as this change's. Drives `cost_debt_admitted_at_base_tree` through `FloorBaseTree`
+    /// over a real history, with the roster read by `git show` and the fold supplied as the set
+    /// difference the `.dag` fold computes (`cost_debt_admitted_identities`), so no corpus is
+    /// evaluated. POSITIVE CONTROL: a row the branch really adds is admitted.
+    #[test]
+    fn cost_debt_row_retired_at_the_tip_but_carried_at_the_merge_base_is_not_admitted() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-cost-debt-base-tree-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let git = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .unwrap_or_else(|e| panic!("git {args:?}: {e}"));
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let commit = |rows: &str, msg: &str| {
+            std::fs::write(dir.join("roster.txt"), rows).expect("write");
+            git(&["add", "-A"]);
+            git(&["commit", "--quiet", "--allow-empty", "-m", msg]);
+            git(&["rev-parse", "HEAD"])
+        };
+        git(&["init", "--quiet", "--initial-branch", "main", "."]);
+        git(&["config", "user.email", "fixture@gunbc.invalid"]);
+        git(&["config", "user.name", "fixture"]);
+        commit("t.old t.retired", "P");
+        git(&["checkout", "--quiet", "-b", "subject"]);
+        let carried = commit("t.old t.retired", "H: carries the roster unchanged");
+        let added = commit("t.old t.retired t.new", "H2: adds t.new");
+        git(&["checkout", "--quiet", "main"]);
+        commit("t.old", "C: main retires t.retired");
+        let rows_at = |rev: &str| -> Vec<String> {
+            git(&["show", &format!("{rev}:roster.txt")])
+                .split_whitespace()
+                .map(str::to_string)
+                .collect()
+        };
+        let admitted = |head: &str| {
+            let base_tree = FloorBaseTree::for_comparison(
+                FreezeBaselineComparison::MergeBase {
+                    base: "main".to_string(),
+                    head: head.to_string(),
+                    kind: "MergeTargetBaseline".to_string(),
+                },
+                dir.clone(),
+            );
+            let head_rows = rows_at(head);
+            cost_debt_admitted_at_base_tree(
+                &base_tree,
+                |base| Ok(rows_at(base.as_str())),
+                |base_rows| {
+                    Ok(head_rows
+                        .iter()
+                        .filter(|r| !base_rows.contains(r))
+                        .cloned()
+                        .collect())
+                },
+            )
+            .expect("admission")
+        };
+        assert_eq!(
+            admitted(&carried),
+            Vec::<String>::new(),
+            "t.retired was retired on main after the branch point; it is not this change's"
+        );
+        assert_eq!(admitted(&added), vec!["t.new".to_string()]);
         std::fs::remove_dir_all(&dir).ok();
     }
 }
