@@ -46,6 +46,7 @@ import gunbc.instruments.argv_word_construction_census {
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.std.algebra { fold_list, length }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.optional { Absent, Present }
@@ -103,7 +104,7 @@ fn fixture_facts_dump() -> ProcessExit {
 }
 
 fn fact_row(f: ArgvWordsFact) -> String {
-  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(length(xs: f.candidates) as String, concat("\t", concat(join(xs: f.candidates, separator: ","), concat("\t", concat(length(xs: f.flag_words) as String, concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(f.list_string_params as String, concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.candidates)), concat("\t", concat(join(f.candidates, ","), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.flag_words)), concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(integer_int_to_decimal_string(value: f.list_string_params), concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
 }
 
 fn kind_name(k: ArgvWordsDeclKind) -> String {
