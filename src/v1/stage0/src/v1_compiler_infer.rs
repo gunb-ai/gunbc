@@ -4208,6 +4208,43 @@ pub fn match_arm_types_are_proven_disjoint(
     }
 }
 
+pub fn match_arm_type_is_optional(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    ((t.return_cardinality.clone() == Cardinality::CardOptional)
+        || (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            t.clone(),
+        )) == "Optional".to_string()))
+}
+
+pub fn match_arm_type_is_bare_concrete(t: Rc<Node>, scope: Rc<InferScope>) -> bool {
+    {
+        let name = crate::v1_std_core::authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            t.clone(),
+        );
+        let generic = ((((t.params.clone().len() as i64) > 0)
+            || ((t.inferred.clone() != std::option::Option::None)
+                && crate::v1_std_core::is_compiler_error(t.inferred.clone().clone().unwrap())))
+            || match t.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: _, .. }) => true,
+                _ => false,
+            });
+        (((name.clone() != "".to_string()) && !generic.clone())
+            && !match_arm_type_is_optional(t.clone(), scope.clone()))
+    }
+}
+
+pub fn match_arm_mixes_bare_and_optional(
+    unified_arm_type: Rc<Node>,
+    arm_type: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    ((match_arm_type_is_optional(unified_arm_type.clone(), scope.clone())
+        && match_arm_type_is_bare_concrete(arm_type.clone(), scope.clone()))
+        || (match_arm_type_is_bare_concrete(unified_arm_type.clone(), scope.clone())
+            && match_arm_type_is_optional(arm_type.clone(), scope.clone())))
+}
+
 pub fn match_arm_join_diagnostics(
     unified_arm_type: Rc<Node>,
     arm: Rc<ArmInferResult>,
@@ -4216,7 +4253,7 @@ pub fn match_arm_join_diagnostics(
     if arm_body_diverges(crate::v1_std_core::arm_body(arm.typed_arm.clone())) {
         Rc::new(vec![])
     } else {
-        if match_arm_types_are_proven_disjoint(
+        if match_arm_mixes_bare_and_optional(
             unified_arm_type.clone(),
             arm.body_type.clone(),
             scope.clone(),
@@ -4225,7 +4262,7 @@ pub fn match_arm_join_diagnostics(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            "match arms produce proven-disjoint types: ".to_string(),
+                            "match arms mix a required and an optional type: ".to_string(),
                             crate::v1_compiler_infer_types::node_type_shape(
                                 unified_arm_type.clone(),
                                 scope.type_env.clone().source_indices.clone(),
@@ -4244,7 +4281,36 @@ pub fn match_arm_join_diagnostics(
                 scope.module_name.clone(),
             )])
         } else {
-            Rc::new(vec![])
+            if match_arm_types_are_proven_disjoint(
+                unified_arm_type.clone(),
+                arm.body_type.clone(),
+                scope.clone(),
+            ) {
+                Rc::new(vec![inference_error(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "match arms produce proven-disjoint types: ".to_string(),
+                                crate::v1_compiler_infer_types::node_type_shape(
+                                    unified_arm_type.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                ),
+                            ),
+                            " vs ".to_string(),
+                        ),
+                        crate::v1_compiler_infer_types::node_type_shape(
+                            arm.body_type.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ),
+                    ),
+                    crate::v1_std_core::arm_body(arm.typed_arm.clone())
+                        .span
+                        .clone(),
+                    scope.module_name.clone(),
+                )])
+            } else {
+                Rc::new(vec![])
+            }
         }
     }
 }
