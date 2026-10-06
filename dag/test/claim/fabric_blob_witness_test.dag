@@ -212,5 +212,5 @@ test fn the_put_writes_bucket_wide_as_an_empty_prefix_and_reads_back_converged()
     Noop => true
     _ => false
   }
-  string_contains(s: wire, pattern: "\"conditions\":{\"prefix\":\"\"}") && converged
+  string_contains(s: wire, pattern: "\"conditions\": {\"prefix\": \"\"}") && converged
 }
