@@ -1,5 +1,8 @@
 module v2.test.claim.compiler.literal_elaboration
 
+import std.literal_elaboration { KernelGroundingAbsent, KernelGroundingAmbiguous, KernelGroundingFound, KernelIntLiteral, kernel_grounding_admits, kernel_grounding_for }
+import gunbc.structural_realization_bindings { kernel_grounding_rows }
+import std.decl_ref { decl_ref }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.infer { InferLiteralElaborationRefused, InferLiteralElaboratesTo, InferLiteralNotElaborated, infer, infer_application_callee_use, infer_literal_elaborates_at }
 import v2.compiler.inferred_tree { InferredTree }
@@ -27,15 +30,17 @@ import std.types { Bool, List }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SUBJECT: v2 infer elaborates an integer literal at an expected type through the ONE declared table
-// (std.literal_elaboration elaborate_literal_at over gunbc.structural_realization_bindings literal_homomorphism_rows;
-// v2.compiler.infer infer_literal_elaborates_at) at a declared position.
+// SUBJECT: v2 infer elaborates an integer literal at an expected type through the declared tables
+// (v2.compiler.infer infer_literal_elaborates_at) at a declared position. std.nat Nat is KERNEL-GROUNDED
+// (gunbc.structural_realization_bindings kernel_grounding_rows, declared range min 0): a literal at Nat is its own
+// value when std.literal_elaboration kernel_grounding_admits says so, and `-1` refuses from that range
+// (calm-boar-904, ruling A on review 77219). Nat has no literal homomorphism row.
 //
 // SHAPE, PER DESIGN SECTION 3's WITNESS RULE (sharp-raven-357): exactly ONE claim runs the real route
 // (lel_route_runs_on_the_real_path: one module, assembled with a std.nat peer, inferred, and two calls evaluated on
 // the v2 eval route). Every other claim supplies a literal node and an expected type to infer_literal_elaborates_at,
-// the one interface under test. DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove the std.nat Peano row from
-// literal_homomorphism_rows and `g(n: 0)` at Nat is refused (mutation run cited in the PR).
+// the one interface under test. DELETING THE ROUTE REDS THE REAL-PATH CLAIM: remove std.nat Nat's row from
+// kernel_grounding_rows and `g(n: 0)` at Nat is refused.
 
 data lel_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_p_artifact, file_path: "src/v2/pilot/literal_elaboration_p.dag" }
 data lel_nat_artifact: Artifact = Artifact { kind: SourceFile, id: ^literal_elaboration_nat_artifact, file_path: "src/v2/pilot/literal_elaboration_nat.dag" }
@@ -176,7 +181,7 @@ fn lel_not_elaborated(literal: Node, expected: Node) -> Bool {
   }
 }
 
-// SUPPLIED: 0 and 3 elaborate at std.nat Nat through its Peano row.
+// SUPPLIED: 0 and 3 elaborate at std.nat Nat through its kernel grounding (inside its declared range).
 test fn lel_literals_elaborate_at_nat() -> Bool {
   lel_elaborates(literal: lel_literal(lexeme: "0"), expected: lel_nat_type()) && lel_elaborates(literal: lel_literal(lexeme: "3"), expected: lel_nat_type())
 }
@@ -192,11 +197,12 @@ test fn lel_literal_at_a_type_without_a_row_is_not_elaborated() -> Bool {
   lel_not_elaborated(literal: lel_literal(lexeme: "0"), expected: lel_pair_type())
 }
 
-// SUPPLIED, RED: `-1` -- a unary Transform over the literal 1, not a literal node -- refuses at Nat, typed, pinned to its
-// reason so a later parse change (a signed literal token) cannot make it silent. Before this it was admitted at Nat.
+// SUPPLIED, RED: `-1` -- a unary Transform over the literal 1, not a literal node -- refuses at Nat, typed, pinned to the
+// RANGE's reason so a later parse change (a signed literal token) cannot make it silent and so the refusal is the
+// grounding row's, not a check of infer's own. Before #13320 it was admitted at Nat.
 test fn lel_negative_literal_at_nat_refuses() -> Bool {
   match infer_literal_elaborates_at(literal_node: lower_unary_prefix(operator: node_synthetic(kind: TypeNode { connective: Atom { identity: ^dag_token_minus } }, children: []), operand: lel_literal(lexeme: "1")), expected: lel_nat_type(), declarations: empty_symbol_index()) {
-    InferLiteralElaborationRefused { cause: c } => c == ^infer_reason_negative_literal_has_no_image_in_destination
+    InferLiteralElaborationRefused { cause: c } => c == ^infer_reason_literal_outside_kernel_grounding_range
     InferLiteralElaboratesTo { destination_type: _ } => false
     InferLiteralNotElaborated => false
   }
@@ -210,4 +216,16 @@ test fn lel_literal_of_another_kind_is_not_elaborated_at_nat() -> Bool {
 // THE SEED ROUTE EXECUTES THE SAME COMPARISON (the claim body runs on the seed interpreter).
 test fn lel_count_compared_with_a_literal_executes_on_the_seed() -> Bool {
   count([]) == 0 && !(count([1]) == 0)
+}
+
+// SUPPLIED: THE RANGE IS THE ROW'S. Nat's grounding row, read from the production table, admits 0 and 3 and not -1 --
+// so the RED above is derived from the declared range (std.literal_elaboration kernel_grounding_admits over the
+// std.types range bounds the row carries), and changing the row's min is what would move it.
+test fn lel_nat_grounding_row_declares_the_range() -> Bool {
+  match kernel_grounding_for(rows: kernel_grounding_rows, source_kind: KernelIntLiteral, carrier: decl_ref(module_path: "std.nat", decl_name: "Nat")) {
+    KernelGroundingFound { row: row } =>
+      kernel_grounding_admits(row: row, value: 0) && kernel_grounding_admits(row: row, value: 3) && !kernel_grounding_admits(row: row, value: 0 - 1)
+    KernelGroundingAbsent => false
+    KernelGroundingAmbiguous { row_count: _ } => false
+  }
 }
