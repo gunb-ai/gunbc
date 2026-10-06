@@ -1162,13 +1162,13 @@ data compiler_gate_seed_job_id: String = "seed"
 data compiler_gate_seed_build_step_name: String = "Build the compiler pair (keyed miss only)"
 data compiler_gate_pair_restore_step_name: String = "Verify the seed's compiler pair against its key and promote it into this checkout"
 
-fn compiler_gate_seed_run_step(name: String, id: String?, script: String, env: List<YamlKeyValue>?, condition: String?, timeout: Int?) -> Step {
+fn compiler_gate_seed_run_step(name: String, id: String?, script: String, env: List<YamlKeyValue>, condition: String?, timeout: Int?) -> Step {
   RunStep {
     name: Present { value: name },
     id: id,
     run: script,
     shell: none,
-    env: env,
+    env: if length(xs: env) == 0 { none } else { Present { value: env } },
     working_directory: none,
     if_condition: condition,
     continue_on_error: none,
@@ -1185,7 +1185,7 @@ fn compiler_gate_pair_restore_step() -> Step {
     name: compiler_gate_pair_restore_step_name,
     id: Present { value: "build_witness_fold" },
     script: release_bins_consumer_key_check_script_for(product: compiler_pair_release_product()),
-    env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: compiler_gate_seed_key_expression()))] },
+    env: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: compiler_gate_seed_key_expression()))],
     condition: none,
     timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
   )
@@ -1198,7 +1198,7 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
         name: "Key the compiler pair (stamps the build with the materialized tree)",
         id: Present { value: release_bins_key_step_id },
         script: release_bins_key_script_for(product: compiler_pair_release_product()),
-        env: none,
+        env: [],
         condition: none,
         timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
       ),
@@ -1220,14 +1220,12 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
         name: "Decide the compiler pair outcome; verify a stored pack completely before any restored binary runs",
         id: Present { value: release_bins_outcome_step_id },
         script: release_bins_outcome_script_for(product: compiler_pair_release_product()),
-        env: Present {
-          value: [
-            kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
-            kv(key: "LOOKUP_STANDING", value: yaml_string(s: release_bins_lookup_standing_expression())),
-            kv(key: "LOOKUP_ENTRY", value: yaml_string(s: release_bins_lookup_entry_expression())),
-            kv(key: "CACHE_HIT", value: yaml_string(s: release_bins_cache_hit_expression())),
-          ]
-        },
+        env: [
+          kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression())),
+          kv(key: "LOOKUP_STANDING", value: yaml_string(s: release_bins_lookup_standing_expression())),
+          kv(key: "LOOKUP_ENTRY", value: yaml_string(s: release_bins_lookup_entry_expression())),
+          kv(key: "CACHE_HIT", value: yaml_string(s: release_bins_cache_hit_expression())),
+        ],
         condition: none,
         timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
       ),
@@ -1244,7 +1242,7 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
         name: compiler_gate_seed_build_step_name,
         id: Present { value: "build_witness_fold" },
         script: concat(wrap_command_with_floor_attempt_receipt(command: compiler_pair_release_product().build_line), "\n"),
-        env: none,
+        env: [],
         condition: Present { value: release_bins_build_condition() },
         timeout: none,
       ),
@@ -1256,7 +1254,7 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
         name: "Pack the compiler pair with its build log (build outcomes only)",
         id: none,
         script: release_bins_pack_manifest_script_for(product: compiler_pair_release_product()),
-        env: Present { value: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression()))] },
+        env: [kv(key: "RELEASE_BINS_KEY", value: yaml_string(s: release_bins_key_expression()))],
         condition: Present { value: release_bins_build_condition() },
         timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
       ),
@@ -1273,7 +1271,7 @@ fn compiler_gate_seed_bound_steps() -> List<CompilerGateBoundStep> {
         name: "Wrap the compiler pair as the merge-group candidate object",
         id: none,
         script: release_bins_pack_object_script(),
-        env: none,
+        env: [],
         condition: Present { value: compiler_gate_candidate_condition() },
         timeout: Present { value: gunbc_ci_aux_step_timeout_minutes },
       ),
