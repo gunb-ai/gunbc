@@ -1,4 +1,4 @@
-module test.claim.product_at_kernel_scalar_formal_witness_test
+module test.claim.declared_type_product_at_kernel_scalar_formal_witness_test
 
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,

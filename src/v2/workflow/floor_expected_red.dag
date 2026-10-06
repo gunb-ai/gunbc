@@ -1309,5 +1309,5 @@ fn floor_expected_red_chunk_text_wall_generic_formal() -> List<String> {
 // floor; when the wall lands they pass, this roster names them for removal, and they remain
 // permanent regression controls (DESIGN 4b(4)).
 fn floor_expected_red_chunk_product_at_kernel_scalar_formal() -> List<String> {
-  Cons { head: "test.claim.product_at_kernel_scalar_formal_witness_test.a_record_at_an_epoch_ms_argument_refuses", tail: Cons { head: "test.claim.product_at_kernel_scalar_formal_witness_test.a_record_at_an_epoch_ms_declared_return_refuses", tail: Cons { head: "test.claim.product_at_kernel_scalar_formal_witness_test.a_record_at_an_int_argument_refuses", tail: Empty {} } } }
+  Cons { head: "test.claim.declared_type_product_at_kernel_scalar_formal_witness_test.a_record_at_an_epoch_ms_argument_refuses", tail: Cons { head: "test.claim.declared_type_product_at_kernel_scalar_formal_witness_test.a_record_at_an_epoch_ms_declared_return_refuses", tail: Cons { head: "test.claim.declared_type_product_at_kernel_scalar_formal_witness_test.a_record_at_an_int_argument_refuses", tail: Empty {} } } }
 }
