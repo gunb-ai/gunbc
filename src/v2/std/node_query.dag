@@ -428,14 +428,24 @@ fn member_not_a_binder_diagnostic(e: Edge) -> Diagnostic {
   }
 }
 
-// A member's type name, for the indexes that record one. A Named member that is not a binder declares
-// no type, so it answers ^coproduct_unresolved_payload -- this module's one marker for a type it cannot
-// read (edge_field_type_name answers it for any non-Atom type) -- never a name no declaration carries.
-// The marker names no declaration, so nothing that joins on type names can match it.
+// A member's type name, for the indexes that record one. A binder's type is named through the
+// binder reader (XL-2). Concept-index reflection still marshals a Named member as name → type Atom
+// (coproduct_reflection marshal_variant_arm_target; stage0 HOLD #13388), which is not a binder, so
+// the binder reader answers Absent. That encoding still carries the authored Atom identity on the
+// target, and the index names that Atom -- the same spelling edge_field_type_name would report
+// after a binder unwrap. A StructuralLabel, or a Named member whose target is not an Atom, still
+// answers ^coproduct_unresolved_payload: never a name no declaration carries. Lenses that judge
+// whether a member IS a binder keep using member_edge_type_node, which stays Absent for the
+// marshal encoding.
 fn member_edge_type_name(e: Edge) -> Symbol {
   match member_edge_type_node(e: e) {
     Present { value: t } => edge_field_type_name(target: t)
-    Absent => ^coproduct_unresolved_payload
+    Absent =>
+      match e.label {
+        Authored { name: _ } => edge_field_type_name(target: e.target)
+        Positional => ^coproduct_unresolved_payload
+        StructuralLabel { label: _ } => ^coproduct_unresolved_payload
+      }
   }
 }
 
