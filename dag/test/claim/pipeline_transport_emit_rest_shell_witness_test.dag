@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_rest_uses_transport_method() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1a\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n",
+    "module re1a\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItems {\n    output { items: List<String> }\n    transport rest { method: GET, path: \"/items\" }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"a\"] \"items\"\n    }\n  }\n}\n",
     "src/re1a.rs",
     ["client.get("],
     []
@@ -18,7 +18,7 @@ fn w_rest_uses_transport_method() -> Bool {
 
 fn w_rest_substitutes_path_template() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/repos/\{owner\}/\{repo\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "module re1b\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: GET, path: \"/repos/\{owner\}/\{repo\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
     "src/re1b.rs",
     ["format!(\"{}", "self.base_url"],
     []
@@ -27,7 +27,7 @@ fn w_rest_substitutes_path_template() -> Bool {
 
 fn w_rest_includes_query_params() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1c\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n",
+    "module re1c\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation Search {\n    input { q: String, limit: Int }\n    output { results: List<String> }\n    transport rest { method: GET, path: \"/search\", query: { q: q, limit: limit } }\n    response {\n      200 => List<String>\n    }\n    mock_response {\n      200 => [\"r\"] \"results\"\n    }\n  }\n}\n",
     "src/re1c.rs",
     [".query("],
     []
@@ -36,7 +36,7 @@ fn w_rest_includes_query_params() -> Bool {
 
 fn w_rest_uses_bearer_auth() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1d\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
+    "module re1d\n\nimport extdeps.transports.rest { RestResult }\n\nimport std.types { AuthScheme }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_input: token\n  }\n  operation GetData {\n    input { token: String }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
     "src/re1d.rs",
     ["Authorization", "Bearer"],
     []
@@ -45,10 +45,10 @@ fn w_rest_uses_bearer_auth() -> Bool {
 
 fn w_rest_maps_response_codes() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1e\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "module re1e\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
     "src/re1e.rs",
-    ["status", "200"],
-    []
+    ["if !(200..300).contains(&status)", "RestStatusRefused \{ status: status as i64, body: __rest_text \}"],
+    ["HTTP \{\}: \{\}"]
   )
 }
 
@@ -99,7 +99,7 @@ fn w_shell_stdin_pipes_and_writes() -> Bool {
 
 fn w_rest_post_body_single_field() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1_body1\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
+    "module re1_body1\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
     "src/re1_body1.rs",
     ["serde_json::json!", "\"name\""],
     []
@@ -108,7 +108,7 @@ fn w_rest_post_body_single_field() -> Bool {
 
 fn w_rest_post_body_multiple_fields() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1_body2\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateReview {\n    input { body: String, event: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/reviews\", body: { body: body, event: event } }\n    response {\n      200 => Json\n    }\n    mock_response {\n      200 => { id: 1 } \"review\"\n    }\n  }\n}\n",
+    "module re1_body2\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation CreateReview {\n    input { body: String, event: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/reviews\", body: { body: body, event: event } }\n    response {\n      200 => Json\n    }\n    mock_response {\n      200 => { id: 1 } \"review\"\n    }\n  }\n}\n",
     "src/re1_body2.rs",
     ["serde_json::json!", "\"body\"", "\"event\""],
     []
@@ -117,7 +117,7 @@ fn w_rest_post_body_multiple_fields() -> Bool {
 
 fn w_rest_uses_header_auth() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1d_header\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
+    "module re1d_header\n\nimport extdeps.transports.rest { RestResult }\n\nimport std.types { AuthScheme }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Header(\"x-api-key\")\n    auth_input: api_key\n  }\n  operation GetData {\n    input { api_key: Secret }\n    output { data: String }\n    transport rest { method: GET, path: \"/data\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"data\"\n    }\n  }\n}\n",
     "src/re1d_header.rs",
     ["x-api-key"],
     ["Bearer"]
@@ -126,7 +126,7 @@ fn w_rest_uses_header_auth() -> Bool {
 
 fn w_rest_post_with_auth_source() -> Bool {
   compile_dag_rust_emit_check(
-    "module re3b\n\nimport std.types { AuthScheme }\nimport std.credentials { CredentialSource }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_source: EnvVar { name: \"TEST_TOKEN\" }\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
+    "module re3b\n\nimport extdeps.transports.rest { RestResult }\n\nimport std.types { AuthScheme }\nimport std.credentials { CredentialSource }\n\nservice test.Api {\n  config {\n    endpoint: \"https://api.example.com\"\n    auth: Bearer\n    auth_source: EnvVar { name: \"TEST_TOKEN\" }\n  }\n  operation CreateItem {\n    input { name: String }\n    output { id: Int from \"id\" }\n    transport rest { method: POST, path: \"/items\", body: { name: name } }\n    response {\n      201 => Json\n    }\n    mock_response {\n      201 => { id: 1 } \"created\"\n    }\n  }\n}\n",
     "src/re3b.rs",
     ["serde_json::json!", "self.auth_token"],
     []
@@ -269,12 +269,25 @@ fn w_shell_exit_error_arm_is_boxed() -> Bool {
   )
 }
 
-fn w_rest_error_arms_are_boxed() -> Bool {
+// THE NATIVE EMISSION CONTROL FOR THE REST RESULT COPRODUCT. The emitted operation method returns
+// extdeps.transports.rest RestResult over its output, and every observation of the exchange is one
+// of its arms: no response is RestTransportRefused, a status outside 2xx is RestStatusRefused with
+// the body, an unreadable or uninhabiting body is RestBodyUndecodable, and only a decoded body is
+// RestAnswered. The excludes are the lowering this replaced -- an untyped Err per non-2xx arm and a
+// `?` on the send -- so a regression to it fails here rather than passing on the includes alone.
+// This witness was w_rest_error_arms_are_boxed, which pinned that replaced lowering.
+fn w_rest_result_is_the_declared_coproduct() -> Bool {
   compile_dag_rust_emit_check(
-    "module re4h\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
-    "src/re4h.rs",
-    ["Err(format!(\"HTTP {}: {}\", status, err_body).into())", "Err(format!(\"unexpected status code: {}\", status).into())"],
-    []
+    "module re4i\n\nimport extdeps.transports.rest { RestResult }\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    output { name: String }\n    transport rest { method: GET, path: \"/item\" }\n    response {\n      200 => String\n      404 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "src/re4i.rs",
+    [
+      "-> Result<std::rc::Rc<crate::extdeps_transports_rest::RestResult<",
+      "RestTransportRefused \{ cause: error.to_string() \}",
+      "RestStatusRefused \{ status: status as i64, body: __rest_text \}",
+      "RestBodyUndecodable \{ status: status as i64",
+      "Ok(answer) => Ok(std::rc::Rc::new(crate::extdeps_transports_rest::RestResult::RestAnswered \{ answer: answer \}))"
+    ],
+    ["Err(format!(\"HTTP", "unexpected status code", "request.send().await?", "compile_error!"]
   )
 }
 
@@ -286,4 +299,4 @@ test fn shell_emit_single_field_authored_known_key_binds() -> Bool { w_shell_sin
 test fn shell_emit_unkeyed_field_emits_no_diagnostic() -> Bool { w_shell_unkeyed_field_emits_no_diagnostic() }
 test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
 test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }
-test fn rest_emit_error_arms_are_boxed() -> Bool { w_rest_error_arms_are_boxed() }
+test fn rest_emit_result_is_the_declared_coproduct() -> Bool { w_rest_result_is_the_declared_coproduct() }
