@@ -428,7 +428,12 @@ fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> Symbol {
 fn type_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
+    TypeNode { connective: Conj } => Absent
+    TypeNode { connective: Disj } => Absent
+    TypeNode { connective: Arrow } => Absent
+    TypeNode { connective: Cardinality } => Absent
+    TypeNode { connective: Instantiation } => Absent
+    ComputationNode { behavior: _ } => Absent
   }
 }
 

@@ -80,7 +80,12 @@ fn verify_captured_console(path: String) -> ProcessExit
   let verdict = check_captured_console(path: path)
   match verdict {
     BootPrintedRunnerVersion { version: _ } => ExitSuccess
-    _ => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootProducedNoConsole { cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootConsoleLacksRunnerVersion { expected: _, console: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootConsoleLacksGuestBooted { console: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootNotAttempted { cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootVmmFailed { exit_code: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
   }
 }
 
