@@ -112,7 +112,7 @@ fn fx_refused(r: ExecutionCellRefusal<SystemdExecutionMember>) -> ExecutionCellP
 }
 
 fn fx_applied(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
-  SparkPairHostApplied { host: plan.host, detail: "ok", standing: serving_standing(attempts: []) }
+  SparkPairHostApplied { host: plan.host, wire: "management-lan", stdout: "ok", standing: serving_standing(attempts: []) }
 }
 
 fn fx_failed(plan: SparkPairHostApplyPlan) -> SparkPairHostApplyOutcome {
