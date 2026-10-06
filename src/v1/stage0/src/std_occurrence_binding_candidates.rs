@@ -2904,7 +2904,37 @@ pub fn resolve_type_reference_containment_binding(
             inputs.clone(),
             reference.clone(),
         ),
-        _ => Rc::new(
+        OccurrenceCategory::LexicalValueOccurrence => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+        OccurrenceCategory::CallableOccurrence => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+        OccurrenceCategory::ConstructorOccurrence => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+        OccurrenceCategory::NamespaceSegmentOccurrence => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+        OccurrenceCategory::FieldOccurrence => Rc::new(
+            ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
+                occurrence: reference.occurrence.clone(),
+                observed: reference.category.clone(),
+            },
+        ),
+        OccurrenceCategory::MethodOccurrence => Rc::new(
             ReferenceBindingProjection::ReferenceBindingProjectionWrongCategory {
                 occurrence: reference.occurrence.clone(),
                 observed: reference.category.clone(),
@@ -3391,7 +3421,12 @@ pub fn section13_population_law_roster_adjudicate(
 }),
     std::option::Option::None => rows.iter().cloned().fold(Rc::new(Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds), |verdict: Rc<Section13PopulationLawRosterVerdict>, row: Rc<Section13PopulationLawRosterRow>| match (*verdict.clone()).clone() {
     Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => section13_adjudicate_row(row.clone(), observations.clone(), required_head.clone()),
-    _ => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw { law: _, .. } => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw { law: _, .. } => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _, .. } => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation { receipt: _, .. } => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _, .. } => verdict.clone(),
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger => verdict.clone(),
 }),
 },
 }
@@ -3402,12 +3437,15 @@ pub fn section13_population_law_roster_denominator_holds(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> bool {
-    match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone()))
-        .clone()
-    {
-        Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
-        _ => false,
-    }
+    match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone())).clone() {
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterHolds => true,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDuplicateLaw { law: _, .. } => false,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedUncoveredLaw { law: _, .. } => false,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedPositionalModulePath { receipt: _, .. } => false,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedMissingObservation { receipt: _, .. } => false,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedFailedOrStaleObservation { receipt: _, .. } => false,
+    Section13PopulationLawRosterVerdict::Section13PopulationLawRosterRefusedDeferredMissingTrigger => false,
+}
 }
 
 pub fn section13_module_path_is_symbolic_dissolve_on() -> Rc<DissolutionCondition> {

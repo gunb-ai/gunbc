@@ -2,7 +2,7 @@ module gunbc.host_boot_attempt_admission
 
 import v2.std.algebra { any }
 import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, String }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { decl_ref }
 import std.algebra { trim }
 import std.human_intervention { HumanIntervention, EveryProvision, DischargedAt }

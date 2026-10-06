@@ -39,7 +39,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.collection {
   fold_list
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

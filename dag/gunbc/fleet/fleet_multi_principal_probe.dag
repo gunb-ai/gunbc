@@ -521,12 +521,10 @@ fn spark_grant_row_listing_text(row: SparkGrantRow) -> String {
 }
 
 fn spark_grant_report_text(report: SparkGrantReport) -> String {
-  join([
-    match report {
-      GrantProbeNotAttempted { cause: c } => join(["spark exact-grant probe not attempted: ", c, "\n"], "")
-      GrantsObserved { first: f, more: m } => join(map(concat([f], m), r => spark_grant_row_text(row: r)), "")
-    },
-  ], "")
+  match report {
+    GrantProbeNotAttempted { cause: c } => join(["spark exact-grant probe not attempted: ", c, "\n"], "")
+    GrantsObserved { first: f, more: m } => join(map(concat([f], m), r => spark_grant_row_text(row: r)), "")
+  }
 }
 
 fn spark_exact_grant_report(context: FleetSshExecutionContext) -> SparkGrantReport {
@@ -668,7 +666,11 @@ data spark_standing_receipt_path: String = "target/spark-managed-access-standing
 // reserved_identities itself: a procured Spark left out of the probe has no constructor. A host whose
 // managed account cannot be reached is not skipped -- its row reports the failure, its grant
 // standings read GrantStandingUnobserved with the ssh cause, and the managed-access standing types it.
-data spark_standing_hosts: List<String> = map(dgx_spark_procurement_intent.reserved_identities, h => h as String)
+fn spark_standing_hosts_of(roster: List<HostIdentity>) -> List<String> {
+  map(roster, h => h as String)
+}
+
+data spark_standing_hosts: List<String> = spark_standing_hosts_of(roster: dgx_spark_procurement_intent.reserved_identities)
 
 fn spark_managed_access_standing_wet() -> ProcessExit
 {

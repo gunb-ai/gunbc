@@ -11,7 +11,7 @@ import v2.std.grammar { node_atom_identity_optional }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { ComputationNode, Edge, Instantiation, Node, Positional, Transform, TypeNode, symbol_lexeme }
 import v2.std.node_query { node_positional_child_targets }
-import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { bool_node }
 import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
 import v2.std.collection { list_at_optional }

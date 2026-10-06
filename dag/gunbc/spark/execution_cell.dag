@@ -4,7 +4,7 @@ import std.types { Bool, String, NonEmptyStr, List }
 import std.nat { Nat }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import std.list { first_duplicate_by_key }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { any, filter, length }
 
 // ── THE EXECUTION-CELL CONTRACT (owner directive 2026-09-25) ─────────────────────────────────────

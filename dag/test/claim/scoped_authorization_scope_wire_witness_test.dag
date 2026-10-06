@@ -2,7 +2,7 @@ module test.claim.scoped_authorization_scope_wire
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.effect_grant { Read, Write, Execute, NamespacePosition, CodeNameTree, FilesystemPathTree, ServiceOpTree }
 import std.scoped_authorization {

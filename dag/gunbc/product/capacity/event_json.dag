@@ -2,7 +2,7 @@ module product.capacity.event_json
 
 import std.types { String, NonEmptyStr, List }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonKeyValue, json_object, json_kv, json_string, json_int, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
@@ -42,7 +42,10 @@ fn chain_event_wire_text<P>(schema: String, e: ChainEvent<P>, kind: String, memb
 fn member_string(doc: JsonValue, key: String) -> String? {
   match json_object_unique_member(v: doc, key: key) {
     JsonMemberFound { value: JsonString { value: s } } => Present { value: s }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
@@ -60,7 +63,10 @@ fn member_nat(doc: JsonValue, key: String) -> Nat? {
         Present { value: n } => if n < 0 { none } else { Present { value: n } }
         Absent => none
       }
-    _ => none
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
   }
 }
 
