@@ -29,7 +29,7 @@ import v2.std.node {
   node_rebuild,
   node_synthetic,
 }
-import v2.std.optional { optional_absent }
+import std.optional { optional_absent }
 import v2.std.logic { Bool }
 import std.occurrence_identity { OccurrenceId, OccurrenceMinted }
 import v2.std.integer { Int }

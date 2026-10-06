@@ -6,7 +6,7 @@ import v2.compiler.symbol_index_fill { disj_variant_counts_in_module, symbol_ind
 import v2.std.symbol_index { empty_symbol_index, symbol_index_lookup }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.collection { map_lookup }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.node { Arrow, Atom, Conj, Edge, Authored, Node, Positional, Symbol, TypeNode }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.node_query { binder_edge }

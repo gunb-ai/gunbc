@@ -1,4 +1,5 @@
 module gunbc.rust_crate_package_ident
+import std.optional { Absent, Optional, Present }
 
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration }

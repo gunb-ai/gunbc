@@ -3603,17 +3603,29 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     rows
 }
 
-/// Resolve `import` statements transitively for an in-memory (not-on-disk) entry source against
-/// `module_index` (from `build_module_path_index`), reading each imported module's real file
-/// content from the workspace. Production-side counterpart of the v1 test-harness's
-/// `resolve_imports_transitively` — the same BFS over `extract_import_paths` on the same module
-/// index the floor uses, so a `.dag` witness can compile an arbitrary in-memory program without
-/// a second resolver.
+/// The closure an in-memory (not-on-disk) fixture entry compiles against: the corpus modules its
+/// authored `import` lines name, read from the workspace through `module_index`, CLOSED BY THE
+/// ONE CLOSURE AUTHORITY (`extend_sources_to_both_closure_fixpoint`), then the entry itself.
+///
+/// WHY NOT THE IMPORT EDGES ALONE (DESIGN §3, §6b). This walker used to stop at `import` lines,
+/// a fourth closure rule beside the one the gate, the witness loader and regen share. An `import`
+/// line, a qualified reference and a bare reference are the same dependency edge, so the
+/// import-only walk was not a narrower closure but a blind one: `std.syllogism` reaches
+/// `std.graph` by the bare name `GraphEdge` and `v2.std.artifact` reaches `v2.std.refinement` by
+/// qualified reference, so a fixture whose imports reached either compiled it WITHOUT its
+/// provider and reported `unresolved type` / `undefined variable 'v2'` against a module that
+/// resolves in every closure the corpus authority builds. #13195's union render made that
+/// fork refuse the floor (46 such diagnostics on #13420's run, none in its own modules).
+///
+/// The extension is seeded from the corpus modules only. The entry is the fixture's subject,
+/// authored with an explicit import manifest a witness may be probing (an unlisted use, a
+/// refused import), so its own spelling stays exactly what it declares; every module it reaches
+/// is closed as the corpus closes it. An extension failure is returned, never widened past.
 pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, String>,
-) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let ws = process_workspace_root();
     let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut queue: Vec<String> = vec![entry_content.to_string()];
@@ -3637,14 +3649,36 @@ pub(crate) fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+    let imported: Vec<Rc<v1_compiler_compile::SourceFile>> =
         seen.into_iter().map(|(_, v)| v).collect();
+    let mut sources = if imported.is_empty() {
+        imported
+    } else {
+        let index = entry_resolve::try_index_for_run_or_owned_pool(&witness_layer_roots())?;
+        extend_sources_to_both_closure_fixpoint(imported, &index)?
+            .into_iter()
+            // One spelling per file: the index may carry a pulled module under its absolute
+            // path, and a recorder keyed by path must not see one file as two members.
+            .map(|source| {
+                let rel = workspace_relative_repo_path(&source.path);
+                if rel == source.path {
+                    source
+                } else {
+                    Rc::new(v1_compiler_compile::SourceFile {
+                        path: rel,
+                        content: source.content.clone(),
+                    })
+                }
+            })
+            .collect()
+    };
     sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
-    sources
+    Ok(sources)
 }
 
 /// One aggregated row of the synthetic-source diagnostic census: a `(class, name, severity)`

@@ -3,7 +3,7 @@ module gunbc.spark.group_arm_serving_load
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_atom }
 import std.measure { token_count_value }
 import gunbc.spark.serving_performance_subject { ServingPerformanceSubject, serving_subject_key }
