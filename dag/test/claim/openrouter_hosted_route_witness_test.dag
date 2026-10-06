@@ -13,6 +13,8 @@ import extdeps.openrouter.openrouter {
   openrouter_credits_from_daily_limit, CreditsTierObserved, CreditsTierUnrecognized,
   CreditsPurchasedAtLeastTen, CreditsPurchasedBelowTen, openrouter_free_models_per_day, openrouter_free_models_per_minute,
   EffortHigh, EffortMedium,
+  openrouter_decode_rate_limited, OpenRouterRateLimitRefusal, RetryAfterSeconds, RetryAfterUnparsed, RetryAfterAbsent,
+  openrouter_rate_limit_wire, openrouter_rate_limit_hints,
 }
 import gunbc.harness.harness_reasoning_wire {
   NemotronUltraFreeOnOpenRouter, ReasoningOff, ReasoningStandard, ReasoningMaximum,
@@ -23,7 +25,6 @@ import gunbc.harness.harness_hosted_route {
   hosted_round_decision, RoundBothLeased, RoundRefusedFull, RoundRefusedUnleasable,
   harness_hosted_route_for, harness_hosted_level_choice, HostedLevelSelected, HostedLevelUnselected,
   hosted_key_refusal, hosted_day_remaining,
-  hosted_send_admission, HostedSendAdmitted, HostedSendAdmissionLapsed, HostedSendAdmissionUnread, hosted_send_connect_allowance,
 }
 import product.capacity.pool_events { PoolEvent, PoolAcquired, PoolSettled, PoolReleased, PoolUpstreamObserved, pool_apply_payload, pool_fold, PoolFolded, PoolFoldRefused }
 import product.capacity.event_chain { ChainEnvelope, ChainEvent, EventId }
@@ -43,7 +44,7 @@ import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefuse
 import product.capacity.lease { LeaseGrant, LeaseFence, GrantIdentity }
 import product.capacity.event_chain { PartitionId }
 import gunbc.fabric_storage_client { FabricStorageServed }
-import gunbc.harness.harness_turn { TurnHostedQuotaFull, harness_outcome_label }
+import gunbc.harness.harness_turn { TurnHostedQuotaFull, TurnHostedRateLimited, harness_outcome_label, harness_outcome_detail }
 import gunbc.harness.harness_cli { harness_turn_exit, harness_default_max_token_count, harness_request_deadline }
 import std.process { ExitSuccess, ExitFailure }
 import std.measure { token_count }
@@ -419,34 +420,6 @@ test fn two_decreasing_upstream_readings_in_one_second_fold_to_the_lower() -> Bo
   }
 }
 
-// ── THE SEND IS ADMITTED AGAINST THE CHARGE'S DEADLINE ─────────────────────────────────────────
-
-// RED: a valid charge whose window has passed before the transport is reached admits no send.
-test fn a_send_past_its_charge_window_is_not_admitted() -> Bool {
-  let by = w_day_start + 60
-  (match hosted_send_admission(send_by: by, now: by + 1, allowance: hosted_send_connect_allowance) {
-    HostedSendAdmissionLapsed { send_by: b, now: n } => b == by && n == by + 1
-    HostedSendAdmitted => false
-    HostedSendAdmissionUnread { detail: _ } => false
-  })
-    && (match hosted_send_admission(send_by: by, now: by - 2, allowance: hosted_send_connect_allowance) {
-      HostedSendAdmissionLapsed { send_by: _, now: _ } => true
-      HostedSendAdmitted => false
-      HostedSendAdmissionUnread { detail: _ } => false
-    })
-}
-
-// CONTROL: a send that leaves inside its window is admitted however long its answer takes -- the
-// admission never consults the response deadline, which is far longer than any window.
-test fn a_send_inside_its_window_is_admitted_whatever_the_response_deadline() -> Bool {
-  second_count(s: harness_request_deadline) > 60
-    && (match hosted_send_admission(send_by: w_day_start + 60, now: w_day_start + 10, allowance: hosted_send_connect_allowance) {
-      HostedSendAdmitted => true
-      HostedSendAdmissionLapsed { send_by: _, now: _ } => false
-      HostedSendAdmissionUnread { detail: _ } => false
-    })
-}
-
 // ── A SEND IN FLIGHT ACROSS THE ROLLOVER IS CHARGED IN THE WINDOW IT MAY ARRIVE IN ───────────────
 //
 // The in-flight partition is the production seat-pool shape (gunbc.harness.harness_seat
@@ -542,6 +515,75 @@ test fn a_held_inflight_seat_is_named_with_its_release_in_the_refusal_hint() -> 
       let hint = hosted_inflight_release_hint(quota: w_quota(), pool: inflight, generation: 1, walk: ChainWalked { oldest_first: events })
       hint.contains("worker-7@1780531258#round3") && hint.contains("grant=s1") && hint.contains("harness_release_cli")
         && hint.contains(hosted_inflight_partition(quota: w_quota()) as String)
+    }
+  }
+}
+
+// ── A 429 FROM THE UPSTREAM IS THE TYPED BACKSTOP, AND IT IS NEVER RETRIED ───────────────────────────
+//
+// The decode is the production decode over the shapes the limits page documents: the error body, and the
+// header dump curl writes (the status line starts a block; only the last block is the answer).
+data w_429_body: String = "{\"error\":{\"code\":429,\"message\":\"Rate limit exceeded: free-models-per-min\",\"metadata\":{\"error_type\":\"rate_limit_exceeded\"}}}"
+
+data w_429_headers: String = "HTTP/2 429\r\ncontent-type: application/json\r\nretry-after: 30\r\nx-ratelimit-limit: 20\r\nx-ratelimit-remaining: 0\r\nx-ratelimit-reset: 1791265800000\r\n\r\n"
+
+test fn a_429_decodes_to_the_typed_refusal_with_the_upstreams_retry_hints() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: w_429_headers) {
+    Absent => false
+    Present { value: r } =>
+      (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 30  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+        && (match r.hints.reset { Present { value: v } => v == "1791265800000"  Absent => false })
+        && (match r.hints.remaining { Present { value: v } => v == "0"  Absent => false })
+        && (match r.provider_code { Absent => true  Present { value: _ } => false })
+        && openrouter_rate_limit_wire(r: r).contains("Retry-After 30 s")
+        && openrouter_rate_limit_wire(r: r).contains("unit not documented")
+        && openrouter_rate_limit_wire(r: r).contains("NOT retried")
+  }
+}
+
+// A RETRY-AFTER THAT IS NOT DELTA-SECONDS IS CARRIED AS TEXT, never read as a number it is not; and a
+// refusal with no hint headers is still a typed refusal, saying so. The LAST block of a dump is the answer.
+test fn a_retry_after_that_is_not_seconds_and_a_missing_hint_are_stated_not_guessed() -> Bool {
+  (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/2 429\r\nretry-after: Wed, 21 Oct 2026 07:28:00 GMT\r\n\r\n") {
+    Present { value: r } => (match r.hints.retry_after { RetryAfterUnparsed { text: t } => t.contains("21 Oct 2026")  RetryAfterSeconds { seconds: _ } => false  RetryAfterAbsent => false })
+    Absent => false
+  })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/1.1 429 Too Many Requests\r\nRetry-After: 12\r\nX-RateLimit-Reset: 5\r\n\r\n") {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 12  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+        && (match r.hints.reset { Present { value: v } => v == "5"  Absent => false })
+      Absent => false
+    })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "") {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterAbsent => true  RetryAfterSeconds { seconds: _ } => false  RetryAfterUnparsed { text: _ } => false }) && openrouter_rate_limit_wire(r: r).contains("no Retry-After")
+      Absent => false
+    })
+    && (match openrouter_decode_rate_limited(body: w_429_body, header_dump: "HTTP/1.1 100 Continue\r\nretry-after: 99\r\n\r\nHTTP/2 429\r\nretry-after: 7\r\n\r\n") {
+      Present { value: r } => (match r.hints.retry_after { RetryAfterSeconds { seconds: n } => n == 7  RetryAfterUnparsed { text: _ } => false  RetryAfterAbsent => false })
+      Absent => false
+    })
+}
+
+// RED: a 402, or any body that is not a 429, is NOT a rate-limit refusal -- it keeps its own typed error
+// (the 402 limit_source decode above), so a paid-model refusal is never read as a wait-and-retry.
+test fn only_a_429_is_a_rate_limit_refusal() -> Bool {
+  (match openrouter_decode_rate_limited(body: "{\"error\":{\"code\":402,\"message\":\"x\",\"metadata\":{\"limit_source\":\"openrouter_key_limit\"}}}", header_dump: w_429_headers) {
+    Absent => true
+    Present { value: _ } => false
+  })
+    && (match openrouter_decode_rate_limited(body: "not json", header_dump: w_429_headers) { Absent => true  Present { value: _ } => false })
+}
+
+// THE TURN ENDS ON IT. It is a terminal outcome of the turn -- there is no retry arm in the loop to take --
+// and a refusal exit that says it was not retried and carries the hint into the operator's line.
+test fn a_hosted_rate_limit_ends_the_turn_as_a_refusal_naming_the_hint_and_no_retry() -> Bool {
+  match openrouter_decode_rate_limited(body: w_429_body, header_dump: w_429_headers) {
+    Absent => false
+    Present { value: r } => {
+      let o = TurnHostedRateLimited { refusal: r, steps_taken: 3 }
+      harness_outcome_label(outcome: o) == "hosted-rate-limited"
+        && harness_outcome_detail(outcome: o).contains("Retry-After 30 s")
+        && harness_outcome_detail(outcome: o).contains("rather than retrying")
+        && (match harness_turn_exit(outcome: o) { ExitSuccess => false  ExitFailure { code, reason: _ } => code == 1 })
     }
   }
 }

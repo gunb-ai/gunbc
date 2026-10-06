@@ -1,6 +1,6 @@
 module gunbc.harness.harness_turn
 
-import std.types { String, Bool, Int, List, FilePath, NonEmptyStr, EpochSecs }
+import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import std.measure { TokenCount, token_count_value, Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.languages.json.emit {
@@ -16,8 +16,10 @@ import gunbc.harness.harness_reasoning_wire {
 import gunbc.harness.harness_hosted_route {
   HarnessBackendAccess, BackendAdmittedBySeat, BackendAdmittedByHostedQuota, HarnessHostedQuota, HostedRoundCharged,
   HostedRoundQuotaFull, HostedRoundUnleasable, harness_hosted_round_charge, harness_hosted_refusal_cause,
-  HostedSendAdmitted, HostedSendAdmissionLapsed, HostedSendAdmissionUnread, harness_hosted_send_admission,
-  hosted_send_connect_allowance, HostedRoundLease,
+  HostedRoundLease,
+}
+import extdeps.openrouter.openrouter {
+  OpenRouterRateLimitRefusal, openrouter_decode_rate_limited, openrouter_rate_limit_wire,
 }
 import gunbc.harness.harness_seat {
   HostedInflightRead, HostedInflightUnread, HostedInflightHeld, HostedInflightRefused, harness_hosted_inflight_read,
@@ -538,7 +540,7 @@ type HarnessTurnOutcome
   | TurnAlignmentCheckpointDue { steps_taken: Int }
   | TurnHostedQuotaFull { wire: String, steps_taken: Int }
   | TurnHostedQuotaUnleasable { detail: String, steps_taken: Int }
-  | TurnHostedSendAdmissionLapsed { send_by: EpochSecs, now: EpochSecs, steps_taken: Int }
+  | TurnHostedRateLimited { refusal: OpenRouterRateLimitRefusal, steps_taken: Int }
 
 fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
   match outcome {
@@ -559,7 +561,7 @@ fn harness_outcome_label(outcome: HarnessTurnOutcome) -> String {
     TurnAlignmentCheckpointDue { steps_taken: _ } => "alignment-checkpoint-due"
     TurnHostedQuotaFull { wire: _, steps_taken: _ } => "hosted-quota-full"
     TurnHostedQuotaUnleasable { detail: _, steps_taken: _ } => "hosted-quota-unleasable"
-    TurnHostedSendAdmissionLapsed { send_by: _, now: _, steps_taken: _ } => "hosted-send-admission-lapsed"
+    TurnHostedRateLimited { refusal: _, steps_taken: _ } => "hosted-rate-limited"
   }
 }
 
@@ -626,11 +628,10 @@ fn harness_outcome_detail(outcome: HarnessTurnOutcome) -> String {
         "after ", to_string(value: n), " tool rounds the hosted upstream's quota could not be leased (", d,
         "); the request was not sent, because an unleased request is one the fleet cannot account for",
       ], "")
-    TurnHostedSendAdmissionLapsed { send_by: b, now: n, steps_taken: k } =>
+    TurnHostedRateLimited { refusal: r, steps_taken: k } =>
       join([
-        "after ", to_string(value: k), " tool rounds the request was charged to a quota window ending at ", to_string(value: b),
-        " but was not ready to send until ", to_string(value: n),
-        "; it was not sent, because it would have arrived in a window it was not charged to (the charge stands)",
+        "after ", to_string(value: k), " tool rounds ", openrouter_rate_limit_wire(r: r),
+        "; the turn stopped rather than retrying, and a caller that waits owns when it asks again",
       ], "")
     TurnTransportRefused { detail: d } => d
     TurnResponseUnreadable { cause: c } => c
@@ -1062,6 +1063,7 @@ type HarnessPostedRound {
   read: HarnessResponseRead
   wire_log_detail: String?
   inflight_release_detail: String?
+  rate_limited: OpenRouterRateLimitRefusal?
 }
 
 // AN IN-FLIGHT SEAT THAT DID NOT RELEASE IS NOT A REFUSAL OF THE ROUND -- the request went out and its
@@ -1081,7 +1083,6 @@ type HarnessRoundPost
   = RoundPosted { posted: HarnessPostedRound }
   | RoundQuotaFull { wire: String }
   | RoundQuotaUnleasable { detail: String }
-  | RoundSendAdmissionLapsed { send_by: EpochSecs, now: EpochSecs }
 
 
 fn harness_wire_log_path(config: HarnessTurnConfig, round: Int, kind: String) -> String {
@@ -1108,6 +1109,7 @@ fn harness_post_round(
         },
         wire_log_detail: none,
         inflight_release_detail: none,
+        rate_limited: none,
       } }
     ReasoningKwargsAdmitted { kwargs } =>
       match harness_prepare_round(config: config, messages: messages, reasoning_kwargs: kwargs, round: round) {
@@ -1121,18 +1123,18 @@ fn harness_post_round(
   }
 }
 
-// A HOSTED ROUND IS PREPARED, THEN CHARGED, THEN ADMITTED TO SEND, THEN SENT -- in that order, because
-// the charge is counted in the window the request ARRIVES in. Everything that can take time on this
-// side (serializing the body, writing the scratch and the wire log) is done before the charge, so the
-// charge is as close to the send as this process can put it; and the send itself is admitted against
-// the charge's own deadline at the transport boundary (gunbc.harness.harness_hosted_route
-// harness_hosted_send_admission). A stall that carries the send past the window the charge was made in
-// refuses the send rather than spending next window's quota on last window's charge.
+// A HOSTED ROUND IS PREPARED, THEN CHARGED, THEN SENT -- in that order, because the charge is counted in
+// the window the request ARRIVES in. Everything that can take time on this side (serializing the body,
+// writing the scratch and the wire log) is done before the charge, so the charge is as close to the send
+// as this process can put it. Nothing here bounds when the first byte actually leaves, so the send also
+// holds an in-flight seat from before it until the transport returns (gunbc.harness.harness_seat, in-flight
+// hosted sends): every later window counts the seats still held from earlier ones and charges for them as
+// well as for its own send.
 //
-// AND THE ADMISSION IS NOT THE LAST WORD, because nothing here bounds when the first byte actually leaves
-// (gunbc.harness.harness_seat, in-flight hosted sends). So the send also holds an in-flight seat from
-// before the admission until the transport returns; every later window counts the seats still held from
-// earlier ones and charges for them as well as for its own send.
+// THE CHARGE IS A CLOSE PRE-CHECK AND THE UPSTREAM'S 429 IS THE BACKSTOP (operator decision, escalation
+// msg_46a417a3; gunbc.harness.harness_hosted_route): a request the pre-check admitted that OpenRouter
+// still refuses with 429 ends the turn as TurnHostedRateLimited, carrying the upstream's own retry hints,
+// and is never retried here.
 fn harness_hosted_round_post(config: HarnessTurnConfig, round: Int, header_file: NonEmptyStr, quota: HarnessHostedQuota, wire_request_detail: String?) -> HarnessRoundPost {
   match harness_hosted_inflight_read(quota: quota) {
     HostedInflightUnread { detail: d } => RoundQuotaUnleasable { detail: join(["the in-flight sends could not be counted, so the charge cannot cover them: ", d], "") }
@@ -1166,26 +1168,14 @@ fn harness_hosted_round_charged_post(config: HarnessTurnConfig, round: Int, head
   match charge {
     HostedRoundQuotaFull { wire: w } => RoundQuotaFull { wire: w }
     HostedRoundUnleasable { detail: d } => RoundQuotaUnleasable { detail: d }
-    HostedRoundCharged { send_by: by } =>
+    HostedRoundCharged =>
       match harness_hosted_inflight_acquire(quota: quota, store: store, reference: reference, term: config.request_deadline) {
         HostedInflightRefused { detail: d } => RoundQuotaUnleasable { detail: d }
         HostedInflightHeld { reference: r, store: st } => {
           let hold = HostedInflightHeld { reference: r, store: st }
-          match harness_hosted_send_admission(send_by: by) {
-            HostedSendAdmissionLapsed { send_by: b, now: n } => {
-              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the send admission lapsed before the transport" as NonEmptyStr)
-              RoundSendAdmissionLapsed { send_by: b, now: n }
-            }
-            HostedSendAdmissionUnread { detail: d } => {
-              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the send admission could not be read" as NonEmptyStr)
-              RoundQuotaUnleasable { detail: d }
-            }
-            HostedSendAdmitted => {
-              let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
-              let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
-              RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released } }
-            }
-          }
+          let posted = harness_send_round(config: config, round: round, header_file: Present { value: header_file }, wire_request_detail: wire_request_detail)
+          let released = harness_hosted_inflight_release(quota: quota, hold: hold, reason: "the transport returned" as NonEmptyStr)
+          RoundPosted { posted: HarnessPostedRound { read: posted.read, wire_log_detail: posted.wire_log_detail, inflight_release_detail: released, rate_limited: posted.rate_limited } }
         }
       }
   }
@@ -1213,6 +1203,7 @@ fn harness_prepare_round(
       },
       wire_log_detail: none,
       inflight_release_detail: none,
+      rate_limited: none,
     } }
   } else {
     let wire_request_path = harness_wire_log_path(config: config, round: round, kind: ".request.json")
@@ -1254,6 +1245,7 @@ fn harness_send_round(
         },
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
+        rate_limited: harness_hosted_rate_limited(config: config, posted: posted),
       }
     } else if !kept.success {
       HarnessPostedRound {
@@ -1262,12 +1254,14 @@ fn harness_send_round(
         },
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
+        rate_limited: none,
       }
     } else {
       HarnessPostedRound {
         read: harness_decode_for_shape(unit: config.serving_unit, shape: config.wire_shape, body: posted.body),
         wire_log_detail: wire_log_detail,
         inflight_release_detail: none,
+        rate_limited: none,
       }
     }
 }
@@ -1277,6 +1271,20 @@ fn harness_send_round(
 type HarnessPostOutcome {
   body: String
   success: Bool
+  headers: String
+}
+
+// A 429 FROM A HOSTED UPSTREAM IS A TYPED REFUSAL WITH THE UPSTREAM'S OWN RETRY HINTS, decoded from the
+// error body and the response header dump; it is never retried here. A fleet engine has no such refusal.
+fn harness_hosted_rate_limited(config: HarnessTurnConfig, posted: HarnessPostOutcome) -> OpenRouterRateLimitRefusal? {
+  match config.backend_access {
+    BackendAdmittedBySeat => none
+    BackendAdmittedByHostedQuota { header_file: _, quota: _ } => openrouter_decode_rate_limited(body: posted.body, header_dump: posted.headers)
+  }
+}
+
+fn harness_response_headers_path(config: HarnessTurnConfig) -> String {
+  join([config.request_scratch_path as String, ".response.headers"], "")
 }
 
 fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> HarnessPostOutcome {
@@ -1287,17 +1295,18 @@ fn harness_post_json(config: HarnessTurnConfig, header_file: NonEmptyStr?) -> Ha
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success }
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: "" }
     }
     Present { value: hf } => {
       let posted = http.Client.PostJsonFromFileWithHeaderFile(
         url: config.backend_url as NonEmptyStr,
         request_body_file: config.request_scratch_path as String as NonEmptyStr,
         header_file: hf,
-        connect_seconds: to_string(value: second_count(s: hosted_send_connect_allowance)) as NonEmptyStr,
+        response_headers_file: harness_response_headers_path(config: config) as NonEmptyStr,
         max_seconds: to_string(value: second_count(s: config.request_deadline)) as NonEmptyStr,
       )
-      HarnessPostOutcome { body: posted.body, success: posted.success }
+      let dump = Filesystem.Read(path: harness_response_headers_path(config: config))
+      HarnessPostOutcome { body: posted.body, success: posted.success, headers: if dump.success { dump.content } else { "" } }
     }
   }
 }
@@ -1464,13 +1473,6 @@ fn harness_turn_loop(
           HarnessEventsWritten => TurnHostedQuotaUnleasable { detail: qd, steps_taken: steps_taken }
         }
       }
-      RoundSendAdmissionLapsed { send_by: b, now: n } => {
-        let failed = concat(events, [harness_event_turn_failed(message: join(["hosted send admission lapsed: charged until ", to_string(value: b), ", ready at ", to_string(value: n)], ""))])
-        match harness_write_events(config: config, events: failed) {
-          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-          HarnessEventsWritten => TurnHostedSendAdmissionLapsed { send_by: b, now: n, steps_taken: steps_taken }
-        }
-      }
       RoundPosted { posted: posted_round } => harness_turn_after_post(config: config, messages: messages, steps_remaining: steps_remaining, steps_taken: steps_taken, events: events, repairs_used: repairs_used, posted_round: posted_round)
     }
   }
@@ -1494,13 +1496,23 @@ fn harness_turn_after_post(
       Absent => events_after_release
     }
     match posted_round.read {
-      HarnessResponseUnreadable { cause: c } => {
-        let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
-        match harness_write_events(config: config, events: failed) {
-          HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
-          HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+      HarnessResponseUnreadable { cause: c } =>
+        match posted_round.rate_limited {
+          Present { value: limited } => {
+            let failed = concat(events_after_wire, [harness_event_turn_failed(message: openrouter_rate_limit_wire(r: limited))])
+            match harness_write_events(config: config, events: failed) {
+              HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+              HarnessEventsWritten => TurnHostedRateLimited { refusal: limited, steps_taken: steps_taken }
+            }
+          }
+          Absent => {
+            let failed = concat(events_after_wire, [harness_event_turn_failed(message: c)])
+            match harness_write_events(config: config, events: failed) {
+              HarnessEventsUnwritable { detail: d } => harness_event_write_refusal(config: config, detail: d)
+              HarnessEventsWritten => TurnResponseUnreadable { cause: c }
+            }
+          }
         }
-      }
       HarnessResponseParsed { blocks: raw_blocks, stop_reason, usage: usage_read } =>
         match usage_read {
           UsageUnreadable { cause: uc } => {

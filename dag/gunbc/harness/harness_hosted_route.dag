@@ -54,7 +54,6 @@ import gunbc.fabric_quota {
   fabric_quota_settle, QuotaSettle, QuotaSettled, QuotaSettleRefused, quota_settle_wire,
   fabric_quota_observe_upstream, QuotaUpstreamRecorded, QuotaObservationRefused,
 }
-import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.harness.harness_reasoning_wire {
   HarnessServingUnit, DeepseekV4FlashOnVllm, Glm53FlashOnVllm, NemotronUltraFreeOnOpenRouter,
   HarnessReasoningLevel, ReasoningOff, ReasoningStandard, ReasoningMaximum, harness_reasoning_level_wire,
@@ -526,6 +525,16 @@ fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
 
 // ── EACH REQUEST IS CHARGED TO BOTH POOLS BEFORE IT IS SENT ───────────────────────────────────
 //
+// THE LOCAL QUOTA IS A CLOSE, CONSERVATIVE PRE-CHECK, NOT AN EXACT GATE, AND THE UPSTREAM'S 429 IS THE
+// BACKSTOP. This route deliberately revises the 2026-09-06 ruling that a caller refuses before the upstream
+// would have answered 429 (gunbc.fabric_quota): the pools below make an over-spend rare and keep the
+// ledger honest, but nothing here can make the local count equal the upstream's at a window boundary --
+// the upstream counts a request when it RECEIVES it, and nothing on this side bounds when a process's first
+// request byte leaves. A 429 that gets through is a typed refusal carrying the upstream's own retry hints
+// (extdeps.openrouter.openrouter OpenRouterRateLimitRefusal), reported in the turn outcome and never
+// retried (operator decision, escalation msg_46a417a3). Machinery whose only job was to make the count
+// exact -- an admission lock, charging every window a request might span -- is deliberately absent.
+//
 // THE CHARGE AND THE RESPONSE ARE TWO LIFETIMES. The upstream counts a request in the window it ARRIVES
 // in, whatever happens to its answer afterwards; the answer may take minutes. An earlier revision held
 // the lease across the response and settled it afterwards, with the response deadline as the term --
@@ -542,11 +551,8 @@ fn harness_hosted_access_wire(access: HarnessHostedAccess) -> String {
 //
 // BOTH POOLS OR NEITHER. The minute pool is leased first because it refills soonest; if the day pool then
 // refuses, the minute lease is settled at zero so its slot returns at once.
-// A CHARGE CARRIES ITS DEADLINE. The leases expire at their windows' ends, and a request is only
-// counted against the window it was charged to if it arrives before the EARLIER of the two -- so the
-// charge hands that instant to the transport boundary instead of being a bare yes.
 type HostedRoundLease
-  = HostedRoundCharged { send_by: EpochSecs }
+  = HostedRoundCharged
   | HostedRoundQuotaFull { wire: String }
   | HostedRoundUnleasable { detail: String }
 
@@ -590,71 +596,15 @@ fn hosted_settle_refusal(s: QuotaSettle, pool: String) -> List<String> {
 // upstream; sending it would spend quota the ledger does not show, which is the over-admission the
 // lease exists to prevent. A lease left unsettled by the refusal still charges until its window ends,
 // so the refusal errs on the side of spending less.
-fn hosted_lease_expiry(lease: QuotaLease) -> EpochSecs? {
-  match lease {
-    QuotaLeased { grant: g, partition: _, store: _, limit: _ } => Present { value: g.expires_at }
-    QuotaFull { wire: _ } => none
-    QuotaLeaseRefused { detail: _ } => none
-  }
-}
-
-fn hosted_round_send_by(minute: QuotaLease, day: QuotaLease) -> EpochSecs? {
-  match hosted_lease_expiry(lease: minute) {
-    Absent => none
-    Present { value: m } =>
-      match hosted_lease_expiry(lease: day) {
-        Absent => none
-        Present { value: d } => Present { value: if m < d { m } else { d } }
-      }
-  }
-}
-
 fn hosted_round_charge_both(minute: QuotaLease, day: QuotaLease, minute_amount: Nat, day_amount: Nat) -> HostedRoundLease {
   let refused = concat(
     hosted_settle_refusal(s: fabric_quota_settle(lease: minute, actual: minute_amount), pool: "minute"),
     hosted_settle_refusal(s: fabric_quota_settle(lease: day, actual: day_amount), pool: "day"),
   )
   if count(refused) == 0 {
-    match hosted_round_send_by(minute: minute, day: day) {
-      Present { value: by } => HostedRoundCharged { send_by: by }
-      Absent => HostedRoundUnleasable { detail: "the request was charged but its leases name no window end; it was not sent" }
-    }
+    HostedRoundCharged
   } else {
     HostedRoundUnleasable { detail: join(["the request's charge did not record, so it was not sent: ", join(refused, "; ")], "") }
-  }
-}
-
-// ── THE SEND IS ADMITTED AGAINST THE CHARGE'S DEADLINE AT THE TRANSPORT BOUNDARY ──────────────
-//
-// A charge made in minute N and a request that leaves in minute N+1 spend N+1's quota on N's ledger
-// entry: the stall that separates them -- a slow disk, a paused process -- is invisible to both. So the
-// clock is read again immediately before the transport, and the send is admitted only if the request
-// will reach the upstream before the charge's deadline. "Reach" is bounded by the connect allowance,
-// which the transport enforces (curl --connect-timeout): a request either connects within it, and so
-// arrives inside the window it was charged to, or fails without arriving.
-//
-// A LAPSED ADMISSION IS A REFUSAL, AND THE CHARGE STANDS. Re-charging the next window from here would
-// spend two charges on one request; sending anyway would spend one uncounted. Refusing spends the one
-// charge already made and sends nothing, which is the conservative side of both.
-//
-// WHAT REMAINS UNMODELLED, stated: the upstream counts a request when it RECEIVES it, and the bytes after
-// the connect take a little longer than the connect itself. The allowance is chosen wide enough to
-// absorb that; a request whose headers are still in flight at the boundary is the residue.
-data hosted_send_connect_allowance: Second = second(count: 5)
-
-type HostedSendAdmission
-  = HostedSendAdmitted
-  | HostedSendAdmissionLapsed { send_by: EpochSecs, now: EpochSecs }
-  | HostedSendAdmissionUnread { detail: String }
-
-fn hosted_send_admission(send_by: EpochSecs, now: EpochSecs, allowance: Second) -> HostedSendAdmission {
-  if now + (second_count(s: allowance) as Int) < send_by { HostedSendAdmitted } else { HostedSendAdmissionLapsed { send_by: send_by, now: now } }
-}
-
-fn harness_hosted_send_admission(send_by: EpochSecs) -> HostedSendAdmission {
-  match now_epoch_seconds() {
-    Absent => HostedSendAdmissionUnread { detail: "the clock could not be read at the transport boundary, so the send cannot be admitted against its charge" }
-    Present { value: now } => hosted_send_admission(send_by: send_by, now: now, allowance: hosted_send_connect_allowance)
   }
 }
 

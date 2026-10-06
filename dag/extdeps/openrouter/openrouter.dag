@@ -1,7 +1,9 @@
 module extdeps.openrouter.openrouter
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.nat { Nat }
+import std.algebra { trim }
+import std.nat { Nat, nat_range_inclusive }
+import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -393,6 +395,141 @@ fn openrouter_limit_source_meaning(s: OpenRouterLimitSource) -> String {
     InFlightBudgetLimit => ""
     CreditsLimit => ""
   }
+}
+
+// ── A 429 IS A TYPED REFUSAL THAT CARRIES THE UPSTREAM'S OWN RETRY HINTS ──────────────────────────
+//
+// The limits page says an error OpenRouter itself returns for a platform limit carries X-RateLimit-Limit,
+// X-RateLimit-Remaining and X-RateLimit-Reset, and that Retry-After is added when every attempted provider
+// returned a retry hint. The headers are the upstream's word about when it will answer again, so they ride
+// the refusal instead of being dropped with the transport.
+//
+// WHAT IS NOT PUBLISHED IS NOT ASSERTED (DESIGN section 4d). The page gives neither the unit of
+// X-RateLimit-Reset nor says Retry-After is seconds rather than an HTTP date (RFC 9110 allows both). So
+// Retry-After is read as delta-seconds only when it is all digits and otherwise carried as the text it
+// was; and the reset value is carried VERBATIM, never converted to an instant. A consumer that waits
+// computes its wait from Retry-After alone; the reset is evidence for the operator, with a live reading
+// the thing that would ground its unit.
+type OpenRouterRetryAfter
+  = RetryAfterSeconds { seconds: Nat }
+  | RetryAfterUnparsed { text: String }
+  | RetryAfterAbsent
+
+type OpenRouterRateLimitHints {
+  retry_after: OpenRouterRetryAfter
+  reset: String?
+  limit: String?
+  remaining: String?
+}
+
+// A header dump is the status line and headers of each response curl saw, in order; only the LAST block
+// describes the answer the caller got, so a status line starts a fresh reading.
+type HeaderScan {
+  retry_after: String?
+  reset: String?
+  limit: String?
+  remaining: String?
+}
+
+// HTTP FIELD NAMES ARE CASE-INSENSITIVE (RFC 9110 section 5.1): HTTP/2 sends them lowercase, HTTP/1.1 may
+// not, and a dump is read the same either way. Folded over ASCII letters only.
+data openrouter_ascii_upper: String = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+data openrouter_ascii_lower: String = "abcdefghijklmnopqrstuvwxyz"
+
+fn openrouter_ascii_fold(s: String) -> String {
+  fold(nat_range_inclusive(lo: 0, hi: 25), init: s, f: (acc, i) =>
+    replace(acc, substring(s: openrouter_ascii_upper, start: i, end: i + 1), substring(s: openrouter_ascii_lower, start: i, end: i + 1)))
+}
+
+fn openrouter_header_scan_line(acc: HeaderScan, line: String) -> HeaderScan {
+  let t = trim(s: line)
+  if openrouter_ascii_fold(s: t).starts_with("http/") {
+    HeaderScan { retry_after: none, reset: none, limit: none, remaining: none }
+  } else {
+    match split(s: t, delimiter: ":").first() {
+      Absent => acc
+      Present { value: raw_name } => {
+        let name = openrouter_ascii_fold(s: trim(s: raw_name))
+        let value = if length(t) > length(raw_name) { trim(s: substring(s: t, start: length(raw_name) + 1, end: length(t))) } else { "" }
+        if length(t) <= length(raw_name) {
+          acc
+        } else if name == "retry-after" {
+          HeaderScan { retry_after: Present { value: value }, reset: acc.reset, limit: acc.limit, remaining: acc.remaining }
+        } else if name == "x-ratelimit-reset" {
+          HeaderScan { retry_after: acc.retry_after, reset: Present { value: value }, limit: acc.limit, remaining: acc.remaining }
+        } else if name == "x-ratelimit-limit" {
+          HeaderScan { retry_after: acc.retry_after, reset: acc.reset, limit: Present { value: value }, remaining: acc.remaining }
+        } else if name == "x-ratelimit-remaining" {
+          HeaderScan { retry_after: acc.retry_after, reset: acc.reset, limit: acc.limit, remaining: Present { value: value } }
+        } else {
+          acc
+        }
+      }
+    }
+  }
+}
+
+fn openrouter_retry_after_from_text(text: String) -> OpenRouterRetryAfter {
+  match parse_int(s: text) {
+    Absent => RetryAfterUnparsed { text: text }
+    Present { value: n } =>
+      match checked_int_to_nat(n: n) {
+        Absent => RetryAfterUnparsed { text: text }
+        Present { value: sec } => RetryAfterSeconds { seconds: sec }
+      }
+  }
+}
+
+fn openrouter_rate_limit_hints(dump: String) -> OpenRouterRateLimitHints {
+  let scan = fold(split(s: dump, delimiter: "\n"), init: HeaderScan { retry_after: none, reset: none, limit: none, remaining: none }, f: (acc, line) =>
+    openrouter_header_scan_line(acc: acc, line: line))
+  OpenRouterRateLimitHints {
+    retry_after: match scan.retry_after { Absent => RetryAfterAbsent  Present { value: t } => openrouter_retry_after_from_text(text: t) },
+    reset: scan.reset,
+    limit: scan.limit,
+    remaining: scan.remaining,
+  }
+}
+
+// THE REFUSAL ITSELF: an OpenRouter 429 with its hints. It is never retried by the code that decodes it;
+// carrying the hint is how a caller that CHOOSES to wait learns how long.
+type OpenRouterRateLimitRefusal {
+  message: String
+  provider_code: String?
+  hints: OpenRouterRateLimitHints
+}
+
+fn openrouter_decode_rate_limited(body: String, header_dump: String) -> OpenRouterRateLimitRefusal? {
+  match openrouter_decode_error_body(body: body) {
+    OpenRouterErrorUndecodable { cause: _ } => none
+    OpenRouterErrorDecoded { error: e } =>
+      match e {
+        OpenRouterRateLimited { message: m, provider_code: p } =>
+          Present { value: OpenRouterRateLimitRefusal { message: m, provider_code: p, hints: openrouter_rate_limit_hints(dump: header_dump) } }
+        OpenRouterPaymentRequired { limit_source: _, reason: _, message: _, remedy_hint: _ } => none
+        OpenRouterOtherError { code: _, message: _ } => none
+      }
+  }
+}
+
+fn openrouter_retry_after_wire(r: OpenRouterRetryAfter) -> String {
+  match r {
+    RetryAfterSeconds { seconds: n } => join(["Retry-After ", to_string(n), " s"], "")
+    RetryAfterUnparsed { text: t } => join(["Retry-After '", t, "' (not delta-seconds; not interpreted)"], "")
+    RetryAfterAbsent => "no Retry-After"
+  }
+}
+
+fn openrouter_rate_limit_wire(r: OpenRouterRateLimitRefusal) -> String {
+  join([
+    "OpenRouter answered 429 rate_limit_exceeded",
+    match r.provider_code { Present { value: pc } => join([" from provider ", pc], "")  Absent => " from OpenRouter" },
+    ": ", r.message, "; ", openrouter_retry_after_wire(r: r.hints.retry_after),
+    match r.hints.reset { Present { value: v } => join(["; X-RateLimit-Reset=", v, " (unit not documented; carried verbatim)"], "")  Absent => "" },
+    match r.hints.remaining { Present { value: v } => join(["; X-RateLimit-Remaining=", v], "")  Absent => "" },
+    "; the request was NOT retried",
+  ], "")
 }
 
 fn openrouter_error_wire(e: OpenRouterError) -> String {
