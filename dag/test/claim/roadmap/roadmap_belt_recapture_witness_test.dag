@@ -14,9 +14,10 @@ import gunbc.roadmap_belt_actuate {
   RecaptureAdmitted, RecaptureWorktreeDirty, RecaptureHasNoCommittedRevision, RecaptureBaseUnobservable,
   WorktreeHeadObserved, WorktreeHeadUnobserved,
   BaseShaObserved, BaseShaUnobserved,
-  belt_scm_recapture_freshness, RecaptureFresh, RecaptureNotFresh, RecaptureStandingPoisoned,
+  belt_capture_standing, CaptureOnBase, CaptureBaseStale, CaptureStandingUnderivable,
 }
 import gunbc.scm.repository_envelope { RepositoryCommit }
+import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_unconverted, legacy_ref }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,11 +74,11 @@ test fn a_clean_committed_tree_with_a_recorded_base_is_admitted() -> Bool {
   }
 }
 
-fn freshness_tag(commits: List<RepositoryCommit>, ordinal: Int) -> String {
-  match belt_scm_recapture_freshness(commits: commits, ordinal: ordinal) {
-    RecaptureFresh => "fresh"
-    RecaptureNotFresh { source: _ } => "not_fresh"
-    RecaptureStandingPoisoned { detail: _ } => "poisoned"
+fn standing_tag(commits: List<RepositoryCommit>, ordinal: Int) -> String {
+  match belt_capture_standing(commits: commits, candidate: legacy_ref(ordinal: ordinal)) {
+    CaptureOnBase => "fresh"
+    CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } => "not_fresh"
+    CaptureStandingUnderivable { detail: _ } => "poisoned"
   }
 }
 
@@ -85,14 +86,14 @@ test fn a_fresh_recapture_and_a_stale_capture_are_distinct_freshness_arms() -> B
   match legacy_corrective_scene() {
     Absent => false
     Present { value: scene } =>
-      freshness_tag(commits: scene.commits, ordinal: 5) == "fresh"
-        && freshness_tag(commits: scene.commits, ordinal: 1) == "not_fresh"
+      standing_tag(commits: scene.commits, ordinal: 5) == "fresh"
+        && standing_tag(commits: scene.commits, ordinal: 1) == "not_fresh"
   }
 }
 
 test fn an_underivable_standing_poisons_rather_than_reporting_not_fresh() -> Bool {
   match legacy_unconverted() {
     Absent => false
-    Present { value: legacy } => freshness_tag(commits: legacy.commits, ordinal: 1) == "poisoned"
+    Present { value: legacy } => standing_tag(commits: legacy.commits, ordinal: 1) == "poisoned"
   }
 }

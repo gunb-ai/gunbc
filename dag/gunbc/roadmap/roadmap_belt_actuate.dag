@@ -12066,20 +12066,6 @@ fn belt_scm_recapture_preconditions(
   }
 }
 
-type BeltRecaptureFreshness
-  = RecaptureFresh
-  | RecaptureNotFresh { source: RepositoryCommitRef }
-  | RecaptureStandingPoisoned { detail: String }
-
-fn belt_scm_recapture_freshness(commits: List<RepositoryCommit>, ordinal: Int) -> BeltRecaptureFreshness {
-  match belt_capture_standing(commits: commits, candidate: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } }) {
-    CaptureOnBase => RecaptureFresh
-    CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } =>
-      RecaptureNotFresh { source: RepositoryCommitRef { identity: MintedId { ordinal: ordinal } } }
-    CaptureStandingUnderivable { detail } => RecaptureStandingPoisoned { detail: detail }
-  }
-}
-
 type BeltRecapture
   = Recaptured { commit_ordinal: Int, repository_path: String }
   | RecaptureRefused { detail: String }
@@ -12132,13 +12118,18 @@ fn belt_scm_recapture(
                   ScmCaptureMintRefused { detail } => RecaptureRefused { detail: detail }
                   ScmCaptureMintPoisoned { detail } => RecapturePoisoned { detail: detail }
                   ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } =>
-                    match belt_scm_recapture_freshness(commits: repository.commits, ordinal: commit_ordinal) {
-                      RecaptureStandingPoisoned { detail } => RecapturePoisoned { detail: detail }
-                      RecaptureNotFresh { source } =>
+                    match belt_capture_standing(
+                      commits: repository.commits,
+                      candidate: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
+                    ) {
+                      CaptureStandingUnderivable { detail } => RecapturePoisoned { detail: detail }
+                      CaptureBaseStale { commit: _, captured_against: _, repository_base: _ } =>
                         RecaptureRefused {
-                          detail: belt_supersession_refusal_detail(cause: SupersessionSourceNotFresh { source: source }),
+                          detail: belt_supersession_refusal_detail(cause: SupersessionSourceNotFresh {
+                            source: RepositoryCommitRef { identity: MintedId { ordinal: commit_ordinal } },
+                          }),
                         }
-                      RecaptureFresh =>
+                      CaptureOnBase =>
                         match belt_scm_persist_capture(mint: ScmCandidateMinted {
                           repository: repository,
                           generation: generation,
