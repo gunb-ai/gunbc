@@ -3381,7 +3381,7 @@ fn strip_excluded_run_operations(
                             if !excluded.contains(&(module_name.clone(), service)) {
                                 return Some((*item).clone());
                             }
-                            let kept: Vec<Rc<crate::v1_std_core::Node>> = item
+                            let kept: im::Vector<_> = item
                                 .children
                                 .iter()
                                 .filter(|op| {
@@ -3397,9 +3397,10 @@ fn strip_excluded_run_operations(
                             if kept.is_empty() {
                                 return None;
                             }
-                            Some(Rc::new(crate::v1_std_core::Node {
-                                children: Rc::new(kept),
-                                ..(**item).clone()
+                            Some(Rc::new({
+                                let mut node = (**item).clone();
+                                node.children = Rc::new(kept);
+                                node
                             }))
                         })
                         .collect::<im::Vector<_>>(),
