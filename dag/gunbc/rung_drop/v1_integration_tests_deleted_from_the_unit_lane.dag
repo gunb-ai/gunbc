@@ -1,0 +1,39 @@
+module gunbc.rung_drop.v1_integration_tests_deleted_from_the_unit_lane
+
+import std.types { List, NonEmptyStr, String }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, DeletedWithoutReplacement }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+
+// DECLARED 2026-10-06 FOR A LOSS gunbc#13452 MADE AND DID NOT DECLARE. On an owner ruling
+// (2026-10-06: every unit test is under 100ms, the v1 Rust tests are legacy and being wound down,
+// and integration tests in this lane are deleted rather than rewritten), gunbc#13452 deleted 190 v1
+// tests that each took over 100ms -- tests that resolved, evaluated or indexed the live .dag corpus
+// inside a Rust test -- and relocated none of them. They were enrolled in the required unit lane
+// only while it blocked, so what they exposed was mechanically preventable at most and is now
+// exposed by nothing. That deletion is what brought the suite under its cap, which is why
+// gunbc.rung_drop rust_unit_tests_over_their_cap could retire; that row's trigger refuses
+// "shrinking the suite by deleting tests" as a route, so the shrinkage is this row's loss and not
+// that row's restoration.
+//
+// The population is named at file grain because the test identities exist only in history: the
+// exact set is the #[test] items #13452's squash commit removes from these files (git show
+// ce03767ddf -- src/v1/stage0/src), not a list transcribed here.
+
+data v1_integration_tests_deleted_from_the_unit_lane_population: List<String> = [
+  "every #[test] gunbc#13452 deleted (190, each over 100ms) from these v1-compiler files: census_exclude_derive.rs, cli_run.rs, cli_run/checker_dependency.rs, cli_run/compile_clean.rs, cli_run/emit_host.rs, cli_run/entry_resolve.rs, cli_run/floor_discovery_snapshot.rs, cli_run/non_fold_residue.rs, cli_run/reach_base_standings.rs, cli_run/required_floor_runner.rs, compiler_tests.rs, coproduct_reflection.rs, evaluation_budget_consequence_falsifier_host.rs, phase_profile.rs, process_group.rs, required_regen_host.rs, v1_interpreter.rs (all under src/v1/stage0/src)",
+  "the 17 DeclarationRef evidence rows #13452 removed from floor_arm_set_consumer_seed_growth, floor_checker_input_seed_growth, interpreter_eval_correctness_seed_growth, live_tree_stamp_detector_seed_growth and observation_file_effect_seed_growth, whose seed-growth rows lost the test they cited",
+]
+
+data v1_integration_tests_deleted_from_the_unit_lane: RungDrop = RungDrop {
+  identity: "v1_integration_tests_deleted_from_the_unit_lane" as NonEmptyStr,
+  subject: "the behaviours the deleted v1 integration tests exercised (required-floor runner, reach-base standings, regen and emit hosts, compile-clean, entry-resolve censuses, interpreter depth walkers) are exposed by an enrolled test on a required lane",
+  declared: "2026-10-06",
+  standing: Standing,
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: DeletedWithoutReplacement,
+    population: v1_integration_tests_deleted_from_the_unit_lane_population,
+    restoration_trigger: "THE CAPABILITY: each behaviour a deleted test exercised is exposed again by an enrolled claim on a required lane, with a discriminating red -- by a v2 witness or floor claim over the same subject, or because the v1 host code it tested has itself been deleted (a behaviour with no remaining realization needs no test). WHAT THAT MUST BE SUFFICIENT FOR: no behaviour this population covered can regress with every required lane green. Restoring the tests to the v1 unit lane is not the route the owner ruling admits; re-adding any one test, or covering the subject areas in aggregate rather than per behaviour, does not retire this row."
+  }
+}
