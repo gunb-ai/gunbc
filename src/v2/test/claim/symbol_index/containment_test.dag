@@ -239,15 +239,31 @@ test fn symbol_index_unique_variant_alias_at_module_holds() -> Bool {
   }
 }
 
-test fn symbol_index_unique_variant_without_alias_red_control_holds() -> Bool {
+// THE DISCRIMINATOR IS THE PAIR, NOT EITHER ARM. The alias minting lives IN the containment walk
+// now (symbol_index_fill_containment_node with counts + module_qn), so there is no
+// "containment without the alias pass" to red on: the WITHOUT side is the module-root fill, whose
+// alias bindings are imports only and mint no variant alias (^Yes unbound), and the WITH side is
+// the same fixture run through the fused containment walk (^Yes hits). A fill that minted the
+// variant alias without the containment walk reds the first arm; a containment walk that stopped
+// minting it reds the second.
+test fn symbol_index_unique_variant_alias_requires_the_containment_walk_holds() -> Bool {
   match symbol_index_lexical_lookup(
-    index: si_unique_index_containment_only,
+    index: si_unique_index,
     position: si_unique_module_qn,
     name: ^Yes
   ) {
+    LexicalUnbound =>
+      match symbol_index_lexical_lookup(
+        index: si_unique_index_containment_only,
+        position: si_unique_module_qn,
+        name: ^Yes
+      ) {
+        LexicalHit { node: _, path: _ } => true
+        LexicalAmbiguous { candidates: _ } => false
+        LexicalUnbound => false
+      }
     LexicalHit { node: _, path: _ } => false
     LexicalAmbiguous { candidates: _ } => false
-    LexicalUnbound => true
   }
 }
 

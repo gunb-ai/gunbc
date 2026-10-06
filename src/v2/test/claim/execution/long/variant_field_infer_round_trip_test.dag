@@ -11,9 +11,15 @@ module v2.test.long.variant_field_infer_round_trip
 // variant's payload. On the rostered refusal (gunbc.recurring_failure_mode
 // native_infer_accepts_only_bool_and_int_match_scrutinees) this fixture refused
 // infer_match_scrutinee_not_bool; the claims it feeds are the evidence the retirement cites.
+//
+// THE FIXTURE IS THE PROBE'S COMBINED ONE (vfp_fixture_src, the same shapes plus the generic and
+// projection controls), READ THROUGH vfp_reading DIRECTLY rather than through the probe's warm
+// nullary producer: this call's identity is reached by one planned claim, so the derived
+// producer-share does not admit it and the fill is billed to THIS claim's own frame -- the billed
+// work this module exists to keep on the real path.
 
-import v2.test.claim.variant_field_infer_probe { vfp_infers, vfp_reading, vfp_round_trip_src }
+import v2.test.claim.variant_field_infer_probe { vfp_fixture_src, vfp_infers, vfp_reading }
 
 test fn vfp_the_round_trip_fixture_infers_holds() -> Bool {
-  vfp_infers(reading: vfp_reading(src: vfp_round_trip_src))
+  vfp_infers(reading: vfp_reading(src: vfp_fixture_src))
 }
