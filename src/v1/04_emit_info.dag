@@ -523,10 +523,15 @@ fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: N
         Present { value: identity } => OccurrenceDeclaredHere { identity: identity }
         Absent => OccurrenceUndecided
       }
-    BareOccurrenceImportedByName { declaration: decl } =>
+    BareOccurrenceImportedByName { module_path: from_module, declaration: decl } =>
       match type_decl_identity_of_declaration(index: index, decl: decl) {
         Present { value: identity } => OccurrenceImported { identity: identity }
-        Absent => OccurrenceUndecided
+        Absent =>
+          let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
+          match map_get(index.by_identity, imported) {
+            Present { value: _ } => OccurrenceImported { identity: imported }
+            Absent => OccurrenceUndecided
+          }
       }
     BareOccurrenceIsKernelName => OccurrenceIsKernelName
     BareOccurrenceUndecided => OccurrenceUndecided
