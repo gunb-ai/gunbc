@@ -260,3 +260,29 @@ test fn w_semver_build_leading_zero_identifier_still_parses() -> Bool {
     VersionComparisonRefused { side: _, identity: _, cause: _ } => false
   }
 }
+
+// §2 is X.Y.Z with no trailing delimiter: "1.2.3." must refuse, never lose the dot and rank.
+// The old last-field handling split on the dot first and recursed onto the empty suffix, so
+// the dot vanished and the label ranked as 1.2.3 — a fabricated order for an out-of-grammar
+// label (review 76945). The repair makes the last field consume the whole remainder, so the
+// leftover delimiter fails the numeric run.
+test fn w_semver_core_refuses_trailing_delimiter_label() -> Bool {
+  match semver_scheme.compare("1.2.3.", "1.2.3") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } =>
+      side == LeftOperand && i == "1.2.3."
+    VersionCompared { ordering: _ } => false
+  }
+}
+
+// A numeric field must refuse at the STEP that crosses the Int bound, through
+// std.checked_arithmetic's authority — not wrap first and hope the Nat check notices. The
+// old unchecked accumulation wrapped 20 nines into a small positive Int that passed
+// checked_int_to_nat and minted a wrong precedence (review 76945); under the repair this
+// label refuses, so no ordering can be fabricated from it.
+test fn w_semver_core_refuses_numeric_field_overflowing_int() -> Bool {
+  match semver_scheme.compare("1.99999999999999999999.0", "1.2.0") {
+    VersionComparisonRefused { side: side, identity: i, cause: _ } =>
+      side == LeftOperand && i == "1.99999999999999999999.0"
+    VersionCompared { ordering: _ } => false
+  }
+}

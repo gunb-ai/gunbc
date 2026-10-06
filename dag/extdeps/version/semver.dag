@@ -3,7 +3,14 @@ module extdeps.version.semver
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
 import std.algebra { Ordering, Less, Equal, Greater }
 import std.integer { NonNegativeInt }
-import std.checked_arithmetic { checked_int_to_nat }
+import std.checked_arithmetic {
+  checked_int_add,
+  checked_int_multiply,
+  checked_int_to_nat,
+  CheckedInt,
+  CheckedIntOverflow,
+  CheckedIntReady,
+}
 import std.types { List }
 import std.nat { nat_compare }
 import std.types { NonEmptyStr }
@@ -214,13 +221,26 @@ fn semver_numeric_run_without_leading_zero(cps: List<Int>) -> Bool {
   }
 }
 
-fn semver_digits_to_int(cps: List<Int>, acc: Int) -> Int {
+fn semver_digits_to_int(cps: List<Int>, acc: Int) -> Int? {
   if cps.count() == 0 {
-    acc
+    Present { value: acc }
   } else {
     match cps.first() {
-      Present { value: h } => semver_digits_to_int(cps: cps.skip(n: 1), acc: acc * 10 + (h - 48))
-      Absent => acc
+      Present { value: h } =>
+        // EACH STEP GOES THROUGH std.checked_arithmetic's authority, never an unchecked
+        // multiply inspected after the fact: the step that crosses the bound refuses with
+        // none, instead of wrapping into a plausible-looking number that a later Nat check
+        // would happily accept.
+        match checked_int_multiply(a: acc, b: 10) {
+          CheckedIntReady { value: times } =>
+            match checked_int_add(a: times, b: h - 48) {
+              CheckedIntReady { value: next } =>
+                semver_digits_to_int(cps: cps.skip(n: 1), acc: next)
+              CheckedIntOverflow { .. } => none
+            }
+          CheckedIntOverflow { .. } => none
+        }
+      Absent => Present { value: acc }
     }
   }
 }
@@ -229,7 +249,10 @@ fn semver_nat_field(cps: List<Int>) -> NonNegativeInt? {
   if !semver_numeric_run_without_leading_zero(cps: cps) {
     none
   } else {
-    checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0))
+    match semver_digits_to_int(cps: cps, acc: 0) {
+      Absent => none
+      Present { value: digits } => checked_int_to_nat(n: digits)
+    }
   }
 }
 
@@ -242,6 +265,14 @@ fn semver_label_from_code_points(cps: List<Int>) -> NonEmptyStr {
 fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeInt>? {
   if remaining == 0 {
     if cps.count() == 0 { Present { value: [] } } else { none }
+  } else if remaining == 1 {
+    // THE LAST FIELD CONSUMES THE WHOLE REMAINDER, never a dot-split: a leftover delimiter
+    // then fails the numeric run here instead of being split off and silently accepted.
+    // SemVer 2.0.0 §2 is X.Y.Z with no trailing delimiter, so "1.2.3." must refuse, not rank.
+    match semver_nat_field(cps: cps) {
+      Absent => none
+      Present { value: v } => Present { value: [v] }
+    }
   } else {
     match semver_index_of(cp: 46, cps: cps) {
       Present { value: i } =>
@@ -253,15 +284,7 @@ fn semver_core_fields_parse(cps: List<Int>, remaining: Int) -> List<NonNegativeI
               Present { value: rest } => Present { value: concat([v], rest) }
             }
         }
-      Absent =>
-        if remaining == 1 {
-          match semver_nat_field(cps: cps) {
-            Absent => none
-            Present { value: v } => Present { value: [v] }
-          }
-        } else {
-          none
-        }
+      Absent => none
     }
   }
 }
@@ -305,9 +328,13 @@ fn semver_identifier_parse(cps: List<Int>, strict_numeric: Bool) -> SemVerIdenti
   } else if !all(cps, cp => semver_is_identifier_char(cp: cp)) {
     none
   } else if semver_numeric_run_without_leading_zero(cps: cps) {
-    match checked_int_to_nat(n: semver_digits_to_int(cps: cps, acc: 0)) {
+    match semver_digits_to_int(cps: cps, acc: 0) {
       Absent => none
-      Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
+      Present { value: digits } =>
+        match checked_int_to_nat(n: digits) {
+          Absent => none
+          Present { value: n } => Present { value: SemVerNumericIdentifier { value: n } }
+        }
     }
   } else if strict_numeric && semver_all_digits(cps: cps) {
     none
