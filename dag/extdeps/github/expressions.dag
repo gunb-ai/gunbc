@@ -518,7 +518,17 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
     ContextAccess { context: c, path: p } =>
       match c {
         Env => string_in_list(needle: join_path(path: p), haystack: runner_provided_env_var_names)
-        _ => false
+        Github => false
+        Vars => false
+        Job => false
+        Jobs => false
+        Steps => false
+        Runner => false
+        Secrets => false
+        Strategy => false
+        Matrix => false
+        Needs => false
+        Inputs => false
       }
     FunctionCall { function: _, args: a } =>
       fold(a, init: false, f: (acc, arg) => acc || expression_accesses_runner_var_via_env(expression: arg))

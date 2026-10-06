@@ -2360,16 +2360,29 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
 }
 
 fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+    match stale_binary_refusal(freshness) {
+        Some(refused) => refused,
+        None => test_verb(operand),
+    }
+}
+
+/// THE FRESHNESS DECISION, ALONE: `Some` is the refusal a stale or undecided binary earns before any
+/// producer runs, `None` admits the run (after logging the fresh inputs). Split from
+/// `test_verb_after` so its witness exercises the decision without reaching `test_verb`'s producers,
+/// several of which set the process cwd (`process_cwd_mutation_reachability_gate`).
+fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome> {
     let line = binary_freshness_rendered(freshness);
     match freshness {
         BinaryFreshness::Fresh { inputs, .. } => {
             eprintln!("{line} inputs={inputs}");
-            test_verb(operand)
+            None
         }
-        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => InvocationOutcome {
-            termination: Termination::Refused,
-            message: line,
-        },
+        BinaryFreshness::Stale { .. } | BinaryFreshness::Undecided { .. } => {
+            Some(InvocationOutcome {
+                termination: Termination::Refused,
+                message: line,
+            })
+        }
     }
 }
 
@@ -3416,7 +3429,7 @@ mod binary_freshness_tests {
             input: "a.rs".into(),
             why: "changed after the binary was built".into(),
         };
-        let outcome = test_verb_after("//gunbc/instruments:self-host", &stale);
+        let outcome = stale_binary_refusal(&stale).expect("a stale binary is refused");
         assert_eq!(outcome.termination, Termination::Refused);
         assert!(
             outcome.message.contains("cause=StaleBinary"),

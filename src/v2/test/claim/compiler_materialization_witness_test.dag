@@ -1,5 +1,6 @@
 module v2.test.claim.compiler_materialization_witness
 
+import v2.std.live_tree { LiveTreeDisposition }
 import std.realization { LocalInProcess, Memoize, Recompute }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.compiler.materialization_carriers {

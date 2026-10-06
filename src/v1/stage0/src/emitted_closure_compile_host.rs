@@ -154,11 +154,14 @@ pub enum CargoVerdict {
     /// alone says only WHERE a fault was reported and never WHAT rustc refused, so a caller
     /// holding only `probe_line` passes on ANY refusal reported in the attributed file. The
     /// header is what lets a caller name the error class it expects.
-    /// `warning_count` is the number of `warning` diagnostic headers on stderr — rustc's
-    /// `warning: …` and cargo's own alike, counted by the same header scan that governs
-    /// attribution. Under the denial a rustc lint arrives as an `error` and stops the build, so
-    /// a non-zero count beside status 0 is a warning nobody denied (cargo's, a build script's);
-    /// the count is carried so a receipt can name it rather than swallow it.
+    /// `warning_count` is the number of warning-level `compiler-message` records cargo's JSON
+    /// stream attributes to a package whose manifest lies INSIDE the emitted crate directory --
+    /// the compiler's warnings on the EMITTED code, and nothing else. It used to be every stderr
+    /// line starting with `warning`, which counted cargo's own transport chatter: gunbc#12514's
+    /// emit-build (run 36799651259) refused `warning_count=190` over 188 `spurious network error`
+    /// and 2 `Transferred a partial file` lines from the dependency fetch, beside a clean build.
+    /// The fetch is now its own spawn (`DependencyFetchFailed`) and the build runs `--offline`, so
+    /// transport text cannot reach this count by construction, not by a list of phrases.
     Completed {
         status: i32,
         stderr_tail: String,
@@ -182,6 +185,15 @@ pub enum CargoVerdict {
         /// `diagnostic=unattributed` and a 20-line tail that began after the cause.
         /// Boxed so the variant stays the size it was (clippy `large_enum_variant`).
         first_error: Option<Box<RustcErrorLocus>>,
+    },
+    /// THE DEPENDENCY FETCH FAILED, so no compiler ever judged the emitted crate. This is an INFRA
+    /// outcome -- the registry or the network, not the emission -- and it is its own arm so no
+    /// caller can read it as a structural refusal of the emitted code, nor as a green. It is
+    /// decided by WHICH SPAWN failed (`cargo fetch`, before the `--offline` build), never by
+    /// matching the text cargo printed.
+    DependencyFetchFailed {
+        status: Option<i32>,
+        stderr_tail: String,
     },
 }
 
@@ -293,6 +305,13 @@ pub fn cargo_verdict_summary(verdict: &CargoVerdict) -> String {
     match verdict {
         CargoVerdict::NotAttempted { reason } => format!("NotAttempted reason={reason}"),
         CargoVerdict::DidNotComplete { detail } => format!("DidNotComplete detail={detail}"),
+        CargoVerdict::DependencyFetchFailed {
+            status,
+            stderr_tail,
+        } => format!(
+            "DependencyFetchFailed class=Infra status={} stderr_tail={stderr_tail}",
+            status.map_or("signal".to_string(), |s| s.to_string())
+        ),
         CargoVerdict::Completed { status, .. } if *status == 0 => {
             format!("Completed status={status}")
         }
@@ -947,22 +966,78 @@ fn attributed_diagnostic(
     (None, None)
 }
 
-/// The number of `warning` diagnostic headers on a cargo stderr, by the same line shape
-/// `attributed_diagnostic` reads (a trimmed line starting with `warning`). Pure, for the same
-/// reason: the count is receipt content and its scan must be testable without a toolchain.
-fn warning_header_count(stderr: &str) -> usize {
-    warning_header_lines(stderr).len()
+/// What one `cargo build --message-format=json` run said, read from its structured stream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CargoJsonReading {
+    /// Every `compiler-message`'s `rendered` text, in stream order, then cargo's own stderr: the
+    /// human surface attribution and the tail read, which `--message-format=json` moved off stderr.
+    diagnostic_text: String,
+    /// The first line of each warning-level `compiler-message` on an EMITTED package.
+    emitted_warning_headers: Vec<String>,
 }
 
-/// The lines `warning_header_count` counts, by the one predicate, so the count and the lines a
-/// refusal prints cannot disagree.
-fn warning_header_lines(stderr: &str) -> Vec<String> {
-    stderr
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("warning") && !is_cargo_network_retry(line))
-        .map(str::to_string)
-        .collect()
+/// THE COUNT IS A JOIN ON THE PACKAGE, NOT A SCAN OF TEXT. A `compiler-message` counts when its
+/// level is `warning` and its `manifest_path` lies under `crate_dir` -- the emitted crate, or a
+/// member of the emitted workspace. A registry dependency's manifest lies in cargo's cache, and
+/// cargo's own transport lines are not `compiler-message` records at all, so neither can be
+/// counted. A record that does not parse, or a compiler-message carrying no manifest path, is
+/// COUNTED (its first line names it): an unreadable record refuses the build rather than
+/// vanishing from the population. Pure, so the join is testable without a toolchain.
+fn read_cargo_json(stdout: &str, stderr: &str, crate_dir: &Path) -> CargoJsonReading {
+    let mut rendered: Vec<String> = Vec::new();
+    let mut emitted_warning_headers: Vec<String> = Vec::new();
+    for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
+        let record: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => {
+                emitted_warning_headers.push(format!("unparseable cargo JSON record: {line}"));
+                continue;
+            }
+        };
+        if record.get("reason").and_then(|r| r.as_str()) != Some("compiler-message") {
+            continue;
+        }
+        let message = record.get("message");
+        let text = message
+            .and_then(|m| m.get("rendered"))
+            .and_then(|r| r.as_str())
+            .unwrap_or("")
+            .to_string();
+        let level = message
+            .and_then(|m| m.get("level"))
+            .and_then(|l| l.as_str());
+        let emitted = match record.get("manifest_path").and_then(|m| m.as_str()) {
+            // Either spelling joins: the literal one, or both sides canonicalized, so a crate
+            // directory reached through a symlink cannot make the emitted crate's warnings miss
+            // the join and go uncounted (review 73526).
+            Some(manifest) => {
+                Path::new(manifest).starts_with(crate_dir)
+                    || match (
+                        std::fs::canonicalize(manifest),
+                        std::fs::canonicalize(crate_dir),
+                    ) {
+                        (Ok(m), Ok(c)) => m.starts_with(c),
+                        _ => false,
+                    }
+            }
+            None => true,
+        };
+        if level == Some("warning") && emitted {
+            let header = text
+                .lines()
+                .next()
+                .map(str::trim)
+                .filter(|h| !h.is_empty())
+                .unwrap_or("warning: (no rendered text)");
+            emitted_warning_headers.push(header.to_string());
+        }
+        rendered.push(text);
+    }
+    rendered.push(stderr.to_string());
+    CargoJsonReading {
+        diagnostic_text: rendered.join("\n"),
+        emitted_warning_headers,
+    }
 }
 
 /// The text cargo prints when it RETRIES a failed fetch: `warning: spurious network error (N tries
@@ -1126,6 +1201,13 @@ fn probe_cargo_command_bound(
         cargo.clone(),
         "build".to_string(),
         "--release".to_string(),
+        // The fetch is its own spawn (`probe_cargo_fetch_command`); the build may not touch the
+        // network, so no transport outcome can reach the build's verdict.
+        "--offline".to_string(),
+        // The structured stream is what `read_cargo_json` joins on: warnings are counted per
+        // package from `compiler-message` records, never by scanning text.
+        "--message-format".to_string(),
+        "json".to_string(),
         "--color".to_string(),
         "never".to_string(),
         "--manifest-path".to_string(),
@@ -1159,6 +1241,26 @@ fn probe_cargo_command_bound(
             rustc_identity: identity.to_string(),
         },
     )
+}
+
+/// THE DEPENDENCY FETCH, AS ITS OWN SPAWN, under the same bound environment as the build. Its
+/// failure is `DependencyFetchFailed` -- infra -- by WHICH spawn failed.
+fn probe_cargo_fetch_command(
+    build: &std::process::Command,
+    crate_dir: &Path,
+) -> std::process::Command {
+    let mut fetch = std::process::Command::new(build.get_program());
+    fetch
+        .args(["fetch", "--color", "never", "--manifest-path"])
+        .arg(crate_dir.join("Cargo.toml"))
+        .current_dir(crate_dir);
+    for (key, value) in build.get_envs() {
+        match value {
+            Some(v) => fetch.env(key, v),
+            None => fetch.env_remove(key),
+        };
+    }
+    fetch
 }
 
 /// Resolve the compiler, take its identity from the crate's directory, and build the bound
@@ -1206,6 +1308,22 @@ pub(crate) fn run_cargo(
         Err(reason) => return CargoVerdict::NotAttempted { reason },
     };
     let cargo = &invocation.argv[0];
+    match probe_cargo_fetch_command(&command, crate_dir).output() {
+        Err(e) => {
+            return CargoVerdict::DidNotComplete {
+                detail: format!("spawning {cargo} fetch failed: {e}"),
+            }
+        }
+        Ok(fetched) if !fetched.status.success() => {
+            let stderr = String::from_utf8_lossy(&fetched.stderr);
+            let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
+            return CargoVerdict::DependencyFetchFailed {
+                status: fetched.status.code(),
+                stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
+            };
+        }
+        Ok(_) => {}
+    }
     match command.output() {
         Err(e) => CargoVerdict::DidNotComplete {
             detail: format!("spawning {cargo} failed: {e}"),
@@ -1215,19 +1333,26 @@ pub(crate) fn run_cargo(
                 detail: format!("{cargo} terminated by signal without an exit status"),
             },
             Some(status) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let tail: Vec<&str> = stderr.lines().rev().take(20).collect();
+                let reading = read_cargo_json(
+                    &String::from_utf8_lossy(&output.stdout),
+                    &String::from_utf8_lossy(&output.stderr),
+                    crate_dir,
+                );
+                let text = &reading.diagnostic_text;
+                let tail: Vec<&str> = text.lines().rev().take(20).collect();
                 let (probe_line, probe_diagnostic) =
-                    attributed_diagnostic(&stderr, attribution_symbol);
+                    attributed_diagnostic(text, attribution_symbol);
                 CargoVerdict::Completed {
                     status,
                     stderr_tail: tail.into_iter().rev().collect::<Vec<_>>().join("\n"),
                     probe_line,
                     probe_diagnostic,
-                    warning_count: warning_header_count(&stderr),
-                    warning_headers: warning_header_lines(&stderr),
-                    cargo_network_retries: cargo_network_retry_count(&stderr),
-                    first_error: first_rustc_error(&stderr).map(Box::new),
+                    warning_count: reading.emitted_warning_headers.len(),
+                    warning_headers: reading.emitted_warning_headers,
+                    cargo_network_retries: cargo_network_retry_count(&String::from_utf8_lossy(
+                        &output.stderr,
+                    )),
+                    first_error: first_rustc_error(text).map(Box::new),
                 }
             }
         },
@@ -1379,6 +1504,15 @@ pub(crate) fn establish_discriminating_red(
                 detail: format!(
                     "the faulted arm did not reach a cargo verdict ({detail}) — a killed or \
                      unspawnable cargo is not evidence that the injected fault was refused"
+                ),
+            };
+        }
+        CargoVerdict::DependencyFetchFailed { .. } => {
+            return MutationVerdict::NotDiscriminating {
+                detail: format!(
+                    "the faulted arm's dependency fetch failed before any compiler ran ({}) — an \
+                     infra outcome is not evidence that the injected fault was refused",
+                    cargo_verdict_summary(&red)
                 ),
             };
         }
@@ -1683,8 +1817,14 @@ pub(crate) fn fixture_closure_rustc_verdict(
     };
     eprintln!("fixture-closure: {rust_module} emitting");
     let module_index = crate::cli_run::build_module_path_index_from_witness_roots();
-    let sources =
-        crate::cli_run::resolve_virtual_source_with_imports("fixture.dag", source, &module_index);
+    let sources = match crate::cli_run::resolve_virtual_source_with_imports(
+        "fixture.dag",
+        source,
+        &module_index,
+    ) {
+        Ok(sources) => sources,
+        Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
+    };
     let result = crate::v1_compiler_compile::compile_sources(
         std::rc::Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -2681,12 +2821,134 @@ mod tests {
         );
     }
 
+    /// THE RUN-36799651259 SHAPE: cargo's transport lines are not `compiler-message` records, and
+    /// a registry dependency's warning is not the emitted crate's, so neither counts; a rustc
+    /// warning on the emitted crate does, and an unreadable record refuses rather than vanishing.
     #[test]
-    fn warning_headers_are_counted_and_errors_are_not() {
-        let stderr = "warning: unused import: `x`\n --> src/a.rs:1:5\nerror[E0308]: mismatched types\n --> src/b.rs:2:1\nwarning: `probe` (lib) generated 1 warning\n";
-        assert_eq!(warning_header_count(stderr), 2);
-        assert_eq!(warning_header_count("error: could not compile"), 0);
-        assert_eq!(warning_header_count(""), 0);
+    fn only_compiler_warnings_on_the_emitted_crate_are_counted() {
+        let crate_dir = Path::new("/run/probe/crate");
+        let network: String = (0..188)
+            .map(|_| "warning: spurious network error (3 tries remaining): [16] Error in the HTTP2 framing layer\n")
+            .chain(["warning: Transferred a partial file\n"; 2])
+            .collect();
+        let clean = concat!(
+            r#"{"reason":"compiler-artifact","manifest_path":"/run/probe/crate/Cargo.toml"}"#,
+            "\n",
+            r#"{"reason":"build-finished","success":true}"#,
+            "\n",
+        );
+        let reading = read_cargo_json(clean, &network, crate_dir);
+        assert_eq!(
+            reading.emitted_warning_headers.len(),
+            0,
+            "network noise is not counted"
+        );
+
+        let dependency = r#"{"reason":"compiler-message","manifest_path":"/home/u/.cargo/registry/src/x/dep-1.0/Cargo.toml","message":{"level":"warning","rendered":"warning: dep lint\n"}}"#;
+        let emitted = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","message":{"level":"warning","rendered":"warning: unused variable: `x`\n --> src/a.rs:1:5\n"}}"#;
+        let error = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","message":{"level":"error","rendered":"error[E0308]: mismatched types\n --> src/b.rs:2:1\n"}}"#;
+        let reading = read_cargo_json(
+            &format!("{dependency}\n{emitted}\n{error}\n"),
+            &network,
+            crate_dir,
+        );
+        assert_eq!(
+            reading.emitted_warning_headers,
+            vec!["warning: unused variable: `x`".to_string()],
+            "a rustc warning on emitted code still counts; a dependency's does not"
+        );
+        assert_eq!(
+            attributed_diagnostic(&reading.diagnostic_text, "src/b.rs"),
+            (
+                Some("--> src/b.rs:2:1".to_string()),
+                Some("error[E0308]: mismatched types".to_string())
+            ),
+            "attribution reads the rendered diagnostics the JSON stream carries"
+        );
+        // An EMITTED build script is emitted code: rustc's warning compiling it (target kind
+        // custom-build, the emitted manifest) counts. A running script's `cargo:warning=` reaches
+        // cargo's stderr as text, not a compiler-message, so it does not.
+        let build_rs = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","target":{"kind":["custom-build"]},"message":{"level":"warning","rendered":"warning: unused variable: `y`\n --> build.rs:1:5\n"}}"#;
+        let reading = read_cargo_json(
+            &format!("{build_rs}\n"),
+            "warning: probe@0.1.0: printed by cargo:warning=\n",
+            crate_dir,
+        );
+        assert_eq!(
+            reading.emitted_warning_headers,
+            vec!["warning: unused variable: `y`".to_string()],
+            "an emitted build.rs's rustc warning counts; its cargo:warning= output does not"
+        );
+        let reading = read_cargo_json("not json\n", "", crate_dir);
+        assert_eq!(
+            reading.emitted_warning_headers.len(),
+            1,
+            "unreadable refuses"
+        );
+        #[cfg(unix)]
+        {
+            let root = std::env::temp_dir().join(format!("gunbc-json-join-{}", std::process::id()));
+            let real = root.join("real");
+            std::fs::create_dir_all(&real).unwrap();
+            std::fs::write(real.join("Cargo.toml"), "").unwrap();
+            let link = root.join("link");
+            let _ = std::fs::remove_file(&link);
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            let record = format!(
+                r#"{{"reason":"compiler-message","manifest_path":"{}","message":{{"level":"warning","rendered":"warning: via symlink\n"}}}}"#,
+                real.join("Cargo.toml").display()
+            );
+            let reading = read_cargo_json(&format!("{record}\n"), "", &link);
+            let _ = std::fs::remove_dir_all(&root);
+            assert_eq!(
+                reading.emitted_warning_headers.len(),
+                1,
+                "a symlinked crate dir still joins its own manifest"
+            );
+        }
+        assert_eq!(
+            reading.emitted_warning_headers.len(),
+            1,
+            "unreadable refuses"
+        );
+    }
+
+    #[test]
+    fn a_failed_fetch_is_infra_and_never_compiled() {
+        let fetch = CargoVerdict::DependencyFetchFailed {
+            status: Some(101),
+            stderr_tail: "error: failed to download from `https://index.crates.io`".to_string(),
+        };
+        assert!(!cargo_verdict_compiled(&fetch));
+        assert!(cargo_verdict_summary(&fetch).starts_with("DependencyFetchFailed class=Infra"));
+    }
+
+    #[test]
+    fn the_build_spawn_is_offline_and_structured_and_the_fetch_shares_its_environment() {
+        let crate_dir = Path::new("/tmp/probe-crate");
+        let (command, invocation) = probe_cargo_command_bound(
+            crate_dir,
+            Path::new("/tmp/t"),
+            Path::new("/toolchain/bin/rustc"),
+            "rustc",
+        );
+        assert!(invocation.argv.iter().any(|a| a == "--offline"));
+        assert!(invocation
+            .argv
+            .windows(2)
+            .any(|w| w[0] == "--message-format" && w[1] == "json"));
+        let fetch = probe_cargo_fetch_command(&command, crate_dir);
+        assert_eq!(
+            fetch
+                .get_args()
+                .next()
+                .map(|a| a.to_string_lossy().to_string()),
+            Some("fetch".to_string())
+        );
+        assert_eq!(
+            env_of(&fetch, RUSTC_ENV),
+            Some(Some("/toolchain/bin/rustc".to_string()))
+        );
     }
 
     /// THE SELF-HOST CASE: an E0308 in an emitted module that names no probe symbol, followed by
@@ -2746,24 +3008,29 @@ mod tests {
     /// exclusion is one recognised fact, not a default.
     #[test]
     fn cargo_network_retries_are_not_counted_as_warnings() {
+        let crate_dir = Path::new("/run/probe/crate");
         let retries = "warning: spurious network error (3 tries remaining): [35] SSL connect error (OpenSSL SSL_read: unexpected eof while reading)\n\
                        warning: spurious network error (2 tries remaining): [35] SSL connect error\n";
-        assert_eq!(warning_header_count(retries), 0);
-        assert_eq!(cargo_network_retry_count(retries), 2);
-        let real = "warning: unused variable: `x`\n --> src/a.rs:1:5\n";
-        assert_eq!(warning_header_count(real), 1);
-        assert_eq!(cargo_network_retry_count(real), 0);
-        let both = format!("{retries}{real}");
+        let real = r#"{"reason":"compiler-message","manifest_path":"/run/probe/crate/Cargo.toml","message":{"level":"warning","rendered":"warning: unused variable: `x`\n --> src/a.rs:1:5\n"}}"#;
         assert_eq!(
-            warning_header_lines(&both),
+            read_cargo_json("", retries, crate_dir)
+                .emitted_warning_headers
+                .len(),
+            0
+        );
+        assert_eq!(cargo_network_retry_count(retries), 2);
+        let both = read_cargo_json(&format!("{real}\n"), retries, crate_dir);
+        assert_eq!(
+            both.emitted_warning_headers,
             vec!["warning: unused variable: `x`".to_string()]
         );
-        assert_eq!(cargo_network_retry_count(&both), 2);
+        assert_eq!(cargo_network_retry_count(retries), 2);
+        assert_eq!(cargo_network_retry_count(real), 0);
         // A warning that merely MENTIONS the phrase later is not a cargo retry header.
-        let lookalike = "warning: unused import: `spurious network error`\n";
-        assert_eq!(warning_header_count(lookalike), 1);
-        let unknown_cargo = "warning: profile package spec `x` did not match any packages\n";
-        assert_eq!(warning_header_count(unknown_cargo), 1);
+        assert_eq!(
+            cargo_network_retry_count("warning: unused import: `spurious network error`\n"),
+            0
+        );
     }
 
     #[test]

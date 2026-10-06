@@ -36,8 +36,7 @@ fn fx_subject_at(ceiling: Nat, profile: String) -> ServingPerformanceSubject {
     collective_transport: none,
     indexer_kv_dtype: Present { value: IndexerKvDtypeOmitted },
     scheduler_admission: Present { value: vllm_scheduler_admission_omitted },
-    launch_profile_key: Present { value: profile },
-  )
+    launch_profile_key: Present { value: profile }, deployment_env_key: Present { value: "env=none" } )
 }
 
 fn fx_subject() -> ServingPerformanceSubject { fx_subject_at(ceiling: 12, profile: "candidate-profile") }
