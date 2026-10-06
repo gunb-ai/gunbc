@@ -482,7 +482,8 @@ fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<Roadmap
               ),
               match m {
                 ManualReady => []
-                _ => blocker(member: "tick_standing", detail: join(["tick ran under ", spawn_mode_label(m: m), ", not manual_ready"], ""))
+                Paused => blocker(member: "tick_standing", detail: join(["tick ran under ", spawn_mode_label(m: m), ", not manual_ready"], ""))
+                AutomaticReady => blocker(member: "tick_standing", detail: join(["tick ran under ", spawn_mode_label(m: m), ", not manual_ready"], ""))
               },
             )
         },

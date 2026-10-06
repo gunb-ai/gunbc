@@ -1,7 +1,7 @@
 module v2.workflow.floor_subject_seed_test
 
 import v2.std.algebra { any }
-import gunbc.rung_drop.roster { standing_rung_drops }
+import gunbc.rung_drop.standing { standing_rung_drops }
 import v2.workflow.floor_subject_seed {
   CheckerDependencyObservation,
   CheckerDependenciesObserved,
@@ -22,6 +22,7 @@ import v2.workflow.floor_subject_seed {
   CheckerSubjectApplicationRefused,
   checker_subject_application,
   checker_widening_standing,
+  reach_planned_for_event,
   SeedCheckerSourceChanged,
   PreparedSubjectSeedGround,
   SeedRequiredGatePrefix,
@@ -403,4 +404,13 @@ test fn the_declared_standing_cites_a_standing_drop() -> Bool {
     WideningWithheldUnderDrop { drop_identity: d } =>
       any(xs: standing_rung_drops(), predicate: fn(drop) { (drop.identity as String) == d })
   }
+}
+
+// THE RULING, BOTH DIRECTIONS: a merge group plans the reach, and a pull request, a push and a run
+// with no event plan none.
+test fn only_a_merge_group_plans_the_reach_differential() -> Bool {
+  reach_planned_for_event(event_name: "merge_group")
+    && !reach_planned_for_event(event_name: "pull_request")
+    && !reach_planned_for_event(event_name: "push")
+    && !reach_planned_for_event(event_name: "")
 }

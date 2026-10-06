@@ -446,45 +446,6 @@ mod tests {
         assert!(refusal.contains("does not list"), "{refusal}");
     }
 
-    // THE REAL FRAME DECIDES: the rule is evaluated from v2.workflow.floor_subject_seed, not
-    // restated here.
-    #[test]
-    fn the_modeled_rule_widens_only_for_a_changed_checker_input() {
-        use CheckerSubjectApplication::*;
-        let roots = default_source_roots();
-        let infer = "src/v1/stage0/src/v1_compiler_infer.rs".to_string();
-        let record = Ok(vec![infer.clone()]);
-        let one = std::slice::from_ref(&infer);
-        // UNDER THE DECLARED STANDING the widening is withheld and names its drop.
-        assert_eq!(
-            checker_subject_application(&roots, &record, one).expect("application"),
-            EveryAdmittedModuleWithheld {
-                changed_checker_paths: vec![infer.clone()],
-                drop_identity: "compiler_change_refusals_land_outside_every_compiled_closure"
-                    .to_string(),
-            }
-        );
-        // APPLIED, the same rule prepares every admitted module.
-        assert_eq!(
-            checker_subject_application_when_applied(&roots, &record, one).expect("application"),
-            PrepareEveryAdmittedModule {
-                changed_checker_paths: vec![infer.clone()]
-            }
-        );
-        assert_eq!(
-            checker_subject_application(&roots, &record, &["src/v2/workflow/x.dag".to_string()])
-                .expect("application"),
-            NarrowSubject
-        );
-        // An EMPTY refusal reason is still unobserved: the Bool carries the state, not the text.
-        assert_eq!(
-            checker_subject_application(&roots, &Err(String::new()), one).expect("application"),
-            CheckerSubjectApplicationRefused {
-                reason: String::new()
-            }
-        );
-    }
-
     fn tempdir_with_manifest() -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "checker_dependency_test_{}_{}",

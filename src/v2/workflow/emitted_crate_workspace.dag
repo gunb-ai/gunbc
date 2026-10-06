@@ -366,7 +366,8 @@ fn emitted_workspace_red(
                     }
                 }
             }
-          _ => Absent
+          RuntimePrelude => Absent
+          ReexportFacade => Absent
         }
     }
   })

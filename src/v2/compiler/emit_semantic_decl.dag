@@ -145,7 +145,11 @@ fn emit_semantic_type_decl(
               )
             }
           )
-        _ => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+        TypeNode { connective: Atom { identity: _ } } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+        TypeNode { connective: Arrow } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+        TypeNode { connective: Cardinality } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+        TypeNode { connective: Instantiation } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
+        ComputationNode { behavior: _ } => outcome_rejected(d: emit_semantic_decl_unsupported_diagnostic(node: node))
       }
     }
   )
