@@ -358,6 +358,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.scm_repository_save_real_execution_witness", function: "scm_sv_a_first_save_from_absence_returns_the_readback_generation_and_admits_the_next_persist" },
+      entry: "dag/test/claim/scm_repository_save_real_execution_witness_test.dag",
+      function: "scm_sv_a_first_save_from_absence_returns_the_readback_generation_and_admits_the_next_persist",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.auth.profile_store_real_path_witness_test", function: "profile_store_read_all_returns_the_upserted_profile_by_real_execution" },
       entry: "dag/test/claim/auth/profile_store_real_path_witness_test.dag",
       function: "profile_store_read_all_returns_the_upserted_profile_by_real_execution",

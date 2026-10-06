@@ -1,8 +1,9 @@
 module test.claim.roadmap.roadmap_belt_recapture_wet_witness_test
 
 // THE RECAPTURE PRODUCER, EXECUTED AGAINST A REAL GIT WORKTREE AND A REAL PROJECT ENVELOPE.
-// Recapture binds HEAD to the attempt's durable SubmissionCapture; a planted capture of the worker
-// commit is required for the mint to proceed, and a clean checkout of a different commit refuses.
+// Recapture's mint seeds an empty project envelope (first guarded save from absence) then persists
+// the candidate against that write's generation. A planted capture of the worker commit is
+// required for the mint to proceed; a clean checkout of a different commit refuses.
 
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, List }

@@ -2098,15 +2098,17 @@ fn floor_route_gap_expectation_chunk_41() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// The test.claim.scm_repository_save_real_execution_witness identity: the guarded save's one real
-// write over the committed v7 fixture. First effect without a hermetic arm is Filesystem.Write (no
-// mock_response). Triple enrollment as for chunk_30: this expectation, a WetScheduledClaim row in
-// local_repo_wet_schedule, and the gunbc.ci_layer_roots LocalRepoWetLane row for
-// scm_repository_save_real_execution_witness_test.dag.
+// The test.claim.scm_repository_save_real_execution_witness identities: the guarded save's real
+// write over the committed v7 fixture (first effect Filesystem.Write), and a first save from
+// absence on a throwaway path (first effect shell.Mktemp.DirWithTemplate). Triple enrollment as
+// for chunk_30: these expectations, WetScheduledClaim rows in local_repo_wet_schedule, and the
+// gunbc.ci_layer_roots LocalRepoWetLane row for scm_repository_save_real_execution_witness_test.dag.
 fn floor_route_gap_expectation_chunk_31() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_fresh_generation_save_applies_and_rewrites_identical_bytes", operation: "Write", ground: NoMockResponse {} },
-    tail: Empty {}
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.scm_repository_save_real_execution_witness.scm_sv_a_first_save_from_absence_returns_the_readback_generation_and_admits_the_next_persist", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Empty {} }
   }
 }
 
