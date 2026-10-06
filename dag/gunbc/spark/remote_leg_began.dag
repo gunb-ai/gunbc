@@ -3,6 +3,7 @@ module gunbc.spark.remote_leg_began
 import std.types { String, Bool, List }
 import std.algebra { trim }
 import v2.std.algebra { filter, length }
+import v2.std.optional { Present, Absent }
 
 // THE IN-BAND BEGAN-LINE, ONE PROTOCOL FOR EVERY PRIVILEGED SPARK LEG. extdeps.ssh.session
 // ssh_client_error_exit_status says why ssh's 255 alone does not establish that nothing ran, and
@@ -34,8 +35,24 @@ fn remote_leg_reported_began(stdout: String) -> Bool {
   length(filter(remote_leg_lines(stdout: stdout), l => l == remote_leg_began_word)) > 0
 }
 
-// The command's own stdout, without the began-line, so a consumer reads exactly what the command
-// printed.
+// THE COMMAND'S OWN STDOUT, BYTE FOR BYTE, without the began-line (side-chat ruling on gunbc#13427).
+// Only the FIRST line that is exactly the marker is removed; every other byte -- leading and trailing
+// whitespace, blank lines, the terminal newline -- is what the command printed. An earlier revision
+// trimmed every line and the whole result, so a consumer that bounds or counts the output (a whole-file
+// read that asks for limit + 1 bytes) saw a trailing newline vanish and accepted a prefix as the whole.
+// A consumer that reads the output as ONE WORD says so through remote_stdout_as_one_word below; nothing
+// is normalized on its behalf.
 fn remote_leg_stdout_without_began(stdout: String) -> String {
-  trim(s: join(filter(remote_leg_lines(stdout: stdout), l => l != remote_leg_began_word), "\n"))
+  let lines = split(s: stdout, delimiter: "\n")
+  match first(filter(enumerate(lines), p => p.second == remote_leg_began_word)) {
+    Absent => stdout
+    Present { value: m } => join(map(filter(enumerate(lines), p => p.first != m.first), p => p.second), "\n")
+  }
+}
+
+// STDOUT READ AS ONE WORD: a state word, a path, a count, a single line. Surrounding whitespace,
+// including the newline the command ended with, is not part of the word. The one place that reading is
+// named, so a consumer chooses it rather than inheriting it from the transport.
+fn remote_stdout_as_one_word(stdout: String) -> String {
+  trim(s: stdout)
 }

@@ -1,5 +1,6 @@
 module gunbc.spark.v41_row_store_encode_run
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, Bool, Int, List, NonEmptyStr, Secret }
 import std.nat { Nat }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -158,7 +159,7 @@ fn v41_store_size(ctx: SparkMaterializeContext, out: NonEmptyStr) -> V41SizeRead
     RemoteUnreachable { cause: c, reach: _ } => V41SizeReadFailed { cause: join(["the stat leg did not run: ", c], "") as NonEmptyStr }
     RemoteRan { exit_code: code, stdout: o, stderr: err } =>
       if code != 0 { V41SizeReadFailed { cause: join(["stat exited ", to_string(code), ": ", trim(s: err)], "") as NonEmptyStr } } else {
-        match parse_int(s: trim(s: o)) {
+        match parse_int(s: remote_stdout_as_one_word(stdout: o)) {
           Absent => V41SizeReadFailed { cause: join(["stat answered a size that is not a number: ", o], "") as NonEmptyStr }
           Present { value: n } => if n < 0 { V41SizeReadFailed { cause: "stat answered a negative size" as NonEmptyStr } } else { V41SizeReadOk { size: byte_size(count: n) } }
         }

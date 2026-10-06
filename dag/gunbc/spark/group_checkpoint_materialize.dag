@@ -1,5 +1,6 @@
 module gunbc.spark.group_checkpoint_materialize
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, NonEmptyStr, Bool, List, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import v2.std.optional { Present, Absent }
@@ -98,7 +99,8 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
             } else {
               match spark_remote_run(ctx: ctx, argv: ["docker", "run", "--rm", "--pull", "never", "--entrypoint", "sh", image.tag as String, "-c", "command -v hf"]) {
                 RemoteUnreachable { cause: c, reach: _ } => HeldImageExecutorRefused { cause: join(["the CLI read leg did not run: ", c], "") }
-                RemoteRan { exit_code: c2, stdout: path, stderr: e2 } =>
+                RemoteRan { exit_code: c2, stdout: raw_path, stderr: e2 } => {
+                  let path = remote_stdout_as_one_word(stdout: raw_path)
                   if c2 != 0 || !starts_with(s: path, prefix: "/") || string_contains(s: path, pattern: "\n") {
                     HeldImageExecutorRefused { cause: join(["the image ", want, " answered no Hub CLI path (exit ", to_string(c2), ", stdout `", path, "`, stderr `", e2, "`)"], "") }
                   } else {
@@ -110,6 +112,7 @@ fn held_image_hub_cli_executor(ctx: SparkMaterializeContext, image: VllmImageDis
                       }
                     }
                   }
+                }
               }
             }
         }
@@ -342,7 +345,7 @@ fn transfer_restarts_line(ctx: SparkMaterializeContext, snapshot: ModelSnapshotD
         RemoteUnreachable { cause: c, reach: _ } => join(["transfer unit restarts: UNREAD (", c, ")\n"], "")
         RemoteRan { exit_code: code, stdout: out, stderr: err } =>
           if code != 0 { join(["transfer unit restarts: UNREAD (exit ", to_string(code), ": ", trim(s: err), ")\n"], "") }
-          else { join(["transfer unit restarts: ", trim(s: out), " (each a failure retried by Restart=on-failure)\n"], "") }
+          else { join(["transfer unit restarts: ", remote_stdout_as_one_word(stdout: out), " (each a failure retried by Restart=on-failure)\n"], "") }
       }
   }
 }

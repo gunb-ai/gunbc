@@ -1,5 +1,6 @@
 module gunbc.spark.fabric_blob_peer
 
+import gunbc.spark.remote_leg_began { remote_stdout_as_one_word }
 import std.types { String, Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.algebra { trim }
@@ -96,7 +97,7 @@ fn fabric_blob_serve(ctx: SparkMaterializeContext) -> FabricBlobServe {
       match spark_remote_run(ctx: ctx, argv: ["systemctl", "is-active", fabric_blob_serve_unit as String]) {
         RemoteUnreachable { cause: c, reach: _ } => fabric_blob_serve_refused(ctx: ctx, step: "serve-state", cause: c)
         RemoteRan { exit_code: _, stdout: state, stderr: _ } =>
-          if trim(s: state) == "active" {
+          if remote_stdout_as_one_word(stdout: state) == "active" {
             FabricBlobServing { serving: FabricBlobHolder { holder: ctx.host, rail_address: rail as NonEmptyStr } }
           } else {
             fabric_blob_serve_start(ctx: ctx, rail: rail as NonEmptyStr)
