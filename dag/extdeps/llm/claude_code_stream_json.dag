@@ -6,7 +6,7 @@ import std.measure { BasisPoint, basis_point }
 import std.decimal { ExactDecimal, decimal_pow10 }
 import std.checked_arithmetic { checked_int_to_nat }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.optional { Present, Absent }
+import v2.std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.parse {

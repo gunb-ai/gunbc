@@ -4,7 +4,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.claim_evidence { RecordedFactId }
 import std.measure { basis_point_count }
-import std.optional { Present, Absent }
+import v2.std.optional { Present, Absent }
 import gunbc.roadmap_model { RoadmapNodeId }
 import extdeps.llm.claude_code_stream_json {
   ClaudeCodeStreamLine,
