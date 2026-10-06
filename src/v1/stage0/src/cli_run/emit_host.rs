@@ -3480,12 +3480,111 @@ mod fixture_closure_union_tests {
         );
     }
 
-    #[test]
-    fn complete_over_budget_is_an_emitted_refusal_not_a_success() {
+    fn rustc_and_run_emitted_capture(
+        stem: &str,
+        complete_limit: Option<usize>,
+        tail_bytes: usize,
+        stderr_payload: &str,
+    ) -> std::process::Output {
+        let body = crate::v1_compiler_emit_rust::shell_capture_drain_body();
+        let limit = match complete_limit {
+            Some(n) => format!("Some({n})"),
+            None => "None".to_string(),
+        };
+        let program = format!(
+            "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
+             let mut output = std::process::Command::new(\"sh\")\n\
+             .args([\"-c\", \"printf %s '{payload}' 1>&2\"])\n\
+             .stdout(std::process::Stdio::piped())\n\
+             .stderr(std::process::Stdio::piped())\n\
+             .spawn()?;\n\
+             let __stderr_complete_limit: Option<usize> = {limit};\n\
+             let __stderr_tail_bytes: usize = {tail};\n\
+             {body}\n\
+             print!(\"{{stderr_truncated}}|{{stderr_total_bytes}}|{{stderr_retained_bytes}}|{{stderr}}\");\n\
+             Ok(())\n\
+             }}\n",
+            payload = stderr_payload,
+            limit = limit,
+            tail = tail_bytes,
+            body = body,
+        );
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-emitted-capture-{}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+            stem
+        ));
+        std::fs::create_dir_all(&root).expect("scratch dir");
+        let src = root.join("main.rs");
+        let exe = root.join("specimen");
+        std::fs::write(&src, program).expect("write emitted capture harness");
+        let compiled = std::process::Command::new("rustc")
+            .args(["--edition=2021", "-o"])
+            .arg(&exe)
+            .arg(&src)
+            .output()
+            .expect("invoke rustc");
         assert!(
-            crate::v1_compiler_emit_rust::shell_capture_drain_body()
-                .contains("WitnessStderrCaptureCompleteBudgetExceeded"),
-            "Complete overflow must refuse in the emitted body"
+            compiled.status.success(),
+            "emitted capture body refused to compile: {}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        let run = std::process::Command::new(&exe)
+            .output()
+            .expect("run emitted capture specimen");
+        let _ = std::fs::remove_dir_all(&root);
+        run
+    }
+
+    #[test]
+    fn emitted_bounded_tail_truncates_and_keeps_the_tail() {
+        let run = rustc_and_run_emitted_capture(
+            "over-tail",
+            None,
+            16,
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+        );
+        assert!(
+            run.status.success(),
+            "over-tail specimen failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            "true|36|16|UVWXYZ0123456789"
+        );
+    }
+
+    #[test]
+    fn emitted_bounded_tail_under_cap_is_complete() {
+        let run = rustc_and_run_emitted_capture("under-cap", None, 16, "abcdefghij");
+        assert!(
+            run.status.success(),
+            "under-cap specimen failed: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&run.stdout),
+            "false|10|10|abcdefghij"
+        );
+    }
+
+    #[test]
+    fn emitted_complete_over_budget_refuses() {
+        let run = rustc_and_run_emitted_capture("complete-over", Some(8), 0, "abcdefghijklmnop");
+        assert!(
+            !run.status.success(),
+            "Complete overflow must refuse, got stdout {:?}",
+            String::from_utf8_lossy(&run.stdout)
+        );
+        let err = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            err.contains("WitnessStderrCaptureCompleteBudgetExceeded"),
+            "{err}"
         );
     }
 
