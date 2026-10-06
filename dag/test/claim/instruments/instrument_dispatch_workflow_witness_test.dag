@@ -3,7 +3,7 @@ module test.claim.instruments.instrument_dispatch_workflow_witness_test
 import std.types { Bool, List, String }
 import v2.std.algebra { length }
 import extdeps.github.actions { Step, RunStep, UsesStep }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import gunbc.instrument_dispatch_workflow {
   instrument_dispatch_steps, instrument_dispatch_seed_step_name,
   InstrumentDispatchWorkflowGenerated, InstrumentDispatchWorkflowGenerationRefused,

@@ -4,7 +4,7 @@ import std.nat { Nat }
 import std.measure {
   celsius_count, millivolt_count, microohm_per_metre_count, millilitre_per_second_count, gram_count, ampere_count,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_power_input_requirement, BoardPowerInputMode, DcIn12V, AtxPsu,
   BoardPowerConnectorKind, Atx12V8Pin, MicroFitAtx4PinSignal,

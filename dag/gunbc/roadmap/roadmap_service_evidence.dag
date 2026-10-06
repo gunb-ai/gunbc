@@ -908,6 +908,7 @@ type ServiceEvidenceSnapshot sole_constructor {
   attempt_key: String
   launch_revision: String
   fields: List<ServiceEvidenceSnapshotField>
+  entries: List<ServiceEvidenceEntry>
 }
 
 type ServiceEvidenceSnapshotDecode
@@ -1196,6 +1197,7 @@ fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attemp
                 attempt_key: attempt,
                 launch_revision: revision,
                 fields: map(decoded, d => d.field),
+                entries: map(decoded, d => d.entry),
               } }
             }
         }
@@ -1207,5 +1209,89 @@ fn service_evidence_snapshot_decode_bound(wire: String, node_id: String?, attemp
 // The one mint from a live receipt: the canonical wire, read back through the same decoder.
 fn service_evidence_snapshot_of_receipt(r: ServiceEvidenceReceipt) -> ServiceEvidenceSnapshotDecode {
   service_evidence_snapshot_decode(wire: service_evidence_receipt_wire(r: r))
+}
+
+// ── TYPED PROJECTIONS OF A PINNED SNAPSHOT, for a consumer that requires a stage to be established ──
+//
+// A decoded snapshot's entries already passed the source authority, so an observed entry here is the
+// typed carrier its landed reader writes. These read it back as typed facts; anything not observed --
+// owed, pending, not_owed, record-absent -- yields none, so a consumer that requires the fact refuses.
+fn service_evidence_snapshot_observed(snapshot: ServiceEvidenceSnapshot, field: String) -> JsonValue? {
+  fold(snapshot.entries, init: none, f: (acc, e) => match acc {
+    Present { value: _ } => acc
+    Absent =>
+      if e.field != field { none }
+      else {
+        match e.standing {
+          StandingObserved { value, source: _ } => Present { value: value }
+          StandingOwed { producer: _ } => none
+          StandingPending { source: _, reason: _ } => none
+          StandingNotOwed { reason: _, source: _ } => none
+          StandingRefused { reason: _ } => none
+        }
+      }
+  })
+}
+
+type SnapshotPublishedResult {
+  pr: String
+  head: String
+  recorded_at: String
+}
+
+// The G4 fields as one published result: failure_attribution observed as the event log's published
+// outcome, and completion_time observed.
+fn service_evidence_snapshot_published_result(snapshot: ServiceEvidenceSnapshot) -> SnapshotPublishedResult? {
+  match service_evidence_snapshot_observed(snapshot: snapshot, field: field_failure_attribution) {
+    Absent => none
+    Present { value: outcome } =>
+      match service_evidence_snapshot_observed(snapshot: snapshot, field: field_completion_time) {
+        Absent => none
+        Present { value: completion } => {
+          let pr = snapshot_string(v: outcome, key: "pr")
+          let head = snapshot_string(v: outcome, key: "head")
+          let at = snapshot_string(v: completion, key: "recorded_at")
+          if snapshot_string(v: outcome, key: "outcome") != "published" || pr == "" || head == "" || at == "" { none }
+          else { Present { value: SnapshotPublishedResult { pr: pr, head: head, recorded_at: at } } }
+        }
+      }
+  }
+}
+
+type SnapshotFinalMetering {
+  seat_time: Second
+  input_tokens: TokenCount
+  output_tokens: TokenCount
+}
+
+// The G3 fields as one Final meter: execution_time and billable_usage both observed (a provisional
+// record is pending, never observed), with both token totals present.
+fn service_evidence_snapshot_final_metering(snapshot: ServiceEvidenceSnapshot) -> SnapshotFinalMetering? {
+  match service_evidence_snapshot_observed(snapshot: snapshot, field: field_execution_time) {
+    Absent => none
+    Present { value: time } =>
+      match service_evidence_snapshot_observed(snapshot: snapshot, field: field_billable_usage) {
+        Absent => none
+        Present { value: usage } =>
+          match snapshot_int(v: time, key: "seconds") {
+            Absent => none
+            Present { value } => {
+              let seconds = value
+              match snapshot_int(v: usage, key: "input_tokens") {
+                Absent => none
+                Present { value } => {
+                  let input = value
+                  match snapshot_int(v: usage, key: "output_tokens") {
+                    Absent => none
+                    Present { value } =>
+                      if seconds < 0 || input < 0 || value < 0 { none }
+                      else { Present { value: SnapshotFinalMetering { seat_time: second(count: seconds), input_tokens: token_count(count: input), output_tokens: token_count(count: value) } } }
+                  }
+                }
+              }
+            }
+          }
+      }
+  }
 }
 

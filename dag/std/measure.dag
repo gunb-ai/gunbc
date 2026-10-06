@@ -1,4 +1,5 @@
 module std.measure
+import std.optional { Present }
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 

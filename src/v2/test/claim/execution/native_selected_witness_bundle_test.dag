@@ -85,7 +85,7 @@ import v2.std.host_transport { ByteString }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.machine { Byte }
 import v2.std.node { Node }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.runtime { RuntimeValue }
 import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_bool_false,

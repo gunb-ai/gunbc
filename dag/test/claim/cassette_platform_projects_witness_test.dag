@@ -2,7 +2,7 @@ module test.claim.cassette_platform_projects_witness
 import std.types {Bool}
 import std.measure {micrometer_count}
 import extdeps.portwell.aptsa_627211_b4 {collins_datasheet_mechanicals}
-import v2.std.optional {Present,Absent}
+import std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {board_grid_tiles,RetainPlatformPowerAssembly,IndependentPowerCassette}
 import product.printed_chassis.cassette_profiles {cassette_profiles,altra_profile,gh200_p4261_profile,mt_jade_profile,mt_collins_profile}
 import product.printed_chassis.cassette_layout {layout_for,current_layout,LayoutKnown,LayoutNeedsBoardOutline,InvalidEdgeMargin}

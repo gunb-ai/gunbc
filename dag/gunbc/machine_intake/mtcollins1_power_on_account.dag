@@ -4,7 +4,7 @@ import v2.std.algebra { any, filter }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present }
+import std.optional { Present }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.tools.sha256sum { Sha256FileDigest, Sha256FileDigestUnavailable }
 import extdeps.ampere.scp_diagnostic {

@@ -4,7 +4,6 @@ import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, String, NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -212,10 +211,6 @@ type FilesystemLinkCreateNew
   | FilesystemLinkCrossDevice { source: String, path: String }
   | FilesystemLinkRefused { path: String, kind: FilesystemFailureKind, error: String }
   | FilesystemLinkKindUnrecognized { path: String, observed: String, error: String }
-
-// THE CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c), stated here beside the operation: the
-// production caller lands in the change stacked directly on this one.
-data filesystem_link_create_new_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc#13095 lands, in which extdeps.realization.materialization_store_local local_store_link_part publishes every staged byte part into the store root through Filesystem.LinkCreateNew and classifies the answer with filesystem_link_create_new (linked or occupied proceed; cross-device and every refusal refuse the commit). SUFFICIENT FOR: the operation has a production consumer on the store's commit path, not only its witnesses; until that change lands the operation is consumed by its witnesses alone, and this row is retired by that landing and nothing else." as NonEmptyStr)
 
 fn filesystem_link_create_new(
   source: String,

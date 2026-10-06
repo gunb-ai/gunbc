@@ -7,7 +7,7 @@ import std.measure {
   Ampere, ampere_count, Milliampere, milliampere, milliampere_count,
   Millimeter, millimeter_count, MicroohmPerMetre, microohm_per_metre_count, Percent, percent, percent_count,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.boards.types { PowerInputPopulationStanding, PowerInputPopulationSpecified, PowerInputMinimumOneStated, PowerInputPopulationUnresolved }
 import extdeps.boards.asrock_rack {
   asrock_altrad8ud_required_input_population, asrock_altrad8ud_atx12v_twelve_volt_pins, asrock_altrad8ud_atx12v_nominal_input,

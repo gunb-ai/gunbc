@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { MicroohmPerMetre, microohm_per_metre }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { Uri, Https }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // AMERICAN WIRE GAUGE: solid copper conductor resistance per metre at 20 C, the figure a 12 V
 // branch's voltage-drop derivation multiplies by its length.

@@ -3,7 +3,7 @@ module test.claim.host_cli_dependency_wet_witness_test
 import extdeps.tools.gnu_coreutils { true_program }
 
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.types { Bool, NonEmptyStr }
 import extdeps.tools { CliTool, SourceCoreutils }
 import extdeps.tools.npm { npm_cli_tool }

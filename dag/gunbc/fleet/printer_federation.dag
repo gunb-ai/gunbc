@@ -2,7 +2,7 @@ module gunbc.fleet.printer_federation
 
 import gunbc.fleet_intent_network {operator_host_srv1}
 import std.types { String, NonEmptyStr, List, Map }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.oidc_claim_pins { OidcClaimPin, claim_pins_attribute_condition, fleet_converge_job_claim_pins }

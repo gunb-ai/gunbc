@@ -7,7 +7,7 @@ import extdeps.fans.arctic { arctic_p8_cable_length, arctic_p8_pwm_sharing, arct
 import std.types { Bool, List }
 import std.nat { Nat }
 import std.measure { watt, millivolt, millivolt_count, millimeter, millimeter_count, milliampere_count, percent, gram, watt_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.printed_chassis.node_power_feed {
   NodeFeedInputs, declared_connector_derating, node_feed, NodeFeedReading, NodeFeedScreeningOnly, NodeFeedRefused,
   FeedRefusalCause, LoadExceedsBoardInputs, PopulationRuleUnresolved, BranchGaugeUnknown, ConnectorVoltageBelowBand, SetpointAboveBand,

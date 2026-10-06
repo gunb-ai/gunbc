@@ -1,27 +1,29 @@
 module test.claim.roadmap.roadmap_belt_stale_line_witness_test
 
-// A HEAD LINE THAT INTEGRATED A STALE CAPTURE IS NEITHER INTEGRATED INTO NOR PUBLISHED (2026-10-03).
-// The planted repository is srv2 shell-typed-invocation's shape: commit 0 the seeded base
-// ('project base: <R>'), commit 1 a dispatch candidate, commit 2 the squash integration of 1 into 0.
-// The derivation's pure half -- the integrated sources on the head's line, and the verdict over
-// their observed capture bases -- is witnessed here with the bases supplied as values; the effectful
-// shell (belt_head_line_standing) only reads each source attempt's spawn-destination base_sha.
+// A HEAD LINE'S STANDING IS A PURE READ OF TYPED MEMBERS (the BaseAdvance follow-up to gunbc#13111).
+// A candidate minted as the child of the intake commit for its base is on base by construction, so a
+// line integrating it is clean with no attempt observed; the publish base is the deepest intake
+// commit the head's tree contains. The pre-intake population -- srv2's shell-typed-invocation -- is
+// converted in place and corrected by supersession, witnessed by
+// test.claim.roadmap.roadmap_belt_supersession_witness_test. The publication plan claims below are the
+// realizer's pure half, unchanged.
 
 import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm.ancestry { RepositoryCommitRef }
+import extdeps.git.object_store { git_object_id_from_untagged_hex }
+import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
+import gunbc.scm.intake { IntakeRevision, GitIntakeRevision }
 import gunbc.scm.repository_envelope { RepositoryEnvelope }
-import gunbc.scm.squash_merge { squash_merge, SquashMerged }
+import gunbc.scm.squash_merge { SquashMergeBaseRefused, SquashMergeConflicted, SquashMergeRootMissing, SquashMergeRootIsAuthoredSource, SquashMergeRootIsSemanticNode, SquashMergeResultLocatorCollision, SquashMergeAllocatorInvalid, SquashMergeSourceUnrecoverable, squash_merge, SquashMerged }
 import gunbc.roadmap.roadmap_belt_commit { belt_candidate_commit_message, belt_candidate_commit_subject, CandidateCommitSubject }
 import gunbc.roadmap_belt_actuate {
+  belt_line_standing, LineClean, IntegratesStale, LineStandingUnderivable,
   belt_line_integrated_sources, LineSourcesRead, LineSourcesUnreadable,
-  belt_line_standing, BeltObservedLineSource, BeltLineSource,
-  LineClean, LineIntegratesStale, LineStandingUnderivable,
-  BaseShaObserved, BaseShaUnobserved,
+  belt_publish_base, PublishBaseDerived, PublishBaseUnderivable,
   belt_publish_plan, belt_publish_apply, belt_publish_tree_of, belt_publish_binds, belt_publish_deletes, PublishBind,
 }
 import gunbc.scm.object_store { CorpusManifestEntry, AuthoredSourceTarget, scm_object_identity, authored_source_object }
-import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head }
+import test.fixture.scm_repository_builder { MbBuild, MbBuilt, MbSetupFailed, mb_start, mb_stage, mb_commit, mb_head, mb_intake_base, mb_intake_advance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -33,88 +35,110 @@ type PlantedLine {
   head: RepositoryCommitRef
 }
 
-fn planted_line() -> PlantedLine? {
-  let base = mb_commit(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at the base"), message: join(["project base: ", stale_line_repository_base], ""))
+// THE TYPED SHAPE NEEDS NO OBSERVATION: a candidate minted as the child of the intake commit for its
+// base is on base whatever the (here deliberately unobservable) attempt record says, and the line
+// integrating it is clean.
+fn rev(hex: String) -> IntakeRevision? {
+  match git_object_id_from_untagged_hex(hex: hex) {
+    Absent => none
+    Present { value: id } => Present { value: GitIntakeRevision { id: id } }
+  }
+}
+
+fn typed_line(r0: IntakeRevision) -> PlantedLine? {
+  let base = mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at the base"), message: "project base", revision: r0)
   match mb_head(build: base) {
     Absent => none
-    Present { value: root } => {
-      let candidate = mb_commit(
-        build: mb_stage(build: base, path: "src/a.dag", text: "A as the worker left it"),
-        message: belt_candidate_commit_message(node_id: "shell-dag-cron-entry-line-builder", attempt_key: "21f8ff0a982557dc") as String,
-      )
-      match candidate {
+    Present { value: root } =>
+      match mb_commit(build: mb_stage(build: base, path: "src/a.dag", text: "A as the worker left it"), message: "dispatch candidate: n a1") {
         MbSetupFailed => none
         MbBuilt { repository, at } =>
           match at {
             Absent => none
             Present { value: source } =>
-              match squash_merge(repository: repository, target: root, source: source, message: "integrate 2ccf4dc into shell-typed-invocation") {
+              match squash_merge(repository: repository, target: root, source: source, message: "integrate") {
                 SquashMerged { repository: merged, reference } => Present { value: PlantedLine { repository: merged, head: reference } }
-                _ => none
+                SquashMergeBaseRefused { refusal: _ } => none
+                SquashMergeConflicted { conflicts: _ } => none
+                SquashMergeRootMissing { side: _, root: _ } => none
+                SquashMergeRootIsAuthoredSource { side: _, root: _ } => none
+                SquashMergeRootIsSemanticNode { side: _, root: _ } => none
+                SquashMergeResultLocatorCollision { identity: _ } => none
+                SquashMergeAllocatorInvalid => none
+                SquashMergeSourceUnrecoverable { cause: _ } => none
               }
           }
       }
-    }
   }
 }
 
-fn observed_with(sources: List<BeltLineSource>, base_sha: String) -> List<BeltObservedLineSource> {
-  map(sources, s => BeltObservedLineSource { line: s, captured: BaseShaObserved { base_sha: base_sha } })
+test fn a_typed_line_is_on_base_without_observing_any_attempt() -> Bool {
+  match rev(hex: stale_line_repository_base) {
+    Absent => false
+    Present { value: r0 } =>
+      match typed_line(r0: r0) {
+        Absent => false
+        Present { value: line } =>
+          match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
+            LineSourcesUnreadable { detail: _ } => false
+            LineSourcesRead { sources } =>
+              count(sources) == 1
+                && match belt_line_standing(commits: line.repository.commits, head: line.head) {
+                  LineClean => true
+                  IntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
+                  LineStandingUnderivable { detail: _ } => false
+                }
+          }
+      }
+  }
 }
 
-// THE STALE LINE REFUSES, naming the integration and the source: commit 2 integrated candidate 1,
-// captured against b7f9070 into a repository based at d012e00.
-test fn a_line_integrating_a_stale_capture_is_refused() -> Bool {
-  match planted_line() {
+// THE PUBLISH BASE IS THE DEEPEST INTAKE COMMIT THE HEAD'S TREE CONTAINS. The head is the base line
+// (r0) after integrating a candidate captured on r1, so it holds r1's upstream change: publishing
+// against r0 would ship that change as the work.
+test fn the_publish_base_is_the_deepest_intake_the_heads_tree_contains() -> Bool {
+  match rev(hex: stale_line_repository_base) {
     Absent => false
-    Present { value: line } =>
-      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
-        LineSourcesUnreadable { detail: _ } => false
-        LineSourcesRead { sources } =>
-          count(sources) == 1
-            && match belt_line_standing(repository_base_message: join(["project base: ", stale_line_repository_base], ""), observed: observed_with(sources: sources, base_sha: stale_line_captured_base)) {
-              LineIntegratesStale { integration, source, captured_against, repository_base: _ } =>
-                integration == 2 && source == 1 && captured_against == stale_line_captured_base
-              LineClean => false
-              LineStandingUnderivable { detail: _ } => false
+    Present { value: r0 } =>
+      match rev(hex: stale_line_captured_base) {
+        Absent => false
+        Present { value: r1 } => {
+          let base = mb_intake_base(build: mb_stage(build: mb_start(), path: "src/a.dag", text: "A at r0"), message: "project base", revision: r0)
+          match mb_head(build: base) {
+            Absent => false
+            Present { value: root } => {
+              let advanced = mb_intake_advance(build: mb_stage(build: base, path: "src/up.dag", text: "upstream at r1"), message: "advance", from: r0, to: r1)
+              match mb_head(build: advanced) {
+                Absent => false
+                Present { value: advance_ref } =>
+                  match mb_commit(build: mb_stage(build: advanced, path: "src/a.dag", text: "A as the worker left it"), message: "dispatch candidate: n a2") {
+                    MbSetupFailed => false
+                    MbBuilt { repository, at } =>
+                      match at {
+                        Absent => false
+                        Present { value: candidate } =>
+                          match squash_merge(repository: repository, target: root, source: candidate, message: "integrate") {
+                            SquashMerged { repository: merged, reference: head } =>
+                              match belt_publish_base(commits: merged.commits, head: head) {
+                                PublishBaseDerived { base: b } =>
+                                  repository_commit_ref_eq(left: b.commit.reference, right: advance_ref) && b.sha == stale_line_captured_base
+                                PublishBaseUnderivable { detail: _ } => false
+                              }
+                            SquashMergeBaseRefused { refusal: _ } => false
+                            SquashMergeConflicted { conflicts: _ } => false
+                            SquashMergeRootMissing { side: _, root: _ } => false
+                            SquashMergeRootIsAuthoredSource { side: _, root: _ } => false
+                            SquashMergeRootIsSemanticNode { side: _, root: _ } => false
+                            SquashMergeResultLocatorCollision { identity: _ } => false
+                            SquashMergeAllocatorInvalid => false
+                            SquashMergeSourceUnrecoverable { cause: _ } => false
+                          }
+                      }
+                  }
+              }
             }
-      }
-  }
-}
-
-// THE CLEAN LINE PASSES: the same graph, its source captured on the repository's own base.
-test fn a_line_whose_sources_share_the_repository_base_is_clean() -> Bool {
-  match planted_line() {
-    Absent => false
-    Present { value: line } =>
-      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
-        LineSourcesUnreadable { detail: _ } => false
-        LineSourcesRead { sources } =>
-          match belt_line_standing(repository_base_message: join(["project base: ", stale_line_repository_base], ""), observed: observed_with(sources: sources, base_sha: stale_line_repository_base)) {
-            LineClean => true
-            LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
-            LineStandingUnderivable { detail: _ } => false
           }
-      }
-  }
-}
-
-// AN UNOBSERVABLE CAPTURE BASE IS UNDERIVABLE, NOT CLEAN.
-test fn an_unobservable_capture_base_is_underivable_not_clean() -> Bool {
-  match planted_line() {
-    Absent => false
-    Present { value: line } =>
-      match belt_line_integrated_sources(commits: line.repository.commits, head: line.head) {
-        LineSourcesUnreadable { detail: _ } => false
-        LineSourcesRead { sources } =>
-          match belt_line_standing(
-            repository_base_message: join(["project base: ", stale_line_repository_base], ""),
-            observed: map(sources, s => BeltObservedLineSource { line: s, captured: BaseShaUnobserved { reason: "spawn origin unreadable" } }),
-          ) {
-            LineStandingUnderivable { detail: _ } => true
-            LineClean => false
-            LineIntegratesStale { integration: _, source: _, captured_against: _, repository_base: _ } => false
-          }
+        }
       }
   }
 }

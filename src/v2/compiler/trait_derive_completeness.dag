@@ -38,7 +38,7 @@ import v2.std.algebra {
   Cons,
   Empty
 }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

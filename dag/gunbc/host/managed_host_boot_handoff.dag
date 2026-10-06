@@ -2,7 +2,7 @@ module gunbc.managed_host_boot_handoff
 
 import std.types { List, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow }
 import gunbc.managed_host { ManagedHost, ManagedHostBound, ManagedHostAccessUnobserved, ManagedHostNotSecured, ManagedHostEndpointMismatch, managed_host_binding, managed_hosts }

@@ -2,7 +2,7 @@ module product.printed_chassis.platform_projects_review
 import std.types {List,String}
 import product.printed_chassis.board_mechanical_reference {mounting_reference_json,cited_figure_json}
 import std.measure {micrometer_count}
-import v2.std.optional {Present,Absent}
+import std.optional {Present,Absent}
 import product.printed_chassis.cassette_profile {CassetteProfile,BoardOutlineKnown,BoardOutlinePending,RetainPlatformPowerAssembly,IndependentPowerCassette,board_grid_tiles}
 import product.printed_chassis.cassette_profiles {cassette_profiles}
 import product.printed_chassis.cassette_layout {proposed_panel_print_policy,partition_profile,TrayPartitionKnown,TrayPartitionInvalid,TrayPartitionNeedsOutline,layout_for,LayoutKnown,LayoutNeedsBoardOutline,InvalidEdgeMargin}

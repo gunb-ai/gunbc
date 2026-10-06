@@ -1,5 +1,5 @@
 module product.printed_chassis.cassette_profile
-import v2.std.optional {Present}
+import std.optional {Present}
 import std.types {NonEmptyStr,List,Int}
 import std.measure {Micrometer,micrometer_count}
 import product.printed_chassis.bed_partition {AxisPrintAllowance,allocate_axis,AxisAllocated,AxisAllocationInvalid,AxisAllocationNoFit}

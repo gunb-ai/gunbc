@@ -1,6 +1,6 @@
 module gunbc.runner.runner_teardown_receipt
 
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ObservationInstant }
 import std.decl_ref { declaration_ref_eq }

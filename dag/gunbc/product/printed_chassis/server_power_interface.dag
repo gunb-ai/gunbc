@@ -1,7 +1,7 @@
 module product.printed_chassis.server_power_interface
 import std.types {Int,List,NonEmptyStr,String,Bool}
 import std.measure {Watt,watt,watt_count,Volt,volt,volt_count,milliampere_count,Percent,percent,percent_count}
-import v2.std.optional {Present,Absent}
+import std.optional {Present,Absent}
 import extdeps.power.fsp_crps {ServerPowerReference,fsp800_50fs_reference,fsp1200_50fs_reference}
 import product.node_power_envelope {PsuAdequacy,PsuAdequate,PsuUndersized,PsuUndecidable,psu_adequacy_for_load}
 import extdeps.languages.json.emit {JsonValue,json_object,json_kv,json_string,json_int,json_array,json_null}

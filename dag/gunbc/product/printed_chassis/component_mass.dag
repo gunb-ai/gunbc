@@ -5,7 +5,7 @@ import extdeps.cooling.noctua_ampere {nh_u14s_amp_4926}
 import std.types {Bool,Int,List,String,NonEmptyStr}
 import std.measure {Gram,gram,gram_count}
 import std.affine_space {Point3,signed_frame_component_count}
-import v2.std.optional {Present,Absent}
+import std.optional {Present,Absent}
 import extdeps.cpu.ampere {ampere_altra_max_typical_package_mass}
 import extdeps.memory.samsung {m393a8g40d40_crb0q_catalog}
 import extdeps.memory.types {HostMemoryPopulation}

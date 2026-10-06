@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.functional_print_features_confused_with_supp
 import std.types {NonEmptyStr}
 import gunbc.recurring_failure_mode {RecurringFailureMode}
 
-data functional_print_features_confused_with_supports:RecurringFailureMode=RecurringFailureMode {
+data functional_print_features_confused_with_supports: RecurringFailureMode = RecurringFailureMode {
  identity:"functional_print_features_confused_with_supports" as NonEmptyStr,
  receipts:[
   "2026-10-04 cassette prototype: the operator removed both integral rear-arm sockets while clearing supports. Support material was trapped in the mating channels, and the functional walls resembled disposable supports.",

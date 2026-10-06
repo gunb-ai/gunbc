@@ -39,7 +39,7 @@ import v2.std.node {
   Value,
   symbol_lexeme,
 }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 
 // WHY THIS IS NOT "COUNT THE WRAPPER-RETAINED DIAGNOSTICS".
 //

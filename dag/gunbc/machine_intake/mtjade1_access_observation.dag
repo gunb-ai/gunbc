@@ -36,7 +36,7 @@ import extdeps.languages.json.parse {
   json_field_string,
   json_field_value,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.machine_intake_bmc_firmware_family_discriminator {
   ManagerIdentityObservation,
   discriminate_family,
