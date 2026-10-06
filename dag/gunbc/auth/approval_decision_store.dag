@@ -283,14 +283,16 @@ fn json_field(v: JsonValue, key: String) -> JsonFieldRead {
 fn json_field_string(v: JsonValue, key: String) -> String? {
   match json_field(v: v, key: key) {
     FieldString { value: s } => if s == "" { none } else { Present { value: s } }
-    _ => none
+    FieldBool { value: _ } => none
+    FieldMissing { key: _ } => none
   }
 }
 
 fn json_field_bool(v: JsonValue, key: String) -> Bool? {
   match json_field(v: v, key: key) {
     FieldBool { value: b } => Present { value: b }
-    _ => none
+    FieldString { value: _ } => none
+    FieldMissing { key: _ } => none
   }
 }
 

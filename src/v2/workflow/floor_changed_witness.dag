@@ -3,6 +3,7 @@ module v2.workflow.floor_changed_witness
 import v2.std.algebra { list_reverse }
 import std.types { List }
 import v2.workflow.required_floor {
+  PlannedAsReachConsumer,
   RequiredFloorDisposition,
   required_floor_disposition_name,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
@@ -310,6 +311,8 @@ fn changed_witness_execution_standing(
         Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         PlannedAsChangedWitness =>
           changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
+        PlannedAsReachConsumer =>
+          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
         DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
         DeclinedOutsideRequiredGate => Declined { disposition: d }
@@ -358,6 +361,7 @@ fn changed_witness_decline_blocks(disposition: RequiredFloorDisposition) -> Bool
       })
     Planned => true
     PlannedAsChangedWitness => true
+    PlannedAsReachConsumer => true
     DeclinedLongModule { matched_prefix: _ } => true
     DeclinedFixtureMember { matched_prefix: _ } => true
     DeclinedOutsideRequiredGate => true

@@ -22,7 +22,7 @@ import extdeps.github.actions_environment { github_runner_temp_variable_name }
 import gunbc.clock_read { clock_now_probed_at }
 import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.auth.approval_capability { utc_instant_is_canonical }
-import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, request_revision_of, StoredApprovalRequest }
+import gunbc.auth.approval_decision_store { grant_from_approved_decision, GrantDerived, GrantForAnotherIntent, GrantStillPending, GrantEscalationNotFiled, GrantStoreUnreadable, request_revision_of, StoredApprovalRequest }
 import gunbc.auth.approval_keyring_pins { approval_submission_mac_key_path_env }
 import gunbc.auth.approval_request_client {
   sign_stored_request, approval_submit_url, approval_status_url, approval_poll_standing,
@@ -95,7 +95,9 @@ fn approval_derive<Subject>(reading: ApprovalReading, request: AuthorizationRequ
       match grant_from_approved_decision(request: request, revision: r, decided_by: by, decided_at: at, execute_by: until) {
         GrantForAnotherIntent { requested_revision: a, decided_revision: b } => ApprovalNotDerived { cause: ApprovalIntentMismatch { requested_revision: a, decided_revision: b } }
         GrantDerived { authorization: auth } => ApprovalDerived { authorization: auth }
-        _ => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStillPending { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantEscalationNotFiled { escalation_id: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
+        GrantStoreUnreadable { detail: _ } => ApprovalNotDerived { cause: ApprovalStoreUnreadable { detail: "the approved decision did not yield a grant" as NonEmptyStr } }
       }
   }
 }

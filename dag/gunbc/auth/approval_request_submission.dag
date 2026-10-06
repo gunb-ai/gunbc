@@ -4,11 +4,11 @@ import std.decl_ref { decl_ref }
 import std.types { Bool, Int, NonEmptyStr, String, Secret, HttpStatus }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.filesystem.filesystem_io { Filesystem, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read }
-import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, mac_sign, mac_verify, mac_verification_reason }
+import extdeps.crypto.mac { MacKey, MacKeyId, MacSigning, MacSigned, MacKeyMaterialNotHex, MacVerification, MacVerified, MacTagMismatch, MacKeyUnknown, MacKeyRetired, MacSuiteMismatch, MacTagMalformed, mac_sign, mac_verify, mac_verification_reason }
 import extdeps.languages.json.emit { JsonValue, JsonString, serialize_json, json_object, json_kv, json_string }
 import extdeps.languages.json.parse { JsonDocumentParsed, JsonDocumentUnreadable, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject, parse_json_document, json_object_unique_member }
 import extdeps.transports.rest { RestResult, RestAnswered, RestRefused }
-import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire }
+import extdeps.ntfy.ntfy { NtfyMessage, NtfyPublishOutcome, ntfy_publish_outcome_of, NtfyPublishAcceptance, NtfyAccepted, ntfy_publish_acceptance, ntfy_publish_outcome_sentence, ntfy_priority_wire, ntfy_cache_wire, NtfyRefusedExplicitly, NtfyAcceptanceIndeterminate }
 import gunbc.secret_provision { SecretRef, fleet_secret_ref, secret_ref_pin_version }
 import gunbc.auth.approval_capability { ProposedDecision, ProposeApprove, ProposeDeny, approval_capability_signing_input }
 import gunbc.auth.approval_broker { SubmissionAdmission, SubmissionAdmitted, SubmissionRequesterNotEnrolled, SubmissionAuthorityNotPermittedForRequester, admit_submission, BrokerApproved, BrokerDenied }
@@ -182,7 +182,7 @@ fn admit_parsed_submission(tag_hex: NonEmptyStr, request: StoredApprovalRequest,
     ApprovalKeyringRefused { cause: c } => SubmissionNotAdmitted { refusal: SubmissionKeyUnavailable { cause: c } }
     ApprovalKeyLoaded { key: key } => {
       let verification: MacVerification = mac_verify(key: key, message: submission_message(request: request), tag_hex: tag_hex)
-      let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  _ => false }
+      let enrolled = match verification { MacVerified { verified: v } => v.message == submission_message(request: request)  MacTagMismatch { key_id: _ } => false  MacKeyUnknown { key_id: _ } => false  MacKeyRetired { key_id: _, retired_at: _ } => false  MacSuiteMismatch { expected: _, key_suite: _ } => false  MacTagMalformed { octets_declared: _, octets_expected: _ } => false }
       match admit_submission(requester: request.requester, authority: approval_capability_authority, requester_enrolled: enrolled, authority_permitted: approval_submission_authority_permitted) {
         SubmissionRequesterNotEnrolled { requester: _ } => SubmissionNotAdmitted { refusal: SubmissionNotEnrolled { detail: mac_verification_reason(v: verification) } }
         SubmissionAuthorityNotPermittedForRequester { requester: rq, authority: a } => SubmissionNotAdmitted { refusal: SubmissionAuthorityRefused { requester: rq, authority: a } }
@@ -323,7 +323,9 @@ fn notify_filed(
           NotificationPublisherTokenUnavailable { detail: d } => SubmissionFiledPublisherTokenUnavailable { escalation_id: request.escalation_id, detail: d }
           NotificationAttempted { publish: p, acceptance: a } => match a {
             NtfyAccepted { message_id: Present { value: m } } => SubmissionFiledAndNotified { escalation_id: request.escalation_id, message_id: m }
-            _ => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyAccepted { message_id: Absent } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyRefusedExplicitly { status: _, detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
+            NtfyAcceptanceIndeterminate { detail: _ } => SubmissionFiledNotNotified { escalation_id: request.escalation_id, publish: p }
           }
         }
       }

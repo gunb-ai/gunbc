@@ -174,7 +174,42 @@ fn live_deploy_pre_mutation_access(effect: HostEffect, access: DeployAccess) -> 
   match effect {
     LiveDeployApply { warrant: _ } => deploy_access_sudoers_install_scope(access: access)
     LiveDeployRetract { spec: _ } => deploy_access_sudoers_install_scope(access: access)
-    _ => access
+    RedfishAction { action: _ } => access
+    ConvergePlan { policy: _ } => access
+    OsInstallActuatorToolchainEnsure {} => access
+    EnsureBuildCacheInstance { desired: _ } => access
+    ProvisionCodexRuntime {} => access
+    EnsureCompilePoolSlice {} => access
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => access
+    ReadEffectivePosixPrincipal { read: _ } => access
+    SudoNopasswdExecuteProbe { probe: _ } => access
+    SudoNopasswdGrantListProbe { probe: _ } => access
+    Srv3InstallMediaFetch => access
+    Srv3SeededInstallMediaRemaster => access
+    Srv3SeededInstallMediaToolchainEnsure => access
+    Srv3BmcwebSessionLogin => access
+    Srv3BmcwebTokenExtract => access
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => access
+    CodexSupervisedWorkerTurn { intent: _, lease_key: _ } => access
+    Srv3BootOnceReadBackSleep => access
+    Srv3ReceiptEmit { lines: _ } => access
+    HostIdentityShortHostnameRead => access
+    LiveDeployApprovalBrokerDarkInstall { spec: _, candidate: _ } => access
+    LiveDeployMicrovmControllerInstall { candidate: _ } => access
+    LiveDeployEnsureDependency { dep: _ } => access
+    LiveDeployDigestReadback { port: _ } => access
+    LiveDeployServeRoute { endpoint: _, enabled: _ } => access
+    DeployAccessPreflight {} => access
+    EnsureActionsRunnerRelease { runner_release: _ } => access
+    EnsureRunnerSlotDirectory { slot: _, artifact: _ } => access
+    EnsureRunnerJitWrapper { host_label: _ } => access
+    EnsureRunnerSystemdTemplate { host_label: _ } => access
+    EnsureRunnerMemoryCaps { slot: _ } => access
+    ActivateRunnerSlot { slot: _ } => access
+    ReplaceRunnerIncarnation { from: _, cause: _ } => access
+    ObserveRunnerLocalState { slot: _ } => access
+    ObserveGitHubRunnerRegistration { slot: _, organization: _ } => access
+    ProbeToolchainHomeInterference {} => access
   }
 }
 
@@ -996,7 +1031,13 @@ fn approval_broker_liveness_poll(
           }
         }
       }
-      _ => read
+      ServeLivenessBodyUnparseable => read
+      ServeLivenessBodyNotAnObject => read
+      ServeLivenessRevisionAbsent => read
+      ServeLivenessRevisionDuplicated { count: _ } => read
+      ServeLivenessRevisionNotAString => read
+      ServeLivenessRevisionMalformed { text: _ } => read
+      ServeLivenessObserved { revision: _ } => read
     }
   }
 }

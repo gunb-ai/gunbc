@@ -1470,70 +1470,8 @@ fn dashboard_instance_apply_preflight(
                       step: "initial-reconcile",
                       detail: reason as String,
                     )
-                  _ => {
-                    let listener = dashboard_target_probe(
-                      instance: instance,
-                      program: "/usr/bin/nc" as FilePath,
-                      args: [
-                        "-z",
-                        "127.0.0.1",
-                        to_string(instance.listen_port),
-                      ],
-                    )
-                    if listener.success && !observed.health_current {
-                      dashboard_apply_preflight_refused(
-                        instance: instance,
-                        step: "listen-port-conflict",
-                        detail: join([
-                          "port ",
-                          to_string(instance.listen_port),
-                          " already accepts TCP but does not identify as this dashboard instance",
-                        ], ""),
-                      )
-                    } else if !observed.provider_runtime_ready {
-                      dashboard_apply_preflight_refused(
-                        instance: instance,
-                        step: "provider-runtime-unrealized",
-                        detail: join([
-                          "codex --version did not realize ",
-                          codex_runtime_version_identity_marker(),
-                          " through ",
-                          dashboard_environment_binding_executable as String,
-                          if observed.provider_runtime_detail == "" {
-                            ""
-                          } else {
-                            join([": ", observed.provider_runtime_detail], "")
-                          },
-                        ], ""),
-                      )
-                    } else if !observed.provider_authenticated {
-                      match dashboard_instance_provider_executable(instance: instance) {
-                        Absent =>
-                          dashboard_apply_preflight_refused(
-                            instance: instance,
-                            step: "provider-executable-placement",
-                            detail: dashboard_instance_provider_executable_refusal_detail(
-                              instance: instance,
-                            ),
-                          )
-                        Present { value: codex_program } =>
-                          DashboardApplyPreflightBootstrapPending {
-                            instance_id: instance.instance_id,
-                            source_revision: source_revision,
-                            state_root: dashboard_instance_provider_state_root(instance: instance),
-                            remediation: dashboard_provider_device_login_command(
-                              instance: instance,
-                              codex_program: codex_program,
-                            ),
-                          }
-                      }
-                    } else {
-                      DashboardApplyPreflightReady {
-                        instance_id: instance.instance_id,
-                        source_revision: source_revision,
-                      }
-                    }
-                  }
+                  DashboardInstanceConverged => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
+                  DashboardInstanceApply { plan: _ } => dashboard_apply_preflight_after_reconcile(instance: instance, observed: observed, source_revision: source_revision)
                 }
               }
               }
@@ -1542,6 +1480,75 @@ fn dashboard_instance_apply_preflight(
         }
       }
       }
+    }
+  }
+}
+
+fn dashboard_apply_preflight_after_reconcile(
+  instance: HostDashboardInstance,
+  observed: DashboardInstanceObserved,
+  source_revision: CommitSha,
+) -> DashboardApplyPreflightResult {
+  let listener = dashboard_target_probe(
+    instance: instance,
+    program: "/usr/bin/nc" as FilePath,
+    args: [
+      "-z",
+      "127.0.0.1",
+      to_string(instance.listen_port),
+    ],
+  )
+  if listener.success && !observed.health_current {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "listen-port-conflict",
+      detail: join([
+        "port ",
+        to_string(instance.listen_port),
+        " already accepts TCP but does not identify as this dashboard instance",
+      ], ""),
+    )
+  } else if !observed.provider_runtime_ready {
+    dashboard_apply_preflight_refused(
+      instance: instance,
+      step: "provider-runtime-unrealized",
+      detail: join([
+        "codex --version did not realize ",
+        codex_runtime_version_identity_marker(),
+        " through ",
+        dashboard_environment_binding_executable as String,
+        if observed.provider_runtime_detail == "" {
+          ""
+        } else {
+          join([": ", observed.provider_runtime_detail], "")
+        },
+      ], ""),
+    )
+  } else if !observed.provider_authenticated {
+    match dashboard_instance_provider_executable(instance: instance) {
+      Absent =>
+        dashboard_apply_preflight_refused(
+          instance: instance,
+          step: "provider-executable-placement",
+          detail: dashboard_instance_provider_executable_refusal_detail(
+            instance: instance,
+          ),
+        )
+      Present { value: codex_program } =>
+        DashboardApplyPreflightBootstrapPending {
+          instance_id: instance.instance_id,
+          source_revision: source_revision,
+          state_root: dashboard_instance_provider_state_root(instance: instance),
+          remediation: dashboard_provider_device_login_command(
+            instance: instance,
+            codex_program: codex_program,
+          ),
+        }
+    }
+  } else {
+    DashboardApplyPreflightReady {
+      instance_id: instance.instance_id,
+      source_revision: source_revision,
     }
   }
 }
@@ -1796,7 +1803,14 @@ fn dashboard_bootstrap_only_ops(
       DashboardEnsureDirectory { path: _ } => true
       DashboardEnsureProviderStateRoot { path: _ } => true
       DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path: _ } => true
-      _ => false
+      DashboardHydrateControllerHistory { controller_repo: _, history_remote: _ } => false
+      DashboardPrepareGitBundle { controller_repo: _, anchor_ref: _ } => false
+      DashboardStageGitBundle { controller_repo: _, staged_bundle: _ } => false
+      DashboardEnsureOwnershipMarker { path: _, instance_id: _ } => false
+      DashboardEnsureLocalOrigin { bundle: _, origin: _, source_ref: _, publish_ref: _ } => false
+      DashboardEnsureSourceRepo { origin: _, repo: _, anchor_ref: _ } => false
+      DashboardVerifyProviderRuntime { executable: _, state_root: _ } => false
+      DashboardVerifyProviderAuth { executable: _, state_root: _ } => false
     })
 }
 

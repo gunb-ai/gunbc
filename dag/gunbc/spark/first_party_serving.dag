@@ -20,7 +20,7 @@ import product.fabric.provider_admission {
 }
 import gunbc.spark.fabric_switch_observed { fabric_lane_observations }
 import gunbc.spark.vllm_observed {
-  VllmModelsRouteReadbackStanding, ModelsRouteRead, VllmModelsRouteReadback,
+  VllmModelsRouteReadbackStanding, ModelsRouteRead, ModelsRouteEntryAbsent, ModelsRouteFieldAbsent, ModelsRouteFieldUnreadable, ModelsRouteEntryDuplicated, ModelsRouteDocumentUnreadable, VllmModelsRouteReadback,
 }
 import extdeps.vllm.usage_stats {
   VllmUsageStatsLaunchStanding, UsageStatsDisabledByLaunch, UsageStatsEnabledByDefault,
@@ -563,7 +563,11 @@ fn spark_realization_identity(realization: SparkServingRealization) -> SparkReal
           }
         Absent => RealizationDeclaredPathUnpinned
       }
-    _ => RealizationReadbackUnresolved
+    ModelsRouteEntryAbsent { served_model_id: _, unexaminable_entries: _ } => RealizationReadbackUnresolved
+    ModelsRouteFieldAbsent { served_model_id: _, field: _ } => RealizationReadbackUnresolved
+    ModelsRouteFieldUnreadable { served_model_id: _, field: _, cause: _ } => RealizationReadbackUnresolved
+    ModelsRouteEntryDuplicated { served_model_id: _, count: _ } => RealizationReadbackUnresolved
+    ModelsRouteDocumentUnreadable { cause: _ } => RealizationReadbackUnresolved
   }
 }
 

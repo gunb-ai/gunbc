@@ -248,19 +248,24 @@ fn xl2_admit_unique_paths(strip: Xl2Strip) -> Xl2Strip {
     match map_lookup(counts, path) {
       Present { value: 1 } =>
         Xl2PathAdmission { admitted: acc.admitted |> list_push(member), reported: acc.reported, unobserved: acc.unobserved }
-      _ =>
-        match map_lookup(acc.reported, path) {
-          Present { value: _ } => acc
-          Absent =>
-            Xl2PathAdmission {
-              admitted: acc.admitted,
-              reported: map_insert(acc.reported, path, 1),
-              unobserved: acc.unobserved |> list_push(Xl2MemberPathDuplicated { path: path })
-            }
-        }
+      Present { value: _ } => xl2_report_duplicate_path(acc: acc, path: path)
+      Absent => xl2_report_duplicate_path(acc: acc, path: path)
     }
   })
   Xl2Strip { members: admission.admitted, unobserved: admission.unobserved }
+}
+
+// A path not held by exactly one member: report it once as duplicated, admitting no member under it.
+fn xl2_report_duplicate_path(acc: Xl2PathAdmission, path: Symbol) -> Xl2PathAdmission {
+  match map_lookup(acc.reported, path) {
+    Present { value: _ } => acc
+    Absent =>
+      Xl2PathAdmission {
+        admitted: acc.admitted,
+        reported: map_insert(acc.reported, path, 1),
+        unobserved: acc.unobserved |> list_push(Xl2MemberPathDuplicated { path: path })
+      }
+  }
 }
 
 // ONE PATH-KEYED INDEX, BUILT ONCE (DESIGN section 6, bare minimum cost), over admitted members
