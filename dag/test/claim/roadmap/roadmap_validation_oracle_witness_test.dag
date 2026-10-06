@@ -3,6 +3,7 @@ module test.claim.roadmap_validation_oracle_witness_test
 import gunbc.roadmap_session_placement { SessionPlacementAbsent }
 import gunbc.roadmap.roadmap_submission { CaptureAbsent }
 import gunbc.roadmap.roadmap_fanin { IntegrationReceiptAbsent }
+import extdeps.filesystem.filesystem_io { FilesystemReadSucceeded, FilesystemReadRefused }
 
 import gunbc.roadmap.roadmap_review_function { review_report_absent }
 import gunbc.worker_lifecycle { WorkerProcessAbsent }
@@ -18,6 +19,7 @@ import std.content_hash {
 }
 import extdeps.pin { CrossFamilyIdentityIncomparable }
 import gunbc.git_diff_change_window { git_diff_window_absent_identity }
+import gunbc.roadmap_workflow_command { WorkflowModeledStateObserved }
 import gunbc.roadmap_workflow_progress {
   AttemptWorktreePresent,
   WorkflowAttemptEvidence,
@@ -172,9 +174,11 @@ fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservat
   [
     validation_oracle_observe_from_source(
       oracle: oracle_ref(),
-      source_readable: source_readable,
-      source: source,
-      read_error: if source_readable { "" } else { "No such file or directory" },
+      source_read: if source_readable {
+        FilesystemReadSucceeded { content: source }
+      } else {
+        FilesystemReadRefused { error: "No such file or directory" }
+      },
     ),
   ]
 }
@@ -843,7 +847,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     node_id: "v1-emitter-fixed-point",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
-    modeled_state_present: true,
+    modeled_state: WorkflowModeledStateObserved,
     worktree: AttemptWorktreePresent { path: "/wt/fixture" },
     admission_receipt_readable: true,
     admission_receipt: "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\"}",

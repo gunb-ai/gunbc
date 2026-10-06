@@ -1,5 +1,6 @@
 module test.claim.samsung_dram_module
 
+import v2.std.live_tree { LiveTreeDisposition }
 import extdeps.memory.jedec { ddr4_generation_catalog, ddr5_generation_catalog }
 import extdeps.memory.samsung { m386a4g40dm0_cpb_catalog }
 import extdeps.vendor.samsung { samsung }
