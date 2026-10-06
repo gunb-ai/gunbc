@@ -1852,6 +1852,7 @@ fn normalize_population(
         memo_normalized(formatter, raw, normalized);
         normalize_cache_write(formatter, raw, normalized)?;
     }
+    let _ = fs::remove_dir_all(work_dir);
     Ok(())
 }
 
@@ -1985,7 +1986,12 @@ fn normalize_batch_dir(anchor: &Path) -> PathBuf {
         .find(|a| a.join("Cargo.toml").is_file() && a.join("target").is_dir())
         .map(Path::to_path_buf)
         .unwrap_or_else(workspace_root);
-    workspace.join("target/stage0-regen-rustfmt-batch")
+    // Per process: a batch clears its directory before writing, so two rounds in one workspace
+    // sharing a path would delete each other's members mid-format (review 77080).
+    workspace.join(format!(
+        "target/stage0-regen-rustfmt-batch-{}",
+        std::process::id()
+    ))
 }
 
 impl ResolvedFormatter {
