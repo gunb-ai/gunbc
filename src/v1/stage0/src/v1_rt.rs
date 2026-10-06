@@ -1780,13 +1780,15 @@ pub enum HostBudgetCgroupV1 {
     Unparseable(String),
 }
 
-pub fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
-    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+pub fn host_budget_tightest_cgroup_under(
+    self_cg: &str,
+    root: &std::path::Path,
+    limit_file: &str,
+) -> Option<(String, u64)> {
     let rel = self_cg
         .lines()
         .find_map(|l| l.strip_prefix("0::"))
         .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    let root = std::path::Path::new("/sys/fs/cgroup");
     let mut dir = root.join(&rel);
     let mut best: Option<(u64, std::path::PathBuf)> = None;
     loop {
@@ -1808,6 +1810,15 @@ pub fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
     best.map(|(v, d)| (d.display().to_string(), v))
 }
 
+pub fn host_budget_tightest_cgroup(limit_file: &str) -> Option<(String, u64)> {
+    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
+    host_budget_tightest_cgroup_under(&self_cg, std::path::Path::new("/sys/fs/cgroup"), limit_file)
+}
+
+pub fn host_budget_cgroup_v1_unlimited_bytes(page_size: u64) -> u64 {
+    (i64::MAX as u64 / page_size) * page_size
+}
+
 pub fn host_budget_cgroup_v1() -> Option<(String, HostBudgetCgroupV1)> {
     let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
     let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
@@ -1818,16 +1829,31 @@ pub fn host_budget_cgroup_v1() -> Option<(String, HostBudgetCgroupV1)> {
             HostBudgetCgroupV1::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
         ));
     }
-    let page_size = page_size as u64;
-    let dir = host_budget_cgroup_v1_memory_dir(&self_cg, &mountinfo)?;
-    let value = match std::fs::read_to_string(std::path::Path::new(&dir).join("memory.stat")) {
+    host_budget_cgroup_v1_under(
+        std::path::Path::new("/"),
+        &self_cg,
+        &mountinfo,
+        page_size as u64,
+    )
+}
+
+pub fn host_budget_cgroup_v1_under(
+    fs_root: &std::path::Path,
+    self_cg: &str,
+    mountinfo: &str,
+    page_size: u64,
+) -> Option<(String, HostBudgetCgroupV1)> {
+    let dir = host_budget_cgroup_v1_memory_dir(self_cg, mountinfo)?;
+    let dir_path = std::path::Path::new(&dir);
+    let joined = fs_root.join(dir_path.strip_prefix("/").unwrap_or(dir_path));
+    let value = match std::fs::read_to_string(joined.join("memory.stat")) {
         Ok(stat) => host_budget_cgroup_v1_from_stat(&stat, page_size),
         Err(e) => HostBudgetCgroupV1::Unparseable(format!("memory.stat: {}", e)),
     };
-    Some((dir, value))
+    Some((joined.display().to_string(), value))
 }
 
-fn host_budget_cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<String> {
+pub fn host_budget_cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<String> {
     let (mount_root, mount_point) = mountinfo.lines().find_map(|line| {
         let fields: Vec<&str> = line.split(' ').collect();
         let dash = fields.iter().position(|f| *f == "-")?;
@@ -1864,7 +1890,7 @@ fn host_budget_cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<St
     )
 }
 
-fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBudgetCgroupV1 {
+pub fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBudgetCgroupV1 {
     let hits: std::vec::Vec<&str> = memory_stat
         .lines()
         .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
@@ -1872,7 +1898,7 @@ fn host_budget_cgroup_v1_from_stat(memory_stat: &str, page_size: u64) -> HostBud
     let [body] = hits.as_slice() else {
         return HostBudgetCgroupV1::Unparseable(memory_stat.to_string());
     };
-    let unlimited = (i64::MAX as u64 / page_size) * page_size;
+    let unlimited = host_budget_cgroup_v1_unlimited_bytes(page_size);
     match body.trim().parse::<i128>() {
         Ok(n) if n < 0 => HostBudgetCgroupV1::Unparseable(body.to_string()),
         Ok(n) if n >= unlimited as i128 => HostBudgetCgroupV1::Unlimited,

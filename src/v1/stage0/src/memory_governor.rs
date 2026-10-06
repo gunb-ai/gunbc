@@ -1375,29 +1375,8 @@ pub fn tightest_cgroup_dir_for(limit_file: &str) -> Option<PathBuf> {
 /// `tightest_cgroup_dir_for` over supplied `/proc/self/cgroup` content and unified mount root,
 /// so a fixture hierarchy exercises the same walk.
 pub fn tightest_cgroup_dir_under(self_cg: &str, root: &Path, limit_file: &str) -> Option<PathBuf> {
-    let rel = self_cg
-        .lines()
-        .find_map(|l| l.strip_prefix("0::"))
-        .map(|p| p.trim().trim_start_matches('/').to_string())?;
-    let mut dir = root.join(&rel);
-    let mut best: Option<(u64, PathBuf)> = None;
-    loop {
-        if let Ok(s) = std::fs::read_to_string(dir.join(limit_file)) {
-            let s = s.trim();
-            if s != "max" {
-                if let Ok(v) = s.parse::<u64>() {
-                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
-                    if take {
-                        best = Some((v, dir.clone()));
-                    }
-                }
-            }
-        }
-        if dir == root || !dir.pop() {
-            break;
-        }
-    }
-    best.map(|(_, d)| d)
+    crate::v1_rt::host_budget_tightest_cgroup_under(self_cg, root, limit_file)
+        .map(|(dir, _)| PathBuf::from(dir))
 }
 
 /// The process's own deepest (leaf) cgroup from `/proc/self/cgroup`.
@@ -1441,41 +1420,13 @@ pub fn memory_pressure_some_avg10(content: &str) -> Option<String> {
 /// mounted, the process has no line on it, or its path is outside the mounted subtree — each of
 /// which leaves the budget to the other sources or to `Unreadable`, never to a guess.
 pub fn cgroup_v1_memory_dir(self_cg: &str, mountinfo: &str) -> Option<PathBuf> {
-    let (mount_root, mount_point) = mountinfo.lines().find_map(|line| {
-        let fields: Vec<&str> = line.split(' ').collect();
-        let dash = fields.iter().position(|f| *f == "-")?;
-        let fstype = fields.get(dash + 1)?;
-        let super_opts = fields.get(dash + 3)?;
-        if *fstype == "cgroup" && super_opts.split(',').any(|o| o == "memory") {
-            Some((fields.get(3)?.to_string(), fields.get(4)?.to_string()))
-        } else {
-            None
-        }
-    })?;
-    let path = self_cg.lines().find_map(|l| {
-        let mut parts = l.splitn(3, ':');
-        let (_id, controllers, path) = (parts.next()?, parts.next()?, parts.next()?);
-        controllers
-            .split(',')
-            .any(|c| c == "memory")
-            .then(|| path.trim().to_string())
-    })?;
-    let rel = if mount_root == "/" {
-        path.as_str()
-    } else {
-        let rest = path.strip_prefix(mount_root.as_str())?;
-        if !(rest.is_empty() || rest.starts_with('/')) {
-            return None;
-        }
-        rest
-    };
-    Some(Path::new(&mount_point).join(rel.trim_start_matches('/')))
+    crate::v1_rt::host_budget_cgroup_v1_memory_dir(self_cg, mountinfo).map(PathBuf::from)
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_unlimited_bytes`: the kernel's
 /// PAGE_COUNTER_MAX (LONG_MAX / PAGE_SIZE) reported in bytes, so the sentinel follows the page size.
 pub fn cgroup_v1_unlimited_bytes(page_size: u64) -> u64 {
-    (i64::MAX as u64 / page_size) * page_size
+    crate::v1_rt::host_budget_cgroup_v1_unlimited_bytes(page_size)
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `CgroupV1MemoryLimitValue`: three states, because
@@ -1488,25 +1439,26 @@ pub enum CgroupV1MemoryLimitValue {
 }
 
 /// Mirror of `extdeps.linux.cgroup_v1_memory` `cgroup_v1_hierarchical_memory_limit`.
+fn host_budget_cgroup_v1_value(v: crate::v1_rt::HostBudgetCgroupV1) -> CgroupV1MemoryLimitValue {
+    match v {
+        crate::v1_rt::HostBudgetCgroupV1::Limited(bytes) => {
+            CgroupV1MemoryLimitValue::Limited(bytes)
+        }
+        crate::v1_rt::HostBudgetCgroupV1::Unlimited => CgroupV1MemoryLimitValue::Unlimited,
+        crate::v1_rt::HostBudgetCgroupV1::Unparseable(body) => {
+            CgroupV1MemoryLimitValue::Unparseable(body)
+        }
+    }
+}
+
 pub fn cgroup_v1_hierarchical_limit_from_stat(
     memory_stat: &str,
     page_size: u64,
 ) -> CgroupV1MemoryLimitValue {
-    let hits: Vec<&str> = memory_stat
-        .lines()
-        .filter_map(|l| l.trim().strip_prefix("hierarchical_memory_limit "))
-        .collect();
-    let [body] = hits.as_slice() else {
-        return CgroupV1MemoryLimitValue::Unparseable(memory_stat.to_string());
-    };
-    match body.trim().parse::<i128>() {
-        Ok(n) if n < 0 => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
-        Ok(n) if n >= cgroup_v1_unlimited_bytes(page_size) as i128 => {
-            CgroupV1MemoryLimitValue::Unlimited
-        }
-        Ok(n) => CgroupV1MemoryLimitValue::Limited(n as u64),
-        Err(_) => CgroupV1MemoryLimitValue::Unparseable(body.to_string()),
-    }
+    host_budget_cgroup_v1_value(crate::v1_rt::host_budget_cgroup_v1_from_stat(
+        memory_stat,
+        page_size,
+    ))
 }
 
 /// The v1 reading over supplied procfs content and a filesystem root (`/` in production, a
@@ -1519,27 +1471,12 @@ pub fn cgroup_v1_hierarchical_limit_under(
     mountinfo: &str,
     page_size: u64,
 ) -> Option<(String, CgroupV1MemoryLimitValue)> {
-    let dir = cgroup_v1_memory_dir(self_cg, mountinfo)?;
-    let dir = fs_root.join(dir.strip_prefix("/").unwrap_or(&dir));
-    let value = match std::fs::read_to_string(dir.join("memory.stat")) {
-        Ok(stat) => cgroup_v1_hierarchical_limit_from_stat(&stat, page_size),
-        Err(e) => CgroupV1MemoryLimitValue::Unparseable(format!("memory.stat: {e}")),
-    };
-    Some((dir.display().to_string(), value))
+    crate::v1_rt::host_budget_cgroup_v1_under(fs_root, self_cg, mountinfo, page_size)
+        .map(|(dir, v)| (dir, host_budget_cgroup_v1_value(v)))
 }
 
 pub fn read_cgroup_v1_hierarchical_limit() -> Option<(String, CgroupV1MemoryLimitValue)> {
-    let self_cg = std::fs::read_to_string("/proc/self/cgroup").ok()?;
-    let mountinfo = std::fs::read_to_string("/proc/self/mountinfo").ok()?;
-    // SAFETY: sysconf has no preconditions.
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
-    if page_size <= 0 {
-        return Some((
-            "/proc/self/mountinfo".to_string(),
-            CgroupV1MemoryLimitValue::Unparseable("sysconf(_SC_PAGESIZE) unreadable".to_string()),
-        ));
-    }
-    cgroup_v1_hierarchical_limit_under(Path::new("/"), &self_cg, &mountinfo, page_size as u64)
+    crate::v1_rt::host_budget_cgroup_v1().map(|(dir, v)| (dir, host_budget_cgroup_v1_value(v)))
 }
 
 pub fn read_cgroup_u64(dir: &Path, file: &str) -> Option<u64> {
