@@ -1,6 +1,6 @@
 # Nested optionality on the v1 type carrier
 
-**Status:** design + census only. Parent ruled (a). No implementation until side-chat go.
+**Status:** design + census only. Side-chat NO-LAND on 8246299; this revision answers the four corrections. Still no compiler code.
 **Subject:** successor to parked gunbc#13467. C5 on gunbc#13280 (`match_arm_body_is_present_payload_binding`) is a claimed-scope exclusion while infer collapses `T??` and emission carries `Option<Option<T>>`.
 **Counts:** taken on `origin/main` at this worktree (`session/quiet-eagle-533`), authored `src/v1/*.dag` as the authority and `src/v1/stage0/**/*.rs` as the generated mirror. Stage0 counts are expected to track `.dag` plus interpreter/witness extras.
 
@@ -50,7 +50,7 @@ Root of the weed: `src/v1/00_core.dag` `type Cardinality = Required | CardOption
 
 ### 1.2 Readers by class (authored dag)
 
-**Parse of `?`.** `maybe_optional`: 3 call sites after type expressions. One token, one flag. Authored `T??` is one layer. Field parse uses the same helper.
+**Parse of `?`.** `maybe_optional`: 3 call sites after type expressions. One `ExpectQuestion`, one flag. Authored `T??` is tokenized as `ShNullCoalesce`, so it is not a second question token (see §3.3).
 
 **Join / preserve / generic substitution.** `join_optional_cardinality` lives in `00_core.dag` and is called from `04_resolve.dag` (2). `preserve_outer_optional_cardinality`: `04_resolve.dag` 4, `04_lookup.dag` 5, `04_infer.dag` 9. `substitute_generics_apply` preserves the *outer* flag onto a substitution; if the replacement is already optional, preserve is a no-op and a layer is dropped. Structural nodes copy `return_cardinality: n.return_cardinality` after substituting children (container `List<T?>` keeps the list's own flag, not the element's).
 
@@ -116,71 +116,91 @@ On that “predicates unified” head, `04_lookup.dag` still had `normed.return_
 
 ---
 
-## 3. Recommended construction: (a) layer count on the carrier
+## 3. Recommended construction: (a) structurally positive layer tower
 
-**Parent ruling (gentle-dove-36):** (a), reject #13467, wait for side-chat go on this plan before code. `CardOptional` with a zero count must be unwritable (§4b). Equality’s `name == "Optional"` peel dies in the same cut. Join stays max. C5 retires in the same implementation PR.
+**Confirmed direction:** count carrier on `Cardinality`; delete the boolean/nominal dual; keep #13467 closed; C5 Present-payload exclusion retires only when the nested control is green by execution.
 
-**Zero unwritable — (i), not (ii).** There is no `PositiveNat` in `std`. `std.nat` `Nat = Zero | Succ { prev: Nat }` is the home; a positive count is a successor, which `nat_div_rem_by_succ` already encodes as “caller supplies the predecessor.” `v2.std.refinement` `PositiveInt` is an `Outcome` refinement (validation, not construction). So:
+### 3.1 Zero is unconstructible
 
 ```
-type Cardinality = Required | CardOptional { pred: Nat }
+type OptionalLayers
+  = OneLayer
+  | MoreLayers { inner: OptionalLayers }
+
+type Cardinality
+  = Required
+  | CardOptional { layers: OptionalLayers }
 ```
 
-`optional_layer_count(Required) = 0`. `optional_layer_count(CardOptional { pred: n }) = n + 1`. One layer is `CardOptional { pred: Zero }`. Two is `pred: Succ { prev: Zero }`. There is no `CardOptional` whose count is 0: that state has only the `Required` constructor.
+Zero optional layers has only the `Required` constructor. One layer is `OneLayer`. Two is `MoreLayers { inner: OneLayer }`. There is no `CardOptional` without an `OptionalLayers`, and `OptionalLayers` has no zero arm.
 
-**(ii) rejected:** a single `Nat` where 0 means required makes `Required` a nickname for `Zero` and turns every `match Required | CardOptional` into a numeric test. The two-arm type is already the home; we only give the optional arm a predecessor. (ii) also invites `layers == 0` comments as a second name for `Required`.
+**Judgement of `CardOptional { pred: Nat }`:** it is isomorphic (`pred: Zero` ≅ `OneLayer`, `Succ` ≅ `MoreLayers`), so it does not inhabit count-zero on the optional arm. It is still the wrong spelling. A `Nat` field is the *predecessor of the count*, which is a prose reading of a representable `Zero`. Callers can write `pred` as if it were the layer count (`pred: Zero` as “no layers”). `OptionalLayers` is the same successor tower with constructors named as layers, not as a natural that happens to start at one. `std` has no constructor-confined `PositiveNat`; `v2.std.refinement` `PositiveInt` is `Outcome` validation. Do not use `CardOptional { layers: Nat }`.
 
-Do not keep a parallel `optional_layers` field beside `Cardinality`. Do not write `CardOptional { layers: Nat }` — `layers: Zero` would be a second encoding of `Required`.
+**(ii) still rejected:** a single `Nat` with `0 = Required` makes `Required` a nickname for `Zero` and makes zero layers a `Nat` you can construct on the optional path.
 
-**Operations (the only writers):**
+Do not keep a parallel count field beside `Cardinality`.
 
-| op | meaning |
-| --- | --- |
-| `optional_layer_count(n)` | 0, or `pred + 1` |
-| `is_optional(n)` | `CardOptional { … }` (no `> 0` test on a count that can be 0) |
-| `wrap_optional_layer(n)` | `Required` → `CardOptional { pred: Zero }`; `CardOptional { pred: p }` → `CardOptional { pred: Succ { prev: p } }` |
-| `peel_optional_layer(n)` | `pred: Zero` → `Required`; `pred: Succ { prev: p }` → `CardOptional { pred: p }`; `Required` → unchanged (or refuse at typed sites) |
-| `join` for inhabitance | `max` of counts |
+### 3.2 Named operations (no generic join = max)
 
-Delete `with_optional_cardinality` as a boolean set, or make it a synonym of `wrap_optional_layer` and migrate call sites that meant “exactly one layer from required” vs “add a layer”. Default of a former `with_optional_cardinality` call is **wrap**, not **set**. Default of former `with_required_cardinality` is **peel one**, not **clear all**, except at sites whose documented meaning is “the required payload after all wrappers” (Present binding peels one; equality admission peels until required).
+Delete `join_optional_cardinality` and `preserve_outer_optional_cardinality` as boolean OR/max. Replace with four named operations:
 
-`OptionalOf` instantiates as `wrap_optional_layer`. Emission wraps `Option<…>` `count` times (or recurse peel+wrap). Parse: `maybe_optional` loops: each `?` wraps one layer.
+| op | relation | law |
+| --- | --- | --- |
+| `compose_optional_layers` (addition) | wrapper composition / generic substitution | layers of the outer wrapper plus layers of the substitute. `T?` with `T := U?` is `U??`. `preserve_outer` becomes this sum, not max. `OptionalOf` is compose with `OneLayer`. |
+| `peel_optional_layer` | one eliminator step | `OneLayer` → `Required`; `MoreLayers { inner }` → `CardOptional { layers: inner }`. `Required` refuses at typed sites. Present-binding and `.value` are this op and **do not rewrap**. |
+| `exact_optional_layers` | joins and conformance | `T`, `T?`, `T??` are distinct. Mismatch **refuses** unless an explicit conversion plan is selected and executed at the value (wrap `Present` *n* times, or peel). No undeclared `T → T?` or `T? → T??` (C5’s rule at every adjacent depth). Match arms that differ in layer count refuse, or the arm that needs wrapping must carry the plan; max does not mint missing `Present`s. |
+| `reconcile_optional_layers` | two observations of one type | authored identity vs structural resolution must **agree**, or a named authority wins. Max would hide disagreement. |
 
-**Why not (b) nominal `Optional` for every layer, no flag.** That deletes `Cardinality` and stores optionality only as a type application. Three reasons not to do that as this C5 cut:
+A future LUB is not this cut. If one is added later it must return the conversion plan with the type, and interpreter and emitter must apply that plan.
 
-1. The home of inhabitance optionality in v1 is already `Node.return_cardinality`. Algebra `OptionalOf` already *compiles to that field*, not to a named type. Emission already reads that field. Moving the fact into `name == "Optional"` makes the equality-admission dual encoding the *only* encoding, and collides with a user type named `Optional` (the `|| peeled.name == "Optional"` arm exists because that collision is real).
-2. v2's wrapper is a **Cardinality connective**, not a nominal Optional type. (b) would fork v1 toward a third spelling.
-3. (b) is a larger replacement (324 `return_cardinality` mentions become type-tree walks). It is a legitimate later generation-cut once v1's flag is a count; it is not required to make `first()` over `List<T?>` agree with `Option<Option<T>>`.
+`with_optional_cardinality` becomes compose-with-`OneLayer`. Former `with_required_cardinality` becomes peel-one except at sites that walk to the required base (equality’s *after* the depth check).
 
-**Replacement migration.** Root is the `Cardinality` type and the four helpers. Delete the boolean arms in one motion; fix forward every red. Do not land canonicalize-plus-flag. Do not keep `CardOptional` as “at least one” while a second structure holds the rest.
+### 3.3 Parse (tokenizer)
 
-**Staged cut.** Not as dual encodings. Gap-intolerant only on parse of the compiler’s own `Cardinality` literals: one implementation PR, mechanical `CardOptional` → `CardOptional { pred: Zero }` plus wrap/peel at `OptionalOf` / `maybe_optional` / Present. No adapter that understands both boolean and count. No code until gentle-dove-36 relays side-chat go.
+The lexer emits adjacent `??` as **one** `ShNullCoalesce` before `ShQuestion`. A loop that only `eat`s `ExpectQuestion` never sees authored `T??`.
 
-**What “flatten” is allowed.**
+**Syntax (minimal contextual rule):** in a **type suffix**, `maybe_optional` loops: `ShQuestion` composes one layer, `ShNullCoalesce` composes two, so `T?` / `T??` / `T???` are 1 / 2 / 3. Expression `a ?? b` is unchanged null-coalescing (`ShNullCoalesce` in expr position). No new authored spelling.
 
-- **Optional-receiver method/field lift** peels **exactly one** outer layer, looks up on the inner type, then wraps the result **once**. Remaining inner layers stay on that inner type. `String?.len()` is `Int?`. `String??.len()` peels to `String?`, looks up `len` (which itself peels once to `String`), result `Int` wrapped once for the inner lookup and once for the outer receiver → `Int??` if both lifts wrap — **or** the inner lookup sees `String?` and lifts once to `Int?` without a second wrap if we define lift as “wrap iff the receiver layer we peeled was the one that made the method available.” The law: each peel that was required to reach the method contributes one wrap on the result. Flattening *all* layers so `T??.len()` and `T?.len()` are both `Int?` would erase nested optionality on the chaining axis and is not the C5 repair; it is a different product rule. **Why flatten-one is not a floor-green hack:** Absent at the *outer* layer means the method does not run; the result is absent at that layer only. An inner Absent is a value of the inner optional type, still Present at the outer layer. Collapsing those is the same fork as `first()`.
-- **`map_lookup_result_type`** today skips wrapping if the raw result is already optional. That is OR. After the cut it must wrap (or not) from the Map algebra row, not from “already flagged.”
-- **`join` / unify** uses max, not “set flag.” Unifying `T?` with `T??` is `T??`; unifying `T` with `T?` is `T?`.
-- **Match-arm join is max for the same reason.** Arms of one match share one result type. `Absent` next to a `T??` value is not a required `T`: `Absent` inhabits the optional stack of the scrutinee (or of the arm’s ascribed type). The LUB of layer counts is max: a required payload in one arm injects into a more-optional result by wrapping, never by peeling the other arm. Boolean OR was max on `{0,1}`; on `{0,2}` it would still report “optional” but only one wrap — `T?` — and the `T??` arm would no longer inhabit the join. Joining `Absent` (count 2) with `Present { value: x }` at `T` must yield count 2, or nested Present on `first()` is untypable again.
+### 3.4 Receiver lift (one recursive rule)
 
-**Equality peel — one reader.** `equality_operand_admission` today:
+Lookup peels **one** layer only when the member is not on the current type. Each such peel **adds one** layer to the result, composed with the member’s own result layers.
 
-`peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1)`
+- `String?.len()` → `Int?` (one peel, `len: Int`)
+- `String??.len()` → `Int??` (two peels)
+- `String??.parse_int()` → `Int???` (`parse_int: Int?` plus two peels)
+- field `U?` through receiver `S??` → `U???`
 
-The second disjunct is the production fork. After the cut, peel while `is_optional` (the `CardOptional` arm). Delete the `name == "Optional"` arm. A user type named `Optional` with one child is not inhabitance optionality; walking it as a layer was the collision. Residual nominal `Optional` applications, if any still exist as authored types, are not cardinality — they must not be peeled here. Same motion as the carrier cut, not a follow-up.
+Runtime must step through each `Present` and **preserve which layer was Absent** (outer None vs `Some(None)`), not flatten to one Option. Explicit eliminators peel without rewrapping.
 
-**Implementation (after side-chat go only):** one PR, delete-first on the boolean `Cardinality`. Regen stage0 in a fresh standalone clone; floor green. Mechanical `return_cardinality: CardOptional` → `CardOptional { pred: Zero }`. Helpers become wrap/peel/max. C5 exclusion `match_arm_body_is_present_payload_binding` / `nested_optional_collapsed_by_infer_carried_by_emission` retires when control (1) is green.
+`map_lookup_result_type` must not skip wrapping because the raw type is already optional; wrapping follows the algebra row via compose.
+
+### 3.5 Equality
+
+Compare **layer towers first**. `T? == T??` refuses (depth mismatch) rather than peeling both to `T` and succeeding. Then peel to the required base for the rest of equality admission.
+
+Delete `name == "Optional"` as a layer peel. Keep a **non-kernel type named `Optional`** control: it is not a cardinality layer (the deleted arm must not return).
+
+### 3.6 Why not (b)
+
+Unchanged: v1 home is `return_cardinality`; algebra `OptionalOf` compiles to that field; v2 uses a Cardinality connective; a user type named `Optional` is not inhabitance optionality.
+
+### 3.7 Replacement migration
+
+Root: boolean `Cardinality` and the four OR/max helpers. Delete-first in one implementation PR after go. Mechanical `return_cardinality: CardOptional` → `CardOptional { layers: OneLayer }`. Regen stage0 in a fresh standalone clone; floor green. No dual-encoding adapter. No code until the next go on this revision.
 
 ---
 
 ## 4. Controls (must go red if collapse returns)
 
-1. **`first()` over `List<T?>`:** inferred type has `optional_layer_count == 2`. Outer `Present` payload is `T?`. Nested `Present` / `Absent` on that payload is admitted. **Red if** the inner Present is refused as `VariantNotFound` or the payload types as bare `T`.
-2. **`first()` over `List<T>` (required element):** count 1. Nested `Present` on the payload is **red**.
-3. **Authored `T??`:** parse yields count 2, equal to wrap(wrap(T)).
-4. **Optional-receiver:** `String?.len()` is `Int?` (count 1), not `Int`. `String??.len()` is not collapsed to `Int?` (see §3).
-5. **Emission:** `List<T?>.first()` renders `Option<Option<T>>` matching infer count 2.
-6. C5 exclusion `match_arm_body_is_present_payload_binding` on gunbc#13280 **retires in the same change that makes control (1) green**, not in a later “stage 2.” There is no second encoding to wait on.
+1. **`first()` over `List<T?>`:** two layers. Outer `Present` payload is `T?`. Nested `Present` / `Absent` admitted. **Red if** collapsed to bare `T`.
+2. **`first()` over `List<T>`:** one layer. Nested `Present` on the payload is **red**.
+3. **Parse type suffix:** `T?` is `OneLayer`; `T??` is two (`ShNullCoalesce`); `T???` is three. **Expression** `a ?? b` still null-coalesces (unchanged).
+4. **Receiver:** `String?.len()` is `Int?`; `String??.len()` is `Int??`. **Optional-returning member:** `String??.parse_int()` is `Int???`. **Outer vs inner absence:** runtime distinguishes Absent at the outer layer from Absent at an inner layer (not a single flattened None).
+5. **Equality depth:** `T? == T??` **refuses**. **Non-kernel type named `Optional`:** not treated as a cardinality layer (positive control that the deleted name-peel does not return).
+6. **Substitution:** `T?` with `T := U?` is `U??` (compose), **red** if collapsed to `U?`.
+7. **Conformance:** using `T` where `T?` (or `T?` where `T??`) is declared **refuses** without an explicit conversion plan.
+8. **Emission:** `List<T?>.first()` renders `Option<Option<T>>` matching two layers.
+9. C5 exclusion `match_arm_body_is_present_payload_binding` on gunbc#13280 **retires in the same change that makes control (1) green**.
 
 ---
 
@@ -190,4 +210,4 @@ The second disjunct is the production fork. After the cut, peel while `is_option
 - Not new `== CardOptional` sites; after the cut that token should not exist as a unit variant.
 - Not landing #13467's helpers.
 
-Implementation starts only after gentle-dove-36 relays side-chat go on this plan.
+Implementation starts only after gentle-dove-36 relays go on this revision.
