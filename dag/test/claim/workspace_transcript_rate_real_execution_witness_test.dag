@@ -3,12 +3,12 @@ module test.claim.workspace_transcript_rate_real_execution
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.measure { measure_count }
 import std.algebra { Cons, Empty }
-import v2.std.optional { Present, Absent }
+import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.fabric.workspace_source { WorkspaceSourceRoot }
 import gunbc.fabric.workspace_transcript_rate {
-  workspace_transcript_rate_sample_wet, workspace_transcript_rate_interval, workspace_transcript_rate_span, TranscriptAppendInterval,
+  workspace_transcript_rate_sample_wet, workspace_transcript_rate_interval, TranscriptAppendInterval,
   TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -26,9 +26,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn with_temp_dir(scenario: fn(String) -> Bool) -> Bool {
   let dir = shell.Mktemp.Dir()
-  let observed = scenario(dir.path as String)
-  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
-  dir.success && observed && cleaned.success
+  if dir.success == false {
+    false
+  } else {
+    let observed = scenario(dir.path as String)
+    let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+    observed && cleaned.success
+  }
 }
 
 fn root_at(dir: String) -> WorkspaceSourceRoot {
@@ -42,9 +46,9 @@ fn interval_of(before: TranscriptRateSample, after: TranscriptRateSample) -> Lis
       match after {
         TranscriptRateSampleRefused { refusals: _ } => []
         TranscriptRateSampled { at: b, files: fb } =>
-          match workspace_transcript_rate_span(before_at: a, after_at: b) {
-            Absent => []
-            Present { value: span } => [workspace_transcript_rate_interval(before: fa, after: fb, span: span)]
+          match workspace_age_between(from: a, to: b) {
+            WorkspaceAgeUndefined { order: _ } => []
+            WorkspaceAgeOf { age: span } => [workspace_transcript_rate_interval(before: fa, after: fb, span: span)]
           }
       }
   }

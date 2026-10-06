@@ -1,17 +1,17 @@
 module test.claim.workspace_transcript_rate
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
-import std.measure { byte_size, measure_count, nanosecond, nanosecond_count }
+import std.measure { InstantBefore, InstantSame, byte_size, measure_count, nanosecond, nanosecond_count, ObservationInstant, ProcessMonotonic, WallClock, CpuClock, InstantAfter, InstantIncomparable }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned, ProcessObservation }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_command_runs_another_program }
 import gunbc.fabric.workspace_source { WorkspaceSourceRoot, workspace_source_fixed_roots, workspace_agent_state_slot_admission }
 import gunbc.fabric.workspace_transcript_rate {
-  TranscriptFileStat, workspace_transcript_rate_root_command, workspace_transcript_rate_root_reading,
+  TranscriptFileStat, TranscriptFileMtime, TranscriptRateClockUndefined, workspace_transcript_rate_root_command, workspace_transcript_rate_root_reading,
   TranscriptRootRead, TranscriptRootRefused, workspace_transcript_rate_interval, workspace_transcript_rate_mtime,
   TranscriptRateSampled, TranscriptRateSampleRefused, TranscriptRateSample, workspace_transcript_rate_window_of,
-  TranscriptRateObserved, TranscriptRateRefused, TranscriptRateRootSelection, workspace_transcript_rate_receipt,
+  TranscriptRateObserved, TranscriptRateRefused, TranscriptRateRootSelection, TranscriptRateObservation, workspace_transcript_rate_receipt,
   workspace_transcript_rate_select_roots, workspace_transcript_rate_roots, TranscriptRateRootsSelected, TranscriptRateRootUndeclared, TranscriptRateSlotRefused, workspace_transcript_rate_fixed_root_labels,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -28,7 +28,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data root: WorkspaceSourceRoot = WorkspaceSourceRoot { label: "claude-agent-state-test", path: "/r/.claude", build_output: [] }
 
 fn stat(member: String, size: Int, mtime: Int) -> TranscriptFileStat {
-  TranscriptFileStat { member: member as NonEmptyStr, size: byte_size(count: size), mtime: nanosecond(count: mtime) }
+  TranscriptFileStat { member: member as NonEmptyStr, size: byte_size(count: size), mtime: TranscriptFileMtime { since_epoch: nanosecond(count: mtime) } }
+}
+
+// One clock for every sample of a window, as the wet sampler uses; a second process name or a CPU
+// basis is a different clock.
+fn at(ns: Int) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: WallClock, since_origin: nanosecond(count: ns) }
 }
 
 fn ran(code: Int, stdout: String, stderr: String) -> ProcessRunOutcome {
@@ -74,8 +80,8 @@ test fn the_walk_keeps_only_the_packs_transcript_class_and_reads_mtime_to_the_na
     TranscriptRootRefused { root: _, detail: _ } => false
     TranscriptRootRead { files: fs } =>
       length(fs) == 2
-        && any(fs, f => (f.member as String) == "r/.claude/projects/p/s.jsonl" && measure_count(m: f.size) == 64 && nanosecond_count(n: f.mtime) == 1728123456123456789)
-        && any(fs, f => (f.member as String) == "r/.claude/history.jsonl" && nanosecond_count(n: f.mtime) == 2250000000)
+        && any(fs, f => (f.member as String) == "r/.claude/projects/p/s.jsonl" && measure_count(m: f.size) == 64 && nanosecond_count(n: f.mtime.since_epoch) == 1728123456123456789)
+        && any(fs, f => (f.member as String) == "r/.claude/history.jsonl" && nanosecond_count(n: f.mtime.since_epoch) == 2250000000)
   }
 }
 
@@ -99,20 +105,22 @@ test fn an_unreadable_root_refuses_the_sample_and_the_window() -> Bool {
     && (match workspace_transcript_rate_window_of(baseline: TranscriptRateSampleRefused { refusals: ["claude: denied"] }, remaining: 3, next: never, pause: k => true, rows: []) {
       TranscriptRateRefused { reason: _, rows: rows } => length(rows) == 0
       TranscriptRateObserved { rate: _ } => false
+      TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
     })
 }
 
 fn second_sample(k: Int) -> TranscriptRateSample {
   if k == 2 {
-    TranscriptRateSampled { at: nanosecond(count: 10000000000), files: [stat(member: "a", size: 1010, mtime: 2)] }
+    TranscriptRateSampled { at: at(ns: 10000000000), files: [stat(member: "a", size: 1010, mtime: 2)] }
   } else {
-    TranscriptRateSampled { at: nanosecond(count: 20000000000), files: [stat(member: "a", size: 1030, mtime: 3)] }
+    TranscriptRateSampled { at: at(ns: 20000000000), files: [stat(member: "a", size: 1030, mtime: 3)] }
   }
 }
 
 test fn a_completed_window_receipts_every_interval_and_the_summary_with_its_caveat() -> Bool {
-  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: nanosecond(count: 0), files: [stat(member: "a", size: 1000, mtime: 1)] }, remaining: 2, next: second_sample, pause: k => true, rows: []) {
+  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 0), files: [stat(member: "a", size: 1000, mtime: 1)] }, remaining: 2, next: second_sample, pause: k => true, rows: []) {
     TranscriptRateRefused { reason: _, rows: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
     TranscriptRateObserved { rate: r } => {
       let receipt = workspace_transcript_rate_receipt(head: "", observation: TranscriptRateObserved { rate: r })
       length(r.rows) == 2
@@ -126,9 +134,10 @@ test fn a_completed_window_receipts_every_interval_and_the_summary_with_its_cave
 }
 
 test fn a_failed_pause_refuses_the_window() -> Bool {
-  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: nanosecond(count: 0), files: [] }, remaining: 2, next: second_sample, pause: k => false, rows: []) {
+  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 0), files: [] }, remaining: 2, next: second_sample, pause: k => false, rows: []) {
     TranscriptRateRefused { reason: _, rows: _ } => true
     TranscriptRateObserved { rate: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
   }
 }
 
@@ -159,13 +168,37 @@ test fn the_observed_roots_are_the_admitted_slot_and_the_codex_row_and_an_unknow
     })
 }
 
-fn earlier_sample(k: Int) -> TranscriptRateSample {
-  TranscriptRateSampled { at: nanosecond(count: 5), files: [] }
+fn sample_at(instant: ObservationInstant) -> fn(Int) -> TranscriptRateSample {
+  k => TranscriptRateSampled { at: instant, files: [] }
 }
 
-test fn a_clock_reading_that_goes_backwards_refuses_the_window_rather_than_reading_as_a_quiet_interval() -> Bool {
-  match workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: nanosecond(count: 10), files: [] }, remaining: 1, next: earlier_sample, pause: k => true, rows: []) {
-    TranscriptRateRefused { reason: why, rows: rows } => length(rows) == 0 && contains(why, "no derivable span")
-    TranscriptRateObserved { rate: _ } => false
-  }
+fn window_after(instant: ObservationInstant) -> TranscriptRateObservation {
+  workspace_transcript_rate_window_of(baseline: TranscriptRateSampled { at: at(ns: 10), files: [] }, remaining: 1, next: sample_at(instant: instant), pause: k => true, rows: [])
+}
+
+// THE SPAN IS DERIVED BY ORDERING TWO INSTANTS OF ONE CLOCK. The positive control is the ordered pair
+// on the same domain and basis; the reds are a later instant that does not follow (InstantAfter) and
+// an instant on another process's clock or another basis (InstantIncomparable) -- each its own typed
+// refusal carrying the order, never a zero span read as a quiet interval.
+test fn ordered_same_clock_instants_derive_a_span_and_reversed_or_foreign_instants_refuse_by_their_order() -> Bool {
+  (match window_after(instant: at(ns: 25)) {
+    TranscriptRateObserved { rate: r } => (match r.rows { Cons { head: row, tail: Empty } => nanosecond_count(n: row.span) == 15  Cons { head: _, tail: Cons { head: _, tail: _ } } => false  Empty => false })
+    TranscriptRateRefused { reason: _, rows: _ } => false
+    TranscriptRateClockUndefined { from: _, to: _, order: _, rows: _ } => false
+  })
+    && (match window_after(instant: at(ns: 5)) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: rows } => length(rows) == 0 && (match o { InstantAfter => true  InstantIncomparable { left: _, right: _ } => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
+    && (match window_after(instant: ObservationInstant { domain: ProcessMonotonic { process: "another-process" }, basis: WallClock, since_origin: nanosecond(count: 25) }) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => (match o { InstantIncomparable { left: _, right: _ } => true  InstantAfter => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
+    && (match window_after(instant: ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: CpuClock, since_origin: nanosecond(count: 25) }) {
+      TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => (match o { InstantIncomparable { left: _, right: _ } => true  InstantAfter => false  InstantBefore => false  InstantSame => false })
+      TranscriptRateObserved { rate: _ } => false
+      TranscriptRateRefused { reason: _, rows: _ } => false
+    })
 }

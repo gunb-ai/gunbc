@@ -5,7 +5,8 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count, ObservationInstant, ProcessMonotonic, WallClock, InstantOrder, InstantAfter, InstantIncomparable, InstantBefore, InstantSame }
+import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.exec.command { ArgvCommand, LocalExec }
@@ -102,10 +103,18 @@ fn workspace_transcript_rate_select_roots(labels: List<NonEmptyStr>, declared: L
 
 // ── ONE READING OF ONE ROOT: SIZE AND MTIME, NEVER CONTENT ─────────────────────────────────────
 
+// A FILE'S MODIFICATION TIME IS THE FILESYSTEM'S CLOCK, NOT THIS PROCESS'S: st_mtime counted from
+// the epoch, as find's %T@ prints it. It has its own carrier so it can never stand where a sample
+// instant (an ObservationInstant on this process's monotonic clock) is expected, and the two are
+// never subtracted from each other; an mtime is only ever compared with another mtime.
+type TranscriptFileMtime {
+  since_epoch: Nanosecond
+}
+
 type TranscriptFileStat {
   member: NonEmptyStr
   size: ByteSize
-  mtime: Nanosecond
+  mtime: TranscriptFileMtime
 }
 
 // A ROOT THAT COULD NOT BE READ REFUSES, and so does a line that is not a record: a partial listing
@@ -190,12 +199,12 @@ fn workspace_transcript_rate_classify(stat: TranscriptFileStat) -> TranscriptLin
 // %T@ PRINTS SECONDS, A POINT AND A FRACTION (GNU find prints ten fractional digits; a filesystem
 // with coarser timestamps prints zeros there). Nanoseconds are the first nine fractional digits,
 // right-padded, so a shorter fraction reads as the value it spells rather than a smaller one.
-fn workspace_transcript_rate_mtime(text: String) -> Nanosecond? {
+fn workspace_transcript_rate_mtime(text: String) -> TranscriptFileMtime? {
   match split(text, separator: ".") {
     Cons { head: whole, tail: Empty } =>
       match parse_int(s: whole) {
         Absent => none
-        Present { value: s } => if s < 0 { none } else { Present { value: nanosecond(count: s * 1000000000) } }
+        Present { value: s } => if s < 0 { none } else { Present { value: TranscriptFileMtime { since_epoch: nanosecond(count: s * 1000000000) } } }
       }
     Cons { head: whole, tail: Cons { head: frac, tail: Empty } } => {
       let padded = substring(s: concat(frac, "000000000"), start: 0, end: 9)
@@ -204,7 +213,7 @@ fn workspace_transcript_rate_mtime(text: String) -> Nanosecond? {
         Present { value: s } =>
           match parse_int(s: padded) {
             Absent => none
-            Present { value: f } => if s < 0 || f < 0 || frac == "" { none } else { Present { value: nanosecond(count: s * 1000000000 + f) } }
+            Present { value: f } => if s < 0 || f < 0 || frac == "" { none } else { Present { value: TranscriptFileMtime { since_epoch: nanosecond(count: s * 1000000000 + f) } } }
           }
       }
     }
@@ -219,10 +228,10 @@ fn workspace_transcript_rate_mtime(text: String) -> Nanosecond? {
 // walked, so an interval's span is the time between the starts of two walks; a walk's own duration
 // is inside the span it opens, never subtracted from it.
 type TranscriptRateSample
-  = TranscriptRateSampled { at: Nanosecond, files: List<TranscriptFileStat> }
+  = TranscriptRateSampled { at: ObservationInstant, files: List<TranscriptFileStat> }
   | TranscriptRateSampleRefused { refusals: List<String> }
 
-fn workspace_transcript_rate_sample_of(at: Nanosecond, readings: List<TranscriptRootReading>) -> TranscriptRateSample {
+fn workspace_transcript_rate_sample_of(at: ObservationInstant, readings: List<TranscriptRootReading>) -> TranscriptRateSample {
   let refusals = flat_map(readings, r => match r {
     TranscriptRootRefused { root: root, detail: d } => [join([root.label as String, " (", root.path as String, "): ", d], "")]
     TranscriptRootRead { files: _ } => []
@@ -236,8 +245,14 @@ fn workspace_transcript_rate_sample_of(at: Nanosecond, readings: List<Transcript
   }
 }
 
+// ONE CLOCK DOMAIN FOR EVERY SAMPLE OF A WINDOW: this process's monotonic clock, wall basis -- the
+// shape gunbc.fabric.workspace_source workspace_source_instant gives the pack's spans.
+fn workspace_transcript_rate_instant(label: String) -> ObservationInstant {
+  ObservationInstant { domain: ProcessMonotonic { process: "workspace-transcript-rate" }, basis: WallClock, since_origin: nanosecond(count: observed_monotonic_nanos(label)) }
+}
+
 fn workspace_transcript_rate_sample_wet(roots: List<WorkspaceSourceRoot>, label: String) -> TranscriptRateSample {
-  let at = nanosecond(count: observed_monotonic_nanos(label))
+  let at = workspace_transcript_rate_instant(label: label)
   workspace_transcript_rate_sample_of(at: at, readings: map(roots, r => workspace_transcript_rate_root_reading(root: r, run: run_shell_command_observe_outcome(command: workspace_transcript_rate_root_command(root: r), transport: LocalExec))))
 }
 
@@ -284,7 +299,7 @@ fn workspace_transcript_file_change(before: TranscriptFileStat?, after: Transcri
         TranscriptFileGrown { by: byte_size(count: delta) }
       } else if delta < 0 {
         TranscriptFileShrank { truncation: TranscriptTruncation { member: after.member, from: b.size, to: after.size } }
-      } else if nanosecond_count(n: after.mtime) != nanosecond_count(n: b.mtime) {
+      } else if nanosecond_count(n: after.mtime.since_epoch) != nanosecond_count(n: b.mtime.since_epoch) {
         TranscriptFileRewritten
       } else {
         TranscriptFileUnchanged
@@ -295,15 +310,6 @@ fn workspace_transcript_file_change(before: TranscriptFileStat?, after: Transcri
 
 fn workspace_transcript_rate_index(files: List<TranscriptFileStat>) -> Map<String, TranscriptFileStat> {
   fold(files, init: empty_map(), f: (m, s) => map_insert(m: m, key: s.member as String, value: s))
-}
-
-// THE SPAN BETWEEN TWO SAMPLE INSTANTS, OR NONE WHEN THE LATER INSTANT DOES NOT FOLLOW THE EARLIER.
-// Both are read on one monotonic clock, so a reversal is not expected -- but it is not substituted:
-// a span that cannot be derived is absent, and the window refuses on it (DESIGN 5), rather than
-// standing in a zero that the receipt would print as a quiet interval.
-fn workspace_transcript_rate_span(before_at: Nanosecond, after_at: Nanosecond) -> Nanosecond? {
-  let d = nanosecond_count(n: after_at) - nanosecond_count(n: before_at)
-  if d < 0 { none } else { Present { value: nanosecond(count: d) } }
 }
 
 // Every file of the later sample is looked up once in the earlier one, so an interval costs one
@@ -387,6 +393,7 @@ type TranscriptAppendRate {
 type TranscriptRateObservation
   = TranscriptRateObserved { rate: TranscriptAppendRate }
   | TranscriptRateRefused { reason: String, rows: List<TranscriptAppendInterval> }
+  | TranscriptRateClockUndefined { from: ObservationInstant, to: ObservationInstant, order: InstantOrder, rows: List<TranscriptAppendInterval> }
 
 // THE PURE WINDOW: a baseline sample and one sample per interval, each interval the difference of
 // consecutive samples. The sampler and the pause are supplied, so the wet entry passes the real
@@ -403,9 +410,13 @@ fn workspace_transcript_rate_window_of(baseline: TranscriptRateSample, remaining
         match next(remaining) {
           TranscriptRateSampleRefused { refusals: rs } => TranscriptRateRefused { reason: concat("a transcript root became unreadable mid-window: ", join(rs, "; ")), rows: reverse(rows) }
           TranscriptRateSampled { at: at2, files: files2 } =>
-            match workspace_transcript_rate_span(before_at: at, after_at: at2) {
-              Absent => TranscriptRateRefused { reason: join(["the monotonic clock read ", to_string(nanosecond_count(n: at2)), "ns after ", to_string(nanosecond_count(n: at)), "ns; an interval with no derivable span is not measured"], ""), rows: reverse(rows) }
-              Present { value: span } =>
+            // THE SPAN IS DERIVED, NEVER SUBTRACTED: std.checkpointed_workspace workspace_age_between
+            // orders the two instants first, so a later sample that does not follow the earlier one
+            // (InstantAfter) or one on another clock (InstantIncomparable) ends the window as its own
+            // typed refusal instead of standing in a span.
+            match workspace_age_between(from: at, to: at2) {
+              WorkspaceAgeUndefined { order: o } => TranscriptRateClockUndefined { from: at, to: at2, order: o, rows: reverse(rows) }
+              WorkspaceAgeOf { age: span } =>
                 workspace_transcript_rate_window_of(
                   baseline: TranscriptRateSampled { at: at2, files: files2 },
                   remaining: remaining - 1,
@@ -488,10 +499,20 @@ fn workspace_transcript_rate_receipt_head(roots: List<WorkspaceSourceRoot>) -> S
   ], "")
 }
 
+fn workspace_transcript_rate_order_words(order: InstantOrder) -> String {
+  match order {
+    InstantAfter => "a later sample instant did not follow the earlier one on the same clock; no span is derived"
+    InstantIncomparable { left: _, right: _ } => "two sample instants are on different clock domains or bases; no span is derived"
+    InstantBefore => "the instants ordered, yet no span was derived"
+    InstantSame => "the instants were the same, yet no span was derived"
+  }
+}
+
 fn workspace_transcript_rate_receipt(head: String, observation: TranscriptRateObservation) -> String {
   match observation {
     TranscriptRateObserved { rate: r } => join([head, workspace_transcript_rate_rows_text(rows: r.rows, index: 1, acc: []), workspace_transcript_rate_summary(rate: r), "verdict=observed\n"], "")
     TranscriptRateRefused { reason: why, rows: rows } => join([head, workspace_transcript_rate_rows_text(rows: rows, index: 1, acc: []), "refused=", why, "\nverdict=refused\n"], "")
+    TranscriptRateClockUndefined { from: _, to: _, order: o, rows: rows } => join([head, workspace_transcript_rate_rows_text(rows: rows, index: 1, acc: []), "refused=", workspace_transcript_rate_order_words(order: o), "\nverdict=refused-clock\n"], "")
   }
 }
 
@@ -532,6 +553,7 @@ fn workspace_transcript_rate_observe_wet() -> ProcessExit {
         match observation {
           TranscriptRateObserved { rate: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: ExitSuccess)
           TranscriptRateRefused { reason: why, rows: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", why)))
+          TranscriptRateClockUndefined { from: _, to: _, order: o, rows: _ } => workspace_transcript_rate_finish(receipt: receipt, outcome: exit_failure(reason: concat("workspace_transcript_rate_observe: ", workspace_transcript_rate_order_words(order: o))))
         }
       }
     }
