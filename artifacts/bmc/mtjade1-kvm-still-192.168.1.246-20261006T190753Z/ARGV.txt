@@ -1,0 +1,14 @@
+subject: mtjade1 BMC 192.168.1.246
+operation: MegaRAC H5 viewer canvas still (Playwright Chromium on srv1)
+credential: factory admin, password from file outside repo
+--- argv (redacted):
+node kvm_still.mjs
+  chromium executable /home/briansrls/.cache/ms-playwright/chromium-1217/chrome-linux/chrome
+  POST https://192.168.1.246/api/session (password@file)
+  GET https://192.168.1.246/api/settings/services
+  GET https://192.168.1.246/viewer.html
+  canvas toDataURL image/jpeg
+  DELETE https://192.168.1.246/api/session
+notes:
+- journal records "KVM default-screen" and no /kvm WebSocket frame; still is 800x600 JPEG from the viewer canvas as painted.
+- source.min.js was fetched to srv1 scratch only; AMI copyright; not in this tree.
