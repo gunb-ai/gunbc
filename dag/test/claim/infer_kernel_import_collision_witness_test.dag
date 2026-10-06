@@ -2,7 +2,7 @@ module test.claim.infer_kernel_import_collision_witness
 
 import extdeps.filesystem.filesystem_io
 import std.types { String, Bool, Int, List, NonEmptyStr }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, decl_field_ref }
 import std.literal_elaboration {
   KernelMintDeclaration,
   kernel_named_import_standing,
@@ -152,6 +152,22 @@ test fn importing_the_mint_declaration_itself_is_admitted() -> Bool {
   ) {
     KernelNamedImportAdmitted => true
     KernelNamedImportCollides { kernel_declaration_module: _ } => false
+    KernelNamedImportMintAmbiguous { row_count: _ } => false
+  }
+}
+
+test fn a_mint_row_on_a_field_does_not_exempt_the_whole_declaration() -> Bool {
+  match kernel_named_import_standing(
+    imported_name: "Optional",
+    import_path: "owner",
+    module_declares_type: true,
+    rows: [KernelMintDeclaration {
+      minted_name: "Optional" as NonEmptyStr,
+      declaration: decl_field_ref(module_path: "owner", decl_name: "Optional", field_name: "value")
+    }]
+  ) {
+    KernelNamedImportCollides { kernel_declaration_module: m } => m == "owner"
+    KernelNamedImportAdmitted => false
     KernelNamedImportMintAmbiguous { row_count: _ } => false
   }
 }

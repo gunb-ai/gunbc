@@ -1,7 +1,7 @@
 module std.literal_elaboration
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.syntax { LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol }
 
 // THE EXPECTED-TYPE-DIRECTED LITERAL INTRODUCTION JUDGMENT, as a model (DESIGN section 4: one
@@ -324,7 +324,7 @@ fn kernel_named_import_standing(
   } else {
     match kernel_mint_declaration_for(rows: rows, minted_name: imported_name) {
       KernelMintDeclarationFound { declaration: d } =>
-        if (d.module_path as String) == import_path && (d.decl_name as String) == imported_name {
+        if declaration_ref_eq(a: d, b: decl_ref(module_path: import_path, decl_name: imported_name)) {
           KernelNamedImportAdmitted
         } else {
           KernelNamedImportCollides { kernel_declaration_module: d.module_path as String }

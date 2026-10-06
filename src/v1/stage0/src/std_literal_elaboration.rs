@@ -458,7 +458,10 @@ pub fn kernel_named_import_standing(
     } else {
         match (*kernel_mint_declaration_for(rows.clone(), imported_name.clone())).clone() {
             KernelMintDeclarationLookup::KernelMintDeclarationFound { declaration: d, .. } => {
-                if d.module_path == import_path && d.decl_name == imported_name {
+                if crate::std_decl_ref::declaration_ref_eq(
+                    d.clone(),
+                    crate::std_decl_ref::decl_ref(import_path.clone(), imported_name.clone()),
+                ) {
                     Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
                 } else {
                     Rc::new(KernelNamedImportStanding::KernelNamedImportCollides {
