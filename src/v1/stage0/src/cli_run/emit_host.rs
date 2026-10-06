@@ -3315,7 +3315,6 @@ fn strip_excluded_services(
         typed
             .modules
             .iter()
-            .cloned()
             .map(|tm| {
                 let module_name = crate::v1_compiler_infer_env::authored_name(
                     tm.type_env.clone(),
@@ -3324,7 +3323,6 @@ fn strip_excluded_services(
                 let items = Rc::new(
                     tm.items
                         .iter()
-                        .cloned()
                         .filter(|item| {
                             if item.module_item_kind
                                 != crate::v1_std_core::ParsedModuleItemKind::ModuleItemService
@@ -3333,15 +3331,16 @@ fn strip_excluded_services(
                             }
                             let service = crate::v1_compiler_infer_env::authored_name(
                                 tm.type_env.clone(),
-                                item.clone(),
+                                (*item).clone(),
                             );
                             !excluded.contains(&(module_name.clone(), service))
                         })
+                        .cloned()
                         .collect::<im::Vector<_>>(),
                 );
                 Rc::new(crate::v1_compiler_infer_items::TypedModule {
                     items,
-                    ..(*tm).clone()
+                    ..(**tm).clone()
                 })
             })
             .collect::<im::Vector<_>>(),
