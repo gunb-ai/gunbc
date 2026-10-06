@@ -278,7 +278,11 @@ test fn w_clone_bound_forwards_transitively_over_two_call_hops() -> Bool {
 // row proves the qualified path reaches the DECLARATION and not the bridge.
 test fn w_qualified_call_emits_only_the_declaration_last_segment() -> Bool {
   compile_dag_rust_emit_check(
+<<<<<<< Updated upstream
     "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport v2.std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get_checked(m: m, key: \"key\") }\n",
+=======
+    "module test.claim.qualified_call_probe\nimport std.types { Int, String, Map }\nimport std.occurrence_identity { OccurrenceId }\nimport v2.std.collection { map_get_checked }\nimport v2.std.diagnostic { Outcome }\nimport std.optional { Optional }\nfn probe(m: Map<String, Int>) -> Outcome<Optional<Int>> { v2.std.collection.map_get_checked(m: m, key: \"key\") }\n",
+>>>>>>> Stashed changes
     "src/test_claim_qualified_call_probe.rs",
     ["crate::v2_std_collection::map_get_checked("],
     ["::v2.std.collection", "v2.std.collection.map_get_checked("]

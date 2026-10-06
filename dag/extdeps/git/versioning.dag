@@ -3,8 +3,13 @@ module extdeps.git.versioning
 import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
+<<<<<<< Updated upstream
 import std.nat { nat_compare }
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
+=======
+import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
+import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, semver_numeric_field, SemVerNumericField }
+>>>>>>> Stashed changes
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -30,10 +35,20 @@ type GitCliReportedVersion {
   suffix: GitVersionPlatformSuffix
 }
 
+<<<<<<< Updated upstream
 data git_2_0_release: GitReleaseVersion = {
   major: 2,
   minor: 0,
   patch: 0
+=======
+// THE ANCHOR IS DERIVED THROUGH THE PARSER, never raw lists: the fields come from parsing
+// the literal release text, so the confined constructor's admission is the only producer.
+// The fallback is unreachable for a parsable literal, and the round-trip witness pins the
+// label to "2.0.0" by execution, so a forged or control-character field cannot pass.
+data git_2_0_release: GitReleaseVersion = match semver_core_parse(cps: chars(s: "2.0.0")) {
+  Present { value: v } => GitReleaseVersion { major: v.major, minor: v.minor, patch: v.patch }
+  other => GitReleaseVersion { major: semver_numeric_field(cps: chars(s: "0")).?, minor: semver_numeric_field(cps: chars(s: "0")).?, patch: semver_numeric_field(cps: chars(s: "0")).? }
+>>>>>>> Stashed changes
 }
 
 data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
@@ -44,8 +59,13 @@ data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
 fn git_release_version_label(v: GitReleaseVersion) -> String {
   concat(
+<<<<<<< Updated upstream
     to_string(v.major),
     concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))
+=======
+    semver_label_from_code_points(cps: v.major.digits),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor.digits), concat(".", semver_label_from_code_points(cps: v.patch.digits))))
+>>>>>>> Stashed changes
   )
 }
 
@@ -54,9 +74,15 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
+<<<<<<< Updated upstream
   match nat_compare(a: a.major, b: b.major) {
     Equal => match nat_compare(a: a.minor, b: b.minor) {
       Equal => nat_compare(a: a.patch, b: b.patch)
+=======
+  match semver_compare_numeric_digits(a: a.major.digits, b: b.major.digits) {
+    Equal => match semver_compare_numeric_digits(a: a.minor.digits, b: b.minor.digits) {
+      Equal => semver_compare_numeric_digits(a: a.patch.digits, b: b.patch.digits)
+>>>>>>> Stashed changes
       other => other
     }
     other => other
