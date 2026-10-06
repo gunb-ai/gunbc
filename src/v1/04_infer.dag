@@ -3051,9 +3051,9 @@ fn match_arm_mixes_bare_and_optional(unified_arm_type: Node, arm_type: Node, sco
 // nested_optional_collapsed_by_infer_carried_by_emission; trigger: a nested-optional carrier in 00_core.
 fn match_arm_body_is_present_payload_binding(arm: ArmInferResult, scope: InferScope) -> Bool {
   match arm_pattern(n: arm.typed_arm) {
-    VariantPattern { name: "Present", parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
+    VariantPattern { name: variant_name, parent_enum: _, field_bindings: bindings, parent_identity: _ } =>
       let body_name = expr_var_name_at(texpr: arm_body(n: arm.typed_arm), source_indices: scope.type_env.source_indices)
-      body_name != "" && (bindings |> any(fb => match field_binding_pattern(n: fb) {
+      variant_name == "Present" && body_name != "" && (bindings |> any(fb => match field_binding_pattern(n: fb) {
         Bind { declaration: declaration } => declaration.name == body_name
         _ => false
       }))
