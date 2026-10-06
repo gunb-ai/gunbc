@@ -96,6 +96,7 @@ fn iam_bootstrap_plan() -> CliWireResponse {
     concat("Empty pool initialization requires the separately confirmed exclusive window: GUNBC_IAM_BOOTSTRAP_POOL_WINDOW=", iam_bootstrap_pool_window),
     "Initializer: declared empty pool only -> one journaled publication -> exact independent readback with etag -> normal CAS updates. Uncertain publication is never replayed.",
     "Temporary authority intent: GUNBC_IAM_BOOTSTRAP_AUTHORITY_ID + GUNBC_IAM_BOOTSTRAP_AUTHORITY_EXPIRES_AT (canonical UTC, at most one hour).",
+    "Temporary probe intent: GUNBC_IAM_BOOTSTRAP_PROBE_ID + GUNBC_IAM_BOOTSTRAP_PROBE_EXPIRES_AT (canonical UTC, at most one hour); run identity: GUNBC_IAM_BOOTSTRAP_RECEIPT.",
     concat("The grant targets ", iam_bootstrap_operator_member, " after verified Google subject ", iam_bootstrap_operator_subject, "; retry cannot renew or republish it."),
   ]
   let roles = map(iam_bootstrap_roles, r => join(["role ", iam_bootstrap_role_name(role: r) as String, " permissions=", join(iam_bootstrap_role_permissions(role: r), ",")], ""))

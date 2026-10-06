@@ -143,6 +143,7 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        record_fixture_closure_memo_hit(&memo_key);
         return hit;
     }
     COMPILE_DAG_DIAGNOSTIC_CENSUS_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -164,7 +165,9 @@ pub fn compile_dag_diagnostic_census(source: &str) -> CompileDiagnosticCensus {
     // halves still sum to what it actually spent.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
+    begin_fixture_closure_fill();
     let census = compile_dag_diagnostic_census_uncached(source);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
@@ -200,6 +203,7 @@ pub(crate) fn compile_dag_diagnostic_census_uncached(source: &str) -> CompileDia
             let module_index = build_module_path_index_from_witness_roots();
             let sources =
                 resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+            record_fixture_closure(&sources);
             compile_fixture_rendering_only_what_is_read(sources, None)
         })
     }));
@@ -2028,6 +2032,7 @@ pub fn compile_dag_rust_emit_check(
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).cloned())
     {
         COMPILE_DAG_RUST_EMIT_CHECK_MEMO_HITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        record_fixture_closure_memo_hit(&memo_key);
         return hit;
     }
     COMPILE_DAG_RUST_EMIT_CHECK_MEMO_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -2036,7 +2041,9 @@ pub fn compile_dag_rust_emit_check(
     // — the claim loop does the split, this only says how much of the cost was a fill.
     let fill_started = v1_interpreter::thread_cpu_nanos();
     let fill_wall_started = std::time::Instant::now();
+    begin_fixture_closure_fill();
     let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    finish_fixture_closure_fill(&memo_key);
     record_shared_artifact_fill_cpu(
         v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
     );
@@ -2053,6 +2060,7 @@ pub(crate) fn compile_dag_rust_emit_check_uncached(
 ) -> Result<bool, FixtureRenderRefusal> {
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports(FIXTURE_SOURCE_PATH, source, &module_index);
+    record_fixture_closure(&sources);
     let result = compile_fixture_rendering_only_what_is_read(sources, Some(file_path))?;
     let hard_diagnostics = result
         .diagnostics
@@ -2104,8 +2112,9 @@ pub(crate) const FIXTURE_SOURCE_PATH: &str = "test.dag";
 /// in the fixture's closure is no longer rendered, so ITS per-module emit refusal no longer
 /// reaches the census rows or the emit check's hard-diagnostic gate. Whole-graph emit checks
 /// (anonymous records, effectful recursion, file-name and symbol collisions) run before
-/// selection and are unchanged. A corpus module's own emission is the subject of the
-/// generated-artifact lanes, which render it for real, not of a fixture claim.
+/// selection and are unchanged. A corpus module's own emission is not a fixture claim's subject:
+/// the required floor renders every recorded closure module once per run in
+/// [`fixture_closure_union_emit_receipt`], and an emit refusal there refuses the floor.
 ///
 /// REFUSES, NEVER WIDENS. If the graph holds no module spanned in the fixture source, there is
 /// no subject to render, and the answer is a typed refusal. It is never a fall back to
@@ -2882,25 +2891,496 @@ pub(crate) fn compile_xl1_primary_root_tap(
     }
 }
 
+/// THE FIXTURE-CLOSURE UNION (retires `gunbc.rung_drop.fixture_closure_corpus_emit_refusals_lost_as_passenger`).
+///
+/// Floor C1 (gunbc#13037) stopped rendering every closure module per fixture compile, so a corpus
+/// module's own emit refusal no longer reached any required gate unless the v1 seed mirrors
+/// happened to cover it. The restoration is the deduplicated form of what was removed: each fixture
+/// instrument RECORDS the closure it resolved (every source except the fixture itself, by path and
+/// bytes), and the required floor renders the union of those closures ONCE, after the claims ran
+/// ([`fixture_closure_union_emit_receipt`]).
+///
+/// THE POPULATION IS THE INSTRUMENT'S OUTPUT, NOT A LIST. It is exactly the closures the fixture
+/// instruments resolved on this run, recorded at the one seam both of them pass through
+/// (`resolve_virtual_source_with_imports` over the floor's module index), so it cannot name a module
+/// no fixture reached and cannot omit one a fixture did. A memo hit replays the closure its fill
+/// recorded ([`record_fixture_closure_memo_hit`]), so the union stays complete on a later run in the
+/// same process, where every fixture call may be a hit.
+///
+/// One path recorded with two different byte contents is not unioned by picking one: it is kept as
+/// a conflict, and the receipt refuses on it (DESIGN §5, refuse rather than widen or choose).
+#[derive(Default)]
+pub(crate) struct FixtureClosureUnion {
+    pub members: BTreeMap<String, String>,
+    pub conflicts: BTreeSet<String>,
+    pub fixture_compiles: usize,
+    /// Fixture calls answered by a memo hit, whose closures were replayed rather than resolved.
+    pub memo_hits: usize,
+}
+
+static FIXTURE_CLOSURE_UNION: Mutex<Option<FixtureClosureUnion>> = Mutex::new(None);
+
+/// WHAT A MEMO HIT REPLAYS. The two fixture memos are process-lived and thread-local, while the
+/// union is per run (`run_required_floor` resets it). A later run in the same process whose fixture
+/// compiles all hit the memo would otherwise record nothing and render an empty union green. So a
+/// fill stores its closure's paths under its memo key, and every hit replays them into the union
+/// ([`record_fixture_closure_memo_hit`]). A replay returns exactly the bytes ITS OWN fill read: the
+/// closure is stored as (path, bytes) under the memo key, never looked up by path alone, so a file
+/// that changed between runs cannot be replayed with another fill's bytes (review 76336). Identical
+/// bytes for one path are shared, not copied, through `interned`.
+/// One fill's closure: every recorded path with the exact bytes that fill read.
+type RecordedFixtureClosure = Vec<(String, Arc<String>)>;
+
+#[derive(Default)]
+struct FixtureClosureMemoReplay {
+    closure_by_memo_key: std::collections::HashMap<String, RecordedFixtureClosure>,
+    interned: std::collections::HashMap<String, Vec<Arc<String>>>,
+}
+
+impl FixtureClosureMemoReplay {
+    fn intern(&mut self, path: &str, content: &str) -> Arc<String> {
+        let variants = self.interned.entry(path.to_string()).or_default();
+        if let Some(existing) = variants.iter().find(|v| v.as_str() == content) {
+            return existing.clone();
+        }
+        let fresh = Arc::new(content.to_string());
+        variants.push(fresh.clone());
+        fresh
+    }
+}
+
+static FIXTURE_CLOSURE_MEMO_REPLAY: Mutex<Option<FixtureClosureMemoReplay>> = Mutex::new(None);
+
+thread_local! {
+    /// The paths the last [`record_fixture_closure`] on this thread recorded, taken by the memo
+    /// wrapper that triggered the fill. Cleared before each fill so a fill that panicked before
+    /// resolving cannot inherit an earlier fill's closure.
+    static LAST_RECORDED_FIXTURE_CLOSURE: RefCell<Option<RecordedFixtureClosure>> = const { RefCell::new(None) };
+}
+
+/// Called by a memo wrapper just before it fills.
+pub(crate) fn begin_fixture_closure_fill() {
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = None);
+}
+
+/// Called by a memo wrapper after it filled `memo_key`: the closure the fill recorded becomes what
+/// a later hit on that key replays.
+pub(crate) fn finish_fixture_closure_fill(memo_key: &str) {
+    let Some(closure) = LAST_RECORDED_FIXTURE_CLOSURE.with(|l| l.borrow_mut().take()) else {
+        return;
+    };
+    let mut guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard
+        .get_or_insert_with(FixtureClosureMemoReplay::default)
+        .closure_by_memo_key
+        .insert(memo_key.to_string(), closure);
+}
+
+/// A memo hit on `memo_key`: replay the closure its fill recorded into this run's union.
+pub(crate) fn record_fixture_closure_memo_hit(memo_key: &str) {
+    let guard = FIXTURE_CLOSURE_MEMO_REPLAY
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(replay) = guard.as_ref() else {
+        return;
+    };
+    let Some(closure) = replay.closure_by_memo_key.get(memo_key) else {
+        return;
+    };
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = closure
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.as_str().to_string(),
+            })
+        })
+        .collect();
+    drop(guard);
+    record_into_union(&sources, true);
+}
+
+/// Record one fixture compile's resolved closure into the run's union. Called by the two fixture
+/// instruments' uncached paths with the exact source vector they compile.
+pub(crate) fn record_fixture_closure(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let closure: RecordedFixtureClosure = {
+        let mut replay = FIXTURE_CLOSURE_MEMO_REPLAY
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let replay = replay.get_or_insert_with(FixtureClosureMemoReplay::default);
+        sources
+            .iter()
+            .filter(|source| source.path != FIXTURE_SOURCE_PATH)
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    replay.intern(&source.path, &source.content),
+                )
+            })
+            .collect()
+    };
+    LAST_RECORDED_FIXTURE_CLOSURE.with(|l| *l.borrow_mut() = Some(closure));
+    record_into_union(sources, false);
+}
+
+fn record_into_union(sources: &[Rc<v1_compiler_compile::SourceFile>], memo_hit: bool) {
+    let mut guard = FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let union = guard.get_or_insert_with(FixtureClosureUnion::default);
+    if memo_hit {
+        union.memo_hits += 1;
+    } else {
+        union.fixture_compiles += 1;
+    }
+    for source in sources {
+        if source.path == FIXTURE_SOURCE_PATH {
+            continue;
+        }
+        match union.members.get(&source.path) {
+            Some(existing) if existing != &source.content => {
+                union.conflicts.insert(source.path.clone());
+            }
+            Some(_) => {}
+            None => {
+                union
+                    .members
+                    .insert(source.path.clone(), source.content.clone());
+            }
+        }
+    }
+}
+
+/// Take the union recorded so far, leaving it empty for the next run in this process.
+pub(crate) fn take_fixture_closure_union() -> FixtureClosureUnion {
+    FIXTURE_CLOSURE_UNION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take()
+        .unwrap_or_default()
+}
+
+/// What a held union render observed, for the caller's `[floor-phase]` line.
+#[derive(Debug)]
+pub(crate) struct FixtureClosureUnionObserved {
+    pub members: usize,
+    pub digest: String,
+    pub files: usize,
+    pub emit_diagnostics: usize,
+}
+
+/// The digest of a union: path and bytes of every member, in path order. Two runs print the same
+/// digest exactly when they rendered the same population.
+pub(crate) fn fixture_closure_union_digest(members: &BTreeMap<String, String>) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash(format!("fixture-closure-union:{}", members.len()));
+    for (path, content) in members {
+        h = hash_combine(h, atom_identity_hash(path.clone()));
+        h = hash_combine(h, atom_identity_hash(content.clone()));
+    }
+    h
+}
+
+/// RENDER THE UNION ONCE THROUGH THE RUST EMITTER AND REFUSE ON ANY PER-MODULE EMIT REFUSAL.
+///
+/// The members are compiled together as one source vector and rendered with `RenderEveryModule`,
+/// so every member owes its own rendering, which is the coverage #13037 removed. The compile is
+/// fresh: the floor's prepared graph is the gate closure with its typecheck caches stripped
+/// (`prepared_graph_without_typecheck_caches`), a different carrier from the `compile_to_resolved`
+/// output the fixture instruments render, and the caller prints how many members lie outside it,
+/// so a reader can see the union is not that closure rather than assume it.
+///
+/// Every failure is a typed, located refusal, never a skip:
+///   * `FixtureClosureUnionConflict`: one path recorded with two contents;
+///   * `FixtureClosureUnionUncompilable`: a blocking compile diagnostic, so no member could be
+///     rendered, named by module;
+///   * `FixtureClosureUnionEmitRefused`: an error diagnostic produced by the render, named by
+///     module and emit reason. These are the render's own diagnostics: a render's diagnostic list
+///     is the compile's list followed by the emitter's (`emit_resolved_for_target_selected`), so
+///     the suffix past the compile's length is exactly what the emitter added.
+pub(crate) fn fixture_closure_union_emit_receipt(
+    union: &FixtureClosureUnion,
+) -> Result<FixtureClosureUnionObserved, String> {
+    let digest = fixture_closure_union_digest(&union.members);
+    let refuse = |cause: &str, what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause={cause} receipt=fixture_closure_union_emit_receipt \
+             members={} digest={digest} -- {what}",
+            union.members.len()
+        )
+    };
+    if !union.conflicts.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionConflict",
+            format!(
+                "paths recorded with two different contents in one run: {:?}",
+                union.conflicts
+            ),
+        ));
+    }
+    // AN EMPTY UNION IS A BROKEN SEAM, NOT A CLEAN ONE (review 76399). The required floor always
+    // runs fixture claims, so a union with no members means the recording seam was bypassed (an
+    // instrument that does not record, a hit that did not replay), and holding here would let the
+    // restored capability die green.
+    if union.members.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionEmpty",
+            format!(
+                "no fixture closure was recorded on this run (fixture_compiles={} memo_hits={}); \
+                 the recording seam (record_fixture_closure / record_fixture_closure_memo_hit) was \
+                 bypassed",
+                union.fixture_compiles, union.memo_hits
+            ),
+        ));
+    }
+    let sources: Vec<Rc<v1_compiler_compile::SourceFile>> = union
+        .members
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
+        .collect();
+    let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let located = |d: &Rc<ErrorNode>| {
+        format!(
+            "module={} reason=`{}`",
+            d.module_name,
+            diagnostic_to_message(d.diagnostic.clone())
+        )
+    };
+    if v1_compiler_compile::emittable_graph(resolved.clone()).is_none() {
+        let blocking: Vec<String> = resolved
+            .diagnostics
+            .iter()
+            .filter(|d| {
+                crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+            })
+            .map(located)
+            .collect();
+        return Err(refuse(
+            "FixtureClosureUnionUncompilable",
+            format!(
+                "the union compile produced {} blocking diagnostics, so no member was rendered: {}",
+                blocking.len(),
+                blocking.join(" | ")
+            ),
+        ));
+    }
+    let compile_diagnostics = resolved.diagnostics.len();
+    let rendered = v1_compiler_compile::emit_resolved_for_target(
+        resolved,
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let emitted: Vec<&Rc<ErrorNode>> = rendered
+        .diagnostics
+        .iter()
+        .skip(compile_diagnostics)
+        .collect();
+    let refusals: Vec<String> = emitted
+        .iter()
+        .filter(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone()))
+        .map(|d| located(d))
+        .collect();
+    if !refusals.is_empty() {
+        return Err(refuse(
+            "FixtureClosureUnionEmitRefused",
+            format!(
+                "{} per-module emit refusals: {}",
+                refusals.len(),
+                refusals.join(" | ")
+            ),
+        ));
+    }
+    Ok(FixtureClosureUnionObserved {
+        members: union.members.len(),
+        digest,
+        files: rendered.files.len(),
+        emit_diagnostics: emitted.len(),
+    })
+}
+
+/// The red control's member: a non-tail effectful self-call, which the rust emitter refuses
+/// (`EffectfulSelfRecursionUnrealized`, the derived form exercised by
+/// `test.claim.effectful_item_kind_collapse_witness_test`).
+const FIXTURE_CLOSURE_UNION_RED_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { n + walk(n: n - 1) } else { 0 }\n}\n";
+
+/// The positive control's member: the same closure with the self-call in tail position, which is
+/// lowered to a loop and renders clean.
+const FIXTURE_CLOSURE_UNION_CLEAN_MEMBER: &str = "module efr_member\nimport extdeps.filesystem.filesystem_io { Filesystem }\nfn walk(n: Int) -> Int {\n  let listed = Filesystem.List(path: \".\")\n  if n == 0 { 0 } else if listed.success { walk(n: n - 1) } else { 0 }\n}\n";
+
+const FIXTURE_CLOSURE_UNION_CONTROL_PATH: &str = "dag/fixture_closure_union_control/efr_member.dag";
+
+/// A union built the way a fixture compile builds its closure: the member's imports resolved over
+/// the live module index, the member itself given a corpus path so it is a union MEMBER.
+pub(crate) fn fixture_closure_union_control_union(content: &str) -> FixtureClosureUnion {
+    let module_index = build_module_path_index_from_witness_roots();
+    let mut union = FixtureClosureUnion::default();
+    for source in resolve_virtual_source_with_imports(
+        FIXTURE_CLOSURE_UNION_CONTROL_PATH,
+        content,
+        &module_index,
+    ) {
+        union
+            .members
+            .insert(source.path.clone(), source.content.clone());
+    }
+    union
+}
+
+/// THE ENROLLED CONTROLS FOR [`fixture_closure_union_emit_receipt`], run by the required floor on
+/// every run before the union renders (review 76399; DESIGN §4b(4): the discriminating red and the
+/// positive control stay enrolled on the acceptance path, not only in cargo unit tests, which run on
+/// no CI path). The red member must refuse as `FixtureClosureUnionEmitRefused` located at
+/// `module=efr_member`; the clean member must hold. Either failing refuses the floor, so a later
+/// change that disables the refusal arm or breaks the clean render is a required red.
+/// Returns (red wall ms, clean wall ms) for the caller's log line.
+pub(crate) fn fixture_closure_union_controls() -> Result<(u128, u128), String> {
+    let refuse = |what: String| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL cause=FixtureClosureUnionControlFailed \
+             receipt=fixture_closure_union_controls -- {what}"
+        )
+    };
+    let red_started = std::time::Instant::now();
+    match fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
+        FIXTURE_CLOSURE_UNION_RED_MEMBER,
+    )) {
+        Err(refusal)
+            if refusal.contains("cause=FixtureClosureUnionEmitRefused")
+                && refusal.contains("module=efr_member") => {}
+        Err(other) => {
+            return Err(refuse(format!(
+                "the red member refused for the wrong reason: {other}"
+            )))
+        }
+        Ok(observed) => {
+            return Err(refuse(format!(
+                "the red member's emit refusal did not refuse the union: {observed:?}"
+            )))
+        }
+    }
+    let red_ms = red_started.elapsed().as_millis();
+    let clean_started = std::time::Instant::now();
+    fixture_closure_union_emit_receipt(&fixture_closure_union_control_union(
+        FIXTURE_CLOSURE_UNION_CLEAN_MEMBER,
+    ))
+    .map_err(|refusal| refuse(format!("the clean member did not hold: {refusal}")))?;
+    Ok((red_ms, clean_started.elapsed().as_millis()))
+}
+
 #[cfg(test)]
-mod fixture_render_selection_probe {
+mod fixture_closure_union_tests {
     use super::*;
 
-    // Runs the floor receipt by hand (`--ignored`) with its cost. Not enrolled here: the CI lane
-    // runs no unit tests; the floor runs the receipt itself.
+    /// The recorder and the union are process-wide; tests that touch them run one at a time.
+    static UNION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// An empty union is a bypassed recording seam and refuses (review 76399).
     #[test]
-    #[ignore]
-    #[allow(clippy::disallowed_macros)]
-    fn render_selection_agreement_receipt_by_hand() {
-        // The floor warms this index before the receipt; warm it here too so the cost is the
-        // receipt's own.
-        let _ = build_module_path_index_from_witness_roots();
-        let t = std::time::Instant::now();
-        let r = render_selection_agreement_receipt();
-        eprintln!(
-            "[c1-probe] receipt={r:?} wall_ms={}",
-            t.elapsed().as_millis()
+    fn an_empty_union_refuses() {
+        let refusal = fixture_closure_union_emit_receipt(&FixtureClosureUnion::default())
+            .expect_err("an empty union must refuse");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionEmpty"),
+            "{refusal}"
         );
-        assert!(r.is_ok());
+    }
+
+    /// One path recorded with two contents is refused, never resolved by picking one.
+    #[test]
+    fn a_path_recorded_with_two_contents_refuses() {
+        let mut union = FixtureClosureUnion::default();
+        union.conflicts.insert("dag/x.dag".to_string());
+        let refusal = fixture_closure_union_emit_receipt(&union).expect_err("conflict refuses");
+        assert!(
+            refusal.contains("cause=FixtureClosureUnionConflict"),
+            "{refusal}"
+        );
+    }
+
+    /// A LATER RUN IN THE SAME PROCESS WHOSE FIXTURE CALLS ALL HIT THE MEMO still reaches the
+    /// union: the hit replays the closure its fill recorded (review 76318). Without the replay the
+    /// second union is empty and the receipt would hold having rendered nothing.
+    #[test]
+    fn a_memo_hit_on_a_later_run_replays_its_closure() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[
+            file("dag/replay_a.dag", "module replay_a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        finish_fixture_closure_fill("replay-test-key");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-test-key");
+        let second_run = take_fixture_closure_union();
+        assert_eq!(second_run.fixture_compiles, 0);
+        assert_eq!(second_run.memo_hits, 1);
+        assert_eq!(
+            second_run.members.keys().collect::<Vec<_>>(),
+            vec!["dag/replay_a.dag"]
+        );
+    }
+
+    /// A FILE THAT CHANGED BETWEEN RUNS: a hit on run 1's key replays run 1's bytes and a fresh fill
+    /// on run 2 records the new bytes, each under its own key. Path-keyed replay would hand the
+    /// second key the first fill's bytes (review 76336).
+    #[test]
+    fn a_replay_returns_its_own_fills_bytes() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        drop(take_fixture_closure_union());
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v1\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-1");
+        begin_fixture_closure_fill();
+        record_fixture_closure(&[file("dag/replay_b.dag", "module replay_b\n// v2\n")]);
+        finish_fixture_closure_fill("replay-bytes-key-2");
+        drop(take_fixture_closure_union());
+        record_fixture_closure_memo_hit("replay-bytes-key-2");
+        let run = take_fixture_closure_union();
+        assert!(run.conflicts.is_empty(), "{:?}", run.conflicts);
+        assert_eq!(
+            run.members.get("dag/replay_b.dag").map(String::as_str),
+            Some("module replay_b\n// v2\n")
+        );
+    }
+
+    /// The recorder skips the fixture source itself and keeps a content conflict.
+    #[test]
+    fn the_recorder_excludes_the_fixture_and_keeps_conflicts() {
+        let _serial = UNION_TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        drop(take_fixture_closure_union());
+        let file = |path: &str, content: &str| {
+            Rc::new(v1_compiler_compile::SourceFile {
+                path: path.to_string(),
+                content: content.to_string(),
+            })
+        };
+        record_fixture_closure(&[
+            file("dag/a.dag", "module a\n"),
+            file(FIXTURE_SOURCE_PATH, "x"),
+        ]);
+        record_fixture_closure(&[file("dag/a.dag", "module a2\n")]);
+        let union = take_fixture_closure_union();
+        assert_eq!(union.fixture_compiles, 2);
+        assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
+        assert!(union.conflicts.contains("dag/a.dag"));
     }
 }

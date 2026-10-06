@@ -7,7 +7,10 @@ import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
 import gunbc.roadmap_authority { declared_roadmap_nodes }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_read_outcome,
+}
 import gunbc.roadmap_execution_contract {
   WorkItemExecutionContract,
   ValidationOperation,
@@ -133,9 +136,7 @@ fn closing_contract_oracle_observe(oracle: ValidationOracleRef) -> OracleObserva
   let read = Filesystem.Read(path: oracle.entry as String)
   validation_oracle_observe_from_source(
     oracle: oracle,
-    source_readable: read.success,
-    source: read.content,
-    read_error: read.error,
+    source_read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
   )
 }
 
