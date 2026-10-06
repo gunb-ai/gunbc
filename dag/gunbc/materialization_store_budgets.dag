@@ -35,7 +35,7 @@ type TypecheckStoreFamilyEntryBet {
   standing: CitedFigureStanding
 }
 
-data typecheck_store_family_entry_size_read_obligation: NonEmptyStr = "v1_compiler.cli_run typecheck_store_session observed_largest_entry_bytes after seed_commit_typecheck_hex of TypecheckModuleRequest objects constructed on reconcile_with_typed_cache (interface_text plus diagnostics_text of the real typecheck_module result). Cite that producer; do not transcribe a count into this module."
+data typecheck_store_family_entry_size_read_obligation: NonEmptyStr = "v1_compiler.cli_run typecheck_store_session observed_largest_entry_bytes after seed_commit_typecheck_hex of TypecheckModuleRequest objects constructed on reconcile_with_typed_cache (interface_text plus diagnostics_text of the module's OWN typecheck_module_items tail, never the import-derived closure), reported on the run receipt line by typecheck_store_session store_receipt_line as largest_entry_bytes. Cite that producer; do not transcribe a count into this module."
 
 data typecheck_store_family_entry_bet: TypecheckStoreFamilyEntryBet = TypecheckStoreFamilyEntryBet {
   bytes: typed_module_bytes_per_entry_estimate,

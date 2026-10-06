@@ -1,7 +1,8 @@
 module test.claim.typecheck_module_store_witness
 
 import std.types { Bool, List, String }
-import std.content_hash { content_hash_atom, Fnv1a64Structural }
+import std.content_hash { content_hash_atom, as_content_hash_structural, Fnv1a64Structural }
+import std.interface_summary { InterfaceHash, module_key, typed_module_key }
 import std.decl_ref { decl_ref }
 import std.dissolution { dissolution_status, DissolutionFired, DissolutionPending, DissolutionUnbound }
 import std.materialization_provider { request_key }
@@ -31,6 +32,10 @@ fn h(v: String) -> Fnv1a64Structural {
   content_hash_atom(value: v)
 }
 
+fn iface(v: String) -> InterfaceHash {
+  content_hash_atom(value: v)
+}
+
 test fn the_durable_budgets_consumer_frontier_stays_unbound_until_the_seed_path_runs() -> Bool {
   match dissolution_status(condition: materialization_store_durable_budgets_consumer_frontier, present_decls: [
     decl_ref(module_path: "gunbc.typecheck_module_store", decl_name: "ensure_durable_typecheck_store")
@@ -53,14 +58,18 @@ test fn the_seed_path_note_stays_unbound_until_reconcile_calls_lookup_and_commit
 
 test fn typecheck_module_request_key_is_derived_from_the_judgment_contract() -> Bool {
   let src = h(v: "source-bytes-not-a-path")
+  let imp = iface(v: "iface-1")
   let compiler = h(v: "compiler-x")
-  let a = typecheck_module_request(source_digest: src, direct_import_interfaces: [], compiler_digest: compiler)
-  let b = typecheck_module_request(source_digest: src, direct_import_interfaces: [], compiler_digest: compiler)
-  let changed_source = typecheck_module_request(source_digest: h(v: "other-source"), direct_import_interfaces: [], compiler_digest: compiler)
-  let changed_compiler = typecheck_module_request(source_digest: src, direct_import_interfaces: [], compiler_digest: h(v: "compiler-y"))
+  let a = typecheck_module_request(source_digest: src, direct_import_interfaces: [imp], compiler_digest: compiler)
+  let b = typecheck_module_request(source_digest: src, direct_import_interfaces: [imp], compiler_digest: compiler)
+  let changed = typecheck_module_request(source_digest: src, direct_import_interfaces: [iface(v: "iface-2")], compiler_digest: compiler)
+  let expected = typed_module_key(
+    interface_key: module_key(source_hash: src, direct_import_interface_hashes: [imp]),
+    compiler_identity: compiler
+  )
   request_key(req: a) == request_key(req: b)
-    && (request_key(req: a) == request_key(req: changed_source)) == false
-    && (request_key(req: a) == request_key(req: changed_compiler)) == false
+    && (request_key(req: a) == request_key(req: changed)) == false
+    && request_key(req: a) == as_content_hash_structural(structural: expected)
 }
 
 test fn typecheck_module_request_from_hex_refuses_a_non_digest() -> Bool {

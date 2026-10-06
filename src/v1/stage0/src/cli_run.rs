@@ -16384,13 +16384,51 @@ fn reconcile_with_typed_cache(
     resolve_stage_slot_add(|s| {
         s.assembly_variant_base += variant_base_started.elapsed().as_nanos()
     });
-    let mut tree_symbol_index_memo: std::collections::HashMap<
-        String,
-        (
-            Rc<SymbolIndex>,
-            Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
-        ),
-    > = std::collections::HashMap::new();
+    // Same-tree bare underlay for the module being typechecked (bare = own tree, qualified =
+    // whole pool); out-of-root modules keep the closure-only bare universe. One derivation for
+    // both a durable restore and a compute.
+    type ModuleIndices = (
+        Rc<SymbolIndex>,
+        Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::TypeBinding>>>,
+    );
+    let module_indices = |memo: &mut std::collections::HashMap<String, ModuleIndices>,
+                          decl_file: &str|
+     -> Result<ModuleIndices, String> {
+        match source_tree_root_of(&index.source_roots, decl_file) {
+            Some(root) => match memo.get(&root) {
+                Some(hit) => Ok(hit.clone()),
+                None => {
+                    let (composed, composed_nanos) = nanos_net_of_pool_parse(|| {
+                        tree_bare_census_for_root(index, &root).map(|tree| {
+                            v1_compiler_infer::symbol_index_with_bare_fill(
+                                symbol_index.clone(),
+                                tree,
+                            )
+                        })
+                    });
+                    let composed = composed?;
+                    resolve_stage_slot_add(|s| s.assembly_root_symbol_index += composed_nanos);
+                    // The composed index's global_bare = closure ∪ tree, so its variant base is
+                    // computed from the composed map — once per root, beside the index it
+                    // belongs to.
+                    let root_variant_base_started = std::time::Instant::now();
+                    let base = v1_compiler_infer::build_global_bare_variant_locals(
+                        composed.global_bare.clone(),
+                        source_indices.clone(),
+                    );
+                    resolve_stage_slot_add(|s| {
+                        s.assembly_root_variant_base +=
+                            root_variant_base_started.elapsed().as_nanos()
+                    });
+                    memo.insert(root, (composed.clone(), base.clone()));
+                    Ok((composed, base))
+                }
+            },
+            None => Ok((symbol_index.clone(), closure_variant_base.clone())),
+        }
+    };
+    let mut tree_symbol_index_memo: std::collections::HashMap<String, ModuleIndices> =
+        std::collections::HashMap::new();
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
     // `typed_module_content_key` at each module's store lookup.
@@ -16454,7 +16492,7 @@ fn reconcile_with_typed_cache(
                         &store_parts.source_digest_hex,
                         &store_parts.import_interface_hexes,
                         &store_parts.compiler_digest_hex,
-                        hit.as_ref(),
+                        &typecheck_store_session::own_of_result(hit.as_ref()),
                     )?;
                 }
                 let was_cache_hit = cached.is_some();
@@ -16470,7 +16508,35 @@ fn reconcile_with_typed_cache(
                     &typed_key,
                     &resolved.module.span.file,
                 );
-                let parent_diags = if was_cache_hit {
+                // LOOKUP BEFORE collect_parent_envs: the durable key is source + import-interface +
+                // compiler digests, so it needs no parent environment. A hit restores the module
+                // (head re-run from the imports + the stored tail) and skips collect_parent_envs
+                // and compute both.
+                let mut restored: Option<Rc<v1_compiler_infer::TypecheckModuleResult>> = None;
+                if cached.is_none() {
+                    if let typecheck_store_session::DurableTypecheckGet::Hit(own) =
+                        typecheck_store_session::durable_typecheck_lookup(
+                            &store_parts.source_digest_hex,
+                            &store_parts.import_interface_hexes,
+                            &store_parts.compiler_digest_hex,
+                        )?
+                    {
+                        let (module_symbol_index, module_variant_base) =
+                            module_indices(&mut tree_symbol_index_memo, &decl_file)?;
+                        let result = v1_compiler_infer::typecheck_module_restore(
+                            resolved.clone(),
+                            module_index.clone(),
+                            variant_surfaces.clone(),
+                            source_indices.clone(),
+                            intern_table.clone(),
+                            module_symbol_index,
+                            module_variant_base,
+                            Rc::new(own),
+                        );
+                        restored = Some(index_insert_typed(index, typed_key.clone(), result)?);
+                    }
+                }
+                let parent_diags = if was_cache_hit || restored.is_some() {
                     Rc::new(im::Vector::new())
                 } else {
                     let parent_envs_started = std::time::Instant::now();
@@ -16484,25 +16550,13 @@ fn reconcile_with_typed_cache(
                     });
                     parent_result.diagnostics.clone()
                 };
-                let tc_result = match cached {
+                let tc_result = match cached.or(restored) {
                     Some(hit) => hit,
                     None => {
                         let mut compute_on_miss =
                             || -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
                                 if let Some(hit) = index_get_typed(index, &typed_key)? {
                                     return Ok(hit);
-                                }
-                                match typecheck_store_session::durable_typecheck_lookup(
-                                    &store_parts.source_digest_hex,
-                                    &store_parts.import_interface_hexes,
-                                    &store_parts.compiler_digest_hex,
-                                )? {
-                                    typecheck_store_session::DurableTypecheckGet::Hit(hit) => {
-                                        return index_insert_typed(index, typed_key.clone(), hit);
-                                    }
-                                    typecheck_store_session::DurableTypecheckGet::Miss
-                                    | typecheck_store_session::DurableTypecheckGet::Unavailable => {
-                                    }
                                 }
                                 // A miss on a key this index already evicted is a READMISSION —
                                 // the governor re-buying paid-for work — counted for the stall
@@ -16524,54 +16578,8 @@ fn reconcile_with_typed_cache(
                                         )
                                     );
                                 }
-                                // Same-tree bare underlay for the module being typechecked
-                                // (bare = own tree, qualified = whole pool); out-of-root
-                                // modules keep the closure-only bare universe.
                                 let (module_symbol_index, module_variant_base) =
-                                    match source_tree_root_of(&index.source_roots, &decl_file) {
-                                        Some(root) => match tree_symbol_index_memo.get(&root) {
-                                            Some(hit) => hit.clone(),
-                                            None => {
-                                                let (composed, composed_nanos) =
-                                                    nanos_net_of_pool_parse(|| {
-                                                        tree_bare_census_for_root(index, &root).map(
-                                                            |tree| {
-                                                                v1_compiler_infer::symbol_index_with_bare_fill(
-                                                                    symbol_index.clone(),
-                                                                    tree,
-                                                                )
-                                                            },
-                                                        )
-                                                    });
-                                                let composed = composed?;
-                                                resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_symbol_index += composed_nanos
-                                                });
-                                                // The composed index's global_bare = closure ∪ tree,
-                                                // so its variant base is computed from the composed
-                                                // map — once per root, beside the index it belongs to.
-                                                let root_variant_base_started =
-                                                    std::time::Instant::now();
-                                                let base =
-                                            v1_compiler_infer::build_global_bare_variant_locals(
-                                                composed.global_bare.clone(),
-                                                source_indices.clone(),
-                                            );
-                                                resolve_stage_slot_add(|s| {
-                                                    s.assembly_root_variant_base +=
-                                                        root_variant_base_started
-                                                            .elapsed()
-                                                            .as_nanos()
-                                                });
-                                                tree_symbol_index_memo
-                                                    .insert(root, (composed.clone(), base.clone()));
-                                                (composed, base)
-                                            }
-                                        },
-                                        None => {
-                                            (symbol_index.clone(), closure_variant_base.clone())
-                                        }
-                                    };
+                                    module_indices(&mut tree_symbol_index_memo, &decl_file)?;
                                 let module_tc_started = std::time::Instant::now();
                                 let computed = v1_compiler_infer::typecheck_module(
                                     resolved.clone(),
@@ -16613,7 +16621,7 @@ fn reconcile_with_typed_cache(
                                     &store_parts.source_digest_hex,
                                     &store_parts.import_interface_hexes,
                                     &store_parts.compiler_digest_hex,
-                                    computed.as_ref(),
+                                    &typecheck_store_session::own_of_result(computed.as_ref()),
                                 )?;
                                 Ok(computed)
                             };
@@ -16666,6 +16674,12 @@ fn reconcile_with_typed_cache(
         }
     }
 
+    // The durable store's counted outcomes and the largest committed entry, on the run receipt
+    // (unconditionally when anything but a plain hit/miss/commit happened -- an unavailable store,
+    // a missed-open commit or a re-entry is a located, countable degradation, never silent).
+    if let Some(line) = typecheck_store_session::store_receipt_line() {
+        eprintln!("{line}");
+    }
     // Binding-fork ledger receipt (declared interim, lane ruling REVISED 2026-07-11: novelty,
     // not tree, is the refusal axis). ALL pre-existing binding forks — same-tree AND cross-tree —
     // ride the typed out-of-band channel (TypecheckModuleResult.binding_forks), never diagnostics

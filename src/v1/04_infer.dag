@@ -16844,7 +16844,27 @@ fn ground_kernel_views(items: List<Node>, env: TypeEnv, module_name: String) -> 
   }
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+// THE ENTRY/CLOSURE BOUNDARY (C2, gunbc#13482). typecheck_module is two facts, not one: the HEAD is
+// everything DERIVED FROM THE IMPORTS -- the type env (ancestry, parents, the global bare census), the
+// module context (func-env views of the imports, variant locals, the item registry) -- and the TAIL is
+// what THIS MODULE'S ITEMS produce: typed items, resolved signatures, the refreshed registry and the
+// diagnostics. A materialized entry stores only the tail (TypecheckModuleOwn); a hit re-runs the head
+// from the imports' already-reconstructed modules (typecheck_module_restore) and grafts the stored tail.
+// Storing the head would store the closure: that snapshot is what made the deleted store's entries
+// multi-GB. typecheck_module itself is head + tail with no second derivation, so a miss is the same
+// TypedModule and diagnostics as before the split.
+type TypecheckModuleHead
+  = TypecheckHeadAbandoned { result: TypecheckModuleResult }
+  | TypecheckHeadReady { env_result: BuildTypeEnvResult, module_name: String, ctx: ModuleContext }
+
+type TypecheckModuleOwn {
+  items: List<Node>
+  func_local: Map<String, ResolvedFuncSig>
+  item_registry: Map<String, ItemInfo>
+  diagnostics: List<ErrorNode>
+}
+
+fn typecheck_module_head(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleHead {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -16853,7 +16873,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   let env_errors = env_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
   let seed_diags = builtin_kernel_seed_diagnostics()
   if env_errors |> count > 0 {
-    return TypecheckModuleResult {
+    return TypecheckHeadAbandoned { result: TypecheckModuleResult {
       typed: TypedModule {
         progress: AbandonedBeforeItems,
         module: resolved.module,
@@ -16873,7 +16893,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       },
       diagnostics: concat(env_diags, seed_diags),
       binding_forks: env_result.binding_forks
-    }
+    } }
   }
 
   let resolved_module_name = authored_name_at(source_indices: source_indices, node: resolved.module)
@@ -16889,21 +16909,32 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     module_name: resolved_module_name,
     global_variant_base: global_variant_base
   )
+  TypecheckHeadReady { env_result: env_result, module_name: resolved_module_name, ctx: ctx }
+}
 
-  let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
+fn typecheck_module_data_locals(ctx: ModuleContext, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
+  fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
     if item.body != none && item.params |> count == 0 && item.inferred == none && item.type_annotation != none {
       map_insert(acc, authored_name_at(source_indices: source_indices, node: item), TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: item.type_annotation.value, provenance: SubValueUnknown, alias_rhs: none })
     } else {
       acc
     }
   )
+}
+
+// The tail's derivation: infer the items against the head's env and context.
+fn typecheck_module_items(resolved: ResolvedModule, env_result: BuildTypeEnvResult, module_name: String, ctx: ModuleContext, source_indices: Map<String, NewlineIndex>) -> TypecheckModuleOwn {
+  let env = env_result.env
+  let env_diags = env_result.diagnostics
+  let seed_diags = builtin_kernel_seed_diagnostics()
+  let data_locals = typecheck_module_data_locals(ctx: ctx, source_indices: source_indices)
   let infer_scope = InferScope {
     type_env: env,
     func_env: ctx.func_env,
     locals: data_locals,
     body_locals: empty_map(),
     match_bound_names: empty_map(),
-    module_name: resolved_module_name,
+    module_name: module_name,
     service_registry: ctx.svc_registry,
     item_registry: ctx.item_registry,
     caller_decl_name: "",
@@ -16938,39 +16969,69 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
       }
     } else { item }
   )
-  let grounded = ground_kernel_views(items: reannotated_items, env: env, module_name: resolved_module_name)
+  let grounded = ground_kernel_views(items: reannotated_items, env: env, module_name: module_name)
+  TypecheckModuleOwn {
+    items: grounded.items,
+    func_local: updated_func_env.local,
+    item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: grounded.items, source_indices: source_indices, module_name: module_name),
+    diagnostics: frontier_occurrence_budget_checked(
+      module_name: module_name,
+      module_span: resolved.module.span,
+      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: module_name, module_span: resolved.module.span), seed_diags))
+  }
+}
+
+// Head + own tail -> the module result. Both the computed tail (typecheck_module) and a stored tail
+// (typecheck_module_restore) pass through here, so a hit and a miss cannot assemble differently.
+fn typecheck_module_assemble(resolved: ResolvedModule, env_result: BuildTypeEnvResult, module_name: String, ctx: ModuleContext, own: TypecheckModuleOwn, source_indices: Map<String, NewlineIndex>) -> TypecheckModuleResult {
+  let env = env_result.env
   let module_type_env_cache = TypeEnvCache {
-    deps_map: env_cache.deps_map,
-    str_bindings: env_cache.str_bindings,
-    cycle_set_str: env_cache.cycle_set_str,
+    deps_map: env_result.cache.deps_map,
+    str_bindings: env_result.cache.str_bindings,
+    cycle_set_str: env_result.cache.cycle_set_str,
     variant_locals: ctx.variant_locals
   }
-  let typed_base = module_node(occurrence_identity: OccurrenceSynthetic, name: resolved_module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
+  let typed_base = module_node(occurrence_identity: OccurrenceSynthetic, name: module_name, imports: module_imports(n: resolved.module), items: ctx.resolved_items, span: resolved.module.span)
   let typed_module = with(typed_base, { ident_span: resolved.module.ident_span })
 
   TypecheckModuleResult {
     typed: TypedModule {
       progress: ItemsChecked,
       module: typed_module,
-      items: grounded.items,
+      items: own.items,
       type_env: env,
       type_env_cache: module_type_env_cache,
       interface: build_module_interface(
-        module_path: resolved_module_name,
+        module_path: module_name,
         module: typed_module,
         env: env,
         cache: module_type_env_cache,
         source_indices: source_indices
       ),
-      func_env: updated_func_env,
-      item_registry: refresh_direct_service_names(registry: ctx.item_registry, typed_items: grounded.items, source_indices: source_indices, module_name: resolved_module_name),
+      func_env: ResolvedFuncEnv { name: ctx.func_env.name, local: own.func_local, parents: ctx.func_env.parents },
+      item_registry: own.item_registry,
       occurrence_transport: Present { value: resolved.occurrence_transport },
     },
-    diagnostics: frontier_occurrence_budget_checked(
-      module_name: resolved_module_name,
-      module_span: resolved.module.span,
-      diagnostics: concat(env_diags, ctx.diagnostics, infer_diags, grounded.diagnostics, kernel_mint_shape_diagnostics(env: env, module_name: resolved_module_name, module_span: resolved.module.span), seed_diags)),
+    diagnostics: own.diagnostics,
     binding_forks: env_result.binding_forks
+  }
+}
+
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
+  match typecheck_module_head(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base) {
+    TypecheckHeadAbandoned { result: r } => r
+    TypecheckHeadReady { env_result: er, module_name: name, ctx: ctx } =>
+      typecheck_module_assemble(resolved: resolved, env_result: er, module_name: name, ctx: ctx, own: typecheck_module_items(resolved: resolved, env_result: er, module_name: name, ctx: ctx, source_indices: source_indices), source_indices: source_indices)
+  }
+}
+
+// A hit: the same head from the imports, the stored tail grafted. An abandoned head is a full result
+// by itself (nothing of the tail was ever produced), so the stored own is not consulted.
+fn typecheck_module_restore(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>, own: TypecheckModuleOwn) -> TypecheckModuleResult {
+  match typecheck_module_head(resolved: resolved, parent_index: parent_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table, symbol_index: symbol_index, global_variant_base: global_variant_base) {
+    TypecheckHeadAbandoned { result: r } => r
+    TypecheckHeadReady { env_result: er, module_name: name, ctx: ctx } =>
+      typecheck_module_assemble(resolved: resolved, env_result: er, module_name: name, ctx: ctx, own: own, source_indices: source_indices)
   }
 }
 
