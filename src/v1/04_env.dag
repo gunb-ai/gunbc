@@ -259,6 +259,50 @@ fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
 }
 
+// THE KERNEL NAMES NO IMPORT OVERRIDES: the resolver's scope layer for the kernel sits positionally
+// above imports (v1.compiler.infer direct_import_export_precedence_note: locals > kernel >
+// direct-selected > transitive). It lives here, beside the occurrence decision below, so the
+// resolver's overlay and the emitter's unstamped-occurrence route read one predicate.
+fn overlay_skips_kernel_name(name: String) -> Bool {
+  is_kernel_type(name: name)
+    || is_container_type(name: name)
+    || name == "Unit"
+    || name == "Optional"
+    || name == "Present"
+    || name == "Absent"
+}
+
+// WHAT A BARE NAME DENOTES AT ONE UNSTAMPED OCCURRENCE, in the resolver's declared order
+// (v1.compiler.infer direct_import_export_precedence_note; overlay_skips_kernel_name): a declaration in
+// the occurrence's own file, then the kernel, then the file's imports. It is the emitter's COPY of that
+// order for references that arrive with no resolution fact -- type-environment declaration bodies whose
+// members were never stamped -- and a counted route, not a second authority: it is read by
+// v1.compiler.infer_emit_info resolve_type_decl_routed and by v1.compiler.emit_rust
+// is_host_optional_carrier_type, and it is deleted when those bodies carry Node.declaration stamped in
+// the DECLARING scope (v1.compiler.infer_emit_info referencing_module_declarer_route_dissolves_on).
+type BareOccurrenceBinding
+  = BareOccurrenceDeclaredInItsFile { declaration: Node }
+  | BareOccurrenceDeclaredTwiceInItsFile
+  | BareOccurrenceIsKernelName
+  | BareOccurrenceBoundByImports
+
+fn symbol_index_bare_declarations(index: SymbolIndex, name: String) -> List<Node> {
+  match map_get(index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: b } } => [b.resolved]
+    Present { value: GlobalBareAmbiguousBinding { candidates: cs } } => cs |> map(c => c.binding.resolved)
+    Absent => []
+  }
+}
+
+fn bare_occurrence_binding(index: SymbolIndex, name: String, reference: Node) -> BareOccurrenceBinding {
+  let local = symbol_index_bare_declarations(index: index, name: name) |> filter(d => d.span.file == reference.span.file)
+  let local_count = local |> fold(init: 0, f: (n, _d) => n + 1)
+  if local_count == 1 { local |> fold(init: BareOccurrenceDeclaredTwiceInItsFile, f: (acc, d) => BareOccurrenceDeclaredInItsFile { declaration: d }) }
+  else if local_count > 1 { BareOccurrenceDeclaredTwiceInItsFile }
+  else if overlay_skips_kernel_name(name: name) { BareOccurrenceIsKernelName }
+  else { BareOccurrenceBoundByImports }
+}
+
 fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
   candidates |> any(c => c.binding.resolved == resolved)
 }

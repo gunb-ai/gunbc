@@ -23,7 +23,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField, TypeParamete
 import std.types { is_kernel_type }
 import std.literal_elaboration { kernel_mint_declaration_for, KernelMintDeclarationFound, KernelMintDeclarationAbsent, KernelMintDeclarationAmbiguous }
 import gunbc.structural_realization_bindings { kernel_mint_declaration_rows }
-import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup }
+import v1.compiler.infer_env { TypeEnv, SymbolIndex, empty_symbol_index, empty_type_env, symbol_index_lookup, BareOccurrenceBinding, BareOccurrenceDeclaredInItsFile, BareOccurrenceDeclaredTwiceInItsFile, BareOccurrenceIsKernelName, BareOccurrenceBoundByImports, bare_occurrence_binding }
 import v1.compiler.infer_types {
   TextJudgment, TextJudgedIn, TextNotAsked, TextNotAskedInVariantFieldSummary, TextNotAskedForCallableComponentResidue,
   normalize_access_type_node, resolved_type,
@@ -278,26 +278,23 @@ type TypeDeclIndex {
   file_scopes: Map<String, TypeDeclFileScope>
 }
 
-// THE SCOPE AN OCCURRENCE'S FILE GIVES A BARE NAME: the module's named imports (leaf -> the module
-// it is imported from) and the modules it imports whole. It is the resolver's own binding input,
-// read from the module's import nodes (v1.std.core module_imports), so an unstamped reference is
-// decided by what its declaring scope binds, never by which declaration happens to mint the leaf.
+// THE IMPORT ARM OF AN OCCURRENCE'S SCOPE: the module's named imports (leaf -> the module it is
+// imported from), read from its import nodes (v1.std.core module_imports). It is consulted only after
+// the resolver's order has passed the own-file and kernel arms (type_decl_occurrence_binding).
 type TypeDeclFileScope {
   module_path: String
   named_imports: Map<String, String>
-  glob_imports: List<String>
 }
 
-// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE, read from that occurrence's file scope.
-// OccurrenceUnboundInScope is the only arm that admits the kernel mint: the scope neither declares
-// nor imports the leaf and imports no module whole, so nothing the module wrote binds the name.
-// OccurrenceUndecided refuses: no recorded scope for the file, two local declarers, a named import
-// whose module does not declare the leaf here (a re-export this index cannot follow), or a whole
-// import that may bind it.
+// WHAT A BARE LEAF DENOTES AT ONE OCCURRENCE: the resolver's order, read through
+// v1.compiler.infer_env bare_occurrence_binding (own file, then kernel, then imports), joined here to
+// the declaration identity this index keys on. The import arm reads the file's named imports; a whole
+// import that may bind the leaf, or a named import whose module does not declare it here (a
+// re-export this index cannot follow), is OccurrenceUndecided and refuses.
 type TypeDeclOccurrenceBinding
   = OccurrenceDeclaredHere { identity: String }
+  | OccurrenceIsKernelName
   | OccurrenceImported { identity: String }
-  | OccurrenceUnboundInScope
   | OccurrenceUndecided
 
 // TypeDeclKernelSpellingUndecided IS ITS OWN ARM BECAUSE IT IS A DIFFERENT FACT FROM AMBIGUITY.
@@ -492,7 +489,7 @@ fn type_decl_qualifier_declarer(index: TypeDeclIndex, authored: String) -> Strin
 // (gunbc.structural_realization_bindings kernel_mint_declaration_rows, the row the pattern side reads
 // through kernel_mint_ownership), but that answers WHICH declaration a mint stands for, not WHETHER an
 // occurrence denotes it. So this arm is reached only from type_decl_occurrence_identity, and only when
-// the occurrence's own file scope is OccurrenceUnboundInScope. A spelling no row mints, or two rows
+// the occurrence is on the kernel arm of the resolver's order (v1.compiler.infer_env bare_occurrence_binding). A spelling no row mints, or two rows
 // mint, stays LeafAmbiguous and refuses. Counted as kernel_mint; interim under
 // referencing_module_declarer_route_dissolves_on.
 fn type_decl_kernel_mint_declarer(index: TypeDeclIndex, leaf: String) -> String? {
@@ -513,45 +510,53 @@ fn type_decl_spelling_route(index: TypeDeclIndex, authored: String, leaf: String
   else {
     match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
       OccurrenceDeclaredHere { identity: _ } => RouteReferencingModuleDeclarer
+      OccurrenceIsKernelName => RouteKernelMint
       OccurrenceImported { identity: _ } => RouteReferencingModuleImport
-      OccurrenceUnboundInScope => RouteKernelMint
       OccurrenceUndecided => RouteLeafSpelling
     }
   }
 }
 
 // THE IDENTITY A BARE AMBIGUOUS LEAF DENOTES AT THIS OCCURRENCE, or none (it stays LeafAmbiguous and
-// refuses). Every arm is decided by the occurrence's scope; the kernel mint is consulted only after
-// the scope establishes that nothing the module wrote binds the leaf.
+// refuses). The kernel mint is consulted only on the kernel arm of the resolver's order.
 fn type_decl_occurrence_identity(index: TypeDeclIndex, leaf: String, reference: Node) -> String? {
   match type_decl_occurrence_binding(index: index, leaf: leaf, reference: reference) {
     OccurrenceDeclaredHere { identity: identity } => Present { value: identity }
+    OccurrenceIsKernelName => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
     OccurrenceImported { identity: identity } => Present { value: identity }
-    OccurrenceUnboundInScope => type_decl_kernel_mint_declarer(index: index, leaf: leaf)
     OccurrenceUndecided => none
   }
 }
 
 fn type_decl_occurrence_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
+  match bare_occurrence_binding(index: index.qualified_names, name: leaf, reference: reference) {
+    BareOccurrenceDeclaredInItsFile { declaration: decl } =>
+      match decl.ident_span {
+        Present { value: sp } =>
+          match map_get(index.identity_by_declaring_span, declaring_span_key(sp: sp)) {
+            Present { value: identity } => OccurrenceDeclaredHere { identity: identity }
+            Absent => OccurrenceUndecided
+          }
+        Absent => OccurrenceUndecided
+      }
+    BareOccurrenceDeclaredTwiceInItsFile => OccurrenceUndecided
+    BareOccurrenceIsKernelName => OccurrenceIsKernelName
+    BareOccurrenceBoundByImports => type_decl_import_binding(index: index, leaf: leaf, reference: reference)
+  }
+}
+
+fn type_decl_import_binding(index: TypeDeclIndex, leaf: String, reference: Node) -> TypeDeclOccurrenceBinding {
   match map_get(index.file_scopes, reference.span.file) {
     Absent => OccurrenceUndecided
     Present { value: scope } =>
-      let local = type_decl_local_declarers(index: index, leaf: leaf, reference: reference)
-      let local_count = local |> fold(init: 0, f: (n, _identity) => n + 1)
-      if local_count == 1 { local |> fold(init: OccurrenceUndecided, f: (acc, identity) => OccurrenceDeclaredHere { identity: identity }) }
-      else if local_count > 1 { OccurrenceUndecided }
-      else {
-        match map_get(scope.named_imports, leaf) {
-          Present { value: from_module } =>
-            let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
-            match map_get(index.by_identity, imported) {
-              Present { value: _ } => OccurrenceImported { identity: imported }
-              Absent => OccurrenceUndecided
-            }
-          Absent =>
-            let glob_count = scope.glob_imports |> fold(init: 0, f: (n, _m) => n + 1)
-            if glob_count == 0 { OccurrenceUnboundInScope } else { OccurrenceUndecided }
-        }
+      match map_get(scope.named_imports, leaf) {
+        Present { value: from_module } =>
+          let imported = type_decl_identity(owner_module: from_module, decl_name: leaf)
+          match map_get(index.by_identity, imported) {
+            Present { value: _ } => OccurrenceImported { identity: imported }
+            Absent => OccurrenceUndecided
+          }
+        Absent => OccurrenceUndecided
       }
   }
 }
@@ -565,15 +570,6 @@ fn type_decl_index_with_file_scope(index: TypeDeclIndex, file: String, scope: Ty
 }
 
 data referencing_module_declarer_route_dissolves_on: DissolutionCondition = unbound_dissolution(description: "RouteReferencingModuleDeclarer, RouteReferencingModuleImport, RouteQualifiedSpelling and RouteKernelMint dissolve when the type environment's declaration bodies carry Node.declaration on every member type reference, stamped by v1.compiler.infer_resolve reference_with_declaration in the DECLARING module's scope, so a bare reference resolved through lookup_type_for hands the emitter stamped members: v1.tests.claim.carrier_realization_census reports zero emitter_decl_route referencing_module_declarer, referencing_module_import, qualified_spelling or kernel_mint rows over the self-host and dag closures. Stamping one declaration, or one closure, is not that capability. Then type_decl_occurrence_binding and type_decl_qualifier_declarer are deleted and such a reference refuses unless carried.")
-
-fn type_decl_local_declarers(index: TypeDeclIndex, leaf: String, reference: Node) -> List<String> {
-  type_decl_identities_of_leaf(index: index, leaf: leaf) |> filter(identity =>
-    match map_get(index.by_identity, identity) {
-      Present { value: decl } => decl.span.file == reference.span.file
-      Absent => false
-    }
-  )
-}
 
 fn resolve_type_decl_reference(index: TypeDeclIndex, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> TypeDeclResolution {
   resolve_type_decl_routed(index: index, type_expr: type_expr, source_indices: source_indices).resolution
