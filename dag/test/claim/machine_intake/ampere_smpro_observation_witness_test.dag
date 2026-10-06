@@ -4,7 +4,7 @@ import v2.std.algebra { filter, any }
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.bmc.ipmi_master_write_read {
   MasterWriteReadBus, PrivateBus, PublicBus, CompletionNakOnWrite,
   master_write_read_bus_byte, master_write_read_slave_byte,

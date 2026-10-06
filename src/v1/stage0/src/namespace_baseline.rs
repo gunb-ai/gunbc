@@ -907,6 +907,9 @@ pub(crate) struct ReachedDeclaration {
     /// The reader module's `is_fixture_carrier` -- whether the reached declaration can be a
     /// claim at all, read from the index rather than guessed from a module-name spelling.
     pub witness_carrier: bool,
+    /// The reader module's workspace-relative path, so a consumer can scope the reached set by
+    /// source root (the per-PR v2 differential admits only claims homed under `src/v2`).
+    pub rel_path: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1112,6 +1115,7 @@ pub(crate) fn body_reach_from_changed_declarations(
                         through: (module_path.clone(), declaration.clone()),
                         binding: bound,
                         witness_carrier: record.is_fixture_carrier,
+                        rel_path: record.rel_path.clone(),
                     });
                     next.push(key);
                 }
@@ -1532,15 +1536,29 @@ pub(crate) fn reconstruct_base_index(
     // and `roster_from_path_listing` answers `None` rather than fabricating a present empty list.
     let base_path_refs: Vec<&str> = base_paths.iter().map(|p| p.as_str()).collect();
     for record in index_records(head_index) {
-        let Some(root) = crate::cli_run::derived_row_roster::roster_root_prefix(&record.rel_path)
-        else {
+        if !crate::cli_run::derived_row_roster::is_derived_roster_path(&record.rel_path) {
             continue;
-        };
-        let Some(content) = crate::cli_run::derived_row_roster::roster_from_path_listing(
+        }
+        // A BASE THAT STILL COMMITS THE ROSTER HAS A REAL BASE SIDE. Before a ledger's hand list
+        // was cut over to the derived fold the base tree carries `roster.dag` as source; the
+        // cutover diff deletes it, so it is read from the base tree with the rest of the diff's
+        // base side, and deriving it here as well would index the module twice.
+        if base_paths.contains(&record.rel_path) {
+            continue;
+        }
+        // Membership is selected by declared type, so the base side reads each listed row file's
+        // content at the base -- the same question the writer asks of the head's files.
+        let content = match crate::cli_run::derived_row_roster::roster_from_path_listing(
+            &record.rel_path,
             base_path_refs.iter().copied(),
-            root,
-        ) else {
-            continue;
+            |rel| {
+                git_stdout(&workspace, &["show", &format!("{base}:{rel}")])
+                    .map_err(|e| format!("reading base row file {rel}: {e}"))
+            },
+        ) {
+            Ok(Some(content)) => content,
+            Ok(None) => continue,
+            Err(reason) => return Ok(BaselineReconstruction::NotEvaluated { reason }),
         };
         // SYNTHESIZED BY THE CURRENT RENDERER, SO PARSED UNDER THE CURRENT GRAMMAR. This content is
         // not bytes read from the base tree; it is new source the head's roster writer produced from
@@ -1967,7 +1985,8 @@ pub fn load_parse_environment_with_closure(
     let dest = revision_scratch_root("parse-env");
     // If the base's closure has a member the head's does not, the materialized set is incomplete
     // and resolution refuses as ClosureNotEvaluable -- a located refusal, not a fabricated read.
-    let outcome = materialize_environment_closure_at(repo, revision, &dest, closure)
+    let carried = closure_members_carried_at(repo, revision, closure)?;
+    let outcome = materialize_environment_closure_at(repo, revision, &dest, &carried)
         .and_then(|()| evaluate_environment_in(&dest, revision));
     let _ = std::fs::remove_dir_all(&dest);
     outcome
@@ -2030,6 +2049,29 @@ impl Default for LiveDagIndex {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The members of a LIVE-TREE closure that `revision` carries.
+///
+/// Every closure here is resolved over the live tree, which is the head, and is then materialized
+/// at another revision, usually the base. A file the revision does not carry cannot belong to that
+/// revision's closure, so handing it to `git archive` only refused the whole read as a missing
+/// pathspec: every module newly imported into the environment or the kernel-types closure turned the
+/// base reconstruction into NotEvaluated. Comparisons that decide agreement still run over the full
+/// closure, where an absent base blob differs from any head blob. A base member the head's closure
+/// no longer names is not recovered here; resolution then refuses, located, as before.
+fn closure_members_carried_at(
+    repo: &std::path::Path,
+    revision: &str,
+    closure: &BTreeSet<String>,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    let mut carried = BTreeSet::new();
+    for path in closure {
+        if blob_id_at(repo, revision, path)?.is_some() {
+            carried.insert(path.clone());
+        }
+    }
+    Ok(carried)
 }
 
 /// The repository-relative files of the live tree's resolved closure rooted at `entry_rel`.
@@ -2165,7 +2207,8 @@ pub fn kernel_names_at(
     revision: &str,
     live: &LiveDagIndex,
 ) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
-    let closure = closure_paths_of(KERNEL_TYPES_PATH, live)?;
+    let closure =
+        closure_members_carried_at(repo, revision, &closure_paths_of(KERNEL_TYPES_PATH, live)?)?;
     let dest = revision_scratch_root("kernel-set");
     let outcome = materialize_revision_paths(
         repo,

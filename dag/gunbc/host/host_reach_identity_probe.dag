@@ -387,7 +387,11 @@ fn probe_host_reach_once(host: String, probed_at: String) -> HostReachIdentityPr
 // correction at fleet_host_key_enroll_apply): materialize the committed registry into
 // THIS process's known_hosts first, and carry its readback in the receipt.
 fn probe_fleet_reach_wet() -> ProcessExit {
-  let enroll_lines = fleet_host_key_enroll_apply()
+  let home = match shell.Env.Get(name: "HOME" as NonEmptyStr).value {
+    Absent => ""
+    Present { value: raw } => trim(s: raw)
+  }
+  let enroll_lines = fleet_host_key_enroll_apply(home: home)
   let now = clock_now_probed_at()
   let run = FleetReachProbeRun {
     probed_at: probed_at_word(reading: now) as String,

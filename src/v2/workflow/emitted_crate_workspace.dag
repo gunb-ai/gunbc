@@ -2,7 +2,7 @@ module v2.workflow.emitted_crate_workspace
 
 import std.types { List, String, Bool, Int, NonEmptyStr }
 import v2.std.collection { empty_map, map_get, map_insert }
-import v2.std.optional { Absent, Optional, Present, optional_present }
+import std.optional { Absent, Optional, Present, optional_present }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.compilers.compilation_unit {
   CompilationUnitId,
@@ -366,7 +366,8 @@ fn emitted_workspace_red(
                     }
                 }
             }
-          _ => Absent
+          RuntimePrelude => Absent
+          ReexportFacade => Absent
         }
     }
   })
