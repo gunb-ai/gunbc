@@ -1,0 +1,118 @@
+module test.claim.roadmap.roadmap_belt_exit_drain_wet_witness
+
+import extdeps.shell
+import std.types { Bool, String, List, NonEmptyStr }
+import gunbc.host_layout { attempt_exit_inbox_dir, attempt_exit_queued_dir, attempt_exit_done_dir, attempt_exit_refused_dir }
+import gunbc.roadmap.roadmap_attempt_exit_spool {
+  attempt_exit_record_observe, AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptWorkerRole,
+  attempt_exit_stage_list, AttemptExitInbox, AttemptExitQueued, AttemptExitDone, AttemptExitRefused,
+  AttemptExitStageNames, AttemptExitStageUnreadable,
+}
+import gunbc.roadmap.roadmap_belt_obligation { BeltObligationEnqueue, BeltObligationStarted, belt_attempt_obligation_unit_name, belt_instance_obligation_unit_name, LaunchObligation }
+import gunbc.roadmap_belt_actuate {
+  belt_exit_drain_at, BeltExitDrained, BeltExitDrainRefused, BeltExitEntryHanded, BeltExitEntryRefused,
+  belt_exit_entries_settle_at, belt_exec, ExecOk, ExecFailed, ExecRefused,
+}
+import gunbc.roadmap_dispatch_actuator {
+  host_exec_argv, AttemptUnitAbsent, AttemptUnitStartRecorded, attempt_worker_unit_observation_of, worker_process_from_attempt_unit,
+}
+import gunbc.worker_lifecycle { WorkerProcessExited }
+
+// THE EXIT DRAIN AND THE COLLECTED-WORKER READ, RUN OVER A REAL SPOOL. Each control makes a spool under
+// a fresh temp directory with the deployment's stage layout (gunbc.host_layout), writes exit records
+// the way the stop hook does -- one `mkdir` whose name is the record -- and runs the production drain
+// (belt_exit_drain_at) and the production record read (attempt_exit_record_observe). The listings, the
+// decodes and every move are the real ones; only starting a unit in a user manager is supplied, by a
+// hand-off that answers Started and names the unit it would have started. Enrolled on the required
+// floor's local-repo wet lane with the temp-directory write named in gunbc.ci.ci_layer_roots.
+
+fn fresh_spool(tag: String) -> String {
+  let root = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_exit_spool_", tag, ".XXXXXX"], "")).path
+  let made = belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["-p", attempt_exit_inbox_dir(instance_root: root), attempt_exit_queued_dir(instance_root: root), attempt_exit_done_dir(instance_root: root), attempt_exit_refused_dir(instance_root: root)]), workdir: "/")
+  root
+}
+
+fn record(root: String, name: String) -> Bool {
+  match belt_exec(cmd: host_exec_argv(program: "mkdir", args: ["--", join([attempt_exit_inbox_dir(instance_root: root), "/", name], "")]), workdir: "/") {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn names_in(root: String, stage_is_queued: Bool) -> List<String> {
+  match attempt_exit_stage_list(instance_root: root, stage: if stage_is_queued { AttemptExitQueued } else { AttemptExitInbox }) {
+    AttemptExitStageNames { names } => names
+    AttemptExitStageUnreadable { reason: _ } => ["<unreadable>"]
+  }
+}
+
+fn handed(node_id: String, attempt_key: String) -> BeltObligationEnqueue {
+  BeltObligationStarted { unit: belt_attempt_obligation_unit_name(node_id: node_id, attempt_key: attempt_key) }
+}
+
+fn launched() -> BeltObligationEnqueue {
+  BeltObligationStarted { unit: belt_instance_obligation_unit_name(instance_id: "witness", kind: LaunchObligation) }
+}
+
+data worker_exit: String = "wet-node+feedfacefeedface+worker+0123456789abcdef0123456789abcdef+success+exited+0"
+data reviewer_exit: String = "wet-node+feedfacefeedface+review.conformance-leasing.abc123+0123456789abcdef0123456789abcdef+success+exited+0"
+
+// RED FIRST, DOGFOOD #4 (the hand-off half): a recorded worker exit is handed to ITS attempt's unit,
+// leaves the inbox for queued, and queues the launch; nothing else has to run for that to happen.
+test fn a_recorded_worker_exit_is_handed_to_its_attempt_and_leaves_the_inbox() -> Bool {
+  let root = fresh_spool(tag: "worker")
+  let wrote = record(root: root, name: worker_exit)
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let handed_to_attempt = match drained {
+    BeltExitDrained { entries, launch } =>
+      count(entries) == 1
+        && any(entries, e => match e {
+          BeltExitEntryHanded { entry, enqueue: BeltObligationStarted { unit } } => entry == worker_exit && (unit as String) == (belt_attempt_obligation_unit_name(node_id: "wet-node", attempt_key: "feedfacefeedface") as String)
+          _ => false
+        })
+        && (match launch { Present { value: BeltObligationStarted { unit: _ } } => true _ => false })
+    BeltExitDrainRefused { reason: _ } => false
+  }
+  wrote && handed_to_attempt && count(names_in(root: root, stage_is_queued: false)) == 0 && names_in(root: root, stage_is_queued: true) == [worker_exit]
+}
+
+// A reviewer's exit is handed to its attempt the same way but frees no worker capacity, so it does
+// not queue the launch; a name that is not a record leaves the inbox for refused, not stays to re-fire
+// the path unit.
+test fn a_reviewer_exit_queues_no_launch_and_a_malformed_entry_is_refused() -> Bool {
+  let root = fresh_spool(tag: "reviewer")
+  let wrote = record(root: root, name: reviewer_exit) && record(root: root, name: "not-a-record")
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let shape = match drained {
+    BeltExitDrained { entries, launch } =>
+      (match launch { Absent => true _ => false })
+        && any(entries, e => match e { BeltExitEntryRefused { entry, reason: _ } => entry == "not-a-record" _ => false })
+        && any(entries, e => match e { BeltExitEntryHanded { entry, enqueue: _ } => entry == reviewer_exit _ => false })
+    BeltExitDrainRefused { reason: _ } => false
+  }
+  wrote && shape && count(names_in(root: root, stage_is_queued: false)) == 0
+}
+
+// bold-bee-114 CONDITION 3: THE UNIT IS GONE AND THE SPOOL ENTRY ALONE PRODUCES THE EXIT VERDICT. After
+// the drain has moved the record to queued and the attempt's run has settled it to done, the worker's
+// unit is supplied as collected (the manager answers not-found), and the real record read over the
+// real spool yields the worker's exit -- not "never ran", not unobserved.
+test fn a_collected_workers_exit_is_read_from_the_spool_alone() -> Bool {
+  let root = fresh_spool(tag: "collected")
+  let wrote = record(root: root, name: worker_exit)
+  let drained = belt_exit_drain_at(root: root, enqueue: (n, k) => handed(node_id: n, attempt_key: k), launch: fn() { launched() })
+  let unsettled = belt_exit_entries_settle_at(root: root, node_id: "wet-node", attempt_key: "feedfacefeedface")
+  let unit = "gunbc-attempt-wet-node-feedfacefeedface.service" as NonEmptyStr
+  let verdict = worker_process_from_attempt_unit(
+    observation: attempt_worker_unit_observation_of(
+      unit: unit,
+      loaded: AttemptUnitAbsent,
+      record: attempt_exit_record_observe(instance_root: root, node_id: "wet-node", attempt_key: "feedfacefeedface", role: AttemptWorkerRole),
+      start: AttemptUnitStartRecorded,
+    ),
+    unit: unit,
+  )
+  wrote && count(unsettled) == 0 && count(names_in(root: root, stage_is_queued: true)) == 0
+    && (match verdict { WorkerProcessExited { exit_code, last_command: _ } => exit_code == 0 _ => false })
+}

@@ -110,7 +110,10 @@ import gunbc.roadmap_belt_actuate {
   belt_commit_outcome_receipt, belt_commit_outcome_receipt_json,
   belt_commit_outcome_is_failure, belt_commit_outcome_is_recorded,
   belt_commit_pass_outcome_from, belt_commit_outcome_json_value,
-  belt_tick_commit_poisoned_count, belt_tick_result_json_value,
+  belt_tick_result_json_value,
+  BeltDiscovered, BeltDiscoveryRefused,
+  BeltAttemptObligationReceiptPresent, BeltAttemptObligationReceiptAbsent, BeltAttemptObligationReceiptUnreadable,
+  belt_attempt_obligation_receipt_decode, belt_attempt_obligation_run_json, BeltAttemptObligationsRan, BeltAttemptObligationsNotCurrent, BeltAttemptObligationStep,
   BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
   belt_exec,
   belt_exec_all,
@@ -1392,176 +1395,151 @@ test fn the_known_spawn_workdir_resolves_to_its_own_instance() -> Bool {
   }
 }
 
-// RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The
-// defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing
-// fallback that made the whole tick look like verification never ran. The witness constructs the
-// post-fix shape synthetically: spawn_pass Refused while verify_pass is still Recorded when verify
-// outcomes exist.
-
-test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
+// RED control (operator P1, 2026-08-02), carried onto the demoted tick: a tmux-list refusal must NOT
+// zero the tick's other pass. The defect class was an absorbing fallback that made the whole tick look
+// like nothing ran; verification has since left the tick (dogfood intervention #6), and the pass that
+// stands beside spawn now is discovery. A spawn refused on session observation leaves discovery
+// recorded on its own evidence, and a discovery whose ledger could not be read refuses ITSELF without
+// touching spawn.
+test fn observe_refused_spawn_does_not_zero_the_discovery_pass() -> Bool {
   let result = BeltTickResult {
     wholesale: TickPassesRun,
     host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
     reconcile: belt_tick_empty_reconcile(state: ManualReady),
     spawn_outcomes: [],
     teardown_outcomes: [],
-    commit_outcomes: [],
-    verify_outcomes: [
-      VerifyRecorded {
-        node_id: "v2-emitter-producer-provenance",
-        verdict_key: "refused",
-        detail: "validation refused",
-      },
-    ],
-    publish_outcomes: [],
-    review_outcomes: [],
-    audit_outcomes: [],
-    metering_outcomes: [],
+    discovery: BeltDiscovered { owed: 1, enqueues: [BeltObligationStarted { unit: "gunbc-obligation-attempt-n-k.service" as NonEmptyStr }] },
   }
   let receipt = belt_tick_receipt_from_result(
     result: result,
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
-  match receipt.spawn_pass {
-    BeltPassRefused { reason: _ } => true
-    _ => false
-  }
-    && match receipt.verify_pass {
-      BeltPassRecorded => true
-      _ => false
-    }
+  (match receipt.spawn_pass { BeltPassRefused { reason: _ } => true _ => false })
+    && (match receipt.discovery_pass { BeltPassRecorded => true _ => false })
 }
 
-test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
-  let result = BeltTickResult {
-    wholesale: TickPassesRun,
-    host_refusal: Present { value: LaunchSessionsUnobservable { reason: "tmux refused" } },
-    reconcile: belt_tick_empty_reconcile(state: ManualReady),
-    spawn_outcomes: [],
-    teardown_outcomes: [],
-    commit_outcomes: [],
-    verify_outcomes: [
-      VerifyDeferred {
-        node_id: "node-a",
-        reason: "agent obligation is not satisfied",
-      },
-    ],
-    publish_outcomes: [],
-    review_outcomes: [],
-    audit_outcomes: [],
-    metering_outcomes: [],
-  }
-  match belt_tick_receipt_from_result(
-    result: result,
-    observed_at: "2026-08-02T02:00:00Z",
-    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
-  ).verify_pass {
-    BeltPassDeferred { reason: _ } => true
-    BeltPassRecorded => false
-    BeltPassRefused { reason: _ } => false
-    BeltPassFailed { reason: _ } => false
-  }
-}
-
-// review 47210 spec-without-execution: decoupling was witnessed at the receipt layer but the
-// presentation join had no executing consumer. These rows execute
-// belt_verification_presentation_detail and the wire join against synthetic tick reads so the
-// headline strings ('Verification queued - next belt tick', 'Verification blocked · …',
-// observe-refusal vs verify-recorded at the UI layer) cannot drift without going red.
-
-test fn verification_presentation_absent_receipt_is_queued() -> Bool {
-  belt_verification_presentation_detail(
-    progress: completed_attempt_progress(node_id: "pres-absent-node"),
-    tick_read: BeltTickReceiptAbsent,
-  ) == "Verification queued - next belt tick"
-}
-
-test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
-  let detail = belt_verification_presentation_detail(
-    progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
-    tick_read: BeltTickReceiptUnreadable { reason: "belt tick receipt schema is unknown" },
-  )
-  string_contains(s: detail, pattern: "Verification blocked · belt tick receipt unreadable: ")
-    && string_contains(s: detail, pattern: "schema is unknown")
-}
-
-test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
-  let receipt = belt_tick_receipt_from_result(
+test fn an_unreadable_ledger_refuses_discovery_and_a_refused_handoff_fails_it() -> Bool {
+  let refused = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,
-      host_refusal: Present { value: LaunchSessionsUnobservable { reason: "belt_observe: tmux ls failed; session containers are unknowable" } },
+      host_refusal: Absent,
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
-      commit_outcomes: [],
-      verify_outcomes: [
-        VerifyRecorded {
-          node_id: "v2-emitter-producer-provenance",
-          verdict_key: "refused",
-          detail: "validation refused",
-        },
-      ],
-      publish_outcomes: [],
-      review_outcomes: [],
-      audit_outcomes: [],
-      metering_outcomes: [],
+      discovery: BeltDiscoveryRefused { reason: "the attempts ledger is unobservable" },
     },
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
-  let detail = belt_verification_presentation_detail(
-    progress: completed_attempt_progress(node_id: "pres-decouple-node"),
-    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  let failed = belt_tick_receipt_from_result(
+    result: BeltTickResult {
+      wholesale: TickPassesRun,
+      host_refusal: Absent,
+      reconcile: belt_tick_empty_reconcile(state: ManualReady),
+      spawn_outcomes: [],
+      teardown_outcomes: [],
+      discovery: BeltDiscovered { owed: 2, enqueues: [
+        BeltObligationHeld { unit: "gunbc-obligation-attempt-a-1.service" as NonEmptyStr },
+        BeltObligationEnqueueRefused { unit: "gunbc-obligation-attempt-b-2.service" as NonEmptyStr, reason: "systemd-run exited 1" },
+      ] },
+    },
+    observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
-  !string_contains(s: detail, pattern: "tmux ls failed")
-    && string_contains(s: detail, pattern: "Verification queued")
+  (match refused.discovery_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "unobservable") _ => false })
+    && (match failed.discovery_pass { BeltPassFailed { reason } => string_contains(s: reason, pattern: "attempt-b-2") && !string_contains(s: reason, pattern: "attempt-a-1") _ => false })
 }
 
-test fn verification_presentation_verify_refused_is_blocked() -> Bool {
-  let receipt = BeltTickReceipt {
+// review 47210 spec-without-execution: decoupling was witnessed at the receipt layer but the
+// presentation join had no executing consumer. These rows execute
+// belt_verification_presentation_detail and the wire join against synthetic reads so the headline
+// strings cannot drift without going red. Since dogfood intervention #6 a pending verification reads
+// its OWN attempt's obligation receipt first and the tick's discovery pass only when the attempt has no
+// verify step on record.
+
+test fn verification_presentation_absent_receipts_are_queued() -> Bool {
+  belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-absent-node"),
+    tick_read: BeltTickReceiptAbsent,
+    obligation_read: BeltAttemptObligationReceiptAbsent,
+  ) == "Verification queued - awaiting its obligation"
+}
+
+test fn verification_presentation_unreadable_receipts_are_blocked() -> Bool {
+  let tick = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
+    tick_read: BeltTickReceiptUnreadable { reason: "belt tick receipt schema is unknown" },
+    obligation_read: BeltAttemptObligationReceiptAbsent,
+  )
+  let own = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-unreadable-node"),
+    tick_read: BeltTickReceiptAbsent,
+    obligation_read: BeltAttemptObligationReceiptUnreadable { reason: "attempt obligation receipt schema is unknown" },
+  )
+  string_contains(s: tick, pattern: "Verification blocked · belt tick receipt unreadable: ")
+    && string_contains(s: own, pattern: "Verification blocked · attempt obligation receipt unreadable: ")
+}
+
+// THE ATTEMPT'S OWN VERIFY STEP DECIDES, AND A REFUSED DISCOVERY ELSEWHERE DOES NOT OVERRIDE IT.
+test fn verification_presentation_reads_the_attempts_own_verify_step() -> Bool {
+  let refused_tick = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
-    commit_pass: BeltPassRecorded,
-    verify_pass: BeltPassRefused { reason: "validation receipt could not be read" },
-    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
-    metering_pass: BeltPassRecorded,
+    discovery_pass: BeltPassRefused { reason: "the attempts ledger is unobservable" },
   }
-  let detail = belt_verification_presentation_detail(
-    progress: completed_attempt_progress(node_id: "pres-verify-refused-node"),
-    tick_read: BeltTickReceiptPresent { receipt: receipt },
+  let blocked = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-own-node"),
+    tick_read: BeltTickReceiptPresent { receipt: refused_tick },
+    obligation_read: BeltAttemptObligationReceiptPresent { verify: Present { value: BeltPassRefused { reason: "validation receipt could not be read" } } },
   )
-  detail == "Verification blocked · validation receipt could not be read"
+  let failed = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-own-node"),
+    tick_read: BeltTickReceiptPresent { receipt: refused_tick },
+    obligation_read: BeltAttemptObligationReceiptPresent { verify: Present { value: BeltPassFailed { reason: "validation verdict failed" } } },
+  )
+  let no_step_falls_to_tick = belt_verification_presentation_detail(
+    progress: completed_attempt_progress(node_id: "pres-own-node"),
+    tick_read: BeltTickReceiptPresent { receipt: refused_tick },
+    obligation_read: BeltAttemptObligationReceiptPresent { verify: none },
+  )
+  blocked == "Verification blocked · validation receipt could not be read"
+    && failed == "Verification failed · validation verdict failed"
+    && no_step_falls_to_tick == "Verification blocked · the attempts ledger is unobservable"
 }
 
-test fn verification_presentation_verify_failed_is_failed() -> Bool {
-  let receipt = BeltTickReceipt {
-    observed_at: "2026-08-02T02:00:00Z",
-    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
-    launches: [],
-    spawn_pass: BeltPassRecorded,
-    teardown_pass: BeltPassRecorded,
-    commit_pass: BeltPassRecorded,
-    verify_pass: BeltPassFailed { reason: "validation verdict failed" },
-    publish_pass: BeltPassDeferred { reason: "publish waits on verify" },
-    metering_pass: BeltPassRecorded,
+// The receipt's verify step decodes from the bytes the run writes: a ran receipt whose verify step
+// failed reads back that pass, one with no verify step reads back none, and another schema refuses.
+test fn the_attempt_obligation_receipt_round_trips_its_verify_step() -> Bool {
+  let run = BeltAttemptObligationsRan { node_id: "n", attempt_key: "k", steps: [
+    BeltAttemptObligationStep { kind: CaptureObligation, pass: BeltPassRecorded, detail: json_string(s: "captured") },
+    BeltAttemptObligationStep { kind: VerifyObligation, pass: BeltPassFailed { reason: "validation verdict failed" }, detail: json_string(s: "failed") },
+  ] }
+  let with_verify = match belt_attempt_obligation_receipt_decode(raw: serialize_json(v: belt_attempt_obligation_run_json(run: run, observed_at: "2026-10-06T00:00:00Z"))) {
+    BeltAttemptObligationReceiptPresent { verify: Present { value: BeltPassFailed { reason } } } => reason == "validation verdict failed"
+    _ => false
   }
-  let detail = belt_verification_presentation_detail(
-    progress: completed_attempt_progress(node_id: "pres-verify-failed-node"),
-    tick_read: BeltTickReceiptPresent { receipt: receipt },
-  )
-  detail == "Verification failed · validation verdict failed"
+  let without = match belt_attempt_obligation_receipt_decode(raw: serialize_json(v: belt_attempt_obligation_run_json(run: BeltAttemptObligationsNotCurrent { node_id: "n", attempt_key: "k", reason: "superseded" }, observed_at: "2026-10-06T00:00:00Z"))) {
+    BeltAttemptObligationReceiptPresent { verify: Absent } => true
+    _ => false
+  }
+  let foreign = match belt_attempt_obligation_receipt_decode(raw: "{\"schema\":\"roadmap-belt-attempt-obligations/v0\"}") {
+    BeltAttemptObligationReceiptUnreadable { reason: _ } => true
+    _ => false
+  }
+  with_verify && without && foreign
 }
 
 test fn verification_presentation_wire_carries_detail() -> Bool {
   let j = serialize_json(v: belt_workflow_attempt_presentation_json_with_tick_read(
     progress: completed_attempt_progress(node_id: "pres-wire-node"),
     tick_read: BeltTickReceiptAbsent,
+    obligation_read: BeltAttemptObligationReceiptAbsent,
   ))
-  string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - next belt tick\"")
+  string_contains(s: j, pattern: "\"verification_presentation\": \"Verification queued - awaiting its obligation\"")
 }
 
 test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
@@ -1570,9 +1548,7 @@ test fn malformed_pass_reason_makes_receipt_unreadable() -> Bool {
     "\"observed_at\":\"2026-08-02T02:00:00Z\",",
     "\"spawn_pass\":{\"outcome\":\"recorded\"},",
     "\"teardown_pass\":{\"outcome\":\"recorded\"},",
-    "\"commit_pass\":{\"outcome\":\"recorded\"},",
-    "\"verify_pass\":{\"outcome\":\"refused\"},",
-    "\"publish_pass\":{\"outcome\":\"recorded\"}}",
+    "\"discovery_pass\":{\"outcome\":\"refused\"}}",
   ], "")
   match belt_tick_receipt_decode(raw: raw) {
     BeltTickReceiptUnreadable { reason: r } =>
@@ -2346,14 +2322,13 @@ fn pass_refused_with(o: BeltPassOutcome, pattern: String) -> Bool {
   }
 }
 
-fn all_four_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
+fn all_passes_refused_with(receipt: BeltTickReceipt, pattern: String) -> Bool {
   pass_refused_with(o: receipt.spawn_pass, pattern: pattern)
     && pass_refused_with(o: receipt.teardown_pass, pattern: pattern)
-    && pass_refused_with(o: receipt.verify_pass, pattern: pattern)
-    && pass_refused_with(o: receipt.publish_pass, pattern: pattern)
+    && pass_refused_with(o: receipt.discovery_pass, pattern: pattern)
 }
 
-test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
+test fn transition_halted_tick_refuses_every_pass() -> Bool {
   let refusal = LaunchTransitionInhibited { reason: "deployment transition in force on this host" }
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
@@ -2362,20 +2337,15 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
-      commit_outcomes: [],
-      verify_outcomes: [],
-      publish_outcomes: [],
-      review_outcomes: [],
-      audit_outcomes: [],
-      metering_outcomes: [],
+      discovery: BeltDiscoveryRefused { reason: launch_refusal_reason(r: refusal) },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
-  all_four_refused_with(receipt: receipt, pattern: "deployment transition in force")
+  all_passes_refused_with(receipt: receipt, pattern: "deployment transition in force")
 }
 
-test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
+test fn revision_refusal_keeps_discovery_independently_recorded() -> Bool {
   let receipt = belt_tick_receipt_from_result(
     result: BeltTickResult {
       wholesale: TickPassesRun,
@@ -2383,20 +2353,14 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       reconcile: belt_tick_empty_reconcile(state: ManualReady),
       spawn_outcomes: [],
       teardown_outcomes: [],
-      commit_outcomes: [],
-      verify_outcomes: [ VerifyRecorded { node_id: "n", verdict_key: "pass", detail: "ok" } ],
-      publish_outcomes: [],
-      review_outcomes: [],
-      audit_outcomes: [],
-      metering_outcomes: [],
+      discovery: BeltDiscovered { owed: 0, enqueues: [] },
     },
     observed_at: "2026-08-30T02:00:00Z",
     execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
   (match receipt.spawn_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "deployed revision could not be observed") _ => false })
     && (match receipt.teardown_pass { BeltPassRefused { reason: _ } => true _ => false })
-    && (match receipt.verify_pass { BeltPassRecorded => true _ => false })
-    && (match receipt.publish_pass { BeltPassRecorded => true _ => false })
+    && (match receipt.discovery_pass { BeltPassRecorded => true _ => false })
 }
 
 fn launch_fixture_canary_graph() -> LaunchGraphStanding {
@@ -2608,34 +2572,6 @@ test fn a_real_commit_failure_still_fails_the_pass_beside_poisoned_ones() -> Boo
   failed && deferred_honestly && recorded_over_poison
 }
 
-// A POISONED ATTEMPT IS COUNTED, NOT SILENTLY DROPPED: the number is how many attempts this tick
-// are held for repair, counted in the tick result beside the siblings' verdicts. A zero here
-// would make the poison frequency vanish by construction, the deficit this witness exists to
-// keep visible.
-test fn the_poisoned_attempt_count_counts_only_capture_poisoned_rows() -> Bool {
-  let result = BeltTickResult {
-    wholesale: TickPassesRun,
-    host_refusal: Absent,
-    reconcile: belt_tick_empty_reconcile(state: ManualReady),
-    spawn_outcomes: [],
-    teardown_outcomes: [],
-    commit_outcomes: [
-      CommitCapturePoisoned { node_id: "n1", detail: "the recorded base names zero files" },
-      CommitSkipped { node_id: "n2", reason: "worktree clean" },
-      CommitCapturePoisoned { node_id: "n3", detail: "two or more arcs depend on this node" },
-    ],
-    verify_outcomes: [],
-    publish_outcomes: [],
-    review_outcomes: [],
-    audit_outcomes: [],
-    metering_outcomes: [],
-  }
-  belt_tick_commit_poisoned_count(t: result) == 2
-    && string_contains(
-      s: serialize_json(v: belt_tick_result_json_value(t: result)),
-      pattern: "\"commit_poisoned\": 2",
-    )
-}
 
 // THE POISON IS NAMED AT BOTH DURABLE RECORDS, the tick result's outcome row and the per-attempt
 // receipt that survives the pass receipt's collapse -- the operator repairs against the attempt's
