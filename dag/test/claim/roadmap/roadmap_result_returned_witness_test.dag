@@ -27,12 +27,13 @@ import gunbc.roadmap.roadmap_event_carrier {
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemPermissionDenied,
+  FilesystemReadSucceeded, FilesystemReadRefused, filesystem_file_observation, filesystem_listing_observation,
 }
 import gunbc.roadmap.roadmap_attempt_request_record {
   AttemptRequestBinding, RequestClaimBound, RequestAutonomous,
   attempt_request_binding_json, attempt_request_binding_decode, RequestBindingDecoded, RequestBindingUndecodable,
   AttemptRequestBindingCommit, RequestBindingCommitted, RequestBindingCommitRefused, attempt_request_binding_commit_of,
-  attempt_request_binding_read_of,
+  attempt_request_binding_read_from_observation,
   AttemptRequestBindingRead, RequestBindingRead, RequestBindingAbsent, RequestBindingUnreadable,
 }
 import gunbc.roadmap.roadmap_attempt_request_binding {
@@ -318,9 +319,35 @@ test fn the_binding_record_round_trips_and_a_malformed_one_is_unreadable() -> Bo
     RequestBindingUndecodable { reason } => string_length(s: reason) > 0
     RequestBindingDecoded { binding: _ } => false
   })
-  let file_arms = attempt_request_binding_read_of(success: false, error_kind: "not_found", error: "no such file", content: "") == RequestBindingAbsent
-    && (match attempt_request_binding_read_of(success: false, error_kind: "permission_denied", error: "denied", content: "") { RequestBindingUnreadable { reason } => reason == "denied"  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
-    && (match attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: "not json") { RequestBindingUnreadable { reason: _ } => true  RequestBindingRead { binding: _ } => false  RequestBindingAbsent => false })
+  let absent_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "other-attempt.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadRefused { error: "No such file or directory (os error 2)" },
+  )
+  let refused_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadRefused { error: "Permission denied (os error 13)" },
+  )
+  let undecodable_observed = filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+    name: "request.json",
+    path: "/srv/gunbc/requests/request.json",
+    read: FilesystemReadSucceeded { content: "not json" },
+  )
+  let file_arms = attempt_request_binding_read_from_observation(observation: absent_observed) == RequestBindingAbsent
+    && (match attempt_request_binding_read_from_observation(observation: refused_observed) {
+      RequestBindingUnreadable { reason } => string_contains(s: reason, pattern: "Permission denied")
+      RequestBindingRead { binding: _ } => false
+      RequestBindingAbsent => false
+    })
+    && (match attempt_request_binding_read_from_observation(observation: undecodable_observed) {
+      RequestBindingUnreadable { reason: _ } => true
+      RequestBindingRead { binding: _ } => false
+      RequestBindingAbsent => false
+    })
   codec && strict && file_arms
 }
 
@@ -591,7 +618,14 @@ test fn a_bound_attempts_result_reaches_its_requester_through_the_real_codecs() 
       match attempt_request_binding_commit_of(binding: launch, created: FilesystemCreated { path: "p" }, existing: RequestBindingAbsent) {
         RequestBindingCommitRefused { step: _, detail: _ } => false
         RequestBindingCommitted { binding: committed } => {
-          let recorded = attempt_request_binding_read_of(success: true, error_kind: "", error: "", content: attempt_request_binding_json(binding: committed))
+          let recorded = attempt_request_binding_read_from_observation(
+            observation: filesystem_file_observation(
+              listing: filesystem_listing_observation(directory: "/srv/gunbc/requests", success: true, entries: "request.json", error: "unused on success"),
+              name: "request.json",
+              path: "/srv/gunbc/requests/request.json",
+              read: FilesystemReadSucceeded { content: attempt_request_binding_json(binding: committed) },
+            ),
+          )
           match result_return_precheck(node_id: "result-returned-node", attempt_key: rr_attempt, binding: recorded, envelopes: [c1, c2]) {
             ResultPrecheckSettled { outcome: _ } => false
             ResultPrecheckOwed { binding: bound } =>

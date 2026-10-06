@@ -302,7 +302,8 @@ fn frontier_survey_subject_eq(
     && (left.source_roots_digest.digest == right.source_roots_digest.digest)
     && match compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
       ContentHashEqual => true
-      _ => false
+      ContentHashDifferent => false
+      ContentHashCrossFamilyIncomparable => false
     }
 }
 

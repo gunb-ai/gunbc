@@ -489,11 +489,11 @@ fn grant_readings_cover(declared: List<SecretAccessGrant>, readings: List<GrantP
 }
 
 fn delta_effects(ds: List<PolicyDelta>) -> List<GcpIamEffect> {
-  flat_map(ds, d => match d { PolicyDelta { effect: e } => [e]  _ => [] })
+  flat_map(ds, d => match d { PolicyDelta { effect: e } => [e]  PolicyConverged => []  PolicyDeltaRefused { reason: _ } => [] })
 }
 
 fn delta_refusals(ds: List<PolicyDelta>) -> List<String> {
-  flat_map(ds, d => match d { PolicyDeltaRefused { reason: r } => [r]  _ => [] })
+  flat_map(ds, d => match d { PolicyDeltaRefused { reason: r } => [r]  PolicyConverged => []  PolicyDelta { effect: _ } => [] })
 }
 
 // THE PLAN IS PURE: readings in, plan out, so a witness drives every arm with supplied readings.
@@ -990,7 +990,9 @@ fn execute_target_diff(f: DedicatedFederation, d: GcpIamDiff, token: Secret) -> 
   let policies = filter(d.effects, e => !is_create(e: e))
   let granted = first_refusal(xs: policies, run: e => match e {
     AddPolicyCells { subject: sj, observed_etag: t, cells: cs } => execute_policy_add(s: sj, approved_etag: t, cells: cs, token: token)
-    _ => ""
+    CreatePool { pool_id: _, display_name: _ } => ""
+    CreateProvider { pool_id: _, provider_id: _, issuer_uri: _, attribute_mapping: _, attribute_condition: _ } => ""
+    CreateServiceAccount { account_id: _, display_name: _ } => ""
   })
   if granted == "" { "" } else { join([d.target, ": ", granted], "") }
 }

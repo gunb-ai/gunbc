@@ -954,7 +954,12 @@ fn arrow_signature_order_list_read(list: Node) -> ArrowParameterOrderRead {
           OrderUnreadable => OrderUnreadable
         }
       }
-    _ => OrderUnreadable
+    TypeNode { connective: _ } => OrderUnreadable
+    ComputationNode { behavior: Value } => OrderUnreadable
+    ComputationNode { behavior: Branch } => OrderUnreadable
+    ComputationNode { behavior: Loop } => OrderUnreadable
+    ComputationNode { behavior: Bind } => OrderUnreadable
+    ComputationNode { behavior: Match } => OrderUnreadable
   }
 }
 
@@ -967,7 +972,12 @@ fn arrow_parameter_order_step(read: ArrowParameterOrderRead, element: Node) -> A
       match element.kind {
         TypeNode { connective: Atom { identity: sym } } =>
           if count(element.children) == 0 { OrderLabels { labels: Cons { head: sym, tail: ls } } } else { OrderUnreadable }
-        _ => OrderUnreadable
+        TypeNode { connective: Conj } => OrderUnreadable
+        TypeNode { connective: Disj } => OrderUnreadable
+        TypeNode { connective: Arrow } => OrderUnreadable
+        TypeNode { connective: Cardinality } => OrderUnreadable
+        TypeNode { connective: Instantiation } => OrderUnreadable
+        ComputationNode { behavior: _ } => OrderUnreadable
       }
   }
 }
@@ -1074,7 +1084,12 @@ fn arrow_domain_binder_labels(children: List<Edge>) -> DomainBinderLabelsRead {
                 }
             }
           })
-        _ => DomainBinderLabelsUnreadable
+        TypeNode { connective: Atom { identity: _ } } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Disj } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Arrow } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Cardinality } => DomainBinderLabelsUnreadable
+        TypeNode { connective: Instantiation } => DomainBinderLabelsUnreadable
+        ComputationNode { behavior: _ } => DomainBinderLabelsUnreadable
       }
     FirstPositionalAbsent => DomainBinderLabelsUnreadable
   }
@@ -1117,7 +1132,12 @@ fn type_binder_conforms(e: Edge) -> Bool {
     Authored { name: sym } =>
       match e.target.kind {
         TypeNode { connective: Atom { identity: id } } => (id == sym) && type_binder_children_conform(children: e.target.children)
-        _ => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Arrow } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
   }
 }
@@ -1143,7 +1163,12 @@ fn type_binder_conj_conforms(t: Node) -> Bool {
       all_names_distinct(children: t.children)
         && fold(t.children, init: true, f: fn(acc, e) { acc && type_binder_set_edge_conforms(e: e) })
         && type_binder_order_conforms(children: t.children)
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1356,7 +1381,9 @@ fn resolved_reference_kind_of_label(label: EdgeLabel) -> ResolvedReferenceMarkin
 fn declaration_reference_body_marked(target: Node) -> Bool {
   match resolved_reference_body_kind(target: target) {
     MarkedReference { kind: DeclarationReferenceKind } => true
-    _ => false
+    MarkedReference { kind: ParameterReferenceKind } => false
+    MarkedReference { kind: LexicalReferenceKind } => false
+    NotMarkedReference => false
   }
 }
 
@@ -1370,7 +1397,12 @@ fn resolved_reference_body_kind(target: Node) -> ResolvedReferenceMarking {
       } else {
         NotMarkedReference
       }
-    _ => NotMarkedReference
+    TypeNode { connective: Atom { identity: _ } } => NotMarkedReference
+    TypeNode { connective: Disj } => NotMarkedReference
+    TypeNode { connective: Arrow } => NotMarkedReference
+    TypeNode { connective: Cardinality } => NotMarkedReference
+    TypeNode { connective: Instantiation } => NotMarkedReference
+    ComputationNode { behavior: _ } => NotMarkedReference
   }
 }
 
@@ -1386,7 +1418,9 @@ fn classify_arrow_body_form(target: Node) -> ArrowBodyForm {
       }
     TypeNode { connective: Arrow } => FunctionValueBody
     ComputationNode { behavior: b } => ComputationBody { behavior: b }
-    _ => UnsupportedArrowBody
+    TypeNode { connective: Disj } => UnsupportedArrowBody
+    TypeNode { connective: Cardinality } => UnsupportedArrowBody
+    TypeNode { connective: Instantiation } => UnsupportedArrowBody
   }
 }
 
@@ -1445,7 +1479,12 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
     TypeNode { connective: Conj } =>
       all_edges_named(children: node.children)
         && (arrow_body_construct_tag_leads(node: node) || arrow_body_some_edge_targets_an_atom(node: node))
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 
@@ -1583,7 +1622,16 @@ fn cost_edge_role(parent: Node, e: Edge) -> CostEdgeRole {
         Authored { name: _ } => CostEdgeNotPriced
         Positional => CostEdgeNotPriced
       }
-    _ => CostEdgeComposed
+    TypeNode { connective: Atom { identity: _ } } => CostEdgeComposed
+    TypeNode { connective: Conj } => CostEdgeComposed
+    TypeNode { connective: Disj } => CostEdgeComposed
+    TypeNode { connective: Cardinality } => CostEdgeComposed
+    TypeNode { connective: Instantiation } => CostEdgeComposed
+    ComputationNode { behavior: Value } => CostEdgeComposed
+    ComputationNode { behavior: Transform } => CostEdgeComposed
+    ComputationNode { behavior: Branch } => CostEdgeComposed
+    ComputationNode { behavior: Bind } => CostEdgeComposed
+    ComputationNode { behavior: Match } => CostEdgeComposed
   }
 }
 
@@ -1746,7 +1794,12 @@ fn well_formed(n: Node) -> Bool {
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
-    _ => false
+    TypeNode { connective: Atom { identity: _ } } => false
+    TypeNode { connective: Disj } => false
+    TypeNode { connective: Arrow } => false
+    TypeNode { connective: Cardinality } => false
+    TypeNode { connective: Instantiation } => false
+    ComputationNode { behavior: _ } => false
   }
 }
 

@@ -54,6 +54,9 @@ test fn module_keyword_as_a_value_parses_holds() -> Bool {
   cb2_parses(o: cb2_parsed_2())
 }
 
+// The specimen keyword is `alias`, a declaration-heading keyword no source has needed as a value.
+// It was `data` until #12801 admitted `data` as a value (dag_grammar_primary_name_expr), which made
+// the specimen parse and this claim false for a reason the claim does not assert.
 test fn other_keywords_are_not_values_holds() -> Bool {
   match cb2_parses(o: cb2_parsed_3()) {
     true => false
@@ -298,14 +301,14 @@ fn cb2_stream_3() -> TokenStream {
     Token { class: ^dag_token_arrow, lexeme: "->", file: ^closure_parse_batch_two_probe, start: 23, end: 25 },
     Token { class: ^dag_token_ident, lexeme: "Q", file: ^closure_parse_batch_two_probe, start: 26, end: 27 },
     Token { class: ^dag_token_lbrace, lexeme: "{", file: ^closure_parse_batch_two_probe, start: 28, end: 29 },
-    Token { class: ^dag_token_kw_data, lexeme: "data", file: ^closure_parse_batch_two_probe, start: 32, end: 36 },
-    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 37, end: 38 }
+    Token { class: ^dag_token_kw_alias, lexeme: "alias", file: ^closure_parse_batch_two_probe, start: 32, end: 37 },
+    Token { class: ^dag_token_rbrace, lexeme: "}", file: ^closure_parse_batch_two_probe, start: 38, end: 39 }
   ])
 }
 
 test fn cb2_fidelity_3() -> Bool {
   supplied_stream_matches_tokenize(
-    text: "module m.t\n\nfn f(x: Q) -> Q {\n  data\n}\n",
+    text: "module m.t\n\nfn f(x: Q) -> Q {\n  alias\n}\n",
     file: ^closure_parse_batch_two_probe,
     supplied: cb2_stream_3()
   )

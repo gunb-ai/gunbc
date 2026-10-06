@@ -165,41 +165,12 @@ fn der_read_element(octets: List<Int>, at: Int) -> DerRead {
   }
 }
 
-fn der_class_matches(a: DerTagClass, b: DerTagClass) -> Bool {
-  match a {
-    DerUniversal => match b {
-      DerUniversal => true
-      DerApplication => false
-      DerContextSpecific => false
-      DerPrivate => false
-    }
-    DerApplication => match b {
-      DerUniversal => false
-      DerApplication => true
-      DerContextSpecific => false
-      DerPrivate => false
-    }
-    DerContextSpecific => match b {
-      DerUniversal => false
-      DerApplication => false
-      DerContextSpecific => true
-      DerPrivate => false
-    }
-    DerPrivate => match b {
-      DerUniversal => false
-      DerApplication => false
-      DerContextSpecific => false
-      DerPrivate => true
-    }
-  }
-}
-
 // An element that must carry a given class, tag and form.
 fn der_expect(octets: List<Int>, at: Int, class: DerTagClass, tag_number: Int, constructed: Bool) -> DerRead {
   match der_read_element(octets: octets, at: at) {
     DerRefused { cause: c } => DerRefused { cause: c }
     DerElementRead { element: e } =>
-      if !der_class_matches(a: e.tag_class, b: class) { DerRefused { cause: DerClassUnexpected { at: at } } }
+      if e.tag_class != class { DerRefused { cause: DerClassUnexpected { at: at } } }
       else if e.tag_number != tag_number { DerRefused { cause: DerTagUnexpected { at: at, expected: tag_number, found: e.tag_number } } }
       else if e.constructed != constructed { DerRefused { cause: DerConstructedUnexpected { at: at, expected: constructed } } }
       else { DerElementRead { element: e } }
@@ -209,7 +180,7 @@ fn der_expect(octets: List<Int>, at: Int, class: DerTagClass, tag_number: Int, c
 // The same expectation over an element already read (a positional child), so a reader that walks
 // a SEQUENCE's children can assert each one's type before interpreting it.
 fn der_element_expect(e: DerElement, class: DerTagClass, tag_number: Int, constructed: Bool) -> DerRefusal? {
-  if !der_class_matches(a: e.tag_class, b: class) { Present { value: DerClassUnexpected { at: e.header_at } } }
+  if e.tag_class != class { Present { value: DerClassUnexpected { at: e.header_at } } }
   else if e.tag_number != tag_number { Present { value: DerTagUnexpected { at: e.header_at, expected: tag_number, found: e.tag_number } } }
   else if e.constructed != constructed { Present { value: DerConstructedUnexpected { at: e.header_at, expected: constructed } } }
   else { none }
