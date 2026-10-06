@@ -29,7 +29,7 @@ import v2.workflow.floor_discovery {
   floor_discovery_request_identity,
 }
 import v2.std.algebra { list_reverse }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // The prepared floor subject is an opaque semantic identity over the exact discovery request,
 // selected witness identities, and the existing std.materialization_provider ResolveClosureRequest

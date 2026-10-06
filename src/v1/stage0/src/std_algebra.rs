@@ -12,6 +12,7 @@ use self::Ordering::*;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
+pub use crate::std_optional::Optional;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
@@ -620,19 +621,6 @@ pub fn collection_concat_shape() -> Rc<AlgebraFieldTemplate> {
             Rc::new(AlgebraTypeTemplate::ReceiverSelf),
         ]),
         return_type: Rc::new(AlgebraTypeTemplate::ReceiverSelf),
-        size_effect: std::option::Option::None,
-        cost_shape: Some(CostShape::ShapeLinearScan),
-        callback_element_position: std::option::Option::None,
-    })
-}
-
-pub fn collection_count_shape() -> Rc<AlgebraFieldTemplate> {
-    Rc::new(AlgebraFieldTemplate {
-        name: "count".to_string(),
-        param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
-        return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
-            name: "Int".to_string(),
-        }),
         size_effect: std::option::Option::None,
         cost_shape: Some(CostShape::ShapeLinearScan),
         callback_element_position: std::option::Option::None,
@@ -1851,7 +1839,16 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
         collection_fold_shape(),
         collection_any_shape(),
         collection_all_shape(),
-        collection_count_shape(),
+        Rc::new(AlgebraFieldTemplate {
+            name: "count".to_string(),
+            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "std.nat.Nat".to_string(),
+            }),
+            size_effect: std::option::Option::None,
+            cost_shape: Some(CostShape::ShapeLinearScan),
+            callback_element_position: std::option::Option::None,
+        }),
         Rc::new(AlgebraFieldTemplate {
             name: "first".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),

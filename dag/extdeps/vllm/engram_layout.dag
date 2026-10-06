@@ -3,7 +3,7 @@ module extdeps.vllm.engram_layout
 import std.types { Bool, List, Int, String }
 import std.nat { Nat, nat_max }
 import std.checked_arithmetic { checked_int_to_nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 

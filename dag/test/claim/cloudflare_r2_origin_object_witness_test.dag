@@ -1,7 +1,7 @@
 module test.claim.cloudflare_r2_origin_object
 
 import std.types { Bool, String, NonEmptyStr, List, FilePath, Int }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.decl_ref { decl_ref, DeclarationRef, declaration_ref_eq }
 import std.roster_frontier { FrontierRow, DeclSubject, PathSubject, frontier_rows_well_formed }
 import extdeps.shell.exec { process_observation }

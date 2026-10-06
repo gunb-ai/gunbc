@@ -47,7 +47,7 @@ import v2.std.node {
   Symbol,
   TypeNode,
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 import v2.std.text { String }
 
 // THE CLOSING CONDITION for roadmap node v2-emitter-direct-rust-door.

@@ -1,7 +1,7 @@
 module std.checkpointed_workspace
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, ObservationInstant, InstantOrder, InstantBefore, InstantSame, InstantAfter, InstantIncomparable, compare_instants }
 import std.durable_compare_and_set { CasGeneration }

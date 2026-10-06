@@ -16,7 +16,7 @@ import v2.extdeps.languages.dag {
 }
 import std.algebra { Empty }
 import v2.std.algebra { length }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present

@@ -21,7 +21,7 @@ import extdeps.tools.gnu_coreutils { ln_hard_command, rm_force_command }
 import extdeps.posix.test_utility { test_regular_file_command }
 import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
-import v2.std.optional { Present }
+import std.optional { Present }
 import gunbc.host_command_binding {
   CommandHost, LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
   host_command, host_command_outcome_text,
