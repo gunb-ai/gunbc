@@ -126,7 +126,8 @@ test fn a_completed_window_receipts_every_interval_and_the_summary_with_its_cave
       length(r.rows) == 2
         && contains(receipt, "interval 1 span_ms=10000 bytes_appended=10 ")
         && contains(receipt, "interval 2 span_ms=10000 bytes_appended=20 ")
-        && contains(receipt, "mean_bytes_per_s=1 p95_bytes_per_s=2 ")
+        && contains(receipt, " mean_bits_per_s=12 mean_bytes_per_s=1 ")
+        && contains(receipt, " p95_bits_per_s=16 p95_bytes_per_s=2 ")
         && contains(receipt, "verdict=observed")
         && contains(r.caveat as String, "ONE SAMPLE OF WORKLOAD")
     }

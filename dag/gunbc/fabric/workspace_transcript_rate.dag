@@ -5,7 +5,7 @@ import v2.std.collection { empty_map, map_insert, map_lookup }
 import v2.std.optional { Present, Absent }
 import std.algebra { Cons, Empty }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count, ObservationInstant, ProcessMonotonic, WallClock, InstantOrder, InstantAfter, InstantIncomparable, InstantBefore, InstantSame }
+import std.measure { ByteSize, byte_size, measure_count, Nanosecond, nanosecond, nanosecond_count, Second, second, second_count, Bandwidth, bandwidth, bandwidth_count, bits_per_byte, ObservationInstant, ProcessMonotonic, WallClock, InstantOrder, InstantAfter, InstantIncomparable, InstantBefore, InstantSame }
 import std.checkpointed_workspace { WorkspaceAgeOf, WorkspaceAgeUndefined, workspace_age_between }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
@@ -370,8 +370,8 @@ fn workspace_transcript_rate_interval(before: List<TranscriptFileStat>, after: L
 // interval -- because std.measure has no bytes-per-time type to carry it as one figure: its only
 // rate of information is Bandwidth (DataRate, bits per second, a Nat count at One scale), which
 // would floor every interval to whole bits per second and lose a quiet interval to zero. That gap
-// is stated, not filled here: the bytes/s figures in the receipt are DERIVED from these pairs for a
-// reader, and a consumer derives what it needs from the pairs.
+// is stated, not filled here: the receipt's rates are DERIVED from these pairs as Bandwidth (see
+// workspace_transcript_rate_bandwidth), and a consumer derives what it needs from the pairs.
 //
 // THE CONSUMER IS A DECLARED FRONTIER (DESIGN 3c): the stage-0 churn phase (step 2 of the
 // workspace stage-0 sequence, a later change under still-dove-673) appends to the synthetic
@@ -437,16 +437,35 @@ fn workspace_transcript_rate_interval_count() -> Int {
 
 // ── THE SUMMARY, DERIVED FOR THE RECEIPT ───────────────────────────────────────────────────────
 
-fn workspace_transcript_rate_bytes_per_second(bytes: ByteSize, span: Nanosecond) -> Int? {
+// A RATE IS A std.measure Bandwidth -- DataRate, bits per second -- derived from the exact quotient
+// pair, never a bare number. Bits rather than bytes because Bandwidth is the one information-rate
+// carrier std.measure has; eight bits to the octet (bits_per_byte) makes the conversion exact, and the
+// floor is taken once, on bits. The receipt prints the carrier's own bits/s beside the bytes/s it
+// implies (bits / 8, floored), which is the figure the churn phase is quoted in.
+fn workspace_transcript_rate_bandwidth(bytes: ByteSize, span: Nanosecond) -> Bandwidth? {
   let ns = nanosecond_count(n: span)
-  if ns <= 0 { none } else { Present { value: (measure_count(m: bytes) * 1000000000) / ns } }
+  if ns <= 0 { none } else { Present { value: bandwidth(count: (measure_count(m: bytes) * bits_per_byte() * 1000000000) / ns) } }
 }
 
-fn workspace_transcript_rate_row_rates(rows: List<TranscriptAppendInterval>) -> List<Int> {
-  flat_map(rows, r => match workspace_transcript_rate_bytes_per_second(bytes: r.bytes_appended, span: r.span) {
+fn workspace_transcript_rate_row_rates(rows: List<TranscriptAppendInterval>) -> List<Bandwidth> {
+  flat_map(rows, r => match workspace_transcript_rate_bandwidth(bytes: r.bytes_appended, span: r.span) {
     Absent => []
     Present { value: v } => [v]
   })
+}
+
+fn workspace_transcript_rate_percentile(rates: List<Bandwidth>, percent: Int) -> Bandwidth? {
+  match permille_percentile(values: map(rates, b => bandwidth_count(b: b)), percent: percent) {
+    Absent => none
+    Present { value: v } => Present { value: bandwidth(count: v) }
+  }
+}
+
+fn workspace_transcript_rate_rate_words(name: String, rate: Bandwidth?, absent: String) -> String {
+  match rate {
+    Absent => join([" ", name, "_bits_per_s=", absent, " ", name, "_bytes_per_s=", absent], "")
+    Present { value: b } => join([" ", name, "_bits_per_s=", to_string(bandwidth_count(b: b)), " ", name, "_bytes_per_s=", to_string(bandwidth_count(b: b) / bits_per_byte())], "")
+  }
 }
 
 fn workspace_transcript_rate_row_line(index: Int, r: TranscriptAppendInterval) -> String {
@@ -472,18 +491,18 @@ fn workspace_transcript_rate_rows_text(rows: List<TranscriptAppendInterval>, ind
 }
 
 fn workspace_transcript_rate_summary(rate: TranscriptAppendRate) -> String {
-  let total_bytes = fold(rate.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.bytes_appended))
-  let total_ns = fold(rate.rows, init: 0, f: (acc, r) => acc + nanosecond_count(n: r.span))
+  let total_bytes = byte_size(count: fold(rate.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.bytes_appended)))
+  let total_span = nanosecond(count: fold(rate.rows, init: 0, f: (acc, r) => acc + nanosecond_count(n: r.span)))
   let touched = fold(rate.rows, init: 0, f: (acc, r) => acc + r.active_writers)
   let n = length(rate.rows)
   let rates = workspace_transcript_rate_row_rates(rows: rate.rows)
   join([
     "summary intervals=", to_string(n),
-    " measured_window_ms=", to_string(total_ns / 1000000),
-    " bytes_appended_total=", to_string(total_bytes),
-    " mean_bytes_per_s=", match workspace_transcript_rate_bytes_per_second(bytes: byte_size(count: total_bytes), span: nanosecond(count: total_ns)) { Absent => "unmeasured(no span)"  Present { value: v } => to_string(v) },
-    " p95_bytes_per_s=", match permille_percentile(values: rates, percent: 95) { Absent => "unmeasured(no interval)"  Present { value: v } => to_string(v) },
-    " max_bytes_per_s=", match permille_percentile(values: rates, percent: 100) { Absent => "unmeasured(no interval)"  Present { value: v } => to_string(v) },
+    " measured_window_ms=", to_string(nanosecond_count(n: total_span) / 1000000),
+    " bytes_appended_total=", to_string(measure_count(m: total_bytes)),
+    workspace_transcript_rate_rate_words(name: "mean", rate: workspace_transcript_rate_bandwidth(bytes: total_bytes, span: total_span), absent: "unmeasured(no-span)"),
+    workspace_transcript_rate_rate_words(name: "p95", rate: workspace_transcript_rate_percentile(rates: rates, percent: 95), absent: "unmeasured(no-interval)"),
+    workspace_transcript_rate_rate_words(name: "max", rate: workspace_transcript_rate_percentile(rates: rates, percent: 100), absent: "unmeasured(no-interval)"),
     " files_touched_per_interval_mean=", if n == 0 { "unmeasured(no interval)" } else { join([to_string(touched / n), " (", to_string(touched), "/", to_string(n), ")"], "") },
     " truncations_total=", to_string(fold(rate.rows, init: 0, f: (acc, r) => acc + length(r.truncations))),
     "\n",
