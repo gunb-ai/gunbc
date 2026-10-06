@@ -1783,6 +1783,34 @@ fn ct_unbound_reference_to_a_twice_declared_leaf_refuses_test() -> String {
 }
 
 // A same-leaf declaration in one module does not change what another module emits.
+fn ct_a_coproduct_named_optional_emits_as_its_own_enum_test() -> String {
+  [
+    "    // A COPRODUCT NAMED Optional EMITS AS ITS OWN ENUM. still-raven-321's fixture,\n",
+    "    // fixtures/native_emission_controls_optional_collision.dag, is a non-kernel declaration that shares\n",
+    "    // the kernel mint's leaf. Host-Option is decided by declaration (v1.compiler.emit_rust\n",
+    "    // declaration_owns_host_option over gunbc.structural_realization_bindings kernel_mint_declaration_rows),\n",
+    "    // so its positions name its own enum. THE RED is the leaf rule this replaced: every position rendered\n",
+    "    // as Option<..> and the variants were never emitted (E0425 cannot find CollisionWrapped). The fixture\n",
+    "    // lives outside the source roots, because a second Optional in the accepted corpus is a leaf-name fork,\n",
+    "    // so it is compiled here, from its file, beside a kernel v2.std.optional. Its one import line names a\n",
+    "    // kernel type and is dropped so the pair compiles standalone.\n",
+    "    #[test]\n",
+    "    fn a_coproduct_named_optional_emits_as_its_own_enum() {\n",
+    "        use crate::v1_compiler_compile::SourceFile;\n",
+    "        let collision = read_dag(\"fixtures/native_emission_controls_optional_collision.dag\").replace(\"import std.types \{ Int \}\\n\", \"\");\n",
+    "        let sources = vec![\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/kernel_shadow/optional.dag\".to_string(), content: \"module v2.std.optional\\n\\ntype Optional<T>\\n  = Present { value: T }\\n  | Absent\\n\".to_string() }),\n",
+    "            std::rc::Rc::new(SourceFile { path: \"fixtures/native_emission_controls_optional_collision.dag\".to_string(), content: collision }),\n",
+    "        ];\n",
+    "        let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(sources.into()), crate::v1_compiler_artifact::RenderTarget::Rust);\n",
+    "        let emitted = result.files.iter().find(|f| f.path.contains(\"native_emission_controls_optional_collision\")).map(|f| f.content.clone()).unwrap_or_default();\n",
+    "        assert!(emitted.contains(\"pub enum Optional\") && emitted.contains(\"CollisionWrapped\"), \"the collision coproduct must emit as its own enum:\\n\{emitted}\");\n",
+    "        assert!(!emitted.contains(\"Option<\") && !emitted.contains(\"compile_error!\"), \"no position of the collision coproduct may realize as the host Option:\\n\{emitted}\");\n",
+    "    }\n",
+    "\n",
+  ] |> join(separator: "")
+}
+
 fn ct_unstamped_bare_optional_follows_the_lookup_binding_order_test() -> String {
   [
     "    // AN UNSTAMPED BARE `Optional` FOLLOWS THE TYPECHECKER'S lookup_binding ORDER: own file, then\n",
@@ -2034,6 +2062,7 @@ fn ct_coercion_tests() -> String {
     ct_qualified_reference_is_not_decided_by_the_local_declarer_test(),
     ct_same_leaf_type_elsewhere_leaves_other_modules_emission_unchanged_test(),
     ct_unstamped_bare_optional_follows_the_lookup_binding_order_test(),
+    ct_a_coproduct_named_optional_emits_as_its_own_enum_test(),
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test())
 }

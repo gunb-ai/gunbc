@@ -2,9 +2,12 @@ module gunbc.instruments.native_emission_controls_optional_collision
 
 import std.types { Int }
 
-// A NON-KERNEL COPRODUCT THAT HAPPENS TO BE NAMED Optional. Not a source-root
-// module: a second Optional in the accepted corpus poisons leaf-keyed Optional
-// typing in every floor closure. The RED compiles THIS file with the importer.
+// A NON-KERNEL COPRODUCT THAT HAPPENS TO BE NAMED Optional. Not a source-root module: a second
+// Optional in the accepted corpus makes leaf-keyed Optional typing follow the last declarer and
+// cascades unrelated claims (gunbc#13454 floor; gunbc#13459). The Rust target must realize it as its
+// own enum, never the host Option -- pinned by the unit control
+// a_coproduct_named_optional_emits_as_its_own_enum, which compiles this declaration's shape. Fixture
+// by still-raven-321 (lane 2C). The RED on gunbc#13459 compiles THIS file with the importer.
 type Optional
   = CollisionWrapped { value: Int }
   | CollisionEmpty

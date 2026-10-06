@@ -1,7 +1,7 @@
 module gunbc.instruments.native_emission_controls_optional_importer
 
 import std.types { Int }
-import gunbc.instruments.native_emission_controls_optional_collision { Optional }
+import gunbc.instruments.native_emission_controls_optional_collision { Optional, CollisionWrapped, CollisionEmpty, collision_row_value }
 
 // THE DISCRIMINATING IMPORTER. Not ingested as corpus (fixtures/ is not a source root).
 // test.claim.infer_kernel_import_collision_witness reads THIS file and compiles its bytes.
@@ -9,5 +9,31 @@ fn imported_optional_value(o: Optional) -> Int {
   match o {
     CollisionWrapped { value: v } => v
     CollisionEmpty => 0
+  }
+}
+
+// THE CROSS-MODULE COLLISION, the resolver repair's red-to-green specimen
+// (gunbc.recurring_failure_mode.an_imported_name_shadowed_by_a_kernel_name). This module imports the
+// non-kernel Optional of gunbc.instruments.native_emission_controls_optional_collision BY NAME and
+// names it bare in a variant payload, and the v1 resolver types that payload two ways: the field
+// binding (v1.compiler.infer_env lookup_binding) takes the import, while the type environment's copy
+// of HeldChoice, resolved by name through the overlay where the kernel layer sits above imports,
+// takes the kernel Optional mint. Emitted, the module renders HeldChoice<present_value>, the mint's
+// type variable, and does not build (measured on gunbc#13454). It lives under fixtures/, not a
+// source root, beside its collision declaration: a second Optional in the accepted corpus is itself
+// a leaf-name fork. The emitter's own order is pinned meanwhile by the unit control
+// unstamped_bare_optional_follows_the_lookup_binding_order.
+type HeldChoice
+  = HeldOptional { held: Optional }
+  | HeldNothing
+
+data held_wrapped_row: HeldChoice = HeldOptional { held: CollisionWrapped { value: 11 } }
+
+data held_empty_row: HeldChoice = HeldOptional { held: CollisionEmpty }
+
+fn held_choice_value(c: HeldChoice) -> Int {
+  match c {
+    HeldOptional { held: o } => collision_row_value(o: o)
+    HeldNothing => 0 - 1
   }
 }
