@@ -13,6 +13,7 @@ import gunbc.board_authority_binding {
   mtjade1_fru_receipt, observed_board_authority, board_fru_observation_of_text, read_board_fru_observation,
   board_fru_observation_of_capture,
 }
+import gunbc.machine_intake_mtcollins1_access_observation { mtcollins1_identity }
 import extdeps.ampere.mt_collins_board { mt_collins_board_authority }
 import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
 import test.fixture.board_fru_observation { collins_fru_read, jade_fru_read, asrock_fru_read, gigabyte_fru_read }
@@ -110,6 +111,7 @@ test fn w_the_committed_fru_captures_decode_to_the_fixtures_and_bind() -> Bool {
   let collins = read_board_fru_observation(receipt: mtcollins1_fru_receipt)
   let jade = read_board_fru_observation(receipt: mtjade1_fru_receipt)
   collins == collins_fru_read
+    && collins == mtcollins1_identity.board
     && jade == jade_fru_read
     && is_evidence_bound_to(l: observed_board_authority(observation: collins), want: mt_collins_board_authority)
     && is_identity_bound_to(l: observed_board_authority(observation: jade), want: mt_jade_board_authority)

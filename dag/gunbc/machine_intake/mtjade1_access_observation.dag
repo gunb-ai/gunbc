@@ -50,6 +50,7 @@ import gunbc.machine_intake_subject {
 import std.types { Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.decl_ref { decl_ref }
+import gunbc.board_authority_binding { mtjade1_fru_receipt, receipt_sha256_hex }
 import gunbc.ipmitool_fru_text {
   FruCaptureGap, FruCaptureUnreadable, FruCaptureDigestMismatch, FruFieldAbsent, FruFieldRepeated, FruFieldEmpty,
   FruSubjectLinkUnobserved, FruBoundToAnotherLink, FruFieldRead, FruFieldValue, FruFieldGap, fru_field, fru_line_key, fru_line_value,
@@ -396,9 +397,10 @@ fn read_mtjade1_current_manager_read() -> CurrentManagerRead uses fs: std.resour
 // the capture is bound to this unit through Board Extra, which must equal the link observed on the
 // controller's own wire (the same binding the Redfish capture's Oem.Amp.FruInformation.BoardExtra
 // takes). A capture that fails any of these yields its typed gap, never an empty observation list.
-data mtjade1_fru_capture_path: NonEmptyStr = "artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt"
+// One home for the capture's path and digest: the board binding's receipt (gunbc.board_authority_binding).
+data mtjade1_fru_capture_path: NonEmptyStr = mtjade1_fru_receipt.artifact_path
 
-data mtjade1_fru_capture_sha256: NonEmptyStr = "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b"
+data mtjade1_fru_capture_sha256: NonEmptyStr = receipt_sha256_hex(receipt: mtjade1_fru_receipt) as NonEmptyStr
 
 // The fields the provisional identity reads, as the capture spells them. Nothing else in the capture
 // is consumed.
