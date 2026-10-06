@@ -10,7 +10,8 @@ pub use crate::std_types::{Bool, List, Map};
 pub use crate::v1_compiler_compile::compile_to_resolved;
 pub use crate::v1_compiler_compile::{ResolvedPipelineResult, SourceFile};
 pub use crate::v1_compiler_infer::{
-    param_is_generic_decl, substitute_generics_apply, type_node_label, unify_generics,
+    is_lambda_expr, lambda_callable_type, param_is_generic_decl, substitute_generics_apply,
+    type_node_label, unify_generics,
 };
 pub use crate::v1_compiler_infer_env::node_with_children;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -21,8 +22,11 @@ pub use crate::v1_compiler_infer_sigs::{ResolvedFormals, ResolvedFuncSig};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::Arrow;
+use crate::v1_std_core::ExprData::ExprCall;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
-pub use crate::v1_std_core::{authored_name_at, param_node_name_at, param_node_type_expr};
+pub use crate::v1_std_core::{
+    arg_name_at, arg_value, authored_name_at, param_node_name_at, param_node_type_expr,
+};
 pub use crate::v1_std_core::{Connective, InferredNode, NewlineIndex, Node, ResolvedFormal};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -1648,6 +1652,165 @@ pub fn gi_missing_carriers_are_unobserved(
     }
 }
 
+pub fn gi_inferred_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(TypeVariable { id: tv, .. }) => v1_rt::concat("TypeVariable:".to_string(), tv.clone()),
+        Some(Resolved { node: rt, .. }) => gi_container_label(rt.clone(), si.clone()),
+        _ => type_node_label(n.clone(), si.clone()),
+    }
+}
+
+pub fn gi_container_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    let head = type_node_label(n.clone(), si.clone());
+    if ((n.children.clone().len() as i64) == 0) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(TypeVariable { id: tv, .. }) => {
+                v1_rt::concat("TypeVariable:".to_string(), tv.clone())
+            }
+            _ => {
+                if (head.clone() == "".to_string()) {
+                    "?".to_string()
+                } else {
+                    head.clone()
+                }
+            }
+        }
+    } else {
+        match n.children.clone().first().cloned() {
+            Some(c) => {
+                let inner = match c.inferred.clone().as_deref().cloned() {
+                    Some(Resolved { node: rt, .. }) => gi_inferred_label(rt.clone(), si.clone()),
+                    Some(TypeVariable { id: tv, .. }) => {
+                        v1_rt::concat("TypeVariable:".to_string(), tv.clone())
+                    }
+                    _ => type_node_label(c.clone(), si.clone()),
+                };
+                v1_rt::concat(
+                    v1_rt::concat(head.clone(), "<".to_string()),
+                    v1_rt::concat(inner.clone(), ">".to_string()),
+                )
+            }
+            std::option::Option::None => head.clone(),
+        }
+    }
+}
+
+pub fn gi_callable_label(n: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    let params = Rc::new({
+        let mut __result = Vec::new();
+        for p in n.params.iter().cloned() {
+            __result.push(gi_inferred_label(
+                param_node_type_expr(p.clone()),
+                si.clone(),
+            ));
+        }
+        __result
+    });
+    let ret = match n.inferred.clone().as_deref().cloned() {
+        Some(Resolved { node: rt, .. }) => gi_inferred_label(rt.clone(), si.clone()),
+        Some(TypeVariable { id: tv, .. }) => v1_rt::concat("TypeVariable:".to_string(), tv.clone()),
+        _ => "?".to_string(),
+    };
+    v1_rt::concat(
+        v1_rt::concat("Callable(".to_string(), params.join(&",".to_string())),
+        v1_rt::concat(
+            "->".to_string(),
+            v1_rt::concat(ret.clone(), ")".to_string()),
+        ),
+    )
+}
+
+pub fn gi_nl_fold_collect(
+    e: Rc<Node>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let here = match e.expr_data.clone().as_ref() {
+        ExprCall {
+            call_semantics: _,
+            descent_evidence: _,
+            ..
+        } => {
+            if (authored_name_at(si.clone(), e.clone()) == "nl_fold_list".to_string()) {
+                let empty_ty = match e.children.iter().cloned().find(|a| {
+                    match arg_name_at(a.clone(), si.clone()) {
+                        Some(name) => name == "empty".to_string(),
+                        std::option::Option::None => false,
+                    }
+                }) {
+                    Some(a) => gi_inferred_label(arg_value(a.clone()), si.clone()),
+                    std::option::Option::None => "UNREACHED".to_string(),
+                };
+                let cons_ty = match e.children.iter().cloned().find(|a| {
+                    match arg_name_at(a.clone(), si.clone()) {
+                        Some(name) => name == "cons".to_string(),
+                        std::option::Option::None => false,
+                    }
+                }) {
+                    Some(a) => {
+                        let v = arg_value(a.clone());
+                        if is_lambda_expr(v.clone()) {
+                            gi_callable_label(lambda_callable_type(v.clone()), si.clone())
+                        } else {
+                            gi_inferred_label(v.clone(), si.clone())
+                        }
+                    }
+                    std::option::Option::None => "UNREACHED".to_string(),
+                };
+                Rc::new(vec![
+                    v1_rt::concat("empty(round1-stored)=".to_string(), empty_ty.clone()),
+                    v1_rt::concat("cons.lambda_callable_type=".to_string(), cons_ty.clone()),
+                    v1_rt::concat(
+                        "call_result=".to_string(),
+                        gi_inferred_label(e.clone(), si.clone()),
+                    ),
+                ])
+            } else {
+                Rc::new(vec![])
+            }
+        }
+        _ => Rc::new(vec![]),
+    };
+    let child_rows = Rc::new({
+        let mut __result = Vec::new();
+        for c in e.children.iter().cloned() {
+            __result.extend((*gi_nl_fold_collect(c.clone(), si.clone())).iter().cloned());
+        }
+        __result
+    });
+    v1_rt::concat(here.clone(), child_rows.clone())
+}
+
+pub fn gi_nl_fold_typed_dump(
+    g: Rc<ResolvedGraph>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    let lines = Rc::new({
+        let mut __result = Vec::new();
+        for m in g.modules.iter().cloned() {
+            for item in m.items.iter().cloned() {
+                if (authored_name_at(si.clone(), item.clone()) == "caller_nl_fold".to_string()) {
+                    match item.body.clone() {
+                        Some(b) => {
+                            __result.extend(
+                                (*gi_nl_fold_collect(b.clone(), si.clone())).iter().cloned(),
+                            );
+                        }
+                        std::option::Option::None => {
+                            __result.push("caller_nl_fold: no body".to_string());
+                        }
+                    }
+                }
+            }
+        }
+        __result
+    });
+    if ((lines.clone().len() as i64) == 0) {
+        "UNREACHED (no caller_nl_fold nl_fold_list call)".to_string()
+    } else {
+        lines.join(&" | ".to_string())
+    }
+}
+
 pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> String {
     {
         let result = crate::v1_compiler_compile::compile_to_resolved(sources.clone());
@@ -1775,6 +1938,10 @@ pub fn generic_identity_fixture_standing(sources: Rc<Vec<Rc<SourceFile>>>) -> St
                                 sigs.clone(),
                                 "caller_literal".to_string(),
                             )),
+                        ),
+                        v1_rt::concat(
+                            "reading caller_nl_fold: ".to_string(),
+                            gi_nl_fold_typed_dump(g.clone(), si.clone()),
                         ),
                     ]),
                     gi_supplied_node_readings(sigs.clone(), si.clone()),

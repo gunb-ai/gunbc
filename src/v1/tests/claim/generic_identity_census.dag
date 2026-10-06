@@ -3,9 +3,9 @@ module v1.tests.claim.generic_identity_census
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFormals, DeclarationBoundFormals, KernelGroundedFormals, LocalFormalsAwaitingModuleContext }
-import v1.compiler.infer { param_is_generic_decl, type_node_label, unify_generics, substitute_generics_apply }
+import v1.compiler.infer { param_is_generic_decl, type_node_label, unify_generics, substitute_generics_apply, is_lambda_expr, lambda_callable_type }
 import v1.compiler.infer_env { node_with_children }
-import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, Resolved, TypeVariable, Arrow }
+import v1.std.core { Node, NewlineIndex, ResolvedFormal, authored_name_at, param_node_type_expr, param_node_name_at, arg_name_at, arg_value, Resolved, TypeVariable, Arrow, ExprCall }
 import std.decl_ref { DeclarationRef, TypeParameter, WholeDeclaration, NamedField, declaration_ref_display_key }
 import std.types { List, String, Map, Bool }
 
@@ -799,6 +799,84 @@ fn gi_missing_carriers_are_unobserved(g: ResolvedGraph, si: Map<String, NewlineI
   no_such_item && no_body
 }
 
+fn gi_inferred_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: TypeVariable { id: tv } } => concat("TypeVariable:", tv)
+    Present { value: Resolved { node: rt } } => gi_container_label(n: rt, si: si)
+    _ => type_node_label(n: n, source_indices: si)
+  }
+}
+
+fn gi_container_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  let head = type_node_label(n: n, source_indices: si)
+  if (n.children |> count) == 0 {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv } } => concat("TypeVariable:", tv)
+      _ => if head == "" { "?" } else { head }
+    }
+  } else {
+    match n.children |> first {
+      Present { value: c } =>
+        let inner = match c.inferred {
+          Present { value: Resolved { node: rt } } => gi_inferred_label(n: rt, si: si)
+          Present { value: TypeVariable { id: tv } } => concat("TypeVariable:", tv)
+          _ => type_node_label(n: c, source_indices: si)
+        }
+        concat(concat(head, "<"), concat(inner, ">"))
+      Absent => head
+    }
+  }
+}
+
+fn gi_callable_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  let params = n.params |> map(p => gi_inferred_label(n: param_node_type_expr(n: p), si: si))
+  let ret = match n.inferred {
+    Present { value: Resolved { node: rt } } => gi_inferred_label(n: rt, si: si)
+    Present { value: TypeVariable { id: tv } } => concat("TypeVariable:", tv)
+    _ => "?"
+  }
+  concat(concat("Callable(", params |> join(separator: ",")), concat("->", concat(ret, ")")))
+}
+
+fn gi_nl_fold_collect(e: Node, si: Map<String, NewlineIndex>) -> List<String> {
+  let here = match e.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      if authored_name_at(source_indices: si, node: e) == "nl_fold_list" {
+        let empty_ty = match e.children |> filter(a => match arg_name_at(n: a, source_indices: si) { Present { value: name } => name == "empty"  Absent => false }) |> first {
+          Present { value: a } => gi_inferred_label(n: arg_value(n: a), si: si)
+          Absent => "UNREACHED"
+        }
+        let cons_ty = match e.children |> filter(a => match arg_name_at(n: a, source_indices: si) { Present { value: name } => name == "cons"  Absent => false }) |> first {
+          Present { value: a } =>
+            let v = arg_value(n: a)
+            if is_lambda_expr(e: v) { gi_callable_label(n: lambda_callable_type(lambda: v), si: si) } else { gi_inferred_label(n: v, si: si) }
+          Absent => "UNREACHED"
+        }
+        [
+          concat("empty(round1-stored)=", empty_ty),
+          concat("cons.lambda_callable_type=", cons_ty),
+          concat("call_result=", gi_inferred_label(n: e, si: si))
+        ]
+      } else { [] }
+    _ => []
+  }
+  concat(here, e.children |> flat_map(c => gi_nl_fold_collect(e: c, si: si)))
+}
+
+fn gi_nl_fold_typed_dump(g: ResolvedGraph, si: Map<String, NewlineIndex>) -> String {
+  let lines = g.modules |> flat_map(m =>
+    m.items |> flat_map(item =>
+      if authored_name_at(source_indices: si, node: item) == "caller_nl_fold" {
+        match item.body {
+          Present { value: b } => gi_nl_fold_collect(e: b, si: si)
+          Absent => ["caller_nl_fold: no body"]
+        }
+      } else { [] }
+    )
+  )
+  if (lines |> count) == 0 { "UNREACHED (no caller_nl_fold nl_fold_list call)" } else { lines |> join(separator: " | ") }
+}
+
 fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
   let result = compile_to_resolved(sources: sources)
   match result.graph {
@@ -831,7 +909,8 @@ fn generic_identity_fixture_standing(sources: List<SourceFile>) -> String {
         gi_control_line(name: "missing_carriers_are_unobserved", held: missing_carriers),
         gi_control_line(name: "conformance_keeps_the_parameter_mark", held: conformance_keeps_mark),
         concat("reading bound_call: ", gi_collision_reading(o: bound_call)),
-        concat("reading spelling_collision_call: ", gi_collision_reading(o: gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_literal")))
+        concat("reading spelling_collision_call: ", gi_collision_reading(o: gi_result_carrier_observation(g: g, si: si, sigs: sigs, function_name: "caller_literal"))),
+        concat("reading caller_nl_fold: ", gi_nl_fold_typed_dump(g: g, si: si))
       ], gi_supplied_node_readings(sigs: sigs, si: si)) |> join(separator: "\n")
   }
 }
