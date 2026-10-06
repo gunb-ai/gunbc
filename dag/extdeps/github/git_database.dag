@@ -6,9 +6,9 @@ import extdeps.external_authority { ExternalAuthority, ExternalModelScope, Exter
 import extdeps.uri { Uri, Https }
 import extdeps.github.github { default_api_base }
 import extdeps.github.errors { GitHubErrorShape }
-import extdeps.transports.rest { RestOutcome }
 import std.credentials { EnvVar }
 import std.resources { Network }
+import extdeps.transports.rest { RestResult }
 
 // GitHub's Git Database API: the object-level surface (blobs, trees, commits, references) that lets
 // a client write a commit without a working tree. Cited per resource page; the shapes below are what
@@ -128,7 +128,6 @@ service github.GitDatabase {
     }
     output {
       reference: GitRefWire
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -154,7 +153,6 @@ service github.GitDatabase {
     }
     output {
       commit: GitCommitWire
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -180,7 +178,6 @@ service github.GitDatabase {
     }
     output {
       tree_object: GitTreeWire
-      outcome: RestOutcome
     }
     readonly
     transport rest {
@@ -209,7 +206,6 @@ service github.GitDatabase {
     }
     output {
       blob: GitBlobCreatedWire
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -238,7 +234,6 @@ service github.GitDatabase {
     }
     output {
       created: GitTreeWire
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -268,7 +263,6 @@ service github.GitDatabase {
     }
     output {
       commit: GitCommitWire
-      outcome: RestOutcome
     }
     transport rest {
       method: POST,
@@ -296,7 +290,6 @@ service github.GitDatabase {
     }
     output {
       reference: GitRefWire
-      outcome: RestOutcome
     }
     transport rest {
       method: PATCH,

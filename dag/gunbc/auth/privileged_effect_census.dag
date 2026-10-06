@@ -310,6 +310,26 @@ fn route_qualification_effect() -> PrivilegedEffect {
   }
 }
 
+// ROTATION ROUTE QUALIFICATION, CHANNEL-ACCESS SHAPE (cut O1a-2). The same qualification effect
+// executed for an IPMI Set User Access request: one per controller and build. Its characteristics
+// are stated as they are rather than copied from the password row. IRREVERSIBLE, AND SAID SO: a
+// privilege write to the wrong user or channel can remove the last administrator's access over the
+// LAN, and getting it back needs hands on the unit (a host-side interface or a reflash), which no
+// reapply over the network can do. It applies NO credential: it changes a privilege limit, not a
+// password. No dispatched run carries it; in this cut it is modeled with a dry realization only.
+fn route_qualification_channel_access_effect() -> PrivilegedEffect {
+  PrivilegedEffect {
+    subject: "qualify a BMC channel-access route: execute one IPMI Set User Access request in its privilege-limit-only form on one controller at one firmware build and read it back with Get User Access" as NonEmptyStr,
+    frequency: DeviceOnce,
+    reversibility: IrreversibleEffect { what_is_lost: "a privilege write to the wrong user or channel can remove the last administrator's LAN access; recovering it needs hands on the unit, not a reapply" as NonEmptyStr },
+    surface: ApiSurface,
+    workload_identity: WorkloadIdentityUnbindable { cause: "no dispatched run carries route qualification; in cut O1a-2 it is modeled with a dry realization only" as NonEmptyStr },
+    minted_reach: MintsNoCredential,
+    billing: NoBillingConsequence,
+    witness_discharge: NoWitnessDischarge,
+  }
+}
+
 // BMCSECURE ACCOUNT ROTATION (cut O1b). The Apply arm of the state-shaped BmcSecure: set the managed
 // account to a stored and exact-fetched generation and retire the published account to a break-glass
 // generation, each write over a route admitted by admit_rotation_apply. IRREVERSIBLE, AND SAID SO: the
@@ -349,7 +369,7 @@ type PrivilegedEffectInterlock {
 // EVERY PRODUCTION ROOT THAT REACHES A GATED WRITE ON THE UNIT, and the live acquire it owns. The set
 // is closed by the compiler rather than by this list: the BMC write wrappers take a sole_constructor
 // UnitHoldProof, and the generic operations beneath them are admit_callers-sealed to the callers named
-// in sealed_by (oob_boot_handoff -> mtcollins1_drive_handoff and host_reset_return_issue_and_watch;
+// in sealed_by (oob_boot_handoff -> boot_drive_handoff and host_reset_return_issue_and_watch;
 // megarac_attach_remote_image -> megarac_attach_boot_image; the SOL release and activate to
 // the boot's SOL acquire). A new caller refuses at compile time (ConstructorCallAdmissionRefused), so
 // adding a root means editing a seal, which is where this row is read.
@@ -370,7 +390,7 @@ data mtcollins1_hold_owning_roots: List<InterlockRoot> = [
       site(module_path: "gunbc.machine_intake_mtcollins1_boot_run", decl_name: "mtcollins1_sol_activate_held"),
       site(module_path: "gunbc.machine_intake_megarac_boot_media_attach", decl_name: "megarac_attach_boot_image"),
       site(module_path: "gunbc.machine_intake_megarac_media_attach", decl_name: "megarac_attach_remote_image"),
-      site(module_path: "gunbc.machine_intake_mtcollins1_actuate", decl_name: "mtcollins1_drive_handoff"),
+      site(module_path: "gunbc.managed_host_boot_handoff", decl_name: "boot_drive_handoff"),
       site(module_path: "gunbc.machine_intake_oob_boot_handoff", decl_name: "oob_boot_handoff"),
     ],
   },
@@ -648,8 +668,14 @@ data privileged_effect_census: List<PrivilegedEffectSite> = [
     divergence_reason: none,
   },
   PrivilegedEffectSite {
-    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "qualify_rotation_route"),
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_password_route_qualification"),
     effect: route_qualification_effect(),
+    realized: RealizedApprovalCapability,
+    divergence_reason: none,
+  },
+  PrivilegedEffectSite {
+    site: site(module_path: "gunbc.machine_intake_bmc_rotation_route", decl_name: "admit_privilege_limit_route_qualification"),
+    effect: route_qualification_channel_access_effect(),
     realized: RealizedApprovalCapability,
     divergence_reason: none,
   },

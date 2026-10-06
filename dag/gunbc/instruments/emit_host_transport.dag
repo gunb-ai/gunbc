@@ -347,13 +347,14 @@ fn c_emit_host_green_holds() -> Bool {
   ) {
     Accepted { value: receipt, diagnostics: _ } =>
       match receipt.logical_run {
-        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
-          match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+        Accepted { value: run, diagnostics: None } =>
+          match runtime_value_parse(target: c_target_model(), stdout: run.stdout) {
             Accepted { value: _, diagnostics: _ } =>
-              stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              run.stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
             Rejected { diagnostics: _ } => false
           }
-        _ => false
+        Accepted { value: _, diagnostics: Some { diagnostics: _ } } => false
+        Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
   }

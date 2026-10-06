@@ -27,9 +27,7 @@ data floor_checker_input_seed_growth_justification: SeedGrowthJustification = Se
     DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "every_workspace_file_the_record_lists_is_a_checker_input", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "a_per_crate_record_that_omits_the_infer_crate_is_refused", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "a_cargo_record_is_admitted_only_with_its_anchor", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "the_modeled_rule_widens_only_for_a_changed_checker_input", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run.checker_dependency.tests", decl_name: "tempdir_with_manifest", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.cli_run.required_floor_runner.changed_witness_projection_tests", decl_name: "a_checker_edit_prepares_the_module_its_check_refuses_outside_the_edited_closure", field: WholeDeclaration }
   ],
   reason: "WHY RUST IS STILL NEEDED: which binary runs the floor, and which files cargo compiled it from, are facts about the running process and the build tool's output directory. No .dag primitive exposes the current executable's path. Reading the dep-info through a filesystem handler would still need that path, and a path supplied by the workflow would name a binary the floor never checked it is running. Decoding the CheckerSubjectApplication arm by variant is the usual host wire for a frame call, and an arm the host does not know refuses. The decision itself stays in .dag.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,

@@ -64,6 +64,13 @@ import v2.std.demand_engine {
   DemandLeaseOffer,
   DemandNotAdmitted,
   DemandRefused,
+  DemandWaiting,
+  DemandReady,
+  DemandLeasePending,
+  DemandRunning,
+  DemandSuspended,
+  DemandCommitPending,
+  DemandBlocked,
   DemandState,
   DemandAdmission,
   demand_engine_completion_keys,
@@ -124,6 +131,8 @@ import v2.compiler.native_test_vocabulary {
   FileRefusalAtDeclaration,
   FileRefusalAtUnresolvedNode,
   native_test_file_advisories,
+  native_test_file_refusal_fatal_reason,
+  native_test_file_refusal_head_reason,
   NativeTestObservation,
   NativeTestPassed,
   NativeTestRefused,
@@ -199,7 +208,7 @@ import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
 import std.content_hash { Fnv1a64Structural, content_hash_of_value, serialize_content_hash }
 import std.types { NonEmptyStr, List }
-import std.algebra { Cons, Empty, FreeMonoid, trim, list_append, list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup, trim, list_append, list_snoc_item }
 import v2.std.algebra { any, contains, fold_list, is_empty, length, list_find_first, list_reverse }
 import v2.std.collection { Map, empty_map, map_insert, map_lookup }
 import v2.std.integer { Int }
@@ -1384,11 +1393,12 @@ fn native_test_file_refusal(path: Symbol, module: Optional<QualifiedName>, d: No
   NativeTestFileRefusal {
     path: path,
     module: module,
-    head_reason: d.head.reason,
-    fatal_reason: diagnostics_fatal_reason(d: d),
-    chain: fold_list(xs: d.tail, empty: [native_file_refusal_link(d: d.head, path: path, spans: spans, text: text)], cons: fn(acc, diag) {
-      list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
-    })
+    chain: FreeSemigroup {
+      head: native_file_refusal_link(d: d.head, path: path, spans: spans, text: text),
+      tail: fold_list(xs: d.tail, empty: Empty, cons: fn(acc, diag) {
+        list_snoc_item(xs: acc, item: native_file_refusal_link(d: diag, path: path, spans: spans, text: text))
+      })
+    }
   }
 }
 
@@ -1464,10 +1474,10 @@ fn native_file_refusal_textual(file: Symbol, extent: Extent, path: Symbol, text:
 //
 // THE CONSTRAINT THAT MAKES THE CURRENT ARM SAFE, NAMED RATHER THAN ASSUMED. Reusing a refused
 // parse's ids is sound exactly while nothing retains that parse's node loci. Today nothing does:
-// `native_test_vocabulary` `NativeTestFileRefusal` keeps `path`, `head_reason` and `fatal_reason`
-// -- three symbols, no `Locus`. That is a property of a carrier scheduled to change: gunbc#11965's
-// named remainder 1 proposes widening it to carry the front end's loci. WIDENING IT WITHOUT FIRST
-// ADVANCING THIS MARK REOPENS THE COLLISION -- a refused file's retained `NodeLocus` would carry an
+// `native_test_vocabulary` `NativeTestFileRefusal` keeps `path` and a chain of links whose positions
+// are RESOLVED at the absorb (line and byte column, or a named port) -- no `Locus`, no occurrence id.
+// Widening it to carry the front end's raw loci WITHOUT FIRST ADVANCING THIS MARK REOPENS THE
+// COLLISION -- a refused file's retained `NodeLocus` would carry an
 // id the next file re-mints and records a span for, and `span_index_merge` is base-wins, so the
 // join would answer with a confident wrong file rather than refusing (DESIGN section 5). Whoever
 // widens that record owns this precondition, and it is written here because that is where the reuse
@@ -1852,6 +1862,17 @@ fn native_test_eval_body(
   }
 }
 
+fn native_test_eval_one_not_arrow(
+  prepared: NativeTestPreparedModule,
+  declaration: Symbol
+) -> NativeTestObservation {
+  native_test_entry_refused(
+    module: prepared.module,
+    declaration: declaration,
+    reason: ^native_test_entry_declaration_not_arrow
+  )
+}
+
 fn native_test_eval_one(
   prepared: NativeTestPreparedModule,
   declaration: Symbol
@@ -1893,12 +1914,12 @@ fn native_test_eval_one(
                     body: body
                   )
               }
-            _ =>
-              native_test_entry_refused(
-                module: prepared.module,
-                declaration: declaration,
-                reason: ^native_test_entry_declaration_not_arrow
-              )
+            TypeNode { connective: Atom { identity: _ } } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Conj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Disj } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Cardinality } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            TypeNode { connective: Instantiation } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
+            ComputationNode { behavior: _ } => native_test_eval_one_not_arrow(prepared: prepared, declaration: declaration)
           }
       }
   }
@@ -3431,7 +3452,7 @@ fn native_import_target_refusal_diagnostics(target: NativeTestFileRefusal, resol
   NonEmptyDiagnostics {
     head: Diagnostic { reason: ^native_prepare_reason_import_target_file_refused, at: at, correction: Unavailable { reason: UserInputBoundary } },
     tail: list_append(
-      left: [Diagnostic { reason: target.fatal_reason, at: at, correction: Unavailable { reason: UserInputBoundary } }, resolver.head],
+      left: [Diagnostic { reason: native_test_file_refusal_fatal_reason(fr: target), at: at, correction: Unavailable { reason: UserInputBoundary } }, resolver.head],
       right: resolver.tail
     )
   }
@@ -3533,7 +3554,7 @@ fn native_lane_module_resolution(
             entry: entry,
             verdict: native_test_refused_located(
               stage: NativeTestStageContext,
-              reason: fr.fatal_reason,
+              reason: native_test_file_refusal_fatal_reason(fr: fr),
               at: Textual { file: fr.path, extent: WholeFile }
             )
           )
@@ -3960,7 +3981,7 @@ fn native_census_module_resolution(
     },
     context: step.context,
     cascade: match step.import_attribution {
-      NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: t.fatal_reason }
+      NativeImportTargetRefused { target: t } => NativeCensusCascadeMemberOf { root: t.path, root_reason: native_test_file_refusal_fatal_reason(fr: t) }
       NativeImportTargetsUnreadable { reason: r } => NativeCensusCascadeUnattributed { reason: r }
       NativeImportTargetsAdmitted => NativeCensusCascadeNone
       NativeImportTargetNotAsked => NativeCensusCascadeNone
@@ -4317,12 +4338,12 @@ fn native_census_cause_groups_add_file_refusal(
 ) -> NativeCensusCauseGroups {
   native_census_cause_groups_add(
     groups: groups,
-    fatal_reason: refusal.fatal_reason,
+    fatal_reason: native_test_file_refusal_fatal_reason(fr: refusal),
     member: NativeCensusCauseMember {
       stage: NativeCensusCauseFrontEnd,
       path: refusal.path,
       module: refusal.module,
-      head_reason: refusal.head_reason,
+      head_reason: native_test_file_refusal_head_reason(fr: refusal),
       cascade: NativeCensusCascadeRoot {
         closure_fan_out: native_census_closure_fan_out(index: closure, root: refusal),
         resolve_refused_importers: optional_absent()

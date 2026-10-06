@@ -13,13 +13,13 @@ import std.upsert_decision {
   observation_verdict_label,
 }
 import extdeps.cloudflare.r2 {
-  R2Jurisdiction, R2JurisdictionDefault,
+  R2Jurisdiction, R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs,
   R2BucketLocation,
   r2_bucket_location_wire,
   r2_jurisdiction_wire,
   parse_r2_jurisdiction,
 }
-import extdeps.transports.rest { RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable }
 import extdeps.cloudflare.r2_buckets
 import extdeps.cloudflare.r2_lifecycle
 import extdeps.cloudflare.r2_lifecycle {
@@ -38,7 +38,7 @@ import gunbc.cloudflare.r2_origin {
   bucket_purpose_origin_standing,
   bucket_purpose_lifecycle_rules,
   gunbc_fleet_r2_bucket_allocations,
-  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
+  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated, R2OriginBucket,
   FleetCloudflareAccountStanding, CloudflareAccountAllocated, CloudflareAccountUnallocated,
   OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
   fleet_cloudflare_account_standing,
@@ -140,6 +140,15 @@ fn classify_present_bucket(
   }
 }
 
+// An absent bucket whose standing declares a non-default jurisdiction: the Create surface cannot
+// request one, so creating it would mint a default-jurisdiction bucket under that name.
+fn r2_ensure_refuse_absent_non_default_jurisdiction(bucket: R2OriginBucket) -> UpsertClassification<R2BucketCreatePlan> {
+  r2_ensure_refuse(
+    verdict: Absent,
+    reason: join(["bucket ", bucket.bucket_name as String, " is absent and its standing declares jurisdiction ", r2_jurisdiction_wire(jurisdiction: bucket.jurisdiction), ", which the Create surface cannot request; creating it would make a default-jurisdiction bucket under that name"], ""),
+  )
+}
+
 // PURE, SO EVERY ARM IS WITNESSABLE OVER A SUPPLIED READ (test.claim.cloudflare_r2_bucket_ensure).
 fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> UpsertClassification<R2BucketCreatePlan> {
   match desired {
@@ -156,11 +165,10 @@ fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> U
           match bucket.jurisdiction {
             R2JurisdictionDefault =>
               UpsertClassification { verdict: Absent, decision: Apply { plan: R2BucketCreatePlan { bucket_name: bucket.bucket_name, location_hint: bucket.location_hint } } }
-            _ =>
-              r2_ensure_refuse(
-                verdict: Absent,
-                reason: join(["bucket ", bucket.bucket_name as String, " is absent and its standing declares jurisdiction ", r2_jurisdiction_wire(jurisdiction: bucket.jurisdiction), ", which the Create surface cannot request; creating it would make a default-jurisdiction bucket under that name"], ""),
-              )
+            R2JurisdictionEu => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionFedramp => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionFedrampHigh => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionUs => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
           }
       }
   }
@@ -234,14 +242,15 @@ fn r2_ensure_credentials() -> R2EnsureCredentials uses net: Network {
 }
 
 fn read_r2_bucket(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2BucketRead uses net: Network {
-  let got = cloudflare.R2Buckets.Get(
-    auth_token: admin,
-    account_id: account_id as String,
-    bucket_name: bucket_name as String,
-  )
   classify_r2_bucket_get(
-    outcome: got.outcome,
-    bucket: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location },
+    outcome: match cloudflare.R2Buckets.Get(
+      auth_token: admin,
+      account_id: account_id as String,
+      bucket_name: bucket_name as String,
+    ) {
+      RestAnswered { answer: got } => RestAnswered { answer: R2BucketResponse { name: got.name, jurisdiction: got.jurisdiction, location: got.location } }
+      RestRefused { refusal } => RestRefused { refusal: refusal }
+    },
   )
 }
 
@@ -287,11 +296,11 @@ fn apply_r2_bucket_create(
     Present { value: l } => concat(" (locationHint requested ", concat(r2_bucket_location_wire(location: l), ")"))
     Absent => " (no locationHint)"
   }
-  let create_outcome = match created.outcome {
-    RestOk => "create ok"
-    RestStatusRefused { status: status, body: _ } => join(["create refused with status ", to_string(status)], "")
-    RestTransportRefused { cause: _ } => "create got no response"
-    RestBodyUndecodable { status: status, cause: _ } => join(["create status ", to_string(status), " body undecodable"], "")
+  let create_outcome = match created {
+    RestAnswered { answer: _ } => "create ok"
+    RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["create refused with status ", to_string(status)], "")
+    RestRefused { refusal: RestTransportRefused { cause: _ } } => "create got no response"
+    RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["create status ", to_string(status), " body undecodable"], "")
   }
   let create_status = concat(create_outcome, requested)
   match readback.decision {
@@ -343,12 +352,14 @@ fn classify_r2_lifecycle(desired: List<R2LifecycleRule>, read: R2LifecycleRead) 
 }
 
 fn read_r2_lifecycle(admin: Secret, account_id: CloudflareAccountId, bucket_name: NonEmptyStr) -> R2LifecycleRead uses net: Network {
-  let got = cloudflare.R2BucketLifecycle.GetRaw(
+  r2_lifecycle_read(outcome: match cloudflare.R2BucketLifecycle.GetRaw(
     auth_token: admin,
     account_id: account_id as String,
     bucket_name: bucket_name as String,
-  )
-  r2_lifecycle_read(outcome: got.outcome, body: got.body)
+  ) {
+    RestAnswered { answer } => RestAnswered { answer: answer.body }
+    RestRefused { refusal } => RestRefused { refusal: refusal }
+  })
 }
 
 fn ensure_r2_purpose_lifecycle(
@@ -371,11 +382,11 @@ fn ensure_r2_purpose_lifecycle(
         rules: r2_lifecycle_rules_wire(rules: plan.rules),
       )
       let readback = classify_r2_lifecycle(desired: desired, read: read_r2_lifecycle(admin: admin, account_id: account_id, bucket_name: bucket_name))
-      let put_status = match put.outcome {
-        RestOk => "put ok"
-        RestStatusRefused { status: status, body: _ } => join(["put refused with status ", to_string(status)], "")
-        RestTransportRefused { cause: _ } => "put got no response"
-        RestBodyUndecodable { status: status, cause: _ } => join(["put status ", to_string(status), " body undecodable"], "")
+      let put_status = match put {
+        RestAnswered { answer: _ } => "put ok"
+        RestRefused { refusal: RestStatusRefused { status: status, body: _ } } => join(["put refused with status ", to_string(status)], "")
+        RestRefused { refusal: RestTransportRefused { cause: _ } } => "put got no response"
+        RestRefused { refusal: RestBodyUndecodable { status: status, cause: _ } } => join(["put status ", to_string(status), " body undecodable"], "")
       }
       match readback.decision {
         Noop => R2PurposeEnsureOutcome { line: lifecycle_line(label: label, classified: classified, detail: concat(put_status, "; readback converged")), held: true }

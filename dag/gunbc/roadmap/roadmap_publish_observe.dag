@@ -30,7 +30,7 @@ import extdeps.tools.hostname
 import std.algebra { trim }
 import gunbc.fabric_quota { QuotaLease, QuotaLeased, QuotaFull, QuotaLeaseRefused, fabric_quota_lease, QuotaSettle, QuotaSettled, QuotaSettleRefused, fabric_quota_settle }
 import extdeps.transports.rest {
-  RestOutcome, RestOk, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
+  RestResult, RestAnswered, RestRefused, RestStatusRefused, RestTransportRefused, RestBodyUndecodable,
 }
 
 // THIS IS THE HALF THAT TOUCHES THE NETWORK, SEPARATED FROM THE HALF THAT JUDGES.
@@ -44,9 +44,8 @@ import extdeps.transports.rest {
 
 // THE REFUSAL IS BUILT FROM A VALUE, NOT CAUGHT. git.Core.LsRemoteHeads declares exit_code/stderr
 // as outputs, so a failed ref advertisement arrives as an ordinary record this function can match
-// on. That is not true of every transport in the corpus - the REST dispatch raises on a non-2xx
-// rather than returning one - and the difference is exactly why the remote-branch half of
-// publication can be observed today and the pull-request half cannot.\n\nTHE TERMINATION FACT IS
+// on. The REST dispatch does the same for the pull-request half: a non-2xx arrives as the
+// RestRefused arm of the operation's result rather than as a raise.\n\nTHE TERMINATION FACT IS
 // THE EXIT CODE, NOT A SUCCESS BOOL. An earlier cut of the operation declared both, and this
 // function branched on the Bool - so a caller could pass a true success beside a nonzero exit code
 // and a failed read would be reported as an ordinary negative result. The Bool is gone from the
@@ -222,13 +221,13 @@ data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NO
 // 200/401/404/422/5xx while dispatch_rest raised for any status at or above 400, so control never
 // returned and CredentialSourceConfigured could not become a PullRequestsUnreadable by a real call
 // - only by a caller that already held one. The 2026-08-01 probe executed that path and confirmed
-// the raise escaped. The operation now declares outcome: RestOutcome, so the status is transported
-// as data and this function matches it: RestOk reads, RestStatusRefused carries what the remote
+// the raise escaped. The operation now yields RestResult, so the status is transported
+// as data and this function matches it: RestAnswered reads, RestStatusRefused carries what the remote
 // authority said, RestTransportRefused says no answer was obtained, and RestBodyUndecodable says an
 // answer arrived but its body did not decode. The live receipt: an absent credential refused
 // locally without a request, a present-but-rejected credential returned status 401 with the Bad
 // credentials body intact, and a valid credential read 30 pulls - the last of these being the
-// discriminating control, since a mis-wired outcome field would plausibly have emptied the pulls
+// discriminating control, since a mis-wired result would plausibly have emptied the pulls
 // projection on success too. Publication therefore claims a live trip on evidence rather than on
 // reasoning.\n\nWHY THE UNREADABLE ARM STILL EXISTS: a caller CAN hold a refusal - an absent
 // source, a prior failed read, a cached observation, a receipt decoded from disk - and the
@@ -267,31 +266,33 @@ fn observe_pull_requests(
       match fabric_quota_settle(lease: lease, actual: 1) {
         QuotaSettleRefused { detail: d } => PullRequestsUnreadable { cause: PullRequestQuotaWithheld { repository: repo.full_name, detail: join(["listed, but the settlement refused: ", d], "") } }
         QuotaSettled { partition: _, actual: _ } =>
-      match result.outcome {
-        RestOk => PullRequestsRead { pulls: result.pulls }
-        RestStatusRefused { status, body } =>
-          PullRequestsUnreadable {
-            cause: PullRequestStatusRefused {
-              repository: repo.full_name,
-              status: status,
-              body: body,
-            },
-          }
-        RestTransportRefused { cause } =>
-          PullRequestsUnreadable {
-            cause: PullRequestTransportRefused {
-              repository: repo.full_name,
-              cause: cause,
-            },
-          }
-        RestBodyUndecodable { status, cause } =>
-          PullRequestsUnreadable {
-            cause: PullRequestBodyUndecodable {
-              repository: repo.full_name,
-              status: status,
-              cause: cause,
-            },
-          }
+      match result {
+        RestAnswered { answer } => PullRequestsRead { pulls: answer.pulls }
+        RestRefused { refusal } => match refusal {
+          RestStatusRefused { status, body } =>
+            PullRequestsUnreadable {
+              cause: PullRequestStatusRefused {
+                repository: repo.full_name,
+                status: status,
+                body: body,
+              },
+            }
+          RestTransportRefused { cause } =>
+            PullRequestsUnreadable {
+              cause: PullRequestTransportRefused {
+                repository: repo.full_name,
+                cause: cause,
+              },
+            }
+          RestBodyUndecodable { status, cause } =>
+            PullRequestsUnreadable {
+              cause: PullRequestBodyUndecodable {
+                repository: repo.full_name,
+                status: status,
+                cause: cause,
+              },
+            }
+        }
       }
       }
         }
@@ -300,19 +301,12 @@ fn observe_pull_requests(
   }
 }
 
-// result.pulls IS READ ONLY UNDER RestOk, AND THAT IS A CORRECTNESS CONSTRAINT RATHER THAN
-// TIDINESS. The realization projects an observation into the declared output record, and on any
-// non-success outcome the ordinary body-derived fields are deliberately left uninhabited -
-// RestOutcome is the only branch carrying a fact, so it is the only branch a caller may consume.
-// Reading result.pulls outside the RestOk arm would therefore read the absence and report it as an
-// empty list of open pull requests, which is the fabricated-plausible-output failure at its most
-// damaging here: an empty list is a perfectly ordinary answer that means the branch is not
-// published, so a 401 would be indistinguishable from a genuine not-yet-published state and the
-// belt would write a receipt saying so.\n\nTHE PREVIOUS CUT DID NOT HAVE THIS CHOICE TO GET WRONG,
-// because dispatch_rest raised on every status at or above 400 and control never returned. That is
-// why `PullRequestsRead { pulls: result.pulls }` was unconditional and still correct: the only way
-// to reach it was a 2xx. Making the outcome data is what makes the unconditional read newly WRONG,
-// so the match is not an addition beside the old line - it is what the old line becomes.
+// THE PULLS ARE READ ONLY UNDER RestAnswered, AND THAT IS A CORRECTNESS CONSTRAINT RATHER THAN
+// TIDINESS. The pulls exist only in the answered arm of RestResult; a refusal carries no body
+// fields, so it cannot be read as an empty list of open pull requests. That reading would be the
+// fabricated-plausible-output failure at its most damaging here: an empty list is a perfectly
+// ordinary answer that means the branch is not published, so a 401 would be indistinguishable from
+// a genuine not-yet-published state and the belt would write a receipt saying so.
 
 // BOTH READS NAME THE SAME REPOSITORY BY CONSTRUCTION, WHICH IS THE WHOLE REASON THIS FUNCTION
 // EXISTS RATHER THAN TWO CALLS AT A CALL SITE. The remote is projected from the same Repository

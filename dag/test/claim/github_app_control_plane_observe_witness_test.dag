@@ -2,7 +2,7 @@ module test.claim.github_app_control_plane_observe
 
 import std.types { Bool, String, Map }
 import extdeps.auth.jws { JwsSigningKeyRef, HostKeyFile }
-import extdeps.transports.rest { RestOutcome, RestOk, RestStatusRefused, RestTransportRefused }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, RestStatusRefused, RestTransportRefused }
 import extdeps.github.github { GitHubUser, Organization }
 import extdeps.github.app { GitHubAppPublicRecord, GitHubAppInstallationRecord }
 import gunbc.auth.github_credential { app_installation_metadata_baseline }
@@ -16,7 +16,7 @@ import gunbc.auth.github_app_control_plane_observe {
   signer_custody_of_app_read, registration_of_app_read, installation_of_read,
 }
 
-// The producer's decisions over SUPPLIED RestOutcomes (DESIGN §3: a witness discriminates at one
+// The producer's decisions over SUPPLIED RestResults (DESIGN §3: a witness discriminates at one
 // interface). The effectful route -- the controller signing with its custodied key and calling
 // GitHub -- is inhabited by gunbc.runner_microvm_slot_controller observe_app_control_plane, not
 // here; these witnesses pin which arm each GitHub answer reaches.
@@ -48,12 +48,28 @@ data installation_record: GitHubAppInstallationRecord = GitHubAppInstallationRec
   events: [],
 }
 
-fn sealed(app_outcome: RestOutcome, app_seen: DeclaredGitHubApp, installation_outcome: RestOutcome) -> GitHubAppControlPlaneState {
+fn app_answered(app_seen: DeclaredGitHubApp) -> RestResult<GitHubAppPublicRecord> {
+  RestAnswered { answer: app_record(app: app_seen) }
+}
+
+fn app_refused(refusal: RestRefusal) -> RestResult<GitHubAppPublicRecord> {
+  RestRefused { refusal: refusal }
+}
+
+fn installation_answered() -> RestResult<GitHubAppInstallationRecord> {
+  RestAnswered { answer: installation_record }
+}
+
+fn installation_refused(refusal: RestRefusal) -> RestResult<GitHubAppInstallationRecord> {
+  RestRefused { refusal: refusal }
+}
+
+fn sealed(app_outcome: RestResult<GitHubAppPublicRecord>, installation_outcome: RestResult<GitHubAppInstallationRecord>) -> GitHubAppControlPlaneState {
   app_control_plane_state(
     app: gunbai_ci_declared,
-    custody: signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: app_outcome, record: app_record(app: app_seen)),
-    registration: registration_of_app_read(outcome: app_outcome, record: app_record(app: app_seen)),
-    observed: installation_of_read(outcome: installation_outcome, record: installation_record),
+    custody: signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: app_outcome),
+    registration: registration_of_app_read(outcome: app_outcome),
+    observed: installation_of_read(outcome: installation_outcome),
     required: [app_installation_metadata_baseline],
     reason: "witness",
   )
@@ -61,7 +77,7 @@ fn sealed(app_outcome: RestOutcome, app_seen: DeclaredGitHubApp, installation_ou
 
 // POSITIVE CONTROL: GitHub accepts the key as gunbai-ci and the installation grants what is required.
 test fn witness_accepted_key_and_granting_installation_seal_the_grant() -> Bool {
-  match sealed(app_outcome: RestOk, app_seen: gunbai_ci_declared, installation_outcome: RestOk) {
+  match sealed(app_outcome: app_answered(app_seen: gunbai_ci_declared), installation_outcome: installation_answered()) {
     InstallationGrantObserved { installation: i } => i.installation_id.value == gunbai_ci_declared_installation_id.value
     _ => false
   }
@@ -73,8 +89,7 @@ test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool {
   match signer_custody_of_app_read(
     key: key,
     observed_at: 1790000000,
-    outcome: RestStatusRefused { status: 401, body: "{\"message\":\"A JSON web token could not be decoded\"}" },
-    record: app_record(app: gunbai_ci_declared),
+    outcome: app_refused(refusal: RestStatusRefused { status: 401, body: "{\"message\":\"A JSON web token could not be decoded\"}" }),
   ) {
     SignerReadbackFailed { cause } => match cause {
       SignerKeyRejected { status: s, body: _ } => s == 401
@@ -82,9 +97,8 @@ test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool {
     }
     _ => false
   } && match sealed(
-    app_outcome: RestStatusRefused { status: 401, body: "bad credentials" },
-    app_seen: gunbai_ci_declared,
-    installation_outcome: RestOk,
+    app_outcome: app_refused(refusal: RestStatusRefused { status: 401, body: "bad credentials" }),
+    installation_outcome: installation_answered(),
   ) {
     SignerCustodyUnresolved { app: _, custody: _ } => true
     _ => false
@@ -93,7 +107,7 @@ test fn witness_a_rejected_key_is_signer_key_rejected() -> Bool {
 
 // THE OTHER RED: a key GitHub accepts, but as a DIFFERENT App, refuses by name.
 test fn witness_a_key_accepted_as_another_app_refuses_by_name() -> Bool {
-  match sealed(app_outcome: RestOk, app_seen: gunbai_bot_declared, installation_outcome: RestOk) {
+  match sealed(app_outcome: app_answered(app_seen: gunbai_bot_declared), installation_outcome: installation_answered()) {
     SignerCustodyUnresolved { app: _, custody } => match custody {
       SignerReadbackFailed { cause } => match cause {
         SignerNamesDifferentApp { observed_app_id: o, declared_app_id: d } =>
@@ -108,13 +122,13 @@ test fn witness_a_key_accepted_as_another_app_refuses_by_name() -> Bool {
 
 // A refusal that is not about the key (403, transport) is NOT reported as a rejected key.
 test fn witness_a_non_401_refusal_is_unreached_not_rejected() -> Bool {
-  match signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: RestStatusRefused { status: 403, body: "rate limited" }, record: app_record(app: gunbai_ci_declared)) {
+  match signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: app_refused(refusal: RestStatusRefused { status: 403, body: "rate limited" })) {
     SignerReadbackFailed { cause } => match cause {
       SignerReadbackNotReached { detail: _ } => true
       _ => false
     }
     _ => false
-  } && match signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: RestTransportRefused { cause: "connection refused" }, record: app_record(app: gunbai_ci_declared)) {
+  } && match signer_custody_of_app_read(key: key, observed_at: 1790000000, outcome: app_refused(refusal: RestTransportRefused { cause: "connection refused" })) {
     SignerReadbackFailed { cause } => match cause {
       SignerReadbackNotReached { detail: _ } => true
       _ => false
@@ -125,7 +139,7 @@ test fn witness_a_non_401_refusal_is_unreached_not_rejected() -> Bool {
 
 // Custody observed, installation read refused: InstallationUnobserved, never a grant.
 test fn witness_an_unread_installation_is_unobserved() -> Bool {
-  match sealed(app_outcome: RestOk, app_seen: gunbai_ci_declared, installation_outcome: RestStatusRefused { status: 404, body: "Not Found" }) {
+  match sealed(app_outcome: app_answered(app_seen: gunbai_ci_declared), installation_outcome: installation_refused(refusal: RestStatusRefused { status: 404, body: "Not Found" })) {
     InstallationUnobserved { app: _, reason: _ } => true
     _ => false
   }
