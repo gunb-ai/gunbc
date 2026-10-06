@@ -13,7 +13,7 @@ import std.upsert_decision {
   observation_verdict_label,
 }
 import extdeps.cloudflare.r2 {
-  R2Jurisdiction, R2JurisdictionDefault,
+  R2Jurisdiction, R2JurisdictionDefault, R2JurisdictionEu, R2JurisdictionFedramp, R2JurisdictionFedrampHigh, R2JurisdictionUs,
   R2BucketLocation,
   r2_bucket_location_wire,
   r2_jurisdiction_wire,
@@ -38,7 +38,7 @@ import gunbc.cloudflare.r2_origin {
   bucket_purpose_origin_standing,
   bucket_purpose_lifecycle_rules,
   gunbc_fleet_r2_bucket_allocations,
-  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated,
+  R2OriginStanding, R2OriginAllocated, R2OriginUnallocated, R2OriginBucket,
   FleetCloudflareAccountStanding, CloudflareAccountAllocated, CloudflareAccountUnallocated,
   OriginCredentialStanding, OriginCredentialPinned, OriginCredentialUnminted, OriginCredentialMintEntryUnbuilt,
   fleet_cloudflare_account_standing,
@@ -140,6 +140,15 @@ fn classify_present_bucket(
   }
 }
 
+// An absent bucket whose standing declares a non-default jurisdiction: the Create surface cannot
+// request one, so creating it would mint a default-jurisdiction bucket under that name.
+fn r2_ensure_refuse_absent_non_default_jurisdiction(bucket: R2OriginBucket) -> UpsertClassification<R2BucketCreatePlan> {
+  r2_ensure_refuse(
+    verdict: Absent,
+    reason: join(["bucket ", bucket.bucket_name as String, " is absent and its standing declares jurisdiction ", r2_jurisdiction_wire(jurisdiction: bucket.jurisdiction), ", which the Create surface cannot request; creating it would make a default-jurisdiction bucket under that name"], ""),
+  )
+}
+
 // PURE, SO EVERY ARM IS WITNESSABLE OVER A SUPPLIED READ (test.claim.cloudflare_r2_bucket_ensure).
 fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> UpsertClassification<R2BucketCreatePlan> {
   match desired {
@@ -156,11 +165,10 @@ fn classify_r2_bucket_ensure(desired: R2OriginStanding, read: R2BucketRead) -> U
           match bucket.jurisdiction {
             R2JurisdictionDefault =>
               UpsertClassification { verdict: Absent, decision: Apply { plan: R2BucketCreatePlan { bucket_name: bucket.bucket_name, location_hint: bucket.location_hint } } }
-            _ =>
-              r2_ensure_refuse(
-                verdict: Absent,
-                reason: join(["bucket ", bucket.bucket_name as String, " is absent and its standing declares jurisdiction ", r2_jurisdiction_wire(jurisdiction: bucket.jurisdiction), ", which the Create surface cannot request; creating it would make a default-jurisdiction bucket under that name"], ""),
-              )
+            R2JurisdictionEu => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionFedramp => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionFedrampHigh => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
+            R2JurisdictionUs => r2_ensure_refuse_absent_non_default_jurisdiction(bucket: bucket)
           }
       }
   }

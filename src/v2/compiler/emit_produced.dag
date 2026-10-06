@@ -55,6 +55,14 @@ fn emit_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
+fn emit_produced_decl_not_conj_refusal(decl: Node) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
+    )
+  }
+}
+
 fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
   match decl.kind {
     TypeNode { connective: Conj } =>
@@ -82,12 +90,12 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
             )
           }
       }
-    _ =>
-      Rejected {
-        diagnostics: diagnostics_singleton(
-          d: emit_produced_decl_diagnostic(reason: ^emit_produced_decl_not_conj, node: decl)
-        )
-      }
+    TypeNode { connective: Atom { identity: _ } } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Disj } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Arrow } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Cardinality } => emit_produced_decl_not_conj_refusal(decl: decl)
+    TypeNode { connective: Instantiation } => emit_produced_decl_not_conj_refusal(decl: decl)
+    ComputationNode { behavior: _ } => emit_produced_decl_not_conj_refusal(decl: decl)
   }
 }
 
@@ -122,7 +130,12 @@ fn produced_decl_edge_is_decl(edge: Edge) -> Bool {
     Authored { name: _ } =>
       match edge.target.kind {
         TypeNode { connective: Arrow } => true
-        _ => false
+        TypeNode { connective: Atom { identity: _ } } => false
+        TypeNode { connective: Conj } => false
+        TypeNode { connective: Disj } => false
+        TypeNode { connective: Cardinality } => false
+        TypeNode { connective: Instantiation } => false
+        ComputationNode { behavior: _ } => false
       }
     StructuralLabel { label: _ } => false
     Positional => false
