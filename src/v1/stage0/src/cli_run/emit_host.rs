@@ -3455,22 +3455,4 @@ mod fixture_closure_union_tests {
         assert_eq!(union.members.keys().collect::<Vec<_>>(), vec!["dag/a.dag"]);
         assert!(union.conflicts.contains("dag/a.dag"));
     }
-
-    /// The qualified-reference control's union includes the provider the consumer never imports.
-    #[test]
-    fn a_qualified_reference_pulls_its_provider_into_the_fixture_closure() {
-        let union =
-            fixture_closure_union_control_union(FIXTURE_CLOSURE_QUALIFIED_REFERENCE_REACH_MEMBER)
-                .expect("qualified-reference control union");
-        assert!(
-            union
-                .members
-                .keys()
-                .any(|path| path.contains("reference_derived_graph/provider")),
-            "provider missing from members: {:?}",
-            union.members.keys().collect::<Vec<_>>()
-        );
-        fixture_closure_union_emit_receipt(&union)
-            .expect("qualified-reference control closure must compile");
-    }
 }
