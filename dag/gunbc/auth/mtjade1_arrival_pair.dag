@@ -70,7 +70,7 @@ fn mtjade1_arrival_principal_member() -> String {
 fn mtjade1_arrival_secret_grants() -> List<SecretAccessGrant> {
   [pinned_version_accessor_grant_for(
     title_prefix: "mtjade1-arrival",
-    description: "gunbc.auth.mtjade1_arrival_pair: the one version the arrival job may read for BmcSecure",
+    description: "gunbc.auth.mtjade1_arrival_pair: the one version the arrival job may read for BmcSecure (signed off msg_f03558d1)",
     target: mtjade1_bmc_gunbc_arrival_accessor_ref,
   )]
 }
