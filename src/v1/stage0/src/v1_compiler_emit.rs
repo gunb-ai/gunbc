@@ -2903,11 +2903,10 @@ pub fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> bool {
 }
 
 pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
-    match c.clone() {
-        ShellResultChannel::ShellChanStderrTruncated => target_is_rust(target.clone()),
-        ShellResultChannel::ShellChanStderrTotalBytes => target_is_rust(target.clone()),
-        ShellResultChannel::ShellChanStderrRetainedBytes => target_is_rust(target.clone()),
-        _ => target_renders_shell_transport(target.clone()),
+    if shell_channel_is_capture_accounting(c.clone()) {
+        target_is_rust(target.clone())
+    } else {
+        target_renders_shell_transport(target.clone())
     }
 }
 

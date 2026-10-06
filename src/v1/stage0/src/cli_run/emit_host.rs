@@ -3487,7 +3487,6 @@ mod fixture_closure_union_tests {
         stderr_payload: &str,
         stdin_payload: Option<&str>,
     ) -> std::process::Output {
-        let body = crate::v1_compiler_emit_rust::shell_capture_drain_body();
         let limit = match complete_limit {
             Some(n) => format!("Some({n})"),
             None => "None".to_string(),
@@ -3512,18 +3511,22 @@ mod fixture_closure_union_tests {
                     ),
                 )
             }
-            None => ("printf %s '{payload}' 1>&2".to_string(), String::new()),
+            None => (
+                "printf %s '{payload}' 1>&2".to_string(),
+                "let mut stdin_pipe = output.stdin.take();\n\
+                 let __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {\n\
+                     drop(stdin_pipe);\n\
+                     Ok(())\n\
+                 });\n"
+                    .to_string(),
+            ),
         };
-        let drain = if stdin_payload.is_some() {
-            format!(
-                "{}{}{}",
-                crate::v1_compiler_emit_rust::shell_capture_drain_start(),
-                stdin_prelude,
-                crate::v1_compiler_emit_rust::shell_capture_join_project()
-            )
-        } else {
-            body
-        };
+        let drain = format!(
+            "{}{}{}",
+            crate::v1_compiler_emit_rust::shell_capture_drain_start(),
+            stdin_prelude,
+            crate::v1_compiler_emit_rust::shell_capture_join_project()
+        );
         let program = format!(
             "fn main() -> Result<(), Box<dyn std::error::Error>> {{\n\
              let __stderr_complete_limit: Option<usize> = {limit};\n\

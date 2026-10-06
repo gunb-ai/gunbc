@@ -39195,14 +39195,9 @@ pub fn emit_shell_call(
 }
 
 pub fn shell_needs_capture_accounting(result_fields: Rc<Vec<Rc<ShellResultField>>>) -> bool {
-    result_fields.iter().any(|f| {
-        matches!(
-            f.channel,
-            ShellResultChannel::ShellChanStderrTruncated
-                | ShellResultChannel::ShellChanStderrTotalBytes
-                | ShellResultChannel::ShellChanStderrRetainedBytes
-        )
-    })
+    result_fields
+        .iter()
+        .any(|f| crate::v1_compiler_emit::shell_channel_is_capture_accounting(f.channel.clone()))
 }
 
 pub fn op_has_stderr_capture_param(
@@ -39221,13 +39216,6 @@ pub fn shell_error_stderr_binding(result_fields: Rc<Vec<Rc<ShellResultField>>>) 
     } else {
         v1_rt::concat(shell_stderr_binding_line(), " ".to_string())
     }
-}
-
-pub fn emit_shell_capture_wait(
-    _op_node: Rc<Node>,
-    _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    v1_rt::concat(shell_capture_drain_start(), shell_capture_join_project())
 }
 
 pub fn emit_shell_stderr_policy_binding(
@@ -39257,16 +39245,6 @@ pub fn shell_capture_drain_start() -> String {
 
 pub fn shell_capture_join_project() -> String {
     "let status = output.wait()?;\n__stdin_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdin write thread panicked\"))??;\nlet stdout_bytes = stdout_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stdout drain thread panicked\"))??;\nlet (stderr_bytes, stderr_total_u64, stderr_truncated) = stderr_thread.join().map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, \"stderr drain thread panicked\"))??;\nif let Some(max_bytes) = __stderr_complete_limit {\n    if stderr_total_u64 > max_bytes as u64 {\n        return Err(format!(\"WitnessStderrCaptureCompleteBudgetExceeded: stderr total {} exceeds GUNBC_MEMORY_BUDGET_BYTES {}\", stderr_total_u64, max_bytes).into());\n    }\n}\nlet stderr_total_bytes = stderr_total_u64 as i64;\nlet stderr_retained_bytes = stderr_bytes.len() as i64;\nlet stdout = String::from_utf8_lossy(&stdout_bytes).to_string();\nlet stderr = String::from_utf8_lossy(&stderr_bytes).trim_end().to_string();\nlet output = std::process::Output { status, stdout: stdout_bytes, stderr: stderr_bytes };\n".to_string()
-}
-
-pub fn shell_capture_drain_body() -> String {
-    v1_rt::concat(
-        v1_rt::concat(
-            shell_capture_drain_start(),
-            "let mut stdin_pipe = output.stdin.take();\nlet __stdin_thread = std::thread::spawn(move || -> std::io::Result<()> {\n    drop(stdin_pipe);\n    Ok(())\n});\n".to_string(),
-        ),
-        shell_capture_join_project(),
-    )
 }
 
 pub fn shell_argv_param_is_word_list(

@@ -1394,11 +1394,10 @@ fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
 }
 
 fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
-  match c {
-    ShellChanStderrTruncated => target_is_rust(target: target)
-    ShellChanStderrTotalBytes => target_is_rust(target: target)
-    ShellChanStderrRetainedBytes => target_is_rust(target: target)
-    _ => target_renders_shell_transport(target: target)
+  if shell_channel_is_capture_accounting(c: c) {
+    target_is_rust(target: target)
+  } else {
+    target_renders_shell_transport(target: target)
   }
 }
 
