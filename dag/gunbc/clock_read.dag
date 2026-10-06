@@ -3,7 +3,7 @@ module gunbc.clock_read
 import std.types { Bool, EpochMs, String, NonEmptyStr }
 import std.decl_ref { decl_ref }
 import extdeps.clock { Clock, ClockUnixMillisObserved, ClockUnixMillisRefused, clock_unix_millis_read }
-import v2.std.optional { Present }
+import std.optional { Present }
 
 fn clock_now_probed_at() -> NonEmptyStr? {
   let result = Clock.Now()

@@ -12,7 +12,7 @@ import gunbc.compile_diagnostic_census {
   census_count_at_key,
   censuses_differ_by_exactly_the_target_key
 }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (DESIGN §4b).
 // NO-FALLBACK-0's claim is that a plan cannot carry a spare available

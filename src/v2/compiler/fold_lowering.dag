@@ -10,7 +10,7 @@ import v2.extdeps.languages.dag {
   parse_production_emitted_identity_optional
 }
 import v2.std.text { String }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

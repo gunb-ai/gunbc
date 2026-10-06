@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.measure { token_count_value }
 import product.host_identity { host_identity_eq }
 import extdeps.network.ipv4 { ipv4_address_eq }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { token_count, basis_point }
 import extdeps.vllm.engine_args {
   vllm_kv_cache_dtype_wire, vllm_distributed_executor_backend_wire,

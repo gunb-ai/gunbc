@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, list_length }
 import std.measure { CharacterCount, character_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.llm.claude_setup_token_cli {
   ClaudeSetupTokenFormatObservation,
   SetupTokenFormatUnobserved,

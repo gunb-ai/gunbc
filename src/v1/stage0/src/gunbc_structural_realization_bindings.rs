@@ -42,7 +42,7 @@ pub fn peano_literal_homomorphism(
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-            Rc::new(vec![peano_literal_homomorphism("std.nat".to_string(), "Nat".to_string(), "Zero".to_string(), "Succ".to_string(), "prev".to_string()), peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism()])
+            Rc::new(vec![peano_literal_homomorphism("test.fixture.structural_peano_nat".to_string(), "StructuralNat".to_string(), "StructuralZero".to_string(), "StructuralSucc".to_string(), "prev".to_string()), unicode_scalar_literal_homomorphism()])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
@@ -131,7 +131,7 @@ pub fn kernel_mint_declaration_rows() -> Rc<Vec<Rc<KernelMintDeclaration>>> {
             static CACHED: Rc<Vec<Rc<KernelMintDeclaration>>> = {
                 Rc::new(vec![Rc::new(KernelMintDeclaration {
         minted_name: kernel_optional_mint_name(),
-        declaration: crate::std_decl_ref::decl_ref("v2.std.optional".to_string(), "Optional".to_string()),
+        declaration: crate::std_decl_ref::decl_ref("std.optional".to_string(), "Optional".to_string()),
     })])
             };
         }

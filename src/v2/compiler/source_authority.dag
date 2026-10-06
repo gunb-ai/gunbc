@@ -48,7 +48,7 @@ import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance, symbol_in
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

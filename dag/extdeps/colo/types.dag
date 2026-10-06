@@ -1,7 +1,7 @@
 module extdeps.colo.types
 
 import std.types { NonEmptyStr, List, Bool, Int }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.nat { Nat }
 import std.measure {
   MoneyPerMonth, MoneyOnce, MoneyPerHour,

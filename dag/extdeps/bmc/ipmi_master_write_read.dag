@@ -3,7 +3,7 @@ module extdeps.bmc.ipmi_master_write_read
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.optional { Present }
+import std.optional { Present }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.json.parse { json_hex_nibble }

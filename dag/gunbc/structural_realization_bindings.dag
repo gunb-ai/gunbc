@@ -127,5 +127,5 @@ data kernel_grounding_rows: List<KernelGrounding> = [
 data kernel_optional_mint_name: String = "Optional"
 
 data kernel_mint_declaration_rows: List<KernelMintDeclaration> = [
-  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "v2.std.optional", decl_name: "Optional") }
+  KernelMintDeclaration { minted_name: kernel_optional_mint_name as NonEmptyStr, declaration: decl_ref(module_path: "std.optional", decl_name: "Optional") }
 ]

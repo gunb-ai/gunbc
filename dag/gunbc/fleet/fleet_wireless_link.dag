@@ -2,7 +2,7 @@ module gunbc.fleet_wireless_link
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { trim }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import std.upsert_decision { UpsertDecision, Noop, Apply, Refuse }
 import product.host_identity { HostIdentity, host_identity_eq }
