@@ -50,6 +50,11 @@ fn file_source(path: String) -> FixtureSource {
   fixture_source(path: path, content: file_text(path: path))
 }
 
+// SAME MODULE PATH as the collision file, but no `import std.types` — compile_fixture
+// does not supply that module. The module still DECLARES Optional so the control is
+// "import a non-kernel name from a module that also declares the colliding type".
+data collision_fn_source: String = "module gunbc.instruments.native_emission_controls_optional_collision\n\ntype Optional\n  = CollisionWrapped \{ value: Int \}\n  | CollisionEmpty\n\nfn collision_seven() -> Int \{\n  7\n\}\n"
+
 data non_kernel_import_source: String = "module probe_kernel_import_ok\n\nimport gunbc.instruments.native_emission_controls_optional_collision \{ collision_seven \}\n\nfn uses_fn() -> Int \{\n  collision_seven()\n\}\n"
 
 data mint_import_source: String = "module probe_kernel_mint_import\n\nimport v2.std.optional \{ Optional \}\n\nfn uses_mint(o: Optional<Int>) -> Int \{\n  match o \{\n    Present \{ value: v \} => v\n    Absent => 0\n  \}\n\}\n"
@@ -71,7 +76,7 @@ fn compile_importer() -> MultiModuleCompileFixtureOutcome {
 fn compile_non_kernel_import() -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
     sources: [
-      file_source(path: collision_path),
+      fixture_source(collision_path, collision_fn_source),
       fixture_source("probe_kernel_import_ok.dag", non_kernel_import_source)
     ],
     entry: "probe_kernel_import_ok.dag"

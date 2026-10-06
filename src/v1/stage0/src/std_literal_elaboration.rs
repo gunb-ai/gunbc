@@ -4,13 +4,14 @@
 use self::KernelGroundingLookup::*;
 use self::KernelMintDeclarationLookup::*;
 use self::KernelMintOwnership::*;
+use self::KernelNamedImportStanding::*;
 use self::LiteralElaborationOutcome::*;
 use self::LiteralElaborationRefusal::*;
 use self::LiteralHomomorphismLookup::*;
 use self::LiteralSourceKind::*;
 use self::LiteralUnfolding::*;
-pub use crate::std_decl_ref::declaration_ref_eq;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_types::{Bool, List, NonEmptyStr};
@@ -427,25 +428,6 @@ pub enum KernelNamedImportStanding {
     KernelNamedImportCollides { kernel_declaration_module: String },
     KernelNamedImportMintAmbiguous { row_count: i64 },
 }
-impl KernelNamedImportStanding {
-    pub fn kernel_declaration_module(&self) -> String {
-        match self {
-            KernelNamedImportStanding::KernelNamedImportCollides {
-                kernel_declaration_module: __val,
-                ..
-            } => __val.clone(),
-            _ => panic!("no kernel_declaration_module on this variant"),
-        }
-    }
-    pub fn row_count(&self) -> i64 {
-        match self {
-            KernelNamedImportStanding::KernelNamedImportMintAmbiguous { row_count: __val, .. } => {
-                __val.clone()
-            }
-            _ => panic!("no row_count on this variant"),
-        }
-    }
-}
 
 pub fn kernel_named_import_standing(
     imported_name: String,
@@ -453,7 +435,7 @@ pub fn kernel_named_import_standing(
     module_declares_type: bool,
     rows: Rc<Vec<Rc<KernelMintDeclaration>>>,
 ) -> Rc<KernelNamedImportStanding> {
-    if !module_declares_type {
+    if (module_declares_type.clone() == false) {
         Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
     } else {
         match (*kernel_mint_declaration_for(rows.clone(), imported_name.clone())).clone() {
@@ -472,11 +454,11 @@ pub fn kernel_named_import_standing(
             KernelMintDeclarationLookup::KernelMintDeclarationAbsent => {
                 Rc::new(KernelNamedImportStanding::KernelNamedImportAdmitted)
             }
-            KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous { row_count: n, .. } => {
-                Rc::new(KernelNamedImportStanding::KernelNamedImportMintAmbiguous {
-                    row_count: n.clone(),
-                })
-            }
+            KernelMintDeclarationLookup::KernelMintDeclarationAmbiguous {
+                row_count: n, ..
+            } => Rc::new(KernelNamedImportStanding::KernelNamedImportMintAmbiguous {
+                row_count: n.clone(),
+            }),
         }
     }
 }
