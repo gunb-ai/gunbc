@@ -5,6 +5,10 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-test fn roster_swift_zero_suspects_within_ratchet() -> Bool {
+// Not `test fn`: interpreted file_gate over swift.dag (~2323 lines) timed out a 300s census of
+// this entry by itself. Callable from the wet recipe and named by witness_deferral_freeze.
+// Do not raise the cap.
+
+fn roster_swift_zero_suspects_within_ratchet() -> Bool {
   file_gate(path: "src/v2/extdeps/languages/swift.dag", refusal_ceiling: 4)
 }
