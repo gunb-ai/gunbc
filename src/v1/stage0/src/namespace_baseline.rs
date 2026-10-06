@@ -1673,6 +1673,11 @@ pub enum EnvironmentLoadRefusal {
     /// `kernel_type_set`, not the grammar, and an operator reading the refusal must be told which
     /// fact was unreadable.
     KernelSetNotReadable { revision: String, cause: String },
+    /// The base revision's own compiler could not answer for it (`cli_run::base_facts`). Base
+    /// facts are never evaluated by this binary, so this is the base side's only refusal route.
+    BaseCompiler {
+        refusal: super::base_facts::BaseFactRefusal,
+    },
 }
 
 /// The operator-facing text of a refusal.
@@ -1693,6 +1698,9 @@ pub fn environment_load_refusal_text(refusal: &EnvironmentLoadRefusal) -> String
             "{path} does not exist at revision {revision}, so the value it declares cannot be \
                  read"
         ),
+        EnvironmentLoadRefusal::BaseCompiler { refusal } => {
+            super::base_facts::base_fact_refusal_text(refusal)
+        }
         EnvironmentLoadRefusal::ClosureNotEvaluable { revision, cause } => {
             format!("the declaring closure at revision {revision} did not evaluate: {cause}")
         }
@@ -2121,7 +2129,7 @@ pub fn environment_agreement(
         return Ok(EnvironmentAgreement::Identical);
     }
     Ok(EnvironmentAgreement::Differs {
-        base_environment: load_parse_environment_with_closure(repo, base, &closure)?,
+        base_environment: base_parse_environment(repo, base)?,
         differing_paths: differing,
     })
 }
@@ -2171,7 +2179,57 @@ pub fn kernel_set_serves_both(
         .keys()
         .cloned()
         .collect();
-    Ok(kernel_names_at(repo, base, live)? == head_names)
+    Ok(base_kernel_names(repo, base)? == head_names)
+}
+
+/// THE BASE SIDE IS ANSWERED BY THE BASE'S OWN COMPILER (`cli_run::base_facts`), never evaluated
+/// here: a head that deleted a builtin the base calls would otherwise make the base unreadable.
+fn base_fact(
+    repo: &std::path::Path,
+    base: &str,
+    kind: super::base_facts::BaseFactKind,
+) -> Result<serde_json::Value, EnvironmentLoadRefusal> {
+    use super::base_facts as bf;
+    let supply = bf::base_compiler_supply_from_env().map_err(|cause| {
+        EnvironmentLoadRefusal::RevisionUnreadable {
+            revision: base.to_string(),
+            step: "base compiler supply".to_string(),
+            cause,
+        }
+    })?;
+    bf::base_fact_from_base_compiler(&supply, repo, base, kind)
+        .map_err(|refusal| EnvironmentLoadRefusal::BaseCompiler { refusal })
+}
+
+/// `dag_parse_environment` at `base`, as the base revision's compiler evaluates it.
+fn base_parse_environment(
+    repo: &std::path::Path,
+    base: &str,
+) -> Result<std::rc::Rc<crate::std_syntax::ParseEnvironment>, EnvironmentLoadRefusal> {
+    let value = base_fact(
+        repo,
+        base,
+        super::base_facts::BaseFactKind::ParseEnvironment,
+    )?;
+    serde_json::from_value::<crate::std_syntax::ParseEnvironment>(value)
+        .map(std::rc::Rc::new)
+        .map_err(|e| EnvironmentLoadRefusal::ValueNotDecodable {
+            revision: base.to_string(),
+            cause: format!("the base compiler's parse environment: {e}"),
+        })
+}
+
+/// The kernel names `std.types` declares at `base`, as the base revision's compiler evaluates them.
+fn base_kernel_names(
+    repo: &std::path::Path,
+    base: &str,
+) -> Result<BTreeSet<String>, EnvironmentLoadRefusal> {
+    use super::base_facts as bf;
+    let kind = bf::BaseFactKind::KernelNames;
+    let value = base_fact(repo, base, kind)?;
+    bf::base_fact_names(value, base, kind)
+        .map(|v| v.into_iter().collect())
+        .map_err(|refusal| EnvironmentLoadRefusal::BaseCompiler { refusal })
 }
 
 /// The kernel names `std.types` declares at `revision`, read from that revision's own tree.

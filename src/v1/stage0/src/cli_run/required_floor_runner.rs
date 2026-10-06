@@ -2667,15 +2667,33 @@ fn cost_debt_admitted_identities() -> Result<Vec<String>, String> {
         cost_debt_comparison_base_commit(floor_diff_comparison_readout()?, |base, head| {
             git_stdout(&workspace, &["merge-base", base, head])
         })?;
-    let tree = cost_debt_scratch_dir("base")?;
-    let read = cost_debt_base_tree_extract(&workspace, &base_commit, &tree)
-        .and_then(|()| cost_debt_roster_in_tree(&tree));
-    std::fs::remove_dir_all(&tree).ok();
-    cost_debt_admitted_by_fold(&read?, None)
+    // THE BASE ROSTER IS THE BASE COMPILER'S ANSWER (`cli_run::base_facts`): this binary never
+    // evaluates the base closure, so a head that deletes a builtin the base calls cannot make the
+    // base unevaluable, and a missing base compiler refuses rather than falling back to this seed.
+    let base_roster = base_cost_debt_roster(&workspace, &base_commit)?;
+    cost_debt_admitted_by_fold(&base_roster, None)
+}
+
+/// `floor_cost_debt_roster` at `base_commit`, as the base revision's own compiler evaluates it.
+fn base_cost_debt_roster(workspace: &Path, base_commit: &str) -> Result<Vec<String>, String> {
+    use crate::cli_run::base_facts as bf;
+    let refuse = |r: bf::BaseFactRefusal| {
+        format!(
+            "REQUIRED-FLOOR REFUSAL path={FLOOR_COST_DEBT_ROSTER} {}; which rows the base roster \
+             carried cannot be established, and is never assumed",
+            bf::base_fact_refusal_text(&r)
+        )
+    };
+    let supply = bf::base_compiler_supply_from_env()
+        .map_err(|e| format!("REQUIRED-FLOOR REFUSAL cause=BaseCompilerSupplyUnreadable -- {e}"))?;
+    let kind = bf::BaseFactKind::CostDebtRoster;
+    bf::base_fact_from_base_compiler(&supply, workspace, base_commit, kind)
+        .and_then(|v| bf::base_fact_names(v, base_commit, kind))
+        .map_err(refuse)
 }
 
 /// A fresh scratch directory under the ignored build tree, one per read.
-fn cost_debt_scratch_dir(label: &str) -> Result<PathBuf, String> {
+pub(crate) fn cost_debt_scratch_dir(label: &str) -> Result<PathBuf, String> {
     static READS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let dir = process_workspace_root().join(format!(
         "target/floor-cost-debt-{label}-{}-{}",
