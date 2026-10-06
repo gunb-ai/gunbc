@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, brand }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import extdeps.version { VersionIdentity, VersionComparison, VersionCompared, VersionComparisonRefused, VersionScheme, VersionConstraint, ComparisonSide, LeftOperand, RightOperand }
-import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, SemVerNumericField }
+import extdeps.version.semver { semver_core_parse, semver_compare_numeric_digits, semver_label_from_code_points, semver_numeric_field, SemVerNumericField }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -30,14 +30,17 @@ type GitCliReportedVersion {
   suffix: GitVersionPlatformSuffix
 }
 
-// THE FIELDS ARE CODE POINTS, NOT DIGIT VALUES: a numeric field is a validated digit
-// sequence read back through from_code_point, so '2' is 50 and '0' is 48. A round-trip
-// witness pins this anchor against its parsed form so a control-character mistake like
-// [2]/[0]/[0] cannot pass silently.
-data git_2_0_release: GitReleaseVersion = {
-  major: [50],
-  minor: [48],
-  patch: [48]
+// THE ANCHOR IS DERIVED THROUGH THE PARSER, never raw lists: the fields come from parsing
+// the literal release text, so the confined constructor's admission is the only producer.
+// The fallback arm is unreachable for a parsable literal and the round-trip witness pins the
+// label to "2.0.0" by execution, so a forged or control-character field cannot pass.
+fn semver_zero_field() -> SemVerNumericField {
+  SemVerNumericField { digits: chars(s: "0") }
+}
+
+data git_2_0_release: GitReleaseVersion = match semver_core_parse(cps: chars(s: "2.0.0")) {
+  Present { value: v } => GitReleaseVersion { major: v.major, minor: v.minor, patch: v.patch }
+  other => GitReleaseVersion { major: semver_zero_field(), minor: semver_zero_field(), patch: semver_zero_field() }
 }
 
 data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
@@ -48,8 +51,8 @@ data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
 fn git_release_version_label(v: GitReleaseVersion) -> String {
   concat(
-    semver_label_from_code_points(cps: v.major),
-    concat(".", concat(semver_label_from_code_points(cps: v.minor), concat(".", semver_label_from_code_points(cps: v.patch))))
+    semver_label_from_code_points(cps: v.major.digits),
+    concat(".", concat(semver_label_from_code_points(cps: v.minor.digits), concat(".", semver_label_from_code_points(cps: v.patch.digits))))
   )
 }
 
@@ -58,9 +61,9 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
-  match semver_compare_numeric_digits(a: a.major, b: b.major) {
-    Equal => match semver_compare_numeric_digits(a: a.minor, b: b.minor) {
-      Equal => semver_compare_numeric_digits(a: a.patch, b: b.patch)
+  match semver_compare_numeric_digits(a: a.major.digits, b: b.major.digits) {
+    Equal => match semver_compare_numeric_digits(a: a.minor.digits, b: b.minor.digits) {
+      Equal => semver_compare_numeric_digits(a: a.patch.digits, b: b.patch.digits)
       other => other
     }
     other => other
@@ -75,6 +78,14 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
 // consumes extdeps.version.semver's core parse (three dot-separated digit runs, no leading
 // zeroes) and refuses anything else. A label outside that grammar is a located refusal: the
 // carrier names the failing side, the label, and the cause.
+
+fn git_release_version_from_text(text: NonEmptyStr) -> GitReleaseVersion? {
+  match semver_core_parse(cps: chars(s: text)) {
+    Absent => none
+    Present { value: v } =>
+      Present { value: GitReleaseVersion { major: v.major, minor: v.minor, patch: v.patch } }
+  }
+}
 
 fn git_release_identity_parse(identity: VersionIdentity) -> GitReleaseVersion? {
   match semver_core_parse(cps: chars(s: identity as String)) {

@@ -281,8 +281,9 @@ test fn w_semver_core_refuses_trailing_delimiter_label() -> Bool {
 // label refuses, so no ordering can be fabricated from it.
 // A numeric component has NO size limit in section 2 or 9, so a 20-nines field is a valid
 // label, not an out-of-grammar one: it must compare by its digits, at any width (side chat
-// review 5427723272). The comparison path carries digits as code points — length is the
-// magnitude, then ASCII digit order — so no machine-integer conversion can refuse or wrap it.
+// review 5427723272). The field arrives constructor-confined — semver_numeric_field admits
+// it or refuses — and precedence projects .digits: run length is the magnitude, then ASCII
+// digit order, so no machine-integer conversion can refuse or wrap it.
 test fn w_semver_core_wide_numeric_field_compares_numerically() -> Bool {
   match semver_scheme.compare("1.99999999999999999999.0", "1.2.0") {
     VersionCompared { ordering: Greater } => true
@@ -306,5 +307,24 @@ test fn w_build_wide_numeric_identifier_is_valid_and_ignored() -> Bool {
   match semver_scheme.compare("1.0.0+99999999999999999999", "1.0.0") {
     VersionCompared { ordering: Equal } => true
     _ => false
+  }
+}
+
+// THE CONFINEMENT'S NEGATIVE CONTROLS. The only admission is semver_numeric_field: an empty
+// sequence, anything outside ASCII digits 48..57, and a leading zero (unless the single digit
+// 0) are refused, so a forged field can neither reach the comparator nor the renderer.
+test fn w_numeric_field_constructor_refuses_forged_sequences() -> Bool {
+  match semver_numeric_field(cps: []) {
+    Absent => match semver_numeric_field(cps: chars(s: "A")) {
+      Absent => match semver_numeric_field(cps: chars(s: "01")) {
+        Absent => match semver_numeric_field(cps: chars(s: "0")) {
+          Present { value: _ } => true
+          Absent => false
+        }
+        Present { value: _ } => false
+      }
+      Present { value: _ } => false
+    }
+    Present { value: _ } => false
   }
 }
