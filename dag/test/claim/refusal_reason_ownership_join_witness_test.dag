@@ -1,0 +1,236 @@
+module test.claim.refusal_reason_ownership_join_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.node { Symbol }
+import v2.std.algebra { any, is_empty, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.workflow.compile_door_cause_ownership {
+  CauseOwnership,
+  SharedSelfHostCriticalPath
+}
+import gunbc.refusal_reason_ownership_join {
+  StageRefusalVocabulary,
+  StageVocabularyReflected,
+  StageVocabularyUnreflectable,
+  ReasonOwnershipDebt,
+  ReasonOwnershipFinding,
+  DebtOpen,
+  DischargedByOwnershipRow,
+  DischargedByProducerDeletion,
+  UnownedProducibleReason,
+  ReasonDeclaredByTwoStages,
+  DebtOpenButOwned,
+  DebtOpenButNotProducible,
+  DebtDischargedByRowWithoutRow,
+  DebtDischargedByDeletionStillProducible,
+  DebtUniverseResized,
+  refusal_reason_ownership_findings,
+  refusal_reason_ownership_live_findings,
+  resolve_vocabulary_observation
+}
+
+// The reflection reads the live declaration index (v2.std.node_reflection).
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ---- THE REAL PATH: the stage vocabularies reflected, joined against the real rosters ----
+
+test fn every_producible_fatal_reason_is_owned_or_in_debt() -> Bool {
+  is_empty(xs: refusal_reason_ownership_live_findings())
+}
+
+// THE ROUTE, NOT ONLY THE ANSWER (DESIGN section 3, the pairing obligation): the resolve vocabulary
+// is read by reflection over its declared type and carried through the stage's own symbol function,
+// so an empty or unreflected vocabulary cannot make the join above green by having nothing to join.
+test fn resolve_vocabulary_is_reflected_from_its_type() -> Bool {
+  match resolve_vocabulary_observation() {
+    StageVocabularyReflected(v) =>
+      length(xs: v.reasons) == 10
+        && any(xs: v.reasons, predicate: fn(r) { r == ^resolve_reason_unbound_symbol })
+    StageVocabularyUnreflectable { stage: _, type_name: _ } => false
+  }
+}
+
+
+fn is_unowned(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    UnownedProducibleReason { stage: _, reason: r } => r == reason
+    _ => false
+  }
+}
+
+fn is_resized(f: ReasonOwnershipFinding, pinned: Int, observed: Int) -> Bool {
+  match f {
+    DebtUniverseResized { pinned: p, observed: o } => p == pinned && o == observed
+    _ => false
+  }
+}
+
+fn is_row_without_row(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    DebtDischargedByRowWithoutRow { reason: r } => r == reason
+    _ => false
+  }
+}
+
+fn is_deletion_still_producible(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    DebtDischargedByDeletionStillProducible { reason: r } => r == reason
+    _ => false
+  }
+}
+
+fn is_open_but_owned(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    DebtOpenButOwned { reason: r } => r == reason
+    _ => false
+  }
+}
+
+fn is_open_but_not_producible(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    DebtOpenButNotProducible { reason: r } => r == reason
+    _ => false
+  }
+}
+
+fn is_two_stages(f: ReasonOwnershipFinding, reason: Symbol) -> Bool {
+  match f {
+    ReasonDeclaredByTwoStages { reason: r } => r == reason
+    _ => false
+  }
+}
+
+// ---- SUPPLIED-VALUE CONTROLS ----
+
+fn planted_vocabulary(reasons: List<Symbol>) -> List<StageRefusalVocabulary> {
+  [StageRefusalVocabulary { stage: "v2.compiler.planted", reasons: reasons }]
+}
+
+fn fatal_row(cause: Symbol) -> CauseOwnership {
+  CauseOwnership {
+    cause: cause,
+    lane: SharedSelfHostCriticalPath,
+    flip_trigger: "planted control row"
+  }
+}
+
+// RED: a stage declares a new fatal reason and nothing owns it.
+test fn new_reason_without_a_row_refuses() -> Bool {
+  let findings = refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_new_fatal_reason]),
+    owners: [],
+    debt: [],
+    universe_size: 0
+  )
+  length(xs: findings) == 1
+    && any(xs: findings, predicate: fn(f) { is_unowned(f: f, reason: ^planted_new_fatal_reason) })
+}
+
+// GREEN: the same reason with an ownership row.
+test fn new_reason_with_a_fatal_row_passes() -> Bool {
+  is_empty(xs: refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_new_fatal_reason]),
+    owners: [fatal_row(cause: ^planted_new_fatal_reason)],
+    debt: [],
+    universe_size: 0
+  ))
+}
+
+// GREEN: an existing reason carried as open debt.
+test fn open_debt_admits_a_rostered_reason() -> Bool {
+  is_empty(xs: refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_old_reason]),
+    owners: [],
+    debt: [ReasonOwnershipDebt { reason: ^planted_old_reason, standing: DebtOpen }],
+    universe_size: 1
+  ))
+}
+
+// RED: a debt row removed with no disposition -- the reason is still producible and now unowned,
+// and the pinned universe no longer matches.
+test fn debt_row_removed_without_disposition_refuses() -> Bool {
+  let findings = refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_old_reason]),
+    owners: [],
+    debt: [],
+    universe_size: 1
+  )
+  any(xs: findings, predicate: fn(f) { is_resized(f: f, pinned: 1, observed: 0) })
+}
+
+// RED: a debt row removed after its producer was deleted, still with no disposition.
+test fn debt_row_removed_after_producer_deletion_still_refuses() -> Bool {
+  let findings = refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: []),
+    owners: [],
+    debt: [],
+    universe_size: 1
+  )
+  length(xs: findings) == 1
+    && any(xs: findings, predicate: fn(f) { is_resized(f: f, pinned: 1, observed: 0) })
+}
+
+// RED: a new producer admitted by adding a debt row instead of an ownership row.
+test fn debt_row_added_for_a_new_reason_refuses() -> Bool {
+  let findings = refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_old_reason, ^planted_new_fatal_reason]),
+    owners: [],
+    debt: [
+      ReasonOwnershipDebt { reason: ^planted_old_reason, standing: DebtOpen },
+      ReasonOwnershipDebt { reason: ^planted_new_fatal_reason, standing: DebtOpen }
+    ],
+    universe_size: 1
+  )
+  length(xs: findings) == 1
+    && any(xs: findings, predicate: fn(f) { is_resized(f: f, pinned: 1, observed: 2) })
+}
+
+// GREEN: each typed disposition ends a debt when its cause holds.
+test fn dispositions_discharge_debt_when_their_cause_holds() -> Bool {
+  is_empty(xs: refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_old_reason]),
+    owners: [fatal_row(cause: ^planted_old_reason)],
+    debt: [
+      ReasonOwnershipDebt { reason: ^planted_old_reason, standing: DischargedByOwnershipRow },
+      ReasonOwnershipDebt { reason: ^planted_deleted_reason, standing: DischargedByProducerDeletion }
+    ],
+    universe_size: 2
+  ))
+}
+
+// RED: each disposition whose cause does not hold.
+test fn dispositions_refuse_when_their_cause_does_not_hold() -> Bool {
+  let findings = refusal_reason_ownership_findings(
+    vocabularies: planted_vocabulary(reasons: [^planted_old_reason, ^planted_owned_reason]),
+    owners: [fatal_row(cause: ^planted_owned_reason)],
+    debt: [
+      ReasonOwnershipDebt { reason: ^planted_missing_row_reason, standing: DischargedByOwnershipRow },
+      ReasonOwnershipDebt { reason: ^planted_old_reason, standing: DischargedByProducerDeletion },
+      ReasonOwnershipDebt { reason: ^planted_owned_reason, standing: DebtOpen },
+      ReasonOwnershipDebt { reason: ^planted_deleted_reason, standing: DebtOpen }
+    ],
+    universe_size: 4
+  )
+  any(xs: findings, predicate: fn(f) { is_row_without_row(f: f, reason: ^planted_missing_row_reason) })
+    && any(xs: findings, predicate: fn(f) { is_deletion_still_producible(f: f, reason: ^planted_old_reason) })
+    && any(xs: findings, predicate: fn(f) { is_open_but_owned(f: f, reason: ^planted_owned_reason) })
+    && any(xs: findings, predicate: fn(f) { is_open_but_not_producible(f: f, reason: ^planted_deleted_reason) })
+}
+
+// RED: one reason declared by two stages is two authorities for one identity.
+test fn reason_declared_by_two_stages_refuses() -> Bool {
+  any(
+    xs: refusal_reason_ownership_findings(
+      vocabularies: [
+        StageRefusalVocabulary { stage: "v2.compiler.planted_a", reasons: [^planted_new_fatal_reason] },
+        StageRefusalVocabulary { stage: "v2.compiler.planted_b", reasons: [^planted_new_fatal_reason] }
+      ],
+      owners: [fatal_row(cause: ^planted_new_fatal_reason)],
+      debt: [],
+      universe_size: 0
+    ),
+    predicate: fn(f) { is_two_stages(f: f, reason: ^planted_new_fatal_reason) }
+  )
+}

@@ -1,6 +1,28 @@
 module gunbc.fleet_show_effective_read
 
+import gunbc.runner_unit_live_read { RunnerUnitLiveReadRow }
+import std.disposition { Disposition }
 import std.algebra { trim }
+import std.disposition { Disposition }
+import std.measure { percent_count }
+import extdeps.systemd {
+  MemoryLimitAbsent,
+  MemoryLimitBytes,
+  MemoryLimitUnbounded,
+  MemorySwapMax,
+  SystemdCgroupMemoryLimit,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+}
+import gunbc.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  RunnerUnitMemoryLiveRead,
+  converge_target_live_verdict,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  memory_limit_converge_verdict,
+  memory_limit_to_cap_effectiveness,
+  runner_unit_live_read_typed,
+}
 import gunbc.host_identity_adopt {
   srv1_host_identity_ssh_transport,
   srv2_host_identity_ssh_transport,
@@ -336,17 +358,21 @@ fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSlic
   memory_limit_to_cap_effectiveness(lim: read.memory_max)
 }
 
+fn show_effective_read_from_slice_cap(read: RunnerSliceCapLiveRead) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  match runner_slice_cap_to_effectiveness(read: read) {
+    Present { value: eff } => ReadObserved { value: eff }
+    Absent =>
+      ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
+  }
+}
+
 fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
   let read = runner_slice_cap_live_read_typed(row: row)
   match read.memory_max {
     MemoryLimitAbsent =>
       ReadAbsent { reason: "systemctl show MemoryMax returned empty (typed Absent); fail-closed, no fabricated cap" }
-    _ =>
-      match runner_slice_cap_to_effectiveness(read: read) {
-        Present { value: eff } => ReadObserved { value: eff }
-        Absent =>
-          ReadAbsent { reason: "MemoryMax parse produced no RunnerSliceCapEffectiveness; fail-closed" }
-      }
+    MemoryLimitUnbounded => show_effective_read_from_slice_cap(read: read)
+    MemoryLimitBytes { bytes: _ } => show_effective_read_from_slice_cap(read: read)
   }
 }
 

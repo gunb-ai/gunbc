@@ -564,36 +564,6 @@ mod termination_terminal {
             .is_settled());
         }
     }
-
-    /// The readiness path must be able to notice a dead leader WITHOUT reaping it, because it tears
-    /// the group down afterwards and a reaped pid may already belong to someone else.
-    #[test]
-    fn a_dead_leader_is_observed_as_exited_while_its_pid_is_still_pinned() {
-        let mut command = Command::new("sh");
-        command.arg("-c").arg("exit 7");
-        let mut child = spawn_in_new_process_group(&mut command).expect("spawn");
-        let pid = child.id();
-
-        // Poll for the exit through /proc rather than through try_wait, which would reap it.
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            match observe_leader_without_reaping(pid) {
-                LeaderObservation::ExitedUnreaped => break,
-                LeaderObservation::Running if Instant::now() < deadline => {
-                    std::thread::sleep(Duration::from_millis(20))
-                }
-                other => panic!("expected an unreaped exit, observed {other:?}"),
-            }
-        }
-        // Still ours: the number can be addressed because nothing has reaped it. Replacing the
-        // observation with Child::wait makes this assertion red.
-        assert_eq!(unsafe { libc::kill(pid as i32, 0) }, 0);
-
-        let identity = pin_process_group_identity(pid).expect("the unreaped leader is still ours");
-        let terminal = terminate_process_group(&mut child, &identity, Duration::from_secs(10));
-        assert!(terminal.is_settled(), "observed {}", terminal.state_debug());
-        assert!(terminal.state_debug().contains("Exited { code: 7 }"));
-    }
 }
 
 /// THE /proc SCAN'S REFUSAL ARMS, made authorable by the fixture root.

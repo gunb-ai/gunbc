@@ -1015,12 +1015,14 @@ fn deepseek_v4_1_flash_admit_tokenizer_population(rows: List<DeepseekV41Tokenize
   let roles = map(rows, r => r.role)
   let duplicate = map(duplicated_by_key(rows, fn(r) { deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String }), d => join(["tokenizer role carried twice: ", deepseek_v4_1_flash_tokenizer_role_wire(r: d.role) as String], "") as NonEmptyStr)
   let missing = map(filter(required, q => !list_member(xs: roles, x: q, eq: role_eq)), q => join(["tokenizer role without a carrier: ", deepseek_v4_1_flash_tokenizer_role_wire(r: q) as String], "") as NonEmptyStr)
-  let published_all = fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  _ => acc })
+  let published_all = fold(rows, init: [] as List<DeepseekV41PublishedFile>, f: (acc, r) => match r.carrier { RolePublishedFile { file: f } => concat(acc, [f])  RoleEmbeddedIn { file: _ } => acc  RoleNoSeparateFile { established_at: _ } => acc  RoleNotConsumedByRuntime => acc })
   let published = distinct_by_key(published_all, fn(f) { f.path as String })
   let conflicting = map(filter(duplicated_by_key(published_all, fn(f) { f.path as String }), d => any(filter(published_all, q => path_eq(a: q.path, b: d.path)), q => !published_file_identity_eq(a: q, b: d))), d => join(["published path carried with two identities: ", d.path as String], "") as NonEmptyStr)
   let embedded_unbacked = fold(rows, init: [] as List<NonEmptyStr>, f: (acc, r) => match r.carrier {
     RoleEmbeddedIn { file: f } => if list_member(xs: published, x: f, eq: published_file_identity_eq) { acc } else { concat(acc, [join(["tokenizer role ", deepseek_v4_1_flash_tokenizer_role_wire(r: r.role) as String, " is embedded in a file no role publishes with that identity: ", f.path as String], "") as NonEmptyStr]) }
-    _ => acc
+    RolePublishedFile { file: _ } => acc
+    RoleNoSeparateFile { established_at: _ } => acc
+    RoleNotConsumedByRuntime => acc
   })
   let defects = concat(duplicate, concat(missing, concat(conflicting, embedded_unbacked)))
   if length(defects) == 0 {
