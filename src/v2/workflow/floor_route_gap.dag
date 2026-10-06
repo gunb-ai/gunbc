@@ -2168,7 +2168,7 @@ fn floor_route_gap_expectation_chunk_33() -> List<FloorRouteGapExpectation> {
 
 // test.claim.roadmap.roadmap_dogfood_route_wet_witness (gunbc#13077): every claim builds a fresh
 // instance layout under shell.Mktemp.DirWithTemplate, which declares no mock_response, so the nominal
-// floor refuses there and each identity is held; the local-repo wet schedule carries all four.
+// floor refuses there and each identity is held; the local-repo wet schedule carries every one.
 fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
   Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_unconverged_store_root_refuses_the_start_record", operation: "DirWithTemplate", ground: NoMockResponse {} },
@@ -2180,8 +2180,10 @@ fn floor_route_gap_expectation_chunk_34() -> List<FloorRouteGapExpectation> {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.an_invalid_receipt_in_the_slot_refuses_rather_than_reading_as_recorded", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Cons {
     head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.a_receipt_pinning_another_instances_evidence_is_not_a_start_here", operation: "DirWithTemplate", ground: NoMockResponse {} },
+    tail: Cons {
+    head: FloorRouteGapExpectation { identity: "test.claim.roadmap.roadmap_dogfood_route_wet_witness.the_issue_query_surface_renders_over_the_carrier_standings_read", operation: "DirWithTemplate", ground: NoMockResponse {} },
     tail: Empty {}
-  }  }  }  }  }
+  }  }  }  }  }  }
 }
 
 // The #12505 workspace lifecycle storage witnesses: their first effect is shell.Mktemp.Dir with no
