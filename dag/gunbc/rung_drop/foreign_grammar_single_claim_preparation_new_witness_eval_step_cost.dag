@@ -1,0 +1,47 @@
+module gunbc.rung_drop.foreign_grammar_single_claim_preparation_new_witness_eval_step_cost
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, ReplacementStaged }
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import v2.workflow.floor_eval_step_cost_drop { floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows }
+
+// DECLARED 4b(3) DROP (v2.test.parse census phase 4, 2026-10-06; ruling valiant-swift-469, grammar
+// program). The DECLARATION lives here; the POPULATION's authority is
+// `v2.workflow.floor_eval_step_cost_drop`
+// `floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows`.
+//
+// WHAT IS LOST IS ONE WALL, AND THE CLAIMS ARE UNTOUCHED. Both identities stay on the gate: planned,
+// executed and measured; a semantic red and a wall-clock crossing still block. Only an eval-step
+// overrun is reported under this drop rather than refusing. The budget is not raised.
+//
+// WHY NOT A FILL-DEBT TRANSFER. The claim's subject IS the parse. Admitting the claim's nullary
+// tokenize-and-parse as single-claim fill debt billed the whole parse to preparation, so the claim
+// measured seven eval steps -- a hidden overrun, not a cheap claim. The parse is now an applied
+// function of the claim's source, so only the grammar and lexer preparation could ever be shared, and
+// with one gated demander it is billed in-claim too.
+//
+// WHY A DIFFERENT DROP FROM foreign_grammar_extended_parse_new_witness_eval_step_cost. That drop's
+// bill is the per-token parse alone (its grammar preparation is shared by demand). Here the one-claim
+// preparation of the language's grammar and lexer is part of the bill, so the precedence-climbing
+// capability that retires that drop is not sufficient for this one.
+data foreign_grammar_single_claim_preparation_new_witness_eval_step_cost_population: List<String> = floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows |> map(m => concat(concat(m.identity, ": over the new-witness eval-step budget, rostered in v2.workflow.floor_eval_step_cost_drop floor_eval_step_cost_drop_foreign_grammar_single_claim_preparation_rows; measured by "), m.measured_by))
+
+data foreign_grammar_single_claim_preparation_new_witness_eval_step_cost: RungDrop = RungDrop {
+  identity: "foreign_grammar_single_claim_preparation_new_witness_eval_step_cost" as NonEmptyStr,
+
+  subject: "new-witness eval-step cost gate over the python and swift extended-function grammar parse claims (test.claim.parse_test_python_grammar, test.claim.parse_test_swift_grammar), each billing its language's one-claim grammar and lexer preparation plus its parse in-claim: they still execute, eval_steps stay recorded, a semantic red and a wall-clock crossing still block; only the eval-step cost-gate rung is lowered",
+
+  declared: "2026-10-06",
+
+  standing: Standing,
+
+  declaration: TypedDeclaration {
+    previous: MechanicallyPreventable,
+    temporary: Mitigatable,
+    reason: ReplacementStaged {
+      replacement: "honest in-claim cost of preparing a foreign grammar and lexer that one gated claim demands, plus the interpreted per-token parse; owner: grammar program (valiant-swift-469)",
+    },
+    population: foreign_grammar_single_claim_preparation_new_witness_eval_step_cost_population,
+    restoration_trigger: "THE CAPABILITY: a foreign grammar's preparation (X_grammar and X_lex) costs no more per claim than the new-witness budget leaves after the parse -- because the prepared grammar is a value the floor serves to every claim that demands it, or because preparation itself is cut -- together with the per-token parse capability gunbc.rung_drop foreign_grammar_extended_parse_new_witness_eval_step_cost names. WHAT IT MUST BE SUFFICIENT FOR: both identities, still tokenizing and parsing their extended-function source in-claim through their own language's grammar, measuring under the NewWitnessTier budget that v2.workflow.required_floor claim_ceiling_eval_step_budget derives. Admitting the parse or the claim's own work as fill or fill debt, adding a claim only to share the preparation, shrinking the source below the constructs its claim names, or supplying its tokens or parse does not satisfy this trigger.",
+  }
+}

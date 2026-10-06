@@ -9,9 +9,9 @@ fn swift_parse_accepted(out: Outcome<ParseTree>) -> Bool {
   }
 }
 
-fn swift_tokenize_and_parse() -> Outcome<ParseTree> {
+fn swift_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
   match tokenize(
-    text: swift_extended_fn_source,
+    text: text,
     file: ^swift_parse_file,
     rules: swift_lex()
   ) {
@@ -26,5 +26,5 @@ fn swift_tokenize_and_parse() -> Outcome<ParseTree> {
 // required floor runs `test fn` claims only): the same lhs == rhs predicate, made runnable by the
 // v2.test.parse census (gunbc#13372).
 test fn claim_swift_extended_function_parses_holds() -> Bool {
-  (swift_parse_accepted(out: swift_tokenize_and_parse())) == true
+  (swift_parse_accepted(out: swift_tokenize_and_parse_source(text: swift_extended_fn_source))) == true
 }

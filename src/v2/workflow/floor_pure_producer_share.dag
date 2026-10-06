@@ -590,12 +590,6 @@ fn floor_single_claim_fill_debt_active_claims() -> List<String> {
 // pipeline's per-claim fixed cost of assembling and inferring a one-module fixture, not the test's own work.
 // Trigger: assemble plus infer of a one-module fixture runs under the per-claim budget
 // (gunbc.recurring_failure_mode shared_precondition_re_derived_once_per_claim_frame).
-// Two more from the v2.test.parse census (gunbc#13372, phase 4, ruling stern-bear-500): the python
-// and swift grammar claims, each the ONE claim demanding its language's nullary grammar and lexer
-// producers. Measured by claim_batch BuildBuddy invocation 9241511f: the fill (that grammar's
-// preparation) is the bulk of each claim's floor cost, and the claim's own marginal fits the
-// new-witness budget. Trigger: the grammar's preparation is demanded by a second claim (shared by
-// demand) or measures under the budget with the claim.
 data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
   SingleClaimFillDebtModule {
     module: "v2.test.claim.compiler.collection_concat_realization",
@@ -1378,18 +1372,6 @@ data floor_single_claim_fill_debt: List<SingleClaimFillDebtModule> = [
     module: "v2.test.self_host.stage0_production_target",
     claims: [
       SingleClaimFillDebtClaim { claim: "stage0_production_target_emits_boundary_compatible_source_holds", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
-    module: "test.claim.parse_test_python_grammar",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "claim_python_extended_function_parses_holds", standing: ActiveFillDebt }
-    ]
-  },
-  SingleClaimFillDebtModule {
-    module: "test.claim.parse_test_swift_grammar",
-    claims: [
-      SingleClaimFillDebtClaim { claim: "claim_swift_extended_function_parses_holds", standing: ActiveFillDebt }
     ]
   }
 ]
