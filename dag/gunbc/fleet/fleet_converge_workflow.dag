@@ -3237,6 +3237,13 @@ fn fleet_converge_r2_workspace_object_write_mint_receipt_upload_step() -> Step {
 // writes and deletes one probe key in the workspace bucket with that bucket's pinned write credential.
 // The dispatch is the operator's approval; the receipt names every round's statuses and the verdict,
 // and is uploaded whether the probe passed, was falsified, or proved nothing.
+// THE PROBE'S OWN STEP BUDGET, AN ENVELOPE AND NOT A MEASUREMENT. The step pays one gunbc run resolve
+// (minutes, as gunbc_ci_gunbc_run_resolve_step_timeout_minutes records) plus race_probe_rounds rounds of
+// two curl invocations each (one seed PUT, one parallel pair), each bounded by a round trip to R2. The
+// aux 5m would kill it mid-run and lose the receipt, which is the one artifact the run exists to make;
+// raising the aux value would multiply across every aux step, so this constant is this step.
+data fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes: Duration = 30
+
 fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
   RunStep {
     name: Present { value: "R2 If-Match race probe (two concurrent conditional PUTs per round on one entity tag)" },
@@ -3249,7 +3256,7 @@ fn fleet_converge_r2_conditional_put_race_probe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_r2_conditional_put_race_probe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: fleet_converge_r2_conditional_put_race_probe_step_timeout_minutes }
   }
 }
 
