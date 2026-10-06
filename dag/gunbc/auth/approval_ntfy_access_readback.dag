@@ -25,12 +25,12 @@ import extdeps.shell.exec { ProcessRunOutcome, ProcessRan, ProcessNotSpawned }
 import extdeps.tools.gnu_coreutils { cat_command, timeout_command }
 import extdeps.tools.stat { stat_ctime_epoch_command, stat_identity_command, stat_inode_command, stat_regular_file_type }
 import extdeps.tools.id { id_uid_of_command }
-import extdeps.posix.getconf { getconf_clock_ticks_command, clock_ticks_reading, ClockTicksReading, ClockTicksObserved }
+import extdeps.posix.getconf { getconf_clock_ticks_command, clock_ticks_reading, ClockTicksReading, ClockTicksObserved, ClockTicksUnparseable, ClockTicksNotPositive }
 import extdeps.systemd { SystemdUnitProperty, ActiveState, MainPID, EnvironmentProperty, EnvironmentFilesProperty, PassEnvironmentProperty }
 import extdeps.systemd.systemctl { systemctl_show_properties_command, systemctl_show_environment_command, systemctl_show_property_value }
 import extdeps.linux.procfs { ProcNetTcp, ProcNetTcp6, procfs_path_literal, procfs_pid_file_path, procfs_stat_path }
-import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, ProcPidStatStartTime, StartTimeObserved, process_start_epoch_seconds }
-import extdeps.linux.proc_stat { proc_stat_boot_time, ProcStatBootTime, BootTimeObserved }
+import extdeps.linux.proc_pid_stat { proc_pid_stat_start_time, ProcPidStatStartTime, StartTimeObserved, StartTimeCommUnterminated, StartTimeFieldAbsent, StartTimeUnparseable, process_start_epoch_seconds }
+import extdeps.linux.proc_stat { proc_stat_boot_time, ProcStatBootTime, BootTimeObserved, BootTimeLineAbsent, BootTimeUnparseable, BootTimeBeforeEpoch }
 import extdeps.linux.proc_net_tcp {
   TcpSocketRow, ProcNetTcpTable, ProcNetTcpParsed, ProcNetTcpUnparseable, TcpLocalPort, TcpPortBound, TcpPortUnbound,
   proc_net_tcp_table, tcp_listen_state_hex, tcp_local_ipv4_dotted_little_endian,
@@ -504,7 +504,9 @@ fn process_start_label(s: ProcessStartInstant) -> String {
 fn pid_start_ticks(read: NtfyRuntimeRead, text: String) -> Int? {
   match proc_pid_stat_start_time(content: text) {
     StartTimeObserved { ticks_since_boot: t } => Present { value: t }
-    _ => none
+    StartTimeCommUnterminated => none
+    StartTimeFieldAbsent { fields_after_comm: _ } => none
+    StartTimeUnparseable { field: _ } => none
   }
 }
 
@@ -558,9 +560,12 @@ fn approval_ntfy_started(t0: Int, r: NtfyRuntimeReads) -> ApprovalNtfyAclVerdict
         Absent => unparseable(read: ReadPidStatBefore, detail: "the derived start precedes the epoch")
         Present { value: start } => approval_ntfy_process(start: start, r: r)
       }
-      _ => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
+      ClockTicksUnparseable { field: _ } => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
+      ClockTicksNotPositive { value: _ } => unparseable(read: ReadClockTicks, detail: "CLK_TCK is not a positive integer")
     }
-    _ => unparseable(read: ReadBootTime, detail: "no btime line")
+    BootTimeLineAbsent => unparseable(read: ReadBootTime, detail: "no btime line")
+    BootTimeUnparseable { field: _ } => unparseable(read: ReadBootTime, detail: "no btime line")
+    BootTimeBeforeEpoch { field: _ } => unparseable(read: ReadBootTime, detail: "no btime line")
   }
 }
 
@@ -577,7 +582,8 @@ fn cmdline_words(text: String) -> List<String> {
   let parts = split(s: text, delimiter: "\x00")
   match last(parts) {
     Present { value: "" } => parts.take(n: count(parts) - 1)
-    _ => parts
+    Present { value: _ } => parts
+    Absent => parts
   }
 }
 
