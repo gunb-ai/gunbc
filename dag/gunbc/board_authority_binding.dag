@@ -3,7 +3,7 @@ module gunbc.board_authority_binding
 import std.types { String, NonEmptyStr, List }
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.content_hash { Sha256Digest, Sha256Hash }
+import std.content_hash { Sha256Digest }
 import extdeps.board_authority {
   BoardAuthorityBinding, BoardAuthorityLookup, BoardFruIdentity, BoardFruObservation, BoardFruRead, BoardFruNotRead,
   BoardAreaAbsent, BoardAreaFieldsUnreadable, BoardCaptureUnreadable, BoardCaptureDigestMismatch, BoardFruReceipt,
@@ -24,7 +24,7 @@ import extdeps.ocp.mt_jade.subject { mt_jade_board_authority }
 // physical-orientation anchors), so board FACTS may be read off this authority.
 data mtcollins1_fru_receipt: BoardFruReceipt = BoardFruReceipt {
   artifact_path: "artifacts/bmc/mtcollins1-controller-fru-2026-09-12.txt",
-  sha256: Sha256Hash(Sha256Digest { hex: "dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c" }),
+  sha256: Sha256Digest { hex: "dc63dabe07764dcf7688a74230e7fe1a6151ea384435f10460a1979eda637d3c" },
 }
 
 data mt_collins_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
@@ -52,7 +52,7 @@ data mt_collins_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
 // Identity-grade uses accept it; uses that import board facts refuse it.
 data mtjade1_fru_receipt: BoardFruReceipt = BoardFruReceipt {
   artifact_path: "artifacts/bmc/mtjade1-ipmitool-fru-print-192.168.1.246-2026-10-04T110207Z.txt",
-  sha256: Sha256Hash(Sha256Digest { hex: "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b" }),
+  sha256: Sha256Digest { hex: "1800e7394dc06a023dc4d9cda481a63fe3cf9f07ed20cb0491746c61e9baf46b" },
 }
 
 data mt_jade_board_binding: BoardAuthorityBinding = BoardAuthorityBinding {
@@ -106,10 +106,7 @@ fn board_fru_observation_of_text(content: String) -> BoardFruObservation {
 }
 
 fn receipt_sha256_hex(receipt: BoardFruReceipt) -> String {
-  match receipt.sha256 {
-    Sha256Hash(d) => d.hex as String
-    _ => ""
-  }
+  receipt.sha256.hex as String
 }
 
 // THE DIGEST-CHECKED READ of a committed FRU capture. Content whose sha256 differs from the receipt

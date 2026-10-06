@@ -2,7 +2,7 @@ module extdeps.board_authority
 
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
 import std.types { Bool, Int, List, NonEmptyStr }
-import std.content_hash { ContentHash }
+import std.content_hash { Sha256Digest }
 import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
@@ -75,7 +75,7 @@ type BoardBindingStanding
 // THE COMMITTED FRU READ the row was authored from: path and sha256 of the bytes.
 type BoardFruReceipt {
   artifact_path: NonEmptyStr
-  sha256: ContentHash
+  sha256: Sha256Digest
 }
 
 type BoardAuthorityBinding {
