@@ -61,7 +61,7 @@ import v2.test.lens_common.resolve_fixture {
   claim_lowered_root,
   claim_resolve_lowered
 }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
 import v2.std.collection { List }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
