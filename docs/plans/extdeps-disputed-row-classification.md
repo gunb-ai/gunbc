@@ -44,9 +44,15 @@ kind the surface admits:
   name-keyed pattern establishes nothing: a predicate that reads no module
   content is a classification, not a consumer. A mirror's definition of a
   declaration is not a consumer of it. A witness that exercises a call inside a
-  test is not a production route. Where the evidence stops short of an executing
-  route, the recorded standing is **unadjudicated: grep-grade only** — never
-  executing.
+  test is not a production route.
+- **Both consumption labels are positive claims at this grade.** `executing`
+  asserts a route exists; `dangling` asserts no route exists across the decoded
+  surfaces. Grep-grade evidence supports neither — it supports **unadjudicated:
+  grep-grade only**, and that is what this document records wherever its own
+  evidence is grep-grade. The one exception in the sample is `semver_scheme`,
+  whose `dangling` label below is a recorded ruling of the side chat (review
+  5424597802), kept with its evidence grade attached and marked as a ruling,
+  not an adjudication.
 
 **Misfile shapes (the recurring review failure).** A citation can be live and
 real and still not own the declaration. Observed, each a real pulled row: a
@@ -56,12 +62,16 @@ repo extension inside an otherwise transcribed enumeration silently breaking the
 predicate; a repo plan citing fragments of a CLI grammar it does not fully
 reproduce.
 
-## The adjudicated cases
+## The recorded cases
 
-Seven cases adjudicated on both axes now — semantic standings decided against
-the cited artifacts, consumption standings recorded with their evidence kind.
-Every consumption claim is grep-graded (see the verification note); none of
-these was promoted past its evidence.
+Seven cases with both axes recorded. Semantic standings were decided against
+the cited artifacts (the instruments those surfaces admit); every consumption
+standing below is grep-grade, so each carries its evidence kind in place —
+the four `unadjudicated` labels are this document's own grade, and the three
+`dangling` labels are recorded rulings of the side chat (reviews 5423944315 and
+5424597802), kept with their grade attached. Dispositions that would change
+with the consumption walk are marked provisional and name what would settle
+them.
 
 **1. `docker/cli.dag` — `DockerCreateSpec` and its flag types.**
 Semantic standing: **product policy.** The type is a repo-normalized plan: its
@@ -69,23 +79,28 @@ flag grammars are partial (Docker's CLI reference owns `--restart` fully —
 `on-failure:N` cannot be expressed by `DockerRestartPolicy` as written, cli.dag
 lines 32-39 — and `DockerNamespaceMode` covers only host/private, line 43), so
 it borrows CLI grammar fragments rather than transcribing the cited surface.
-Consumption standing: **executing** — grep-graded consumer sites: the
-`dag/gunbc/spark/*` serving modules and `docker/container_inspect.dag` name
-`DockerCreateSpec`.
-Disposition: **repair.** Either complete the grammars field-for-field against
-Docker's CLI reference — after which the (a) predicate is judged again on the
-diff — or re-label the plan as repo vocabulary in the product layer. The
-consumers keep working either way.
+Consumption standing: **unadjudicated: grep-grade only** — candidate consumer
+sites (grep hits): the `dag/gunbc/spark/*` serving modules and
+`docker/container_inspect.dag` name `DockerCreateSpec`; no execution-grade walk
+has run.
+Disposition: **repair** (consumption-independent). Either complete the grammars
+field-for-field against Docker's CLI reference — after which the (a) predicate
+is judged again on the diff — or re-label the plan as repo vocabulary in the
+product layer. What the walk decides is the module's longer-term standing
+(kept-and-consumed vs delete-or-declare); that waits.
 
 **2. `bmc/openbmc_operation.dag` — `OpenBmcOperation`.**
 Semantic standing: **product policy.** Owner: this repo — the dispatch algebra
 over file ops, systemctl, busctl, jq, mkdir/rm/cp, sleep is our vocabulary of
 what a BMC operation is; the busctl man page owns only busctl's argv semantics.
-Consumption standing: **executing** — grep-graded consumer sites:
-`openbmc_fan_control` and `openbmc_password_ssh_transport` name it.
-Disposition: **re-home** to the product layer. The frontier row leaves because
-the module stops claiming to be extdeps at all; the internal consumers keep
-depending on it — they should, it is the product's own vocabulary.
+Consumption standing: **unadjudicated: grep-grade only** — candidate consumer
+sites (grep hits): `openbmc_fan_control` and `openbmc_password_ssh_transport`
+name it.
+Disposition: provisional **re-home** to the product layer. The algebra is
+product vocabulary regardless of the walk — that part is consumption-
+independent; what the walk decides is whether the row leaves as re-homed
+(kept-and-consumed) or as deleted. The internal consumers, if the walk confirms
+them, keep depending on it — they should, it is the product's own vocabulary.
 
 **3. `languages/json/grammar.dag` — `json_production_rows`.**
 Semantic standing: **product policy.** Owner: this repo — the columns
@@ -93,8 +108,9 @@ Semantic standing: **product policy.** Owner: this repo — the columns
 whose `lhs` names a local `literal` nonterminal and whose `value_variant` maps
 to repo AST names; the raw RFC 8259 production strings embedded in the rows are
 upstream fragments, not the surface the table models.
-Consumption standing: **dangling** (grep-grade: no production consumer; the
-parse path is `json/parse.dag`, scoped separately).
+Consumption standing: **dangling, as ruled** (side chat, review 5423944315;
+grep-grade: no production consumer found; the parse path is `json/parse.dag`,
+scoped separately).
 Disposition: **delete or re-home** — the table is a documentation artifact in
 code; both dispositions are live and the call belongs to the operator.
 
@@ -103,11 +119,12 @@ Semantic standing: **product policy.** Owner: this repo's serializer policy —
 choosing which dialect's spellings to emit over CommonMark 0.31.2 and GFM
 extensions (tables, task lists) is a product decision; no single upstream owns
 "both dialects at once."
-Consumption standing: **executing** — grep-graded consumer sites:
-`truth_table_projection` and the markdown tests name the spellings.
-Disposition: **re-label** as product policy; the row stops requesting a
-citation that cannot exist. The serializer behavior, which is fine and
-consumed, is untouched.
+Consumption standing: **unadjudicated: grep-grade only** — candidate consumer
+sites (grep hits): `truth_table_projection` and the markdown tests name the
+spellings.
+Disposition: **re-label** as product policy (consumption-independent); the row
+stops requesting a citation that cannot exist. What the walk decides is kept-
+vs-deleted; the serializer behavior itself is untouched.
 
 **5. `tools/curl.dag` — `curl_cli_tool` and its policy rows.**
 Semantic standing: **mixed — repair required.** The exit-code table (6/7/28/35/
@@ -115,17 +132,19 @@ Semantic standing: **mixed — repair required.** The exit-code table (6/7/28/35
 cites correctly. The pinned minimum version (>= 7.68), the localhost timeout
 rows, and the apt install realization are product policy — choices, not curl
 facts.
-Consumption standing: **executing** — grep-graded consumer sites name the tool
-rows.
+Consumption standing: **unadjudicated: grep-grade only** — candidate consumer
+sites (grep hits) name the tool rows.
 Disposition: **repair — split** the policy rows out from under the
-external-authority anchor; the CLI-fact side is then re-judged field-for-field
-against the man page on its own diff.
+external-authority anchor (consumption-independent); the CLI-fact side is then
+re-judged field-for-field against the man page on its own diff. Kept-vs-deleted
+waits on the walk.
 
 **6. `extdeps/ebay/mock_corpus.dag` — dangling repo data; the deletion-safety
 check.**
 Semantic standing: **unsupported.** The module is repo-authored
 `PublishedMockCase` hermetic-replay data; no upstream states it.
-Consumption standing: **dangling.** The census (2026-08-22, re-derived 08-26)
+Consumption standing: **dangling, as ruled** (side chat, review 5424597802).
+The census (2026-08-22, re-derived 08-26)
 classifies it STILL-UNCONSUMED, and the v1 mirror's
 `ends_with(".mock_corpus")` predicate (in
 `external_authority_is_clean_tree_roster_excluded_for_module_path`,
@@ -145,8 +164,9 @@ Semantic standing: **product policy over upstream fragments.** It adds a
 repo-authored `cpu_percent` field and reshapes `networks`, so it is not the
 Engine API's stats payload; owner of the real surface: Docker's Engine API
 stats reference.
-Consumption standing: **dangling** (grep-grade: no production caller; the
-#13304 review confirmed it independently).
+Consumption standing: **dangling, as ruled** (side chat, review 5423944315;
+grep-grade: no production caller; the #13304 review confirmed it
+independently).
 Disposition: **delete or name a consumer** (DESIGN 3c). Repairing the
 transcription — dropping `cpu_percent`, restoring the API shapes, re-diffing —
 is worthwhile only once a consumer or a declared frontier with a trigger
@@ -157,7 +177,8 @@ exists; on today's tree the honest move is deletion or a named trigger.
 Five cases from the sample could not be adjudicated on both axes now. They are
 recorded so the work is not lost, with their consumption standings marked
 **unadjudicated: grep-grade only** — grep hits name candidate sites and cannot
-establish that the site executes.
+establish that the site executes (the one recorded ruling in this section,
+`semver_scheme`'s dangling, is attributed above).
 
 - **`cloud/gcp/errors.dag` — `GcpRpcCode`**: semantic standing **non-exact**.
   The module adds `GcpRpcCodeOther { raw: NonEmptyStr }` (errors.dag line 32)
@@ -188,11 +209,16 @@ establish that the site executes.
   dispatch was lexical (`semver_identity_compare`), which is the recurring
   failure mode filed as
   `a_citation_attests_a_decision_rule_the_code_does_not_implement` (#13235).
-  Consumption standing: **dangling** — only the witness test calls
-  `semver_scheme.compare` (`extdeps_version_semver_witness_test.dag`); the v1
-  stage0 mirror defines `semver_scheme()` and a definition is not a consumer.
-  Whether the type family passes a field diff against semver.org's grammar is
-  likewise unverified and not asserted here.
+  Consumption standing: **dangling, as ruled** — the side chat's ruling
+  (review 5424597802): only the witness test calls `semver_scheme.compare`
+  (`extdeps_version_semver_witness_test.dag`), and the v1 stage0 mirror defines
+  `semver_scheme()` — a definition is not a consumer. Recorded with its
+  evidence grade attached: under this document's own rule the witness-only
+  grep supports `unadjudicated`, so the ruled label is kept as a ruling, and
+  any delete-or-scope decision on this module should not fire until an
+  execution-grade walk confirms it. Whether the type family passes a field
+  diff against semver.org's grammar is likewise unverified and not asserted
+  here.
 - **The `github/*` family**: **dropped from this document.** The per-row rule
   (each surface judged against its specific REST page, field-for-field; each
   row's consumption its own) is carried as a rule, but no row of the 19 was
@@ -212,7 +238,9 @@ establish that the site executes.
    policy + executing → re-home or re-label; unsupported + dangling → delete
    (safety-checked); mixed → repair by splitting subjects, then re-judge each
    side. Where the evidence grade is below the axis, the axis is recorded
-   unadjudicated, and the disposition waits.
+   unadjudicated — and a disposition that would depend on it is recorded as
+   provisional, naming what would settle it (the execution-grade walk or the
+   fitting diff), rather than fired on the lower-grade evidence.
 3. **Shared formal semantics stays a discipline.** Among the cases recorded
    here, none finally landed there. That is a statement about this sample, not
    about the frontier. The procedure stands: when a row looks shared, hunt for
@@ -225,12 +253,13 @@ establish that the site executes.
 
 ## Verification status of this document
 
-Every consumption and no-consumption claim above is **grep-grade** unless an
-executing route is named, and no claim in the set-aside section rises above
-grep-grade — that is why their consumption standings read unadjudicated. The
-semantic standings of the seven adjudicated cases were decided against the
-cited artifacts (the docker/cli line numbers are quoted from the module);
-standings in the set-aside section are recorded with their missing evidence
-named. The census numbers are its own (2026-08-22 / re-derived 2026-08-26) and
+Every consumption claim above is **grep-grade**: no executing route has been
+established at identity grade for any case in this document, so the four
+`unadjudicated` labels are the grade's honest reading and the three `dangling`
+labels are recorded rulings of the side chat with that grade attached — none
+of them is presented as execution-established. The semantic standings of the
+recorded cases were decided against the cited artifacts (the docker/cli line
+numbers are quoted from the module); standings in the set-aside section are
+recorded with their missing evidence named. The census numbers are its own (2026-08-22 / re-derived 2026-08-26) and
 carry that clock. No code, no tsv, and no roster is changed by this PR; it is
 a classification template, and bulk work waits on the operator's ruling on it.
