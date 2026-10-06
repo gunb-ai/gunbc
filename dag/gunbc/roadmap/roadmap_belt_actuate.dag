@@ -454,8 +454,7 @@ import gunbc.scm.repository_envelope {
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit, empty_repository, commit_at_reference, merge_base, MergeBaseDerived, MergeBaseNotDerived, RepositoryIndexHasNoObjectRoster, repository_history,
   repository_document_protocol, RepositoryProtocolIndexHasNoObjectRoster, RepositoryProtocolRetiredFormat,
-  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal,
-  repository_generation_of_content, RepositoryEncoded, RepositoryEncodeRefused }
+  RepositoryProtocolUnrecognizedFormat, RepositoryProtocolUnrecognizedIdentityRule, RepositoryProtocolNotAProtocolRefusal }
 import std.list { distinct_by_key }
 import gunbc.scm.checkout { recover_corpus, CorpusRecovered, CorpusRecoveryRefused, RecoveredSourceFile }
 import gunbc.scm.ancestry { RepositoryCommitRef, RootCommit, DescendsFrom, repository_commit_ref_eq }
@@ -467,7 +466,6 @@ import gunbc.scm.write_spine {
 import gunbc.scm.repository_load { load_repository, load_repository_indexed, materialize_objects, materialize_if_rostered, ObjectMaterialization, ObjectsMaterialized, ObjectMaterializationRefused, RepositoryLoaded, RepositoryLoadRefused, RepositoryLoadRefusal, RepositoryFileUnreadable, RepositoryDocumentUnparseable, RepositoryDocumentRefused }
 import gunbc.scm.repository_save {
   save_repository_sharded_guarded,
-  sharded_save_plan,
   RepositoryGuardedSaveOutcome,
   RepositoryStaleGenerationRefused,
   RepositoryGuardedSaveUnobservable,
@@ -6751,14 +6749,6 @@ type BeltSeedOutcome
 // On the commit_staged arms -- THE MINT'S DURABLE REFUSALS. Given the same staged tree and store
 // these recompute to the same refusal every time, so retry buys nothing; the save arms below them
 // are I/O and stay transient.
-fn belt_scm_generation_of_written_envelope(repo: RepositoryEnvelope) -> RepositoryGenerationExpectation? {
-  match sharded_save_plan(repo: repo).encoded {
-    RepositoryEncodeRefused { cause: _ } => none
-    RepositoryEncoded { value: v } =>
-      Present { value: GenerationExpected(repository_generation_of_content(content: serialize_json(v: v))) }
-  }
-}
-
 fn belt_scm_envelope_seeded(
   instance: HostDashboardInstance,
   worktree: String,
@@ -6817,14 +6807,8 @@ fn belt_scm_envelope_seeded(
                       staged: minted.staged,
                     }
                     match save_repository_sharded_guarded(path: path, repo: seeded, expected: generation) {
-                      RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
-                        match belt_scm_generation_of_written_envelope(repo: seeded) {
-                          Absent =>
-                            SeedRefused {
-                              detail: "the base commit was persisted but the capture persist's generation expectation could not be derived from the same encoding the seed wrote",
-                            }
-                          Present { value: written } => SeedReady { envelope: seeded, generation: written }
-                        }
+                      RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: written }) =>
+                        SeedReady { envelope: seeded, generation: GenerationExpected(written) }
                       RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
                         SeedRefused { detail: "the base commit was minted but the envelope could not be encoded for persistence" }
                       RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) =>
@@ -7682,7 +7666,7 @@ fn belt_scm_persist_capture(mint: BeltScmMint) -> BeltScmCapture {
     ScmCaptureMintPoisoned { detail } => ScmCapturePoisoned { detail: detail }
     ScmCandidateMinted { repository, generation, path, commit_ordinal, commit_root_locator } =>
       match save_repository_sharded_guarded(path: path, repo: repository, expected: generation) {
-        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
           ScmCandidateCaptured {
             repository_path: path,
             commit_ordinal: commit_ordinal,
@@ -11834,7 +11818,7 @@ fn belt_scm_intake_convert_over(path: String, envelope: RepositoryEnvelope, gene
         LegacyIntakesRefused { cause } => IntakeConversionRefused { path: path, detail: belt_legacy_intake_refusal_detail(cause: cause) }
         LegacyIntakesRecorded { repository: converted } =>
           match save_repository_sharded_guarded(path: path, repo: converted, expected: generation) {
-            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+            RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
               IntakeConverted { path: path, records: records, head_standing: belt_selected_head_line_standing(envelope: converted) }
             RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) =>
               IntakeConversionRefused { path: path, detail: "the converted envelope could not be encoded for persistence" }
@@ -11996,7 +11980,7 @@ fn belt_scm_corrective_integrate(path: String, source: Int, supersedes: Int, mes
                     FaninIntegrated { repository: advanced, head: new_head } => {
                       let moved = RepositoryEnvelope { store: advanced.store, commits: advanced.commits, commit_allocator: advanced.commit_allocator, checked_out: Present { value: new_head }, staged: advanced.staged }
                       match save_repository_sharded_guarded(path: path, repo: moved, expected: GenerationExpected(generation)) {
-                        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+                        RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
                           CorrectivelyIntegrated { head: minted_id_ordinal(id: new_head.identity), head_standing: belt_line_standing(commits: moved.commits, head: new_head) }
                         RepositoryGuardedSaveOutcome(RepositorySaveRefusedByCodec { path: _, cause: _ }) => CorrectiveIntegrationRefused { detail: "the corrective squash was merged but the envelope could not be encoded" }
                         RepositoryGuardedSaveOutcome(RepositoryFileUnwritable { path: p, error }) => CorrectiveIntegrationRefused { detail: join(["the envelope could not be written to ", p, " (", error, ")"], "") }
@@ -12334,7 +12318,7 @@ fn belt_integrate_into_envelope(
                   staged: advanced.staged,
                 }
                 match save_repository_sharded_guarded(path: capture.scm_repository, repo: moved, expected: GenerationExpected(generation)) {
-                  RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _ }) =>
+                  RepositoryGuardedSaveOutcome(RepositorySaved { path: _, written: _, generation: _ }) =>
                     match belt_integration_receipt_record_state(instance: instance, worktree: worktree, dir: dir, capture: capture, project_key: project_key, state: IntegrationIntegrated) {
                       IntegrationReceiptRecorded => EnvelopeIntegrated
                       IntegrationReceiptRecordFailed { detail } => EnvelopeIntegrationUnreadable { detail: detail }
