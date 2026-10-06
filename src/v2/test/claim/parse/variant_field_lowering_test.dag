@@ -45,7 +45,7 @@ import v2.std.node_query {
   positional_payload_field_name,
   find_core_child,
 }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.collection { list_at_optional }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.test.parse.supplied_token_stream_support { supplied_stream_matches_tokenize, supplied_stream_projection }

@@ -28,7 +28,7 @@ import v2.std.integer { integer_int_type_node }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { bool_node }
 import v2.std.node { Atom, Node, Symbol, TypeNode, symbol_intern_lexeme, symbol_type_node }
-import v2.std.optional { Absent, Optional, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.std.text { String }
 import std.algebra { Empty, FreeMonoid }

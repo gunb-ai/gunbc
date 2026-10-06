@@ -7,7 +7,7 @@ import std.measure {
 }
 import std.decimal { ExactDecimal, canonical_exact_decimal, checked_decimal_rescale, checked_decimal_pow10, exact_decimal_sub, ExactDifference, ExactDifferenceUnrepresentable, ExactDifferenceOperandScaleRefused }
 import std.checked_arithmetic { checked_int_to_nat, CheckedIntReady, CheckedIntOverflow }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.capacity.lease { LeaseGrant }
 import extdeps.prometheus.client {

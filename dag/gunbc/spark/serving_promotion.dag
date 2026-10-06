@@ -2,7 +2,7 @@ module gunbc.spark.serving_promotion
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { BasisPoint, basis_point, basis_point_count, Second, second_count }
 import v2.std.algebra { length }
 import std.dissolution { DissolutionCondition, unbound_dissolution }

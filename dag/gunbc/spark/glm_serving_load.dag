@@ -3,7 +3,7 @@ module gunbc.spark.glm_serving_load
 import std.types { NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { token_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, exit_failure }
 import extdeps.vllm.bench_serve {
   VllmBenchServeRequest, SendAllImmediately, RandomDatasetSpec, OpenaiChat, vllm_bench_serve_request, vllm_bench_backend_route,
@@ -17,6 +17,7 @@ import gunbc.spark.serving_arm {
   glm53_native_fp8_row, runtime_artifact_wire, serving_runtime_row,
 }
 import gunbc.spark.fabric_serving_assignment { glm_group_b_serving_assignment }
+import gunbc.spark.glm_group_b_launch { glm_group_b_deployment_env }
 import gunbc.spark.group_b_serving_capacity { group_b_restoration_profile, group_b_restoration_serve_port, group_b_restoration_served_alias }
 import gunbc.spark.serving_arm_launch { glm_native_container_name, glm_native_weights_container_dir }
 import gunbc.spark.model_snapshot_acquisition { snapshot_install_path, HubCachePlacement }
@@ -124,6 +125,7 @@ fn glm_native_live_subject() -> ServingPerformanceSubject? {
           runtime_image_reference: runtime_artifact_wire(a: rrow.artifact),
           topology: a.topology,
           profile: p,
+          deployment_env: glm_group_b_deployment_env(),
           collective_transport: none,
         ) }
       }

@@ -5,7 +5,7 @@ import std.nat { Nat }
 import std.integer { UInt8, qualified_octet_members }
 import std.content_hash { Sha256Digest, Sha256DigestHex, serialize_content_hash }
 import std.measure { byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import extdeps.numeric.base16 { base16_decode_lower }
 import extdeps.toolchain.architecture_profile { BigEndian }
 import extdeps.safetensors.format { SafetensorsEntry, safetensors_entry, SafeF8E4M3, SafeF8E8M0, SafeF16 }

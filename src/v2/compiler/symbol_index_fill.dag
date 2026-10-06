@@ -11,7 +11,7 @@ import v2.std.collection {
   map_insert
 }
 import v2.std.node_query { binder_node_parts }
-import v2.std.optional {
+import std.optional {
   Absent,
   Optional,
   Present,

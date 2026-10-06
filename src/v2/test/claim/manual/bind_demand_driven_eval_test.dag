@@ -31,7 +31,7 @@ import v2.std.collection {
   map_get_checked,
   map_insert
 }
-import v2.std.optional {
+import std.optional {
   Optional,
   Absent,
   Present,
