@@ -207,6 +207,9 @@ fn the_kernel_guard_compares_names_not_bytes() {
             environment_load_refusal_text(&e)
         )
     });
+    // The base compiler runs IN this repository and locates its workspace as any checkout does
+    // (a `Cargo.toml` beside `dag/`), so the scratch carries the marker a real checkout has.
+    std::fs::write(scratch.join("Cargo.toml"), "").expect("write workspace marker");
     git(&scratch, &["init", "--quiet"]);
     git(&scratch, &["config", "user.email", "probe@example.invalid"]);
     git(&scratch, &["config", "user.name", "probe"]);
