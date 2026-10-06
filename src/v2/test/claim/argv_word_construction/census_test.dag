@@ -57,7 +57,6 @@ import std.process { ExitSuccess, ProcessExit, ExitFailure }
 // declared module name (fixture.argv_word_construction.host_words) is unique in the tree, so
 // loading it does not fork the namespace. It sits OUTSIDE the modeled census roots, which the
 // boundary claim below pins as a typed refusal.
-data fixture_path: String = "src/v2/test/fixture_roots/argv_word_construction/host_words.dag"
 
 // The modeled-roots specimen, used only through the pure class router (no parse in CI).
 data specimen_path: String = "dag/extdeps/systemd/systemd_run.dag"
@@ -70,69 +69,14 @@ data established_route_path: String = "dag/extdeps/cpu/ampere_altra_package_cont
 data gate_file: String = "dag/gunbc/instruments/argv_word_construction_census.dag"
 
 // ---------------------------------------------------------------- fixture facts
-
-fn fixture_facts() -> Optional<List<ArgvWordsFact>> {
-  let read = Filesystem.Read(path: fixture_path)
-  match read.success {
-    false => Absent
-    true =>
-      match raw_tree_of_text(text: read.content) {
-        RawTreeNotEstablished { cause: _ } => Absent
-        RawTreeEstablished { root: root } => Present { value: facts_of(root: root) }
-      }
-  }
-}
-
-// THE FIXTURE'S OWN LENS RENDERING, WRITTEN WHERE A HUMAN READS IT: one TSV row per fact with
-// every field the fixture claims pin. The claims' expectations are checked against the lens's
-// output over the fixture -- this dump is how that output is observed, instead of trusting a
-// hand-maintained parallel list of what the lens is supposed to say. Wet-lane only: hermetic
-// lanes refuse the write by design.
-fn fixture_facts_dump() -> ProcessExit {
-  match fixture_facts() {
-    Absent => ExitFailure { code: 1, reason: "fixture facts absent: fixture unreadable or unparseable" }
-    Present { value: facts } =>
-      let rows = fold_list(xs: facts, empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
-        concat(acc, concat("\n", fact_row(f: f)))
-      })
-      let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
-      match written.success {
-        true => ExitSuccess
-        false => ExitFailure { code: 1, reason: concat("fixture facts write refused: ", written.error) }
-      }
-  }
-}
-
-fn fact_row(f: ArgvWordsFact) -> String {
-  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.candidates)), concat("\t", concat(join(f.candidates, ","), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.flag_words)), concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(integer_int_to_decimal_string(value: f.list_string_params), concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
-}
-
-fn kind_name(k: ArgvWordsDeclKind) -> String {
-  match k {
-    FnDecl => "FnDecl"
-    DataDecl => "DataDecl"
-  }
-}
-
-fn bool_word(b: Bool) -> String {
-  match b {
-    true => "true"
-    false => "false"
-  }
-}
+// The reading lives in fixture_facts_io (a non-test module) because the wet lane's entry loader
+// refuses entries bearing test functions; the dump there is the observation the expectations
+// below are aligned against.
+import v2.test.claim.argv_word_construction.fixture_facts_io { fixture_path, fixture_facts }
 
 fn fact_named(xs: List<ArgvWordsFact>, want: String) -> Optional<ArgvWordsFact> {
-  fold_list(xs: xs, empty: Absent, cons: fn(acc, f) {
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match f.decl == want {
-          true => Present { value: f }
-          false => Absent
-        }
-    }
-  })
-}
+
+
 
 test fn census_fixture_route_counts_its_members() -> Bool {
   match fixture_facts() {

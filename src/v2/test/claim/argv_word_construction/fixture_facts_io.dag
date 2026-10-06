@@ -1,0 +1,75 @@
+module v2.test.claim.argv_word_construction.fixture_facts_io
+
+// The fixture's facts, read and parsed OUTSIDE the claims that pin them, and the one wet emitter
+// that writes the lens's rendering of those facts where a human reads it. This is a non-test
+// module because the wet lane's entry loader refuses entries bearing test functions; the claims
+// in census_test import the reading from here, and the dump is the observation those claims'
+// expectations are aligned against -- not a hand-maintained parallel list of what the lens is
+// supposed to say.
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.lens.argv_word_construction {
+  ArgvWordsFact,
+  ArgvWordsDeclKind,
+  FnDecl,
+  DataDecl,
+  facts_of,
+  raw_tree_of_text,
+  RawTreeEstablished,
+  RawTreeNotEstablished
+}
+import v2.std.algebra { fold_list, length }
+import v2.std.integer { integer_int_to_decimal_string }
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.optional { Absent, Present }
+import std.process { ExitSuccess, ProcessExit, ExitFailure }
+
+data fixture_path: String = "src/v2/test/fixture_roots/argv_word_construction/host_words.dag"
+
+fn fixture_facts() -> Optional<List<ArgvWordsFact>> {
+  let read = Filesystem.Read(path: fixture_path)
+  match read.success {
+    false => Absent
+    true =>
+      match raw_tree_of_text(text: read.content) {
+        RawTreeNotEstablished { cause: _ } => Absent
+        RawTreeEstablished { root: root } => Present { value: facts_of(root: root) }
+      }
+  }
+}
+
+// THE FIXTURE'S OWN LENS RENDERING, WRITTEN WHERE A HUMAN READS IT: one TSV row per fact with
+// every field the fixture claims pin. Wet-lane only: hermetic lanes refuse the write by design.
+fn fixture_facts_dump() -> ProcessExit {
+  match fixture_facts() {
+    Absent => ExitFailure { code: 1, reason: "fixture facts absent: fixture unreadable or unparseable" }
+    Present { value: facts } =>
+      let rows = fold_list(xs: facts, empty: "decl\tkind\tcounted\tcandidates_n\tcandidates\tflag_words_n\treturns_argv_words\tlist_string_params\tlist_string_data", cons: fn(acc, f) {
+        concat(acc, concat("\n", fact_row(f: f)))
+      })
+      let written = Filesystem.Write(path: "target/argv_word_construction_fixture_facts.tsv", content: rows)
+      match written.success {
+        true => ExitSuccess
+        false => ExitFailure { code: 1, reason: concat("fixture facts write refused: ", written.error) }
+      }
+  }
+}
+
+fn fact_row(f: ArgvWordsFact) -> String {
+  concat(f.decl, concat("\t", concat(kind_name(k: f.decl_kind), concat("\t", concat(bool_word(b: f.counted), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.candidates)), concat("\t", concat(join(f.candidates, ","), concat("\t", concat(integer_int_to_decimal_string(value: length(xs: f.flag_words)), concat("\t", concat(bool_word(b: f.returns_argv_words), concat("\t", concat(integer_int_to_decimal_string(value: f.list_string_params), concat("\t", bool_word(b: f.list_string_data))))))))))))))))))
+}
+
+fn kind_name(k: ArgvWordsDeclKind) -> String {
+  match k {
+    FnDecl => "FnDecl"
+    DataDecl => "DataDecl"
+  }
+}
+
+fn bool_word(b: Bool) -> String {
+  match b {
+    true => "true"
+    false => "false"
+  }
+}
