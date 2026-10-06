@@ -12037,7 +12037,10 @@ fn belt_scm_corrective_integrate_cli(project_key: String, source: Int, supersede
 // (BaseAdvance) as a fresh CaptureWork of the same unit and attempt, without creating a git commit
 // -- the realization already exists. The tick's capture fires only while the worktree is dirty;
 // once commit-outcome is skipped: worktree clean, this is the only producer a corrective integrate
-// can name as --arg source. Invocation:
+// can name as --arg source. THE HEAD MUST BE THE ATTEMPT'S OWN RECORDED SUBMISSION: a clean
+// checkout of an unrelated commit is not that attempt's recapture, so recapture binds HEAD to
+// SubmissionCapture.head_sha and refuses when the record is absent or names another revision.
+// Invocation:
 // `GUNBC_BELT_INSTANCE_ID=<instance> gunbc run --source-root dag --source-root src/v2 --entry
 // dag/gunbc/roadmap/roadmap_belt_actuate.dag --function belt_scm_recapture_cli
 // --arg project_key=<project> --arg node_id=<node> --arg attempt_key=<key> --arg receipt_path=<receipt>`.
@@ -12063,6 +12066,23 @@ fn belt_scm_recapture_preconditions(
           BaseShaObserved { base_sha } => RecaptureAdmitted { head_sha: revision as String, base_sha: base_sha }
         }
     }
+  }
+}
+
+type RecaptureSubmissionBinding
+  = RecaptureBoundToSubmission { recorded_sha: String }
+  | RecaptureHasNoSubmissionCapture
+  | RecaptureHeadIsNotTheRecordedSubmission { head_sha: String, recorded_sha: String }
+
+fn belt_scm_recapture_submission_bind(head_sha: String, captures: List<SubmissionCapture>) -> RecaptureSubmissionBinding {
+  match (captures |> filter(c => c.head_sha == head_sha)).first() {
+    Present { value: bound } => RecaptureBoundToSubmission { recorded_sha: bound.head_sha }
+    Absent =>
+      match captures.first() {
+        Absent => RecaptureHasNoSubmissionCapture
+        Present { value: recorded } =>
+          RecaptureHeadIsNotTheRecordedSubmission { head_sha: head_sha, recorded_sha: recorded.head_sha }
+      }
   }
 }
 
@@ -12107,6 +12127,32 @@ fn belt_scm_recapture(
                 RecaptureRefused { detail: join(["the attempt has no committed revision: ", detail], "") }
               RecaptureBaseUnobservable { detail } => RecapturePoisoned { detail: detail }
               RecaptureAdmitted { head_sha, base_sha: _ } =>
+                match belt_submission_captures_observe(
+                  instance: instance,
+                  worktree: worktree,
+                  dir: belt_attempt_submission_dir_for_instance(
+                    instance: instance,
+                    node_id: node_id as RoadmapNodeId,
+                    attempt_key: attempt_key,
+                  ),
+                ) {
+                  CaptureRosterUnobservable { reason } => RecapturePoisoned { detail: reason }
+                  CaptureRosterObserved { captures } =>
+                    match belt_scm_recapture_submission_bind(head_sha: head_sha, captures: captures) {
+                      RecaptureHasNoSubmissionCapture =>
+                        RecaptureRefused {
+                          detail: "the attempt has no durable submission capture, so this HEAD is not a recapture of a recorded candidate",
+                        }
+                      RecaptureHeadIsNotTheRecordedSubmission { head_sha: observed, recorded_sha } =>
+                        RecaptureRefused {
+                          detail: join([
+                            "HEAD ", observed,
+                            " is not the revision the attempt's durable submission capture names (",
+                            recorded_sha,
+                            "): recapture stamps CaptureWork only onto that recorded commit",
+                          ], ""),
+                        }
+                      RecaptureBoundToSubmission { recorded_sha: _ } =>
                 match belt_scm_capture_candidate_tree(
                   instance: instance,
                   worktree: worktree,
@@ -12142,6 +12188,8 @@ fn belt_scm_recapture(
                           ScmCandidateCaptured { repository_path, commit_ordinal: saved, commit_root_locator: _ } =>
                             Recaptured { commit_ordinal: saved, repository_path: repository_path }
                         }
+                    }
+                }
                     }
                 }
             }

@@ -1,9 +1,8 @@
 module test.claim.roadmap.roadmap_belt_recapture_wet_witness_test
 
 // THE RECAPTURE PRODUCER, EXECUTED AGAINST A REAL GIT WORKTREE AND A REAL PROJECT ENVELOPE.
-// Hermetic claims supply porcelain and admit a recapture through fanin_correct_integration; this
-// claim runs gunbc.roadmap_belt_actuate belt_scm_recapture: a committed (clean) attempt tree is
-// captured against its spawn base, with CaptureWork of that attempt, without creating a git commit.
+// Recapture binds HEAD to the attempt's durable SubmissionCapture; a planted capture of the worker
+// commit is required for the mint to proceed, and a clean checkout of a different commit refuses.
 
 import std.logic { Bool }
 import std.types { String, FilePath, NonEmptyStr, List }
@@ -22,6 +21,11 @@ import gunbc.roadmap_dispatch_actuator { host_exec_argv, dispatch_worktree_path_
 import gunbc.roadmap_belt_actuate {
   belt_scm_recapture, Recaptured, RecaptureRefused, RecapturePoisoned,
   belt_exec, ExecOk, ExecFailed, ExecRefused,
+  belt_attempt_submission_dir_for_instance,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
+  submission_capture_text, submission_capture_basename,
 }
 import gunbc.scm.repository_load { load_repository_indexed, RepositoryLoaded, RepositoryLoadRefused }
 import v2.std.optional { Present, Absent }
@@ -97,7 +101,28 @@ fn plant_worktree(instance: HostDashboardInstance) -> String {
     let worker = Filesystem.Write(path: join([worktree, "/src.dag"], ""), content: "worker").success
       && run_git(dir: worktree, args: ["add", "-A"])
       && run_git(dir: worktree, args: ["commit", "-q", "-m", "worker"])
-    if origin_ok && worker { worktree } else { "" }
+    if origin_ok && worker {
+      let worker_sha = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+      let submissions = belt_attempt_submission_dir_for_instance(
+        instance: instance,
+        node_id: recapture_node as RoadmapNodeId,
+        attempt_key: recapture_attempt,
+      )
+      let _sub = shell.Mkdir.Parents(path: submissions as FilePath)
+      let capture = SubmissionCapture {
+        head_sha: worker_sha,
+        scm_repository: "/planted.json",
+        scm_commit_ordinal: 1,
+        scm_root_locator: SubmissionCaptureRootBound { locator: "planted" },
+        digest: "planted",
+        submission: WorkerSubmission { readiness: SubmissionReady, explanation: "planted", limitations: "none" },
+      }
+      let wrote = Filesystem.Write(
+        path: join([submissions, "/", submission_capture_basename(head_sha: worker_sha)], ""),
+        content: submission_capture_text(capture: capture),
+      ).success
+      if wrote && worker_sha != "" { worktree } else { "" }
+    } else { "" }
   }
 }
 
@@ -149,4 +174,30 @@ test fn the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution() 
   let held = worktree != "" && recapture_holds(instance: instance, worktree: worktree)
   let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
   held && cleaned.success
+}
+
+test fn a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution() -> Bool {
+  let instance = fresh_instance()
+  let worktree = plant_worktree(instance: instance)
+  let recorded = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let checked_out_base = worktree != "" && recorded != "" && run_git(dir: worktree, args: ["checkout", "-q", "HEAD~1"])
+  let observed = git_out(dir: worktree, args: ["rev-parse", "HEAD"])
+  let refused = checked_out_base && observed != "" && observed != recorded && match belt_scm_recapture(
+    instance: instance,
+    project_key: recapture_node,
+    node_id: recapture_node,
+    attempt_key: recapture_attempt,
+  ) {
+    RecaptureRefused { detail } =>
+      detail == join([
+        "HEAD ", observed,
+        " is not the revision the attempt's durable submission capture names (",
+        recorded,
+        "): recapture stamps CaptureWork only onto that recorded commit",
+      ], "")
+    RecapturePoisoned { detail: _ } => false
+    Recaptured { commit_ordinal: _, repository_path: _ } => false
+  }
+  let cleaned = shell.Remove.RecursiveForce(path: instance.instance_root)
+  refused && cleaned.success
 }

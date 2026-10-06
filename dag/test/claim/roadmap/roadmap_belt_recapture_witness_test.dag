@@ -1,10 +1,9 @@
 module test.claim.roadmap.roadmap_belt_recapture_witness_test
 
-// RECAPTURE ADMISSION AT ITS OWN INTERFACE (DESIGN §3). The dirty-worktree, missing-head and
-// unobservable-base refusals are decided from supplied observations -- porcelain, a typed head,
-// a typed spawn base -- because the claim is about those preconditions, not about git. The real
-// recapture path (git status, rev-parse, spawn origin, committed-tree delta, BaseAdvance, mint,
-// generation-guarded save) is the wet inhabitance
+// RECAPTURE ADMISSION AT ITS OWN INTERFACE (DESIGN §3). The dirty-worktree, missing-head,
+// unobservable-base and submission-binding refusals are decided from supplied observations --
+// porcelain, a typed head, a typed spawn base, a typed capture roster -- because those claims are
+// about those preconditions, not about git. The real recapture path is the wet inhabitance
 // test.claim.roadmap.roadmap_belt_recapture_wet_witness_test.
 
 import std.types { Bool, String, NonEmptyStr, List, Int }
@@ -15,6 +14,11 @@ import gunbc.roadmap_belt_actuate {
   WorktreeHeadObserved, WorktreeHeadUnobserved,
   BaseShaObserved, BaseShaUnobserved,
   belt_capture_standing, CaptureOnBase, CaptureBaseStale, CaptureStandingUnderivable,
+  belt_scm_recapture_submission_bind,
+  RecaptureBoundToSubmission, RecaptureHasNoSubmissionCapture, RecaptureHeadIsNotTheRecordedSubmission,
+}
+import gunbc.roadmap.roadmap_submission {
+  SubmissionCapture, WorkerSubmission, SubmissionReady, SubmissionCaptureRootBound,
 }
 import gunbc.scm.repository_envelope { RepositoryCommit }
 import test.fixture.legacy_intake_scene { legacy_corrective_scene, legacy_unconverted, legacy_ref }
@@ -95,5 +99,48 @@ test fn an_underivable_standing_poisons_rather_than_reporting_not_fresh() -> Boo
   match legacy_unconverted() {
     Absent => false
     Present { value: legacy } => standing_tag(commits: legacy.commits, ordinal: 1) == "poisoned"
+  }
+}
+
+fn recorded_capture(head: String) -> SubmissionCapture {
+  SubmissionCapture {
+    head_sha: head,
+    scm_repository: "/r.json",
+    scm_commit_ordinal: 1,
+    scm_root_locator: SubmissionCaptureRootBound { locator: "loc" },
+    digest: "d",
+    submission: WorkerSubmission { readiness: SubmissionReady, explanation: "e", limitations: "l" },
+  }
+}
+
+test fn a_head_matching_the_recorded_submission_is_bound() -> Bool {
+  match belt_scm_recapture_submission_bind(
+    head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    captures: [recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+  ) {
+    RecaptureBoundToSubmission { recorded_sha } => recorded_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    RecaptureHasNoSubmissionCapture => false
+    RecaptureHeadIsNotTheRecordedSubmission { head_sha: _, recorded_sha: _ } => false
+  }
+}
+
+test fn an_absent_submission_capture_refuses_recapture_binding() -> Bool {
+  match belt_scm_recapture_submission_bind(head_sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", captures: []) {
+    RecaptureHasNoSubmissionCapture => true
+    RecaptureBoundToSubmission { recorded_sha: _ } => false
+    RecaptureHeadIsNotTheRecordedSubmission { head_sha: _, recorded_sha: _ } => false
+  }
+}
+
+test fn a_clean_head_that_is_not_the_recorded_submission_refuses_recapture_binding() -> Bool {
+  match belt_scm_recapture_submission_bind(
+    head_sha: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    captures: [recorded_capture(head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+  ) {
+    RecaptureHeadIsNotTheRecordedSubmission { head_sha, recorded_sha } =>
+      head_sha == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        && recorded_sha == "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    RecaptureBoundToSubmission { recorded_sha: _ } => false
+    RecaptureHasNoSubmissionCapture => false
   }
 }

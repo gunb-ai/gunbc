@@ -306,11 +306,12 @@ fn local_repo_wet_requirement(candidate: String) -> WetEvidenceRequirement {
 // the advanced manifest must equal S1's tree with an advance to an unobservable revision refused by
 // name. Same effects and the same negative half as the publish-realizer member.
 //
-// ONE RECAPTURE MEMBER (corrective integration source for gunbc#13402).
+// TWO RECAPTURE MEMBERS (corrective integration source for gunbc#13402).
 // test.claim.roadmap.roadmap_belt_recapture_wet_witness_test plants a committed attempt worktree
-// beside a spawn origin and runs gunbc.roadmap_belt_actuate belt_scm_recapture: the committed tree
-// is captured against that base with the attempt's CaptureWork and without a git commit. Hermetic
-// claims supply porcelain and admit the recapture through fanin_correct_integration.
+// beside a spawn origin and a durable SubmissionCapture for that HEAD, then runs
+// gunbc.roadmap_belt_actuate belt_scm_recapture: the recorded tree is captured against that base
+// with the attempt's CaptureWork and without a git commit, and a clean checkout of a different
+// commit than the recorded submission refuses. Hermetic claims supply porcelain, roster and standing.
 fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
   [
     WetScheduledClaim {
@@ -329,6 +330,12 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test", function: "the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution" },
       entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness_test.dag",
       function: "the_recapture_of_a_committed_attempt_tree_is_minted_by_real_execution",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.roadmap.roadmap_belt_recapture_wet_witness_test", function: "a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution" },
+      entry: "dag/test/claim/roadmap/roadmap_belt_recapture_wet_witness_test.dag",
+      function: "a_clean_worktree_whose_head_is_not_the_recorded_submission_refuses_by_real_execution",
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
