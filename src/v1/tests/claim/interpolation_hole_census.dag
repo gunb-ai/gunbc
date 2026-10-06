@@ -52,6 +52,7 @@ type HoleSite
 
 type HoleRow {
   file: String
+  start: Int
   line: Int
   decl: String
   ordinal: Int
@@ -80,18 +81,27 @@ type HoleWalkContext {
   site: HoleSite
 }
 
-// One observed template: the file it is in and its holes. Its count is joined against the lexer's
-// count per file, so a template the walk did not reach is a located mismatch, not a smaller total.
+// One observed template: the file it is in and its holes. Its holes are joined against the lexer's
+// by (file, start offset) in ihc_completeness_join, so a hole the walk did not reach is a located
+// mismatch, not a smaller total.
 type ObservedTemplate {
   file: String
   holes: List<HoleRow>
 }
 
-// What the v1 lexer says one file holds: interpolating templates and holes.
+// What the v1 lexer says one file holds: interpolating templates, holes, and the byte offset at
+// which each hole's expression starts. (file, start) is a hole's IDENTITY, the key the completeness
+// join is taken over; the counts are a cross-check, never the join itself.
 type LexicalTemplateCount {
   file: String
   templates: Int
   holes: Int
+  hole_starts: List<Int>
+}
+
+type IhcHoleStartScan {
+  after_opener: Bool
+  starts: List<Int>
 }
 
 fn ihc_token_is_template_start(t: Token) -> Bool {
@@ -109,12 +119,33 @@ fn ihc_token_closes_hole(t: Token) -> Bool {
   }
 }
 
+fn ihc_token_opens_hole(t: Token) -> Bool {
+  match t.shape {
+    ShStrBegin => true
+    ShStrMid => true
+    _ => false
+  }
+}
+
+// A hole's expression starts at the token right after the one that opens it: the template's
+// opening token, or a mid token between two holes. That holds for a hole v1 later FUSES with its
+// neighbour too, since each operand still follows its own opener.
+fn ihc_hole_starts(tokens: List<Token>) -> List<Int> {
+  let scan = fold(tokens, init: IhcHoleStartScan { after_opener: false, starts: [] }, f: (acc, t) =>
+    IhcHoleStartScan {
+      after_opener: ihc_token_opens_hole(t: t),
+      starts: if acc.after_opener { list_push(acc.starts, t.span.start) } else { acc.starts }
+    })
+  scan.starts
+}
+
 fn ihc_lexical_count(s: SourceFile) -> LexicalTemplateCount {
   let tokens = tokenize(source: s.content, file: s.path, env: dag_parse_environment)
   LexicalTemplateCount {
     file: s.path,
     templates: tokens |> filter(t => ihc_token_is_template_start(t: t)) |> count,
-    holes: tokens |> filter(t => ihc_token_closes_hole(t: t)) |> count
+    holes: tokens |> filter(t => ihc_token_closes_hole(t: t)) |> count,
+    hole_starts: ihc_hole_starts(tokens: tokens)
   }
 }
 
@@ -257,6 +288,7 @@ fn ihc_template_observation(ctx: HoleWalkContext, template: Node) -> ObservedTem
 fn ihc_hole_row(ctx: HoleWalkContext, h: Node, fused: Bool) -> HoleRow {
   HoleRow {
       file: h.span.file,
+      start: h.span.start,
       line: ihc_line(e: h, si: ctx.si),
       decl: ctx.file_decl,
       ordinal: 0,
@@ -322,7 +354,7 @@ fn ihc_number_holes(rows: List<HoleRow>) -> List<HoleRow> {
     }
     IhcNumbering {
       seen: map_insert(acc.seen, key, next),
-      out: list_push(acc.out, HoleRow { file: r.file, line: r.line, decl: r.decl, ordinal: next, text: r.text, shape: r.shape, reading: r.reading, site: r.site, fused: r.fused })
+      out: list_push(acc.out, HoleRow { file: r.file, start: r.start, line: r.line, decl: r.decl, ordinal: next, text: r.text, shape: r.shape, reading: r.reading, site: r.site, fused: r.fused })
     })
   numbered.out
 }
@@ -464,26 +496,41 @@ fn ihc_observed_count(templates: List<ObservedTemplate>, file: String) -> Int {
   templates |> filter(t => t.file == file) |> count
 }
 
-fn ihc_observed_hole_count(templates: List<ObservedTemplate>, file: String) -> Int {
-  templates |> filter(t => t.file == file) |> flat_map(t => t.holes) |> count
+fn ihc_int_set(xs: List<Int>) -> Map<Int, Bool> {
+  fold(xs, init: empty_map(), f: (acc, x) => map_insert(acc, x, true))
 }
 
-// THE COMPLETENESS JOIN, per file: the templates and holes the walk observed against what the v1
-// lexer counted in the same file. Every disagreement is a located row, so an unreached template is
-// never a smaller total.
+fn ihc_int_in(set: Map<Int, Bool>, key: Int) -> Bool {
+  match map_get(set, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE COMPLETENESS JOIN, at IDENTITY grain (DESIGN section 5: completeness is an identity join, not a
+// count equality). A hole is (file, start offset). Per file, every hole the v1 lexer opened is
+// joined against the holes the walk observed, BOTH WAYS: a lexed hole with no observation is
+// UNOBSERVED, an observed hole the lexer never opened is UNLEXED, each a located row. A miss and an
+// extra therefore cannot cancel, as two equal counts would let them. Template and hole COUNTS are
+// kept beside the join as a cross-check, never as the verdict.
+fn ihc_completeness_join(lexical: List<LexicalTemplateCount>, observed: List<HoleRow>, observed_templates: List<ObservedTemplate>) -> List<String> {
+  lexical |> flat_map(l =>
+    let observed_starts = observed |> filter(r => r.file == l.file) |> map(r => r.start)
+    let observed_set = ihc_int_set(xs: observed_starts)
+    let lexed_set = ihc_int_set(xs: l.hole_starts)
+    let unobserved = l.hole_starts |> filter(x => !ihc_int_in(set: observed_set, key: x))
+      |> map(x => concat(concat(concat("UNOBSERVED\t", l.file), "\tlexed_hole_start="), to_string(x)))
+    let unlexed = observed_starts |> filter(x => !ihc_int_in(set: lexed_set, key: x))
+      |> map(x => concat(concat(concat("UNLEXED\t", l.file), "\tobserved_hole_start="), to_string(x)))
+    let ot = ihc_observed_count(templates: observed_templates, file: l.file)
+    let counts = if ot == l.templates { [] } else {
+      [concat(concat(concat(concat(concat("TEMPLATE_COUNT_DIFFERS\t", l.file), "\tlexed_templates="), to_string(l.templates)), "\tobserved_templates="), to_string(ot))]
+    }
+    concat(concat(unobserved, unlexed), counts))
+}
+
 fn ihc_completeness_lines(c: IhcCensus) -> List<String> {
-  c.lexical |> flat_map(l =>
-    let ot = ihc_observed_count(templates: c.templates, file: l.file)
-    let oh = ihc_observed_hole_count(templates: c.templates, file: l.file)
-    if ot == l.templates && oh == l.holes { [] }
-    else {
-      [[
-        "UNOBSERVED", l.file,
-        concat("lexed_templates=", to_string(l.templates)), concat("observed_templates=", to_string(ot)),
-        concat("lexed_holes=", to_string(l.holes)), concat("observed_holes=", to_string(oh)),
-        concat("observed_texts=", c.templates |> filter(t => t.file == l.file) |> map(t => t.holes |> map(h => h.text) |> join(separator: "+")) |> join(separator: " | "))
-      ] |> join(separator: "\t")]
-    })
+  ihc_completeness_join(lexical: c.lexical, observed: c.rows, observed_templates: c.templates)
 }
 
 fn ihc_summary_lines(c: IhcCensus) -> List<String> {
@@ -559,6 +606,25 @@ fn ihc_transport_row_is(rows: List<HoleRow>, text: String, reading: String) -> B
   rows |> any(r => r.text == text && ihc_transport_reading(r: r) == reading)
 }
 
+fn ihc_probe_row(file: String, start: Int) -> HoleRow {
+  HoleRow { file: file, start: start, line: 1, decl: "probe", ordinal: 1, text: "x", shape: HoleIdentifier, reading: HoleTypedString, site: HoleInBody, fused: false }
+}
+
+// THE JOIN'S OWN DISCRIMINATING CONTROL, on supplied inputs (DESIGN section 3). The lexer opened
+// holes at 10 and 20; the walk observed 10 and 30. The COUNTS AGREE (two and two), so a count
+// equality would call this complete. The identity join must instead report two located rows: 20
+// unobserved, 30 unlexed. The matched case (10 and 20 on both sides) is its accepted control.
+fn ihc_identity_join_not_count_holds() -> Bool {
+  let lexed = [LexicalTemplateCount { file: "probe", templates: 1, holes: 2, hole_starts: [10, 20] }]
+  let template = [ObservedTemplate { file: "probe", holes: [] }]
+  let mismatched = ihc_completeness_join(lexical: lexed, observed: [ihc_probe_row(file: "probe", start: 10), ihc_probe_row(file: "probe", start: 30)], observed_templates: template)
+  let matched = ihc_completeness_join(lexical: lexed, observed: [ihc_probe_row(file: "probe", start: 10), ihc_probe_row(file: "probe", start: 20)], observed_templates: template)
+  (mismatched |> count) == 2
+    && (mismatched |> any(l => starts_with(s: l, prefix: "UNOBSERVED\tprobe\tlexed_hole_start=20")))
+    && (mismatched |> any(l => starts_with(s: l, prefix: "UNLEXED\tprobe\tobserved_hole_start=30")))
+    && (matched |> count) == 0
+}
+
 // THE INSTRUMENT'S OWN CONTROLS, over fixtures/interpolation_hole_census. Each is a POSITIVE
 // observation of one named hole, so none holds because a hole went missing. own_type_not_joined_type
 // is the discriminator the manager's condition names: had the census read the template's String
@@ -579,7 +645,8 @@ fn interpolation_hole_fixture_standing(sources: List<SourceFile>) -> String {
         && ihc_transport_row_is(rows: rows, text: "missing", reading: "bare_name_not_an_input")
       let fusion = (rows |> filter(r => r.fused) |> count) == 2
       let complete = (ihc_completeness_lines(c: c) |> count) == 0 && (rows |> count) == 8
-      let held = string_ident && own_type && dotted && call && transport && fusion && complete
+      let identity_join = ihc_identity_join_not_count_holds()
+      let held = string_ident && own_type && dotted && call && transport && fusion && complete && identity_join
       concat(concat([
         concat("STANDING ", if held { "held" } else { "unmet" }),
         ihc_control_line(name: "string_identifier_hole", held: string_ident),
@@ -588,7 +655,8 @@ fn interpolation_hole_fixture_standing(sources: List<SourceFile>) -> String {
         ihc_control_line(name: "call_hole_typed_by_return", held: call),
         ihc_control_line(name: "transport_holes_read_against_inputs", held: transport),
         ihc_control_line(name: "v1_fusion_recovered_as_two_holes", held: fusion),
-        ihc_control_line(name: "every_lexed_hole_observed", held: complete)
+        ihc_control_line(name: "every_lexed_hole_observed", held: complete),
+        ihc_control_line(name: "completeness_is_an_identity_join_not_a_count", held: identity_join)
       ], rows |> map(r => concat("fixture_row ", ihc_row_tsv(r: r)))), ihc_completeness_lines(c: c)) |> join(separator: "\n")
   }
 }
