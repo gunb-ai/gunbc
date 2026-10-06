@@ -651,7 +651,7 @@ fn curl_trace_kind_is(kind: CurlTraceEventKind, want: CurlTraceEventKind) -> Boo
 
 // The stamps of one transfer's events of one kind, in trace order (the trace is monotone once read).
 fn curl_trace_instants(events: List<CurlTraceEvent>, transfer: NonEmptyStr, kind: CurlTraceEventKind) -> List<Microsecond> {
-  map(filter(events, e => e.transfer as String == transfer as String && curl_trace_kind_is(kind: e.kind, want: kind)), e => e.at)
+  map(filter(events, e => (e.transfer as String) == (transfer as String) && curl_trace_kind_is(kind: e.kind, want: kind)), e => e.at)
 }
 
 // ── THE INSTALLED VERSION, READ ─────────────────────────────────────────────────────────────────

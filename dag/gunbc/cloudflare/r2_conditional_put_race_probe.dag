@@ -85,8 +85,11 @@ type RaceOverlap
   = RaceOverlapEstablished
   | RaceOverlapUnestablished { cause: NonEmptyStr }
 
-fn race_latest(xs: List<Microsecond>) -> Int {
-  fold(xs, init: -1, f: (acc, x) => if microsecond_count(m: x) > acc { microsecond_count(m: x) } else { acc })
+fn race_latest(xs: List<Microsecond>) -> Int? {
+  match xs.first() {
+    Absent => none
+    Present { value: h } => Present { value: fold(xs, init: microsecond_count(m: h), f: (acc, x) => if microsecond_count(m: x) > acc { microsecond_count(m: x) } else { acc }) }
+  }
 }
 
 fn race_earliest(xs: List<Microsecond>) -> Int? {
@@ -97,21 +100,28 @@ fn race_earliest(xs: List<Microsecond>) -> Int? {
 }
 
 fn race_overlap_between(events: List<CurlTraceEvent>, ta: NonEmptyStr, tb: NonEmptyStr) -> RaceOverlap {
-  let sent_a = race_latest(xs: curl_trace_instants(events: events, transfer: ta, kind: CurlTraceSendData))
-  let sent_b = race_latest(xs: curl_trace_instants(events: events, transfer: tb, kind: CurlTraceSendData))
-  match race_earliest(xs: curl_trace_instants(events: events, transfer: ta, kind: CurlTraceRecvHeader)) {
-    Absent => RaceOverlapUnestablished { cause: "the trace shows no response for writer a" }
-    Present { value: answered_a } =>
-      match race_earliest(xs: curl_trace_instants(events: events, transfer: tb, kind: CurlTraceRecvHeader)) {
-        Absent => RaceOverlapUnestablished { cause: "the trace shows no response for writer b" }
-        Present { value: answered_b } => {
-          let first_answer = if answered_a < answered_b { answered_a } else { answered_b }
-          let last_sent = if sent_a > sent_b { sent_a } else { sent_b }
-          if last_sent < first_answer { RaceOverlapEstablished }
-          else { RaceOverlapUnestablished { cause: "one writer was answered before the other had finished sending" } }
-        }
+  match race_latest(xs: curl_trace_instants(events: events, transfer: ta, kind: CurlTraceSendData)) {
+    Absent => RaceOverlapUnestablished { cause: "the trace shows no body sent by writer a" }
+    Present { value: sent_a } =>
+      match race_latest(xs: curl_trace_instants(events: events, transfer: tb, kind: CurlTraceSendData)) {
+        Absent => RaceOverlapUnestablished { cause: "the trace shows no body sent by writer b" }
+        Present { value: sent_b } =>
+          match race_earliest(xs: curl_trace_instants(events: events, transfer: ta, kind: CurlTraceRecvHeader)) {
+            Absent => RaceOverlapUnestablished { cause: "the trace shows no response for writer a" }
+            Present { value: answered_a } =>
+              match race_earliest(xs: curl_trace_instants(events: events, transfer: tb, kind: CurlTraceRecvHeader)) {
+                Absent => RaceOverlapUnestablished { cause: "the trace shows no response for writer b" }
+                Present { value: answered_b } => race_overlap_of_instants(sent_a: sent_a, sent_b: sent_b, answered_a: answered_a, answered_b: answered_b)
+              }
+          }
       }
   }
+}
+
+fn race_overlap_of_instants(sent_a: Int, sent_b: Int, answered_a: Int, answered_b: Int) -> RaceOverlap {
+  let first_answer = if answered_a < answered_b { answered_a } else { answered_b }
+  let last_sent = if sent_a > sent_b { sent_a } else { sent_b }
+  if last_sent < first_answer { RaceOverlapEstablished } else { RaceOverlapUnestablished { cause: "one writer was answered before the other had finished sending" } }
 }
 
 fn race_overlap_of_trace(reading: CurlTraceReading, label_a: NonEmptyStr, label_b: NonEmptyStr) -> RaceOverlap {
@@ -124,7 +134,7 @@ fn race_overlap_of_trace(reading: CurlTraceReading, label_a: NonEmptyStr, label_
           match curl_trace_transfer_sending(events: events, text: label_b) {
             Absent => RaceOverlapUnestablished { cause: "writer b's body names no single transfer in the trace" }
             Present { value: tb } =>
-              if ta as String == tb as String { RaceOverlapUnestablished { cause: "both bodies name one transfer" } }
+              if (ta as String) == (tb as String) { RaceOverlapUnestablished { cause: "both bodies name one transfer" } }
               else { race_overlap_between(events: events, ta: ta, tb: tb) }
           }
       }
