@@ -31,7 +31,7 @@ import std.markdown {
   TextInline,
 }
 import extdeps.languages.markdown { commonmark_gfm_spellings, md_table }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 // A THIRD TARGET FOR THE SAME DIGITAL INTENT, ADDED AS ONE PROJECTION AND NOT AS A CONVERTER. The
 // point of this module is what it does NOT contain: there is no Verilog-to-Markdown path, no

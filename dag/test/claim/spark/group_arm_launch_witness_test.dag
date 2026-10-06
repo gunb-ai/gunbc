@@ -2,7 +2,7 @@ module test.claim.spark.group_arm_launch_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.content_hash { ContentHash, content_hash_equal }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import std.measure { token_count, kibibyte, mebibyte, basis_point, second_count }
 import extdeps.systemd { Active }
 import extdeps.vllm.engine_args { FullInputAdmissionExplicit, FullInputAdmissionOmitted, KvWatermarkExplicit, KvWatermarkOmitted, VllmSchedulerAdmissionRequest }

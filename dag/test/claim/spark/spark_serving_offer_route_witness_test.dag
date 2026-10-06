@@ -13,7 +13,7 @@ import gunbc.spark.first_party_serving {
   RealizationMatchesDeclaredConfiguration, RealizationReportedPathDiffers,
   RealizationDeclaredPathUnpinned, RealizationReadbackUnresolved,
 }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import gunbc.spark.vllm_observed {
   ModelsRouteDocumentUnreadable, ModelsRouteRead, vllm_models_route_readback,
 }

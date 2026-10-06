@@ -1,7 +1,7 @@
 module v2.test.emit.rust_call_emit
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import v2.std.optional { Optional, Present, Absent }
+import std.optional { Optional, Present, Absent }
 import v2.std.arrow_signature { DeclaredSignatureEdges, declared_signature }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }

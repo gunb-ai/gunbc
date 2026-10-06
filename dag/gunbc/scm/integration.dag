@@ -38,9 +38,16 @@ import gunbc.scm.ancestry { RepositoryCommitRef, repository_commit_ref_eq }
 // meanings. The first is the ordinary state of every commit an ordinary `commit` verb produces; the
 // second is damage. Every commit carries this member, and the overwhelmingly common value is the
 // first arm -- which is why it is spelled as a state and not as an absence.
+// A CORRECTIVE INTEGRATION CONSUMES ITS SOURCE EXACTLY AS A SQUASH DOES, AND ALSO NAMES THE ONE EARLIER
+// INTEGRATION ON ITS LINE WHOSE CONSUMED SOURCE WAS A STALE CAPTURE (gunbc.scm.intake
+// IntakeStaleCapture): the record that this commit's tree replaces that integration's wrong content.
+// Its admission (gunbc.scm.repository_envelope admit_supersession) requires the named commit to be
+// that exact stale integration, on the target's line, not already superseded, and the new source to
+// be fresh against its own intake -- so a line reader may stop counting the superseded integration.
 type CommitIntegration
   = NoSquashIntegration
   | SquashIntegrated { source: RepositoryCommitRef }
+  | SquashIntegratedSuperseding { source: RepositoryCommitRef, supersedes: RepositoryCommitRef }
 
 // THE ANCHOR IS THE SOURCE COMMIT OCCURRENCE, NOT ITS ROOT, AND THIS WAS DERIVED THE WRONG WAY FIRST.
 //
@@ -89,6 +96,7 @@ fn integration_consumed_source(integration: CommitIntegration) -> List<Repositor
   match integration {
     NoSquashIntegration => []
     SquashIntegrated { source: s } => [s]
+    SquashIntegratedSuperseding { source: s, supersedes: _ } => [s]
   }
 }
 
