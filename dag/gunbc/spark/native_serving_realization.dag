@@ -176,7 +176,7 @@ fn glm_native_exec_line(words: List<String>) -> NonEmptyStr? {
 }
 
 type GlmNativeUnitRender
-  = GlmNativeUnitRendered { unit_name: NonEmptyStr, text: String }
+  = GlmNativeUnitRendered { unit_name: NonEmptyStr, text: String, lifetime: ArmUnitLifetime }
   | GlmNativeUnitRenderRefused { unit_name: NonEmptyStr, cause: NonEmptyStr }
 
 // THE CONTAINER LINE IS THE SPEC'S FOREGROUND PROJECTION AND NOTHING ELSE. A refusal from
@@ -345,6 +345,7 @@ fn arm_host_unit_file_for(intent: ArmIntent, launch: ArmNodeLaunch, units: ArmUn
             ArmUnitLifetimeDerived { lifetime: lifetime } =>
               GlmNativeUnitRendered {
                 unit_name: unit_name,
+                lifetime: lifetime,
                 text: serialize_systemd_unit_file(file: ServiceUnitFile {
                   unit: arm_unit_directives(intent: intent, units: units, launch: launch, served_alias: served_alias),
                   service: arm_service_directives(lifetime: lifetime, launch: launch, run_line: run_line, log_path: log_path),
@@ -407,7 +408,7 @@ fn glm_native_units_render_wet() -> ProcessExit {
     match r {
       GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
         join(["REFUSED ", c as String], "")
-      GlmNativeUnitRendered { unit_name: name, text: text } => {
+      GlmNativeUnitRendered { unit_name: name, text: text, lifetime: _ } => {
         let w = Filesystem.Write(path: join(["/tmp/", name as String, ".", h as String], ""), content: text)
         if w.success { "ok" } else { join(["WRITE-FAILED ", w.error], "") }
       }
@@ -431,7 +432,7 @@ fn glm_native_experiment_units_render_wet() -> ProcessExit {
     match r {
       GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
         join(["REFUSED ", c as String], "")
-      GlmNativeUnitRendered { unit_name: name, text: text } => {
+      GlmNativeUnitRendered { unit_name: name, text: text, lifetime: _ } => {
         let w = Filesystem.Write(path: join(["/tmp/experiment.", name as String, ".", h as String], ""), content: text)
         if w.success { "ok" } else { join(["WRITE-FAILED ", w.error], "") }
       }
@@ -450,7 +451,7 @@ fn glm_native_head_unit_render_wet() -> ProcessExit {
   match glm_native_head_unit_render() {
     GlmNativeUnitRenderRefused { unit_name: _, cause: c } =>
       exit_failure(reason: join(["glm_native_head_unit_render_wet: ", c as String], ""))
-    GlmNativeUnitRendered { unit_name: name, text: text } => {
+    GlmNativeUnitRendered { unit_name: name, text: text, lifetime: _ } => {
       let w = Filesystem.Write(path: join(["/tmp/", name as String], ""), content: text)
       if w.success {
         ExitSuccess

@@ -1,6 +1,6 @@
 module gunbc.spark.arm_convergence
 
-import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.types { String, Bool, List, NonEmptyStr, Int, EpochSecs }
 import std.algebra { trim }
 import v2.std.optional { Present, Absent }
 import v2.std.algebra { zip_map }
@@ -486,14 +486,55 @@ fn arm_converge_apply_text(p: ArmConvergeApply) -> String {
 // Every rank must carry a record, and every record must name the same step: a committed arm is one
 // step on every rank. Anything else is not a committed arm a rollback may converge to.
 type ArmCommittedReading
-  = ArmCommitted { label: NonEmptyStr, unit_shas: List<String> }
+  = ArmCommitted { label: NonEmptyStr, unit_shas: List<String>, expiries: List<ArmCommittedExpiry> }
   | ArmNotCommitted { cause: String }
+
+// THE RECORD'S SCHEDULED END (operator ruling 2026-10-06): a bounded experiment's unit ends at its start
+// plus its RuntimeMaxSec, and the commit records that instant, so a converge after it reads "ended as
+// scheduled" rather than an unexplained dead rank. A record written before this field existed is
+// UNRECORDED -- never read as "no expiry" -- and a word that is not an instant is unreadable.
+data arm_committed_expiry_key: String = "expires="
+
+type ArmCommittedExpiry
+  = ArmExpiresAt { epoch: EpochSecs }
+  | ArmNoScheduledExpiry
+  | ArmExpiryUnrecorded
+  | ArmExpiryUnreadable { word: String }
+
+fn arm_committed_expiry_of(words: List<String>) -> ArmCommittedExpiry {
+  match words.get(2) {
+    Absent => ArmExpiryUnrecorded
+    Present { value: w } =>
+      if !starts_with(s: w, prefix: arm_committed_expiry_key) { ArmExpiryUnreadable { word: w } }
+      else {
+        let v = substring(s: w, start: length(arm_committed_expiry_key), end: length(w))
+        if v == "none" { ArmNoScheduledExpiry }
+        else {
+          match parse_int(s: v) {
+            Absent => ArmExpiryUnreadable { word: w }
+            Present { value: n } => if n < 0 { ArmExpiryUnreadable { word: w } } else { ArmExpiresAt { epoch: n } }
+          }
+        }
+      }
+  }
+}
+
+// THE LATEST SCHEDULED END THAT HAS PASSED AT now, if every rank's record carries one: the arm ended as
+// scheduled. Any rank without a recorded instant leaves it unestablished (none).
+fn arm_committed_scheduled_end_passed(expiries: List<ArmCommittedExpiry>, now: EpochSecs) -> EpochSecs? {
+  let instants = flat_map(expiries, e => match e { ArmExpiresAt { epoch: t } => [t]  ArmNoScheduledExpiry => [] as List<EpochSecs>  ArmExpiryUnrecorded => [] as List<EpochSecs>  ArmExpiryUnreadable { word: _ } => [] as List<EpochSecs> })
+  if count(instants) == 0 || count(instants) != count(expiries) { none }
+  else {
+    let latest = fold(instants, init: 0, f: (a, t) => if t > a { t } else { a })
+    if latest <= now { Present { value: latest } } else { none }
+  }
+}
 
 fn arm_record_words(f: ArmFact) -> List<String>? {
   match f {
     FactRead { value: v } => {
       let words = filter(split(s: v, delimiter: " "), w => w != "")
-      if count(words) == 2 { Present { value: words } } else { none }
+      if count(words) == 2 || count(words) == 3 { Present { value: words } } else { none }
     }
     FactAbsent => none
     FactUnread { cause: _ } => none
@@ -515,7 +556,7 @@ fn arm_committed_reading(observed: List<ArmRankObservation>) -> ArmCommittedRead
         if l == "" || any(labels, x => x != l) {
           ArmNotCommitted { cause: join(["the ranks' committed records name different steps (", join(labels, ", "), ")"], "") }
         } else {
-          ArmCommitted { label: l as NonEmptyStr, unit_shas: map(records, w => match w.get(1) { Present { value: s } => s, Absent => "" }) }
+          ArmCommitted { label: l as NonEmptyStr, unit_shas: map(records, w => match w.get(1) { Present { value: s } => s, Absent => "" }), expiries: map(records, w => arm_committed_expiry_of(words: w)) }
         }
     }
   }
@@ -526,7 +567,7 @@ fn arm_committed_reading(observed: List<ArmRankObservation>) -> ArmCommittedRead
 fn arm_committed_reproduced(reading: ArmCommittedReading, rerendered: List<ArmRankObservation>) -> Bool {
   match reading {
     ArmNotCommitted { cause: _ } => false
-    ArmCommitted { label: _, unit_shas: shas } =>
+    ArmCommitted { label: _, unit_shas: shas, expiries: _ } =>
       count(shas) == count(rerendered) && all(zip_map(a: shas, b: rerendered, f: fn(s, o) {
         match o {
           ArmRankUnread { host: _, cause: _ } => false

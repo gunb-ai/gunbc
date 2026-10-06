@@ -1,4 +1,5 @@
 module test.claim.spark.native_serving_resumable_apply_witness_test
+import gunbc.spark.native_serving_realization { ArmUnitBounded, ArmUnitPersistent }
 
 import gunbc.spark.remote_leg_began { remote_leg_began_word }
 import product.host_identity { HostIdentity }
@@ -146,13 +147,19 @@ test fn w_the_stop_reads_the_container_gone_by_the_daemons_own_word() -> Bool {
     && !string_contains(s: stop, pattern: "systemctl restart")
 }
 
-test fn w_the_commit_record_names_the_label_and_the_installed_units_hash() -> Bool {
+test fn w_the_commit_record_names_the_label_the_installed_units_hash_and_its_scheduled_end() -> Bool {
   let unit = "gunbc-glm53-stair-head.service" as NonEmptyStr
-  let commit = spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr)
+  let commit = spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr, lifetime: ArmUnitBounded { bound: second(count: 16776) })
+  let persistent = spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr, lifetime: ArmUnitPersistent)
   string_contains(s: commit, pattern: "s=$(sha256sum < /etc/systemd/system/gunbc-glm53-stair-head.service | cut -c1-64)")
-    && string_contains(s: commit, pattern: "printf '%s %s\\n' 'fp8-16' \"$s\" > /var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service.next")
+    && string_contains(s: commit, pattern: "a=$(systemctl show gunbc-glm53-stair-head.service --property=ActiveEnterTimestamp --timestamp=unix --value)")
+    && string_contains(s: commit, pattern: "e=$(( a + 16776 ))")
+    && string_contains(s: commit, pattern: "COMMIT-REFUSED-unit-start-unread")
+    && string_contains(s: commit, pattern: "printf '%s %s expires=%s\\n' 'fp8-16' \"$s\" \"$e\" > /var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service.next")
     && string_contains(s: commit, pattern: "mv -f /var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service.next /var/lib/gunbc/arm-committed/gunbc-glm53-stair-head.service")
-    && !string_contains(s: commit, pattern: "systemctl")
+    && !string_contains(s: commit, pattern: "systemctl start") && !string_contains(s: commit, pattern: "systemctl restart") && !string_contains(s: commit, pattern: "systemctl stop")
+    && string_contains(s: persistent, pattern: "e=none")
+    && !string_contains(s: persistent, pattern: "ActiveEnterTimestamp")
 }
 
 
@@ -175,7 +182,7 @@ test fn w_no_non_starting_transaction_script_clears_the_start_limit() -> Bool {
   let unit = "gunbc-glm53-group-a-rank.service" as NonEmptyStr
   let others = [
     spark_native_stop_script(unit_name: unit, container_name: glm_native_container_name),
-    spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr),
+    spark_native_commit_record_script(unit_name: unit, label: "fp8-16" as NonEmptyStr, lifetime: ArmUnitBounded { bound: second(count: 16776) }),
     spark_native_remove_retired_script(unit_name: unit),
     spark_native_transport_announcement_script(container: glm_native_container_name, question: ReadinessFromStart, window: second(count: 1800)),
     spark_native_front_door_script(port_text: "8000", served_alias: "glm-5.3-flash" as NonEmptyStr, awaited: w_awaited_head, container: glm_native_container_name),

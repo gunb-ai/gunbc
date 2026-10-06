@@ -13,6 +13,7 @@ import gunbc.spark.arm_convergence {
   arm_rank_observe,
   arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, ArmRestart, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval,
   arm_committed_reading, arm_committed_reproduced,
+  ArmCommittedExpiry, ArmExpiresAt, ArmNoScheduledExpiry, ArmExpiryUnrecorded, ArmExpiryUnreadable, arm_committed_expiry_of, arm_committed_scheduled_end_passed,
 }
 
 // ── ARM RECOVERY AS CONVERGENCE: THE DECISION, OVER SUPPLIED OBSERVATIONS ─────────────────────
@@ -230,9 +231,9 @@ test fn w_the_committed_arm_is_one_label_on_every_rank() -> Bool {
     w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: "absent"))]
   let split = [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"),
     w_obs(host: "srv7", stdout: w_leg(unit_sha: w_sha_planned, active: "active", container: "0123456789ab true 0", committed: join(["fp8-64 ", w_sha_planned], "")))]
-  (match arm_committed_reading(observed: all_committed) { ArmCommitted { label: l, unit_shas: s } => (l as String) == "fp8-16" && count(s) == 4  ArmNotCommitted { cause: _ } => false })
-    && (match arm_committed_reading(observed: one_missing) { ArmCommitted { label: _, unit_shas: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "3 of 4") })
-    && (match arm_committed_reading(observed: split) { ArmCommitted { label: _, unit_shas: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "different steps") })
+  (match arm_committed_reading(observed: all_committed) { ArmCommitted { label: l, unit_shas: s, expiries: _ } => (l as String) == "fp8-16" && count(s) == 4  ArmNotCommitted { cause: _ } => false })
+    && (match arm_committed_reading(observed: one_missing) { ArmCommitted { label: _, unit_shas: _, expiries: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "3 of 4") })
+    && (match arm_committed_reading(observed: split) { ArmCommitted { label: _, unit_shas: _, expiries: _ } => false  ArmNotCommitted { cause: c } => string_contains(s: c, pattern: "different steps") })
 }
 
 test fn w_a_return_is_admitted_only_when_the_rerender_reproduces_the_record() -> Bool {
@@ -362,4 +363,36 @@ test fn w_a_retired_file_present_after_its_removal_refuses() -> Bool {
     observed: [w_running(host: "srv6"), w_running(host: "srv5"), w_running(host: "srv8"), w_running(host: "srv7")]), after_removal: true)
   w_refuses_naming(d: still, fragment: "removed and read back present")
     && match gone { Noop => true  Apply { plan: _ } => false  Refuse { reason: _ } => false }
+}
+
+// ── THE RECORD STATES THE ARM'S SCHEDULED END (operator ruling 2026-10-06) ──────────────────────
+//
+// RED: the expiry word reads as the instant it names, "none" as no scheduled end, a record written before
+// the field existed as UNRECORDED (never as no end), and any other word as unreadable. And the arm reads
+// as ended-as-scheduled only when EVERY rank's record carries an instant and the clock is past the latest
+// of them; one rank without an instant leaves it unestablished.
+fn w_expiry_is(e: ArmCommittedExpiry, want: String) -> Bool {
+  match e {
+    ArmExpiresAt { epoch: t } => want == join(["at ", to_string(t)], "")
+    ArmNoScheduledExpiry => want == "none"
+    ArmExpiryUnrecorded => want == "unrecorded"
+    ArmExpiryUnreadable { word: _ } => want == "unreadable"
+  }
+}
+
+test fn w_the_committed_record_reads_its_scheduled_end() -> Bool {
+  w_expiry_is(e: arm_committed_expiry_of(words: ["fp8-16", w_sha_planned, "expires=1791231600"]), want: "at 1791231600")
+    && w_expiry_is(e: arm_committed_expiry_of(words: ["fp8-16", w_sha_planned, "expires=none"]), want: "none")
+    && w_expiry_is(e: arm_committed_expiry_of(words: ["fp8-16", w_sha_planned]), want: "unrecorded")
+    && w_expiry_is(e: arm_committed_expiry_of(words: ["fp8-16", w_sha_planned, "expires=soon"]), want: "unreadable")
+    && w_expiry_is(e: arm_committed_expiry_of(words: ["fp8-16", w_sha_planned, "ends=1791231600"]), want: "unreadable")
+}
+
+test fn w_an_arm_ended_as_scheduled_only_when_every_rank_says_so() -> Bool {
+  let all_bounded = [ArmExpiresAt { epoch: 1000 }, ArmExpiresAt { epoch: 1010 }, ArmExpiresAt { epoch: 1005 }, ArmExpiresAt { epoch: 1002 }]
+  let one_old = [ArmExpiresAt { epoch: 1000 }, ArmExpiresAt { epoch: 1010 }, ArmExpiryUnrecorded, ArmExpiresAt { epoch: 1002 }]
+  (match arm_committed_scheduled_end_passed(expiries: all_bounded, now: 1020) { Present { value: t } => t == 1010  Absent => false })
+    && (match arm_committed_scheduled_end_passed(expiries: all_bounded, now: 1008) { Present { value: _ } => false  Absent => true })
+    && (match arm_committed_scheduled_end_passed(expiries: one_old, now: 1020) { Present { value: _ } => false  Absent => true })
+    && (match arm_committed_scheduled_end_passed(expiries: [ArmNoScheduledExpiry, ArmNoScheduledExpiry], now: 1020) { Present { value: _ } => false  Absent => true })
 }

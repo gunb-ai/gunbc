@@ -10,6 +10,7 @@ import gunbc.spark.collective_transport_plan {
   CollectiveTransportPlan, SocketOverInterface, RoceOverInterface, transport_plan_interface,
 }
 import gunbc.spark.native_serving_realization {
+  ArmUnitBounded,
   glm_native_launch_lines, glm_native_unit_exec_words,
 }
 import gunbc.spark.native_serving_apply {
@@ -152,7 +153,7 @@ test fn w_no_stage_script_parses_nccl_itself() -> Bool {
           let scripts = join([
             spark_native_preflight_script(unit_name: st.unit_name, unit_text: st.unit_text, spec: st.launch.container, host_model_path: st.launch.host_model_path),
             spark_native_stop_script(unit_name: st.unit_name, container_name: st.launch.container.name),
-            spark_native_commit_record_script(unit_name: st.unit_name, label: "t" as NonEmptyStr),
+            spark_native_commit_record_script(unit_name: st.unit_name, label: "t" as NonEmptyStr, lifetime: ArmUnitBounded { bound: second(count: 16776) }),
             spark_native_front_door_script(port_text: "30000", served_alias: "x" as NonEmptyStr, awaited: w_awaited_fixture, container: "c" as NonEmptyStr),
           ], "\n")
           !string_contains(s: scripts, pattern: "Using network")
@@ -696,7 +697,7 @@ test fn w_no_apply_or_convergence_script_echoes_shell_syntax() -> Bool {
       spark_native_host_apply_wait_script(unit_name: u, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
       spark_native_stop_script(unit_name: u, container_name: c),
       spark_native_remove_retired_script(unit_name: u),
-      spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr),
+      spark_native_commit_record_script(unit_name: u, label: "t" as NonEmptyStr, lifetime: ArmUnitBounded { bound: second(count: 16776) }),
     ]
   }, at_least: 5)
 }

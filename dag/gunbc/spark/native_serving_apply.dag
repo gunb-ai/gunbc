@@ -48,7 +48,7 @@ import gunbc.spark.pair_serving_apply {
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fabric_event_log_host { now_epoch_seconds }
 import gunbc.spark.native_serving_realization {
-  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused,
+  GlmNativeUnitRender, GlmNativeUnitRendered, GlmNativeUnitRenderRefused, ArmUnitLifetime, ArmUnitPersistent, ArmUnitBounded,
   glm_native_all_unit_renders, glm_native_ranked_hosts,
   ArmUnitIdentity, glm_native_arm_units, arm_unit_log_path_for,
 }
@@ -87,7 +87,7 @@ import gunbc.spark.arm_convergence {
   ArmRankReadbackRefusal, ArmCommittedReading, ArmCommitted, ArmNotCommitted,
   arm_rank_observe, arm_planned_unit_sha, arm_rank_observation_line, arm_retired_files, arm_retired_transaction_suffixes,
   arm_structural_assessment, arm_assessment_after_readback, arm_converge_decision, arm_converge_apply_restart, arm_converge_apply_removals, arm_converge_apply_text, ArmRestartWhole, ArmNoRestart, ArmRetiredRemoval, arm_assessment_text,
-  arm_committed_reading, arm_committed_reproduced, arm_unit_path, arm_committed_record_path, arm_committed_record_dir,
+  arm_committed_reading, arm_committed_reproduced, arm_committed_expiry_key, arm_committed_scheduled_end_passed, ArmCommittedExpiry, arm_unit_path, arm_committed_record_path, arm_committed_record_dir,
 }
 import gunbc.spark.arm_memory_fit { engine_ready_timeout_for, EngineReadyTimeoutResolved, EngineReadyTimeoutUnreadable }
 
@@ -622,7 +622,25 @@ fn spark_native_remove_retired_script(unit_name: NonEmptyStr) -> String {
 // The record names the committed step's label and the sha256 of the unit file installed on this rank,
 // written through a temporary file and a rename so a reader never sees half a record. It is the only
 // file a later rollback reads.
-fn spark_native_commit_record_script(unit_name: NonEmptyStr, label: NonEmptyStr) -> String {
+// THE RECORD STATES THE ARM'S SCHEDULED END (operator ruling 2026-10-06; gunbc.recurring_failure_mode
+// an_arm_degraded_between_converges_with_nothing_observing). A bounded experiment's unit ends at its start
+// plus its RuntimeMaxSec, so the record carries that instant as expires=<epoch>: systemd's own start
+// (ActiveEnterTimestamp, read as unix time on the host) plus the bound the plan rendered into the unit. A
+// persistent unit carries expires=none. A start the host cannot read refuses the commit rather than
+// recording an end nobody established.
+fn spark_native_commit_expiry_lines(unit_name: NonEmptyStr, lifetime: ArmUnitLifetime) -> String {
+  match lifetime {
+    ArmUnitPersistent => "e=none\n"
+    ArmUnitBounded { bound: b } => join([
+      "a=$(systemctl show ", unit_name as String, " --property=ActiveEnterTimestamp --timestamp=unix --value)\n",
+      "a=${a#@}\n",
+      "case \"$a\" in ''|*[!0-9]*) echo COMMIT-REFUSED-unit-start-unread; exit 1;; esac\n",
+      "e=$(( a + ", to_string(second_count(s: b)), " ))\n",
+    ], "")
+  }
+}
+
+fn spark_native_commit_record_script(unit_name: NonEmptyStr, label: NonEmptyStr, lifetime: ArmUnitLifetime) -> String {
   let u = arm_unit_path(unit_name: unit_name)
   let r = arm_committed_record_path(unit_name: unit_name)
   join([
@@ -630,7 +648,8 @@ fn spark_native_commit_record_script(unit_name: NonEmptyStr, label: NonEmptyStr)
     "install -d -m 755 ", arm_committed_record_dir, "\n",
     "s=$(sha256sum < ", u, " | cut -c1-64)\n",
     "if [ -z \"$s\" ]; then echo COMMIT-REFUSED-unit-hash-unread; exit 1; fi\n",
-    "printf '%s %s\\n' ", shell_quote(arg: label as String), " \"$s\" > ", r, ".next\n",
+    spark_native_commit_expiry_lines(unit_name: unit_name, lifetime: lifetime),
+    "printf '%s %s ", arm_committed_expiry_key, "%s\\n' ", shell_quote(arg: label as String), " \"$s\" \"$e\" > ", r, ".next\n",
     "mv -f ", r, ".next ", r, "\n",
     "echo committed-record-written\n",
   ], "")
@@ -655,6 +674,7 @@ type SparkNativeHostStep sole_constructor {
   launch: ArmNodeLaunch
   serve_port: Port
   served_alias: NonEmptyStr
+  lifetime: ArmUnitLifetime
 }
 
 type SparkNativeArmSteps
@@ -664,7 +684,7 @@ type SparkNativeArmSteps
 fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender, units: ArmUnitIdentity, profile: ServingLaunchProfile) -> SparkNativeHostStep? {
   match render {
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
-    GlmNativeUnitRendered { unit_name: name, text: text } =>
+    GlmNativeUnitRendered { unit_name: name, text: text, lifetime: lt } =>
       Present { value: SparkNativeHostStep {
         host: launch.node.host,
         unit_name: name,
@@ -673,6 +693,7 @@ fn spark_native_step_of(launch: ArmNodeLaunch, render: GlmNativeUnitRender, unit
         launch: launch,
         serve_port: profile.serve_port,
         served_alias: profile.served_alias,
+        lifetime: lt,
       } }
   }
 }
@@ -802,7 +823,7 @@ fn spark_native_remove_retired_plans(steps: List<SparkNativeHostStep>, removals:
 }
 
 fn spark_native_commit_record_plans(steps: List<SparkNativeHostStep>, label: NonEmptyStr) -> List<SparkPairHostApplyPlan> {
-  map(steps, st => spark_native_plan_of(step: st, script: spark_native_commit_record_script(unit_name: st.unit_name, label: label)))
+  map(steps, st => spark_native_plan_of(step: st, script: spark_native_commit_record_script(unit_name: st.unit_name, label: label, lifetime: st.lifetime)))
 }
 
 fn spark_native_desired_ranks(steps: List<SparkNativeHostStep>) -> List<ArmRankDesired> {
@@ -1428,10 +1449,29 @@ type SparkNativeObservation
   | NativeObserveCredentialRefused { cause: NonEmptyStr }
 
 
-fn spark_native_observe_receipt(ranks: List<ArmRankObservation>) -> String {
+// AN EXPIRY READS AS EXPECTED (operator ruling 2026-10-06): when every rank's committed record carries a
+// scheduled end and the executor's clock is past it, the observe says the arm ended as scheduled, so the
+// failed ranks the assessment then reports are that end and not an unexplained crash.
+fn spark_native_scheduled_end_line(ranks: List<ArmRankObservation>, now: EpochSecs?) -> String {
+  match arm_committed_reading(observed: ranks) {
+    ArmNotCommitted { cause: _ } => ""
+    ArmCommitted { label: l, unit_shas: _, expiries: es } =>
+      match now {
+        Absent => ""
+        Present { value: n } =>
+          match arm_committed_scheduled_end_passed(expiries: es, now: n) {
+            Absent => ""
+            Present { value: t } => join(["  the committed arm ", l as String, " ENDED AS SCHEDULED at ", to_string(t), " (its bounded units' RuntimeMaxSec), so a failed or absent rank after it is that end, not a crash\n"], "")
+          }
+      }
+  }
+}
+
+fn spark_native_observe_receipt(ranks: List<ArmRankObservation>, now: EpochSecs?) -> String {
   join([
     "  stage: ", spark_native_stage_wire(st: NativeStageObserve) as String, " (typed legs)\n",
     join(map(ranks, r => arm_rank_observation_line(o: r)), ""),
+    spark_native_scheduled_end_line(ranks: ranks, now: now),
     if count(arm_retired_files(observed: ranks)) == 0 { "" } else { join(["  retired transaction files present (unread; the stop step deletes them): ", join(arm_retired_files(observed: ranks), ", "), "\n"], "") },
   ], "")
 }
@@ -1449,7 +1489,7 @@ fn spark_native_observe(trust: FleetOpenSshTrustPolicy, path: SparkReachPath, ad
     },
   ) {
     MaterializedSshKeyFileBracketRefused { cause: c } => NativeObserveCredentialRefused { cause: c }
-    MaterializedSshKeyFileBracketCompleted { value: ranks } => NativeObserved { ranks: ranks, receipt: spark_native_observe_receipt(ranks: ranks) }
+    MaterializedSshKeyFileBracketCompleted { value: ranks } => NativeObserved { ranks: ranks, receipt: spark_native_observe_receipt(ranks: ranks, now: now_epoch_seconds()) }
   }
 }
 
@@ -1627,7 +1667,7 @@ fn spark_native_return_to_committed(
     ArmNotCommitted { cause: c } =>
       spark_native_stop_all(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage,
         so_far: join([so_far, "  NO COMMITTED ARM TO RETURN TO (", c, "), so every rank is stopped\n"], ""))
-    ArmCommitted { label: label, unit_shas: _ } =>
+    ArmCommitted { label: label, unit_shas: _, expiries: _ } =>
       match subject.committed_steps(label) {
         NativeArmStepsRefused { cause: c } =>
           spark_native_stop_all(trust: trust, path: path, administrator: administrator, steps: steps, stage: stage,

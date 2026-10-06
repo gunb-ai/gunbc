@@ -29,7 +29,7 @@ import gunbc.spark.arm_memory_fit { arm_memory_experiment_runtime }
 // that the production route really does refuse normal serving.
 fn unit_text(r: GlmNativeUnitRender) -> String {
   match r {
-    GlmNativeUnitRendered { unit_name: _, text: t } => t
+    GlmNativeUnitRendered { unit_name: _, text: t, lifetime: _ } => t
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => ""
   }
 }
@@ -37,7 +37,7 @@ fn unit_text(r: GlmNativeUnitRender) -> String {
 fn all_four_rendered(rs: List<GlmNativeUnitRender>) -> Bool {
   length(rs) == 4
     && all(rs, r => match r {
-      GlmNativeUnitRendered { unit_name: _, text: _ } => true
+      GlmNativeUnitRendered { unit_name: _, text: _, lifetime: _ } => true
       GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
     })
 }
@@ -49,7 +49,7 @@ fn normal_serving_render_of_the_experiment_lines() -> List<GlmNativeUnitRender> 
 
 test fn w_the_production_route_renders_no_normal_serving_unit_without_a_proved_fit() -> Bool {
   all(glm_native_all_unit_renders_for(intent: ArmNormalServing), r => match r {
-    GlmNativeUnitRendered { unit_name: _, text: _ } => false
+    GlmNativeUnitRendered { unit_name: _, text: _, lifetime: _ } => false
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => true
   })
     && all_four_rendered(rs: glm_native_all_unit_renders())

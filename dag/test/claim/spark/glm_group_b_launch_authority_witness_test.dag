@@ -116,7 +116,7 @@ test fn w_the_head_unit_exec_line_is_the_projection() -> Bool {
     Present { value: r } =>
       match r {
         GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => false
-        GlmNativeUnitRendered { unit_name: _, text: t } =>
+        GlmNativeUnitRendered { unit_name: _, text: t, lifetime: _ } =>
           string_contains(s: t, pattern: join(["ExecStart=", join(words, " ")], ""))
       }
   }

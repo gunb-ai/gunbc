@@ -1,4 +1,6 @@
 module test.claim.spark.deliberate_unit_start_witness_test
+import std.measure { second }
+import gunbc.spark.native_serving_realization { ArmUnitBounded, ArmUnitPersistent }
 
 import std.types { Bool, String, List, NonEmptyStr }
 import v2.std.optional { Present, Absent }
@@ -77,7 +79,7 @@ test fn w_no_stage_script_spells_a_start() -> Bool {
     spark_native_host_apply_prepare_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr, unit_text: "[Unit]\n", container_name: glm_native_container_name),
     spark_native_host_apply_wait_script(unit_name: w_unit, log_path: "/var/log/gunbc/x.log" as NonEmptyStr),
     spark_native_stop_script(unit_name: w_unit, container_name: glm_native_container_name),
-    spark_native_commit_record_script(unit_name: w_unit, label: "fp8-16" as NonEmptyStr),
+    spark_native_commit_record_script(unit_name: w_unit, label: "fp8-16" as NonEmptyStr, lifetime: ArmUnitBounded { bound: second(count: 16776) }),
     spark_native_remove_retired_script(unit_name: w_unit),
   ]
   all(scripts, t => !string_contains(s: t, pattern: "systemctl restart") && !string_contains(s: t, pattern: "systemctl start") && !string_contains(s: t, pattern: "reset-failed"))

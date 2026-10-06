@@ -131,7 +131,7 @@ data spark_native_experiment_rank_profile_anchor: String = "Free memory on devic
 fn spark_experiment_member(host: HostIdentity, render: GlmNativeUnitRender) -> SystemdExecutionMember? {
   match render {
     GlmNativeUnitRenderRefused { unit_name: _, cause: _ } => none
-    GlmNativeUnitRendered { unit_name: name, text: text } =>
+    GlmNativeUnitRendered { unit_name: name, text: text, lifetime: _ } =>
       Present { value: SystemdExecutionMember {
         host: host,
         unit_name: name,
