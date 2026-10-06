@@ -3,7 +3,7 @@ module test.claim.harness_turn_admission_witness
 import std.types { Bool, NonEmptyStr, String }
 import std.decl_ref { decl_ref }
 import std.measure { token_count, second_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import product.fabric.provider_route { ProviderRoute }
 import product.fabric.isolation { IsolationProfile }
 import product.fabric.work { TrustDomainRef, OfferedService, MaterializedProgram }

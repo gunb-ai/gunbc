@@ -3,7 +3,7 @@ module gunbc.spark.v41_engram_store_manifest
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.measure { byte_size_count }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 import v2.std.algebra { filter }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_int, json_array, serialize_json }
 import gunbc.spark.v41_engram_row_store {

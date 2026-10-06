@@ -4,7 +4,6 @@ import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import std.types { Bool, FilePath, Int, List, String, NonEmptyStr }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -139,6 +138,41 @@ type FilesystemCreateNew
   | FilesystemCreateRefused { path: String, kind: FilesystemFailureKind, error: String }
   | FilesystemCreateKindUnrecognized { path: String, observed: String, error: String }
 
+// A DELETE IS OBSERVED THE SAME WAY A CREATE IS: the host's error KIND, admitted through the one
+// classifier, never its message. An absent target is its own arm because a caller confirming that a
+// name is gone (a store retiring an evicted object) must tell "already gone" from "the host refused";
+// the second leaves bytes on disk and the first does not.
+type FilesystemDelete
+  = FilesystemDeleted { path: String }
+  | FilesystemDeleteTargetAbsent { path: String }
+  | FilesystemDeleteRefused { path: String, kind: FilesystemFailureKind, error: String }
+  | FilesystemDeleteKindUnrecognized { path: String, observed: String, error: String }
+
+fn filesystem_delete(
+  path: String,
+  success: Bool,
+  error: String,
+  error_kind: String,
+) -> FilesystemDelete {
+  if success {
+    FilesystemDeleted { path: path }
+  } else {
+    match admit_filesystem_failure_kind(observed: error_kind) {
+      FilesystemFailureKindUnrecognized { observed: o } =>
+        FilesystemDeleteKindUnrecognized { path: path, observed: o, error: error }
+      FilesystemFailureKindAdmitted { kind: k } =>
+        match k {
+          FilesystemNotFound => FilesystemDeleteTargetAbsent { path: path }
+          FilesystemAlreadyExists => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemPermissionDenied => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemNotDirectory => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemOtherFailure => FilesystemDeleteRefused { path: path, kind: k, error: error }
+          FilesystemCrossDevice => FilesystemDeleteRefused { path: path, kind: k, error: error }
+        }
+    }
+  }
+}
+
 fn filesystem_create_new(
   path: String,
   success: Bool,
@@ -177,10 +211,6 @@ type FilesystemLinkCreateNew
   | FilesystemLinkCrossDevice { source: String, path: String }
   | FilesystemLinkRefused { path: String, kind: FilesystemFailureKind, error: String }
   | FilesystemLinkKindUnrecognized { path: String, observed: String, error: String }
-
-// THE CONSUMER IS A DECLARED FRONTIER (DESIGN section 3c), stated here beside the operation: the
-// production caller lands in the change stacked directly on this one.
-data filesystem_link_create_new_consumer_frontier: DissolutionCondition = unbound_dissolution(description: "TRIGGER: gunbc#13095 lands, in which extdeps.realization.materialization_store_local local_store_link_part publishes every staged byte part into the store root through Filesystem.LinkCreateNew and classifies the answer with filesystem_link_create_new (linked or occupied proceed; cross-device and every refusal refuse the commit). SUFFICIENT FOR: the operation has a production consumer on the store's commit path, not only its witnesses; until that change lands the operation is consumed by its witnesses alone, and this row is retired by that landing and nothing else." as NonEmptyStr)
 
 fn filesystem_link_create_new(
   source: String,
@@ -818,6 +848,7 @@ service Filesystem {
     output {
       success: Bool from "delete_success"
       error: String from "error"
+      error_kind: String from "error_kind"
     }
     transport file { path: "{path}", verb: "delete" }
   }

@@ -6,7 +6,7 @@ import v2.std.node_query { field_projection_node, field_projection_optional }
 import v2.std.node { Atom, Node, Symbol, TypeNode, node_synthetic }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.algebra { Cons, Empty }
-import v2.std.optional { Absent, Present }
+import std.optional { Absent, Present }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

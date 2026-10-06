@@ -9,7 +9,7 @@ import std.orthogonal_topology {
 }
 import product.placement_supply { RoomIdentity }
 import product.spatial_world { World, PlacedSpace, world_rooms }
-import v2.std.optional { Present, Absent }
+import std.optional { Present, Absent }
 
 // SPATIAL-4C: OPENINGS, AND WHAT THEY MAKE REACHABLE.
 //
