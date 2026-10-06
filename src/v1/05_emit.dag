@@ -1380,8 +1380,8 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
 // realization handler (v1.compiler.emit_rust emit_shell_call) implements the
 // declared WitnessStderrCapturePolicy: concurrent drain, BoundedTail retains a
 // tail, Complete retains within the host budget
-// (`v1_rt::read_host_budget_bytes`, the `(bytes, label)` view over the same
-// live observations `memory_governor::read_host_budget_resolution` consumes) or
+// (`v1_rt::read_host_budget_bytes` over `v1_rt::resolve_host_budget_join`,
+// the one composer `memory_governor::resolve_host_budget` also calls) or
 // refuses. Python and go still realize no capture policy, so they refuse these
 // three at field grain rather than answering false / raw length (that answer
 // would assert the declared policy ran).

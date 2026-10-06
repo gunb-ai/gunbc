@@ -1218,17 +1218,10 @@ pub fn host_budget_unreadable_reason() -> String {
     )
 }
 
-/// Resolve the host budget from OBSERVATIONS, so every arm — including the refusal — is
-/// reachable from a test on any machine. `read_host_budget_resolution` is this function
-/// applied to the real reads; nothing else composes the precedence.
-///
-/// The effective planning ceiling is the minimum of the operator request and every observed
-/// applicable cgroup line. An operator request alone is `DeclaredUnverified`: an integer in an
-/// environment variable constrains no allocation and is not evidence of executor provisioning.
-/// There is no meminfo arm: MemAvailable and MemTotal describe a MACHINE, and
-/// on a kernel that can express a private limit, substituting one for the limit this process
-/// failed to read is DESIGN §5's absorbing fallback (answering with a superset). Authority:
-/// `gunbc.host_budget_source` `host_budget_source_admissible_as_bound_on_kernel`.
+/// Typed view of `v1_rt::resolve_host_budget_join`. That function is the one composer
+/// (`gunbc.host_budget_source`); this maps its result onto `HostBudgetResolution` so
+/// existing governor consumers keep a typed source. Tests plant observations here
+/// and still exercise the runtime join.
 pub fn resolve_host_budget(
     env_override: Option<u64>,
     cgroup_high: Option<(String, u64)>,
@@ -1236,83 +1229,68 @@ pub fn resolve_host_budget(
     cgroup_v1_limit: Option<(String, CgroupV1MemoryLimitValue)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
-    // A v1 memory hierarchy holds this process but its limit could not be read: that limit may
-    // be the tightest one, so no other observation may stand in for it (DESIGN §5).
-    let cgroup_v1_limit = match cgroup_v1_limit {
-        Some((dir, CgroupV1MemoryLimitValue::Unparseable(body))) => {
-            return HostBudgetResolution::Unreadable {
-                reason: format!(
-                    "cgroup v1 memory hierarchy at {dir} holds this process but its \
-                     hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
-                     tightest cannot be replaced by another reading"
-                ),
-            };
-        }
-        Some((dir, CgroupV1MemoryLimitValue::Limited(bytes))) => Some((dir, bytes)),
-        Some((_, CgroupV1MemoryLimitValue::Unlimited)) | None => None,
-    };
-    // Every observed process-scoped line is a candidate; the tightest one is the planning
-    // ceiling. On a hybrid host the unified hierarchy carries no memory files, so the v2 and
-    // v1 readings do not normally coexist; when they do, the minimum is still the honest bound.
-    let observation = [
-        cgroup_high.map(|(cgroup_dir, b)| (HostBudgetSource::CgroupMemoryHigh { cgroup_dir }, b)),
-        cgroup_max.map(|(cgroup_dir, b)| (HostBudgetSource::CgroupMemoryMax { cgroup_dir }, b)),
-        cgroup_v1_limit.map(|(cgroup_dir, b)| {
-            (
-                HostBudgetSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
-                b,
-            )
-        }),
-    ]
-    .into_iter()
-    .flatten()
-    .fold(None::<(HostBudgetSource, u64)>, |best, cand| match best {
-        Some(cur) if cur.1 <= cand.1 => Some(cur),
-        _ => Some(cand),
+    let v1 = cgroup_v1_limit.map(|(dir, v)| {
+        (
+            dir,
+            match v {
+                CgroupV1MemoryLimitValue::Limited(bytes) => {
+                    crate::v1_rt::HostBudgetCgroupV1::Limited(bytes)
+                }
+                CgroupV1MemoryLimitValue::Unlimited => crate::v1_rt::HostBudgetCgroupV1::Unlimited,
+                CgroupV1MemoryLimitValue::Unparseable(body) => {
+                    crate::v1_rt::HostBudgetCgroupV1::Unparseable(body)
+                }
+            },
+        )
     });
-    if let Some((source, observed_bytes)) = observation {
-        return HostBudgetResolution::Resolved {
-            effective_bytes: env_override
-                .map(|requested| requested.min(observed_bytes))
-                .unwrap_or(observed_bytes),
-            requested_bytes: env_override,
+    match crate::v1_rt::resolve_host_budget_join(
+        env_override,
+        cgroup_high,
+        cgroup_max,
+        v1,
+        darwin_physical,
+    ) {
+        crate::v1_rt::HostBudgetJoin::Resolved {
+            effective_bytes,
+            requested_bytes,
+            source,
+            observed_bytes,
+        } => HostBudgetResolution::Resolved {
+            effective_bytes,
+            requested_bytes,
             observation: HostBudgetObservation {
-                source,
+                source: match source {
+                    crate::v1_rt::HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir } => {
+                        HostBudgetSource::CgroupMemoryHigh { cgroup_dir }
+                    }
+                    crate::v1_rt::HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir } => {
+                        HostBudgetSource::CgroupMemoryMax { cgroup_dir }
+                    }
+                    crate::v1_rt::HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit {
+                        cgroup_dir,
+                    } => HostBudgetSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
+                    crate::v1_rt::HostBudgetJoinSource::DarwinPhysicalMemory => {
+                        HostBudgetSource::DarwinPhysicalMemory
+                    }
+                },
                 bytes: observed_bytes,
             },
-        };
-    }
-    // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
-    // arm cannot be reached on a kernel that has cgroups — which is precisely the wall
-    // `host_budget_source_admissible_as_bound_on_kernel` states: a host-shared reading may
-    // serve as the budget only where no private-limit mechanism exists.
-    if let Some(bytes) = darwin_physical {
-        return HostBudgetResolution::Resolved {
-            effective_bytes: env_override
-                .map(|requested| requested.min(bytes))
-                .unwrap_or(bytes),
-            requested_bytes: env_override,
-            observation: HostBudgetObservation {
-                source: HostBudgetSource::DarwinPhysicalMemory,
-                bytes,
-            },
-        };
-    }
-    if let Some(requested_bytes) = env_override {
-        return HostBudgetResolution::DeclaredUnverified {
+        },
+        crate::v1_rt::HostBudgetJoin::DeclaredUnverified {
             requested_bytes,
-            reason: "no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
-        };
-    }
-    HostBudgetResolution::Unreadable {
-        reason: host_budget_unreadable_reason(),
+            reason,
+        } => HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason,
+        },
+        crate::v1_rt::HostBudgetJoin::Unreadable { reason } => {
+            HostBudgetResolution::Unreadable { reason }
+        }
     }
 }
 
-/// The host memory planning ceiling, as a typed resolution. It does not cap RSS. Single authority shared
-/// by the MemoryGovernor (which SCHEDULES against it), the typed-module cache cap (which
-/// bounds an estimated ENTRY COUNT with it) and the P4 realize advisory (which PREDICTS against it) — no
-/// consumer may re-read a partial version of this precedence (§3 single authority).
+/// The host memory planning ceiling, as a typed resolution. Live observations and
+/// precedence are `v1_rt::resolve_host_budget_join`; this is the typed wrapper.
 pub fn read_host_budget_resolution() -> HostBudgetResolution {
     let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
         .ok()

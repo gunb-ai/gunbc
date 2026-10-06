@@ -1615,81 +1615,180 @@ pub fn contiguous_loop_elementwise_kernel(
     out
 }
 
-/// Host memory planning ceiling as `(bytes, source label)`.
-/// Authority: `gunbc.host_budget_source`. Observations are the live reads
-/// `read_host_budget_resolution` consumes; this is the `(bytes, label)` view of
-/// the same precedence, including cgroup v1 `hierarchical_memory_limit`.
-pub fn read_host_budget_bytes() -> (Option<u64>, String) {
-    let env = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok());
-    let v1_reading = host_budget_cgroup_v1();
-    if let Some((dir, HostBudgetCgroupV1::Unparseable(body))) = v1_reading.clone() {
-        return (
-            None,
-            format!(
-                "unreadable: cgroup v1 memory hierarchy at {dir} holds this process but its \
-                 hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
-                 tightest cannot be replaced by another reading"
-            ),
-        );
+/// The one host-budget precedence. Authority: `gunbc.host_budget_source`.
+/// `read_host_budget_bytes` and `memory_governor::resolve_host_budget` both call this.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostBudgetJoinSource {
+    CgroupMemoryHigh { cgroup_dir: String },
+    CgroupMemoryMax { cgroup_dir: String },
+    CgroupV1HierarchicalMemoryLimit { cgroup_dir: String },
+    DarwinPhysicalMemory,
+}
+
+impl HostBudgetJoinSource {
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir } => {
+                format!("cgroup memory.high ({cgroup_dir})")
+            }
+            HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir } => {
+                format!("cgroup memory.max ({cgroup_dir})")
+            }
+            HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir } => {
+                format!("cgroup v1 memory.stat hierarchical_memory_limit ({cgroup_dir})")
+            }
+            HostBudgetJoinSource::DarwinPhysicalMemory => "sysctl hw.memsize".to_string(),
+        }
     }
-    let high = host_budget_tightest_cgroup("memory.high");
-    let max = host_budget_tightest_cgroup("memory.max");
-    let v1 = match v1_reading {
-        Some((d, HostBudgetCgroupV1::Limited(b))) => Some((
-            format!("cgroup v1 memory.stat hierarchical_memory_limit ({d})"),
-            b,
-        )),
-        _ => None,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostBudgetJoin {
+    Resolved {
+        effective_bytes: u64,
+        requested_bytes: Option<u64>,
+        source: HostBudgetJoinSource,
+        observed_bytes: u64,
+    },
+    DeclaredUnverified {
+        requested_bytes: u64,
+        reason: String,
+    },
+    Unreadable {
+        reason: String,
+    },
+}
+
+impl HostBudgetJoin {
+    pub fn bytes(&self) -> Option<u64> {
+        match self {
+            HostBudgetJoin::Resolved {
+                effective_bytes, ..
+            } => Some(*effective_bytes),
+            HostBudgetJoin::DeclaredUnverified {
+                requested_bytes, ..
+            } => Some(*requested_bytes),
+            HostBudgetJoin::Unreadable { .. } => None,
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetJoin::Resolved {
+                effective_bytes,
+                requested_bytes,
+                source,
+                observed_bytes,
+            } => match requested_bytes {
+                Some(requested) => format!(
+                    "effective planning minimum {effective_bytes} bytes (env request {requested}; observed {}={observed_bytes} bytes)",
+                    source.label()
+                ),
+                None => source.label(),
+            },
+            HostBudgetJoin::Unreadable { reason } => format!("unreadable: {reason}"),
+            HostBudgetJoin::DeclaredUnverified {
+                requested_bytes,
+                reason,
+            } => format!(
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
+            ),
+        }
+    }
+}
+
+pub fn resolve_host_budget_join(
+    env_override: Option<u64>,
+    cgroup_high: Option<(String, u64)>,
+    cgroup_max: Option<(String, u64)>,
+    cgroup_v1_limit: Option<(String, HostBudgetCgroupV1)>,
+    darwin_physical: Option<u64>,
+) -> HostBudgetJoin {
+    let cgroup_v1_limit = match cgroup_v1_limit {
+        Some((dir, HostBudgetCgroupV1::Unparseable(body))) => {
+            return HostBudgetJoin::Unreadable {
+                reason: format!(
+                    "cgroup v1 memory hierarchy at {dir} holds this process but its \
+                     hierarchical_memory_limit is unreadable ({body}); a bound that may be the \
+                     tightest cannot be replaced by another reading"
+                ),
+            };
+        }
+        Some((dir, HostBudgetCgroupV1::Limited(bytes))) => Some((dir, bytes)),
+        Some((_, HostBudgetCgroupV1::Unlimited)) | None => None,
     };
-    let observed = [
-        high.map(|(d, b)| (format!("cgroup memory.high ({})", d), b)),
-        max.map(|(d, b)| (format!("cgroup memory.max ({})", d), b)),
-        v1,
+    let observation = [
+        cgroup_high
+            .map(|(cgroup_dir, b)| (HostBudgetJoinSource::CgroupMemoryHigh { cgroup_dir }, b)),
+        cgroup_max.map(|(cgroup_dir, b)| (HostBudgetJoinSource::CgroupMemoryMax { cgroup_dir }, b)),
+        cgroup_v1_limit.map(|(cgroup_dir, b)| {
+            (
+                HostBudgetJoinSource::CgroupV1HierarchicalMemoryLimit { cgroup_dir },
+                b,
+            )
+        }),
     ]
     .into_iter()
     .flatten()
-    .min_by_key(|(_, b)| *b);
-    if let Some((label, bytes)) = observed {
-        let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);
-        let source = match env {
-            Some(requested) => format!(
-                "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
-                effective, requested, label, bytes
-            ),
-            None => label,
+    .fold(
+        None::<(HostBudgetJoinSource, u64)>,
+        |best, cand| match best {
+            Some(cur) if cur.1 <= cand.1 => Some(cur),
+            _ => Some(cand),
+        },
+    );
+    if let Some((source, observed_bytes)) = observation {
+        return HostBudgetJoin::Resolved {
+            effective_bytes: env_override
+                .map(|requested| requested.min(observed_bytes))
+                .unwrap_or(observed_bytes),
+            requested_bytes: env_override,
+            source,
+            observed_bytes,
         };
-        return (Some(effective), source);
     }
-    if let Some(bytes) = host_budget_darwin_physical() {
-        let effective = env.map(|e| e.min(bytes)).unwrap_or(bytes);
-        let label = "sysctl hw.memsize";
-        let source = match env {
-            Some(requested) => format!(
-                "effective planning minimum {} bytes (env request {}; observed {}={} bytes)",
-                effective, requested, label, bytes
-            ),
-            None => label.to_string(),
+    if let Some(bytes) = darwin_physical {
+        return HostBudgetJoin::Resolved {
+            effective_bytes: env_override
+                .map(|requested| requested.min(bytes))
+                .unwrap_or(bytes),
+            requested_bytes: env_override,
+            source: HostBudgetJoinSource::DarwinPhysicalMemory,
+            observed_bytes: bytes,
         };
-        return (Some(effective), source);
     }
-    if let Some(requested) = env {
-        return (
-            Some(requested),
-            format!(
-                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={}; no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit",
-                requested
-            ),
-        );
+    if let Some(requested_bytes) = env_override {
+        return HostBudgetJoin::DeclaredUnverified {
+            requested_bytes,
+            reason: "no observed private memory.high, memory.max or v1 hierarchical_memory_limit verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
+        };
     }
-    (
-        None,
-        format!(
-            "unreadable: no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than admitting against the widest signal available: a host-shared reading is a number about the MACHINE, not about this slot, and admitting against one is the rc=137 SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
+    HostBudgetJoin::Unreadable {
+        reason: format!(
+            "no cgroup memory.high, memory.max or v1 hierarchical_memory_limit binds this process and GUNBC_MEMORY_BUDGET_BYTES \
+             cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than \
+             admitting against the widest signal available: a host-shared reading is a number \
+             about the MACHINE, not about this slot, and admitting against one is the rc=137 \
+             SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
+             gunbc.host_budget_source host_budget_source_seed_mirror_disposition). The executor must \
+             expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
             std::env::consts::OS
         ),
-    )
+    }
+}
+
+/// `(bytes, source label)` view of `resolve_host_budget_join` over the live observations.
+pub fn read_host_budget_bytes() -> (Option<u64>, String) {
+    let join = resolve_host_budget_join(
+        std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
+            .ok()
+            .and_then(|s| s.trim().parse::<u64>().ok()),
+        host_budget_tightest_cgroup("memory.high"),
+        host_budget_tightest_cgroup("memory.max"),
+        host_budget_cgroup_v1(),
+        host_budget_darwin_physical(),
+    );
+    (join.bytes(), join.label())
 }
 
 #[derive(Clone)]
